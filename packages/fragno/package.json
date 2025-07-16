@@ -2,11 +2,19 @@
   "name": "@rejot-dev/fragno",
   "version": "0.0.0",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/mod.ts",
+    "./api": "./src/api/api.ts",
+    "./client": "./src/client/client.ts",
+    "./client/vanilla": "./src/client/vanilla.ts"
   },
   "scripts": {
     "check": "tsc --noEmit"
   },
   "type": "module",
-  "dependencies": {}
+  "dependencies": {
+    "@nanostores/query": "^0.3.4",
+    "@standard-schema/spec": "^1.0.0",
+    "nanostores": "^1.0.1",
+    "rou3": "^0.7.3"
+  }
 }

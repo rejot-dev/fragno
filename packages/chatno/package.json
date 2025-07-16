@@ -9,6 +9,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@rejot-dev/fragno": "workspace:*"
+    "@rejot-dev/fragno": "workspace:*",
+    "zod": "^4.0.5"
   }
 }
