@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/fragno"
+    },
+    {
+      "path": "packages/chatno"
+    },
+    {
+      "path": "examples/react-router-example"
+    }
+  ]
+}
