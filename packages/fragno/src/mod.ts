@@ -3,6 +3,7 @@ import { FragnoApiError, FragnoApiValidationError, type FragnoRouteConfig } from
 import type { FragnoClientHook } from "./client/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./api/internal/path-type";
+import { getMountRoute } from "./api/internal/route";
 
 export interface FragnoLibrarySharedConfig<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,16 +16,22 @@ export interface FragnoLibrarySharedConfig<
   >[],
 > {
   name: string;
-  mountRoute?: string;
   routes: TRoutes;
 }
 
+export interface FragnoPublicConfig {
+  mountRoute?: string;
+}
+
 export interface FragnoPublicClientConfig {
+  mountRoute?: string;
   baseUrl?: string;
 }
 
-export interface FragnoLibraryClientConfig {
-  hooks: Record<string, FragnoClientHook>;
+export interface FragnoLibraryClientConfig<
+  THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>>,
+> {
+  hooks: THooks;
 }
 
 export interface FragnoInstantiatedLibrary {
@@ -32,18 +39,15 @@ export interface FragnoInstantiatedLibrary {
   handler: (req: Request) => Promise<Response>;
 }
 
-function getMountRoute(config: FragnoLibrarySharedConfig) {
-  const mountRoute = config.mountRoute ?? `/api/${config.name}`;
+export function createLibrary(
+  publicConfig: FragnoPublicConfig,
+  config: FragnoLibrarySharedConfig,
+): FragnoInstantiatedLibrary {
+  const mountRoute = getMountRoute({
+    name: config.name,
+    mountRoute: publicConfig.mountRoute,
+  });
 
-  if (mountRoute.endsWith("/")) {
-    return mountRoute.slice(0, -1);
-  }
-
-  return mountRoute;
-}
-
-export function createLibrary(config: FragnoLibrarySharedConfig): FragnoInstantiatedLibrary {
-  const mountRoute = getMountRoute(config);
   // Allow routes to declare undefined schemas so the RequestContext accurately reflects the presence or absence of `input`/`output`.
   const router =
     createRouter<
@@ -88,7 +92,7 @@ export function createLibrary(config: FragnoLibrarySharedConfig): FragnoInstanti
                 schema: inputSchema,
                 valid: async () => {
                   const json = await req.json();
-                  const result = await inputSchema!["~standard"].validate(json);
+                  const result = await inputSchema["~standard"].validate(json);
 
                   console.log("validating", json, result);
 
@@ -125,8 +129,14 @@ export function createLibrary(config: FragnoLibrarySharedConfig): FragnoInstanti
   };
 }
 
-export function createLibraryClient(
+export function createLibraryClient<
+  THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>>,
+>(
   _publicConfig: FragnoPublicClientConfig,
   _sharedConfig: FragnoLibrarySharedConfig,
-  _clientConfig: FragnoLibraryClientConfig,
-) {}
+  clientConfig: FragnoLibraryClientConfig<THooks>,
+): THooks {
+  return {
+    ...clientConfig.hooks,
+  };
+}

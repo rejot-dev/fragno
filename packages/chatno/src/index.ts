@@ -2,9 +2,10 @@ import {
   createLibrary,
   createLibraryClient,
   type FragnoPublicClientConfig,
+  type FragnoPublicConfig,
 } from "@rejot-dev/fragno";
 import { addRoute } from "@rejot-dev/fragno/api";
-import { wrapRouteQuery } from "@rejot-dev/fragno/client";
+import { createRouteQueryHook } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
 const libraryConfig = {
@@ -20,9 +21,9 @@ const libraryConfig = {
 
     addRoute({
       method: "GET",
-      path: "/thing/:message",
+      path: "/thing/**:path",
       handler: async ({ req, pathParams }) => {
-        const message = pathParams.message;
+        const message = pathParams.path;
 
         return Response.json({
           message,
@@ -68,14 +69,18 @@ export interface ChatnoConfig {
   apiProvider?: "openai" | "anthropic";
 }
 
-export function createChatno() {
-  return createLibrary(libraryConfig);
+export function createChatno(publicConfig: FragnoPublicConfig = {}) {
+  return createLibrary(publicConfig, libraryConfig);
 }
 
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
-  return createLibraryClient(publicConfig, libraryConfig, {
+  const aiConfigRoute = libraryConfig.routes[3]; // GET /ai-config route
+
+  const clientConfig = {
     hooks: {
-      useAiConfig: wrapRouteQuery(libraryConfig.routes[1]),
+      useAiConfig: createRouteQueryHook(publicConfig, libraryConfig, aiConfigRoute),
     },
-  } as const);
+  } as const;
+
+  return createLibraryClient(publicConfig, libraryConfig, clientConfig);
 }

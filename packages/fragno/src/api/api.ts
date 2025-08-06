@@ -25,7 +25,7 @@ export type RequestContext<
     : object);
 
 export interface FragnoRouteConfig<
-  TPath extends string,
+  TPath extends string = string,
   TInputSchema extends StandardSchemaV1 | undefined = undefined,
   TOutputSchema extends StandardSchemaV1 | undefined = undefined,
 > {
@@ -47,14 +47,3 @@ export function addRoute<
 }
 
 export { FragnoApiError, FragnoApiValidationError } from "./error";
-
-addRoute({
-  method: "GET",
-  path: "hing/:message",
-  handler: async ({ req, pathParams }) => {
-    return Response.json({
-      pathParams,
-      query: Object.fromEntries(new URL(req.url).searchParams),
-    });
-  },
-});

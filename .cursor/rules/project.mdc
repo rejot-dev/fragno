@@ -1,0 +1,94 @@
+---
+alwaysApply: true
+---
+
+# Fragno Project Cursor Rules
+
+## Project Overview
+
+This is a TypeScript monorepo containing a web framework (Fragno) and related packages. The project
+follows a modular architecture with generic core implementations and framework-specific adapters.
+
+## Project Structure
+
+### Root Structure
+
+- `packages/` - Main packages (fragno, chatno)
+- `examples/` - Example applications and demos
+- `scripts/` - Build and utility scripts
+- Configuration files at root (tsconfig, eslint, prettier, etc.)
+
+### Package Structure
+
+- `packages/fragno/` - Core web framework
+  - `src/api/` - Server-side API framework
+  - `src/client/` - Client-side implementations
+  - `src/mod.ts` - Main entry point
+- `packages/chatno/` - Chat functionality package
+- `examples/react-router-example/` - React Router integration example
+
+## Architecture Principles
+
+### Core + Adapters Pattern
+
+- **CRITICAL**: Core implementations should be generic and framework-agnostic
+- Framework-specific adapters (React, Vue, etc.) are created separately
+- Keep the core API surface minimal and composable
+- Adapters should be thin wrappers around core functionality
+
+### File Organization
+
+- `internal/` directories contain implementation details not exposed in public API
+- `integrations/` directories contain framework-specific code
+- Main exports go through `index.ts` or `mod.ts` files
+- Types should be co-located with their implementations
+
+## Coding Standards
+
+### TypeScript
+
+- Use strict TypeScript configuration
+- Do NOT use `any` unless absolutely necessary
+- Use proper JSDoc comments for public APIs
+
+### File Naming
+
+- Use kebab-case for file names
+- Use PascalCase for component/class files
+- Use lowercase for utility and helper files
+- Internal files go in `internal/` subdirectories
+- Tests are colocated, e.g. `route.ts` -> `route.test.ts`
+
+### Import/Export Patterns
+
+- Use named exports over default exports
+- Re-export through index files for clean public APIs
+- Keep internal imports separate from public API imports
+- Use relative imports within packages, package imports across packages
+
+## Package Guidelines
+
+### Fragno Package (`packages/fragno/`)
+
+- Core web framework functionality
+- Split between API (server) and client implementations
+- Should work with any JavaScript runtime/framework
+- Keep React-specific code in separate adapter files
+
+### Chatno Package (`packages/chatno/`)
+
+- AI assistant chat functionality
+- Should integrate cleanly with Fragno
+- Follow same core + adapter pattern
+
+### Examples
+
+- Provide working examples for major integrations
+- Keep examples simple but realistic
+- Include proper configuration and setup
+
+## Agent Development Guidelines
+
+- Use `vitest` for testing: `bunx vitest` to run tests
+- Do not run `vite`, or `bun run dev` to run the application. It's already running in the
+  background.
