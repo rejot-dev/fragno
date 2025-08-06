@@ -1,6 +1,15 @@
 import { addRoute, createRouter, findRoute } from "rou3";
 import { FragnoApiError, FragnoApiValidationError, type FragnoRouteConfig } from "./api/api";
-import type { FragnoClientHook } from "./client/client";
+import type {
+  FragnoClientHook,
+  ExtractGetRoutes,
+  ExtractGetRoutePaths,
+  ExtractOutputSchemaForPath,
+  IsValidGetRoutePath,
+  GenerateHookTypeForPath,
+  ValidateGetRoutePath,
+  HasGetRoutes,
+} from "./client/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./api/internal/path-type";
 import { getMountRoute } from "./api/internal/route";
@@ -140,3 +149,15 @@ export function createLibraryClient<
     ...clientConfig.hooks,
   };
 }
+
+// Re-export client utility types
+export type {
+  FragnoClientHook,
+  ExtractGetRoutes,
+  ExtractGetRoutePaths,
+  ExtractOutputSchemaForPath,
+  IsValidGetRoutePath,
+  GenerateHookTypeForPath,
+  ValidateGetRoutePath,
+  HasGetRoutes,
+};

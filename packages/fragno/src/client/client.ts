@@ -6,10 +6,127 @@ import { getMountRoute } from "../api/internal/route";
 
 type InferOrUnknown<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<T> : unknown;
 
+// ============================================================================
+// Utility Types for FragnoClientBuilder
+// ============================================================================
+
+/**
+ * Extract only GET routes from a library config's routes array
+ */
+export type ExtractGetRoutes<
+  T extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+> = {
+  [K in keyof T]: T[K] extends FragnoRouteConfig<infer Path, infer Input, infer Output>
+    ? T[K]["method"] extends "GET"
+      ? FragnoRouteConfig<Path, Input, Output>
+      : never
+    : never;
+}[number][];
+
+/**
+ * Extract route paths from GET routes only for type validation
+ */
+export type ExtractGetRoutePaths<
+  T extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+> = {
+  [K in keyof T]: T[K] extends FragnoRouteConfig<
+    infer Path,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >
+    ? T[K]["method"] extends "GET"
+      ? Path
+      : never
+    : never;
+}[number];
+
+/**
+ * Extract the output schema type for a specific route path from a routes array
+ */
+export type ExtractOutputSchemaForPath<
+  TRoutes extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends string,
+> = {
+  [K in keyof TRoutes]: TRoutes[K] extends FragnoRouteConfig<
+    TPath,
+    StandardSchemaV1 | undefined,
+    infer Output
+  >
+    ? TRoutes[K]["method"] extends "GET"
+      ? Output
+      : never
+    : never;
+}[number];
+
+/**
+ * Check if a path exists as a GET route in the routes array
+ */
+export type IsValidGetRoutePath<
+  TRoutes extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends string,
+> = TPath extends ExtractGetRoutePaths<TRoutes> ? true : false;
+
+/**
+ * Generate the proper hook type for a given route path
+ */
+export type GenerateHookTypeForPath<
+  TRoutes extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends ExtractGetRoutePaths<TRoutes>,
+> = FragnoClientHook<ExtractOutputSchemaForPath<TRoutes, TPath>>;
+
+/**
+ * Utility type to ensure only valid GET route paths can be used
+ */
+export type ValidateGetRoutePath<
+  TRoutes extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends string,
+> =
+  TPath extends ExtractGetRoutePaths<TRoutes>
+    ? TPath
+    : `Error: Path '${TPath}' is not a valid GET route. Available GET routes: ${ExtractGetRoutePaths<TRoutes>}`;
+
+/**
+ * Helper type to check if a routes array has any GET routes
+ */
+export type HasGetRoutes<
+  T extends readonly FragnoRouteConfig<
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+> = ExtractGetRoutePaths<T> extends never ? false : true;
+
 export interface FragnoClientHook<TOutputSchema extends StandardSchemaV1 | undefined> {
   name: string;
   store: FetcherStore<InferOrUnknown<TOutputSchema>>;
 }
+
+export type ExtractOutputSchemaFromHook<T extends FragnoClientHook<StandardSchemaV1 | undefined>> =
+  T extends FragnoClientHook<infer OutputSchema> ? OutputSchema : never;
 
 // Create a global nanoquery context
 const [createFetcherStore] = nanoquery({
