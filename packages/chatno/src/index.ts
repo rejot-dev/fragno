@@ -5,7 +5,6 @@ import {
   type FragnoPublicConfig,
 } from "@rejot-dev/fragno";
 import { addRoute } from "@rejot-dev/fragno/api";
-import { createRouteQueryHook } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
 const libraryConfig = {
@@ -14,21 +13,28 @@ const libraryConfig = {
     addRoute({
       method: "GET",
       path: "/",
+      outputSchema: z.string(),
       handler: async () => {
-        return new Response(`Hello, world!`);
+        return `Hello, world!`;
       },
     }),
 
     addRoute({
       method: "GET",
       path: "/thing/**:path",
-      handler: async ({ req, pathParams }) => {
+      outputSchema: z.object({
+        path: z.string(),
+        message: z.string(),
+        query: z.record(z.string(), z.string()),
+      }),
+      handler: async ({ path, req, pathParams }) => {
         const message = pathParams.path;
 
-        return Response.json({
+        return {
+          path,
           message,
           query: Object.fromEntries(new URL(req.url).searchParams),
-        });
+        };
       },
     }),
 
@@ -41,8 +47,7 @@ const libraryConfig = {
       outputSchema: z.string(),
       handler: async ({ input }) => {
         const { number } = await input.valid();
-
-        return new Response(`Hello, world! ${number}`);
+        return `Hello, world! ${number}`;
       },
     }),
 
@@ -55,11 +60,11 @@ const libraryConfig = {
         systemPrompt: z.string(),
       }),
       handler: async () => {
-        return Response.json({
-          apiProvider: "openai",
+        return {
+          apiProvider: "openai" as const,
           model: "gpt-4o",
           systemPrompt: "You are a helpful assistant.",
-        });
+        };
       },
     }),
   ],
@@ -74,13 +79,10 @@ export function createChatno(publicConfig: FragnoPublicConfig = {}) {
 }
 
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
-  const aiConfigRoute = libraryConfig.routes[3]; // GET /ai-config route
-
-  const clientConfig = {
-    hooks: {
-      useAiConfig: createRouteQueryHook(publicConfig, libraryConfig, aiConfigRoute),
-    },
-  } as const;
-
-  return createLibraryClient(publicConfig, libraryConfig, clientConfig);
+  return createLibraryClient(publicConfig, libraryConfig, (builder) => {
+    return builder
+      .addHook("useAiConfig", "/ai-config")
+      .addHook("useHelloWorld", "/")
+      .addHook("useThing", "/thing/**:path");
+  });
 }

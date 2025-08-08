@@ -1,5 +1,11 @@
 import { addRoute, createRouter, findRoute } from "rou3";
-import { FragnoApiError, FragnoApiValidationError, type FragnoRouteConfig } from "./api/api";
+import {
+  FragnoApiError,
+  FragnoApiValidationError,
+  type FragnoRouteConfig,
+  type HTTPMethod,
+  type RequestContext,
+} from "./api/api";
 import type {
   FragnoClientHook,
   ExtractGetRoutes,
@@ -10,23 +16,27 @@ import type {
   ValidateGetRoutePath,
   HasGetRoutes,
 } from "./client/client";
+import { FragnoClientBuilder } from "./client/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./api/internal/path-type";
 import { getMountRoute } from "./api/internal/route";
 
 export interface FragnoLibrarySharedConfig<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TRoutes extends readonly FragnoRouteConfig<string, any, any>[] = readonly FragnoRouteConfig<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
   >[],
 > {
   name: string;
   routes: TRoutes;
 }
+
+export type AnyFragnoLibrarySharedConfig = FragnoLibrarySharedConfig<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly FragnoRouteConfig<HTTPMethod, string, any, any>[]
+>;
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -37,21 +47,25 @@ export interface FragnoPublicClientConfig {
   baseUrl?: string;
 }
 
-export interface FragnoLibraryClientConfig<
-  THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>>,
+export interface FragnoInstantiatedLibrary<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
 > {
-  hooks: THooks;
-}
-
-export interface FragnoInstantiatedLibrary {
-  config: FragnoLibrarySharedConfig;
+  config: FragnoLibrarySharedConfig<TRoutes>;
   handler: (req: Request) => Promise<Response>;
 }
 
-export function createLibrary(
+export function createLibrary<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+>(
   publicConfig: FragnoPublicConfig,
-  config: FragnoLibrarySharedConfig,
-): FragnoInstantiatedLibrary {
+  config: FragnoLibrarySharedConfig<TRoutes>,
+): FragnoInstantiatedLibrary<TRoutes> {
   const mountRoute = getMountRoute({
     name: config.name,
     mountRoute: publicConfig.mountRoute,
@@ -60,7 +74,12 @@ export function createLibrary(
   // Allow routes to declare undefined schemas so the RequestContext accurately reflects the presence or absence of `input`/`output`.
   const router =
     createRouter<
-      FragnoRouteConfig<string, StandardSchemaV1 | undefined, StandardSchemaV1 | undefined>
+      FragnoRouteConfig<
+        HTTPMethod,
+        string,
+        StandardSchemaV1 | undefined,
+        StandardSchemaV1 | undefined
+      >
     >();
 
   for (const routeConfig of config.routes) {
@@ -94,6 +113,7 @@ export function createLibrary(
 
       const ctx = {
         req,
+        path: route.data.path,
         pathParams: (route.params ?? {}) as ExtractPathParams<typeof route.data.path>,
         ...(inputSchema
           ? {
@@ -124,7 +144,17 @@ export function createLibrary(
       };
 
       try {
-        return await handler(ctx);
+        const result = await handler(
+          ctx as RequestContext<string, StandardSchemaV1 | undefined, StandardSchemaV1 | undefined>,
+        );
+
+        console.log("result", result);
+
+        if (outputSchema) {
+          return Response.json(result);
+        }
+
+        return new Response();
       } catch (error) {
         console.error(error);
 
@@ -139,18 +169,23 @@ export function createLibrary(
 }
 
 export function createLibraryClient<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
   THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>>,
 >(
-  _publicConfig: FragnoPublicClientConfig,
-  _sharedConfig: FragnoLibrarySharedConfig,
-  clientConfig: FragnoLibraryClientConfig<THooks>,
-): THooks {
-  return {
-    ...clientConfig.hooks,
-  };
+  publicConfig: FragnoPublicClientConfig,
+  libraryConfig: TLibraryConfig,
+  builderFn: (
+    builder: FragnoClientBuilder<TRoutes, TLibraryConfig>,
+  ) => FragnoClientBuilder<TRoutes, TLibraryConfig, THooks>,
+) {
+  const builder = new FragnoClientBuilder(publicConfig, libraryConfig);
+  const configuredBuilder = builderFn(builder);
+  return configuredBuilder.build();
 }
 
-// Re-export client utility types
+// Re-export client utility types and builder
 export type {
   FragnoClientHook,
   ExtractGetRoutes,
@@ -161,3 +196,5 @@ export type {
   ValidateGetRoutePath,
   HasGetRoutes,
 };
+
+export { FragnoClientBuilder, createClientBuilder } from "./client/client";

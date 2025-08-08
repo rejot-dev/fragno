@@ -1,7 +1,11 @@
 import { nanoquery, type FetcherStore } from "@nanostores/query";
-import type { FragnoRouteConfig } from "../api/api";
+import type { FragnoRouteConfig, HTTPMethod } from "../api/api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
+import type {
+  AnyFragnoLibrarySharedConfig,
+  FragnoLibrarySharedConfig,
+  FragnoPublicClientConfig,
+} from "../mod";
 import { getMountRoute } from "../api/internal/route";
 
 type InferOrUnknown<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<T> : unknown;
@@ -15,14 +19,20 @@ type InferOrUnknown<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutp
  */
 export type ExtractGetRoutes<
   T extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
   >[],
 > = {
-  [K in keyof T]: T[K] extends FragnoRouteConfig<infer Path, infer Input, infer Output>
-    ? T[K]["method"] extends "GET"
-      ? FragnoRouteConfig<Path, Input, Output>
+  [K in keyof T]: T[K] extends FragnoRouteConfig<
+    infer Method,
+    infer Path,
+    infer Input,
+    infer Output
+  >
+    ? Method extends "GET"
+      ? FragnoRouteConfig<Method, Path, Input, Output>
       : never
     : never;
 }[number][];
@@ -32,17 +42,19 @@ export type ExtractGetRoutes<
  */
 export type ExtractGetRoutePaths<
   T extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
   >[],
 > = {
   [K in keyof T]: T[K] extends FragnoRouteConfig<
+    infer Method,
     infer Path,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
   >
-    ? T[K]["method"] extends "GET"
+    ? Method extends "GET"
       ? Path
       : never
     : never;
@@ -53,6 +65,7 @@ export type ExtractGetRoutePaths<
  */
 export type ExtractOutputSchemaForPath<
   TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
@@ -60,11 +73,12 @@ export type ExtractOutputSchemaForPath<
   TPath extends string,
 > = {
   [K in keyof TRoutes]: TRoutes[K] extends FragnoRouteConfig<
+    infer Method,
     TPath,
     StandardSchemaV1 | undefined,
     infer Output
   >
-    ? TRoutes[K]["method"] extends "GET"
+    ? Method extends "GET"
       ? Output
       : never
     : never;
@@ -75,6 +89,7 @@ export type ExtractOutputSchemaForPath<
  */
 export type IsValidGetRoutePath<
   TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
@@ -87,6 +102,7 @@ export type IsValidGetRoutePath<
  */
 export type GenerateHookTypeForPath<
   TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
@@ -99,6 +115,7 @@ export type GenerateHookTypeForPath<
  */
 export type ValidateGetRoutePath<
   TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
@@ -114,6 +131,7 @@ export type ValidateGetRoutePath<
  */
 export type HasGetRoutes<
   T extends readonly FragnoRouteConfig<
+    HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
@@ -125,7 +143,7 @@ export interface FragnoClientHook<TOutputSchema extends StandardSchemaV1 | undef
   store: FetcherStore<InferOrUnknown<TOutputSchema>>;
 }
 
-export type ExtractOutputSchemaFromHook<T extends FragnoClientHook<StandardSchemaV1 | undefined>> =
+export type ExtractOutputSchemaFromHook<T> =
   T extends FragnoClientHook<infer OutputSchema> ? OutputSchema : never;
 
 // Create a global nanoquery context
@@ -141,24 +159,19 @@ const [createFetcherStore] = nanoquery({
 });
 
 export function createRouteQueryHook<
+  TMethod extends HTTPMethod,
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
 >(
   publicConfig: FragnoPublicClientConfig,
-  libraryConfig: FragnoLibrarySharedConfig,
-  route: FragnoRouteConfig<TPath, TInputSchema, TOutputSchema>,
+  libraryConfig: AnyFragnoLibrarySharedConfig,
+  route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema>,
 ): FragnoClientHook<TOutputSchema> {
   const baseUrl = publicConfig.baseUrl ?? "";
   const mountRoute = getMountRoute(libraryConfig);
   // Remove double slash if present (except for protocol)
   const fullPath = `${baseUrl}${mountRoute}${route.path}`.replace(/([^:]\/)\/+/g, "$1");
-
-  console.log({
-    baseUrl,
-    mountRoute,
-    fullPath,
-  });
 
   // Create a fetcher store that will handle the API request
   const store = createFetcherStore<InferOrUnknown<TOutputSchema>>([fullPath], {
@@ -173,9 +186,106 @@ export function createRouteQueryHook<
   };
 }
 
-// export function createClientBuilder(
-//   publicConfig: FragnoPublicClientConfig,
-//   libraryConfig: FragnoLibrarySharedConfig,
-// ) {
+// ============================================================================
+// FragnoClientBuilder Implementation
+// ============================================================================
 
-// }
+/**
+ * A fluent builder for creating type-safe client hooks from library configurations.
+ * Only supports GET routes for hook creation.
+ */
+export class FragnoClientBuilder<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>> = {},
+> {
+  #hooks: Record<string, FragnoClientHook<StandardSchemaV1 | undefined>> = {};
+  #publicConfig: FragnoPublicClientConfig;
+  #libraryConfig: TLibraryConfig;
+
+  constructor(publicConfig: FragnoPublicClientConfig, libraryConfig: TLibraryConfig) {
+    this.#publicConfig = publicConfig;
+    this.#libraryConfig = libraryConfig;
+  }
+
+  get routes(): TLibraryConfig["routes"] {
+    return this.#libraryConfig.routes;
+  }
+
+  /**
+   * Add a hook for a GET route. The path must be a valid GET route in the library configuration.
+   * @param name - The name of the hook to create
+   * @param path - The route path (must be a GET route)
+   * @returns A new builder instance with the hook added to the type
+   */
+  addHook<THookName extends string, TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
+    name: THookName,
+    path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
+  ): FragnoClientBuilder<
+    TRoutes,
+    TLibraryConfig,
+    THooks & {
+      [K in THookName]: GenerateHookTypeForPath<TLibraryConfig["routes"], TPath>;
+    }
+  > {
+    if (this.#hooks[name]) {
+      throw new Error(`Hook with name '${name}' already exists`);
+    }
+
+    const route = this.#libraryConfig.routes.find((r) => r.path === path && r.method === "GET");
+
+    if (!route) {
+      throw new Error(
+        `Route '${path}' not found or is not a GET route. Available GET routes: ${this.#libraryConfig.routes
+          .filter((r) => r.method === "GET")
+          .map((r) => r.path)
+          .join(", ")}`,
+      );
+    }
+
+    // Create the hook using the existing createRouteQueryHook function
+    const hook = createRouteQueryHook(this.#publicConfig, this.#libraryConfig, route);
+
+    // Return new builder instance with updated hooks
+    const newBuilder = new FragnoClientBuilder(this.#publicConfig, this.#libraryConfig);
+    newBuilder.#hooks = { ...this.#hooks, [name]: hook };
+    return newBuilder as FragnoClientBuilder<
+      TRoutes,
+      TLibraryConfig,
+      THooks & {
+        [K in THookName]: GenerateHookTypeForPath<TLibraryConfig["routes"], TPath>;
+      }
+    >;
+  }
+
+  get hooks(): THooks {
+    return this.#hooks as THooks;
+  }
+
+  /**
+   * Build and return the final hooks object with all configured hooks.
+   * @returns Object containing all the hooks that were added
+   */
+  build(): THooks {
+    return { ...this.#hooks } as THooks;
+  }
+}
+
+/**
+ * Factory function to create a new FragnoClientBuilder instance.
+ * @param publicConfig - Public configuration for the client
+ * @param libraryConfig - Library configuration containing routes
+ * @returns A new FragnoClientBuilder instance
+ */
+export function createClientBuilder<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
+>(
+  publicConfig: FragnoPublicClientConfig,
+  libraryConfig: TLibraryConfig,
+): FragnoClientBuilder<TRoutes, TLibraryConfig> {
+  return new FragnoClientBuilder(publicConfig, libraryConfig);
+}

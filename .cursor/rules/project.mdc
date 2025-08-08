@@ -50,6 +50,16 @@ follows a modular architecture with generic core implementations and framework-s
 - Use strict TypeScript configuration
 - Do NOT use `any` unless absolutely necessary
 - Use proper JSDoc comments for public APIs
+- Prefer to destruct objects in things like for-loops.
+- In Typescript, never use Array<T>, always use T[]
+- Use Javascript private (#) for private members, NEVER use `private` in Typescript.
+- Always use `import type` and indicate `type` as needed
+- Always use curly braces, even for single-line blocks
+- Avoid:
+  - Enums
+  - Constructor parameter members
+  - TypeScript constructs that don't work with type stripping
+- NEVER use Unsafe type casting unless EXPLICITELY asked for.
 
 ### File Naming
 
@@ -62,7 +72,6 @@ follows a modular architecture with generic core implementations and framework-s
 ### Import/Export Patterns
 
 - Use named exports over default exports
-- Re-export through index files for clean public APIs
 - Keep internal imports separate from public API imports
 - Use relative imports within packages, package imports across packages
 
@@ -81,14 +90,9 @@ follows a modular architecture with generic core implementations and framework-s
 - Should integrate cleanly with Fragno
 - Follow same core + adapter pattern
 
-### Examples
-
-- Provide working examples for major integrations
-- Keep examples simple but realistic
-- Include proper configuration and setup
-
 ## Agent Development Guidelines
 
 - Use `vitest` for testing: `bunx vitest` to run tests
 - Do not run `vite`, or `bun run dev` to run the application. It's already running in the
   background.
+- Always run `bun run check` in the folder of the package, to check for type errors.

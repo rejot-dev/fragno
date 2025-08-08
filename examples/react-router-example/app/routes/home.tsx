@@ -14,10 +14,12 @@ const chatnoClient = createChatnoClient({});
 
 export default function Home() {
   const { data, loading } = useStore(chatnoClient.useAiConfig.store);
+  const { data: helloWorld } = useStore(chatnoClient.useHelloWorld.store);
 
   console.log({
     data,
     loading,
+    helloWorld,
   });
 
   return (
@@ -26,6 +28,7 @@ export default function Home() {
       <div style={{ marginTop: "2rem", padding: "1rem", border: "1px solid #ccc" }}>
         <h2>AI Configuration</h2>
         {loading ? <p>Loading...</p> : <p>AI Model: {data?.model}</p>}
+        <p>Hello World: {helloWorld?.toString()}</p>
       </div>
     </div>
   );

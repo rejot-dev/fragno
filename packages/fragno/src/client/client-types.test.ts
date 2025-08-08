@@ -1,6 +1,6 @@
 import { test, expectTypeOf } from "vitest";
 import { z } from "zod";
-import type { FragnoRouteConfig } from "../api/api";
+import { addRoute, type FragnoRouteConfig, type HTTPMethod } from "../api/api";
 import type {
   ExtractGetRoutes,
   ExtractGetRoutePaths,
@@ -11,67 +11,69 @@ import type {
   HasGetRoutes,
   FragnoClientHook,
   ExtractOutputSchemaFromHook,
+  FragnoClientBuilder,
 } from "./client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 // Test route configurations for type testing
 const _testRoutes = [
   // GET routes
-  {
+  addRoute({
     method: "GET",
     path: "/",
-    handler: async () => new Response("root"),
-  },
-  {
+    handler: async () => {},
+  }),
+  addRoute({
     method: "GET",
     path: "/users",
     outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-    handler: async () => new Response("users"),
-  },
-  {
+    handler: async () => {
+      return [{ id: 1, name: "" }];
+    },
+  }),
+  addRoute({
     method: "GET",
     path: "/users/:id",
     outputSchema: z.object({ id: z.number(), name: z.string() }),
-    handler: async () => new Response("user"),
-  },
-  {
+    handler: async ({ pathParams }) => {
+      return { id: Number(pathParams.id), name: "" };
+    },
+  }),
+  addRoute({
     method: "GET",
     path: "/posts/:postId/comments",
     outputSchema: z.array(z.object({ id: z.number(), content: z.string() })),
-    handler: async () => new Response("comments"),
-  },
-  {
+    handler: async () => [],
+  }),
+  addRoute({
     method: "GET",
     path: "/static/**:path",
-    handler: async () => new Response("static"),
-  },
+    handler: async () => {},
+  }),
   // Non-GET routes (should be filtered out)
-  {
+  addRoute({
     method: "POST",
     path: "/users",
     inputSchema: z.object({ name: z.string() }),
     outputSchema: z.object({ id: z.number(), name: z.string() }),
-    handler: async () => new Response("create user"),
-  },
-  {
+    handler: async () => ({ id: 1, name: "" }),
+  }),
+  addRoute({
     method: "PUT",
     path: "/users/:id",
     inputSchema: z.object({ name: z.string() }),
-    handler: async () => new Response("update user"),
-  },
-  {
+    handler: async () => {},
+  }),
+  addRoute({
     method: "DELETE",
     path: "/users/:id",
-    handler: async () => new Response("delete user"),
-  },
-] as const satisfies readonly FragnoRouteConfig<
-  string,
-  StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined
->[];
+    handler: async () => {},
+  }),
+] as const;
 
 // Empty routes array for edge case testing
 const _emptyRoutes = [] as const satisfies readonly FragnoRouteConfig<
+  HTTPMethod,
   string,
   StandardSchemaV1 | undefined,
   StandardSchemaV1 | undefined
@@ -79,17 +81,18 @@ const _emptyRoutes = [] as const satisfies readonly FragnoRouteConfig<
 
 // Routes with no GET methods
 const _noGetRoutes = [
-  {
+  addRoute({
     method: "POST",
     path: "/create",
-    handler: async () => new Response("create"),
-  },
-  {
+    handler: async () => {},
+  }),
+  addRoute({
     method: "DELETE",
     path: "/delete/:id",
-    handler: async () => new Response("delete"),
-  },
+    handler: async () => {},
+  }),
 ] as const satisfies readonly FragnoRouteConfig<
+  HTTPMethod,
   string,
   StandardSchemaV1 | undefined,
   StandardSchemaV1 | undefined
@@ -154,6 +157,9 @@ test("ExtractOutputSchemaForPath type tests", () => {
   // Should be never for non-existent path
   type NonExistentSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/nonexistent">;
   expectTypeOf<NonExistentSchema>().toEqualTypeOf<never>();
+
+  type PathWithNoSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/">;
+  expectTypeOf<PathWithNoSchema>().toEqualTypeOf<StandardSchemaV1<unknown, unknown> | undefined>();
 });
 
 test("IsValidGetRoutePath type tests", () => {
@@ -241,24 +247,26 @@ test("HasGetRoutes type tests", () => {
 test("Real-world usage scenarios", () => {
   // Test with Chatno-like route configuration
   const _chatnoLikeRoutes = [
-    {
+    addRoute({
       method: "GET",
       path: "/",
-      handler: async () => new Response("Hello, world!"),
-    },
-    {
+      outputSchema: z.string(),
+      handler: async () => "Hello, world!",
+    }),
+    addRoute({
       method: "GET",
       path: "/thing/**:path",
-      handler: async () => new Response("thing"),
-    },
-    {
+      outputSchema: z.string(),
+      handler: async () => "thing",
+    }),
+    addRoute({
       method: "POST",
       path: "/echo",
       inputSchema: z.object({ number: z.number() }),
       outputSchema: z.string(),
-      handler: async () => new Response("echo"),
-    },
-    {
+      handler: async () => "",
+    }),
+    addRoute({
       method: "GET",
       path: "/ai-config",
       outputSchema: z.object({
@@ -266,13 +274,13 @@ test("Real-world usage scenarios", () => {
         model: z.string(),
         systemPrompt: z.string(),
       }),
-      handler: async () => new Response("config"),
-    },
-  ] as const satisfies readonly FragnoRouteConfig<
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[];
+      handler: async () => ({
+        apiProvider: "openai" as const,
+        model: "gpt-4o",
+        systemPrompt: "",
+      }),
+    }),
+  ] as const;
 
   // Should extract only GET paths
   type ChatnoGetPaths = ExtractGetRoutePaths<typeof _chatnoLikeRoutes>;
@@ -301,28 +309,24 @@ test("Real-world usage scenarios", () => {
 test("Edge cases and error handling", () => {
   // Routes with complex path patterns
   const _complexRoutes = [
-    {
+    addRoute({
       method: "GET",
       path: "/api/v1/users/:userId/posts/:postId/comments/:commentId",
       outputSchema: z.object({ id: z.number(), content: z.string() }),
-      handler: async () => new Response("comment"),
-    },
-    {
+      handler: async () => ({ id: 1, content: "" }),
+    }),
+    addRoute({
       method: "GET",
       path: "/files/**:filepath",
-      handler: async () => new Response("file"),
-    },
-    {
+      handler: async () => {},
+    }),
+    addRoute({
       method: "GET",
       path: "/admin/:section/:action",
       outputSchema: z.object({ success: z.boolean() }),
-      handler: async () => new Response("admin"),
-    },
-  ] as const satisfies readonly FragnoRouteConfig<
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[];
+      handler: async () => ({ success: true }),
+    }),
+  ] as const;
 
   type ComplexPaths = ExtractGetRoutePaths<typeof _complexRoutes>;
   expectTypeOf<ComplexPaths>().toEqualTypeOf<
@@ -351,7 +355,7 @@ test("Type constraint validation", () => {
     {
       method: "GET" as const,
       path: "/test" as const,
-      handler: async () => new Response("test"),
+      handler: async () => {},
     },
   ];
 
@@ -361,13 +365,48 @@ test("Type constraint validation", () => {
 
   // Should maintain type safety with const assertions
   const _constRoutes = [
-    {
+    addRoute({
       method: "GET",
       path: "/const-test",
-      handler: async () => new Response("const test"),
-    },
+      handler: async () => {},
+    }),
   ] as const;
 
   type ConstPaths = ExtractGetRoutePaths<typeof _constRoutes>;
   expectTypeOf<ConstPaths>().toEqualTypeOf<"/const-test">();
+});
+
+test("GET route with outputSchema", () => {
+  // These tests ensure the types work correctly with const assertions and readonly arrays
+  const _routes = [
+    addRoute({
+      method: "GET" as const,
+      path: "/test",
+      outputSchema: z.object({
+        name: z.string(),
+      }),
+      handler: async () => ({ name: "test" }),
+    }),
+  ] as const;
+
+  type ConstPaths = ExtractGetRoutePaths<typeof _routes>;
+  expectTypeOf<ConstPaths>().toEqualTypeOf<"/test">();
+});
+
+test("asd", () => {
+  const _x = {} as FragnoClientBuilder<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+    {
+      readonly name: "chatno";
+      readonly routes: readonly [
+        FragnoRouteConfig<"GET", "/", undefined, StandardSchemaV1<unknown, unknown> | undefined>,
+      ];
+    },
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    {}
+  >;
+
+  type _X = ExtractGetRoutePaths<typeof _x.routes>;
+  expectTypeOf<_X>().toEqualTypeOf<"/">();
 });

@@ -123,8 +123,6 @@ export class FragnoClientBuilder<
 
 ### Step 3: Update createLibraryClient Interface
 
-Modify the existing `createLibraryClient` function to support both old and new patterns:
-
 ```typescript
 // New overload using builder
 export function createLibraryClient<TLibraryConfig extends FragnoLibrarySharedConfig>(
@@ -134,28 +132,6 @@ export function createLibraryClient<TLibraryConfig extends FragnoLibrarySharedCo
     builder: FragnoClientBuilder<TLibraryConfig>,
   ) => FragnoClientBuilder<TLibraryConfig, any>,
 ): ReturnType<ReturnType<typeof builderFn>["build"]>;
-
-// Existing overload for backward compatibility
-export function createLibraryClient<THooks extends Record<string, FragnoClientHook<any>>>(
-  publicConfig: FragnoPublicClientConfig,
-  libraryConfig: FragnoLibrarySharedConfig,
-  clientConfig: FragnoLibraryClientConfig<THooks>,
-): THooks;
-
-// Implementation with overload detection
-export function createLibraryClient(...args: any[]): any {
-  if (args.length === 3 && typeof args[2] === "function") {
-    // New builder pattern
-    const [publicConfig, libraryConfig, builderFn] = args;
-    const builder = new FragnoClientBuilder(publicConfig, libraryConfig);
-    const configuredBuilder = builderFn(builder);
-    return configuredBuilder.build();
-  } else {
-    // Existing pattern
-    const [publicConfig, libraryConfig, clientConfig] = args;
-    return { ...clientConfig.hooks };
-  }
-}
 ```
 
 **Location**: `packages/fragno/src/mod.ts`
@@ -204,21 +180,6 @@ export { FragnoClientBuilder, createClientBuilder } from "./client/client-builde
 
 // Add to packages/fragno/src/client/client.ts
 export { FragnoClientBuilder } from "./client-builder";
-```
-
-### Step 7: Add Comprehensive Tests
-
-Create test suite covering:
-
-```typescript
-// packages/fragno/src/client/client-builder.test.ts
-describe("FragnoClientBuilder", () => {
-  it("should create hooks with correct types");
-  it("should validate route paths at compile time");
-  it("should only allow GET routes for hooks");
-  it("should accumulate hook types correctly");
-  it("should build final hooks object");
-});
 ```
 
 ## Type Safety Features
