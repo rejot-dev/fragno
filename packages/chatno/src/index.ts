@@ -27,14 +27,45 @@ const libraryConfig = {
         message: z.string(),
         query: z.record(z.string(), z.string()),
       }),
-      handler: async ({ path, req, pathParams }) => {
+      handler: async ({ path, searchParams, pathParams }) => {
         const message = pathParams.path;
+
+        console.log("path", {
+          path,
+        });
 
         return {
           path,
           message,
-          query: Object.fromEntries(new URL(req.url).searchParams),
+          query: Object.fromEntries(searchParams),
         };
+      },
+    }),
+
+    addRoute({
+      method: "GET",
+      path: "/echo/:message",
+      outputSchema: z.string(),
+      handler: async ({ pathParams, searchParams }) => {
+        const message = pathParams.message;
+
+        const shouldCapitalize = searchParams.get("capital") === "true";
+        console.log("shouldCapitalize", {
+          shouldCapitalize,
+          searchParams,
+        });
+
+        return `'/echo/:message' ${shouldCapitalize ? message.toUpperCase() : message}`;
+      },
+    }),
+
+    addRoute({
+      method: "GET",
+      path: "/echo/**:message",
+      outputSchema: z.string(),
+      handler: async ({ pathParams }) => {
+        const message = pathParams.message;
+        return `'/echo/**:message' ${message}`;
       },
     }),
 
@@ -83,6 +114,8 @@ export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClie
     return builder
       .addHook("useAiConfig", "/ai-config")
       .addHook("useHelloWorld", "/")
-      .addHook("useThing", "/thing/**:path");
+      .addHook("useThing", "/thing/**:path")
+      .addHook("useEcho", "/echo/:message")
+      .addHook("useEchoWildcard", "/echo/**:message");
   });
 }

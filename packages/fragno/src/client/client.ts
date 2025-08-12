@@ -1,5 +1,5 @@
 import { nanoquery, type FetcherStore } from "@nanostores/query";
-import type { FragnoRouteConfig, HTTPMethod } from "../api/api";
+import type { FragnoRouteConfig, HTTPMethod, RequestContext } from "../api/api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   AnyFragnoLibrarySharedConfig,
@@ -7,6 +7,8 @@ import type {
   FragnoPublicClientConfig,
 } from "../mod";
 import { getMountRoute } from "../api/internal/route";
+import { buildPath, type ExtractPathParams, type HasPathParams } from "../api/internal/path";
+// import type { ReadableAtom } from "nanostores";
 
 type InferOrUnknown<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<T> : unknown;
 
@@ -98,19 +100,6 @@ export type IsValidGetRoutePath<
 > = TPath extends ExtractGetRoutePaths<TRoutes> ? true : false;
 
 /**
- * Generate the proper hook type for a given route path
- */
-export type GenerateHookTypeForPath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[],
-  TPath extends ExtractGetRoutePaths<TRoutes>,
-> = FragnoClientHook<ExtractOutputSchemaForPath<TRoutes, TPath>>;
-
-/**
  * Utility type to ensure only valid GET route paths can be used
  */
 export type ValidateGetRoutePath<
@@ -138,10 +127,69 @@ export type HasGetRoutes<
   >[],
 > = ExtractGetRoutePaths<T> extends never ? false : true;
 
+/**
+ * Generate the proper hook type for a given route path
+ */
+export type GenerateHookTypeForPath<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends ExtractGetRoutePaths<TRoutes>,
+> = FragnoClientHook<ExtractOutputSchemaForPath<TRoutes, TPath>>;
+
 export interface FragnoClientHook<TOutputSchema extends StandardSchemaV1 | undefined> {
   name: string;
   store: FetcherStore<InferOrUnknown<TOutputSchema>>;
 }
+
+export type GenerateNewHookTypeForPath<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends ExtractGetRoutePaths<TRoutes>,
+> = NewFragnoClientHookData<"GET", TPath, ExtractOutputSchemaForPath<TRoutes, TPath>>;
+
+export type FragnoClientHookQueryFn<TPath extends string, TOutputSchema extends StandardSchemaV1> =
+  HasPathParams<TPath> extends true
+    ? (params: {
+        pathParams: ExtractPathParams<TPath>;
+        queryParams?: Record<string, string>;
+      }) => Promise<StandardSchemaV1.InferOutput<TOutputSchema>>
+    : (params?: {
+        queryParams?: Record<string, string>;
+      }) => Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+
+export type NewFragnoClientHookData<
+  TMethod extends HTTPMethod,
+  TPath extends string,
+  TOutputSchema extends StandardSchemaV1,
+> = {
+  route: FragnoRouteConfig<TMethod, TPath, StandardSchemaV1 | undefined, TOutputSchema>;
+} & (HasPathParams<TPath> extends true
+  ? {
+      query(params: {
+        pathParams: ExtractPathParams<TPath>;
+        queryParams?: Record<string, string>;
+      }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+      // store(params: {
+      //   pathParams: ExtractPathParams<TPath, string | ReadableAtom<string>>;
+      //   queryParams?: Record<string, string | ReadableAtom<string>>;
+      // }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>>;
+    }
+  : {
+      query(params?: {
+        queryParams?: Record<string, string>;
+      }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+      // store(params?: {
+      //   queryParams?: Record<string, string | ReadableAtom<string>>;
+      // }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>>;
+    });
 
 export type ExtractOutputSchemaFromHook<T> =
   T extends FragnoClientHook<infer OutputSchema> ? OutputSchema : never;
@@ -158,31 +206,103 @@ const [createFetcherStore] = nanoquery({
   },
 });
 
+console.log("createFetcherStore", createFetcherStore);
+
 export function createRouteQueryHook<
-  TMethod extends HTTPMethod,
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
-  TOutputSchema extends StandardSchemaV1 | undefined,
+  TOutputSchema extends StandardSchemaV1,
 >(
   publicConfig: FragnoPublicClientConfig,
   libraryConfig: AnyFragnoLibrarySharedConfig,
-  route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema>,
-): FragnoClientHook<TOutputSchema> {
+  route: FragnoRouteConfig<"GET", TPath, TInputSchema, TOutputSchema>,
+): NewFragnoClientHookData<"GET", TPath, TOutputSchema> {
+  if (route.method !== "GET") {
+    throw new Error(
+      `Only GET routes are supported for hooks. Route '${route.path}' is a ${route.method} route.`,
+    );
+  }
+
+  if (!route.outputSchema) {
+    throw new Error(
+      `Output schema is required for GET routes. Route '${route.path}' has no output schema.`,
+    );
+  }
+
   const baseUrl = publicConfig.baseUrl ?? "";
   const mountRoute = getMountRoute(libraryConfig);
-  // Remove double slash if present (except for protocol)
-  const fullPath = `${baseUrl}${mountRoute}${route.path}`.replace(/([^:]\/)\/+/g, "$1");
-
-  // Create a fetcher store that will handle the API request
-  const store = createFetcherStore<InferOrUnknown<TOutputSchema>>([fullPath], {
-    // Only fetch when explicitly triggered for POST/PUT/etc methods
-    // GET requests can be fetched immediately
-    ...(route.method !== "GET" && { dedupeTime: 0 }),
-  });
 
   return {
-    name: `${route.method} ${route.path}`,
-    store,
+    route,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    store: {} as any,
+    // store: (params?: {
+    //   pathParams?: ExtractPathParams<TPath, string | ReadableAtom<string>>;
+    //   queryParams?: Record<string, ReadableAtom<string>>;
+    // }) => {
+    //   const { pathParams, queryParams } = params ?? {};
+
+    //   const deps: (string | ReadableAtom<string>)[] = [
+    //     ...Object.values(pathParams ?? {}),
+    //     ...Object.values(queryParams ?? {}),
+    //   ];
+
+    //   return createFetcherStore<InferOrUnknown<TOutputSchema>>(deps, {
+    //     dedupeTime: 0,
+    //   });
+    // },
+    query: async (params?: {
+      pathParams?: ExtractPathParams<TPath>;
+      queryParams?: Record<string, string>;
+    }) => {
+      const { pathParams, queryParams } = params ?? {};
+
+      const searchParams = new URLSearchParams(queryParams ?? {});
+
+      const builtPath = buildPath(route.path, pathParams ?? {});
+      const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
+      // Remove double slash if present (except for protocol)
+      const joined = `${baseUrl}${mountRoute}${builtPath}`.replace(/([^:]\/)\/+/g, "$1");
+      const url = `${joined}${search}`;
+
+      if (typeof window === "undefined") {
+        // Server-side rendering
+
+        console.log("server-side fetching", {
+          searchParams,
+        });
+
+        const ctx = {
+          path: route.path,
+          pathParams: pathParams ?? {},
+          searchParams,
+          // Construct this object with Input/Output undefined, because there is type-fuckery going on.
+        } satisfies RequestContext<TPath, undefined, undefined>;
+
+        return route.handler({
+          ...ctx,
+          output: {
+            schema: route.outputSchema!,
+          },
+        } as unknown as RequestContext<TPath, TInputSchema, TOutputSchema>);
+      } // Else: client side fetching
+
+      console.log("client-side fetching", {
+        searchParams,
+        builtPath,
+        joined,
+        url,
+      });
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data: unknown = await response.json();
+      return data as StandardSchemaV1.InferOutput<TOutputSchema>;
+    },
   };
 }
 
@@ -199,9 +319,9 @@ export class FragnoClientBuilder<
   TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
   TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>> = {},
+  THooks extends Record<string, NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = {},
 > {
-  #hooks: Record<string, FragnoClientHook<StandardSchemaV1 | undefined>> = {};
+  #hooks: Record<string, NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = {};
   #publicConfig: FragnoPublicClientConfig;
   #libraryConfig: TLibraryConfig;
 
@@ -227,22 +347,26 @@ export class FragnoClientBuilder<
     TRoutes,
     TLibraryConfig,
     THooks & {
-      [K in THookName]: GenerateHookTypeForPath<TLibraryConfig["routes"], TPath>;
+      [K in THookName]: GenerateNewHookTypeForPath<TLibraryConfig["routes"], TPath>;
     }
   > {
     if (this.#hooks[name]) {
       throw new Error(`Hook with name '${name}' already exists`);
     }
 
-    const route = this.#libraryConfig.routes.find((r) => r.path === path && r.method === "GET");
+    const route = this.#libraryConfig.routes.find(
+      (
+        r,
+      ): r is FragnoRouteConfig<
+        "GET",
+        typeof path,
+        StandardSchemaV1 | undefined,
+        StandardSchemaV1
+      > => r.path === path && r.method === "GET" && r.outputSchema,
+    );
 
     if (!route) {
-      throw new Error(
-        `Route '${path}' not found or is not a GET route. Available GET routes: ${this.#libraryConfig.routes
-          .filter((r) => r.method === "GET")
-          .map((r) => r.path)
-          .join(", ")}`,
-      );
+      throw new Error(`Route '${path}' not found or is not a GET route with an output schema.`);
     }
 
     // Create the hook using the existing createRouteQueryHook function
@@ -255,7 +379,7 @@ export class FragnoClientBuilder<
       TRoutes,
       TLibraryConfig,
       THooks & {
-        [K in THookName]: GenerateHookTypeForPath<TLibraryConfig["routes"], TPath>;
+        [K in THookName]: GenerateNewHookTypeForPath<TLibraryConfig["routes"], TPath>;
       }
     >;
   }

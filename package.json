@@ -5,7 +5,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "clean": "rm -rf **/dist **/tsconfig.tsbuildinfo **/node_modules",
-    "clean:install": "bun run clean && bun install",
+    "clean:install": "bun run clean && bun install --linker=isolated",
     "build": "tsc --build",
     "build:watch": "tsc --build --watch"
   },

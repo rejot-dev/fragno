@@ -4,7 +4,6 @@ import {
   FragnoApiValidationError,
   type FragnoRouteConfig,
   type HTTPMethod,
-  type RequestContext,
 } from "./api/api";
 import type {
   FragnoClientHook,
@@ -15,10 +14,11 @@ import type {
   GenerateHookTypeForPath,
   ValidateGetRoutePath,
   HasGetRoutes,
+  NewFragnoClientHookData,
 } from "./client/client";
 import { FragnoClientBuilder } from "./client/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ExtractPathParams } from "./api/internal/path-type";
+import type { ExtractPathParams } from "./api/internal/path";
 import { getMountRoute } from "./api/internal/route";
 
 export interface FragnoLibrarySharedConfig<
@@ -112,8 +112,10 @@ export function createLibrary<
       const { handler, inputSchema, outputSchema } = route.data;
 
       const ctx = {
-        req,
+        request: req,
+        searchParams: new URL(req.url).searchParams,
         path: route.data.path,
+        // TODO(Wilco): Check if the params object actually aligns with the type here.
         pathParams: (route.params ?? {}) as ExtractPathParams<typeof route.data.path>,
         ...(inputSchema
           ? {
@@ -144,11 +146,7 @@ export function createLibrary<
       };
 
       try {
-        const result = await handler(
-          ctx as RequestContext<string, StandardSchemaV1 | undefined, StandardSchemaV1 | undefined>,
-        );
-
-        console.log("result", result);
+        const result = await handler(ctx);
 
         if (outputSchema) {
           return Response.json(result);
@@ -169,10 +167,14 @@ export function createLibrary<
 }
 
 export function createLibraryClient<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
   TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
-  THooks extends Record<string, FragnoClientHook<StandardSchemaV1 | undefined>>,
+  THooks extends Record<string, NewFragnoClientHookData<"GET", string, StandardSchemaV1>>,
 >(
   publicConfig: FragnoPublicClientConfig,
   libraryConfig: TLibraryConfig,

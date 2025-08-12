@@ -1,81 +1,129 @@
-import logoDark from "./logo-dark.svg";
-import logoLight from "./logo-light.svg";
+import type { ReactNode } from "react";
 
-export function Welcome() {
+export function WelcomeShell({ children }: { children: ReactNode }) {
   return (
-    <main className="flex items-center justify-center pt-16 pb-4">
-      <div className="flex min-h-0 flex-1 flex-col items-center gap-16">
-        <header className="flex flex-col items-center gap-9">
-          <div className="w-[500px] max-w-[100vw] p-4">
-            <img src={logoLight} alt="React Router" className="block w-full dark:hidden" />
-            <img src={logoDark} alt="React Router" className="hidden w-full dark:block" />
-          </div>
-        </header>
-        <div className="w-full max-w-[300px] space-y-6 px-4">
-          <nav className="space-y-4 rounded-3xl border border-gray-200 p-6 dark:border-gray-700">
-            <p className="text-center leading-6 text-gray-700 dark:text-gray-200">
-              What&apos;s next?
-            </p>
-            <ul>
-              {resources.map(({ href, text, icon }) => (
-                <li key={href}>
-                  <a
-                    className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {icon}
-                    {text}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </div>
+    <main className="relative isolate">
+      <div className="pointer-events-none absolute inset-0 -z-10 [mask-image:radial-gradient(60%_60%_at_50%_20%,black,transparent)] opacity-60">
+        <div className="h-full w-full bg-gradient-to-b from-blue-50 via-transparent to-transparent dark:from-blue-950" />
       </div>
+      {children}
     </main>
   );
 }
 
-const resources = [
-  {
-    href: "https://reactrouter.com/docs",
-    text: "React Router Docs",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="20"
-        viewBox="0 0 20 20"
-        fill="none"
-        className="stroke-gray-600 group-hover:stroke-current dark:stroke-gray-300"
-      >
-        <path
-          d="M9.99981 10.0751V9.99992M17.4688 17.4688C15.889 19.0485 11.2645 16.9853 7.13958 12.8604C3.01467 8.73546 0.951405 4.11091 2.53116 2.53116C4.11091 0.951405 8.73546 3.01467 12.8604 7.13958C16.9853 11.2645 19.0485 15.889 17.4688 17.4688ZM2.53132 17.4688C0.951566 15.8891 3.01483 11.2645 7.13974 7.13963C11.2647 3.01471 15.8892 0.951453 17.469 2.53121C19.0487 4.11096 16.9854 8.73551 12.8605 12.8604C8.73562 16.9853 4.11107 19.0486 2.53132 17.4688Z"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "https://rmx.as/discord",
-    text: "Join Discord",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="20"
-        viewBox="0 0 24 20"
-        fill="none"
-        className="stroke-gray-600 group-hover:stroke-current dark:stroke-gray-300"
-      >
-        <path
-          d="M15.0686 1.25995L14.5477 1.17423L14.2913 1.63578C14.1754 1.84439 14.0545 2.08275 13.9422 2.31963C12.6461 2.16488 11.3406 2.16505 10.0445 2.32014C9.92822 2.08178 9.80478 1.84975 9.67412 1.62413L9.41449 1.17584L8.90333 1.25995C7.33547 1.51794 5.80717 1.99419 4.37748 2.66939L4.19 2.75793L4.07461 2.93019C1.23864 7.16437 0.46302 11.3053 0.838165 15.3924L0.868838 15.7266L1.13844 15.9264C2.81818 17.1714 4.68053 18.1233 6.68582 18.719L7.18892 18.8684L7.50166 18.4469C7.96179 17.8268 8.36504 17.1824 8.709 16.4944L8.71099 16.4904C10.8645 17.0471 13.128 17.0485 15.2821 16.4947C15.6261 17.1826 16.0293 17.8269 16.4892 18.4469L16.805 18.8725L17.3116 18.717C19.3056 18.105 21.1876 17.1751 22.8559 15.9238L23.1224 15.724L23.1528 15.3923C23.5873 10.6524 22.3579 6.53306 19.8947 2.90714L19.7759 2.73227L19.5833 2.64518C18.1437 1.99439 16.6386 1.51826 15.0686 1.25995ZM16.6074 10.7755L16.6074 10.7756C16.5934 11.6409 16.0212 12.1444 15.4783 12.1444C14.9297 12.1444 14.3493 11.6173 14.3493 10.7877C14.3493 9.94885 14.9378 9.41192 15.4783 9.41192C16.0471 9.41192 16.6209 9.93851 16.6074 10.7755ZM8.49373 12.1444C7.94513 12.1444 7.36471 11.6173 7.36471 10.7877C7.36471 9.94885 7.95323 9.41192 8.49373 9.41192C9.06038 9.41192 9.63892 9.93712 9.6417 10.7815C9.62517 11.6239 9.05462 12.1444 8.49373 12.1444Z"
-          strokeWidth="1.5"
-        />
-      </svg>
-    ),
-  },
-];
+export function WelcomeHero() {
+  return (
+    <section className="mx-auto max-w-5xl px-6 pt-16 pb-8 sm:pt-20">
+      <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-600 backdrop-blur dark:border-gray-800 dark:text-gray-300">
+        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        Experimental • Fragno
+      </div>
+
+      <h1 className="mt-6 text-5xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-6xl">
+        <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-rose-600 bg-clip-text text-transparent">
+          Fragno
+        </span>{" "}
+        — Composable web primitives
+      </h1>
+      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-pretty text-gray-600 dark:text-gray-300">
+        A tiny, strongly‑typed foundation for building web apps. Keep the core generic; add
+        framework adapters only where they belong.
+      </p>
+
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        <a
+          href="https://github.com/rejot-dev/fragno/tree/main/ai-docs"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:outline-none dark:focus:ring-offset-gray-950"
+        >
+          Get Started
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-4 w-4"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10.293 3.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 11-1.414-1.414L13.586 11H4a1 1 0 110-2h9.586l-3.293-3.293a1 1 0 010-1.414z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </a>
+        <a
+          href="https://github.com/rejot-dev/fragno"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-gray-900"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" className="h-4 w-4" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.63 5.47 7.7.4.08.55-.18.55-.39 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.5-2.69-.96-.09-.23-.48-.96-.82-1.15-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.53.28-.87.51-1.07-1.78-.2-3.64-.92-3.64-4.08 0-.9.31-1.64.82-2.22-.08-.2-.36-1.02.08-2.12 0 0 .67-.22 2.2.84.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.06 2.2-.84 2.2-.84.44 1.1.16 1.92.08 2.12.51.58.82 1.32.82 2.22 0 3.17-1.87 3.88-3.65 4.08.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.47.55.39A8.04 8.04 0 0016 8.13C16 3.64 12.42 0 8 0Z" />
+          </svg>
+          Star on GitHub
+        </a>
+      </div>
+    </section>
+  );
+}
+
+export function WelcomeExperiments() {
+  const experiments = [
+    {
+      title: "Core + Adapters",
+      description: "Framework‑agnostic core with thin React/Vanilla adapters.",
+      icon: "🧩",
+    },
+    {
+      title: "Typed Client Builder",
+      description: "Generate ergonomic, typed client hooks and stores.",
+      icon: "🧪",
+    },
+    {
+      title: "File‑based API",
+      description: "Minimal API surfaces with composable routing primitives.",
+      icon: "🗂️",
+    },
+    {
+      title: "Tiny Runtime",
+      description: "Small, explicit primitives over heavy abstractions.",
+      icon: "✨",
+    },
+    {
+      title: "First‑class DX",
+      description: "Great defaults, strict types, zero magic.",
+      icon: "⚙️",
+    },
+    {
+      title: "Chatno Integration",
+      description: "Seamless AI assistant tooling built on the same core.",
+      icon: "🤖",
+    },
+  ];
+
+  return (
+    <section className="mx-auto max-w-5xl px-6 pb-16">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {experiments.map((item) => (
+          <div
+            key={item.title}
+            className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white/60 p-4 shadow-sm backdrop-blur transition dark:border-gray-800 dark:bg-gray-900/60"
+          >
+            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-transparent via-transparent to-blue-50 opacity-0 transition group-hover:opacity-100 dark:to-blue-950" />
+            <div className="flex items-start gap-3">
+              <div className="text-2xl leading-none">{item.icon}</div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {item.title}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                  {item.description}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}

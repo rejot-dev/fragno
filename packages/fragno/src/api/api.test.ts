@@ -1,5 +1,5 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { addRoute, type FragnoRouteConfig } from "./api";
+import { addRoute, type FragnoRouteConfig, type RequestContext } from "./api";
 import { createLibrary } from "../mod";
 import { z } from "zod";
 
@@ -8,15 +8,12 @@ describe("addRoute", () => {
     addRoute({
       method: "GET" as const,
       path: "/thing/**:path" as const,
-      handler: async ({ path, pathParams, input }) => {
+      handler: async ({ path, pathParams }) => {
         expect(path).toEqual("/thing/**:path");
         expectTypeOf<typeof path>().toEqualTypeOf<"/thing/**:path">();
 
         expect(pathParams).toEqual({ path: "test" });
         expectTypeOf<typeof pathParams>().toEqualTypeOf<{ path: string }>();
-
-        expect(input).toBeFalsy();
-        expectTypeOf<typeof input>().toEqualTypeOf<never>();
       },
     });
   });
@@ -52,12 +49,9 @@ describe("addRoute", () => {
         addRoute({
           method: "GET",
           path: "/thing/**:path",
-          handler: async ({ path, pathParams, input }) => {
+          handler: async ({ path, pathParams }) => {
             expect(path).toEqual("/thing/**:path");
             expectTypeOf<typeof path>().toEqualTypeOf<"/thing/**:path">();
-
-            expect(input).toBeFalsy();
-            expectTypeOf<typeof input>().toEqualTypeOf<never>();
 
             expect(pathParams).toEqual({ path: "test" });
             expectTypeOf<typeof pathParams>().toEqualTypeOf<{ path: string }>();
@@ -76,5 +70,21 @@ describe("addRoute", () => {
     expect(() => {
       createLibrary({}, config);
     }).toThrow();
+  });
+});
+
+describe("RequestContext", () => {
+  test("RequestContext", () => {
+    const _ctx: RequestContext<"/asd", undefined, undefined> = {
+      path: "/asd",
+      pathParams: {},
+      searchParams: new URLSearchParams(),
+    };
+
+    const _ctx2: RequestContext<"/foo/:id", undefined, undefined> = {
+      path: "/foo/:id",
+      pathParams: { id: "123" },
+      searchParams: new URLSearchParams(),
+    };
   });
 });

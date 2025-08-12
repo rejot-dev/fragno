@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ExtractPathParams } from "./internal/path-type";
+import type { ExtractPathParams } from "./internal/path";
 
 export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | string;
 
@@ -16,10 +16,13 @@ export type RequestContext<
   TOutputSchema extends StandardSchemaV1 | undefined,
 > = {
   path: TPath;
-  req: Request;
   pathParams: ExtractPathParams<TPath>;
+  searchParams: URLSearchParams;
+  // Not available in server rendering contexts.
+  request?: Request;
 } & (TInputSchema extends undefined
-  ? Record<string, never>
+  ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    {}
   : {
       input: {
         schema: TInputSchema;
@@ -29,13 +32,15 @@ export type RequestContext<
       };
     }) &
   (TOutputSchema extends undefined
-    ? Record<string, never>
+    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+      {}
     : {
         output: {
           schema: TOutputSchema;
         };
       });
 
+// TODO(Wilco): Add Query parameters to this object
 export interface FragnoRouteConfig<
   TMethod extends HTTPMethod,
   TPath extends string,
