@@ -14,9 +14,7 @@ import type {
   GenerateHookTypeForPath,
   ValidateGetRoutePath,
   HasGetRoutes,
-  NewFragnoClientHookData,
 } from "./client/client";
-import { FragnoClientBuilder } from "./client/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./api/internal/path";
 import { getMountRoute } from "./api/internal/route";
@@ -166,27 +164,6 @@ export function createLibrary<
   };
 }
 
-export function createLibraryClient<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[],
-  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
-  THooks extends Record<string, NewFragnoClientHookData<"GET", string, StandardSchemaV1>>,
->(
-  publicConfig: FragnoPublicClientConfig,
-  libraryConfig: TLibraryConfig,
-  builderFn: (
-    builder: FragnoClientBuilder<TRoutes, TLibraryConfig>,
-  ) => FragnoClientBuilder<TRoutes, TLibraryConfig, THooks>,
-) {
-  const builder = new FragnoClientBuilder(publicConfig, libraryConfig);
-  const configuredBuilder = builderFn(builder);
-  return configuredBuilder.build();
-}
-
 // Re-export client utility types and builder
 export type {
   FragnoClientHook,
@@ -199,4 +176,4 @@ export type {
   HasGetRoutes,
 };
 
-export { FragnoClientBuilder, createClientBuilder } from "./client/client";
+export { createClientBuilder, createLibraryHook } from "./client/client";

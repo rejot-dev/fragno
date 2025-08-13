@@ -5,8 +5,8 @@
     "rootDir": ".",
     "composite": true
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["dist"],
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"],
   "references": [
     {
       "path": "../fragno"

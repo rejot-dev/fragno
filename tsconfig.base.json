@@ -28,6 +28,7 @@
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
     // Misc
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "noErrorTruncation": true
   }
 }

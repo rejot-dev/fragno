@@ -1,10 +1,10 @@
 import {
   createLibrary,
-  createLibraryClient,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@rejot-dev/fragno";
 import { addRoute } from "@rejot-dev/fragno/api";
+import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
 const libraryConfig = {
@@ -50,11 +50,6 @@ const libraryConfig = {
         const message = pathParams.message;
 
         const shouldCapitalize = searchParams.get("capital") === "true";
-        console.log("shouldCapitalize", {
-          shouldCapitalize,
-          searchParams,
-        });
-
         return `'/echo/:message' ${shouldCapitalize ? message.toUpperCase() : message}`;
       },
     }),
@@ -110,12 +105,13 @@ export function createChatno(publicConfig: FragnoPublicConfig = {}) {
 }
 
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
-  return createLibraryClient(publicConfig, libraryConfig, (builder) => {
-    return builder
-      .addHook("useAiConfig", "/ai-config")
-      .addHook("useHelloWorld", "/")
-      .addHook("useThing", "/thing/**:path")
-      .addHook("useEcho", "/echo/:message")
-      .addHook("useEchoWildcard", "/echo/**:message");
-  });
+  const b = createClientBuilder(publicConfig, libraryConfig);
+
+  return {
+    useAiConfig: b.createHook("/ai-config"),
+    useHelloWorld: b.createHook("/"),
+    useThing: b.createHook("/thing/**:path"),
+    useEcho: b.createHook("/echo/:message"),
+    useEchoWildcard: b.createHook("/echo/**:message"),
+  };
 }

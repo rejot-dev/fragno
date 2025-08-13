@@ -11,9 +11,10 @@ import type {
   HasGetRoutes,
   FragnoClientHook,
   ExtractOutputSchemaFromHook,
-  FragnoClientBuilder,
+  ClientHookParams,
 } from "./client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { ReadableAtom } from "nanostores";
 
 // Test route configurations for type testing
 const _testRoutes = [
@@ -393,20 +394,65 @@ test("GET route with outputSchema", () => {
   expectTypeOf<ConstPaths>().toEqualTypeOf<"/test">();
 });
 
-test("asd", () => {
-  const _x = {} as FragnoClientBuilder<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
-    {
-      readonly name: "chatno";
-      readonly routes: readonly [
-        FragnoRouteConfig<"GET", "/", undefined, StandardSchemaV1<unknown, unknown> | undefined>,
-      ];
-    },
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    {}
-  >;
+test("ClientHookParams type tests - no path params", () => {
+  type NoParamsRoot = ClientHookParams<"/", string>;
+  expectTypeOf<NoParamsRoot>().toEqualTypeOf<{
+    queryParams?: Record<string, string>;
+  }>();
 
-  type _X = ExtractGetRoutePaths<typeof _x.routes>;
-  expectTypeOf<_X>().toEqualTypeOf<"/">();
+  type NoParamsUsers = ClientHookParams<"/users", string>;
+  expectTypeOf<NoParamsUsers>().toEqualTypeOf<{
+    queryParams?: Record<string, string>;
+  }>();
+});
+
+test("ClientHookParams type tests - single param", () => {
+  type SingleParam = ClientHookParams<"/users/:id", string>;
+  expectTypeOf<SingleParam>().toEqualTypeOf<{
+    pathParams: { id: string };
+    queryParams?: Record<string, string>;
+  }>();
+});
+
+test("ClientHookParams type tests - wildcard params", () => {
+  type AnonymousWildcard = ClientHookParams<"/files/**", string>;
+  expectTypeOf<AnonymousWildcard>().toEqualTypeOf<{
+    pathParams: { "**": string };
+    queryParams?: Record<string, string>;
+  }>();
+
+  type NamedWildcard = ClientHookParams<"/files/**:path", string>;
+  expectTypeOf<NamedWildcard>().toEqualTypeOf<{
+    pathParams: { path: string };
+    queryParams?: Record<string, string>;
+  }>();
+});
+
+test("ClientHookParams type tests - custom value type is propagated", () => {
+  type ValueType = string | ReadableAtom<string>;
+
+  type WithParam = ClientHookParams<"/users/:id", ValueType>;
+  expectTypeOf<WithParam>().toEqualTypeOf<{
+    pathParams: { id: ValueType };
+    queryParams?: Record<string, ValueType>;
+  }>();
+
+  type WithoutParam = ClientHookParams<"/settings", ValueType>;
+  expectTypeOf<WithoutParam>().toEqualTypeOf<{
+    queryParams?: Record<string, ValueType>;
+  }>();
+});
+
+test("ClientHookParams type tests - string", () => {
+  type StringString = ClientHookParams<string, string>;
+  expectTypeOf<StringString>().toEqualTypeOf<{
+    pathParams?: Record<string, string>;
+    queryParams?: Record<string, string>;
+  }>();
+
+  type StringAtom = ClientHookParams<string, ReadableAtom<string>>;
+  expectTypeOf<StringAtom>().toEqualTypeOf<{
+    pathParams?: Record<string, ReadableAtom<string>>;
+    queryParams?: Record<string, ReadableAtom<string>>;
+  }>();
 });

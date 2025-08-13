@@ -1,7 +1,8 @@
 import type { Route } from "./+types/home";
 import { WelcomeShell, WelcomeHero, WelcomeExperiments } from "../welcome/welcome";
 import { createChatnoClient } from "@rejot-dev/chatno";
-// import { useStore } from "@rejot-dev/fragno/client/react";
+import { useFragnoHooks } from "@rejot-dev/fragno/client/react";
+import { useState } from "react";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -11,66 +12,22 @@ export function meta(_: Route.MetaArgs) {
 }
 
 const chatnoClient = createChatnoClient({});
+const { useEcho, useAiConfig, useThing } = useFragnoHooks(chatnoClient);
 
 export default function Home() {
-  // const { data: aiConfig, loading: aiConfigLoading } = useStore(
-  //   chatnoClient.useAiConfig.store,
-  // );
-  // const { data: helloWorld } = useStore(chatnoClient.useHelloWorld.store);
-  // const { data: thing } = useStore(chatnoClient.useThing.store);
+  const [message, setMessage] = useState("Placeholder");
 
-  // useEffect(() => {
-  //   chatnoClient.useAiConfig.query().then((result) => {
-  //     console.log("aiConfig", result);
-  //   });
-  // }, []);
-
-  // const { data: aiConfig, loading: aiConfigLoading } = useStore(
-  //   chatnoClient.useAiConfig.store,
-  // );
-
-  chatnoClient.useEcho
-    .query({
-      pathParams: {
-        message: "asd",
-      },
-      queryParams: {
-        capital: "true",
-      },
-    })
-    .then((result) => {
-      console.log("xecho", result);
-    });
-
-  // const echoStore = chatnoClient.useEcho.store({
-  //   pathParams: {
-  //     message: "asd"
-  //   },
-  //   queryParams: {
-  //     capital: "true"
-  //   }
-  // });
-
-  // const { data: echo, loading: echoLoading } = useStore(echoStore);
-  // console.log("echo store", {
-  //   echo,
-  //   echoLoading,
-  // });
-
-  chatnoClient.useThing
-    .query({
-      pathParams: {
-        path: "asd",
-      },
-    })
-    .then((result) => {
-      console.log("xthing", result);
-    });
-
-  const aiConfigLoading = true;
-  const aiConfig = undefined;
-  const helloWorld = undefined;
-  const thing = undefined;
+  const { data: echoData, loading: echoLoading } = useEcho({
+    pathParams: {
+      message,
+    },
+  });
+  const { data: aiConfig, loading: aiConfigLoading } = useAiConfig();
+  const { data: thing } = useThing({
+    pathParams: {
+      path: "hello",
+    },
+  });
 
   return (
     <WelcomeShell>
@@ -78,6 +35,24 @@ export default function Home() {
 
       <section className="mx-auto max-w-5xl px-6 pb-16">
         <h2 className="mb-4 text-xl font-semibold">Live data</h2>
+
+        <div className="mb-6">
+          <label
+            htmlFor="message-input"
+            className="mb-2 block text-sm font-medium text-gray-900 dark:text-gray-100"
+          >
+            Echo Message (React State)
+          </label>
+          <input
+            id="message-input"
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            placeholder="Enter a message to echo..."
+          />
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-900/60">
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">AI Config</h3>
@@ -93,10 +68,16 @@ export default function Home() {
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-900/60">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Hello World</h3>
-            <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
-              {helloWorld === undefined ? "—" : String(helloWorld)}
-            </p>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Echo</h3>
+            <div className="mt-2">
+              {echoLoading ? (
+                <p className="text-sm text-gray-600 dark:text-gray-300">Loading…</p>
+              ) : (
+                <p className="text-sm text-gray-700 dark:text-gray-200">
+                  {echoData === undefined ? "—" : String(echoData)}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-900/60">

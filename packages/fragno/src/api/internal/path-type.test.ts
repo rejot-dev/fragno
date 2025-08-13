@@ -5,7 +5,9 @@ import type {
   ExtractPathParamNamesAsTuple,
   ExtractPathParamsAsLabeledTuple,
   HasPathParams,
+  ExtractPathParamsOrWiden,
 } from "./path";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 // Type-only tests using expectTypeOf from vitest
 test("ExtractPathParams type tests", () => {
@@ -317,6 +319,9 @@ test("HasPathParams type tests", () => {
   expectTypeOf<HasPathParams<"/path/foo/**:name">>().toEqualTypeOf<true>();
   expectTypeOf<HasPathParams<":id">>().toEqualTypeOf<true>();
   expectTypeOf<HasPathParams<"/:id">>().toEqualTypeOf<true>();
+
+  type _T = HasPathParams<string>;
+  type _T2 = StandardSchemaV1.InferOutput<StandardSchemaV1>;
 });
 
 // Edge case tests
@@ -406,4 +411,21 @@ test("Type compatibility runtime tests", () => {
 
   expect(hasParams1).toBe(true);
   expect(hasParams2).toBe(false);
+});
+
+test("ExtractPathParamsOrWiden type tests", () => {
+  expectTypeOf<ExtractPathParamsOrWiden<"/path">>().toEqualTypeOf<Record<string, never>>();
+  expectTypeOf<ExtractPathParamsOrWiden<"/path/:id">>().toEqualTypeOf<Record<"id", string>>();
+  expectTypeOf<ExtractPathParamsOrWiden<"/path/:id", number>>().toEqualTypeOf<
+    Record<"id", number>
+  >();
+  expectTypeOf<ExtractPathParamsOrWiden<"/path/:id", boolean>>().toEqualTypeOf<
+    Record<"id", boolean>
+  >();
+  expectTypeOf<ExtractPathParamsOrWiden<"/path/:id", undefined>>().toEqualTypeOf<
+    Record<"id", undefined>
+  >();
+
+  // This is the actual tests
+  expectTypeOf<ExtractPathParamsOrWiden<string>>().toEqualTypeOf<Record<string, string>>();
 });

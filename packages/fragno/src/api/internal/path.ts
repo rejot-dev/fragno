@@ -44,6 +44,10 @@ export type ExtractPathParams<T extends string, ValueType = string> =
     ? Record<string, never>
     : Record<ExtractParamsFromSegments<SplitPath<T>>, ValueType>;
 
+export type ExtractPathParamsOrWiden<T extends string, ValueType = string> = string extends T
+  ? Record<string, ValueType>
+  : ExtractPathParams<T, ValueType>;
+
 // Alternative version that returns the parameter names as a union type
 export type ExtractPathParamNames<T extends string> = ExtractParamsFromSegments<SplitPath<T>>;
 
