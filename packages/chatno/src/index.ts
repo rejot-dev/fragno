@@ -7,6 +7,8 @@ import { addRoute } from "@rejot-dev/fragno/api";
 import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
+const serverSideMessagesStores: Record<string, string> = {};
+
 const libraryConfig = {
   name: "chatno",
   routes: [
@@ -43,33 +45,46 @@ const libraryConfig = {
       path: "/echo/:message",
       outputSchema: z.string(),
       handler: async ({ pathParams, searchParams }) => {
-        const message = pathParams.message;
-
+        const messageKey = pathParams.message;
         const shouldCapitalize = searchParams.get("capital") === "true";
-        return `'/echo/:message' ${shouldCapitalize ? message.toUpperCase() : message}`;
+
+        console.log("serverSideMessagesStores", serverSideMessagesStores);
+
+        if (!(messageKey in serverSideMessagesStores)) {
+          return shouldCapitalize ? `(message not found)`.toUpperCase() : `(message not found)`;
+        }
+
+        return shouldCapitalize
+          ? serverSideMessagesStores[messageKey].toUpperCase()
+          : serverSideMessagesStores[messageKey];
       },
     }),
 
     addRoute({
-      method: "GET",
-      path: "/echo/**:message",
-      outputSchema: z.string(),
-      handler: async ({ pathParams }) => {
-        const message = pathParams.message;
-        return `'/echo/**:message' ${message}`;
-      },
-    }),
-
-    addRoute({
-      method: "POST",
-      path: "/echo",
+      method: "PUT",
+      path: "/echo/:messageKey",
       inputSchema: z.object({
-        number: z.number(),
+        message: z.string(),
       }),
-      outputSchema: z.string(),
-      handler: async ({ input }) => {
-        const { number } = await input.valid();
-        return `Hello, world! ${number}`;
+      outputSchema: z.object({
+        messageKey: z.string(),
+        previous: z.string().optional(),
+        message: z.string(),
+      }),
+      handler: async ({ pathParams, input }) => {
+        const { message } = await input.valid();
+        const messageKey = pathParams.messageKey;
+
+        const previous = serverSideMessagesStores[messageKey];
+        serverSideMessagesStores[messageKey] = message;
+
+        console.log("PUT serverSideMessagesStores", serverSideMessagesStores);
+
+        return {
+          previous,
+          messageKey,
+          message,
+        };
       },
     }),
 
@@ -103,11 +118,13 @@ export function createChatno(publicConfig: FragnoPublicConfig = {}) {
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
   const b = createClientBuilder(publicConfig, libraryConfig);
 
-  return {
+  // Explicitly type the return value to ensure TypeScript uses these exact properties
+  const client = {
     useAiConfig: b.createHook("/ai-config"),
-    useHelloWorld: b.createHook("/"),
     useThing: b.createHook("/thing/**:path"),
     useEcho: b.createHook("/echo/:message"),
-    useEchoWildcard: b.createHook("/echo/**:message"),
+    useEchoMutator: b.createMutator("PUT", "/echo/:messageKey"),
   };
+
+  return client;
 }

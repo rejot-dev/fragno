@@ -1,5 +1,5 @@
 import { nanoquery, type FetcherStore } from "@nanostores/query";
-import type { FragnoRouteConfig, HTTPMethod, RequestContext } from "../api/api";
+import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod, RequestContext } from "../api/api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
 import { getMountRoute } from "../api/internal/route";
@@ -64,6 +64,26 @@ export type ExtractGetRoutePaths<
     StandardSchemaV1 | undefined
   >
     ? Method extends "GET"
+      ? Path
+      : never
+    : never;
+}[number];
+
+export type ExtractNonGetRoutePaths<
+  T extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+> = {
+  [K in keyof T]: T[K] extends FragnoRouteConfig<
+    infer Method,
+    infer Path,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >
+    ? Method extends NonGetHTTPMethod
       ? Path
       : never
     : never;
@@ -181,16 +201,6 @@ export interface FragnoClientHook<TOutputSchema extends StandardSchemaV1 | undef
   store: FetcherStore<InferOrUnknown<TOutputSchema>>;
 }
 
-export type GenerateNewHookTypeForPath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[],
-  TPath extends ExtractGetRoutePaths<TRoutes>,
-> = NewFragnoClientHookData<"GET", TPath, ExtractOutputSchemaForPath<TRoutes, TPath>>;
-
 export type ClientHookParams<TPath extends string, TValueType> =
   // If TPath is a general string (not a specific literal), we cannot know
   // whether path params exist. Allow both pathParams and queryParams.
@@ -228,8 +238,58 @@ export type NewFragnoClientHookData<
   readonly _outputSchema?: TOutputSchema;
 };
 
+export type FragnoClientMutatorData<
+  TMethod extends NonGetHTTPMethod,
+  TPath extends string,
+  TInputSchema extends StandardSchemaV1,
+  TOutputSchema extends StandardSchemaV1,
+> = {
+  route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema>;
+  mutate(
+    body: StandardSchemaV1.InferInput<TInputSchema>,
+    params: ClientHookParams<TPath, string>,
+  ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+} & {
+  readonly _inputSchema?: TInputSchema;
+  readonly _outputSchema?: TOutputSchema;
+};
+
 export type ExtractOutputSchemaFromHook<T> =
   T extends FragnoClientHook<infer OutputSchema> ? OutputSchema : never;
+
+export function buildUrl<TPath extends string>(
+  config: {
+    baseUrl?: string;
+    mountRoute: string;
+    path: TPath;
+  },
+  params: {
+    pathParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | ReadableAtom<string>>;
+  },
+): string {
+  const { baseUrl = "", mountRoute, path } = config;
+  const { pathParams, queryParams } = params ?? {};
+
+  const normalizedPathParams = Object.fromEntries(
+    Object.entries(pathParams ?? {}).map(([key, value]) => [
+      key,
+      typeof value === "string" ? value : value.get(),
+    ]),
+  ) as ExtractPathParams<TPath, string>;
+
+  const normalizedQueryParams = Object.fromEntries(
+    Object.entries(queryParams ?? {}).map(([key, value]) => [
+      key,
+      typeof value === "string" ? value : value.get(),
+    ]),
+  );
+
+  const searchParams = new URLSearchParams(normalizedQueryParams);
+  const builtPath = buildPath(path, normalizedPathParams ?? {});
+  const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
+  return `${baseUrl}${mountRoute}${builtPath}${search}`;
+}
 
 export function createRouteQueryHook<
   TPath extends string,
@@ -254,31 +314,6 @@ export function createRouteQueryHook<
 
   const baseUrl = publicConfig.baseUrl ?? "";
   const mountRoute = getMountRoute(libraryConfig);
-
-  function buildUrl(params: {
-    pathParams?: Record<string, string | ReadableAtom<string>>;
-    queryParams?: Record<string, string | ReadableAtom<string>>;
-  }) {
-    const { pathParams, queryParams } = params ?? {};
-    const normalizedPathParams = Object.fromEntries(
-      Object.entries(pathParams ?? {}).map(([key, value]) => [
-        key,
-        typeof value === "string" ? value : value.get(),
-      ]),
-    ) as ExtractPathParams<TPath, string>;
-
-    const normalizedQueryParams = Object.fromEntries(
-      Object.entries(queryParams ?? {}).map(([key, value]) => [
-        key,
-        typeof value === "string" ? value : value.get(),
-      ]),
-    );
-
-    const searchParams = new URLSearchParams(normalizedQueryParams);
-    const builtPath = buildPath(route.path, normalizedPathParams ?? {});
-    const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
-    return `${baseUrl}${mountRoute}${builtPath}${search}`;
-  }
 
   async function callServerSideHandler(params: {
     pathParams?: Record<string, string | ReadableAtom<string>>;
@@ -338,7 +373,10 @@ export function createRouteQueryHook<
               return await callServerSideHandler({ pathParams, queryParams });
             }
 
-            const url = buildUrl({ pathParams, queryParams });
+            const url = buildUrl(
+              { baseUrl, mountRoute, path: route.path },
+              { pathParams, queryParams },
+            );
 
             const response = await fetch(url);
             if (!response.ok) {
@@ -363,7 +401,7 @@ export function createRouteQueryHook<
         return callServerSideHandler({ pathParams, queryParams });
       }
 
-      const url = buildUrl({ pathParams, queryParams });
+      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
 
       const response = await fetch(url);
 
@@ -400,18 +438,20 @@ export function createClientBuilder<
     TPath,
     NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>
   >;
-  createLibraryHook: <TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
-    path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
-  ) => NewFragnoClientHookData<
-    "GET",
+
+  createMutator: <TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
+    method: NonGetHTTPMethod,
+    path: TPath,
+  ) => FragnoClientMutatorData<
+    NonGetHTTPMethod,
     TPath,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"]>,
     NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>
   >;
 } {
   return {
     createHook: (path) => createLibraryHook(publicConfig, libraryConfig, path),
-    // Expose for completeness in builder API (used in tests)
-    createLibraryHook: (path) => createLibraryHook(publicConfig, libraryConfig, path),
+    createMutator: (method, path) => createMutatorHook(publicConfig, libraryConfig, method, path),
   };
 }
 
@@ -440,4 +480,70 @@ export function createLibraryHook<
   }
 
   return createRouteQueryHook(publicConfig, libraryConfig, route);
+}
+
+export function createMutatorHook<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
+  TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>,
+  TMethod extends NonGetHTTPMethod,
+  TRoute extends ExtractRouteByPath<TLibraryConfig["routes"], TPath>,
+>(
+  publicConfig: FragnoPublicClientConfig,
+  libraryConfig: TLibraryConfig,
+  method: TMethod,
+  path: TPath,
+): FragnoClientMutatorData<
+  NonGetHTTPMethod,
+  TPath,
+  NonNullable<TRoute["inputSchema"]>,
+  NonNullable<TRoute["outputSchema"]>
+> {
+  const route = libraryConfig.routes.find(
+    (r): r is FragnoRouteConfig<TMethod, TPath, StandardSchemaV1, StandardSchemaV1> =>
+      r.path === path &&
+      r.method === method &&
+      r.inputSchema !== undefined &&
+      r.outputSchema !== undefined,
+  );
+
+  if (!route) {
+    throw new Error(
+      `Route '${path}' not found or is not a ${method} route with an input and output schema.`,
+    );
+  }
+
+  return {
+    route,
+    mutate: async (
+      body,
+      params: {
+        pathParams?: Record<string, string | ReadableAtom<string>>;
+        queryParams?: Record<string, string | ReadableAtom<string>>;
+      },
+    ) => {
+      const baseUrl = publicConfig.baseUrl ?? "";
+      const mountRoute = getMountRoute(libraryConfig);
+
+      const { pathParams, queryParams } = params ?? {};
+
+      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
+
+      const response = await fetch(url, {
+        method,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return response.json();
+    },
+  };
 }

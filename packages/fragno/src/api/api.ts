@@ -1,7 +1,8 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./internal/path";
 
-export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | string;
+export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
+export type NonGetHTTPMethod = Exclude<HTTPMethod, "GET">;
 
 type InferOrVoid<T> =
   T extends NonNullable<StandardSchemaV1>

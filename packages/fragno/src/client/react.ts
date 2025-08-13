@@ -1,64 +1,125 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore, type DependencyList } from "react";
 import type { FetcherValue } from "@nanostores/query";
-import type { ClientHookParams, NewFragnoClientHookData } from "./client";
+import type { ClientHookParams, FragnoClientMutatorData, NewFragnoClientHookData } from "./client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
+import type { NonGetHTTPMethod } from "../api/api";
 
 export type FragnoReactHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = (
   params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
 ) => FetcherValue<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
 
+export type FragnoReactMutator<
+  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+> = (
+  body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
+  params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
+) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+
+// Type guard to check if a hook is a GET hook
+function isGetHook(
+  hook:
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+): hook is NewFragnoClientHookData<"GET", string, StandardSchemaV1> {
+  return hook.route.method === "GET" && "store" in hook && "query" in hook;
+}
+
+// Type guard to check if a hook is a mutator
+function isMutatorHook(
+  hook:
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+): hook is FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1> {
+  return (
+    hook.route.method !== "GET" && "mutate" in hook && !("store" in hook) && !("query" in hook)
+  );
+}
+
+// Helper function to create a React hook from a GET hook
+function createReactHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
+  hook: T,
+): FragnoReactHook<T> {
+  return (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
+    const paramsObj: {
+      pathParams?: Record<string, string | ReadableAtom<string>>;
+      queryParams?: Record<string, string | ReadableAtom<string>>;
+    } = params ?? {};
+
+    const pathParamValues =
+      "pathParams" in paramsObj ? Object.values(paramsObj.pathParams ?? {}) : [];
+    const queryParamValues = Object.values(paramsObj.queryParams ?? {});
+
+    const deps = [...pathParamValues, ...queryParamValues];
+
+    const store = useMemo(() => hook.store(paramsObj), [hook, ...deps]);
+
+    if (typeof window === "undefined") {
+      // TODO(Wilco): Handle server-side rendering. In React we have to implement onShellReady
+      // and onAllReady in renderToPipable stream.
+      const serverSideData = store.get();
+      return serverSideData;
+    }
+
+    return useStore(store);
+  };
+}
+
+// Helper function to create a React mutator from a mutator hook
+function createReactMutator<
+  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+>(hook: T): FragnoReactMutator<T> {
+  return async (
+    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
+    params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
+  ) => {
+    const paramsObj = params ?? {};
+    return hook.mutate(body, paramsObj as ClientHookParams<string, string>);
+  };
+}
+
 /**
  * Given a record of Fragno client hooks, returns a record mapping each key to the route path string.
  *
- * @param hooks - A record of Fragno client hooks
+ * @param clientObj - A record of Fragno client hooks
  * @returns A record with the same keys, where each value is the route's path string
  */
-export function useFragnoHooks<
+// Helper type to transform a single hook/mutator
+type TransformHook<T> =
+  T extends NewFragnoClientHookData<"GET", string, infer O>
+    ? FragnoReactHook<NewFragnoClientHookData<"GET", string, O>>
+    : T extends FragnoClientMutatorData<infer M, string, infer I, infer O>
+      ? FragnoReactMutator<FragnoClientMutatorData<M, string, I, O>>
+      : never;
+
+export function useFragno<
   T extends Record<
     string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>>
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, any, any>
   >,
 >(
-  hooks: T,
+  clientObj: T,
 ): {
-  [K in keyof T]: FragnoReactHook<T[K]>;
+  [K in keyof T]: TransformHook<T[K]>;
 } {
-  const result = {} as {
-    [K in keyof T]: FragnoReactHook<T[K]>;
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
 
-  for (const hookKey in hooks) {
-    if (Object.prototype.hasOwnProperty.call(hooks, hookKey)) {
-      result[hookKey] = (
-        params?: ClientHookParams<
-          T[typeof hookKey]["route"]["path"],
-          string | ReadableAtom<string>
-        >,
-      ) => {
-        const paramsObj: {
-          pathParams?: Record<string, string | ReadableAtom<string>>;
-          queryParams?: Record<string, string | ReadableAtom<string>>;
-        } = params ?? {};
+  for (const key in clientObj) {
+    if (!Object.prototype.hasOwnProperty.call(clientObj, key)) {
+      continue;
+    }
 
-        const pathParamValues =
-          "pathParams" in paramsObj ? Object.values(paramsObj.pathParams ?? {}) : [];
-        const queryParamValues = Object.values(paramsObj.queryParams ?? {});
-
-        const deps = [...pathParamValues, ...queryParamValues];
-
-        const store = useMemo(() => hooks[hookKey].store(paramsObj), [hooks[hookKey], ...deps]);
-
-        if (typeof window === "undefined") {
-          // TODO(Wilco): Handle server-side rendering. In React we have to implement onShellReady
-          // and onAllReady in renderToPipable stream.
-          const serverSideData = store.get();
-          return serverSideData;
-        }
-
-        return useStore(store);
-      };
+    const hook = clientObj[key];
+    if (isGetHook(hook)) {
+      result[key] = createReactHook(hook);
+    } else if (isMutatorHook(hook)) {
+      result[key] = createReactMutator(hook);
+    } else {
+      throw new Error(`Hook ${key} doesn't match either GET or mutator type guard`);
     }
   }
 
@@ -108,11 +169,8 @@ export function useStore<SomeStore extends Store>(
 
   const get = () => snapshotRef.current as StoreValue<SomeStore>;
 
-  // console.log("useStore.value", store.get());
-
   return useSyncExternalStore(subscribe, get, () => {
     // Server-side rendering
-    console.log("useSyncExternalStore server-side rendering");
     return get();
   });
 }

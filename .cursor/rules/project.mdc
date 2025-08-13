@@ -59,7 +59,8 @@ follows a modular architecture with generic core implementations and framework-s
   - Enums
   - Constructor parameter members
   - TypeScript constructs that don't work with type stripping
-- NEVER use Unsafe type casting unless EXPLICITELY asked for.
+- When using unsafe casts (`x as Y`), always add a comment explaining why it's safe. Prefer not to
+  use them.
 
 ### File Naming
 
