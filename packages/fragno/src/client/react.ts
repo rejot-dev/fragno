@@ -29,10 +29,6 @@ export function useFragnoHooks<
     [K in keyof T]: FragnoReactHook<T[K]>;
   };
 
-  // const stores = {} as {
-  //   [K in keyof T]: FetcherStore<StandardSchemaV1.InferOutput<NonNullable<T[K]["route"]["outputSchema"]>>>;
-  // };
-
   for (const hookKey in hooks) {
     if (Object.prototype.hasOwnProperty.call(hooks, hookKey)) {
       result[hookKey] = (
@@ -53,6 +49,14 @@ export function useFragnoHooks<
         const deps = [...pathParamValues, ...queryParamValues];
 
         const store = useMemo(() => hooks[hookKey].store(paramsObj), [hooks[hookKey], ...deps]);
+
+        if (typeof window === "undefined") {
+          // TODO(Wilco): Handle server-side rendering. In React we have to implement onShellReady
+          // and onAllReady in renderToPipable stream.
+          const serverSideData = store.get();
+          return serverSideData;
+        }
+
         return useStore(store);
       };
     }
@@ -106,5 +110,9 @@ export function useStore<SomeStore extends Store>(
 
   // console.log("useStore.value", store.get());
 
-  return useSyncExternalStore(subscribe, get, get);
+  return useSyncExternalStore(subscribe, get, () => {
+    // Server-side rendering
+    console.log("useSyncExternalStore server-side rendering");
+    return get();
+  });
 }

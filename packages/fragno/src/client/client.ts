@@ -280,6 +280,42 @@ export function createRouteQueryHook<
     return `${baseUrl}${mountRoute}${builtPath}${search}`;
   }
 
+  async function callServerSideHandler(params: {
+    pathParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | ReadableAtom<string>>;
+  }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> {
+    const { pathParams, queryParams } = params ?? {};
+
+    const normalizedPathParams = Object.fromEntries(
+      Object.entries(pathParams ?? {}).map(([key, value]) => [
+        key,
+        typeof value === "string" ? value : value.get(),
+      ]),
+    ) as ExtractPathParams<TPath, string>;
+
+    const normalizedQueryParams = Object.fromEntries(
+      Object.entries(queryParams ?? {}).map(([key, value]) => [
+        key,
+        typeof value === "string" ? value : value.get(),
+      ]),
+    );
+
+    const searchParams = new URLSearchParams(normalizedQueryParams);
+
+    const ctx = {
+      path: route.path,
+      pathParams: normalizedPathParams as unknown as ExtractPathParams<TPath>,
+      searchParams,
+    } satisfies RequestContext<TPath, undefined, undefined>;
+
+    return route.handler({
+      ...ctx,
+      output: {
+        schema: route.outputSchema!,
+      },
+    } as unknown as RequestContext<TPath, TInputSchema, TOutputSchema>);
+  }
+
   return {
     route,
     store: (params: {
@@ -293,19 +329,14 @@ export function createRouteQueryHook<
         ...Object.values(queryParams ?? {}),
       ];
 
-      // console.log("Creating Store, deps", { deps });
-
       const store = createFetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>>(
         [route.path, ...deps],
         {
-          fetcher: async (...keys: (string | number | boolean)[]) => {
-            console.log("fetcher", {
-              pathParams,
-              queryParams,
-              deps,
-              keys,
-              path: route.path,
-            });
+          fetcher: async () => {
+            if (typeof window === "undefined") {
+              // TODO(Wilco): Handle server-side rendering.
+              return await callServerSideHandler({ pathParams, queryParams });
+            }
 
             const url = buildUrl({ pathParams, queryParams });
 
@@ -320,12 +351,6 @@ export function createRouteQueryHook<
         },
       );
 
-      // store.invalidate();
-      // console.log("store", store.get());
-      // store.fetch().then((data) => {
-      //   console.log("store", data);
-      // });
-
       return store;
     },
     query: async (params?: {
@@ -334,37 +359,11 @@ export function createRouteQueryHook<
     }) => {
       const { pathParams, queryParams } = params ?? {};
 
-      const searchParams = new URLSearchParams(queryParams ?? {});
-      const url = buildUrl({ pathParams, queryParams });
-
       if (typeof window === "undefined") {
-        // Server-side rendering
+        return callServerSideHandler({ pathParams, queryParams });
+      }
 
-        console.log("server-side fetching", {
-          searchParams,
-        });
-
-        const ctx = {
-          path: route.path,
-          pathParams: (pathParams ?? {}) as ExtractPathParams<TPath>,
-          searchParams,
-          // Construct this object with Input/Output undefined, because there is type-fuckery going on.
-        } satisfies RequestContext<TPath, undefined, undefined>;
-
-        return route.handler({
-          ...ctx,
-          output: {
-            schema: route.outputSchema!,
-          },
-        } as unknown as RequestContext<TPath, TInputSchema, TOutputSchema>);
-      } // Else: client side fetching
-
-      // console.log("client-side fetching", {
-      //   searchParams,
-      //   builtPath,
-      //   joined,
-      //   url,
-      // });
+      const url = buildUrl({ pathParams, queryParams });
 
       const response = await fetch(url);
 
@@ -401,9 +400,18 @@ export function createClientBuilder<
     TPath,
     NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>
   >;
+  createLibraryHook: <TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
+    path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
+  ) => NewFragnoClientHookData<
+    "GET",
+    TPath,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>
+  >;
 } {
   return {
     createHook: (path) => createLibraryHook(publicConfig, libraryConfig, path),
+    // Expose for completeness in builder API (used in tests)
+    createLibraryHook: (path) => createLibraryHook(publicConfig, libraryConfig, path),
   };
 }
 

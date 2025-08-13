@@ -30,10 +30,6 @@ const libraryConfig = {
       handler: async ({ path, searchParams, pathParams }) => {
         const message = pathParams.path;
 
-        console.log("path", {
-          path,
-        });
-
         return {
           path,
           message,

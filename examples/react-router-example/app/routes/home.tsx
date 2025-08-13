@@ -16,10 +16,14 @@ const { useEcho, useAiConfig, useThing } = useFragnoHooks(chatnoClient);
 
 export default function Home() {
   const [message, setMessage] = useState("Placeholder");
+  const [capital, setCapital] = useState(false);
 
   const { data: echoData, loading: echoLoading } = useEcho({
     pathParams: {
       message,
+    },
+    queryParams: {
+      capital: String(capital),
     },
   });
   const { data: aiConfig, loading: aiConfigLoading } = useAiConfig();
@@ -51,6 +55,18 @@ export default function Home() {
             className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
             placeholder="Enter a message to echo..."
           />
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              id="capital-toggle"
+              type="checkbox"
+              checked={capital}
+              onChange={(e) => setCapital(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900"
+            />
+            <label htmlFor="capital-toggle" className="text-sm text-gray-700 dark:text-gray-300">
+              Capitalize
+            </label>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
