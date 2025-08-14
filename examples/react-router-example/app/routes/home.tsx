@@ -12,7 +12,7 @@ export function meta(_: Route.MetaArgs) {
 }
 
 const chatnoClient = createChatnoClient({});
-const { useEcho, useAiConfig, useThing, useEchoMutator } = useFragno(chatnoClient);
+const { useEcho, useAiConfig, useThing } = useFragno(chatnoClient);
 
 export default function Home() {
   // State for reading messages
@@ -40,7 +40,14 @@ export default function Home() {
     },
   });
 
-  const echoMutator = useEchoMutator;
+  // const echoMutator = useEchoMutator;
+  // console.log({
+  //   echoMutator,
+  // })
+  // const { mutate, loading, error } = useEchoMutator();
+  // console.log({
+  //   mutator,
+  // });
 
   const handleSubmitMessage = async () => {
     if (!newMessage.trim() || !newMessageKey.trim()) return;
@@ -49,14 +56,19 @@ export default function Home() {
     setSubmitResult(null);
 
     try {
-      const result = await echoMutator(
-        { message: newMessage },
-        {
-          pathParams: {
-            messageKey: newMessageKey,
-          },
-        },
-      );
+      // const result = await echoMutator(
+      //   { message: newMessage },
+      //   {
+      //     pathParams: {
+      //       messageKey: newMessageKey,
+      //     },
+      //   },
+      // );
+      const result = {
+        messageKey: newMessageKey,
+        previous: "none",
+        message: newMessage,
+      };
       setSubmitResult(`Message saved! Previous: "${result.previous || "none"}"`);
       // Update the read section to show the newly created/updated message
       setMessageKey(newMessageKey);

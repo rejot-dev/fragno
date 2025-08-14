@@ -18,5 +18,9 @@
     "@standard-schema/spec": "^1.0.0",
     "nanostores": "^1.0.1",
     "rou3": "^0.7.3"
+  },
+  "peerDependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   }
 }
