@@ -190,3 +190,4 @@ export type {
 
 export { createClientBuilder, createLibraryHook } from "./client/client";
 export { toNextJsHandler } from "./integrations/next-js";
+export { toAstroHandler } from "./integrations/astro";

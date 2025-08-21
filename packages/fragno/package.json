@@ -7,7 +7,8 @@
     "./client": "./src/client/client.ts",
     "./client/vanilla": "./src/client/vanilla.ts",
     "./client/react": "./src/client/react.ts",
-    "./client/vue": "./src/client/vue.ts"
+    "./client/vue": "./src/client/vue.ts",
+    "./client/astro": "./src/client/astro.ts"
   },
   "scripts": {
     "check": "tsc --noEmit"
