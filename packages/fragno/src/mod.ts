@@ -120,16 +120,28 @@ export function createLibrary<
               input: {
                 schema: inputSchema,
                 valid: async () => {
-                  const json = await req.json();
-                  const result = await inputSchema["~standard"].validate(json);
+                  try {
+                    const json = await req.json();
+                    const result = await inputSchema["~standard"].validate(json);
 
-                  console.log("validating", json, result);
+                    console.log("validating", json, result);
 
-                  if (result.issues) {
-                    throw new FragnoApiValidationError("Validation failed", result.issues);
+                    if (result.issues) {
+                      throw new FragnoApiValidationError("Validation failed", result.issues);
+                    }
+
+                    return result.value;
+                  } catch (error) {
+                    if (error instanceof SyntaxError) {
+                      throw new FragnoApiValidationError("Validation failed", [
+                        {
+                          message: "Request body is not valid JSON",
+                        },
+                      ]);
+                    }
+
+                    throw error;
                   }
-
-                  return result.value;
                 },
               },
             }
