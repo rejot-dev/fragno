@@ -24,6 +24,7 @@
       <ul>
         <li>GET /api/example-fragment/ - Hello World</li>
         <li>GET /api/example-fragment/data - Retrieve current data</li>
+        <li>POST /api/example-fragment/sample - Mutate data</li>
       </ul>
     </div>
 
@@ -36,13 +37,21 @@
 <script setup lang="ts">
 import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
 import { useFragno } from "@rejot-dev/fragno/client/vue";
+import { atom } from "nanostores";
 
 const exampleFragmentClient = createExampleFragmentClient();
 const { useData, useSampleMutator } = useFragno(exampleFragmentClient);
 
-const dataRef = useData();
+const refreshKey = atom("0");
+
+const dataRef = useData({
+  queryParams: {
+    name: refreshKey,
+  },
+});
 
 const handleClick = async () => {
   await useSampleMutator({ message: dataRef.value.data + "!" });
+  refreshKey.set(String(Number(refreshKey.get()) + 1));
 };
 </script>
