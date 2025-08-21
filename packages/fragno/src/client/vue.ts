@@ -1,6 +1,8 @@
 import { useStore } from "@nanostores/vue";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ReadableAtom } from "nanostores";
+import { atom, type ReadableAtom, type WritableAtom } from "nanostores";
+import type { Ref } from "vue";
+import { computed, watch } from "vue";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
@@ -9,34 +11,106 @@ import {
   type FragnoClientMutatorData,
   type NewFragnoClientHookData,
 } from "./client";
-import type { ShallowRef } from "vue";
-import type { FetcherValue } from "@nanostores/query";
 
 export type FragnoVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = (
-  params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
-) => ShallowRef<
-  FetcherValue<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>
->;
+  params?: ClientHookParams<T["route"]["path"], string | Ref<string>>,
+) => {
+  data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
+  loading: Ref<boolean>;
+  error: Ref<Error | undefined>;
+};
 
 export type FragnoVueMutator<
   T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
 > = (
   body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-  params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
+  params?: ClientHookParams<T["route"]["path"], string | Ref<string>>,
 ) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
 
 // Helper function to create a Vue composable from a GET hook
+// We want 1 store per hook, so on updates to params, we need to update the store instead of creating a new one.
+// Nanostores only works with atoms (or strings), so we need to convert vue refs to atoms.
 function createVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
   hook: T,
 ): FragnoVueHook<T> {
-  return (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
+  return (
+    params?: ClientHookParams<T["route"]["path"], string | Ref<string> | ReadableAtom<string>>,
+  ) => {
     const paramsObj: {
-      pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
+      pathParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
+      queryParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
     } = params ?? {};
-    const store = hook.store(paramsObj);
 
-    return useStore(store);
+    // Create individual atoms for each parameter value
+    const pathParamsAtoms: Record<string, WritableAtom<string>> = {};
+    const queryParamsAtoms: Record<string, WritableAtom<string>> = {};
+
+    // Initialize atoms for existing params
+    if (paramsObj.pathParams) {
+      for (const [key, value] of Object.entries(paramsObj.pathParams)) {
+        pathParamsAtoms[key] = typeof value === "string" ? atom(value) : atom(value.value);
+      }
+    }
+    if (paramsObj.queryParams) {
+      for (const [key, value] of Object.entries(paramsObj.queryParams)) {
+        queryParamsAtoms[key] = typeof value === "string" ? atom(value) : atom(value.value);
+      }
+    }
+
+    const normalizedParams = computed(() => {
+      return {
+        pathParams: paramsObj.pathParams
+          ? Object.fromEntries(
+              Object.entries(paramsObj.pathParams).map(([key, value]) => [
+                key,
+                typeof value === "string" ? value : value.value,
+              ]),
+            )
+          : undefined,
+        queryParams: paramsObj.queryParams
+          ? Object.fromEntries(
+              Object.entries(paramsObj.queryParams).map(([key, value]) => [
+                key,
+                typeof value === "string" ? value : value.value,
+              ]),
+            )
+          : undefined,
+      };
+    });
+
+    // Watch for changes and update the individual atoms
+    watch(
+      normalizedParams,
+      (newParams) => {
+        if (newParams.pathParams) {
+          for (const [key, value] of Object.entries(newParams.pathParams)) {
+            if (pathParamsAtoms[key]) {
+              pathParamsAtoms[key].set(value ?? "");
+            }
+          }
+        }
+        if (newParams.queryParams) {
+          for (const [key, value] of Object.entries(newParams.queryParams)) {
+            if (queryParamsAtoms[key]) {
+              queryParamsAtoms[key].set(value ?? "");
+            }
+          }
+        }
+      },
+      { immediate: true },
+    );
+
+    const store = hook.store({
+      pathParams: pathParamsAtoms,
+      queryParams: queryParamsAtoms,
+    });
+    const result = useStore(store);
+
+    return {
+      data: computed(() => result.value.data),
+      loading: computed(() => result.value.loading),
+      error: computed(() => result.value.error),
+    };
   };
 }
 
@@ -46,9 +120,41 @@ function createVueMutator<
 >(hook: T): FragnoVueMutator<T> {
   return async (
     body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-    params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
+    params?: ClientHookParams<T["route"]["path"], string | Ref<string>>,
   ) => {
-    return hook.mutate(body, params as ClientHookParams<string, string>);
+    // Convert Ref<string> to string for the underlying hook
+    const normalizedParams = params
+      ? {
+          pathParams:
+            params && "pathParams" in params && params.pathParams
+              ? (() => {
+                  const entries = Object.entries(params.pathParams);
+                  if (!entries.length) return undefined;
+                  return Object.fromEntries(
+                    entries.map(([key, value]) => [
+                      key,
+                      typeof value === "string" ? value : value.value,
+                    ]),
+                  );
+                })()
+              : undefined,
+          queryParams:
+            params && "queryParams" in params && params.queryParams
+              ? (() => {
+                  const entries = Object.entries(params.queryParams);
+                  if (!entries.length) return undefined;
+                  return Object.fromEntries(
+                    entries.map(([key, value]) => [
+                      key,
+                      typeof value === "string" ? value : value.value,
+                    ]),
+                  );
+                })()
+              : undefined,
+        }
+      : undefined;
+
+    return hook.mutate(body, normalizedParams as ClientHookParams<string, string>);
   };
 }
 
