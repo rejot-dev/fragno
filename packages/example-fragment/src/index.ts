@@ -7,7 +7,7 @@ import { addRoute } from "@rejot-dev/fragno/api";
 import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
-const serverSideData = "Hello World! This is a server-side data.";
+let serverSideData = "Hello World! This is a server-side data.";
 
 const libraryConfig = {
   name: "example-fragment",
@@ -29,6 +29,18 @@ const libraryConfig = {
         return serverSideData;
       },
     }),
+
+    addRoute({
+      method: "POST",
+      path: "/sample",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.string(),
+      handler: async ({ input }) => {
+        const { message } = await input.valid();
+        serverSideData = message;
+        return message;
+      },
+    }),
   ],
 } as const;
 
@@ -42,6 +54,7 @@ export function createExampleFragmentClient(publicConfig: FragnoPublicClientConf
   // Explicitly type the return value to ensure TypeScript uses these exact properties
   const client = {
     useData: b.createHook("/data"),
+    useSampleMutator: b.createMutator("POST", "/sample"),
   };
 
   return client;

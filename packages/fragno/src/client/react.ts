@@ -4,6 +4,7 @@ import type { ClientHookParams, FragnoClientMutatorData, NewFragnoClientHookData
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import type { NonGetHTTPMethod } from "../api/api";
+import { isGetHook, isMutatorHook } from "./client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyStandardSchema = StandardSchemaV1<any, any>;
@@ -30,25 +31,7 @@ export type FragnoReactMutator<
   data?: StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined;
 };
 
-/** Type guard to check if a hook is a GET hook */
-function isGetHook(
-  hook:
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
-): hook is NewFragnoClientHookData<"GET", string, StandardSchemaV1> {
-  return hook.route.method === "GET" && "store" in hook && "query" in hook;
-}
-
-/** Type guard to check if a hook is a mutator  */
-function isMutatorHook(
-  hook:
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
-): hook is FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1> {
-  return hook.route.method !== "GET" && "mutateQuery" in hook && "mutatorStore" in hook;
-}
-
-/** Helper function to create a React hook from a GET hook */
+// Helper function to create a React hook from a GET hook
 function createReactHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
   hook: T,
 ): FragnoReactHook<T> {

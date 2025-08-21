@@ -432,6 +432,26 @@ export function createRouteQueryHook<
   };
 }
 
+// Type guard to check if a hook is a GET hook
+export function isGetHook(
+  hook:
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+): hook is NewFragnoClientHookData<"GET", string, StandardSchemaV1> {
+  return hook.route.method === "GET" && "store" in hook && "query" in hook;
+}
+
+// Type guard to check if a hook is a mutator
+export function isMutatorHook(
+  hook:
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+): hook is FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1> {
+  return (
+    hook.route.method !== "GET" && "mutate" in hook && !("store" in hook) && !("query" in hook)
+  );
+}
+
 // ============================================================================
 // Hook Builder (factory style)
 // ============================================================================
