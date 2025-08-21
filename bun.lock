@@ -30,7 +30,7 @@
       "dependencies": {
         "@nanostores/query": "^0.3.4",
         "@nanostores/react": "^1.0.0",
-        "@rejot-dev/chatno": "workspace:*",
+        "@rejot-dev/example-fragment": "workspace:*",
         "@rejot-dev/fragno": "workspace:*",
         "nanostores": "^1.0.1",
         "next": "15.1.6",
@@ -77,6 +77,14 @@
     },
     "packages/chatno": {
       "name": "@rejot-dev/chatno",
+      "version": "0.0.0",
+      "dependencies": {
+        "@rejot-dev/fragno": "workspace:*",
+        "zod": "^4.0.5",
+      },
+    },
+    "packages/example-fragment": {
+      "name": "@rejot-dev/example-fragment",
       "version": "0.0.0",
       "dependencies": {
         "@rejot-dev/fragno": "workspace:*",
@@ -349,6 +357,8 @@
     "@react-router/serve": ["@react-router/serve@7.6.3", "", { "dependencies": { "@react-router/express": "7.6.3", "@react-router/node": "7.6.3", "compression": "^1.7.4", "express": "^4.19.2", "get-port": "5.1.1", "morgan": "^1.10.0", "source-map-support": "^0.5.21" }, "peerDependencies": { "react-router": "7.6.3" }, "bin": { "react-router-serve": "bin.js" } }, "sha512-SbIXApeaNPM9rCkrcFU+VXYXCIh332cT2L0ikykWBCe6O9ZGE6Y1q5ZQ8puEf5Pmqwm77kIRoY9rACUbnXzfxA=="],
 
     "@rejot-dev/chatno": ["@rejot-dev/chatno@workspace:packages/chatno"],
+
+    "@rejot-dev/example-fragment": ["@rejot-dev/example-fragment@workspace:packages/example-fragment"],
 
     "@rejot-dev/fragno": ["@rejot-dev/fragno@workspace:packages/fragno"],
 
