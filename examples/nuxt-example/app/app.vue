@@ -22,7 +22,7 @@
     <div style="margin-top: 30px; font-size: 14px; color: #666">
       <h3>Available Endpoints:</h3>
       <ul>
-        <li>GET /api/example-fragment/ - Hello World</li>
+        <li>GET /api/example-fragment/hello - Hello World</li>
         <li>GET /api/example-fragment/data - Retrieve current data</li>
         <li>POST /api/example-fragment/sample - Mutate data</li>
       </ul>

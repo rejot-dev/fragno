@@ -30,7 +30,6 @@ export type FragnoVueMutator<
 // Helper function to create a Vue composable from a GET hook
 // We want 1 store per hook, so on updates to params, we need to update the store instead of creating a new one.
 // Nanostores only works with atoms (or strings), so we need to convert vue refs to atoms.
-// TODO: maak iets beter
 function createVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
   hook: T,
 ): FragnoVueHook<T> {
@@ -47,19 +46,15 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
     const queryParamsAtoms: Record<string, WritableAtom<string>> = {};
 
     // Initialize atoms for existing params
-    if (paramsObj.pathParams) {
-      for (const [key, value] of Object.entries(paramsObj.pathParams)) {
-        pathParamsAtoms[key] = typeof value === "string" ? atom(value) : atom(value.value);
-      }
+    for (const [key, _] of Object.entries(paramsObj.pathParams ?? {})) {
+      pathParamsAtoms[key] = atom();
     }
 
-    // todo make util function for this
-    if (paramsObj.queryParams) {
-      for (const [key, value] of Object.entries(paramsObj.queryParams)) {
-        queryParamsAtoms[key] = typeof value === "string" ? atom(value) : atom(value.value);
-      }
+    for (const [key, _] of Object.entries(paramsObj.queryParams ?? {})) {
+      queryParamsAtoms[key] = atom();
     }
 
+    // TODO(Thies): This feels hacky, and should be improved.
     const normalizedParams = computed(() => {
       return {
         pathParams: paramsObj.pathParams
@@ -81,7 +76,7 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
       };
     });
 
-    // Watch for changes and update the individual atoms
+    // Watch for changes in vue refs, and update the individual atoms with those values.
     watch(
       normalizedParams,
       (newParams) => {
@@ -103,12 +98,14 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
       { immediate: true },
     );
 
+    // Now create a store, which updates whenever you change the path/query params.
     const store = hook.store({
       pathParams: pathParamsAtoms,
       queryParams: queryParamsAtoms,
     });
     const result = useStore(store);
 
+    // To allow unwrapping of the return value, we need to create a computed value.
     return {
       data: computed(() => result.value.data),
       loading: computed(() => result.value.loading),
@@ -157,7 +154,7 @@ function createVueMutator<
         }
       : undefined;
 
-    return hook.mutate(body, normalizedParams as ClientHookParams<string, string>);
+    return hook.mutateQuery(body, normalizedParams as ClientHookParams<string, string>);
   };
 }
 
