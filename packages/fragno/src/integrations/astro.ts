@@ -8,21 +8,10 @@ export interface AstroHandlers {
  * @param library - The Fragno library instance
  * @returns An Astro API route handler function
  */
-export function toAstroHandler<T extends { handler: (req: Request) => Promise<Response> }>(
-  library: T,
-): AstroHandlers;
-export function toAstroHandler(handler: (req: Request) => Promise<Response>): AstroHandlers;
-export function toAstroHandler(
-  libraryOrHandler:
-    | { handler: (req: Request) => Promise<Response> }
-    | ((req: Request) => Promise<Response>),
-): AstroHandlers {
-  const handler = async (request: Request) => {
-    return "handler" in libraryOrHandler
-      ? libraryOrHandler.handler(request)
-      : libraryOrHandler(request);
-  };
+export function toAstroHandler(handler: (req: Request) => Promise<Response>): AstroHandlers {
   return {
-    ALL: async ({ request }) => handler(request),
+    ALL: async ({ request }) => {
+      return handler(request);
+    },
   };
 }

@@ -3,5 +3,5 @@ import { toAstroHandler } from "@rejot-dev/fragno";
 
 const exampleFragment = createExampleFragment({});
 
-export const { ALL } = toAstroHandler(exampleFragment);
+export const { ALL } = toAstroHandler(exampleFragment.handler);
 export const prerender = false;

@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { ReadableAtom } from "nanostores";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
@@ -8,51 +9,51 @@ import {
   type NewFragnoClientHookData,
 } from "./client";
 
-export type VanillaHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = (
-  params?: ClientHookParams<T["route"]["path"], string>,
-) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+export type FragnoVanillaListeners<
+  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>,
+> = (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
+  listen: (callback: Parameters<ReturnType<T["store"]>["listen"]>[0]) => void;
+  subscribe: (callback: Parameters<ReturnType<T["store"]>["subscribe"]>[0]) => void;
+  getData: () => StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>;
+  refetch: () => void;
+};
 
-export type VanillaMutator<
+function createVanillaListeners<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
+  hook: T,
+): FragnoVanillaListeners<T> {
+  return (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
+    const store = hook.store(params ?? {});
+    return {
+      listen: (callback: Parameters<ReturnType<T["store"]>["listen"]>[0]) => {
+        store.listen(callback);
+      },
+      subscribe: (callback: Parameters<ReturnType<T["store"]>["subscribe"]>[0]) => {
+        store.subscribe(callback);
+      },
+      refetch: () => {
+        return store.revalidate();
+      },
+      getData: () => {
+        return store.get().data;
+      },
+    };
+  };
+}
+
+export type FragnoVanillaMutator<
   T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
 > = (
   body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-  params?: ClientHookParams<T["route"]["path"], string>,
+  params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
 ) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
 
-// Server-side hook for any framework
-export type VanillaServerHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>> =
-  (
-    params?: ClientHookParams<T["route"]["path"], string>,
-  ) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
-
-// Helper function to create a server-side hook from a GET hook
-function createVanillaServerHook<
-  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>,
->(hook: T): VanillaServerHook<T> {
-  return async (params?: ClientHookParams<T["route"]["path"], string>) => {
-    return hook.query(params || {});
-  };
-}
-
-// Helper function to create a mutator from a mutator hook
 function createVanillaMutator<
   T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
->(hook: T): VanillaMutator<T> {
-  return async (
-    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-    params?: ClientHookParams<T["route"]["path"], string>,
-  ) => {
-    return hook.mutate(body, params || {});
+>(hook: T): FragnoVanillaMutator<T> {
+  return (body, params) => {
+    return hook.mutateQuery(body, params ?? {});
   };
 }
-
-// Helper type to transform a single hook/mutator
-type TransformServerHook<T> =
-  T extends NewFragnoClientHookData<"GET", string, infer O>
-    ? VanillaServerHook<NewFragnoClientHookData<"GET", string, O>>
-    : T extends FragnoClientMutatorData<infer M, string, infer I, infer O>
-      ? VanillaMutator<FragnoClientMutatorData<M, string, I, O>>
-      : never;
 
 export function useVanilla<
   T extends Record<
@@ -65,7 +66,11 @@ export function useVanilla<
 >(
   clientObj: T,
 ): {
-  [K in keyof T]: TransformServerHook<T[K]>;
+  [K in keyof T]: T[K] extends NewFragnoClientHookData<"GET", string, infer _O>
+    ? FragnoVanillaListeners<T[K]>
+    : T[K] extends FragnoClientMutatorData<NonGetHTTPMethod, string, infer _I, infer _O>
+      ? FragnoVanillaMutator<T[K]>
+      : never;
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
@@ -77,7 +82,7 @@ export function useVanilla<
 
     const hook = clientObj[key];
     if (isGetHook(hook)) {
-      result[key] = createVanillaServerHook(hook);
+      result[key] = createVanillaListeners(hook);
     } else if (isMutatorHook(hook)) {
       result[key] = createVanillaMutator(hook);
     } else {

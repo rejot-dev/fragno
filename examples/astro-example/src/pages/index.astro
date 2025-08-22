@@ -2,11 +2,13 @@
 import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
 import { useVanilla } from "@rejot-dev/fragno/client/vanilla";
 
-const exampleFragmentClient = createExampleFragmentClient();
-const { useData } = useVanilla(exampleFragmentClient);
+const initialData = "Hello World";
+// const exampleFragmentClient = createExampleFragmentClient();
+// const { useData } = useVanilla(exampleFragmentClient);
 
-// Get initial data during SSR
-const initialData = await useData();
+// // Get initial data during SSR
+// // TODO: SSR expliciet maken, dus niet echt store via de rare window undefined hack.
+// const initialData = await useData();
 ---
 
 <html lang="en">
@@ -34,7 +36,7 @@ const initialData = await useData();
       <div style="margin-top: 30px; font-size: 14px; color: #666">
         <h3>Available Endpoints:</h3>
         <ul>
-          <li>GET /api/example-fragment/ - Hello World</li>
+          <li>GET /api/example-fragment/hello - Hello World</li>
           <li>GET /api/example-fragment/data - Retrieve current data</li>
           <li>POST /api/example-fragment/sample - Mutate data</li>
         </ul>
@@ -56,27 +58,18 @@ const initialData = await useData();
       // Initialize client-side data hook
       const dataHook = useData();
 
-      // Set initial data from server
-      dataHook.data =
-        document.getElementById("data-display")?.textContent ||
-        "No data yet";
+      dataHook.subscribe((data) => {
+        document.getElementById("data-display")!.textContent = data.data || "";
+      });
 
       const mutateBtn = document.getElementById("mutateBtn");
-
       if (mutateBtn) {
         mutateBtn.addEventListener("click", async () => {
           try {
-            const currentData = dataHook.data || "";
-            const result = await useSampleMutator({ message: currentData + "!" });
+            const currentData = dataHook.getData() || "";
+            await useSampleMutator({ message: currentData + "!" });
 
-            // Update the displayed data
-            const dataDiv = document.getElementById("data-display");
-            if (dataDiv) {
-              dataDiv.textContent = result;
-            }
-
-            // Update the hook's data
-            dataHook.data = result;
+            dataHook.refetch();
           } catch (error) {
             console.error("Mutation failed:", error);
           }

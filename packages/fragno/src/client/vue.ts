@@ -30,6 +30,7 @@ export type FragnoVueMutator<
 // Helper function to create a Vue composable from a GET hook
 // We want 1 store per hook, so on updates to params, we need to update the store instead of creating a new one.
 // Nanostores only works with atoms (or strings), so we need to convert vue refs to atoms.
+// TODO: maak iets beter
 function createVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
   hook: T,
 ): FragnoVueHook<T> {
@@ -51,6 +52,8 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
         pathParamsAtoms[key] = typeof value === "string" ? atom(value) : atom(value.value);
       }
     }
+
+    // todo make util function for this
     if (paramsObj.queryParams) {
       for (const [key, value] of Object.entries(paramsObj.queryParams)) {
         queryParamsAtoms[key] = typeof value === "string" ? atom(value) : atom(value.value);
