@@ -6,7 +6,9 @@
     "./api": "./src/api/api.ts",
     "./client": "./src/client/client.ts",
     "./client/vanilla": "./src/client/vanilla.ts",
-    "./client/react": "./src/client/react.ts"
+    "./client/react": "./src/client/react.ts",
+    "./client/vue": "./src/client/vue.ts",
+    "./client/astro": "./src/client/astro.ts"
   },
   "scripts": {
     "check": "tsc --noEmit"
@@ -15,6 +17,7 @@
   "dependencies": {
     "@nanostores/query": "^0.3.4",
     "@nanostores/react": "^1.0.0",
+    "@nanostores/vue": "^1.0.0",
     "@standard-schema/spec": "^1.0.0",
     "nanostores": "^1.0.1",
     "rou3": "^0.7.3"

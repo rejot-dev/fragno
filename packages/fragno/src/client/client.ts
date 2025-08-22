@@ -247,7 +247,7 @@ export type FragnoClientMutatorData<
   route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema>;
   mutateQuery(
     body: StandardSchemaV1.InferInput<TInputSchema>,
-    params: ClientHookParams<TPath, string>,
+    params: ClientHookParams<TPath, string | ReadableAtom<string>>,
   ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
   mutatorStore: MutatorStore<
     {
@@ -336,6 +336,7 @@ export function createRouteQueryHook<
     pathParams?: Record<string, string | ReadableAtom<string>>;
     queryParams?: Record<string, string | ReadableAtom<string>>;
   }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> {
+    console.log("callServerSideHandler", params);
     const { pathParams, queryParams } = params ?? {};
 
     const normalizedPathParams = Object.fromEntries(
@@ -430,6 +431,24 @@ export function createRouteQueryHook<
       return data as StandardSchemaV1.InferOutput<TOutputSchema>;
     },
   };
+}
+
+// Type guard to check if a hook is a GET hook
+export function isGetHook(
+  hook:
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+): hook is NewFragnoClientHookData<"GET", string, StandardSchemaV1> {
+  return hook.route.method === "GET" && "store" in hook && "query" in hook;
+}
+
+// Type guard to check if a hook is a mutator
+export function isMutatorHook(
+  hook:
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+): hook is FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1> {
+  return hook.route.method !== "GET" && "mutateQuery" in hook && "mutatorStore" in hook;
 }
 
 // ============================================================================
