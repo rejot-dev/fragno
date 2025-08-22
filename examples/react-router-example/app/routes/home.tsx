@@ -22,8 +22,6 @@ export default function Home() {
   // State for writing messages
   const [newMessageKey, setNewMessageKey] = useState("default");
   const [newMessage, setNewMessage] = useState("Hello World");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<string | null>(null);
 
   const { data: echoData, loading: echoLoading } = useEcho({
     pathParams: {
@@ -40,30 +38,30 @@ export default function Home() {
     },
   });
 
-  const echoMutator = useEchoMutator;
+  const {
+    mutate: echoMutate,
+    loading: echoMutateLoading,
+    error: echoMutateError,
+    data: echoMutateData,
+  } = useEchoMutator();
 
   const handleSubmitMessage = async () => {
     if (!newMessage.trim() || !newMessageKey.trim()) return;
 
-    setIsSubmitting(true);
-    setSubmitResult(null);
-
     try {
-      const result = await echoMutator(
-        { message: newMessage },
-        {
+      await echoMutate({
+        body: { message: newMessage },
+        params: {
           pathParams: {
             messageKey: newMessageKey,
           },
         },
-      );
-      setSubmitResult(`Message saved! Previous: "${result.previous || "none"}"`);
+      });
+
       // Update the read section to show the newly created/updated message
       setMessageKey(newMessageKey);
     } catch (error) {
-      setSubmitResult(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
-    } finally {
-      setIsSubmitting(false);
+      console.error(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
@@ -116,15 +114,21 @@ export default function Home() {
 
           <button
             onClick={handleSubmitMessage}
-            disabled={isSubmitting || !newMessage.trim() || !newMessageKey.trim()}
+            disabled={echoMutateLoading || !newMessage.trim() || !newMessageKey.trim()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
           >
-            {isSubmitting ? "Saving..." : "Save Message"}
+            {echoMutateLoading ? "Saving..." : "Save Message"}
           </button>
 
-          {submitResult && (
+          {echoMutateData && (
             <div className="mt-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-950">
-              <p className="text-sm text-gray-700 dark:text-gray-300">{submitResult}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{`Message saved! Previous: "${echoMutateData.previous || "none"}"`}</p>
+            </div>
+          )}
+
+          {echoMutateError && (
+            <div className="mt-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
+              <p className="text-sm text-red-700 dark:text-red-300">{`Error: ${echoMutateError.message}`}</p>
             </div>
           )}
         </div>

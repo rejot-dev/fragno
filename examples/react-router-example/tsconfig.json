@@ -22,6 +22,9 @@
   "references": [
     {
       "path": "../../packages/chatno"
+    },
+    {
+      "path": "../../packages/fragno"
     }
   ]
 }

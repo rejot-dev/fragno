@@ -1,10 +1,11 @@
-import { test, expectTypeOf } from "vitest";
+import { test, expectTypeOf, describe } from "vitest";
 import { z } from "zod";
 import { addRoute, type FragnoRouteConfig, type HTTPMethod } from "../api/api";
 import type {
   ExtractGetRoutes,
   ExtractGetRoutePaths,
   ExtractOutputSchemaForPath,
+  ExtractRouteByPath,
   IsValidGetRoutePath,
   GenerateHookTypeForPath,
   ValidateGetRoutePath,
@@ -455,4 +456,53 @@ test("ClientHookParams type tests - string", () => {
     pathParams?: Record<string, ReadableAtom<string>>;
     queryParams?: Record<string, ReadableAtom<string>>;
   }>();
+});
+
+describe("ExtractRouteByPath", () => {
+  const _libraryConfig = {
+    name: "test-library",
+    routes: [
+      addRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string(), email: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+        handler: async () => ({ id: 1, name: "", email: "" }),
+      }),
+      addRoute({
+        method: "PUT",
+        path: "/users/:id",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ pathParams }) => ({ id: Number(pathParams["id"]), name: "" }),
+      }),
+      addRoute({
+        method: "DELETE",
+        path: "/users/:id",
+        inputSchema: z.object({}), // TODO: Fix client to allow DELETE without inputSchema
+        outputSchema: z.object({ success: z.boolean() }),
+        handler: async () => ({ success: true }),
+      }),
+    ],
+  } as const;
+
+  test("basic", () => {
+    type UsersRoute = ExtractRouteByPath<typeof _libraryConfig.routes, "/users">;
+
+    expectTypeOf<UsersRoute>().toEqualTypeOf<
+      FragnoRouteConfig<
+        "POST",
+        "/users",
+        z.ZodObject<{
+          name: z.ZodString;
+          email: z.ZodString;
+        }>,
+        z.ZodObject<{
+          id: z.ZodNumber;
+          name: z.ZodString;
+          email: z.ZodString;
+        }>
+      >
+    >();
+  });
 });

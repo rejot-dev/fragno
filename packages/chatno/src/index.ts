@@ -118,7 +118,6 @@ export function createChatno(publicConfig: FragnoPublicConfig = {}) {
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
   const b = createClientBuilder(publicConfig, libraryConfig);
 
-  // Explicitly type the return value to ensure TypeScript uses these exact properties
   const client = {
     useAiConfig: b.createHook("/ai-config"),
     useThing: b.createHook("/thing/**:path"),

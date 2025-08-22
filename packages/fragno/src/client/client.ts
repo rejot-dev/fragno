@@ -1,4 +1,4 @@
-import { nanoquery, type FetcherStore } from "@nanostores/query";
+import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
 import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod, RequestContext } from "../api/api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
@@ -15,7 +15,7 @@ type InferOrUnknown<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutp
 
 const [
   createFetcherStore,
-  _createMutationStore,
+  createMutationStore,
   { invalidateKeys: _invalidateKeys, revalidateKeys: _revalidateKeys },
 ] = nanoquery();
 
@@ -245,11 +245,28 @@ export type FragnoClientMutatorData<
   TOutputSchema extends StandardSchemaV1,
 > = {
   route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema>;
-  mutate(
+  mutateQuery(
     body: StandardSchemaV1.InferInput<TInputSchema>,
     params: ClientHookParams<TPath, string>,
   ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+  mutatorStore: MutatorStore<
+    {
+      body: StandardSchemaV1.InferInput<TInputSchema>;
+      // params: ClientHookParams<TPath, string | ReadableAtom<string>>;
+      // params: {
+      //   pathParams: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
+      //   queryParams?: Record<string, string | ReadableAtom<string>>;
+      // };
+      params: {
+        pathParams?: Record<string, string | ReadableAtom<string>>;
+        queryParams?: Record<string, string | ReadableAtom<string>>;
+      };
+    },
+    StandardSchemaV1.InferOutput<TOutputSchema>
+  >;
 } & {
+  // readonly _method?: TMethod;
+  // readonly _path?: TPath;
   readonly _inputSchema?: TInputSchema;
   readonly _outputSchema?: TOutputSchema;
 };
@@ -451,7 +468,8 @@ export function createClientBuilder<
 } {
   return {
     createHook: (path) => createLibraryHook(publicConfig, libraryConfig, path),
-    createMutator: (method, path) => createMutatorHook(publicConfig, libraryConfig, method, path),
+    createMutator: (method, path) =>
+      createLibraryMutator(publicConfig, libraryConfig, method, path),
   };
 }
 
@@ -482,7 +500,7 @@ export function createLibraryHook<
   return createRouteQueryHook(publicConfig, libraryConfig, route);
 }
 
-export function createMutatorHook<
+export function createLibraryMutator<
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
     string,
@@ -505,7 +523,14 @@ export function createMutatorHook<
   NonNullable<TRoute["outputSchema"]>
 > {
   const route = libraryConfig.routes.find(
-    (r): r is FragnoRouteConfig<TMethod, TPath, StandardSchemaV1, StandardSchemaV1> =>
+    (
+      r,
+    ): r is FragnoRouteConfig<
+      TMethod,
+      TPath,
+      NonNullable<TRoute["inputSchema"]>,
+      NonNullable<TRoute["outputSchema"]>
+    > =>
       r.path === path &&
       r.method === method &&
       r.inputSchema !== undefined &&
@@ -518,32 +543,67 @@ export function createMutatorHook<
     );
   }
 
-  return {
-    route,
-    mutate: async (
-      body,
+  return createRouteQueryMutator(publicConfig, libraryConfig, route);
+}
+
+export function createRouteQueryMutator<
+  TPath extends string,
+  TInputSchema extends StandardSchemaV1,
+  TOutputSchema extends StandardSchemaV1,
+>(
+  publicConfig: FragnoPublicClientConfig,
+  libraryConfig: { mountRoute?: string; name: string },
+  route: FragnoRouteConfig<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema>,
+): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema> {
+  const method = route.method;
+
+  const baseUrl = publicConfig.baseUrl ?? "";
+  const mountRoute = getMountRoute(libraryConfig);
+
+  async function mutateQuery(
+    body: StandardSchemaV1.InferInput<TInputSchema>,
+    params: {
+      pathParams?: Record<string, string | ReadableAtom<string>>;
+      queryParams?: Record<string, string | ReadableAtom<string>>;
+    },
+  ) {
+    const { pathParams, queryParams } = params ?? {};
+
+    const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
+
+    const response = await fetch(url, {
+      method,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  const mutatorStore = createMutationStore<
+    {
+      body: StandardSchemaV1.InferInput<TInputSchema>;
       params: {
         pathParams?: Record<string, string | ReadableAtom<string>>;
         queryParams?: Record<string, string | ReadableAtom<string>>;
-      },
-    ) => {
-      const baseUrl = publicConfig.baseUrl ?? "";
-      const mountRoute = getMountRoute(libraryConfig);
-
-      const { pathParams, queryParams } = params ?? {};
-
-      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
-
-      const response = await fetch(url, {
-        method,
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return response.json();
+      };
     },
+    StandardSchemaV1.InferOutput<TOutputSchema>
+  >(async ({ data, revalidate: _revalidate, getCacheUpdater: _getCacheUpdater }) => {
+    if (typeof window === "undefined") {
+      // TODO(Wilco): Handle server-side rendering.
+    }
+
+    const { body, params } = data;
+    return mutateQuery(body, params);
+  });
+
+  return {
+    route,
+    mutateQuery,
+    mutatorStore,
   };
 }

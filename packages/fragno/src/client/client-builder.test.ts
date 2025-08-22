@@ -95,7 +95,6 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
   describe("basic functionality", () => {
     test("should create builder object", () => {
       const builder = createClientBuilder(testPublicConfig, testLibraryConfig);
-      expect(builder).toHaveProperty("createLibraryHook");
       expectTypeOf(builder.createHook).toBeFunction();
     });
 
