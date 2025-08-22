@@ -14,7 +14,7 @@ const libraryConfig = {
   routes: [
     addRoute({
       method: "GET",
-      path: "/",
+      path: "/hello", // TODO: Enforce "/" is not allowed as a path
       outputSchema: z.string(),
       handler: async () => {
         return `Hello, world!`;
