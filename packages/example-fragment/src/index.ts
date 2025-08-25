@@ -9,6 +9,15 @@ import { z } from "zod";
 
 let serverSideData = "Hello World! This is a server-side data.";
 
+const services = {
+  setData: async (data: string) => {
+    serverSideData = data;
+  },
+  getData: () => {
+    return serverSideData;
+  },
+} as const;
+
 const libraryConfig = {
   name: "example-fragment",
   routes: [
@@ -26,7 +35,7 @@ const libraryConfig = {
       path: "/data",
       outputSchema: z.string(),
       handler: async () => {
-        return serverSideData;
+        return services.getData();
       },
     }),
 
@@ -37,7 +46,9 @@ const libraryConfig = {
       outputSchema: z.string(),
       handler: async ({ input }) => {
         const { message } = await input.valid();
-        serverSideData = message;
+
+        await services.setData(message);
+
         return message;
       },
     }),
@@ -45,7 +56,7 @@ const libraryConfig = {
 } as const;
 
 export function createExampleFragment(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig);
+  return createLibrary(publicConfig, libraryConfig, services);
 }
 
 export function createExampleFragmentClient(publicConfig: FragnoPublicClientConfig = {}) {

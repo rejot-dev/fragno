@@ -1,14 +1,8 @@
 ---
-import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
-import { useVanilla } from "@rejot-dev/fragno/client/vanilla";
+import { createExampleFragment } from "@rejot-dev/example-fragment";
 
-const initialData = "Hello World";
-// const exampleFragmentClient = createExampleFragmentClient();
-// const { useData } = useVanilla(exampleFragmentClient);
-
-// // Get initial data during SSR
-// // TODO: SSR expliciet maken, dus niet echt store via de rare window undefined hack.
-// const initialData = await useData();
+const exampleFragment = createExampleFragment();
+const initialData = exampleFragment.services.getData();
 ---
 
 <html lang="en">
@@ -29,7 +23,7 @@ const initialData = "Hello World";
         <div
           id="data-display"
           style="padding: 15px; background-color: #f5f5f5; border-radius: 5px; border: 1px solid #ddd">
-          {initialData || "No data yet"}
+          {initialData}
         </div>
       </div>
 

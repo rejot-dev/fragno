@@ -48,8 +48,10 @@ export interface FragnoPublicClientConfig {
 export interface FragnoInstantiatedLibrary<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+  TServices,
 > {
   config: FragnoLibrarySharedConfig<TRoutes>;
+  services: TServices;
   handler: (req: Request) => Promise<Response>;
 }
 
@@ -60,10 +62,12 @@ export function createLibrary<
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined
   >[],
+  TServices,
 >(
   publicConfig: FragnoPublicConfig,
   config: FragnoLibrarySharedConfig<TRoutes>,
-): FragnoInstantiatedLibrary<TRoutes> {
+  services: TServices,
+): FragnoInstantiatedLibrary<TRoutes, TServices> {
   const mountRoute = getMountRoute({
     name: config.name,
     mountRoute: publicConfig.mountRoute,
@@ -86,6 +90,7 @@ export function createLibrary<
 
   return {
     config,
+    services,
     handler: async (req: Request) => {
       const url = new URL(req.url);
       const pathname = url.pathname;
