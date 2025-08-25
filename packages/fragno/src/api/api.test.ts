@@ -68,7 +68,7 @@ describe("addRoute", () => {
     };
 
     expect(() => {
-      createLibrary({}, config);
+      createLibrary({}, config, {});
     }).toThrow();
   });
 });

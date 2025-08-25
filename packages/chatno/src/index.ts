@@ -112,7 +112,7 @@ export interface ChatnoConfig {
 }
 
 export function createChatno(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig);
+  return createLibrary(publicConfig, libraryConfig, {});
 }
 
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
