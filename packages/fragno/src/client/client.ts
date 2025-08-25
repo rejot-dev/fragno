@@ -1,5 +1,6 @@
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
-import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod, RequestContext } from "../api/api";
+import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
+import { RequestInputContext } from "../api/request-input-context";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
 import { getMountRoute } from "../api/internal/route";
@@ -10,8 +11,14 @@ import {
   type HasPathParams,
 } from "../api/internal/path";
 import { type ReadableAtom } from "nanostores";
+import { RequestOutputContext } from "../api/request-output-context";
 
-type InferOrUnknown<T> = T extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<T> : unknown;
+type InferOrUnknown<T> =
+  T extends NonNullable<StandardSchemaV1>
+    ? StandardSchemaV1.InferOutput<T>
+    : T extends undefined
+      ? unknown
+      : unknown;
 
 const [
   createFetcherStore,
@@ -355,18 +362,16 @@ export function createRouteQueryHook<
 
     const searchParams = new URLSearchParams(normalizedQueryParams);
 
-    const ctx = {
-      path: route.path,
-      pathParams: normalizedPathParams as unknown as ExtractPathParams<TPath>,
-      searchParams,
-    } satisfies RequestContext<TPath, undefined, undefined>;
-
-    return route.handler({
-      ...ctx,
-      output: {
-        schema: route.outputSchema!,
-      },
-    } as unknown as RequestContext<TPath, TInputSchema, TOutputSchema>);
+    return route.handler(
+      RequestInputContext.fromSSRContext({
+        method: route.method,
+        path: route.path,
+        pathParams: normalizedPathParams,
+        searchParams,
+        body: undefined, // No body for GET
+      }),
+      new RequestOutputContext(route.outputSchema),
+    );
   }
 
   return {

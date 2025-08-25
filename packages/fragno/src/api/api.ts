@@ -1,45 +1,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ExtractPathParams } from "./internal/path";
+import type { RequestInputContext } from "./request-input-context";
+import type { RequestOutputContext } from "./request-output-context";
 
 export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 export type NonGetHTTPMethod = Exclude<HTTPMethod, "GET">;
-
-type InferOrVoid<T> =
-  T extends NonNullable<StandardSchemaV1>
-    ? StandardSchemaV1.InferOutput<T>
-    : T extends undefined
-      ? void
-      : void;
-
-export type RequestContext<
-  TPath extends string,
-  TInputSchema extends StandardSchemaV1 | undefined,
-  TOutputSchema extends StandardSchemaV1 | undefined,
-> = {
-  path: TPath;
-  pathParams: ExtractPathParams<TPath>;
-  searchParams: URLSearchParams;
-  // Not available in server rendering contexts.
-  request?: Request;
-} & (TInputSchema extends undefined
-  ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    {}
-  : {
-      input: {
-        schema: TInputSchema;
-        valid: () => Promise<
-          TInputSchema extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<TInputSchema> : never
-        >;
-      };
-    }) &
-  (TOutputSchema extends undefined
-    ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-      {}
-    : {
-        output: {
-          schema: TOutputSchema;
-        };
-      });
 
 // TODO(Wilco): Add Query parameters to this object
 export interface FragnoRouteConfig<
@@ -53,8 +17,9 @@ export interface FragnoRouteConfig<
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   handler(
-    ctx: RequestContext<TPath, TInputSchema, TOutputSchema>,
-  ): Promise<InferOrVoid<NoInfer<TOutputSchema>>>;
+    inputCtx: RequestInputContext<TPath, TInputSchema>,
+    outputCtx: RequestOutputContext<TOutputSchema>,
+  ): Promise<Response>;
 }
 
 // Overload for routes without inputSchema

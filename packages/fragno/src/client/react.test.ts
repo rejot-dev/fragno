@@ -18,19 +18,20 @@ describe("createReactHook", () => {
         method: "GET",
         path: "/users",
         outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-        handler: async () => [{ id: 1, name: "John" }],
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
       }),
       addRoute({
         method: "GET",
         path: "/users/:id",
         outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async ({ pathParams }) => ({ id: Number(pathParams["id"]), name: "John" }),
+        handler: async ({ pathParams }, { json }) =>
+          json({ id: Number(pathParams["id"]), name: "John" }),
       }),
       addRoute({
         method: "GET",
         path: "/search",
         outputSchema: z.array(z.string()),
-        handler: async () => ["result1", "result2"],
+        handler: async (_ctx, { json }) => json(["result1", "result2"]),
       }),
     ],
   } as const;
@@ -186,21 +187,22 @@ describe("createReactMutator", () => {
         path: "/users",
         inputSchema: z.object({ name: z.string(), email: z.string() }),
         outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-        handler: async () => ({ id: 1, name: "", email: "" }),
+        handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
       }),
       addRoute({
         method: "PUT",
         path: "/users/:id",
         inputSchema: z.object({ name: z.string() }),
         outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async ({ pathParams }) => ({ id: Number(pathParams["id"]), name: "" }),
+        handler: async ({ pathParams }, { json }) =>
+          json({ id: Number(pathParams["id"]), name: "" }),
       }),
       addRoute({
         method: "DELETE",
         path: "/users/:id",
         inputSchema: z.object({}), // TODO: Fix client to allow DELETE without inputSchema
         outputSchema: z.object({ success: z.boolean() }),
-        handler: async () => ({ success: true }),
+        handler: async (_ctx, { json }) => json({ success: true }),
       }),
     ],
   } as const;
@@ -333,14 +335,14 @@ describe("useFragno", () => {
         method: "GET",
         path: "/data",
         outputSchema: z.string(),
-        handler: async () => "test data",
+        handler: async (_ctx, { json }) => json("test data"),
       }),
       addRoute({
         method: "POST",
         path: "/action",
         inputSchema: z.object({ value: z.string() }),
         outputSchema: z.object({ result: z.string() }),
-        handler: async () => ({ result: "test value" }),
+        handler: async (_ctx, { json }) => json({ result: "test value" }),
       }),
     ],
   } as const;

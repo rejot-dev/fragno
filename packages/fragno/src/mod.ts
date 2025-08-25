@@ -1,10 +1,6 @@
 import { addRoute, createRouter, findRoute } from "rou3";
-import {
-  FragnoApiError,
-  FragnoApiValidationError,
-  type FragnoRouteConfig,
-  type HTTPMethod,
-} from "./api/api";
+import { FragnoApiError, type FragnoRouteConfig, type HTTPMethod } from "./api/api";
+import { RequestInputContext } from "./api/request-input-context";
 import type {
   FragnoClientHook,
   ExtractGetRoutes,
@@ -18,6 +14,7 @@ import type {
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./api/internal/path";
 import { getMountRoute } from "./api/internal/route";
+import { RequestOutputContext } from "./api/request-output-context";
 
 export interface FragnoLibrarySharedConfig<
   TRoutes extends readonly FragnoRouteConfig<
@@ -112,62 +109,22 @@ export function createLibrary<
         return new Response(`Fragno: Route for '${config.name}' not found`, { status: 404 });
       }
 
-      const { handler, inputSchema, outputSchema } = route.data;
+      const { handler, inputSchema, outputSchema, path } = route.data;
 
-      const ctx = {
+      const inputContext = await RequestInputContext.fromRequest({
         request: req,
-        searchParams: new URL(req.url).searchParams,
-        path: route.data.path,
+        method: req.method,
+        path,
         // TODO(Wilco): Check if the params object actually aligns with the type here.
-        pathParams: (route.params ?? {}) as ExtractPathParams<typeof route.data.path>,
-        ...(inputSchema
-          ? {
-              input: {
-                schema: inputSchema,
-                valid: async () => {
-                  try {
-                    const json = await req.json();
-                    const result = await inputSchema["~standard"].validate(json);
+        pathParams: (route.params ?? {}) as ExtractPathParams<typeof path>,
+        inputSchema,
+      });
 
-                    console.log("validating", json, result);
-
-                    if (result.issues) {
-                      throw new FragnoApiValidationError("Validation failed", result.issues);
-                    }
-
-                    return result.value;
-                  } catch (error) {
-                    if (error instanceof SyntaxError) {
-                      throw new FragnoApiValidationError("Validation failed", [
-                        {
-                          message: "Request body is not valid JSON",
-                        },
-                      ]);
-                    }
-
-                    throw error;
-                  }
-                },
-              },
-            }
-          : {}),
-        ...(outputSchema
-          ? {
-              output: {
-                schema: outputSchema,
-              },
-            }
-          : {}),
-      };
+      const outputContext = new RequestOutputContext(outputSchema);
 
       try {
-        const result = await handler(ctx);
-
-        if (outputSchema) {
-          return Response.json(result);
-        }
-
-        return new Response();
+        const result = await handler(inputContext, outputContext);
+        return result;
       } catch (error) {
         console.error(error);
 

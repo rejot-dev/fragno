@@ -13,19 +13,19 @@ const testLibraryConfig = {
       method: "GET",
       path: "/",
       outputSchema: z.string(),
-      handler: async () => "ok",
+      handler: async (_ctx, { json }) => json("ok"),
     }),
     addRoute({
       method: "GET",
       path: "/users",
       outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-      handler: async () => [{ id: 1, name: "" }],
+      handler: async (_ctx, { json }) => json([{ id: 1, name: "" }]),
     }),
     addRoute({
       method: "GET",
       path: "/users/:id" as const,
       outputSchema: z.object({ id: z.number(), name: z.string() }),
-      handler: async ({ pathParams }) => ({ id: Number(pathParams.id), name: "" }),
+      handler: async ({ pathParams }, { json }) => json({ id: Number(pathParams.id), name: "" }),
     }),
     addRoute({
       method: "GET",
@@ -35,11 +35,12 @@ const testLibraryConfig = {
         model: z.string(),
         systemPrompt: z.string(),
       }),
-      handler: async () => ({
-        apiProvider: "openai" as const,
-        model: "gpt-4o",
-        systemPrompt: "",
-      }),
+      handler: async (_ctx, { json }) =>
+        json({
+          apiProvider: "openai" as const,
+          model: "gpt-4o",
+          systemPrompt: "",
+        }),
     }),
     // Non-GET routes (should not be available for hooks)
     addRoute({
@@ -47,18 +48,22 @@ const testLibraryConfig = {
       path: "/users",
       inputSchema: z.object({ name: z.string() }),
       outputSchema: z.object({ id: z.number(), name: z.string() }),
-      handler: async () => ({ id: 1, name: "" }),
+      handler: async (_ctx, { json }) => json({ id: 1, name: "" }),
     }),
     addRoute({
       method: "PUT",
       path: "/users/:id",
       inputSchema: z.object({ name: z.string() }),
-      handler: async () => {},
+      handler: async (_ctx, { empty }) => {
+        return empty();
+      },
     }),
     addRoute({
       method: "DELETE",
       path: "/users/:id",
-      handler: async () => {},
+      handler: async (_ctx, { empty }) => {
+        return empty();
+      },
     }),
   ],
 } as const;
@@ -81,12 +86,14 @@ const noGetLibraryConfig = {
     addRoute({
       method: "POST",
       path: "/create",
-      handler: async () => {},
+      handler: async (_ctx, { json }) => json({}),
     }),
     addRoute({
       method: "DELETE",
       path: "/delete/:id",
-      handler: async () => {},
+      handler: async (_ctx, { empty }) => {
+        return empty();
+      },
     }),
   ],
 } as const;
@@ -146,13 +153,13 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
             method: "GET",
             path: "/api/v1/users/:userId/posts/:postId/comments/:commentId",
             outputSchema: z.object({ id: z.number(), content: z.string() }),
-            handler: async () => ({ id: 1, content: "" }),
+            handler: async (_ctx, { json }) => json({ id: 1, content: "" }),
           }),
           addRoute({
             method: "GET",
             path: "/files/**:filepath",
             outputSchema: z.string(),
-            handler: async () => "file",
+            handler: async (_ctx, { json }) => json("file"),
           }),
         ],
       } as const;
@@ -200,19 +207,23 @@ describe("real-world usage scenarios", () => {
         addRoute({
           method: "GET",
           path: "/",
-          handler: async () => {},
+          handler: async (_ctx, { empty }) => {
+            return empty();
+          },
         }),
         addRoute({
           method: "GET",
           path: "/thing/**:path",
-          handler: async () => {},
+          handler: async (_ctx, { empty }) => {
+            return empty();
+          },
         }),
         addRoute({
           method: "POST",
           path: "/echo",
           inputSchema: z.object({ number: z.number() }),
           outputSchema: z.string(),
-          handler: async () => "",
+          handler: async (_ctx, { json }) => json(""),
         }),
         addRoute({
           method: "GET",
@@ -222,11 +233,12 @@ describe("real-world usage scenarios", () => {
             model: z.string(),
             systemPrompt: z.string(),
           }),
-          handler: async () => ({
-            apiProvider: "openai" as const,
-            model: "gpt-4o",
-            systemPrompt: "",
-          }),
+          handler: async (_ctx, { json }) =>
+            json({
+              apiProvider: "openai" as const,
+              model: "gpt-4o",
+              systemPrompt: "",
+            }),
         }),
       ],
     } as const;

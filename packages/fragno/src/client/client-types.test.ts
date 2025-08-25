@@ -23,34 +23,34 @@ const _testRoutes = [
   addRoute({
     method: "GET",
     path: "/",
-    handler: async () => {},
+    handler: async (_ctx, { json }) => json({}),
   }),
   addRoute({
     method: "GET",
     path: "/users",
     outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-    handler: async () => {
-      return [{ id: 1, name: "" }];
+    handler: async (_ctx, { json }) => {
+      return json([{ id: 1, name: "" } as const]);
     },
   }),
   addRoute({
     method: "GET",
     path: "/users/:id",
     outputSchema: z.object({ id: z.number(), name: z.string() }),
-    handler: async ({ pathParams }) => {
-      return { id: Number(pathParams.id), name: "" };
+    handler: async ({ pathParams }, { json }) => {
+      return json({ id: Number(pathParams.id), name: "" } as const);
     },
   }),
   addRoute({
     method: "GET",
     path: "/posts/:postId/comments",
     outputSchema: z.array(z.object({ id: z.number(), content: z.string() })),
-    handler: async () => [],
+    handler: async (_ctx, { json }) => json([]),
   }),
   addRoute({
     method: "GET",
     path: "/static/**:path",
-    handler: async () => {},
+    handler: async (_ctx, { json }) => json({}),
   }),
   // Non-GET routes (should be filtered out)
   addRoute({
@@ -58,18 +58,18 @@ const _testRoutes = [
     path: "/users",
     inputSchema: z.object({ name: z.string() }),
     outputSchema: z.object({ id: z.number(), name: z.string() }),
-    handler: async () => ({ id: 1, name: "" }),
+    handler: async (_ctx, { json }) => json({ id: 1, name: "" }),
   }),
   addRoute({
     method: "PUT",
     path: "/users/:id",
     inputSchema: z.object({ name: z.string() }),
-    handler: async () => {},
+    handler: async (_ctx, { json }) => json({}),
   }),
   addRoute({
     method: "DELETE",
     path: "/users/:id",
-    handler: async () => {},
+    handler: async (_ctx, { json }) => json({}),
   }),
 ] as const;
 
@@ -86,12 +86,12 @@ const _noGetRoutes = [
   addRoute({
     method: "POST",
     path: "/create",
-    handler: async () => {},
+    handler: async (_ctx, { json }) => json({}),
   }),
   addRoute({
     method: "DELETE",
     path: "/delete/:id",
-    handler: async () => {},
+    handler: async (_ctx, { json }) => json({}),
   }),
 ] as const satisfies readonly FragnoRouteConfig<
   HTTPMethod,
@@ -253,20 +253,20 @@ test("Real-world usage scenarios", () => {
       method: "GET",
       path: "/",
       outputSchema: z.string(),
-      handler: async () => "Hello, world!",
+      handler: async (_ctx, { json }) => json("Hello, world!"),
     }),
     addRoute({
       method: "GET",
       path: "/thing/**:path",
       outputSchema: z.string(),
-      handler: async () => "thing",
+      handler: async (_ctx, { json }) => json("thing"),
     }),
     addRoute({
       method: "POST",
       path: "/echo",
       inputSchema: z.object({ number: z.number() }),
       outputSchema: z.string(),
-      handler: async () => "",
+      handler: async (_ctx, { json }) => json(""),
     }),
     addRoute({
       method: "GET",
@@ -276,11 +276,12 @@ test("Real-world usage scenarios", () => {
         model: z.string(),
         systemPrompt: z.string(),
       }),
-      handler: async () => ({
-        apiProvider: "openai" as const,
-        model: "gpt-4o",
-        systemPrompt: "",
-      }),
+      handler: async (_ctx, { json }) =>
+        json({
+          apiProvider: "openai" as const,
+          model: "gpt-4o",
+          systemPrompt: "",
+        }),
     }),
   ] as const;
 
@@ -315,18 +316,18 @@ test("Edge cases and error handling", () => {
       method: "GET",
       path: "/api/v1/users/:userId/posts/:postId/comments/:commentId",
       outputSchema: z.object({ id: z.number(), content: z.string() }),
-      handler: async () => ({ id: 1, content: "" }),
+      handler: async (_ctx, { json }) => json({ id: 1, content: "" }),
     }),
     addRoute({
       method: "GET",
       path: "/files/**:filepath",
-      handler: async () => {},
+      handler: async (_ctx, { json }) => json({}),
     }),
     addRoute({
       method: "GET",
       path: "/admin/:section/:action",
       outputSchema: z.object({ success: z.boolean() }),
-      handler: async () => ({ success: true }),
+      handler: async (_ctx, { json }) => json({ success: true }),
     }),
   ] as const;
 
@@ -357,7 +358,7 @@ test("Type constraint validation", () => {
     {
       method: "GET" as const,
       path: "/test" as const,
-      handler: async () => {},
+      handler: async (_ctx: unknown, { empty }: { empty: () => Response }) => empty(),
     },
   ];
 
@@ -370,7 +371,7 @@ test("Type constraint validation", () => {
     addRoute({
       method: "GET",
       path: "/const-test",
-      handler: async () => {},
+      handler: async (_ctx, { json }) => json({}),
     }),
   ] as const;
 
@@ -387,7 +388,7 @@ test("GET route with outputSchema", () => {
       outputSchema: z.object({
         name: z.string(),
       }),
-      handler: async () => ({ name: "test" }),
+      handler: async (_ctx, { json }) => json({ name: "test" }),
     }),
   ] as const;
 
@@ -467,21 +468,22 @@ describe("ExtractRouteByPath", () => {
         path: "/users",
         inputSchema: z.object({ name: z.string(), email: z.string() }),
         outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-        handler: async () => ({ id: 1, name: "", email: "" }),
+        handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
       }),
       addRoute({
         method: "PUT",
         path: "/users/:id",
         inputSchema: z.object({ name: z.string() }),
         outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async ({ pathParams }) => ({ id: Number(pathParams["id"]), name: "" }),
+        handler: async ({ pathParams }, { json }) =>
+          json({ id: Number(pathParams["id"]), name: "" }),
       }),
       addRoute({
         method: "DELETE",
         path: "/users/:id",
         inputSchema: z.object({}), // TODO: Fix client to allow DELETE without inputSchema
         outputSchema: z.object({ success: z.boolean() }),
-        handler: async () => ({ success: true }),
+        handler: async (_ctx, { json }) => json({ success: true }),
       }),
     ],
   } as const;

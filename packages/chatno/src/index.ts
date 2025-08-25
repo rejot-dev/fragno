@@ -16,8 +16,8 @@ const libraryConfig = {
       method: "GET",
       path: "/",
       outputSchema: z.string(),
-      handler: async () => {
-        return `Hello, world!`;
+      handler: async (_ctx, { json }) => {
+        return json(`Hello, world!`);
       },
     }),
 
@@ -29,14 +29,14 @@ const libraryConfig = {
         message: z.string(),
         query: z.record(z.string(), z.string()),
       }),
-      handler: async ({ path, searchParams, pathParams }) => {
+      handler: async ({ path, searchParams, pathParams }, { json }) => {
         const message = pathParams.path;
 
-        return {
+        return json({
           path,
           message,
           query: Object.fromEntries(searchParams),
-        };
+        });
       },
     }),
 
@@ -44,19 +44,23 @@ const libraryConfig = {
       method: "GET",
       path: "/echo/:message",
       outputSchema: z.string(),
-      handler: async ({ pathParams, searchParams }) => {
+      handler: async ({ pathParams, searchParams }, { json }) => {
         const messageKey = pathParams.message;
         const shouldCapitalize = searchParams.get("capital") === "true";
 
         console.log("serverSideMessagesStores", serverSideMessagesStores);
 
         if (!(messageKey in serverSideMessagesStores)) {
-          return shouldCapitalize ? `(message not found)`.toUpperCase() : `(message not found)`;
+          return json(
+            shouldCapitalize ? `(message not found)`.toUpperCase() : `(message not found)`,
+          );
         }
 
-        return shouldCapitalize
+        const text = shouldCapitalize
           ? serverSideMessagesStores[messageKey].toUpperCase()
           : serverSideMessagesStores[messageKey];
+
+        return json(text);
       },
     }),
 
@@ -71,7 +75,7 @@ const libraryConfig = {
         previous: z.string().optional(),
         message: z.string(),
       }),
-      handler: async ({ pathParams, input }) => {
+      handler: async ({ pathParams, input }, { json }) => {
         const { message } = await input.valid();
         const messageKey = pathParams.messageKey;
 
@@ -80,11 +84,11 @@ const libraryConfig = {
 
         console.log("PUT serverSideMessagesStores", serverSideMessagesStores);
 
-        return {
+        return json({
           previous,
           messageKey,
           message,
-        };
+        });
       },
     }),
 
@@ -96,12 +100,12 @@ const libraryConfig = {
         model: z.string(),
         systemPrompt: z.string(),
       }),
-      handler: async () => {
-        return {
+      handler: async (_ctx, { json }) => {
+        return json({
           apiProvider: "openai" as const,
           model: "gpt-4o",
           systemPrompt: "You are a helpful assistant.",
-        };
+        });
       },
     }),
   ],
