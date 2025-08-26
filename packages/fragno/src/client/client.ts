@@ -857,9 +857,11 @@ export function createRouteQueryMutator<
     if (onInvalidate) {
       onInvalidate(invalidate, resolvedParams);
     } else {
-      console.debug("TODO: Falling back to just pathParams invalidate on the same route, ");
-      // TODO(thies): Implement this.
-      //   invalidate(route.path, resolvedParams);
+      console.log("Falling back to just pathParams invalidate on the same route: ", route.path);
+      // @ts-expect-error This is a workaround, as we don't know about the users paths.
+      invalidate(route.path, {
+        pathParams: resolvedParams.pathParams,
+      });
     }
 
     return result;
