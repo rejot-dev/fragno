@@ -60,18 +60,45 @@ const initialData = exampleFragment.services.getData();
     <script>
       // Client-side JavaScript for interactivity
       import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
-      import { useVanilla } from "@rejot-dev/fragno/client/vanilla";
+      import { useFragno } from "@rejot-dev/fragno/client/vanilla";
 
       const exampleFragmentClient = createExampleFragmentClient();
-      const { useData, useSampleMutator } = useVanilla(exampleFragmentClient);
+      const { useData, useSampleMutator } = useFragno(exampleFragmentClient);
 
       // Initialize client-side data hook
       const dataHook = useData();
+      const sampleMutator = useSampleMutator();
 
-      dataHook.subscribe((data) => {
+      dataHook.subscribe(({ data, loading, error }) => {
+        console.log("dataHook.subscribe", { data, loading, error });
         const dataDisplay = document.getElementById("data-display");
         if (dataDisplay) {
-          dataDisplay.textContent = data.data || "";
+          dataDisplay.textContent = data || "";
+        }
+      });
+
+      // Subscribe to mutator state changes
+      sampleMutator.subscribe((mutatorState) => {
+        console.log("sampleMutator.subscribe", { mutatorState });
+        const mutateBtn = document.getElementById("mutateBtn") as HTMLButtonElement;
+        const mutateErrorBtn = document.getElementById("mutateErrorBtn") as HTMLButtonElement;
+
+        if (mutateBtn) {
+          setButtonLoading(mutateBtn, mutatorState.loading || false);
+        }
+        if (mutateErrorBtn) {
+          setButtonLoading(mutateErrorBtn, mutatorState.loading || false);
+        }
+
+        // Show success message if we have data
+        if (mutatorState.data) {
+          showSuccess(mutatorState.data);
+          dataHook.refetch();
+        }
+
+        // Show error if we have an error
+        if (mutatorState.error) {
+          showError(mutatorState.error);
         }
       });
 
@@ -121,38 +148,22 @@ const initialData = exampleFragment.services.getData();
       if (mutateBtn) {
         mutateBtn.setAttribute("data-original-text", "Click me to mutate data");
         mutateBtn.addEventListener("click", async () => {
-          try {
-            setButtonLoading(mutateBtn, true);
-            setButtonLoading(mutateErrorBtn, true);
-
-            const currentData = dataHook.getData() || "";
-            const result = await useSampleMutator({ message: currentData + "!" });
-
-            showSuccess(result);
-            dataHook.refetch();
-          } catch (error) {
-            showError(error as { message: string; code: string });
-          } finally {
-            setButtonLoading(mutateBtn, false);
-            setButtonLoading(mutateErrorBtn, false);
-          }
+          const { data: currentData } = dataHook.get();
+          await sampleMutator.mutate({
+            body: { message: (currentData || "") + "!" },
+            params: {},
+          });
+          dataHook.refetch();
         });
       }
 
       if (mutateErrorBtn) {
         mutateErrorBtn.setAttribute("data-original-text", "Click me to mutate data with error");
         mutateErrorBtn.addEventListener("click", async () => {
-          try {
-            setButtonLoading(mutateBtn, true);
-            setButtonLoading(mutateErrorBtn, true);
-
-            await useSampleMutator({ message: "123" });
-          } catch (error) {
-            showError(error as { message: string; code: string });
-          } finally {
-            setButtonLoading(mutateBtn, false);
-            setButtonLoading(mutateErrorBtn, false);
-          }
+          await sampleMutator.mutate({
+            body: { message: "123" },
+            params: {},
+          });
         });
       }
     </script>

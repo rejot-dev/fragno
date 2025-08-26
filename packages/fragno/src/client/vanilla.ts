@@ -8,13 +8,23 @@ import {
   type FragnoClientMutatorData,
   type NewFragnoClientHookData,
 } from "./client";
+import type { FragnoClientApiError } from "./client-error";
+
+export type StoreData<TOutputSchema extends StandardSchemaV1, TErrorCodes extends string> = {
+  loading: boolean;
+  error?: FragnoClientApiError<TErrorCodes>;
+  data?: StandardSchemaV1.InferOutput<TOutputSchema>;
+};
 
 export type FragnoVanillaListeners<
   T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
 > = (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
   listen: (callback: Parameters<ReturnType<T["store"]>["listen"]>[0]) => void;
   subscribe: (callback: Parameters<ReturnType<T["store"]>["subscribe"]>[0]) => void;
-  getData: () => StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>;
+  get: () => StoreData<
+    NonNullable<T["route"]["outputSchema"]>,
+    NonNullable<T["route"]["errorCodes"]>[number]
+  >;
   refetch: () => void;
 };
 
@@ -33,8 +43,13 @@ function createVanillaListeners<
       refetch: () => {
         return store.revalidate();
       },
-      getData: () => {
-        return store.get().data;
+      get: () => {
+        const { loading, error, data } = store.get();
+        return {
+          loading,
+          error,
+          data,
+        };
       },
     };
   };
@@ -48,12 +63,27 @@ export type FragnoVanillaMutator<
     StandardSchemaV1,
     string
   >,
-> = (
-  body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-  params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
-) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+> = () => {
+  subscribe: (
+    callback: (value: {
+      loading?: boolean;
+      error?: FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]>;
+      data?: StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>;
+    }) => void,
+  ) => void;
+  get: () => StoreData<
+    NonNullable<T["route"]["outputSchema"]>,
+    NonNullable<T["route"]["errorCodes"]>[number]
+  >;
+  mutate: ({
+    body,
+    params,
+  }: {
+    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>;
+    params: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>;
+  }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+};
 
-// TODO(Wilco): This should also return a store with proper error handling
 function createVanillaMutator<
   T extends FragnoClientMutatorData<
     NonGetHTTPMethod,
@@ -63,12 +93,28 @@ function createVanillaMutator<
     string
   >,
 >(hook: T): FragnoVanillaMutator<T> {
-  return (body, params) => {
-    return hook.mutateQuery(body, params ?? {});
+  return () => {
+    const store = hook.mutatorStore;
+    return {
+      subscribe: (callback) => {
+        store.subscribe(callback);
+      },
+      get: () => {
+        const { loading, error, data } = store.get();
+        return {
+          loading: loading ?? false,
+          error,
+          data,
+        };
+      },
+      mutate: ({ body, params }) => {
+        return store.mutate({ body, params });
+      },
+    };
   };
 }
 
-export function useVanilla<
+export function useFragno<
   T extends Record<
     string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
