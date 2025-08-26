@@ -61,6 +61,9 @@ export default function Home() {
           pathParams: {
             messageKey: newMessageKey,
           },
+          queryParams: {
+            ignored: "true",
+          },
         },
       });
 

@@ -28,6 +28,32 @@ const [
 ] = nanoquery();
 
 // ============================================================================
+// Types for invalidation
+// ============================================================================
+
+type InvalidateFn<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+> = <TPath extends ExtractGetRoutePaths<TRoutes>>(
+  path: ValidateGetRoutePath<TRoutes, TPath>,
+  params: ResolvedClientHookParams<TPath, string>,
+) => void;
+
+type OnInvalidateFn<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TPath extends string,
+> = (invalidate: InvalidateFn<TRoutes>, params: ResolvedClientHookParams<TPath, string>) => void;
+
+// ============================================================================
 // Utility Types for Hook Builder
 // ============================================================================
 
@@ -256,6 +282,15 @@ export type ClientHookParams<TPath extends string, TValueType> =
           queryParams?: Record<string, TValueType>;
         };
 
+export type ResolvedClientHookParams<TPath extends string, TValueType> = TPath extends string
+  ? {
+      pathParams?: Record<string, TValueType>;
+      queryParams?: Record<string, TValueType>;
+    }
+  : {
+      queryParams?: Record<string, TValueType>;
+    };
+
 export type NewFragnoClientHookData<
   TMethod extends HTTPMethod,
   TPath extends string,
@@ -358,6 +393,41 @@ export function buildUrl<TPath extends string>(
   return `${baseUrl}${mountRoute}${builtPath}${search}`;
 }
 
+/**
+ * This method returns an array, which can be passed directly to nanostores.
+ *
+ * The returned array is always: path, pathParams (In order they appear in the path), queryParams (In alphabetical order)
+ * Missing pathParams are replaced with "<missing>".
+ * @param path
+ * @param params
+ * @returns
+ */
+export function getCacheKey<TPath extends string>(
+  path: TPath,
+  params?: {
+    pathParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | ReadableAtom<string>>;
+  },
+): (string | ReadableAtom<string>)[] {
+  if (!params) {
+    return [path];
+  }
+
+  const { pathParams, queryParams } = params;
+
+  const regex = /:(\w+)|\*\*:(\w+)/g;
+  const pathParamNames = Array.from(path.matchAll(regex), (m) => m[1] || m[2]);
+  const pathParamValues = pathParamNames.map((name) => pathParams?.[name] ?? "<missing>");
+
+  const queryParamValues = queryParams
+    ? Object.keys(queryParams)
+        .sort()
+        .map((key) => queryParams[key])
+    : [];
+
+  return [path, ...pathParamValues, ...queryParamValues];
+}
+
 export function createRouteQueryHook<
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
@@ -427,15 +497,12 @@ export function createRouteQueryHook<
     }) => {
       const { pathParams, queryParams } = params ?? {};
 
-      const deps: (string | ReadableAtom<string>)[] = [
-        ...Object.values(pathParams ?? {}),
-        ...Object.values(queryParams ?? {}),
-      ];
+      const key = getCacheKey(route.path, params);
 
       const store = createFetcherStore<
         StandardSchemaV1.InferOutput<TOutputSchema>,
         FragnoClientApiError<TErrorCode>
-      >([route.path, ...deps], {
+      >(key, {
         fetcher: async () => {
           if (typeof window === "undefined") {
             // TODO(Wilco): Handle server-side rendering.
@@ -551,6 +618,7 @@ export function createClientBuilder<
   createMutator: <TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
     method: NonGetHTTPMethod,
     path: TPath,
+    onInvalidate?: OnInvalidateFn<TLibraryConfig["routes"], TPath>,
   ) => FragnoClientMutatorData<
     NonGetHTTPMethod,
     TPath,
@@ -559,10 +627,42 @@ export function createClientBuilder<
     NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
   >;
 } {
+  const invalidate: InvalidateFn<TLibraryConfig["routes"]> = (path, params) => {
+    const key: (string | ReadableAtom<string>)[] = [path];
+
+    if (params) {
+      if ("pathParams" in params && params.pathParams) {
+        const pathParams = params.pathParams;
+        const regex = /:(\w+)|\*\*:(\w+)/g;
+        const paramNames = Array.from(path.matchAll(regex), (m) => m[1] || m[2]);
+        for (const name of paramNames) {
+          if (name in pathParams && pathParams[name] !== undefined) {
+            key.push(pathParams[name]!);
+          } else {
+            // Stop at the first missing path param
+            break;
+          }
+        }
+      }
+
+      if (params.queryParams) {
+        const queryParams = params.queryParams;
+        const sortedQueryKeys = Object.keys(queryParams).sort();
+        for (const queryKey of sortedQueryKeys) {
+          key.push(queryParams[queryKey]);
+        }
+      }
+    }
+
+    const prefix = key.map((k) => (typeof k === "string" ? k : k.get())).join("");
+
+    _invalidateKeys((key) => key.startsWith(prefix));
+  };
+
   return {
     createHook: (path) => createLibraryHook(publicConfig, libraryConfig, path),
-    createMutator: (method, path) =>
-      createLibraryMutator(publicConfig, libraryConfig, method, path),
+    createMutator: (method, path, onInvalidate) =>
+      createLibraryMutator(publicConfig, libraryConfig, method, path, invalidate, onInvalidate),
   };
 }
 
@@ -626,6 +726,8 @@ export function createLibraryMutator<
   libraryConfig: TLibraryConfig,
   method: TMethod,
   path: TPath,
+  invalidate: InvalidateFn<TRoutes>,
+  onInvalidate?: OnInvalidateFn<TRoutes, TPath>,
 ): FragnoClientMutatorData<
   NonGetHTTPMethod,
   TPath,
@@ -656,17 +758,24 @@ export function createLibraryMutator<
     );
   }
 
-  return createRouteQueryMutator(publicConfig, libraryConfig, route);
+  return createRouteQueryMutator(publicConfig, libraryConfig, route, invalidate, onInvalidate);
 }
 
 export function createRouteQueryMutator<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >[],
+  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
   TPath extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
 >(
   publicConfig: FragnoPublicClientConfig,
-  libraryConfig: { mountRoute?: string; name: string },
+  libraryConfig: TLibraryConfig,
   route: FragnoRouteConfig<
     NonGetHTTPMethod,
     TPath,
@@ -675,6 +784,8 @@ export function createRouteQueryMutator<
     TErrorCode,
     string
   >,
+  invalidate: InvalidateFn<TRoutes>,
+  onInvalidate?: OnInvalidateFn<TRoutes, TPath>,
 ): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
   const method = route.method;
 
@@ -721,13 +832,37 @@ export function createRouteQueryMutator<
     },
     StandardSchemaV1.InferOutput<TOutputSchema>,
     FragnoClientApiError<TErrorCode>
-  >(async ({ data, revalidate: _revalidate, getCacheUpdater: _getCacheUpdater }) => {
+  >(async ({ data }) => {
     if (typeof window === "undefined") {
       // TODO(Wilco): Handle server-side rendering.
     }
 
     const { body, params } = data;
-    return mutateQuery(body, params);
+    const result = await mutateQuery(body, params);
+    const resolvedParams = {
+      pathParams: Object.fromEntries(
+        Object.entries(params.pathParams ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.get(),
+        ]),
+      ),
+      queryParams: Object.fromEntries(
+        Object.entries(params.queryParams ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.get(),
+        ]),
+      ),
+    };
+
+    if (onInvalidate) {
+      onInvalidate(invalidate, resolvedParams);
+    } else {
+      console.debug("TODO: Falling back to just pathParams invalidate on the same route, ");
+      // TODO(thies): Implement this.
+      //   invalidate(route.path, resolvedParams);
+    }
+
+    return result;
   });
 
   return {
