@@ -4,6 +4,7 @@ import { type ReadableAtom } from "nanostores";
 import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
 import {
   buildPath,
+  extractPathParams,
   type ExtractPathParams,
   type ExtractPathParamsOrWiden,
   type HasPathParams,
@@ -385,7 +386,7 @@ export function getCacheKey<TPath extends string>(
 
   const { pathParams, queryParams } = params;
 
-  const pathParamNames = getAllPathParameterNames(path);
+  const pathParamNames = extractPathParams(path);
   const pathParamValues = pathParamNames.map((name) => pathParams?.[name] ?? "<missing>");
 
   const queryParamValues = queryParams
@@ -561,19 +562,6 @@ export function isMutatorHook(
 // Hook Builder (factory style)
 // ============================================================================
 
-/**
- * Get all path parameter names from a path. This only implements a subset from h3js/rou3
- *
- * TODO: Implement the rest of the path parameter types.
- *
- * @param path - The path to get the path parameter names from.
- * @returns An array of path parameter names.
- */
-export function getAllPathParameterNames<TPath extends string>(path: TPath): string[] {
-  const regex = /:(\w+)|\*\*:(\w+)/g;
-  return Array.from(path.matchAll(regex), (m) => m[1] || m[2]);
-}
-
 function invalidate<TPath extends string>(
   path: TPath,
   params: {
@@ -586,10 +574,10 @@ function invalidate<TPath extends string>(
   if (params) {
     if ("pathParams" in params && params.pathParams) {
       const pathParams = params.pathParams;
-      const paramNames = getAllPathParameterNames(path);
+      const paramNames = extractPathParams(path);
       for (const name of paramNames) {
-        if (name in pathParams && pathParams[name as keyof typeof pathParams] !== undefined) {
-          key.push(pathParams[name as keyof typeof pathParams]!);
+        if (name in pathParams && pathParams[name] !== undefined) {
+          key.push(pathParams[name]!);
         } else {
           // Stop at the first missing path param
           break;
