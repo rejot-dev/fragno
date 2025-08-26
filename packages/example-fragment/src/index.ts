@@ -25,8 +25,8 @@ const libraryConfig = {
       method: "GET",
       path: "/hello", // TODO: Enforce "/" is not allowed as a path
       outputSchema: z.string(),
-      handler: async () => {
-        return `Hello, world!`;
+      handler: async (_, { json }) => {
+        return json(`Hello, world!`);
       },
     }),
 
@@ -34,8 +34,18 @@ const libraryConfig = {
       method: "GET",
       path: "/data",
       outputSchema: z.string(),
-      handler: async () => {
-        return services.getData();
+      handler: async ({ searchParams }, { json, error }) => {
+        if (searchParams.get("error")) {
+          return error(
+            {
+              message: "An error was triggered",
+              code: "TEST_ERROR",
+            },
+            400,
+          );
+        }
+
+        return json(services.getData());
       },
     }),
 
@@ -44,12 +54,23 @@ const libraryConfig = {
       path: "/sample",
       inputSchema: z.object({ message: z.string() }),
       outputSchema: z.string(),
-      handler: async ({ input }) => {
+      errorCodes: ["MESSAGE_CANNOT_BE_DIGITS_ONLY"],
+      handler: async ({ input }, { json, error }) => {
         const { message } = await input.valid();
 
         await services.setData(message);
 
-        return message;
+        if (/^\d+$/.test(message)) {
+          return error(
+            {
+              message: "Message cannot be digits only",
+              code: "MESSAGE_CANNOT_BE_DIGITS_ONLY",
+            },
+            400,
+          );
+        }
+
+        return json(message);
       },
     }),
   ],

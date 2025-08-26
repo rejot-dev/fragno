@@ -7,7 +7,20 @@ const prettierConfig = {
   printWidth: 100,
   proseWrap: "always",
   trailingComma: "all",
-  plugins: ["prettier-plugin-embed", "prettier-plugin-sql", "prettier-plugin-tailwindcss"],
+  plugins: [
+    "prettier-plugin-embed",
+    "prettier-plugin-sql",
+    "prettier-plugin-tailwindcss",
+    "prettier-plugin-astro",
+  ],
+  overrides: [
+    {
+      files: "*.astro",
+      options: {
+        parser: "astro",
+      },
+    },
+  ],
 };
 
 /** @type {import('prettier-plugin-embed').PrettierPluginEmbedOptions} */

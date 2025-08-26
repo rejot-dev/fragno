@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 export function WelcomeShell({ children }: { children: ReactNode }) {
   return (
     <main className="relative isolate">
-      <div className="pointer-events-none absolute inset-0 -z-10 [mask-image:radial-gradient(60%_60%_at_50%_20%,black,transparent)] opacity-60">
+      <div className="pointer-events-none absolute inset-0 -z-10 opacity-60 [mask-image:radial-gradient(60%_60%_at_50%_20%,black,transparent)]">
         <div className="h-full w-full bg-gradient-to-b from-blue-50 via-transparent to-transparent dark:from-blue-950" />
       </div>
       {children}
@@ -13,19 +13,19 @@ export function WelcomeShell({ children }: { children: ReactNode }) {
 
 export function WelcomeHero() {
   return (
-    <section className="mx-auto max-w-5xl px-6 pt-16 pb-8 sm:pt-20">
+    <section className="mx-auto max-w-5xl px-6 pb-8 pt-16 sm:pt-20">
       <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-600 backdrop-blur dark:border-gray-800 dark:text-gray-300">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
         Experimental • Fragno
       </div>
 
-      <h1 className="mt-6 text-5xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-6xl">
+      <h1 className="mt-6 text-balance text-5xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
         <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-rose-600 bg-clip-text text-transparent">
           Fragno
         </span>{" "}
         — Composable web primitives
       </h1>
-      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-pretty text-gray-600 dark:text-gray-300">
+      <p className="mt-5 max-w-2xl text-pretty text-lg leading-relaxed text-gray-600 dark:text-gray-300">
         A tiny, strongly‑typed foundation for building web apps. Keep the core generic; add
         framework adapters only where they belong.
       </p>
@@ -35,7 +35,7 @@ export function WelcomeHero() {
           href="https://github.com/rejot-dev/fragno/tree/main/ai-docs"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:outline-none dark:focus:ring-offset-gray-950"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-950"
         >
           Get Started
           <svg

@@ -22,7 +22,8 @@ const initialData = exampleFragment.services.getData();
         <h2>Current Data</h2>
         <div
           id="data-display"
-          style="padding: 15px; background-color: #f5f5f5; border-radius: 5px; border: 1px solid #ddd">
+          style="padding: 15px; background-color: #f5f5f5; border-radius: 5px; border: 1px solid #ddd"
+        >
           {initialData}
         </div>
       </div>
@@ -36,8 +37,23 @@ const initialData = exampleFragment.services.getData();
         </ul>
       </div>
 
-      <div style="margin-top: 30px; font-size: 14px; color: #666">
+      <div style="margin-top: 30px; font-size: 14px; color: #666; display: flex; gap: 10px">
         <button id="mutateBtn">Click me to mutate data</button>
+        <button id="mutateErrorBtn">Click me to mutate data with error</button>
+      </div>
+
+      <div
+        id="success-message"
+        style="margin-top: 15px; padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; display: none;"
+      >
+        <p id="success-text">Success! Data:</p>
+      </div>
+
+      <div
+        id="error-message"
+        style="margin-top: 15px; padding: 10px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; display: none;"
+      >
+        <p id="error-text">Error:</p>
       </div>
     </div>
 
@@ -53,19 +69,89 @@ const initialData = exampleFragment.services.getData();
       const dataHook = useData();
 
       dataHook.subscribe((data) => {
-        document.getElementById("data-display")!.textContent = data.data || "";
+        const dataDisplay = document.getElementById("data-display");
+        if (dataDisplay) {
+          dataDisplay.textContent = data.data || "";
+        }
       });
 
-      const mutateBtn = document.getElementById("mutateBtn");
+      // Helper functions for UI updates
+      function showSuccess(message: string) {
+        const successDiv = document.getElementById("success-message");
+        const successText = document.getElementById("success-text");
+        const errorDiv = document.getElementById("error-message");
+
+        if (successText) {
+          successText.textContent = `Success! Data: ${message}`;
+        }
+        if (successDiv) {
+          successDiv.style.display = "block";
+        }
+        if (errorDiv) {
+          errorDiv.style.display = "none";
+        }
+      }
+
+      function showError(error: { message: string; code: string }) {
+        const errorDiv = document.getElementById("error-message");
+        const errorText = document.getElementById("error-text");
+        const successDiv = document.getElementById("success-message");
+
+        if (errorText) {
+          errorText.textContent = `Error: ${error.message} (code: ${error.code})`;
+        }
+        if (errorDiv) {
+          errorDiv.style.display = "block";
+        }
+        if (successDiv) {
+          successDiv.style.display = "none";
+        }
+      }
+
+      function setButtonLoading(button: HTMLButtonElement, loading: boolean) {
+        button.disabled = loading;
+        const originalText = button.getAttribute("data-original-text") || button.textContent || "";
+        button.textContent = loading ? "Saving..." : originalText;
+      }
+
+      // Setup buttons
+      const mutateBtn = document.getElementById("mutateBtn") as HTMLButtonElement;
+      const mutateErrorBtn = document.getElementById("mutateErrorBtn") as HTMLButtonElement;
+
       if (mutateBtn) {
+        mutateBtn.setAttribute("data-original-text", "Click me to mutate data");
         mutateBtn.addEventListener("click", async () => {
           try {
-            const currentData = dataHook.getData() || "";
-            await useSampleMutator({ message: currentData + "!" });
+            setButtonLoading(mutateBtn, true);
+            setButtonLoading(mutateErrorBtn, true);
 
+            const currentData = dataHook.getData() || "";
+            const result = await useSampleMutator({ message: currentData + "!" });
+
+            showSuccess(result);
             dataHook.refetch();
           } catch (error) {
-            console.error("Mutation failed:", error);
+            showError(error as { message: string; code: string });
+          } finally {
+            setButtonLoading(mutateBtn, false);
+            setButtonLoading(mutateErrorBtn, false);
+          }
+        });
+      }
+
+      if (mutateErrorBtn) {
+        mutateErrorBtn.setAttribute("data-original-text", "Click me to mutate data with error");
+        mutateErrorBtn.addEventListener("click", async () => {
+          try {
+            setButtonLoading(mutateBtn, true);
+            setButtonLoading(mutateErrorBtn, true);
+
+            await useSampleMutator({ message: "123" });
+          } catch (error) {
+            showError(error as { message: string; code: string });
+          } finally {
+            setButtonLoading(mutateBtn, false);
+            setButtonLoading(mutateErrorBtn, false);
           }
         });
       }

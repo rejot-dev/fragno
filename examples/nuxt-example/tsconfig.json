@@ -1,6 +1,6 @@
 {
-  // https://nuxt.com/docs/guide/concepts/typescript
   "files": [],
+  "extends": "../../tsconfig.base.json",
   "references": [
     {
       "path": "./.nuxt/tsconfig.app.json"
@@ -13,6 +13,12 @@
     },
     {
       "path": "./.nuxt/tsconfig.node.json"
+    },
+    {
+      "path": "../../packages/fragno"
+    },
+    {
+      "path": "../../packages/example-fragment"
     }
   ]
 }

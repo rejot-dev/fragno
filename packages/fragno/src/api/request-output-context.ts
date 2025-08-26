@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ContentlessStatusCode, StatusCode } from "./http-status";
+import type { ContentlessStatusCode, StatusCode } from "../http/http-status";
 import { StreamingApi } from "./internal/response-stream";
 
 export type ResponseData = string | ArrayBuffer | ReadableStream | Uint8Array<ArrayBuffer>;
@@ -17,12 +17,39 @@ type InferOrUnknown<T> =
       ? unknown
       : unknown;
 
-export class RequestOutputContext<TOutputSchema extends StandardSchemaV1 | undefined = undefined> {
+export class RequestOutputContext<
+  TOutputSchema extends StandardSchemaV1 | undefined = undefined,
+  TErrorCode extends string = string,
+> {
   // eslint-disable-next-line no-unused-private-class-members
   #outputSchema?: TOutputSchema;
 
   constructor(outputSchema?: TOutputSchema) {
     this.#outputSchema = outputSchema;
+  }
+
+  /**
+   * Creates an error response.
+   *
+   * Shortcut for `throw new FragnoApiError(...)`
+   */
+  error(
+    { message, code }: { message: string; code: TErrorCode },
+    initOrStatus?: ResponseInit | StatusCode,
+    headers?: HeadersInit,
+  ): Response {
+    if (typeof initOrStatus === "undefined") {
+      return Response.json({ error: message, code }, { status: 500, headers });
+    }
+
+    if (typeof initOrStatus === "number") {
+      return Response.json({ error: message, code }, { status: initOrStatus, headers });
+    }
+
+    return Response.json(
+      { error: message, code },
+      { status: initOrStatus.status, headers: initOrStatus.headers },
+    );
   }
 
   empty(

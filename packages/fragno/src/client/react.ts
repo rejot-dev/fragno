@@ -5,16 +5,28 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import type { NonGetHTTPMethod } from "../api/api";
 import { isGetHook, isMutatorHook } from "./client";
+import type { FragnoClientApiError } from "./client-error";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyStandardSchema = StandardSchemaV1<any, any>;
 
-export type FragnoReactHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = (
+export type FragnoReactHook<
+  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
+> = (
   params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
-) => FetcherValue<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+) => FetcherValue<
+  StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>,
+  FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]>
+>;
 
 export type FragnoReactMutator<
-  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+  T extends FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    string,
+    StandardSchemaV1,
+    StandardSchemaV1,
+    string
+  >,
 > = () => {
   mutate: ({
     body,
@@ -27,14 +39,14 @@ export type FragnoReactMutator<
     };
   }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
   loading?: boolean | undefined;
-  error?: Error | undefined;
+  error?: FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined;
   data?: StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined;
 };
 
 // Helper function to create a React hook from a GET hook
-function createReactHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
-  hook: T,
-): FragnoReactHook<T> {
+function createReactHook<
+  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
+>(hook: T): FragnoReactHook<T> {
   return (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
     const paramsObj: {
       pathParams?: Record<string, string | ReadableAtom<string>>;
@@ -62,7 +74,13 @@ function createReactHook<T extends NewFragnoClientHookData<"GET", string, Standa
 
 // Helper function to create a React mutator from a mutator hook
 function createReactMutator<
-  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+  T extends FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    string,
+    StandardSchemaV1,
+    StandardSchemaV1,
+    string
+  >,
 >(hook: T): FragnoReactMutator<T> {
   return () => {
     const store = useMemo(() => hook.mutatorStore, [hook]);
@@ -78,17 +96,23 @@ function createReactMutator<
  */
 // Helper type to transform a single hook/mutator
 type TransformHook<T> =
-  T extends NewFragnoClientHookData<"GET", infer Path, infer O>
-    ? FragnoReactHook<NewFragnoClientHookData<"GET", Path, O>>
-    : T extends FragnoClientMutatorData<infer M, infer Path, infer I, infer O>
-      ? FragnoReactMutator<FragnoClientMutatorData<M, Path, I, O>>
+  T extends NewFragnoClientHookData<"GET", infer Path, infer O, infer E>
+    ? FragnoReactHook<NewFragnoClientHookData<"GET", Path, O, E>>
+    : T extends FragnoClientMutatorData<infer M, infer Path, infer I, infer O, infer E>
+      ? FragnoReactMutator<FragnoClientMutatorData<M, Path, I, O, E>>
       : never;
 
 export function useFragno<
   T extends Record<
     string,
-    | NewFragnoClientHookData<"GET", string, AnyStandardSchema>
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, AnyStandardSchema, AnyStandardSchema>
+    | NewFragnoClientHookData<"GET", string, AnyStandardSchema, string>
+    | FragnoClientMutatorData<
+        NonGetHTTPMethod,
+        string,
+        AnyStandardSchema,
+        AnyStandardSchema,
+        string
+      >
   >,
 >(
   clientObj: T,

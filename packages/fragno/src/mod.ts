@@ -21,7 +21,9 @@ export interface FragnoLibrarySharedConfig<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
 > {
   name: string;
@@ -30,7 +32,7 @@ export interface FragnoLibrarySharedConfig<
 
 export type AnyFragnoLibrarySharedConfig = FragnoLibrarySharedConfig<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly FragnoRouteConfig<HTTPMethod, string, any, any>[]
+  readonly FragnoRouteConfig<HTTPMethod, string, any, any, any, any>[]
 >;
 
 export interface FragnoPublicConfig {
@@ -44,7 +46,7 @@ export interface FragnoPublicClientConfig {
 
 export interface FragnoInstantiatedLibrary<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any>[],
+  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any, any, any>[],
   TServices,
 > {
   config: FragnoLibrarySharedConfig<TRoutes>;
@@ -57,7 +59,9 @@ export function createLibrary<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TServices,
 >(
@@ -77,7 +81,9 @@ export function createLibrary<
         HTTPMethod,
         string,
         StandardSchemaV1 | undefined,
-        StandardSchemaV1 | undefined
+        StandardSchemaV1 | undefined,
+        string,
+        string
       >
     >();
 

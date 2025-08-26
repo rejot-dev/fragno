@@ -11,26 +11,38 @@ import {
   type FragnoClientMutatorData,
   type NewFragnoClientHookData,
 } from "./client";
+import type { FragnoClientApiError } from "./client-error";
 
-export type FragnoVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>> = (
-  params?: ClientHookParams<T["route"]["path"], string | Ref<string>>,
-) => {
+export type FragnoVueHook<
+  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
+> = (params?: ClientHookParams<T["route"]["path"], string | Ref<string>>) => {
   data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
   loading: Ref<boolean>;
-  error: Ref<Error | undefined>;
+  error: Ref<FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
 };
 
 export type FragnoVueMutator<
-  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
-> = (
-  body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-  params?: ClientHookParams<T["route"]["path"], string | Ref<string>>,
-) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+  T extends FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    string,
+    StandardSchemaV1,
+    StandardSchemaV1,
+    string
+  >,
+> = () => {
+  mutate: (args: {
+    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>;
+    params?: ClientHookParams<T["route"]["path"], string | Ref<string>>;
+  }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+  loading: Ref<boolean | undefined>;
+  error: Ref<FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
+  data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
+};
 
 // Helper function to create a Vue composable from a GET hook
 // We want 1 store per hook, so on updates to params, we need to update the store instead of creating a new one.
 // Nanostores only works with atoms (or strings), so we need to convert vue refs to atoms.
-function createVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
+function createVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>>(
   hook: T,
 ): FragnoVueHook<T> {
   return (
@@ -116,45 +128,74 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
 
 // Helper function to create a Vue mutator from a mutator hook
 function createVueMutator<
-  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+  T extends FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    string,
+    StandardSchemaV1,
+    StandardSchemaV1,
+    string
+  >,
 >(hook: T): FragnoVueMutator<T> {
-  return async (
-    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
-    params?: ClientHookParams<T["route"]["path"], string | Ref<string>>,
-  ) => {
-    // Convert Ref<string> to string for the underlying hook
-    const normalizedParams = params
-      ? {
-          pathParams:
-            params && "pathParams" in params && params.pathParams
-              ? (() => {
-                  const entries = Object.entries(params.pathParams);
-                  if (!entries.length) return undefined;
-                  return Object.fromEntries(
-                    entries.map(([key, value]) => [
-                      key,
-                      typeof value === "string" ? value : value.value,
-                    ]),
-                  );
-                })()
-              : undefined,
-          queryParams:
-            params && "queryParams" in params && params.queryParams
-              ? (() => {
-                  const entries = Object.entries(params.queryParams);
-                  if (!entries.length) return undefined;
-                  return Object.fromEntries(
-                    entries.map(([key, value]) => [
-                      key,
-                      typeof value === "string" ? value : value.value,
-                    ]),
-                  );
-                })()
-              : undefined,
-        }
-      : undefined;
+  return () => {
+    const store = useStore(hook.mutatorStore);
 
-    return hook.mutateQuery(body, normalizedParams as ClientHookParams<string, string>);
+    // Create a wrapped mutate function that handles Vue refs
+    const mutate = async (args: {
+      body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>;
+      params?: ClientHookParams<T["route"]["path"], string | Ref<string>>;
+    }) => {
+      const { body, params } = args;
+
+      // Convert Ref<string> to string for the underlying store mutate
+      const normalizedParams = params
+        ? {
+            pathParams:
+              params && "pathParams" in params && params.pathParams
+                ? (() => {
+                    const entries = Object.entries(params.pathParams);
+                    if (!entries.length) return undefined;
+                    return Object.fromEntries(
+                      entries.map(([key, value]) => [
+                        key,
+                        typeof value === "string" ? value : value.value,
+                      ]),
+                    );
+                  })()
+                : undefined,
+            queryParams:
+              params && "queryParams" in params && params.queryParams
+                ? (() => {
+                    const entries = Object.entries(params.queryParams);
+                    if (!entries.length) return undefined;
+                    return Object.fromEntries(
+                      entries.map(([key, value]) => [
+                        key,
+                        typeof value === "string" ? value : value.value,
+                      ]),
+                    );
+                  })()
+                : undefined,
+          }
+        : undefined;
+
+      // Call the store's mutate function with normalized params
+      // Cast is safe because we've transformed Ref values to strings above
+      return store.value.mutate({
+        body,
+        params: normalizedParams as {
+          pathParams?: Record<string, string | ReadableAtom<string>>;
+          queryParams?: Record<string, string | ReadableAtom<string>>;
+        },
+      });
+    };
+
+    // Return the store-like object with Vue reactive refs
+    return {
+      mutate,
+      loading: computed(() => store.value.loading),
+      error: computed(() => store.value.error),
+      data: computed(() => store.value.data),
+    };
   };
 }
 
@@ -166,19 +207,19 @@ function createVueMutator<
  */
 // Helper type to transform a single hook/mutator
 type TransformHook<T> =
-  T extends NewFragnoClientHookData<"GET", string, infer O>
-    ? FragnoVueHook<NewFragnoClientHookData<"GET", string, O>>
-    : T extends FragnoClientMutatorData<infer M, string, infer I, infer O>
-      ? FragnoVueMutator<FragnoClientMutatorData<M, string, I, O>>
+  T extends NewFragnoClientHookData<"GET", string, infer O, infer E>
+    ? FragnoVueHook<NewFragnoClientHookData<"GET", string, O, E>>
+    : T extends FragnoClientMutatorData<infer M, string, infer I, infer O, infer E>
+      ? FragnoVueMutator<FragnoClientMutatorData<M, string, I, O, E>>
       : never;
 
 export function useFragno<
   T extends Record<
     string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>>
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>, string>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, any, any>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, any, any, string>
   >,
 >(
   clientObj: T,

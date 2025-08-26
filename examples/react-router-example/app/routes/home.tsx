@@ -23,7 +23,11 @@ export default function Home() {
   const [newMessageKey, setNewMessageKey] = useState("default");
   const [newMessage, setNewMessage] = useState("Hello World");
 
-  const { data: echoData, loading: echoLoading } = useEcho({
+  const {
+    data: echoData,
+    loading: echoLoading,
+    error: echoError,
+  } = useEcho({
     pathParams: {
       message: messageKey,
     },
@@ -44,6 +48,8 @@ export default function Home() {
     error: echoMutateError,
     data: echoMutateData,
   } = useEchoMutator();
+
+  console.log({ echoMutateError });
 
   const handleSubmitMessage = async () => {
     if (!newMessage.trim() || !newMessageKey.trim()) return;
@@ -90,7 +96,7 @@ export default function Home() {
               type="text"
               value={newMessageKey}
               onChange={(e) => setNewMessageKey(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
               placeholder="Enter a key for the message..."
             />
           </div>
@@ -107,7 +113,7 @@ export default function Home() {
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
               placeholder="Enter the message content..."
             />
           </div>
@@ -115,7 +121,7 @@ export default function Home() {
           <button
             onClick={handleSubmitMessage}
             disabled={echoMutateLoading || !newMessage.trim() || !newMessageKey.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
           >
             {echoMutateLoading ? "Saving..." : "Save Message"}
           </button>
@@ -128,7 +134,7 @@ export default function Home() {
 
           {echoMutateError && (
             <div className="mt-3 rounded-lg bg-red-50 p-3 dark:bg-red-950">
-              <p className="text-sm text-red-700 dark:text-red-300">{`Error: ${echoMutateError.message}`}</p>
+              <p className="text-sm text-red-700 dark:text-red-300">{`Error: ${echoMutateError.message} (code: ${echoMutateError.code})`}</p>
             </div>
           )}
         </div>
@@ -151,7 +157,7 @@ export default function Home() {
               type="text"
               value={messageKey}
               onChange={(e) => setMessageKey(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
               placeholder="Enter a message key to read..."
             />
             <div className="mt-2 flex items-center gap-2">
@@ -174,6 +180,10 @@ export default function Home() {
             </h4>
             {echoLoading ? (
               <p className="text-sm text-gray-600 dark:text-gray-300">Loading…</p>
+            ) : echoError ? (
+              <p className="text-sm text-red-700 dark:text-red-300">
+                Error: {echoError.message} (code: {echoError.code})
+              </p>
             ) : (
               <p className="text-sm text-gray-700 dark:text-gray-200">
                 {echoData === undefined ? "—" : String(echoData)}

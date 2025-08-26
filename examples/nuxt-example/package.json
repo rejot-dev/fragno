@@ -1,5 +1,5 @@
 {
-  "name": "nuxt-app",
+  "name": "@rejot-dev/fragno-nuxt-example",
   "type": "module",
   "private": true,
   "scripts": {

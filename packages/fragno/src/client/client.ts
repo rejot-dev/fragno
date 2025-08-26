@@ -12,6 +12,7 @@ import {
 } from "../api/internal/path";
 import { type ReadableAtom } from "nanostores";
 import { RequestOutputContext } from "../api/request-output-context";
+import { FragnoClientApiError } from "./client-error";
 
 type InferOrUnknown<T> =
   T extends NonNullable<StandardSchemaV1>
@@ -38,17 +39,21 @@ export type ExtractGetRoutes<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
 > = {
   [K in keyof T]: T[K] extends FragnoRouteConfig<
     infer Method,
     infer Path,
     infer Input,
-    infer Output
+    infer Output,
+    infer ErrorCode,
+    infer QueryParams
   >
     ? Method extends "GET"
-      ? FragnoRouteConfig<Method, Path, Input, Output>
+      ? FragnoRouteConfig<Method, Path, Input, Output, ErrorCode, QueryParams>
       : never
     : never;
 }[number][];
@@ -61,14 +66,18 @@ export type ExtractGetRoutePaths<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
 > = {
   [K in keyof T]: T[K] extends FragnoRouteConfig<
     infer Method,
     infer Path,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >
     ? Method extends "GET"
       ? Path
@@ -81,14 +90,18 @@ export type ExtractNonGetRoutePaths<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
 > = {
   [K in keyof T]: T[K] extends FragnoRouteConfig<
     infer Method,
     infer Path,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >
     ? Method extends NonGetHTTPMethod
       ? Path
@@ -108,7 +121,9 @@ export type ExtractRouteByPath<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TPath extends string,
   TMethod extends HTTPMethod = HTTPMethod,
@@ -117,10 +132,12 @@ export type ExtractRouteByPath<
     infer M,
     TPath,
     infer Input,
-    infer Output
+    infer Output,
+    infer ErrorCode,
+    infer QueryParams
   >
     ? M extends TMethod
-      ? FragnoRouteConfig<M, TPath, Input, Output>
+      ? FragnoRouteConfig<M, TPath, Input, Output, ErrorCode, QueryParams>
       : never
     : never;
 }[number];
@@ -157,7 +174,9 @@ export type IsValidGetRoutePath<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TPath extends string,
 > = TPath extends ExtractGetRoutePaths<TRoutes> ? true : false;
@@ -170,7 +189,9 @@ export type ValidateGetRoutePath<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TPath extends string,
 > =
@@ -186,7 +207,9 @@ export type HasGetRoutes<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
 > = ExtractGetRoutePaths<T> extends never ? false : true;
 
@@ -198,14 +221,22 @@ export type GenerateHookTypeForPath<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TPath extends ExtractGetRoutePaths<TRoutes>,
-> = FragnoClientHook<ExtractOutputSchemaForPath<TRoutes, TPath>>;
+> = FragnoClientHook<
+  ExtractOutputSchemaForPath<TRoutes, TPath>,
+  NonNullable<ExtractRouteByPath<TRoutes, TPath>["errorCodes"]>[number]
+>;
 
-export interface FragnoClientHook<TOutputSchema extends StandardSchemaV1 | undefined> {
+export interface FragnoClientHook<
+  TOutputSchema extends StandardSchemaV1 | undefined,
+  TErrorCode extends string,
+> {
   name: string;
-  store: FetcherStore<InferOrUnknown<TOutputSchema>>;
+  store: FetcherStore<InferOrUnknown<TOutputSchema>, FragnoClientApiError<TErrorCode>>;
 }
 
 export type ClientHookParams<TPath extends string, TValueType> =
@@ -229,14 +260,22 @@ export type NewFragnoClientHookData<
   TMethod extends HTTPMethod,
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
 > = {
-  route: FragnoRouteConfig<TMethod, TPath, StandardSchemaV1 | undefined, TOutputSchema>;
+  route: FragnoRouteConfig<
+    TMethod,
+    TPath,
+    StandardSchemaV1 | undefined,
+    TOutputSchema,
+    TErrorCode,
+    string
+  >;
   query(
     params: ClientHookParams<TPath, string>,
   ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
   store(
     params: ClientHookParams<TPath, string | ReadableAtom<string>>,
-  ): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>>;
+  ): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientApiError<TErrorCode>>;
 } & {
   // Phantom field that preserves the specific TOutputSchema type parameter
   // in the structural type. This makes the type covariant, allowing more
@@ -250,8 +289,9 @@ export type FragnoClientMutatorData<
   TPath extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
 > = {
-  route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema>;
+  route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode, string>;
   mutateQuery(
     body: StandardSchemaV1.InferInput<TInputSchema>,
     params: ClientHookParams<TPath, string | ReadableAtom<string>>,
@@ -259,6 +299,8 @@ export type FragnoClientMutatorData<
   mutatorStore: MutatorStore<
     {
       body: StandardSchemaV1.InferInput<TInputSchema>;
+      // TODO(Wilco): Fix this, currently path params aren't typed
+
       // params: ClientHookParams<TPath, string | ReadableAtom<string>>;
       // params: {
       //   pathParams: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
@@ -269,7 +311,8 @@ export type FragnoClientMutatorData<
         queryParams?: Record<string, string | ReadableAtom<string>>;
       };
     },
-    StandardSchemaV1.InferOutput<TOutputSchema>
+    StandardSchemaV1.InferOutput<TOutputSchema>,
+    FragnoClientApiError<TErrorCode>
   >;
 } & {
   // readonly _method?: TMethod;
@@ -279,7 +322,7 @@ export type FragnoClientMutatorData<
 };
 
 export type ExtractOutputSchemaFromHook<T> =
-  T extends FragnoClientHook<infer OutputSchema> ? OutputSchema : never;
+  T extends FragnoClientHook<infer OutputSchema, infer _ErrorCode> ? OutputSchema : never;
 
 export function buildUrl<TPath extends string>(
   config: {
@@ -319,11 +362,12 @@ export function createRouteQueryHook<
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
 >(
   publicConfig: FragnoPublicClientConfig,
   libraryConfig: { mountRoute?: string; name: string },
-  route: FragnoRouteConfig<"GET", TPath, TInputSchema, TOutputSchema>,
-): NewFragnoClientHookData<"GET", TPath, TOutputSchema> {
+  route: FragnoRouteConfig<"GET", TPath, TInputSchema, TOutputSchema, TErrorCode, string>,
+): NewFragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode> {
   if (route.method !== "GET") {
     throw new Error(
       `Only GET routes are supported for hooks. Route '${route.path}' is a ${route.method} route.`,
@@ -343,7 +387,6 @@ export function createRouteQueryHook<
     pathParams?: Record<string, string | ReadableAtom<string>>;
     queryParams?: Record<string, string | ReadableAtom<string>>;
   }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> {
-    console.log("callServerSideHandler", params);
     const { pathParams, queryParams } = params ?? {};
 
     const normalizedPathParams = Object.fromEntries(
@@ -362,7 +405,7 @@ export function createRouteQueryHook<
 
     const searchParams = new URLSearchParams(normalizedQueryParams);
 
-    return route.handler(
+    const result = await route.handler(
       RequestInputContext.fromSSRContext({
         method: route.method,
         path: route.path,
@@ -372,6 +415,8 @@ export function createRouteQueryHook<
       }),
       new RequestOutputContext(route.outputSchema),
     );
+
+    return result.json();
   }
 
   return {
@@ -387,30 +432,37 @@ export function createRouteQueryHook<
         ...Object.values(queryParams ?? {}),
       ];
 
-      const store = createFetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>>(
-        [route.path, ...deps],
-        {
-          fetcher: async () => {
-            if (typeof window === "undefined") {
-              // TODO(Wilco): Handle server-side rendering.
-              return await callServerSideHandler({ pathParams, queryParams });
+      const store = createFetcherStore<
+        StandardSchemaV1.InferOutput<TOutputSchema>,
+        FragnoClientApiError<TErrorCode>
+      >([route.path, ...deps], {
+        fetcher: async () => {
+          if (typeof window === "undefined") {
+            // TODO(Wilco): Handle server-side rendering.
+            return await callServerSideHandler({ pathParams, queryParams });
+          }
+
+          const url = buildUrl(
+            { baseUrl, mountRoute, path: route.path },
+            { pathParams, queryParams },
+          );
+
+          const response = await fetch(url);
+          if (!response.ok) {
+            const fragnoClientError = await FragnoClientApiError.fromResponse<TErrorCode>(response);
+            if (fragnoClientError) {
+              throw fragnoClientError;
             }
 
-            const url = buildUrl(
-              { baseUrl, mountRoute, path: route.path },
-              { pathParams, queryParams },
+            throw new Error(
+              `HTTP ${response.status}: ${response.statusText}. Error in unexpected format.`,
             );
-
-            const response = await fetch(url);
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            return response.json();
-          },
-
-          dedupeTime: 0,
+          }
+          return response.json();
         },
-      );
+
+        dedupeTime: 0,
+      });
 
       return store;
     },
@@ -429,7 +481,14 @@ export function createRouteQueryHook<
       const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const fragnoClientError = await FragnoClientApiError.fromResponse<TErrorCode>(response);
+        if (fragnoClientError) {
+          throw fragnoClientError;
+        }
+
+        throw new Error(
+          `HTTP ${response.status}: ${response.statusText}. Error in unexpected format.`,
+        );
       }
 
       const data: unknown = await response.json();
@@ -441,18 +500,24 @@ export function createRouteQueryHook<
 // Type guard to check if a hook is a GET hook
 export function isGetHook(
   hook:
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
-): hook is NewFragnoClientHookData<"GET", string, StandardSchemaV1> {
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1, string>,
+): hook is NewFragnoClientHookData<"GET", string, StandardSchemaV1, string> {
   return hook.route.method === "GET" && "store" in hook && "query" in hook;
 }
 
 // Type guard to check if a hook is a mutator
 export function isMutatorHook(
   hook:
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1>
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
-): hook is FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1> {
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1, string>,
+): hook is FragnoClientMutatorData<
+  NonGetHTTPMethod,
+  string,
+  StandardSchemaV1,
+  StandardSchemaV1,
+  string
+> {
   return hook.route.method !== "GET" && "mutateQuery" in hook && "mutatorStore" in hook;
 }
 
@@ -465,7 +530,9 @@ export function createClientBuilder<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
 >(
@@ -477,7 +544,8 @@ export function createClientBuilder<
   ) => NewFragnoClientHookData<
     "GET",
     TPath,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
   >;
 
   createMutator: <TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
@@ -487,7 +555,8 @@ export function createClientBuilder<
     NonGetHTTPMethod,
     TPath,
     NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"]>,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
   >;
 } {
   return {
@@ -502,7 +571,9 @@ export function createLibraryHook<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
   TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>,
@@ -511,10 +582,23 @@ export function createLibraryHook<
   publicConfig: FragnoPublicClientConfig,
   libraryConfig: TLibraryConfig,
   path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
-): NewFragnoClientHookData<"GET", TPath, NonNullable<TRoute["outputSchema"]>> {
+): NewFragnoClientHookData<
+  "GET",
+  TPath,
+  NonNullable<TRoute["outputSchema"]>,
+  NonNullable<TRoute["errorCodes"]>[number]
+> {
   const route = libraryConfig.routes.find(
-    (r): r is FragnoRouteConfig<"GET", TPath, StandardSchemaV1 | undefined, StandardSchemaV1> =>
-      r.path === path && r.method === "GET" && r.outputSchema !== undefined,
+    (
+      r,
+    ): r is FragnoRouteConfig<
+      "GET",
+      TPath,
+      StandardSchemaV1 | undefined,
+      StandardSchemaV1,
+      string,
+      string
+    > => r.path === path && r.method === "GET" && r.outputSchema !== undefined,
   );
 
   if (!route) {
@@ -529,7 +613,9 @@ export function createLibraryMutator<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
+    StandardSchemaV1 | undefined,
+    string,
+    string
   >[],
   TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
   TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>,
@@ -544,7 +630,8 @@ export function createLibraryMutator<
   NonGetHTTPMethod,
   TPath,
   NonNullable<TRoute["inputSchema"]>,
-  NonNullable<TRoute["outputSchema"]>
+  NonNullable<TRoute["outputSchema"]>,
+  NonNullable<TRoute["errorCodes"]>[number]
 > {
   const route = libraryConfig.routes.find(
     (
@@ -553,7 +640,9 @@ export function createLibraryMutator<
       TMethod,
       TPath,
       NonNullable<TRoute["inputSchema"]>,
-      NonNullable<TRoute["outputSchema"]>
+      NonNullable<TRoute["outputSchema"]>,
+      string,
+      string
     > =>
       r.path === path &&
       r.method === method &&
@@ -574,11 +663,19 @@ export function createRouteQueryMutator<
   TPath extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
 >(
   publicConfig: FragnoPublicClientConfig,
   libraryConfig: { mountRoute?: string; name: string },
-  route: FragnoRouteConfig<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema>,
-): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema> {
+  route: FragnoRouteConfig<
+    NonGetHTTPMethod,
+    TPath,
+    TInputSchema,
+    TOutputSchema,
+    TErrorCode,
+    string
+  >,
+): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
   const method = route.method;
 
   const baseUrl = publicConfig.baseUrl ?? "";
@@ -601,7 +698,14 @@ export function createRouteQueryMutator<
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const fragnoClientError = await FragnoClientApiError.fromResponse<TErrorCode>(response);
+      if (fragnoClientError) {
+        throw fragnoClientError;
+      }
+
+      throw new Error(
+        `HTTP ${response.status}: ${response.statusText}. Error in unexpected format.`,
+      );
     }
 
     return response.json();
@@ -615,7 +719,8 @@ export function createRouteQueryMutator<
         queryParams?: Record<string, string | ReadableAtom<string>>;
       };
     },
-    StandardSchemaV1.InferOutput<TOutputSchema>
+    StandardSchemaV1.InferOutput<TOutputSchema>,
+    FragnoClientApiError<TErrorCode>
   >(async ({ data, revalidate: _revalidate, getCacheUpdater: _getCacheUpdater }) => {
     if (typeof window === "undefined") {
       // TODO(Wilco): Handle server-side rendering.

@@ -78,7 +78,9 @@ const _emptyRoutes = [] as const satisfies readonly FragnoRouteConfig<
   HTTPMethod,
   string,
   StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined
+  StandardSchemaV1 | undefined,
+  string,
+  string
 >[];
 
 // Routes with no GET methods
@@ -97,7 +99,9 @@ const _noGetRoutes = [
   HTTPMethod,
   string,
   StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined
+  StandardSchemaV1 | undefined,
+  string,
+  string
 >[];
 
 test("ExtractGetRoutes type tests", () => {
@@ -196,7 +200,8 @@ test("GenerateHookTypeForPath type tests", () => {
           id: z.ZodNumber;
           name: z.ZodString;
         }>
-      >
+      >,
+      string
     >
   >();
 
@@ -206,16 +211,17 @@ test("GenerateHookTypeForPath type tests", () => {
       z.ZodObject<{
         id: z.ZodNumber;
         name: z.ZodString;
-      }>
+      }>,
+      string
     >
   >();
 
   // Should generate hook with undefined schema for routes without output schema
   type RootHook = GenerateHookTypeForPath<typeof _testRoutes, "/">;
-  expectTypeOf<RootHook>().toExtend<FragnoClientHook<undefined>>();
+  expectTypeOf<RootHook>().toExtend<FragnoClientHook<undefined, string>>();
 
   type StaticHook = GenerateHookTypeForPath<typeof _testRoutes, "/static/**:path">;
-  expectTypeOf<StaticHook>().toMatchTypeOf<FragnoClientHook<undefined>>();
+  expectTypeOf<StaticHook>().toMatchTypeOf<FragnoClientHook<undefined, string>>();
 });
 
 test("ValidateGetRoutePath type tests", () => {
@@ -503,7 +509,9 @@ describe("ExtractRouteByPath", () => {
           id: z.ZodNumber;
           name: z.ZodString;
           email: z.ZodString;
-        }>
+        }>,
+        string,
+        string
       >
     >();
   });

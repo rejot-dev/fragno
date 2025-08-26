@@ -2,10 +2,22 @@
   "files": [],
   "references": [
     {
+      "path": "packages/chatno"
+    },
+    {
+      "path": "packages/example-fragment"
+    },
+    {
       "path": "packages/fragno"
     },
     {
-      "path": "packages/chatno"
+      "path": "examples/astro-example"
+    },
+    {
+      "path": "examples/nextjs-example"
+    },
+    {
+      "path": "examples/nuxt-example"
     },
     {
       "path": "examples/react-router-example"

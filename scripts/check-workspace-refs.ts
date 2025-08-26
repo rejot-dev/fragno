@@ -11,7 +11,11 @@ import {
   type WorkspacePackage,
 } from "./workspace-utils";
 
-function updateTsConfig(tsConfigPath: string, missingRefs: string[], packages: WorkspacePackage[]) {
+export function updateTsConfig(
+  tsConfigPath: string,
+  missingRefs: string[],
+  packages: WorkspacePackage[],
+) {
   const tsConfig = JSON.parse(readFileSync(tsConfigPath, "utf-8"));
 
   if (!tsConfig.references) {
@@ -67,7 +71,7 @@ async function main() {
 
     process.exit(hasErrors || hasUpdates ? 1 : 0);
   } catch (error) {
-    console.error(`Fatal error: ${error}`);
+    console.error(`Fatal error: `, error);
     process.exit(1);
   }
 }

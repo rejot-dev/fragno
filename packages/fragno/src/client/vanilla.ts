@@ -10,7 +10,7 @@ import {
 } from "./client";
 
 export type FragnoVanillaListeners<
-  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>,
+  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
 > = (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
   listen: (callback: Parameters<ReturnType<T["store"]>["listen"]>[0]) => void;
   subscribe: (callback: Parameters<ReturnType<T["store"]>["subscribe"]>[0]) => void;
@@ -18,9 +18,9 @@ export type FragnoVanillaListeners<
   refetch: () => void;
 };
 
-function createVanillaListeners<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1>>(
-  hook: T,
-): FragnoVanillaListeners<T> {
+function createVanillaListeners<
+  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
+>(hook: T): FragnoVanillaListeners<T> {
   return (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
     const store = hook.store(params ?? {});
     return {
@@ -41,14 +41,27 @@ function createVanillaListeners<T extends NewFragnoClientHookData<"GET", string,
 }
 
 export type FragnoVanillaMutator<
-  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+  T extends FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    string,
+    StandardSchemaV1,
+    StandardSchemaV1,
+    string
+  >,
 > = (
   body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>,
   params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
 ) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
 
+// TODO(Wilco): This should also return a store with proper error handling
 function createVanillaMutator<
-  T extends FragnoClientMutatorData<NonGetHTTPMethod, string, StandardSchemaV1, StandardSchemaV1>,
+  T extends FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    string,
+    StandardSchemaV1,
+    StandardSchemaV1,
+    string
+  >,
 >(hook: T): FragnoVanillaMutator<T> {
   return (body, params) => {
     return hook.mutateQuery(body, params ?? {});
@@ -59,16 +72,16 @@ export function useVanilla<
   T extends Record<
     string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>>
+    | NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>, string>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, any, any>
+    | FragnoClientMutatorData<NonGetHTTPMethod, string, any, any, string>
   >,
 >(
   clientObj: T,
 ): {
-  [K in keyof T]: T[K] extends NewFragnoClientHookData<"GET", string, infer _O>
+  [K in keyof T]: T[K] extends NewFragnoClientHookData<"GET", string, infer _O, infer _E>
     ? FragnoVanillaListeners<T[K]>
-    : T[K] extends FragnoClientMutatorData<NonGetHTTPMethod, string, infer _I, infer _O>
+    : T[K] extends FragnoClientMutatorData<NonGetHTTPMethod, string, infer _I, infer _O, infer _E>
       ? FragnoVanillaMutator<T[K]>
       : never;
 } {

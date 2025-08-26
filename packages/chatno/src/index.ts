@@ -7,7 +7,9 @@ import { addRoute } from "@rejot-dev/fragno/api";
 import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
-const serverSideMessagesStores: Record<string, string> = {};
+const serverSideMessagesStores: Record<string, string> = {
+  default: "Hello, world!",
+};
 
 const libraryConfig = {
   name: "chatno",
@@ -44,15 +46,21 @@ const libraryConfig = {
       method: "GET",
       path: "/echo/:message",
       outputSchema: z.string(),
-      handler: async ({ pathParams, searchParams }, { json }) => {
+      errorCodes: ["MESSAGE_NOT_FOUND"],
+      queryParameters: ["capital"],
+      handler: async ({ pathParams, searchParams }, { json, error }) => {
         const messageKey = pathParams.message;
         const shouldCapitalize = searchParams.get("capital") === "true";
 
         console.log("serverSideMessagesStores", serverSideMessagesStores);
 
         if (!(messageKey in serverSideMessagesStores)) {
-          return json(
-            shouldCapitalize ? `(message not found)`.toUpperCase() : `(message not found)`,
+          return error(
+            {
+              message: "Message not found",
+              code: "MESSAGE_NOT_FOUND",
+            },
+            404,
           );
         }
 
@@ -75,12 +83,23 @@ const libraryConfig = {
         previous: z.string().optional(),
         message: z.string(),
       }),
-      handler: async ({ pathParams, input }, { json }) => {
+      errorCodes: ["MESSAGE_CANNOT_BE_DIGITS_ONLY"],
+      handler: async ({ pathParams, input }, { json, error }) => {
         const { message } = await input.valid();
         const messageKey = pathParams.messageKey;
 
         const previous = serverSideMessagesStores[messageKey];
         serverSideMessagesStores[messageKey] = message;
+
+        if (/^\d+$/.test(message)) {
+          return error(
+            {
+              message: "Message cannot be digits only",
+              code: "MESSAGE_CANNOT_BE_DIGITS_ONLY",
+            },
+            400,
+          );
+        }
 
         console.log("PUT serverSideMessagesStores", serverSideMessagesStores);
 
