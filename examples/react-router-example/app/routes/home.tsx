@@ -182,7 +182,7 @@ export default function Home() {
               <p className="text-sm text-gray-600 dark:text-gray-300">Loading…</p>
             ) : echoError ? (
               <p className="text-sm text-red-700 dark:text-red-300">
-                Error: {echoError.message} (code: {echoError.code})
+                Error: {echoError.message} (code: {echoError.code}) (typeof data: {typeof echoData})
               </p>
             ) : (
               <p className="text-sm text-gray-700 dark:text-gray-200">

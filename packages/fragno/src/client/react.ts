@@ -5,7 +5,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import type { NonGetHTTPMethod } from "../api/api";
 import { isGetHook, isMutatorHook } from "./client";
-import type { FragnoClientApiError } from "./client-error";
+import type { FragnoClientError } from "./client-error";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyStandardSchema = StandardSchemaV1<any, any>;
@@ -16,7 +16,7 @@ export type FragnoReactHook<
   params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
 ) => FetcherValue<
   StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>,
-  FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]>
+  FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]>
 >;
 
 export type FragnoReactMutator<
@@ -39,7 +39,7 @@ export type FragnoReactMutator<
     };
   }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
   loading?: boolean | undefined;
-  error?: FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined;
+  error?: FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined;
   data?: StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined;
 };
 
@@ -166,7 +166,6 @@ export function useStore<SomeStore extends Store>(
   const { keys, deps = [store, keys] } = options;
 
   const subscribe = useCallback((onChange: () => void) => {
-    // console.log("subscribe#onChange", { keys, deps });
     const emitChange = (value: StoreValue<SomeStore>) => {
       if (snapshotRef.current === value) return;
       snapshotRef.current = value;

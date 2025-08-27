@@ -11,14 +11,14 @@ import {
   type FragnoClientMutatorData,
   type NewFragnoClientHookData,
 } from "./client";
-import type { FragnoClientApiError } from "./client-error";
+import type { FragnoClientError } from "./client-error";
 
 export type FragnoVueHook<
   T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
 > = (params?: ClientHookParams<T["route"]["path"], string | Ref<string>>) => {
   data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
   loading: Ref<boolean>;
-  error: Ref<FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
+  error: Ref<FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
 };
 
 export type FragnoVueMutator<
@@ -35,7 +35,7 @@ export type FragnoVueMutator<
     params?: ClientHookParams<T["route"]["path"], string | Ref<string>>;
   }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
   loading: Ref<boolean | undefined>;
-  error: Ref<FragnoClientApiError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
+  error: Ref<FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
   data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
 };
 

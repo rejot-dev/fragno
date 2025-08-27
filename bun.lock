@@ -2,11 +2,9 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "dependencies": {
-        "zod": "^4.0.17",
-      },
       "devDependencies": {
         "@eslint/js": "^9.31.0",
+        "@nanostores/query": "^0.3.4",
         "@types/eslint-config-prettier": "^6.11.3",
         "@types/eslint-plugin-tailwindcss": "^3.17.0",
         "eslint": "^9.31.0",
@@ -15,6 +13,7 @@
         "eslint-plugin-react-refresh": "^0.4.20",
         "eslint-plugin-tailwindcss": "^3.18.0",
         "lefthook": "^1.12.2",
+        "nanostores": "^1.0.1",
         "prettier": "3.6.2",
         "prettier-plugin-astro": "^0.14.1",
         "prettier-plugin-embed": "^0.5.0",
