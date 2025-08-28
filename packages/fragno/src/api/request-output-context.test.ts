@@ -1,7 +1,7 @@
 import { test, expect, describe, vi } from "vitest";
 import { RequestOutputContext } from "./request-output-context";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { StreamingApi } from "./internal/response-stream";
+import { ResponseStream } from "./internal/response-stream";
 
 // Mock schema implementations for testing
 const createMockSchema = (shouldPass: boolean, returnValue?: unknown): StandardSchemaV1 => ({
@@ -150,6 +150,13 @@ describe("RequestOutputContext", () => {
       expect(body).toEqual(data);
     });
 
+    test("Should have JSON content type by default", async () => {
+      const ctx = new RequestOutputContext();
+      const data = { message: "test" };
+      const response = ctx.json(data);
+      expect(response.headers.get("content-type")).toBe("application/json");
+    });
+
     test("Should return JSON response with custom headers via third parameter", async () => {
       const ctx = new RequestOutputContext();
       const data = { message: "test" };
@@ -275,41 +282,24 @@ describe("RequestOutputContext", () => {
   describe("stream() method", () => {
     test("Should return streaming response", () => {
       const ctx = new RequestOutputContext();
-      const response = ctx.stream(() => {});
+      const response = ctx.jsonStream(() => {});
 
       expect(response).toBeInstanceOf(Response);
       expect(response.body).toBeInstanceOf(ReadableStream);
     });
 
-    test("Should execute callback with StreamingApi", async () => {
+    test("Should have chunked transfer encoding by default", async () => {
       const ctx = new RequestOutputContext();
-      const mockCallback = vi.fn();
-
-      ctx.stream(mockCallback);
-
-      // Wait for async execution
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(mockCallback).toHaveBeenCalledTimes(1);
-      expect(mockCallback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          write: expect.any(Function),
-          writeln: expect.any(Function),
-          close: expect.any(Function),
-          sleep: expect.any(Function),
-          pipe: expect.any(Function),
-          onAbort: expect.any(Function),
-          abort: expect.any(Function),
-        }),
-      );
+      const response = ctx.jsonStream(() => {});
+      expect(response.headers.get("transfer-encoding")).toBe("chunked");
     });
 
     test("Should handle callback that writes data", async () => {
       const ctx = new RequestOutputContext();
       const testData = "Hello, World!";
 
-      const response = ctx.stream(async (stream) => {
-        await stream.write(testData);
+      const response = ctx.jsonStream(async (stream) => {
+        await stream.writeRaw(testData);
       });
 
       const reader = response.body!.getReader();
@@ -325,9 +315,9 @@ describe("RequestOutputContext", () => {
     test("Should handle callback that writes multiple chunks", async () => {
       const ctx = new RequestOutputContext();
 
-      const response = ctx.stream(async (stream) => {
-        await stream.write("Hello, ");
-        await stream.write("World!");
+      const response = ctx.jsonStream(async (stream) => {
+        await stream.writeRaw("Hello, ");
+        await stream.writeRaw("World!");
       });
 
       const reader = response.body!.getReader();
@@ -352,9 +342,9 @@ describe("RequestOutputContext", () => {
     test("Should handle callback that uses writeln", async () => {
       const ctx = new RequestOutputContext();
 
-      const response = ctx.stream(async (stream) => {
-        await stream.writeln("Line 1");
-        await stream.writeln("Line 2");
+      const response = ctx.jsonStream(async (stream) => {
+        await stream.writeRaw("Line 1\n");
+        await stream.writeRaw("Line 2\n");
       });
 
       const reader = response.body!.getReader();
@@ -380,12 +370,12 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const _response = ctx.stream(() => {
+      const _response = ctx.jsonStream(() => {
         throw new Error("Test error");
       });
 
       // Wait for async execution
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(new Error("Test error"));
 
@@ -397,29 +387,27 @@ describe("RequestOutputContext", () => {
       const onErrorMock = vi.fn();
       const testError = new Error("Test error");
 
-      ctx.stream(() => {
-        throw testError;
-      }, onErrorMock);
+      ctx.jsonStream(
+        () => {
+          throw testError;
+        },
+        {
+          onError: onErrorMock,
+        },
+      );
 
       // Wait for async execution
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(onErrorMock).toHaveBeenCalledTimes(1);
-      expect(onErrorMock).toHaveBeenCalledWith(
-        testError,
-        expect.objectContaining({
-          write: expect.any(Function),
-          writeln: expect.any(Function),
-          close: expect.any(Function),
-        }),
-      );
+      expect(onErrorMock).toHaveBeenCalledWith(testError, expect.any(ResponseStream));
     });
 
     test("Should handle undefined error (canceled stream)", async () => {
       const ctx = new RequestOutputContext();
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      ctx.stream(() => {
+      ctx.jsonStream(() => {
         throw undefined;
       });
 
@@ -436,7 +424,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      ctx.stream(() => {
+      ctx.jsonStream(() => {
         throw "String error";
       });
 
@@ -452,9 +440,9 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const testData = "Async data";
 
-      const response = ctx.stream(async (stream) => {
+      const response = ctx.jsonStream(async (stream) => {
         await stream.sleep(1);
-        await stream.write(testData);
+        await stream.writeRaw(testData);
       });
 
       const reader = response.body!.getReader();
@@ -469,9 +457,9 @@ describe("RequestOutputContext", () => {
 
     test("Should handle stream abort", async () => {
       const ctx = new RequestOutputContext();
-      let streamRef: StreamingApi | undefined;
+      let streamRef: ResponseStream<unknown> | undefined;
 
-      const _response = ctx.stream((stream) => {
+      const _response = ctx.jsonStream((stream) => {
         streamRef = stream;
         stream.onAbort(() => {
           // Abort handler
@@ -490,9 +478,9 @@ describe("RequestOutputContext", () => {
 
     test("Should close stream after callback execution", async () => {
       const ctx = new RequestOutputContext();
-      let streamRef: StreamingApi | undefined;
+      let streamRef: ResponseStream<unknown> | undefined;
 
-      ctx.stream((stream) => {
+      ctx.jsonStream((stream) => {
         streamRef = stream;
       });
 
@@ -506,8 +494,8 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const testData = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
 
-      const response = ctx.stream(async (stream) => {
-        await stream.write(testData);
+      const response = ctx.jsonStream(async (stream) => {
+        await stream.writeRaw(testData);
       });
 
       const reader = response.body!.getReader();
@@ -516,6 +504,15 @@ describe("RequestOutputContext", () => {
       expect(value).toEqual(testData);
 
       reader.releaseLock();
+    });
+
+    test("Should be able to override the content type", async () => {
+      const ctx = new RequestOutputContext();
+      const response = ctx.jsonStream(() => {}, {
+        headers: { "content-type": "application/octet-stream" },
+      });
+
+      expect(response.headers.get("content-type")).toBe("application/octet-stream");
     });
   });
 
@@ -618,7 +615,7 @@ describe("RequestOutputContext", () => {
     test("Should handle stream with immediate close", async () => {
       const ctx = new RequestOutputContext();
 
-      const response = ctx.stream((stream) => {
+      const response = ctx.jsonStream((stream) => {
         stream.close();
       });
 

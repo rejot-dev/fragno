@@ -23,7 +23,14 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  *   }
  *   // ... Your route handling
  * });
+ * @example
+ * import express from "express";
+ * import { toNodeHandler } from "@fragno-dev/node";
  *
+ * const app = express();
+ * app.all("/api/my-library/{*any}", toNodeHandler(library.handler));
+ *
+ * app.listen(8080);
  */
 export function toNodeHandler(handler: (req: Request) => Promise<Response>): RequestListener {
   return createRequestListener(handler);

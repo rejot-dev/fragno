@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ContentlessStatusCode, StatusCode } from "../http/http-status";
-import { StreamingApi } from "./internal/response-stream";
+import { ResponseStream } from "./internal/response-stream";
+import type { InferOr, InferOrUnknown } from "../util/types-util";
 
 export type ResponseData = string | ArrayBuffer | ReadableStream | Uint8Array<ArrayBuffer>;
 
@@ -10,12 +11,33 @@ interface ResponseInit<T extends StatusCode = StatusCode> {
   statusText?: string;
 }
 
-type InferOrUnknown<T> =
-  T extends NonNullable<StandardSchemaV1>
-    ? StandardSchemaV1.InferOutput<T>
-    : T extends undefined
-      ? unknown
-      : unknown;
+/**
+ * Utility function to merge headers from multiple sources.
+ * Later headers override earlier ones.
+ */
+function mergeHeaders(...headerSources: (HeadersInit | undefined)[]): HeadersInit | undefined {
+  const mergedHeaders = new Headers();
+
+  for (const headerSource of headerSources) {
+    if (!headerSource) continue;
+
+    if (headerSource instanceof Headers) {
+      for (const [key, value] of headerSource.entries()) {
+        mergedHeaders.set(key, value);
+      }
+    } else if (Array.isArray(headerSource)) {
+      for (const [key, value] of headerSource) {
+        mergedHeaders.set(key, value);
+      }
+    } else {
+      for (const [key, value] of Object.entries(headerSource)) {
+        mergedHeaders.set(key, value);
+      }
+    }
+  }
+
+  return mergedHeaders;
+}
 
 export class RequestOutputContext<
   TOutputSchema extends StandardSchemaV1 | undefined = undefined,
@@ -46,9 +68,10 @@ export class RequestOutputContext<
       return Response.json({ error: message, code }, { status: initOrStatus, headers });
     }
 
+    const mergedHeaders = mergeHeaders(initOrStatus.headers, headers);
     return Response.json(
       { error: message, code },
-      { status: initOrStatus.status, headers: initOrStatus.headers },
+      { status: initOrStatus.status, headers: mergedHeaders },
     );
   }
 
@@ -56,23 +79,28 @@ export class RequestOutputContext<
     initOrStatus?: ResponseInit<ContentlessStatusCode> | ContentlessStatusCode,
     headers?: HeadersInit,
   ): Response {
+    const defaultHeaders = {};
+
     if (typeof initOrStatus === "undefined") {
+      const mergedHeaders = mergeHeaders(defaultHeaders, headers);
       return Response.json(null, {
         status: 201,
-        headers,
+        headers: mergedHeaders,
       });
     }
 
     if (typeof initOrStatus === "number") {
+      const mergedHeaders = mergeHeaders(defaultHeaders, headers);
       return Response.json(null, {
         status: initOrStatus,
-        headers,
+        headers: mergedHeaders,
       });
     }
 
+    const mergedHeaders = mergeHeaders(defaultHeaders, initOrStatus.headers, headers);
     return Response.json(null, {
       status: initOrStatus.status,
-      headers: initOrStatus.headers,
+      headers: mergedHeaders,
     });
   }
 
@@ -95,28 +123,54 @@ export class RequestOutputContext<
       });
     }
 
-    let mergedHeaders: HeadersInit | undefined;
-    if (initOrStatus.headers && headers) {
-      mergedHeaders = new Headers(initOrStatus.headers);
-      for (const [key, value] of Object.entries(headers)) {
-        mergedHeaders.set(key, value);
-      }
-    } else {
-      mergedHeaders = initOrStatus.headers ?? headers;
-    }
-
+    const mergedHeaders = mergeHeaders(initOrStatus.headers, headers);
     return Response.json(object, {
       status: initOrStatus.status,
       headers: mergedHeaders,
     });
   }
 
-  stream(
-    cb: (stream: StreamingApi) => void | Promise<void>,
-    onError?: (error: Error, stream: StreamingApi) => void | Promise<void>,
+  jsonStream = (
+    cb: (stream: ResponseStream<InferOr<TOutputSchema, never>>) => void | Promise<void>,
+    {
+      onError,
+      headers,
+    }: {
+      onError?: (
+        error: Error,
+        stream: ResponseStream<InferOr<TOutputSchema, never>>,
+      ) => void | Promise<void>;
+      headers?: HeadersInit;
+    } = {},
+  ): Response => {
+    // Note: this is intentionally an arrow function (=>) to keep `this` context.
+    const defaultHeaders = {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "cache-control": "no-cache",
+    };
+
+    return this.#createStreamResponse(cb, {
+      onError,
+      headers: mergeHeaders(defaultHeaders, headers),
+    });
+  };
+
+  /**
+   * Private method to create stream responses, extracting common code.
+   */
+  #createStreamResponse<T>(
+    cb: (stream: ResponseStream<T>) => void | Promise<void>,
+    {
+      onError,
+      headers,
+    }: {
+      onError?: (error: Error, stream: ResponseStream<T>) => void | Promise<void>;
+      headers?: HeadersInit;
+    },
   ): Response {
     const { readable, writable } = new TransformStream();
-    const stream = new StreamingApi(writable, readable);
+    const stream = new ResponseStream(writable, readable);
 
     (async () => {
       try {
@@ -136,6 +190,9 @@ export class RequestOutputContext<
       }
     })();
 
-    return new Response(stream.responseReadable);
+    return new Response(stream.responseReadable, {
+      status: 200,
+      headers,
+    });
   }
 }

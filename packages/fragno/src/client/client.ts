@@ -17,13 +17,7 @@ import {
   type FragnoClientError,
   FragnoClientFetchError,
 } from "./client-error";
-
-type InferOrUnknown<T> =
-  T extends NonNullable<StandardSchemaV1>
-    ? StandardSchemaV1.InferOutput<T>
-    : T extends undefined
-      ? unknown
-      : unknown;
+import type { InferOrUnknown } from "../util/types-util";
 
 const fragnoOwnedCache = new Map<
   string,
