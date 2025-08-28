@@ -11,6 +11,9 @@
       "path": "packages/fragno"
     },
     {
+      "path": "packages/fragno-node"
+    },
+    {
       "path": "examples/astro-example"
     },
     {
