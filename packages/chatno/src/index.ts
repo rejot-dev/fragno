@@ -6,10 +6,37 @@ import {
 import { addRoute } from "@rejot-dev/fragno/api";
 import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
+import fs from "fs";
+
+const USE_FILES = true;
 
 const serverSideMessagesStores: Record<string, string> = {
   default: "Hello, world!",
 };
+
+const inMemoryServices = {
+  setData: async (messageKey: string, message: string) => {
+    serverSideMessagesStores[messageKey] = message;
+  },
+  getData: (messageKey: string) => {
+    return serverSideMessagesStores[messageKey];
+  },
+} as const;
+
+const fileServices = {
+  setData: async (messageKey: string, message: string) => {
+    fs.writeFileSync(`../messages/${messageKey}.txt`, message);
+  },
+  getData: (messageKey: string) => {
+    if (!fs.existsSync(`../messages/${messageKey}.txt`)) {
+      return undefined;
+    }
+    const message = fs.readFileSync(`../messages/${messageKey}.txt`, "utf8");
+    return message;
+  },
+} as const;
+
+const services = USE_FILES ? fileServices : inMemoryServices;
 
 const libraryConfig = {
   name: "chatno",
@@ -52,9 +79,9 @@ const libraryConfig = {
         const messageKey = pathParams.message;
         const shouldCapitalize = searchParams.get("capital") === "true";
 
-        console.log("serverSideMessagesStores", serverSideMessagesStores);
+        const data = services.getData(messageKey);
 
-        if (!(messageKey in serverSideMessagesStores)) {
+        if (!data) {
           return error(
             {
               message: "Message not found",
@@ -64,9 +91,7 @@ const libraryConfig = {
           );
         }
 
-        const text = shouldCapitalize
-          ? serverSideMessagesStores[messageKey].toUpperCase()
-          : serverSideMessagesStores[messageKey];
+        const text = shouldCapitalize ? data.toUpperCase() : data;
 
         return json(text);
       },
@@ -88,8 +113,8 @@ const libraryConfig = {
         const { message } = await input.valid();
         const messageKey = pathParams.messageKey;
 
-        const previous = serverSideMessagesStores[messageKey];
-        serverSideMessagesStores[messageKey] = message;
+        const previous = services.getData(messageKey);
+        services.setData(messageKey, message);
 
         if (/^\d+$/.test(message)) {
           return error(
@@ -101,7 +126,7 @@ const libraryConfig = {
           );
         }
 
-        console.log("PUT serverSideMessagesStores", serverSideMessagesStores);
+        // console.log("PUT serverSideMessagesStores", serverSideMessagesStores);
 
         return json({
           previous,
@@ -149,7 +174,7 @@ export interface ChatnoConfig {
 }
 
 export function createChatno(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig, {});
+  return createLibrary(publicConfig, libraryConfig, services);
 }
 
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {

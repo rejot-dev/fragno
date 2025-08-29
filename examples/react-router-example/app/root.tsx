@@ -6,6 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+import { FragnoHydrator } from "@rejot-dev/fragno";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -33,7 +34,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        {children}
+        <FragnoHydrator>{children}</FragnoHydrator>
         <ScrollRestoration />
         <Scripts />
       </body>
