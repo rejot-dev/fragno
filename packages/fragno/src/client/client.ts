@@ -515,7 +515,7 @@ export function createRouteQueryHook<
           return response.json();
         },
         onErrorRetry: options?.onErrorRetry,
-        dedupeTime: 0,
+        dedupeTime: Infinity,
       });
 
       return store;
@@ -774,7 +774,7 @@ export function createRouteQueryMutator<
     string
   >,
   onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
-    invalidate(route.method, route.path, params),
+    invalidate("GET", route.path, params),
 ): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
   const method = route.method;
 
