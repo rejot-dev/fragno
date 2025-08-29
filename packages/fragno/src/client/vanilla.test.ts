@@ -414,6 +414,11 @@ describe("createVanillaMutator", () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockReset();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearHooksCache();
+  });
+
   test("should create a vanilla mutator for POST route", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
@@ -645,10 +650,12 @@ describe("useFragno", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
+    clearHooksCache();
   });
 
   test("should transform a mixed object of hooks and mutators", async () => {
@@ -783,7 +790,8 @@ describe("error handling", () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.restoreAllMocks();
+    clearHooksCache();
   });
 
   test("should handle GET hook errors gracefully", async () => {

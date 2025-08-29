@@ -1,17 +1,18 @@
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
-import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
-import { RequestInputContext } from "../api/request-input-context";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
-import { getMountRoute } from "../api/internal/route";
+import { type ReadableAtom } from "nanostores";
+import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
 import {
   buildPath,
+  extractPathParams,
   type ExtractPathParams,
   type ExtractPathParamsOrWiden,
   type HasPathParams,
 } from "../api/internal/path";
-import { type ReadableAtom } from "nanostores";
+import { getMountRoute } from "../api/internal/route";
+import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
+import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
 import {
   FragnoClientApiError,
   type FragnoClientError,
@@ -30,11 +31,7 @@ const fragnoOwnedCache = new Map<
   }
 >();
 
-const [
-  createFetcherStore,
-  createMutationStore,
-  { invalidateKeys: _invalidateKeys, revalidateKeys: _revalidateKeys },
-] = nanoquery({
+const [createFetcherStore, createMutationStore, { invalidateKeys }] = nanoquery({
   cache: fragnoOwnedCache,
 });
 
@@ -271,6 +268,15 @@ export type ClientHookParams<TPath extends string, TValueType> =
           queryParams?: Record<string, TValueType>;
         };
 
+export type ResolvedClientHookParams<TPath extends string, TValueType> = TPath extends string
+  ? {
+      pathParams?: Record<string, TValueType>;
+      queryParams?: Record<string, TValueType>;
+    }
+  : {
+      queryParams?: Record<string, TValueType>;
+    };
+
 export type NewFragnoClientHookData<
   TMethod extends HTTPMethod,
   TPath extends string,
@@ -373,6 +379,41 @@ export function buildUrl<TPath extends string>(
   return `${baseUrl}${mountRoute}${builtPath}${search}`;
 }
 
+/**
+ * This method returns an array, which can be passed directly to nanostores.
+ *
+ * The returned array is always: path, pathParams (In order they appear in the path), queryParams (In alphabetical order)
+ * Missing pathParams are replaced with "<missing>".
+ * @param path
+ * @param params
+ * @returns
+ */
+export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
+  method: TMethod,
+  path: TPath,
+  params?: {
+    pathParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | ReadableAtom<string>>;
+  },
+): (string | ReadableAtom<string>)[] {
+  if (!params) {
+    return [method, path];
+  }
+
+  const { pathParams, queryParams } = params;
+
+  const pathParamNames = extractPathParams(path);
+  const pathParamValues = pathParamNames.map((name) => pathParams?.[name] ?? "<missing>");
+
+  const queryParamValues = queryParams
+    ? Object.keys(queryParams)
+        .sort()
+        .map((key) => queryParams[key])
+    : [];
+
+  return [method, path, ...pathParamValues, ...queryParamValues];
+}
+
 export function createRouteQueryHook<
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
@@ -443,15 +484,12 @@ export function createRouteQueryHook<
     }) => {
       const { pathParams, queryParams } = params ?? {};
 
-      const deps: (string | ReadableAtom<string>)[] = [
-        ...Object.values(pathParams ?? {}),
-        ...Object.values(queryParams ?? {}),
-      ];
+      const key = getCacheKey(route.method, route.path, params);
 
       const store = createFetcherStore<
         StandardSchemaV1.InferOutput<TOutputSchema>,
         FragnoClientError<TErrorCode>
-      >([route.method, route.path, ...deps], {
+      >(key, {
         fetcher: async () => {
           if (typeof window === "undefined") {
             // TODO(Wilco): Handle server-side rendering.
@@ -477,7 +515,7 @@ export function createRouteQueryHook<
           return response.json();
         },
         onErrorRetry: options?.onErrorRetry,
-        dedupeTime: 0,
+        dedupeTime: Infinity,
       });
 
       return store;
@@ -554,6 +592,33 @@ export type CreateHookOptions = {
 // Hook Builder (factory style)
 // ============================================================================
 
+function invalidate<TPath extends string>(
+  method: HTTPMethod,
+  path: TPath,
+  params: {
+    pathParams?: ExtractPathParamsOrWiden<TPath, string>;
+    queryParams?: Record<string, string>;
+  },
+) {
+  // Use getCacheKey to generate the cache key prefix for invalidation
+  const prefixArray = getCacheKey(method, path, {
+    pathParams: params?.pathParams,
+    queryParams: params?.queryParams,
+  });
+
+  const prefix = prefixArray.map((k) => (typeof k === "string" ? k : k.get())).join("");
+
+  invalidateKeys((key) => key.startsWith(prefix));
+}
+
+type OnInvalidateFn<TPath extends string> = (
+  invalidateFunction: typeof invalidate,
+  params: {
+    pathParams: ExtractPathParamsOrWiden<TPath, string>;
+    queryParams?: Record<string, string>;
+  },
+) => void;
+
 export function createClientBuilder<
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
@@ -581,6 +646,7 @@ export function createClientBuilder<
   createMutator: <TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
     method: NonGetHTTPMethod,
     path: TPath,
+    onInvalidate?: OnInvalidateFn<TPath>,
   ) => FragnoClientMutatorData<
     NonGetHTTPMethod,
     TPath,
@@ -591,8 +657,8 @@ export function createClientBuilder<
 } {
   return {
     createHook: (path, options) => createLibraryHook(publicConfig, libraryConfig, path, options),
-    createMutator: (method, path) =>
-      createLibraryMutator(publicConfig, libraryConfig, method, path),
+    createMutator: (method, path, onInvalidate) =>
+      createLibraryMutator(publicConfig, libraryConfig, method, path, onInvalidate),
   };
 }
 
@@ -657,6 +723,7 @@ export function createLibraryMutator<
   libraryConfig: TLibraryConfig,
   method: TMethod,
   path: TPath,
+  onInvalidate?: OnInvalidateFn<TPath>,
 ): FragnoClientMutatorData<
   NonGetHTTPMethod,
   TPath,
@@ -687,7 +754,7 @@ export function createLibraryMutator<
     );
   }
 
-  return createRouteQueryMutator(publicConfig, libraryConfig, route);
+  return createRouteQueryMutator(publicConfig, libraryConfig, route, onInvalidate);
 }
 
 export function createRouteQueryMutator<
@@ -706,6 +773,8 @@ export function createRouteQueryMutator<
     TErrorCode,
     string
   >,
+  onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
+    invalidate("GET", route.path, params),
 ): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
   const method = route.method;
 
@@ -750,13 +819,34 @@ export function createRouteQueryMutator<
     },
     StandardSchemaV1.InferOutput<TOutputSchema>,
     FragnoClientError<TErrorCode>
-  >(async ({ data, revalidate: _revalidate, getCacheUpdater: _getCacheUpdater }) => {
+  >(async ({ data }) => {
     if (typeof window === "undefined") {
       // TODO(Wilco): Handle server-side rendering.
     }
 
     const { body, params } = data;
-    return mutateQuery(body, params);
+    const result = await mutateQuery(body, params);
+    const resolvedParams: {
+      pathParams: ExtractPathParamsOrWiden<TPath, string>;
+      queryParams?: Record<string, string>;
+    } = {
+      pathParams: Object.fromEntries(
+        Object.entries(params.pathParams ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.get(),
+        ]),
+      ) as ExtractPathParamsOrWiden<TPath, string>,
+      queryParams: Object.fromEntries(
+        Object.entries(params.queryParams ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.get(),
+        ]),
+      ),
+    };
+
+    onInvalidate(invalidate, resolvedParams);
+
+    return result;
   });
 
   return {

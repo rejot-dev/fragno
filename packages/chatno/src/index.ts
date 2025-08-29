@@ -145,7 +145,9 @@ export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClie
     useAiConfig: b.createHook("/ai-config"),
     useThing: b.createHook("/thing/**:path"),
     useEcho: b.createHook("/echo/:message"),
-    useEchoMutator: b.createMutator("PUT", "/echo/:messageKey"),
+    useEchoMutator: b.createMutator("PUT", "/echo/:messageKey", (invalidate, { pathParams }) => {
+      invalidate("GET", "/echo/:message", { pathParams: { message: pathParams.messageKey } });
+    }),
   };
 
   return client;
