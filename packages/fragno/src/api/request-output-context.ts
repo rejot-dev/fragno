@@ -150,25 +150,6 @@ export class RequestOutputContext<
       "cache-control": "no-cache",
     };
 
-    return this.#createStreamResponse(cb, {
-      onError,
-      headers: mergeHeaders(defaultHeaders, headers),
-    });
-  };
-
-  /**
-   * Private method to create stream responses, extracting common code.
-   */
-  #createStreamResponse<T>(
-    cb: (stream: ResponseStream<T>) => void | Promise<void>,
-    {
-      onError,
-      headers,
-    }: {
-      onError?: (error: Error, stream: ResponseStream<T>) => void | Promise<void>;
-      headers?: HeadersInit;
-    },
-  ): Response {
     const { readable, writable } = new TransformStream();
     const stream = new ResponseStream(writable, readable);
 
@@ -192,7 +173,7 @@ export class RequestOutputContext<
 
     return new Response(stream.responseReadable, {
       status: 200,
-      headers,
+      headers: mergeHeaders(defaultHeaders, headers),
     });
-  }
+  };
 }

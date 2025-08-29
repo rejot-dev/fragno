@@ -21,10 +21,14 @@ export abstract class FragnoClientError<TCode extends string = string> extends E
   }
 }
 
-export abstract class FragnoClientFetchError<
-  TCode extends string = string,
-> extends FragnoClientError<TCode> {
-  constructor(message: string, code: TCode, options: FragnoErrorOptions = {}) {
+export class FragnoClientFetchError extends FragnoClientError<
+  "NO_BODY" | "NETWORK_ERROR" | "ABORT_ERROR"
+> {
+  constructor(
+    message: string,
+    code: "NO_BODY" | "NETWORK_ERROR" | "ABORT_ERROR",
+    options: FragnoErrorOptions = {},
+  ) {
     super(message, code, options);
     this.name = "FragnoClientFetchError";
   }
@@ -45,7 +49,7 @@ export abstract class FragnoClientFetchError<
 /**
  * Error thrown when a network request fails (e.g., no internet connection, DNS failure).
  */
-export class FragnoClientFetchNetworkError extends FragnoClientFetchError<"NETWORK_ERROR"> {
+export class FragnoClientFetchNetworkError extends FragnoClientFetchError {
   constructor(message: string = "Network request failed", options: FragnoErrorOptions = {}) {
     super(message, "NETWORK_ERROR", options);
     this.name = "FragnoClientFetchNetworkError";
@@ -55,13 +59,16 @@ export class FragnoClientFetchNetworkError extends FragnoClientFetchError<"NETWO
 /**
  * Error thrown when a request is aborted (e.g., user cancels request, timeout).
  */
-export class FragnoClientFetchAbortError extends FragnoClientFetchError<"ABORT_ERROR"> {
+export class FragnoClientFetchAbortError extends FragnoClientFetchError {
   constructor(message: string = "Request was aborted", options: FragnoErrorOptions = {}) {
     super(message, "ABORT_ERROR", options);
     this.name = "FragnoClientFetchAbortError";
   }
 }
 
+/**
+ * Error thrown when the API result is unexpected, e.g. no json is returned.
+ */
 export class FragnoClientUnknownApiError extends FragnoClientError<"UNKNOWN_API_ERROR"> {
   readonly #status: StatusCode;
 

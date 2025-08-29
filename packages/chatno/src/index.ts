@@ -127,6 +127,20 @@ const libraryConfig = {
         });
       },
     }),
+
+    addRoute({
+      method: "GET",
+      path: "/stream",
+      outputSchema: z.array(z.object({ message: z.string() })),
+      handler: async (_ctx, { jsonStream }) => {
+        return jsonStream(async (stream) => {
+          await stream.sleep(1000);
+          await stream.write({ message: "Hello, " });
+          await stream.sleep(1000);
+          await stream.write({ message: "World!" });
+        });
+      },
+    }),
   ],
 } as const;
 
@@ -148,6 +162,7 @@ export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClie
     useEchoMutator: b.createMutator("PUT", "/echo/:messageKey", (invalidate, { pathParams }) => {
       invalidate("GET", "/echo/:message", { pathParams: { message: pathParams.messageKey } });
     }),
+    useStream: b.createHook("/stream"),
   };
 
   return client;

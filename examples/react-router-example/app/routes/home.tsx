@@ -12,12 +12,13 @@ export function meta(_: Route.MetaArgs) {
 }
 
 const chatnoClient = createChatnoClient({});
-const { useEcho, useAiConfig, useThing, useEchoMutator } = useFragno(chatnoClient);
+const { useEcho, useAiConfig, useThing, useEchoMutator, useStream } = useFragno(chatnoClient);
 
 export default function Home() {
   // State for reading messages
   const [messageKey, setMessageKey] = useState("default");
   const [capital, setCapital] = useState(false);
+  const [timeToUserForInvalidation, setTimeToUserForInvalidation] = useState(0);
 
   // State for writing messages
   const [newMessageKey, setNewMessageKey] = useState("default");
@@ -41,6 +42,11 @@ export default function Home() {
       path: "hello",
     },
   });
+  const { data: streamData, loading: streamLoading } = useStream({
+    queryParams: {
+      timeToUserForInvalidation: String(timeToUserForInvalidation),
+    },
+  });
 
   const {
     mutate: echoMutate,
@@ -48,8 +54,6 @@ export default function Home() {
     error: echoMutateError,
     data: echoMutateData,
   } = useEchoMutator();
-
-  console.log({ echoMutateError });
 
   const handleSubmitMessage = async () => {
     if (!newMessage.trim() || !newMessageKey.trim()) return;
@@ -195,6 +199,27 @@ export default function Home() {
         <h2 className="mb-4 text-xl font-semibold">Other Live Data</h2>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-900/60">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Stream</h3>
+            <div className="mt-2">
+              {streamLoading ? (
+                <p className="text-sm text-gray-600 dark:text-gray-300">Loading…</p>
+              ) : (
+                <pre className="max-h-60 overflow-auto rounded bg-gray-50 p-3 text-xs dark:bg-gray-950">
+                  {JSON.stringify(streamData, null, 2)}
+                </pre>
+              )}
+            </div>
+            <div className="mt-2">
+              <button
+                onClick={() => setTimeToUserForInvalidation(+new Date())}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                Refetch
+              </button>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 dark:border-gray-800 dark:bg-gray-900/60">
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">AI Config</h3>
             <div className="mt-2">
