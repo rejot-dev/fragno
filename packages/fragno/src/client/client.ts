@@ -593,38 +593,20 @@ export type CreateHookOptions = {
 // ============================================================================
 
 function invalidate<TPath extends string>(
+  method: HTTPMethod,
   path: TPath,
   params: {
     pathParams?: ExtractPathParamsOrWiden<TPath, string>;
     queryParams?: Record<string, string>;
   },
 ) {
-  const key: (string | ReadableAtom<string>)[] = [path];
+  // Use getCacheKey to generate the cache key prefix for invalidation
+  const prefixArray = getCacheKey(method, path, {
+    pathParams: params?.pathParams,
+    queryParams: params?.queryParams,
+  });
 
-  if (params) {
-    if ("pathParams" in params && params.pathParams) {
-      const pathParams = params.pathParams;
-      const paramNames = extractPathParams(path);
-      for (const name of paramNames) {
-        if (name in pathParams && pathParams[name] !== undefined) {
-          key.push(pathParams[name]!);
-        } else {
-          // Stop at the first missing path param
-          break;
-        }
-      }
-    }
-
-    if (params.queryParams) {
-      const queryParams = params.queryParams;
-      const sortedQueryKeys = Object.keys(queryParams).sort();
-      for (const queryKey of sortedQueryKeys) {
-        key.push(queryParams[queryKey]);
-      }
-    }
-  }
-
-  const prefix = key.map((k) => (typeof k === "string" ? k : k.get())).join("");
+  const prefix = prefixArray.map((k) => (typeof k === "string" ? k : k.get())).join("");
 
   invalidateKeys((key) => key.startsWith(prefix));
 }
@@ -867,11 +849,10 @@ export function createRouteQueryMutator<
         ]),
       ),
     };
-
     if (onInvalidate) {
       onInvalidate(invalidate, resolvedParams);
     } else {
-      invalidate(route.path, resolvedParams);
+      invalidate(route.method, route.path, resolvedParams);
     }
 
     return result;
