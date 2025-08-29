@@ -161,3 +161,7 @@ export type {
 export { createClientBuilder, createLibraryHook } from "./client/client";
 export { toNextJsHandler } from "./integrations/next-js";
 export { toAstroHandler } from "./integrations/astro";
+
+export { hydrateFromWindow } from "./util/ssr";
+export { startServerLoad, finishServerLoad, initServerLoad } from "./integrations/react-ssr";
+export { FragnoHydrator } from "./client/FragnoHydrator";

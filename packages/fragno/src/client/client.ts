@@ -1,6 +1,6 @@
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { type ReadableAtom } from "nanostores";
+import { task, type ReadableAtom } from "nanostores";
 import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
 import {
   buildPath,
@@ -17,6 +17,7 @@ import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from 
 import type { InferOrUnknown } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
 import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
+import { addStore, getInitialData } from "../util/ssr";
 
 const fragnoOwnedCache = new Map<
   string,
@@ -507,7 +508,7 @@ export function createRouteQueryHook<
     const { pathParams, queryParams } = params ?? {};
 
     if (typeof window === "undefined") {
-      return callServerSideHandler({ pathParams, queryParams });
+      return task(async () => callServerSideHandler({ pathParams, queryParams }));
     }
 
     const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
@@ -536,11 +537,29 @@ export function createRouteQueryHook<
 
       const key = getCacheKey(route.method, route.path, params);
 
+      //   Nanostores during the second render only shows the loading value, because the store doesn't publish the cached value immediately.
+      //  This means, that on the second server render, we only get a loading value.
+      // This is a quick hack, to show the idea works, there should definitly be a better solution.
+      const mappedKey = key.map((d) => (typeof d === "string" ? d : d.get())).join("");
+      if (fragnoOwnedCache.has(mappedKey)) {
+        return {
+          get: () => fragnoOwnedCache.get(mappedKey),
+        };
+      }
+
       const store = createFetcherStore<
         StandardSchemaV1.InferOutput<TOutputSchema>,
         FragnoClientError<TErrorCode>
       >(key, {
         fetcher: async (): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> => {
+          const initialData = getInitialData(
+            key.map((d) => (typeof d === "string" ? d : d.get())).join(""),
+          );
+
+          if (initialData) {
+            return initialData;
+          }
+
           const response = await executeQuery({ pathParams, queryParams });
 
           const isStreaming = isStreamingResponse(response);
@@ -556,6 +575,7 @@ export function createRouteQueryHook<
           }
 
           if (isStreaming === "octet-stream") {
+            // TODO(Wilco): Implement this
             throw new Error("Octet-stream streaming is not supported.");
           }
 
@@ -565,6 +585,10 @@ export function createRouteQueryHook<
         onErrorRetry: options?.onErrorRetry,
         dedupeTime: Infinity,
       });
+
+      if (typeof window === "undefined") {
+        addStore(store);
+      }
 
       return store;
     },
