@@ -1,12 +1,17 @@
 /**
  * @module
  * Stream utility.
+ *
+ * Modified from honojs/hono
+ * Original source: https://github.com/honojs/hono/blob/0e3db674ad3f40be215a55a18062dd8e387ce525/src/utils/stream.ts
+ * License: MIT
+ * Date obtained: August 28 2025
+ * Copyright (c) 2021-present Yusuke Wada and Hono contributors
  */
 
-export class StreamingApi {
+export class ResponseStream<TItem> {
   #writer: WritableStreamDefaultWriter<Uint8Array>;
   #encoder: TextEncoder;
-  #writable: WritableStream;
   #abortSubscribers: (() => void | Promise<void>)[] = [];
   #responseReadable: ReadableStream;
 
@@ -35,10 +40,8 @@ export class StreamingApi {
   }
 
   constructor(writable: WritableStream, readable: ReadableStream) {
-    this.#writable = writable;
     this.#writer = writable.getWriter();
     this.#encoder = new TextEncoder();
-
     const reader = readable.getReader();
 
     // in case the user disconnects, let the reader know to cancel
@@ -63,21 +66,23 @@ export class StreamingApi {
     });
   }
 
-  async write(input: Uint8Array | string): Promise<StreamingApi> {
+  async writeRaw(input: Uint8Array | string): Promise<void> {
     try {
       if (typeof input === "string") {
         input = this.#encoder.encode(input);
       }
       await this.#writer.write(input);
     } catch {
-      // Do nothing. If you want to handle errors, create a stream by yourself.
+      // Do nothing.
     }
-    return this;
   }
 
-  async writeln(input: string): Promise<StreamingApi> {
-    await this.write(input + "\n");
-    return this;
+  write(input: TItem): Promise<void> {
+    if (input instanceof Uint8Array) {
+      throw new Error("Uint8Array is not supported for JSON streams");
+    }
+
+    return this.writeRaw(JSON.stringify(input) + "\n");
   }
 
   sleep(ms: number): Promise<unknown> {
@@ -92,12 +97,6 @@ export class StreamingApi {
     } finally {
       this.#closed = true;
     }
-  }
-
-  async pipe(body: ReadableStream) {
-    this.#writer.releaseLock();
-    await body.pipeTo(this.#writable, { preventClose: true });
-    this.#writer = this.#writable.getWriter();
   }
 
   onAbort(listener: () => void | Promise<void>) {

@@ -1,0 +1,22 @@
+{
+  "name": "@fragno-dev/node",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./fragno-node.ts"
+  },
+  "type": "module",
+  "peerDependencies": {
+    "@rejot-dev/fragno": "workspace:*"
+  },
+  "engines": {
+    "node": "^20.0.0 || >=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/express": "^5.0.3",
+    "express": "^5.1.0"
+  },
+  "dependencies": {
+    "@remix-run/node-fetch-server": "^0.8.0"
+  }
+}

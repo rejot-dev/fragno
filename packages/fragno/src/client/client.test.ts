@@ -55,46 +55,46 @@ describe("buildUrl", () => {
 
 describe("getCacheKey", () => {
   test("should return path only when no parameters", () => {
-    const result = getCacheKey("/users");
-    expect(result).toEqual(["/users"]);
+    const result = getCacheKey("GET", "/users");
+    expect(result).toEqual(["GET", "/users"]);
   });
 
   test("should include path parameters in order", () => {
-    const result = getCacheKey("/users/:id/posts/:postId", {
+    const result = getCacheKey("GET", "/users/:id/posts/:postId", {
       pathParams: { id: "123", postId: "456" },
     });
-    expect(result).toEqual(["/users/:id/posts/:postId", "123", "456"]);
+    expect(result).toEqual(["GET", "/users/:id/posts/:postId", "123", "456"]);
   });
 
   test("should include query parameters in alphabetical order", () => {
-    const result = getCacheKey("/users", {
+    const result = getCacheKey("GET", "/users", {
       queryParams: { sort: "name", order: "asc" },
     });
-    expect(result).toEqual(["/users", "asc", "name"]);
+    expect(result).toEqual(["GET", "/users", "asc", "name"]);
   });
 
   test("should handle missing path parameters", () => {
-    const result = getCacheKey("/users/:id/posts/:postId", {
+    const result = getCacheKey("GET", "/users/:id/posts/:postId", {
       pathParams: { id: "123" },
     });
-    expect(result).toEqual(["/users/:id/posts/:postId", "123", "<missing>"]);
+    expect(result).toEqual(["GET", "/users/:id/posts/:postId", "123", "<missing>"]);
   });
 
   test("should handle both path and query parameters", () => {
-    const result = getCacheKey("/users/:id", {
+    const result = getCacheKey("GET", "/users/:id", {
       pathParams: { id: "123" },
       queryParams: { sort: "name" },
     });
-    expect(result).toEqual(["/users/:id", "123", "name"]);
+    expect(result).toEqual(["GET", "/users/:id", "123", "name"]);
   });
 
   test("should handle empty params object", () => {
-    const result = getCacheKey("/users", {});
+    const result = getCacheKey("GET", "/users", {});
     expect(result).toEqual(["/users"]);
   });
 
   test("should handle undefined params", () => {
-    const result = getCacheKey("/users");
-    expect(result).toEqual(["/users"]);
+    const result = getCacheKey("GET", "/users");
+    expect(result).toEqual(["GET", "/users"]);
   });
 });

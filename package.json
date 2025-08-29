@@ -1,4 +1,28 @@
 {
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@nanostores/query": "^0.3.4",
+    "@types/eslint-config-prettier": "^6.11.3",
+    "@types/eslint-plugin-tailwindcss": "^3.17.0",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "eslint-plugin-tailwindcss": "^3.18.0",
+    "lefthook": "^1.12.2",
+    "nanostores": "^1.0.1",
+    "prettier": "3.6.2",
+    "prettier-plugin-astro": "^0.14.1",
+    "prettier-plugin-embed": "^0.5.0",
+    "prettier-plugin-sql": "^0.19.2",
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.37.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -9,33 +33,9 @@
     "build": "tsc --build",
     "build:watch": "tsc --build --watch"
   },
-  "engines": {
-    "node": ">=22"
-  },
   "workspaces": [
     "examples/*",
     "packages/*"
   ],
-  "devDependencies": {
-    "@eslint/js": "^9.31.0",
-    "@types/eslint-config-prettier": "^6.11.3",
-    "@types/eslint-plugin-tailwindcss": "^3.17.0",
-    "eslint": "^9.31.0",
-    "eslint-config-prettier": "^10.1.5",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "eslint-plugin-tailwindcss": "^3.18.0",
-    "lefthook": "^1.12.2",
-    "prettier": "3.6.2",
-    "prettier-plugin-astro": "^0.14.1",
-    "prettier-plugin-embed": "^0.5.0",
-    "prettier-plugin-sql": "^0.19.2",
-    "prettier-plugin-tailwindcss": "^0.6.14",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.37.0",
-    "vitest": "^3.2.4"
-  },
-  "dependencies": {
-    "zod": "^4.0.17"
-  }
+  "packageManager": "bun@1.2.2"
 }

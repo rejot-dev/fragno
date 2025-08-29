@@ -1,10 +1,13 @@
-/** Taken from https://github.com/honojs/hono/blob/main/src/utils/http-status.ts
- * MIT License
- */
-
 /**
  * @module
  * HTTP Status utility.
+ *
+ * Modified from honojs/hono
+ * Original source: https://github.com/honojs/hono/blob/0e3db674ad3f40be215a55a18062dd8e387ce525/src/utils/http-status.ts
+ * License: MIT
+ * Date obtained: August 28 2025
+ * Copyright (c) 2021-present Yusuke Wada and Hono contributors
+ *
  */
 
 export type InfoStatusCode = 100 | 101 | 102 | 103;
