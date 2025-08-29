@@ -758,20 +758,13 @@ export function createLibraryMutator<
 }
 
 export function createRouteQueryMutator<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined
-  >[],
-  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
   TPath extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
 >(
   publicConfig: FragnoPublicClientConfig,
-  libraryConfig: TLibraryConfig,
+  libraryConfig: { mountRoute?: string; name: string },
   route: FragnoRouteConfig<
     NonGetHTTPMethod,
     TPath,
@@ -780,7 +773,8 @@ export function createRouteQueryMutator<
     TErrorCode,
     string
   >,
-  onInvalidate?: OnInvalidateFn<TPath>,
+  onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
+    invalidate(route.method, route.path, params),
 ): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
   const method = route.method;
 
@@ -849,11 +843,8 @@ export function createRouteQueryMutator<
         ]),
       ),
     };
-    if (onInvalidate) {
-      onInvalidate(invalidate, resolvedParams);
-    } else {
-      invalidate(route.method, route.path, resolvedParams);
-    }
+
+    onInvalidate(invalidate, resolvedParams);
 
     return result;
   });
