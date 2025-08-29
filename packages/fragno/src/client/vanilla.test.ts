@@ -6,31 +6,10 @@ import { useFragno } from "./vanilla";
 import { addRoute } from "../api/api";
 import type { FragnoPublicClientConfig } from "../mod";
 import { FragnoClientFetchNetworkError } from "./client-error";
+import { waitForAsyncIterator } from "../util/async";
 
 // Mock fetch globally
 global.fetch = vi.fn();
-
-// Utility function to wait for async iterator until condition is met
-async function waitForAsyncIterator<T>(
-  iterable: AsyncIterable<T>,
-  condition: (value: T) => boolean,
-  options: { timeout?: number } = {},
-): Promise<T> {
-  const { timeout = 1000 } = options;
-  const startTime = Date.now();
-
-  for await (const value of iterable) {
-    if (condition(value)) {
-      return value;
-    }
-
-    if (Date.now() - startTime > timeout) {
-      throw new Error(`waitForAsyncIterator: Timeout after ${timeout}ms`);
-    }
-  }
-
-  throw new Error("waitForAsyncIterator: Iterator completed without meeting condition");
-}
 
 describe("createVanillaListeners", () => {
   const testLibraryConfig = {
@@ -74,6 +53,7 @@ describe("createVanillaListeners", () => {
 
   test("should create vanilla listeners for a simple GET route", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => [{ id: 1, name: "John" }],
     });
@@ -93,6 +73,7 @@ describe("createVanillaListeners", () => {
     await vi.waitFor(() => {
       const state = userStore.get();
       expect(state.loading).toBe(false);
+      expect(state.error).toBeUndefined();
       expect(state.data).toBeDefined();
     });
 
@@ -105,6 +86,7 @@ describe("createVanillaListeners", () => {
 
   test("should support listen and subscribe methods", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => [{ id: 1, name: "John" }],
     });
@@ -138,6 +120,7 @@ describe("createVanillaListeners", () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       callCount++;
       return {
+        headers: new Headers(),
         ok: true,
         json: async () => [{ id: callCount, name: `John${callCount}` }],
       };
@@ -177,6 +160,7 @@ describe("createVanillaListeners", () => {
 
   test("should create vanilla listeners with path parameters", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 123, name: "John" }),
     });
@@ -206,6 +190,7 @@ describe("createVanillaListeners", () => {
 
   test("should create vanilla listeners with query parameters", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ["result1", "result2"],
     });
@@ -235,6 +220,7 @@ describe("createVanillaListeners", () => {
 
   test("should support async iteration over hook state changes", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => [{ id: 1, name: "John" }],
     });
@@ -272,10 +258,12 @@ describe("createVanillaListeners", () => {
 
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => ({ id: 1, name: "John" }),
       })
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => ({ id: 2, name: "Jane" }),
       });
@@ -316,6 +304,7 @@ describe("createVanillaListeners", () => {
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockRejectedValueOnce("Network error")
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => ({ id: 1, name: "John" }),
       });
@@ -421,6 +410,7 @@ describe("createVanillaMutator", () => {
 
   test("should create a vanilla mutator for POST route", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
@@ -660,6 +650,7 @@ describe("useFragno", () => {
 
   test("should transform a mixed object of hooks and mutators", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => "test data",
     });
@@ -681,6 +672,7 @@ describe("useFragno", () => {
     await vi.waitFor(() => {
       const state = dataStore.get();
       expect(state.loading).toBe(false);
+      expect(state.error).toBeUndefined();
       expect(state.data).toBeDefined();
     });
 
@@ -688,6 +680,7 @@ describe("useFragno", () => {
 
     // Test the mutator
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ result: "test value" }),
     });
@@ -720,10 +713,12 @@ describe("useFragno", () => {
   test("multiple GET hooks for the same path should share the same store", async () => {
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => "data1",
       })
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => "data2",
       });

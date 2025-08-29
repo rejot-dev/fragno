@@ -53,6 +53,7 @@ describe("createReactHook", () => {
 
   test("should create a hook for a simple GET route", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => [{ id: 1, name: "John" }],
     });
@@ -75,6 +76,7 @@ describe("createReactHook", () => {
 
   test("should create a hook with path parameters", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 123, name: "John" }),
     });
@@ -97,6 +99,7 @@ describe("createReactHook", () => {
 
   test("should create a hook with query parameters", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ["result1", "result2"],
     });
@@ -122,10 +125,12 @@ describe("createReactHook", () => {
 
     (global.fetch as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => ({ id: 1, name: "John" }),
       })
       .mockResolvedValueOnce({
+        headers: new Headers(),
         ok: true,
         json: async () => ({ id: 2, name: "Jane" }),
       });
@@ -216,6 +221,7 @@ describe("createReactMutator", () => {
 
   test("should be able to use mutator for POST route - direct result", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
@@ -246,6 +252,7 @@ describe("createReactMutator", () => {
 
   test("should be able to use mutator for POST route - result in store", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
@@ -280,6 +287,7 @@ describe("createReactMutator", () => {
 
   test("should create a mutator for PUT route with path params", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 123, name: "Jane" }),
     });
@@ -310,6 +318,7 @@ describe("createReactMutator", () => {
 
   test("should create a mutator for DELETE route", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ success: true }),
     });
@@ -390,6 +399,7 @@ describe("useFragno", () => {
 
   test("should transform a mixed object of hooks and mutators", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => "test data",
     });
@@ -416,6 +426,7 @@ describe("useFragno", () => {
 
     // Test the mutator
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ result: "test value" }),
     });

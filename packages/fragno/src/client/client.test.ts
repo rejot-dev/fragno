@@ -3,30 +3,10 @@ import { z } from "zod";
 import { addRoute } from "../api/api";
 import { buildUrl, clearHooksCache, createClientBuilder, getCacheKey } from "./client";
 import { useFragno } from "./vanilla";
+import { waitForAsyncIterator } from "../util/async";
 
 // Mock fetch globally
 global.fetch = vi.fn();
-
-async function waitForAsyncIterator<T>(
-  iterable: AsyncIterable<T>,
-  condition: (value: T) => boolean,
-  options: { timeout?: number } = {},
-): Promise<T> {
-  const { timeout = 1000 } = options;
-  const startTime = Date.now();
-
-  for await (const value of iterable) {
-    if (condition(value)) {
-      return value;
-    }
-
-    if (Date.now() - startTime > timeout) {
-      throw new Error(`waitForAsyncIterator: Timeout after ${timeout}ms`);
-    }
-  }
-
-  throw new Error("waitForAsyncIterator: Iterator completed without meeting condition");
-}
 
 describe("buildUrl", () => {
   test("should build URL with no parameters", () => {
@@ -127,16 +107,6 @@ describe("getCacheKey", () => {
 });
 
 describe("invalidation", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    clearHooksCache();
-  });
-
   const testLibraryConfig = {
     name: "test-library",
     routes: [
@@ -163,11 +133,22 @@ describe("invalidation", () => {
     ],
   } as const;
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearHooksCache();
+  });
+
   test("should automatically refetch when an item is invalidated", async () => {
     let callCount = 0;
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       callCount++;
       return {
+        headers: new Headers(),
         ok: true,
         json: async () => [{ id: callCount, name: `John${callCount}` }],
       };
@@ -176,10 +157,10 @@ describe("invalidation", () => {
     const client = createClientBuilder({ baseUrl: "http://localhost:3000" }, testLibraryConfig);
     const clientObj = {
       useUsers: client.createHook("/users"),
-      modifyUsersAutomatic: client.createMutator("POST", "/users"),
+      useMutateUsers: client.createMutator("POST", "/users"),
     };
 
-    const { useUsers, modifyUsersAutomatic } = useFragno(clientObj);
+    const { useUsers, useMutateUsers } = useFragno(clientObj);
     const userStore = useUsers();
 
     const stateAfterInitialLoad = await waitForAsyncIterator(
@@ -193,7 +174,7 @@ describe("invalidation", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
 
     // The second fetch call is the mutation.
-    await modifyUsersAutomatic().mutate({
+    await useMutateUsers().mutate({
       body: { name: "John" },
       params: {},
     });
@@ -215,6 +196,7 @@ describe("invalidation", () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       callCount++;
       return {
+        headers: new Headers(),
         ok: true,
         json: async () => [{ id: callCount, name: `John${callCount}` }],
       };
@@ -224,7 +206,7 @@ describe("invalidation", () => {
     let invalidateCalled = false;
     const clientObj = {
       useUsers: client.createHook("/users"),
-      modifyUsersManual: client.createMutator("POST", "/users", (invalidate, _params) => {
+      modifyUsersManual: client.createMutator("POST", "/users", (invalidate) => {
         invalidateCalled = true;
         return invalidate("GET", "/users", {});
       }),
@@ -237,6 +219,8 @@ describe("invalidation", () => {
       userStore,
       (state) => state.loading === false,
     );
+    console.log(stateAfterInitialLoad.error);
+
     expect(stateAfterInitialLoad).toEqual({
       loading: false,
       data: [{ id: 1, name: "John1" }],

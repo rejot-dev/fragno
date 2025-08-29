@@ -9,7 +9,9 @@
  * Copyright (c) 2021-present Yusuke Wada and Hono contributors
  */
 
-export class ResponseStream<TItem> {
+type Error<Message extends string> = { __errorMessage: Message };
+
+export class ResponseStream<TArray> {
   #writer: WritableStreamDefaultWriter<Uint8Array>;
   #encoder: TextEncoder;
   #abortSubscribers: (() => void | Promise<void>)[] = [];
@@ -77,11 +79,11 @@ export class ResponseStream<TItem> {
     }
   }
 
-  write(input: TItem): Promise<void> {
-    if (input instanceof Uint8Array) {
-      throw new Error("Uint8Array is not supported for JSON streams");
-    }
-
+  write(
+    input: TArray extends (infer U)[]
+      ? U
+      : Error<"To use a streaming response, outputSchema must be an array.">,
+  ): Promise<void> {
     return this.writeRaw(JSON.stringify(input) + "\n");
   }
 

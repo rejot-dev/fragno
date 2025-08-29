@@ -13,12 +13,10 @@ import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
 import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
-import {
-  FragnoClientApiError,
-  type FragnoClientError,
-  FragnoClientFetchError,
-} from "./client-error";
+import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
 import type { InferOrUnknown } from "../util/types-util";
+import { parseContentType } from "../util/content-type";
+import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
 
 const fragnoOwnedCache = new Map<
   string,
@@ -414,6 +412,32 @@ export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
   return [method, path, ...pathParamValues, ...queryParamValues];
 }
 
+function isStreamingResponse(response: Response): false | "ndjson" | "octet-stream" {
+  const contentType = parseContentType(response.headers.get("content-type"));
+
+  if (!contentType) {
+    // Always assume 'normal' JSON by default.
+    return false;
+  }
+
+  const isChunked = response.headers.get("transfer-encoding") === "chunked";
+
+  if (!isChunked) {
+    return false;
+  }
+
+  if (contentType.subtype === "octet-stream") {
+    // TODO(Wilco): This is not actually supported properly
+    return "octet-stream";
+  }
+
+  if (contentType.subtype === "x-ndjson") {
+    return "ndjson";
+  }
+
+  return false;
+}
+
 export function createRouteQueryHook<
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
@@ -443,7 +467,7 @@ export function createRouteQueryHook<
   async function callServerSideHandler(params: {
     pathParams?: Record<string, string | ReadableAtom<string>>;
     queryParams?: Record<string, string | ReadableAtom<string>>;
-  }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> {
+  }): Promise<Response> {
     const { pathParams, queryParams } = params ?? {};
 
     const normalizedPathParams = Object.fromEntries(
@@ -473,7 +497,33 @@ export function createRouteQueryHook<
       new RequestOutputContext(route.outputSchema),
     );
 
-    return result.json();
+    return result;
+  }
+
+  async function executeQuery(params?: {
+    pathParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | ReadableAtom<string>>;
+  }): Promise<Response> {
+    const { pathParams, queryParams } = params ?? {};
+
+    if (typeof window === "undefined") {
+      return callServerSideHandler({ pathParams, queryParams });
+    }
+
+    const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
+
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      throw FragnoClientFetchError.fromUnknownFetchError(error);
+    }
+
+    if (!response.ok) {
+      throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
+    }
+
+    return response;
   }
 
   return {
@@ -490,30 +540,28 @@ export function createRouteQueryHook<
         StandardSchemaV1.InferOutput<TOutputSchema>,
         FragnoClientError<TErrorCode>
       >(key, {
-        fetcher: async () => {
-          if (typeof window === "undefined") {
-            // TODO(Wilco): Handle server-side rendering.
-            return await callServerSideHandler({ pathParams, queryParams });
+        fetcher: async (): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> => {
+          const response = await executeQuery({ pathParams, queryParams });
+
+          const isStreaming = isStreamingResponse(response);
+
+          if (!isStreaming) {
+            return response.json() as Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
           }
 
-          const url = buildUrl(
-            { baseUrl, mountRoute, path: route.path },
-            { pathParams, queryParams },
-          );
-
-          let response: Response;
-          try {
-            response = await fetch(url);
-          } catch (error) {
-            throw FragnoClientFetchError.fromUnknownFetchError(error);
+          if (isStreaming === "ndjson") {
+            // Start streaming in background and return first item
+            const { firstItem } = await handleNdjsonStreamingFirstItem(response, store);
+            return [firstItem];
           }
 
-          if (!response.ok) {
-            throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
+          if (isStreaming === "octet-stream") {
+            throw new Error("Octet-stream streaming is not supported.");
           }
 
-          return response.json();
+          throw new Error("Unreachable");
         },
+
         onErrorRetry: options?.onErrorRetry,
         dedupeTime: Infinity,
       });
@@ -524,27 +572,15 @@ export function createRouteQueryHook<
       pathParams?: Record<string, string>;
       queryParams?: Record<string, string>;
     }) => {
-      const { pathParams, queryParams } = params ?? {};
+      const response = await executeQuery(params);
 
-      if (typeof window === "undefined") {
-        return callServerSideHandler({ pathParams, queryParams });
+      const isStreaming = isStreamingResponse(response);
+
+      if (!isStreaming) {
+        return (await response.json()) as StandardSchemaV1.InferOutput<TOutputSchema>;
       }
 
-      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
-
-      let response: Response;
-      try {
-        response = await fetch(url);
-      } catch (error) {
-        throw FragnoClientFetchError.fromUnknownFetchError(error);
-      }
-
-      if (!response.ok) {
-        throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
-      }
-
-      const data: unknown = await response.json();
-      return data as StandardSchemaV1.InferOutput<TOutputSchema>;
+      throw new Error("Streaming responses are not supported server side");
     },
   };
 }
