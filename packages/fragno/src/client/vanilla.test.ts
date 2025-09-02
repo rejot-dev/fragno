@@ -1,7 +1,7 @@
 import { test, expect, describe, vi, beforeEach, afterEach } from "vitest";
 import { atom } from "nanostores";
 import { z } from "zod";
-import { createClientBuilder, clearHooksCache } from "./client";
+import { createClientBuilder } from "./client";
 import { useFragno } from "./vanilla";
 import { addRoute } from "../api/api";
 import type { FragnoPublicClientConfig } from "../mod";
@@ -48,7 +48,6 @@ describe("createVanillaListeners", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    clearHooksCache();
   });
 
   test("should create vanilla listeners for a simple GET route", async () => {
@@ -405,7 +404,6 @@ describe("createVanillaMutator", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    clearHooksCache();
   });
 
   test("should create a vanilla mutator for POST route", async () => {
@@ -645,7 +643,6 @@ describe("useFragno", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    clearHooksCache();
   });
 
   test("should transform a mixed object of hooks and mutators", async () => {
@@ -786,7 +783,6 @@ describe("error handling", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    clearHooksCache();
   });
 
   test("should handle GET hook errors gracefully", async () => {

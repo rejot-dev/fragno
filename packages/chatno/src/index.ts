@@ -6,9 +6,6 @@ import {
 import { addRoute } from "@rejot-dev/fragno/api";
 import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
-import fs from "fs";
-
-const USE_FILES = true;
 
 const serverSideMessagesStores: Record<string, string> = {
   default: "Hello, world!",
@@ -22,21 +19,6 @@ const inMemoryServices = {
     return serverSideMessagesStores[messageKey];
   },
 } as const;
-
-const fileServices = {
-  setData: async (messageKey: string, message: string) => {
-    fs.writeFileSync(`../messages/${messageKey}.txt`, message);
-  },
-  getData: (messageKey: string) => {
-    if (!fs.existsSync(`../messages/${messageKey}.txt`)) {
-      return undefined;
-    }
-    const message = fs.readFileSync(`../messages/${messageKey}.txt`, "utf8");
-    return message;
-  },
-} as const;
-
-const services = USE_FILES ? fileServices : inMemoryServices;
 
 const libraryConfig = {
   name: "chatno",
@@ -79,7 +61,7 @@ const libraryConfig = {
         const messageKey = pathParams.message;
         const shouldCapitalize = searchParams.get("capital") === "true";
 
-        const data = services.getData(messageKey);
+        const data = inMemoryServices.getData(messageKey);
 
         if (!data) {
           return error(
@@ -113,8 +95,8 @@ const libraryConfig = {
         const { message } = await input.valid();
         const messageKey = pathParams.messageKey;
 
-        const previous = services.getData(messageKey);
-        services.setData(messageKey, message);
+        const previous = inMemoryServices.getData(messageKey);
+        inMemoryServices.setData(messageKey, message);
 
         if (/^\d+$/.test(message)) {
           return error(
@@ -174,7 +156,7 @@ export interface ChatnoConfig {
 }
 
 export function createChatno(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig, services);
+  return createLibrary(publicConfig, libraryConfig, inMemoryServices);
 }
 
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {

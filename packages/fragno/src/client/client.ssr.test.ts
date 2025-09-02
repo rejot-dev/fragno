@@ -6,12 +6,11 @@
  * @vitest-environment node
  */
 
-import { afterEach, assert, describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 import { createClientBuilder, type FragnoPublicClientConfig } from "../mod";
 import { addRoute } from "../api/api";
 import { z } from "zod";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
-import { clearHooksCache } from "./client";
 import { FragnoClientUnknownApiError } from "./client-error";
 
 describe("server side rendering", () => {
@@ -30,10 +29,6 @@ describe("server side rendering", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
   };
-
-  afterEach(() => {
-    clearHooksCache();
-  });
 
   describe("pre-conditions", () => {
     test("Make sure window is undefined", () => {

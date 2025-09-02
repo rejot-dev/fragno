@@ -158,7 +158,7 @@ export type {
   HasGetRoutes,
 };
 
-export { createClientBuilder, createLibraryHook } from "./client/client";
+export { createClientBuilder, ClientBuilder } from "./client/client";
 export { toNextJsHandler } from "./integrations/next-js";
 export { toAstroHandler } from "./integrations/astro";
 

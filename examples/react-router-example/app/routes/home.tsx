@@ -190,7 +190,7 @@ export default function Home() {
               </p>
             ) : (
               <p className="text-sm text-gray-700 dark:text-gray-200">
-                {echoData === undefined ? "—" : String(echoData)}
+                {echoData === undefined ? "—" : JSON.stringify(echoData)}
               </p>
             )}
           </div>
