@@ -21,6 +21,8 @@ function javascriptEscaped(obj: unknown) {
 export async function startServerLoad(): Promise<string> {
   const initialStoreValues = await getFinalStoreValues();
 
+  console.log("initialStoreValues", initialStoreValues);
+
   return `window.__FRAGNO_INITIAL_DATA__ = ${javascriptEscaped(
     Array.from(initialStoreValues.entries()),
   )}`;

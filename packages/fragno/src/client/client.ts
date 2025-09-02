@@ -17,30 +17,7 @@ import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from 
 import type { InferOrUnknown } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
 import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
-import { addStore, getInitialData } from "../util/ssr";
-
-const fragnoOwnedCache = new Map<
-  string,
-  {
-    data: unknown;
-    error: unknown;
-    retryCount: number;
-    created: number;
-    expires: number;
-  }
->();
-
-const [createFetcherStore, createMutationStore, { invalidateKeys }] = nanoquery({
-  cache: fragnoOwnedCache,
-});
-
-export function clearHooksCache() {
-  fragnoOwnedCache.clear();
-}
-
-// ============================================================================
-// Utility Types for Hook Builder
-// ============================================================================
+import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 
 /**
  * Extract only GET routes from a library config's routes array
@@ -439,176 +416,6 @@ function isStreamingResponse(response: Response): false | "ndjson" | "octet-stre
   return false;
 }
 
-export function createRouteQueryHook<
-  TPath extends string,
-  TInputSchema extends StandardSchemaV1 | undefined,
-  TOutputSchema extends StandardSchemaV1,
-  TErrorCode extends string,
->(
-  publicConfig: FragnoPublicClientConfig,
-  libraryConfig: { mountRoute?: string; name: string },
-  route: FragnoRouteConfig<"GET", TPath, TInputSchema, TOutputSchema, TErrorCode, string>,
-  options: CreateHookOptions = {},
-): NewFragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode> {
-  if (route.method !== "GET") {
-    throw new Error(
-      `Only GET routes are supported for hooks. Route '${route.path}' is a ${route.method} route.`,
-    );
-  }
-
-  if (!route.outputSchema) {
-    throw new Error(
-      `Output schema is required for GET routes. Route '${route.path}' has no output schema.`,
-    );
-  }
-
-  const baseUrl = publicConfig.baseUrl ?? "";
-  const mountRoute = getMountRoute(libraryConfig);
-
-  async function callServerSideHandler(params: {
-    pathParams?: Record<string, string | ReadableAtom<string>>;
-    queryParams?: Record<string, string | ReadableAtom<string>>;
-  }): Promise<Response> {
-    const { pathParams, queryParams } = params ?? {};
-
-    const normalizedPathParams = Object.fromEntries(
-      Object.entries(pathParams ?? {}).map(([key, value]) => [
-        key,
-        typeof value === "string" ? value : value.get(),
-      ]),
-    ) as ExtractPathParams<TPath, string>;
-
-    const normalizedQueryParams = Object.fromEntries(
-      Object.entries(queryParams ?? {}).map(([key, value]) => [
-        key,
-        typeof value === "string" ? value : value.get(),
-      ]),
-    );
-
-    const searchParams = new URLSearchParams(normalizedQueryParams);
-
-    const result = await route.handler(
-      RequestInputContext.fromSSRContext({
-        method: route.method,
-        path: route.path,
-        pathParams: normalizedPathParams,
-        searchParams,
-        body: undefined, // No body for GET
-      }),
-      new RequestOutputContext(route.outputSchema),
-    );
-
-    return result;
-  }
-
-  async function executeQuery(params?: {
-    pathParams?: Record<string, string | ReadableAtom<string>>;
-    queryParams?: Record<string, string | ReadableAtom<string>>;
-  }): Promise<Response> {
-    const { pathParams, queryParams } = params ?? {};
-
-    if (typeof window === "undefined") {
-      return task(async () => callServerSideHandler({ pathParams, queryParams }));
-    }
-
-    const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
-
-    let response: Response;
-    try {
-      response = await fetch(url);
-    } catch (error) {
-      throw FragnoClientFetchError.fromUnknownFetchError(error);
-    }
-
-    if (!response.ok) {
-      throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
-    }
-
-    return response;
-  }
-
-  return {
-    route,
-    store: (params: {
-      pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
-    }) => {
-      const { pathParams, queryParams } = params ?? {};
-
-      const key = getCacheKey(route.method, route.path, params);
-
-      //   Nanostores during the second render only shows the loading value, because the store doesn't publish the cached value immediately.
-      //  This means, that on the second server render, we only get a loading value.
-      // This is a quick hack, to show the idea works, there should definitly be a better solution.
-      const mappedKey = key.map((d) => (typeof d === "string" ? d : d.get())).join("");
-      if (fragnoOwnedCache.has(mappedKey)) {
-        return {
-          get: () => fragnoOwnedCache.get(mappedKey),
-        };
-      }
-
-      const store = createFetcherStore<
-        StandardSchemaV1.InferOutput<TOutputSchema>,
-        FragnoClientError<TErrorCode>
-      >(key, {
-        fetcher: async (): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> => {
-          const initialData = getInitialData(
-            key.map((d) => (typeof d === "string" ? d : d.get())).join(""),
-          );
-
-          if (initialData) {
-            return initialData;
-          }
-
-          const response = await executeQuery({ pathParams, queryParams });
-
-          const isStreaming = isStreamingResponse(response);
-
-          if (!isStreaming) {
-            return response.json() as Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
-          }
-
-          if (isStreaming === "ndjson") {
-            // Start streaming in background and return first item
-            const { firstItem } = await handleNdjsonStreamingFirstItem(response, store);
-            return [firstItem];
-          }
-
-          if (isStreaming === "octet-stream") {
-            // TODO(Wilco): Implement this
-            throw new Error("Octet-stream streaming is not supported.");
-          }
-
-          throw new Error("Unreachable");
-        },
-
-        onErrorRetry: options?.onErrorRetry,
-        dedupeTime: Infinity,
-      });
-
-      if (typeof window === "undefined") {
-        addStore(store);
-      }
-
-      return store;
-    },
-    query: async (params?: {
-      pathParams?: Record<string, string>;
-      queryParams?: Record<string, string>;
-    }) => {
-      const response = await executeQuery(params);
-
-      const isStreaming = isStreamingResponse(response);
-
-      if (!isStreaming) {
-        return (await response.json()) as StandardSchemaV1.InferOutput<TOutputSchema>;
-      }
-
-      throw new Error("Streaming responses are not supported server side");
-    },
-  };
-}
-
 // Type guard to check if a hook is a GET hook
 export function isGetHook(
   hook:
@@ -648,36 +455,405 @@ export type CreateHookOptions = {
   onErrorRetry?: OnErrorRetryFn | null;
 };
 
-// ============================================================================
-// Hook Builder (factory style)
-// ============================================================================
-
-function invalidate<TPath extends string>(
-  method: HTTPMethod,
-  path: TPath,
-  params: {
-    pathParams?: ExtractPathParamsOrWiden<TPath, string>;
-    queryParams?: Record<string, string>;
-  },
-) {
-  // Use getCacheKey to generate the cache key prefix for invalidation
-  const prefixArray = getCacheKey(method, path, {
-    pathParams: params?.pathParams,
-    queryParams: params?.queryParams,
-  });
-
-  const prefix = prefixArray.map((k) => (typeof k === "string" ? k : k.get())).join("");
-
-  invalidateKeys((key) => key.startsWith(prefix));
-}
-
 type OnInvalidateFn<TPath extends string> = (
-  invalidateFunction: typeof invalidate,
+  invalidate: <TInnerPath extends string>(
+    method: HTTPMethod,
+    path: TInnerPath,
+    params: {
+      pathParams?: ExtractPathParamsOrWiden<TInnerPath, string>;
+      queryParams?: Record<string, string>;
+    },
+  ) => void,
   params: {
     pathParams: ExtractPathParamsOrWiden<TPath, string>;
     queryParams?: Record<string, string>;
   },
 ) => void;
+
+export class ClientBuilder<
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    string,
+    string
+  >[],
+  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
+> {
+  #publicConfig: FragnoPublicClientConfig;
+  #libraryConfig: TLibraryConfig;
+
+  #cache = new Map<
+    string,
+    {
+      data: unknown;
+      error: unknown;
+      retryCount: number;
+      created: number;
+      expires: number;
+    }
+  >();
+
+  #createFetcherStore;
+  #createMutationStore;
+  #invalidateKeys;
+
+  constructor(publicConfig: FragnoPublicClientConfig, libraryConfig: TLibraryConfig) {
+    this.#publicConfig = publicConfig;
+    this.#libraryConfig = libraryConfig;
+
+    const [createFetcherStore, createMutationStore, { invalidateKeys }] = nanoquery({
+      cache: this.#cache,
+    });
+    this.#createFetcherStore = createFetcherStore;
+    this.#createMutationStore = createMutationStore;
+    this.#invalidateKeys = invalidateKeys;
+  }
+
+  createHook<TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
+    path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
+    options?: CreateHookOptions,
+  ): NewFragnoClientHookData<
+    "GET",
+    TPath,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
+  > {
+    const route = this.#libraryConfig.routes.find(
+      (
+        r,
+      ): r is FragnoRouteConfig<
+        "GET",
+        TPath,
+        StandardSchemaV1 | undefined,
+        StandardSchemaV1,
+        string,
+        string
+      > => r.path === path && r.method === "GET" && r.outputSchema !== undefined,
+    );
+
+    if (!route) {
+      throw new Error(`Route '${path}' not found or is not a GET route with an output schema.`);
+    }
+
+    return this.#createRouteQueryHook(route, options);
+  }
+
+  createMutator<TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
+    method: NonGetHTTPMethod,
+    path: TPath,
+    onInvalidate?: OnInvalidateFn<TPath>,
+  ): FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    TPath,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"]>,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
+  > {
+    type TRoute = ExtractRouteByPath<TLibraryConfig["routes"], TPath>;
+
+    const route = this.#libraryConfig.routes.find(
+      (
+        r,
+      ): r is FragnoRouteConfig<
+        NonGetHTTPMethod,
+        TPath,
+        NonNullable<TRoute["inputSchema"]>,
+        NonNullable<TRoute["outputSchema"]>,
+        string,
+        string
+      > =>
+        r.path === path &&
+        r.method === method &&
+        r.inputSchema !== undefined &&
+        r.outputSchema !== undefined,
+    );
+
+    if (!route) {
+      throw new Error(
+        `Route '${path}' not found or is not a ${method} route with an input and output schema.`,
+      );
+    }
+
+    return this.#createRouteQueryMutator(route, onInvalidate);
+  }
+
+  #createRouteQueryHook<
+    TPath extends string,
+    TInputSchema extends StandardSchemaV1 | undefined,
+    TOutputSchema extends StandardSchemaV1,
+    TErrorCode extends string,
+  >(
+    route: FragnoRouteConfig<"GET", TPath, TInputSchema, TOutputSchema, TErrorCode, string>,
+    options: CreateHookOptions = {},
+  ): NewFragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode> {
+    if (route.method !== "GET") {
+      throw new Error(
+        `Only GET routes are supported for hooks. Route '${route.path}' is a ${route.method} route.`,
+      );
+    }
+
+    if (!route.outputSchema) {
+      throw new Error(
+        `Output schema is required for GET routes. Route '${route.path}' has no output schema.`,
+      );
+    }
+
+    const baseUrl = this.#publicConfig.baseUrl ?? "";
+    const mountRoute = getMountRoute(this.#libraryConfig);
+
+    async function callServerSideHandler(params: {
+      pathParams?: Record<string, string | ReadableAtom<string>>;
+      queryParams?: Record<string, string | ReadableAtom<string>>;
+    }): Promise<Response> {
+      const { pathParams, queryParams } = params ?? {};
+
+      const normalizedPathParams = Object.fromEntries(
+        Object.entries(pathParams ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.get(),
+        ]),
+      ) as ExtractPathParams<TPath, string>;
+
+      const normalizedQueryParams = Object.fromEntries(
+        Object.entries(queryParams ?? {}).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.get(),
+        ]),
+      );
+
+      const searchParams = new URLSearchParams(normalizedQueryParams);
+
+      const result = await route.handler(
+        RequestInputContext.fromSSRContext({
+          method: route.method,
+          path: route.path,
+          pathParams: normalizedPathParams,
+          searchParams,
+          body: undefined, // No body for GET
+        }),
+        new RequestOutputContext(route.outputSchema),
+      );
+
+      return result;
+    }
+
+    async function executeQuery(params?: {
+      pathParams?: Record<string, string | ReadableAtom<string>>;
+      queryParams?: Record<string, string | ReadableAtom<string>>;
+    }): Promise<Response> {
+      const { pathParams, queryParams } = params ?? {};
+
+      if (typeof window === "undefined") {
+        return task(async () => callServerSideHandler({ pathParams, queryParams }));
+      }
+
+      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
+
+      let response: Response;
+      try {
+        response = await fetch(url);
+      } catch (error) {
+        throw FragnoClientFetchError.fromUnknownFetchError(error);
+      }
+
+      if (!response.ok) {
+        throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
+      }
+
+      return response;
+    }
+
+    return {
+      route,
+      store: (params: {
+        pathParams?: Record<string, string | ReadableAtom<string>>;
+        queryParams?: Record<string, string | ReadableAtom<string>>;
+      }) => {
+        const { pathParams, queryParams } = params ?? {};
+
+        const key = getCacheKey(route.method, route.path, params);
+
+        const store = this.#createFetcherStore<
+          StandardSchemaV1.InferOutput<TOutputSchema>,
+          FragnoClientError<TErrorCode>
+        >(key, {
+          fetcher: async (): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> => {
+            if (SSR_ENABLED) {
+              const initialData = getInitialData(
+                key.map((d) => (typeof d === "string" ? d : d.get())).join(""),
+              );
+
+              if (initialData) {
+                return initialData;
+              }
+            }
+
+            const response = await executeQuery({ pathParams, queryParams });
+
+            const isStreaming = isStreamingResponse(response);
+
+            if (!isStreaming) {
+              return response.json() as Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+            }
+
+            if (isStreaming === "ndjson") {
+              // Start streaming in background and return first item
+              const { firstItem } = await handleNdjsonStreamingFirstItem(response, store);
+              return [firstItem];
+            }
+
+            if (isStreaming === "octet-stream") {
+              // TODO(Wilco): Implement this
+              throw new Error("Octet-stream streaming is not supported.");
+            }
+
+            throw new Error("Unreachable");
+          },
+
+          onErrorRetry: options?.onErrorRetry,
+          dedupeTime: Infinity,
+        });
+
+        if (typeof window === "undefined") {
+          addStore(store);
+        }
+
+        return store;
+      },
+      query: async (params?: {
+        pathParams?: Record<string, string>;
+        queryParams?: Record<string, string>;
+      }) => {
+        const response = await executeQuery(params);
+
+        const isStreaming = isStreamingResponse(response);
+
+        if (!isStreaming) {
+          return (await response.json()) as StandardSchemaV1.InferOutput<TOutputSchema>;
+        }
+
+        throw new Error("Streaming responses are not supported server side");
+      },
+    };
+  }
+
+  #createRouteQueryMutator<
+    TPath extends string,
+    TInputSchema extends StandardSchemaV1,
+    TOutputSchema extends StandardSchemaV1,
+    TErrorCode extends string,
+  >(
+    route: FragnoRouteConfig<
+      NonGetHTTPMethod,
+      TPath,
+      TInputSchema,
+      TOutputSchema,
+      TErrorCode,
+      string
+    >,
+    onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
+      invalidate("GET", route.path, params),
+  ): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
+    const method = route.method;
+
+    const baseUrl = this.#publicConfig.baseUrl ?? "";
+    const mountRoute = getMountRoute(this.#libraryConfig);
+
+    async function mutateQuery(
+      body: StandardSchemaV1.InferInput<TInputSchema>,
+      params: {
+        pathParams?: Record<string, string | ReadableAtom<string>>;
+        queryParams?: Record<string, string | ReadableAtom<string>>;
+      },
+    ) {
+      const { pathParams, queryParams } = params ?? {};
+
+      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method,
+          body: JSON.stringify(body),
+        });
+      } catch (error) {
+        throw FragnoClientFetchError.fromUnknownFetchError(error);
+      }
+
+      if (!response.ok) {
+        throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
+      }
+
+      return response.json();
+    }
+
+    const mutatorStore = this.#createMutationStore<
+      {
+        body: StandardSchemaV1.InferInput<TInputSchema>;
+        params: {
+          pathParams?: Record<string, string | ReadableAtom<string>>;
+          queryParams?: Record<string, string | ReadableAtom<string>>;
+        };
+      },
+      StandardSchemaV1.InferOutput<TOutputSchema>,
+      FragnoClientError<TErrorCode>
+    >(async ({ data }) => {
+      if (typeof window === "undefined") {
+        // TODO(Wilco): Handle server-side rendering.
+      }
+
+      const { body, params } = data;
+      const result = await mutateQuery(body, params);
+      const resolvedParams: {
+        pathParams: ExtractPathParamsOrWiden<TPath, string>;
+        queryParams?: Record<string, string>;
+      } = {
+        pathParams: Object.fromEntries(
+          Object.entries(params.pathParams ?? {}).map(([key, value]) => [
+            key,
+            typeof value === "string" ? value : value.get(),
+          ]),
+        ) as ExtractPathParamsOrWiden<TPath, string>,
+        queryParams: Object.fromEntries(
+          Object.entries(params.queryParams ?? {}).map(([key, value]) => [
+            key,
+            typeof value === "string" ? value : value.get(),
+          ]),
+        ),
+      };
+
+      onInvalidate(this.#invalidate.bind(this), resolvedParams);
+
+      return result;
+    });
+
+    return {
+      route,
+      mutateQuery,
+      mutatorStore,
+    };
+  }
+
+  #invalidate<TPath extends string>(
+    method: HTTPMethod,
+    path: TPath,
+    params: {
+      pathParams?: ExtractPathParamsOrWiden<TPath, string>;
+      queryParams?: Record<string, string>;
+    },
+  ) {
+    const prefixArray = getCacheKey(method, path, {
+      pathParams: params?.pathParams,
+      queryParams: params?.queryParams,
+    });
+
+    const prefix = prefixArray.map((k) => (typeof k === "string" ? k : k.get())).join("");
+
+    this.#invalidateKeys((key) => key.startsWith(prefix));
+  }
+}
 
 export function createClientBuilder<
   TRoutes extends readonly FragnoRouteConfig<
@@ -692,226 +868,6 @@ export function createClientBuilder<
 >(
   publicConfig: FragnoPublicClientConfig,
   libraryConfig: TLibraryConfig,
-): {
-  createHook: <TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
-    path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
-    options?: CreateHookOptions,
-  ) => NewFragnoClientHookData<
-    "GET",
-    TPath,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
-  >;
-
-  createMutator: <TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
-    method: NonGetHTTPMethod,
-    path: TPath,
-    onInvalidate?: OnInvalidateFn<TPath>,
-  ) => FragnoClientMutatorData<
-    NonGetHTTPMethod,
-    TPath,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"]>,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
-  >;
-} {
-  return {
-    createHook: (path, options) => createLibraryHook(publicConfig, libraryConfig, path, options),
-    createMutator: (method, path, onInvalidate) =>
-      createLibraryMutator(publicConfig, libraryConfig, method, path, onInvalidate),
-  };
-}
-
-export function createLibraryHook<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
-  TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>,
-  TRoute extends ExtractRouteByPath<TLibraryConfig["routes"], TPath>,
->(
-  publicConfig: FragnoPublicClientConfig,
-  libraryConfig: TLibraryConfig,
-  path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
-  options?: CreateHookOptions,
-): NewFragnoClientHookData<
-  "GET",
-  TPath,
-  NonNullable<TRoute["outputSchema"]>,
-  NonNullable<TRoute["errorCodes"]>[number]
-> {
-  const route = libraryConfig.routes.find(
-    (
-      r,
-    ): r is FragnoRouteConfig<
-      "GET",
-      TPath,
-      StandardSchemaV1 | undefined,
-      StandardSchemaV1,
-      string,
-      string
-    > => r.path === path && r.method === "GET" && r.outputSchema !== undefined,
-  );
-
-  if (!route) {
-    throw new Error(`Route '${path}' not found or is not a GET route with an output schema.`);
-  }
-
-  return createRouteQueryHook(publicConfig, libraryConfig, route, options);
-}
-
-export function createLibraryMutator<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
-  TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>,
-  TMethod extends NonGetHTTPMethod,
-  TRoute extends ExtractRouteByPath<TLibraryConfig["routes"], TPath>,
->(
-  publicConfig: FragnoPublicClientConfig,
-  libraryConfig: TLibraryConfig,
-  method: TMethod,
-  path: TPath,
-  onInvalidate?: OnInvalidateFn<TPath>,
-): FragnoClientMutatorData<
-  NonGetHTTPMethod,
-  TPath,
-  NonNullable<TRoute["inputSchema"]>,
-  NonNullable<TRoute["outputSchema"]>,
-  NonNullable<TRoute["errorCodes"]>[number]
-> {
-  const route = libraryConfig.routes.find(
-    (
-      r,
-    ): r is FragnoRouteConfig<
-      TMethod,
-      TPath,
-      NonNullable<TRoute["inputSchema"]>,
-      NonNullable<TRoute["outputSchema"]>,
-      string,
-      string
-    > =>
-      r.path === path &&
-      r.method === method &&
-      r.inputSchema !== undefined &&
-      r.outputSchema !== undefined,
-  );
-
-  if (!route) {
-    throw new Error(
-      `Route '${path}' not found or is not a ${method} route with an input and output schema.`,
-    );
-  }
-
-  return createRouteQueryMutator(publicConfig, libraryConfig, route, onInvalidate);
-}
-
-export function createRouteQueryMutator<
-  TPath extends string,
-  TInputSchema extends StandardSchemaV1,
-  TOutputSchema extends StandardSchemaV1,
-  TErrorCode extends string,
->(
-  publicConfig: FragnoPublicClientConfig,
-  libraryConfig: { mountRoute?: string; name: string },
-  route: FragnoRouteConfig<
-    NonGetHTTPMethod,
-    TPath,
-    TInputSchema,
-    TOutputSchema,
-    TErrorCode,
-    string
-  >,
-  onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
-    invalidate("GET", route.path, params),
-): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
-  const method = route.method;
-
-  const baseUrl = publicConfig.baseUrl ?? "";
-  const mountRoute = getMountRoute(libraryConfig);
-
-  async function mutateQuery(
-    body: StandardSchemaV1.InferInput<TInputSchema>,
-    params: {
-      pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
-    },
-  ) {
-    const { pathParams, queryParams } = params ?? {};
-
-    const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method,
-        body: JSON.stringify(body),
-      });
-    } catch (error) {
-      throw FragnoClientFetchError.fromUnknownFetchError(error);
-    }
-
-    if (!response.ok) {
-      throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
-    }
-
-    return response.json();
-  }
-
-  const mutatorStore = createMutationStore<
-    {
-      body: StandardSchemaV1.InferInput<TInputSchema>;
-      params: {
-        pathParams?: Record<string, string | ReadableAtom<string>>;
-        queryParams?: Record<string, string | ReadableAtom<string>>;
-      };
-    },
-    StandardSchemaV1.InferOutput<TOutputSchema>,
-    FragnoClientError<TErrorCode>
-  >(async ({ data }) => {
-    if (typeof window === "undefined") {
-      // TODO(Wilco): Handle server-side rendering.
-    }
-
-    const { body, params } = data;
-    const result = await mutateQuery(body, params);
-    const resolvedParams: {
-      pathParams: ExtractPathParamsOrWiden<TPath, string>;
-      queryParams?: Record<string, string>;
-    } = {
-      pathParams: Object.fromEntries(
-        Object.entries(params.pathParams ?? {}).map(([key, value]) => [
-          key,
-          typeof value === "string" ? value : value.get(),
-        ]),
-      ) as ExtractPathParamsOrWiden<TPath, string>,
-      queryParams: Object.fromEntries(
-        Object.entries(params.queryParams ?? {}).map(([key, value]) => [
-          key,
-          typeof value === "string" ? value : value.get(),
-        ]),
-      ),
-    };
-
-    onInvalidate(invalidate, resolvedParams);
-
-    return result;
-  });
-
-  return {
-    route,
-    mutateQuery,
-    mutatorStore,
-  };
+): ClientBuilder<TRoutes, TLibraryConfig> {
+  return new ClientBuilder(publicConfig, libraryConfig);
 }

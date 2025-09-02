@@ -16,13 +16,17 @@ export default async function handleRequest(
   responseHeaders: Headers,
   routerContext: EntryContext,
 ) {
+  console.time("initServerLoad");
   await initServerLoad();
 
   // First pass: render the app to discover all the stores
   const firstPassContext = { ...routerContext, serverHandoffStream: undefined };
   renderToString(<ServerRouter context={firstPassContext} url={request.url} />);
+  console.timeEnd("initServerLoad");
 
+  console.time("startServerLoad");
   const javascriptToEmbed = await startServerLoad();
+  console.timeEnd("startServerLoad");
 
   return new Promise((resolve, reject) => {
     let shellRendered = false;

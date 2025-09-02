@@ -2,7 +2,7 @@ import { test, expect, describe, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { atom, computed } from "nanostores";
 import { z } from "zod";
-import { clearHooksCache, createClientBuilder } from "./client";
+import { createClientBuilder } from "./client";
 import { useFragno, useStore } from "./react";
 import { addRoute } from "../api/api";
 import type { FragnoPublicClientConfig } from "../mod";
@@ -48,7 +48,6 @@ describe("createReactHook", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    clearHooksCache();
   });
 
   test("should create a hook for a simple GET route", async () => {

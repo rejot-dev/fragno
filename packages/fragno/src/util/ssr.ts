@@ -1,8 +1,9 @@
 import { allTasks } from "nanostores";
 import type { FetcherStore } from "@nanostores/query";
-import { clearHooksCache } from "../client/client";
 
 let stores: FetcherStore[] = [];
+
+export const SSR_ENABLED = false;
 
 export function getStores() {
   return stores;
@@ -13,7 +14,6 @@ export function addStore(store: FetcherStore) {
 }
 
 export function cleanStores() {
-  clearHooksCache();
   stores = [];
 }
 
@@ -30,7 +30,9 @@ export function hydrateFromWindow() {
   if (typeof window !== "undefined" && window.__FRAGNO_INITIAL_DATA__) {
     clientInitialData = new Map(window.__FRAGNO_INITIAL_DATA__);
     delete window.__FRAGNO_INITIAL_DATA__;
-    console.warn("hydrateFromWindow", clientInitialData);
+    console.warn("hydrateFromWindow", {
+      clientInitialData: Array.from(clientInitialData.entries()),
+    });
   }
 }
 

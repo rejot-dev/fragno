@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import { addRoute } from "../api/api";
-import { buildUrl, clearHooksCache, createClientBuilder, getCacheKey } from "./client";
+import { buildUrl, createClientBuilder, getCacheKey } from "./client";
 import { useFragno } from "./vanilla";
 import { waitForAsyncIterator } from "../util/async";
 
@@ -140,7 +140,6 @@ describe("invalidation", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    clearHooksCache();
   });
 
   test("should automatically refetch when an item is invalidated", async () => {
