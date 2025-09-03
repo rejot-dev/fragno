@@ -1,13 +1,9 @@
 import { writeFile, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { MessageService } from "./message-service";
 
 const tmpDir = await mkdtemp(join(tmpdir(), "fragno-"));
-
-export interface MessageService {
-  setData: (messageKey: string, message: string) => Promise<void>;
-  getData: (messageKey: string) => Promise<string | undefined>;
-}
 
 export const fileMessageService: MessageService = {
   setData: async (messageKey: string, message: string) => {

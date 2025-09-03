@@ -2,9 +2,18 @@
   "name": "@fragno-dev/node",
   "version": "0.0.0",
   "exports": {
-    ".": "./fragno-node.ts"
+    ".": {
+      "types": "./dist/fragno-node.d.ts",
+      "default": "./dist/fragno-node.js"
+    },
+    "./package.json": "./package.json"
   },
   "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit"
+  },
   "peerDependencies": {
     "@rejot-dev/fragno": "workspace:*"
   },
@@ -12,11 +21,15 @@
     "node": "^20.0.0 || >=22.0.0"
   },
   "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22",
     "@types/express": "^5.0.3",
     "express": "^5.1.0"
   },
   "dependencies": {
     "@remix-run/node-fetch-server": "^0.8.0"
-  }
+  },
+  "main": "./dist/fragno-node.js",
+  "module": "./dist/fragno-node.js",
+  "types": "./dist/fragno-node.d.ts"
 }

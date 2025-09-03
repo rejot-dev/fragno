@@ -88,7 +88,7 @@
 
 <script setup lang="ts">
 import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
-import { useFragno } from "@rejot-dev/fragno/client/vue";
+import { useFragno } from "@rejot-dev/fragno/vue";
 import { ref } from "vue";
 
 const exampleFragmentClient = createExampleFragmentClient();

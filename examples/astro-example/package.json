@@ -1,12 +1,13 @@
 {
-  "name": "astro-example",
+  "name": "@fragno-example/astro",
   "type": "module",
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "types:check": "tsc --noEmit"
   },
   "dependencies": {
     "astro": "^5.13.2",

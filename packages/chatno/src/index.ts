@@ -1,16 +1,16 @@
 import {
-  createClientBuilder,
   createLibrary,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@rejot-dev/fragno";
+import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { addRoute } from "@rejot-dev/fragno/api";
 import { z } from "zod";
-import { fileMessageService } from "./file-message-service.server";
 import { serverOnly$ } from "vite-env-only/macros";
+import { inMemoryMessageService } from "./message-service";
 
 const api = serverOnly$({
-  messages: fileMessageService,
+  messages: inMemoryMessageService,
 } as const)!;
 
 export const chatnoLibraryConfig = {

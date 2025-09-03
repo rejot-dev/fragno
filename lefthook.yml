@@ -11,8 +11,5 @@ pre-commit:
         sh -c 'bunx prettier --ignore-unknown --check {staged_files}; code=$?; bunx prettier
         --ignore-unknown --write {staged_files}; exit $code'
     - name: type-check
-      run: bun run build
+      run: bunx turbo run types:check
       glob: "{*.ts,tsconfig.json}"
-    - name: check-workspace-refs
-      run: bun scripts/check-workspace-refs.ts --update
-      glob: "{**/package.json,**/tsconfig.json}"

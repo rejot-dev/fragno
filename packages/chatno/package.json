@@ -2,10 +2,18 @@
   "name": "@rejot-dev/chatno",
   "version": "0.0.0",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "check": "tsc --noEmit"
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit"
   },
   "type": "module",
   "dependencies": {
@@ -13,6 +21,7 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {
-    "vite-env-only": "^3.0.3"
+    "vite-env-only": "^3.0.3",
+    "@fragno-private/typescript-config": "workspace:*"
   }
 }

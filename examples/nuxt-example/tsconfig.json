@@ -13,12 +13,6 @@
     },
     {
       "path": "./.nuxt/tsconfig.node.json"
-    },
-    {
-      "path": "../../packages/fragno"
-    },
-    {
-      "path": "../../packages/example-fragment"
     }
   ]
 }

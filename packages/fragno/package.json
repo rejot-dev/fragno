@@ -2,16 +2,39 @@
   "name": "@rejot-dev/fragno",
   "version": "0.0.0",
   "exports": {
-    ".": "./src/mod.ts",
-    "./api": "./src/api/api.ts",
-    "./client": "./src/client/client.ts",
-    "./client/vanilla": "./src/client/vanilla.ts",
-    "./client/react": "./src/client/react.ts",
-    "./client/vue": "./src/client/vue.ts",
-    "./client/astro": "./src/client/astro.ts"
+    ".": {
+      "types": "./dist/mod.d.ts",
+      "default": "./dist/mod.js"
+    },
+    "./api": {
+      "types": "./dist/api/api.d.ts",
+      "default": "./dist/api/api.js"
+    },
+    "./client": {
+      "types": "./dist/client/client.d.ts",
+      "default": "./dist/client/client.js"
+    },
+    "./react": {
+      "types": "./dist/client/react.d.ts",
+      "default": "./dist/client/react.js"
+    },
+    "./vanilla": {
+      "types": "./dist/client/vanilla.d.ts",
+      "default": "./dist/client/vanilla.js"
+    },
+    "./vue": {
+      "types": "./dist/client/vue.d.ts",
+      "default": "./dist/client/vue.js"
+    },
+    "./package.json": "./package.json"
   },
+  "main": "./dist/mod.js",
+  "module": "./dist/mod.js",
+  "types": "./dist/mod.d.ts",
   "scripts": {
-    "check": "tsc --noEmit"
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit"
   },
   "type": "module",
   "dependencies": {
@@ -26,5 +49,8 @@
     "@testing-library/react": "^16.3.0",
     "@types/node": "^22",
     "happy-dom": "^18.0.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
   }
 }

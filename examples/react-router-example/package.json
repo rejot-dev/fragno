@@ -6,13 +6,14 @@
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "types:check": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
     "@nanostores/query": "^0.3.4",
     "@nanostores/react": "^1.0.0",
     "@react-router/node": "^7.5.3",
     "@react-router/serve": "^7.5.3",
+    "@rejot-dev/fragno": "workspace:*",
     "@rejot-dev/chatno": "workspace:*",
     "isbot": "^5.1.27",
     "nanostores": "^1.0.1",

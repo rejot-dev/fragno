@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
@@ -23,16 +23,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"],
-  "references": [
-    {
-      "path": "../../packages/fragno"
-    },
-    {
-      "path": "../../packages/chatno"
-    },
-    {
-      "path": "../../packages/example-fragment"
-    }
-  ]
+  "exclude": ["node_modules"]
 }

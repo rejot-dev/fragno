@@ -83,7 +83,6 @@ export function createExampleFragment(publicConfig: FragnoPublicConfig = {}) {
 export function createExampleFragmentClient(publicConfig: FragnoPublicClientConfig = {}) {
   const b = createClientBuilder(publicConfig, libraryConfig);
 
-  // Explicitly type the return value to ensure TypeScript uses these exact properties
   const client = {
     useData: b.createHook("/data"),
     useSampleMutator: b.createMutator("POST", "/sample"),

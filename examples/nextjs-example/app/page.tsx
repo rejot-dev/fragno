@@ -1,7 +1,9 @@
 "use client";
 
+import React from "react";
+
 import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
-import { useFragno } from "@rejot-dev/fragno/client/react";
+import { useFragno } from "@rejot-dev/fragno/react";
 
 const exampleFragmentClient = createExampleFragmentClient();
 const { useData } = useFragno(exampleFragmentClient);

@@ -117,6 +117,8 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
     });
     const result = useStore(store);
 
+    // TODO(Wilco): Vue integration seems broken. Pls fix.
+
     // To allow unwrapping of the return value, we need to create a computed value.
     return {
       data: computed(() => result.value.data),
