@@ -1,26 +1,19 @@
 import {
+  createClientBuilder,
   createLibrary,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@rejot-dev/fragno";
 import { addRoute } from "@rejot-dev/fragno/api";
-import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
+import { fileMessageService } from "./file-message-service.server";
+import { serverOnly$ } from "vite-env-only/macros";
 
-const serverSideMessagesStores: Record<string, string> = {
-  default: "Hello, world!",
-};
+const api = serverOnly$({
+  messages: fileMessageService,
+} as const)!;
 
-const inMemoryServices = {
-  setData: async (messageKey: string, message: string) => {
-    serverSideMessagesStores[messageKey] = message;
-  },
-  getData: (messageKey: string) => {
-    return serverSideMessagesStores[messageKey];
-  },
-} as const;
-
-const libraryConfig = {
+export const chatnoLibraryConfig = {
   name: "chatno",
   routes: [
     addRoute({
@@ -61,7 +54,7 @@ const libraryConfig = {
         const messageKey = pathParams.message;
         const shouldCapitalize = searchParams.get("capital") === "true";
 
-        const data = inMemoryServices.getData(messageKey);
+        const data = await api.messages.getData(messageKey);
 
         if (!data) {
           return error(
@@ -95,8 +88,8 @@ const libraryConfig = {
         const { message } = await input.valid();
         const messageKey = pathParams.messageKey;
 
-        const previous = inMemoryServices.getData(messageKey);
-        inMemoryServices.setData(messageKey, message);
+        const previous = await api.messages.getData(messageKey);
+        await api.messages.setData(messageKey, message);
 
         if (/^\d+$/.test(message)) {
           return error(
@@ -151,16 +144,16 @@ const libraryConfig = {
   ],
 } as const;
 
+export function createChatno(publicConfig: FragnoPublicConfig = {}) {
+  return createLibrary(publicConfig, chatnoLibraryConfig, api);
+}
+
 export interface ChatnoConfig {
   apiProvider?: "openai" | "anthropic";
 }
 
-export function createChatno(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig, inMemoryServices);
-}
-
 export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
-  const b = createClientBuilder(publicConfig, libraryConfig);
+  const b = createClientBuilder(publicConfig, chatnoLibraryConfig);
 
   const client = {
     useAiConfig: b.createHook("/ai-config"),

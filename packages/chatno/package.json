@@ -11,5 +11,8 @@
   "dependencies": {
     "@rejot-dev/fragno": "workspace:*",
     "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "vite-env-only": "^3.0.3"
   }
 }
