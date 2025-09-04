@@ -1,0 +1,108 @@
+{
+  "name": "@fragno-dev/unplugin-fragno",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "",
+  "keywords": [
+    "unplugin"
+  ],
+  "exports": {
+    ".": "./dist/index.js",
+    "./macros": "./dist/macros.js",
+    "./astro": "./dist/integrations/astro.js",
+    "./esbuild": "./dist/integrations/esbuild.js",
+    "./farm": "./dist/integrations/farm.js",
+    "./nuxt": "./dist/integrations/nuxt.js",
+    "./rollup": "./dist/integrations/rollup.js",
+    "./rspack": "./dist/integrations/rspack.js",
+    "./types": "./dist/types.js",
+    "./vite": "./dist/integrations/vite.js",
+    "./webpack": "./dist/integrations/webpack.js",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/*",
+        "./*"
+      ]
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown -w",
+    "lint": "eslint .",
+    "play": "npm -C playground run dev",
+    "prepublishOnly": "npm run build",
+    "release": "bumpp && pnpm publish",
+    "start": "tsx src/index.ts",
+    "test": "vitest"
+  },
+  "peerDependencies": {
+    "@farmfe/core": ">=1",
+    "@nuxt/kit": "^3",
+    "@nuxt/schema": "^3",
+    "esbuild": "*",
+    "rollup": "^3",
+    "vite": ">=3",
+    "webpack": "^4 || ^5"
+  },
+  "peerDependenciesMeta": {
+    "@farmfe/core": {
+      "optional": true
+    },
+    "@nuxt/kit": {
+      "optional": true
+    },
+    "@nuxt/schema": {
+      "optional": true
+    },
+    "esbuild": {
+      "optional": true
+    },
+    "rollup": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    },
+    "webpack": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "unplugin": "^2.3.4",
+    "@babel/core": "^7.23.7",
+    "@babel/generator": "^7.23.6",
+    "@babel/parser": "^7.23.6",
+    "@babel/traverse": "^7.23.7",
+    "@babel/types": "^7.23.6",
+    "babel-dead-code-elimination": "^1.0.6"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^4.13.2",
+    "@nuxt/kit": "^3.17.4",
+    "@nuxt/schema": "^3.17.4",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.6.8",
+    "@types/babel__traverse": "^7.20.5",
+    "@types/node": "^22.15.21",
+    "bumpp": "^10.1.1",
+    "dedent": "^1.7.0",
+    "eslint": "^9.27.0",
+    "nodemon": "^3.1.10",
+    "rollup": "^4.41.0",
+    "tsdown": "^0.12.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.1.4",
+    "webpack": "^5.99.9"
+  }
+}

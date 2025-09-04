@@ -6,9 +6,11 @@ export interface MessageService {
 const inMemoryMessageStore: Record<string, string> = {};
 export const inMemoryMessageService: MessageService = {
   setData: async (messageKey: string, message: string) => {
+    console.log("[InMemoryMessageService] setData", messageKey);
     inMemoryMessageStore[messageKey] = message;
   },
   getData: async (messageKey: string) => {
+    console.log("[InMemoryMessageService] getData", messageKey);
     return inMemoryMessageStore[messageKey];
   },
 };

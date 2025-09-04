@@ -3,10 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MessageService } from "./message-service";
 
-const tmpDir = await mkdtemp(join(tmpdir(), "fragno-"));
+let tmpDir: string | undefined;
 
 export const fileMessageService: MessageService = {
   setData: async (messageKey: string, message: string) => {
+    if (!tmpDir) {
+      tmpDir = await mkdtemp(join(tmpdir(), "fragno-"));
+    }
+
+    console.log("[FileMessageService] setData", messageKey);
     const filePath = join(tmpDir, `${messageKey}.txt`);
     await writeFile(filePath, message, {
       flag: "w",
@@ -14,6 +19,11 @@ export const fileMessageService: MessageService = {
     });
   },
   getData: async (messageKey: string) => {
+    if (!tmpDir) {
+      tmpDir = await mkdtemp(join(tmpdir(), "fragno-"));
+    }
+
+    console.log("[FileMessageService] getData", messageKey);
     const filePath = join(tmpDir, `${messageKey}.txt`);
     try {
       const message = await readFile(filePath, "utf8");

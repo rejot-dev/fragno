@@ -41,5 +41,8 @@
     "packages/*",
     "packages-private/*"
   ],
-  "packageManager": "bun@1.2.20"
+  "packageManager": "bun@1.2.20",
+  "dependencies": {
+    "claude": "^0.1.2"
+  }
 }
