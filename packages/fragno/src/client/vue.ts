@@ -1,8 +1,13 @@
-import { useStore } from "@nanostores/vue";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { atom, type ReadableAtom, type WritableAtom } from "nanostores";
-import type { Ref } from "vue";
-import { computed, watch } from "vue";
+import {
+  atom,
+  type ReadableAtom,
+  type Store,
+  type StoreValue,
+  type WritableAtom,
+} from "nanostores";
+import type { DeepReadonly, Ref, ShallowRef, UnwrapNestedRefs } from "vue";
+import { computed, getCurrentScope, onScopeDispose, shallowRef, watch } from "vue";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
@@ -115,15 +120,25 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
       pathParams: pathParamsAtoms,
       queryParams: queryParamsAtoms,
     });
-    const result = useStore(store);
 
-    // TODO(Wilco): Vue integration seems broken. Pls fix.
+    const data = shallowRef();
+    const loading = shallowRef();
+    const error = shallowRef();
 
-    // To allow unwrapping of the return value, we need to create a computed value.
+    const unsubscribe = store.subscribe((updatedStoreValue) => {
+      data.value = updatedStoreValue.data;
+      loading.value = updatedStoreValue.loading;
+      error.value = updatedStoreValue.error;
+    });
+
+    if (getCurrentScope()) {
+      onScopeDispose(unsubscribe);
+    }
+
     return {
-      data: computed(() => result.value.data),
-      loading: computed(() => result.value.loading),
-      error: computed(() => result.value.error),
+      data,
+      loading,
+      error,
     };
   };
 }
@@ -247,4 +262,20 @@ export function useFragno<
   }
 
   return result;
+}
+
+export function useStore<SomeStore extends Store, Value extends StoreValue<SomeStore>>(
+  store: SomeStore,
+): DeepReadonly<UnwrapNestedRefs<ShallowRef<Value>>> {
+  const state = shallowRef();
+
+  const unsubscribe = store.subscribe((value) => {
+    state.value = value;
+  });
+
+  if (getCurrentScope()) {
+    onScopeDispose(unsubscribe);
+  }
+
+  return state;
 }

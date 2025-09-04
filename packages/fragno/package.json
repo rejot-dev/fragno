@@ -39,14 +39,13 @@
   "type": "module",
   "dependencies": {
     "@nanostores/query": "^0.3.4",
-    "@nanostores/react": "^1.0.0",
-    "@nanostores/vue": "^1.0.0",
     "@standard-schema/spec": "^1.0.0",
     "nanostores": "^1.0.1",
     "rou3": "^0.7.3"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.0",
+    "@testing-library/vue": "^8.1.0",
     "@types/node": "^22",
     "happy-dom": "^18.0.1"
   },
