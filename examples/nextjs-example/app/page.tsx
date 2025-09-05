@@ -6,15 +6,22 @@ import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
 import { useFragno } from "@rejot-dev/fragno/react";
 
 const exampleFragmentClient = createExampleFragmentClient();
-const { useData } = useFragno(exampleFragmentClient);
+const { useData, useHash } = useFragno(exampleFragmentClient);
 
 export default function Home() {
   const { data: currentData, loading: dataLoading } = useData();
+  const { data: hashData, loading: hashLoading } = useHash();
 
   return (
     <div style={{ padding: "20px", fontFamily: "monospace", maxWidth: "800px", margin: "0 auto" }}>
       <h1>Next.js Fragno Example Fragment</h1>
       <p>Simple data reading with example-fragment</p>
+
+      {!hashLoading && (
+        <div style={{ marginBottom: "30px" }}>
+          <p>{hashData}</p>
+        </div>
+      )}
 
       <div style={{ marginBottom: "30px" }}>
         <h2>Current Data</h2>

@@ -7,9 +7,24 @@ import { addRoute } from "@rejot-dev/fragno/api";
 import { createClientBuilder } from "@rejot-dev/fragno/client";
 import { z } from "zod";
 
+import { readFile } from "node:fs/promises";
+import { platform } from "node:os";
+import { createHash } from "node:crypto";
+
 let serverSideData = "Hello World! This is a server-side data.";
 
-const services = {
+const api = {
+  getHashFromHostsFileData: async () => {
+    const hostsPath =
+      platform() === "win32" ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts";
+
+    try {
+      const data = await readFile(hostsPath, { encoding: "utf8" });
+      return createHash("sha256").update(data).digest("hex");
+    } catch {
+      return null;
+    }
+  },
   setData: async (data: string) => {
     serverSideData = data;
   },
@@ -23,10 +38,11 @@ const libraryConfig = {
   routes: [
     addRoute({
       method: "GET",
-      path: "/hello", // TODO: Enforce "/" is not allowed as a path
+      path: "/hash", // TODO: Enforce "/" is not allowed as a path
       outputSchema: z.string(),
       handler: async (_, { json }) => {
-        return json(`Hello, world!`);
+        const hash = await api.getHashFromHostsFileData();
+        return json(hash ? `The hash of your 'hosts' file is: ${hash}` : "No hash found :(");
       },
     }),
 
@@ -45,7 +61,7 @@ const libraryConfig = {
           );
         }
 
-        return json(services.getData());
+        return json(api.getData());
       },
     }),
 
@@ -58,7 +74,7 @@ const libraryConfig = {
       handler: async ({ input }, { json, error }) => {
         const { message } = await input.valid();
 
-        await services.setData(message);
+        await api.setData(message);
 
         if (/^\d+$/.test(message)) {
           return error(
@@ -77,13 +93,14 @@ const libraryConfig = {
 } as const;
 
 export function createExampleFragment(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig, services);
+  return createLibrary(publicConfig, libraryConfig, api);
 }
 
 export function createExampleFragmentClient(publicConfig: FragnoPublicClientConfig = {}) {
   const b = createClientBuilder(publicConfig, libraryConfig);
 
   const client = {
+    useHash: b.createHook("/hash"),
     useData: b.createHook("/data"),
     useSampleMutator: b.createMutator("POST", "/sample"),
   };

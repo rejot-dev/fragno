@@ -3,13 +3,14 @@
   "version": "0.0.0",
   "exports": {
     ".": {
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "browser": "./dist/browser/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/node/index.js"
     }
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
@@ -21,6 +22,8 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {
-    "@fragno-private/typescript-config": "workspace:*"
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@types/node": "^20"
   }
 }

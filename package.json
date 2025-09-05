@@ -38,6 +38,7 @@
     "clean:install": "bun run clean && bun install --linker=isolated",
     "build": "turbo run build",
     "build:watch": "turbo watch build",
+    "build:ui": "turbo watch --ui tui build",
     "build:clean": "turbo run build --force",
     "types:check": "turbo run types:check"
   },
