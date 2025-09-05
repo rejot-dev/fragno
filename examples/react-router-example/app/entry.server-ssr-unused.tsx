@@ -6,7 +6,7 @@ import type { RenderToPipeableStreamOptions } from "react-dom/server";
 import { renderToPipeableStream, renderToString } from "react-dom/server";
 import type { EntryContext } from "react-router";
 import { ServerRouter } from "react-router";
-import { finishServerLoad, startServerLoad, initServerLoad } from "@fragno-dev/core";
+import { finishServerLoad, startServerLoad, initServerLoad } from "@fragno-dev/core/react-ssr";
 
 export const streamTimeout = 5_000;
 

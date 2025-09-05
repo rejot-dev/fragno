@@ -6,6 +6,7 @@ import type { NonGetHTTPMethod } from "../api/api";
 import type { ClientHookParams, FragnoClientMutatorData, NewFragnoClientHookData } from "./client";
 import { isGetHook, isMutatorHook } from "./client";
 import type { FragnoClientError } from "./client-error";
+import { hydrateFromWindow } from "../util/ssr";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyStandardSchema = StandardSchemaV1<any, any>;
@@ -186,4 +187,13 @@ export function useStore<SomeStore extends Store>(
     // Server-side rendering
     return get();
   });
+}
+
+export function FragnoHydrator({ children }: { children: React.ReactNode }) {
+  // Ensure initial data is transferred from window before any hooks run
+  // Running in useMemo makes this happen during render, ahead of effects
+  useMemo(() => {
+    hydrateFromWindow();
+  }, []);
+  return children;
 }

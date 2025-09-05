@@ -1,16 +1,6 @@
 import { addRoute, createRouter, findRoute } from "rou3";
 import { FragnoApiError, type FragnoRouteConfig, type HTTPMethod } from "./api/api";
 import { RequestInputContext } from "./api/request-input-context";
-import type {
-  FragnoClientHook,
-  ExtractGetRoutes,
-  ExtractGetRoutePaths,
-  ExtractOutputSchemaForPath,
-  IsValidGetRoutePath,
-  GenerateHookTypeForPath,
-  ValidateGetRoutePath,
-  HasGetRoutes,
-} from "./client/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./api/internal/path";
 import { getMountRoute } from "./api/internal/route";
@@ -145,25 +135,3 @@ export function createLibrary<
     },
   };
 }
-
-// TODO(Wilco): Remove all re-exports
-
-// Re-export client utility types and builder
-export type {
-  FragnoClientHook,
-  ExtractGetRoutes,
-  ExtractGetRoutePaths,
-  ExtractOutputSchemaForPath,
-  IsValidGetRoutePath,
-  GenerateHookTypeForPath,
-  ValidateGetRoutePath,
-  HasGetRoutes,
-};
-
-export { createClientBuilder, ClientBuilder } from "./client/client";
-export { toNextJsHandler } from "./integrations/next-js";
-export { toAstroHandler } from "./integrations/astro";
-
-export { hydrateFromWindow } from "./util/ssr";
-export { startServerLoad, finishServerLoad, initServerLoad } from "./integrations/react-ssr";
-export { FragnoHydrator } from "./client/FragnoHydrator";

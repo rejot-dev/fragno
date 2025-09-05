@@ -8,7 +8,9 @@ export default defineConfig({
     "./src/client/vanilla.ts",
     "./src/client/react.ts",
     "./src/client/vue.ts",
-    "./src/client/astro.ts",
+    "./src/integrations/astro.ts",
+    "./src/integrations/next-js.ts",
+    "./src/integrations/react-ssr.ts",
   ],
   dts: true,
 });

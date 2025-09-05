@@ -6,7 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { FragnoHydrator } from "@fragno-dev/core";
+import { FragnoHydrator } from "@fragno-dev/core/react";
 
 import type { Route } from "./+types/root";
 import "./app.css";

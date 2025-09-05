@@ -21,7 +21,7 @@
       "default": "./dist/client/client.js"
     },
     "./react": {
-      "bun": "./src/client/react.ts",
+      "bun": "./src/client/react.tsx",
       "development": "./src/client/react.ts",
       "types": "./dist/client/react.d.ts",
       "default": "./dist/client/react.js"
@@ -37,6 +37,24 @@
       "development": "./src/client/vue.ts",
       "types": "./dist/client/vue.d.ts",
       "default": "./dist/client/vue.js"
+    },
+    "./astro": {
+      "bun": "./src/integrations/astro.ts",
+      "development": "./src/integrations/astro.ts",
+      "types": "./dist/integrations/astro.d.ts",
+      "default": "./dist/integrations/astro.js"
+    },
+    "./next-js": {
+      "bun": "./src/integrations/next-js.ts",
+      "development": "./src/integrations/next-js.ts",
+      "types": "./dist/integrations/next-js.d.ts",
+      "default": "./dist/integrations/next-js.js"
+    },
+    "./react-ssr": {
+      "bun": "./src/integrations/react-ssr.ts",
+      "development": "./src/integrations/react-ssr.ts",
+      "types": "./dist/integrations/react-ssr.d.ts",
+      "default": "./dist/integrations/react-ssr.js"
     },
     "./package.json": "./package.json"
   },

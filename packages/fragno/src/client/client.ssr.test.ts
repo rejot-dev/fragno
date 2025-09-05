@@ -7,7 +7,8 @@
  */
 
 import { assert, describe, expect, test } from "vitest";
-import { createClientBuilder, type FragnoPublicClientConfig } from "../mod";
+import { type FragnoPublicClientConfig } from "../mod";
+import { createClientBuilder } from "./client";
 import { addRoute } from "../api/api";
 import { z } from "zod";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";

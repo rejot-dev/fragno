@@ -1,5 +1,6 @@
 import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vitest";
-import { createClientBuilder, type FragnoPublicClientConfig } from "../mod";
+import { type FragnoPublicClientConfig } from "../mod";
+import { createClientBuilder } from "./client";
 import { addRoute } from "../api/api";
 import { z } from "zod";
 import { useFragno } from "./vue";

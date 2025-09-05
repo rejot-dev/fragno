@@ -1,5 +1,5 @@
 import { createExampleFragment } from "@fragno-dev/example-fragment";
-import { toAstroHandler } from "@fragno-dev/core";
+import { toAstroHandler } from "@fragno-dev/core/astro";
 
 const exampleFragment = createExampleFragment({});
 
