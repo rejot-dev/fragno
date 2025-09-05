@@ -11,7 +11,7 @@ const testLibraryConfig = {
     // GET routes
     addRoute({
       method: "GET",
-      path: "/",
+      path: "/home",
       outputSchema: z.string(),
       handler: async (_ctx, { json }) => json("ok"),
     }),
@@ -183,14 +183,14 @@ describe("type safety tests", () => {
     const builder = createClientBuilder(testPublicConfig, testLibraryConfig);
 
     // These should compile (valid GET routes)
-    expect(() => builder.createHook("/")).not.toThrow();
+    expect(() => builder.createHook("/home")).not.toThrow();
     expect(() => builder.createHook("/users")).not.toThrow();
     expect(() => builder.createHook("/users/:id")).not.toThrow();
     expect(() => builder.createHook("/ai-config")).not.toThrow();
 
     expectTypeOf(builder.createHook)
       .parameter(0)
-      .toEqualTypeOf<"/" | "/users" | "/users/:id" | "/ai-config">();
+      .toEqualTypeOf<"/home" | "/users" | "/users/:id" | "/ai-config">();
 
     expect(() => {
       // @ts-expect-error - Invalid path should not be allowed
@@ -206,7 +206,7 @@ describe("real-world usage scenarios", () => {
       routes: [
         addRoute({
           method: "GET",
-          path: "/",
+          path: "/home",
           handler: async (_ctx, { empty }) => {
             return empty();
           },

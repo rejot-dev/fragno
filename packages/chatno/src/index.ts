@@ -17,15 +17,6 @@ export const chatnoLibraryConfig = {
   routes: [
     addRoute({
       method: "GET",
-      path: "/",
-      outputSchema: z.string(),
-      handler: async (_ctx, { json }) => {
-        return json(`Hello, world!`);
-      },
-    }),
-
-    addRoute({
-      method: "GET",
       path: "/thing/**:path",
       outputSchema: z.object({
         path: z.string(),

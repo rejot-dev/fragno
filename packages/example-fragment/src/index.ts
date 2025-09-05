@@ -38,7 +38,7 @@ const libraryConfig = {
   routes: [
     addRoute({
       method: "GET",
-      path: "/hash", // TODO: Enforce "/" is not allowed as a path
+      path: "/hash",
       outputSchema: z.string(),
       handler: async (_, { json }) => {
         const hash = await api.getHashFromHostsFileData();

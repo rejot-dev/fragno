@@ -22,7 +22,7 @@ const _testRoutes = [
   // GET routes
   addRoute({
     method: "GET",
-    path: "/",
+    path: "/home",
     handler: async (_ctx, { json }) => json({}),
   }),
   addRoute({
@@ -95,14 +95,7 @@ const _noGetRoutes = [
     path: "/delete/:id",
     handler: async (_ctx, { json }) => json({}),
   }),
-] as const satisfies readonly FragnoRouteConfig<
-  HTTPMethod,
-  string,
-  StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined,
-  string,
-  string
->[];
+] as const;
 
 test("ExtractGetRoutes type tests", () => {
   // Should extract only GET routes from mixed routes
@@ -125,7 +118,7 @@ test("ExtractGetRoutePaths type tests", () => {
   // Should extract only paths from GET routes
   type GetPaths = ExtractGetRoutePaths<typeof _testRoutes>;
   expectTypeOf<GetPaths>().toEqualTypeOf<
-    "/" | "/users" | "/users/:id" | "/posts/:postId/comments" | "/static/**:path"
+    "/home" | "/users" | "/users/:id" | "/posts/:postId/comments" | "/static/**:path"
   >();
 
   // Should be never for routes with no GET methods
@@ -164,13 +157,13 @@ test("ExtractOutputSchemaForPath type tests", () => {
   type NonExistentSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/nonexistent">;
   expectTypeOf<NonExistentSchema>().toEqualTypeOf<never>();
 
-  type PathWithNoSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/">;
+  type PathWithNoSchema = ExtractOutputSchemaForPath<typeof _testRoutes, "/home">;
   expectTypeOf<PathWithNoSchema>().toEqualTypeOf<StandardSchemaV1<unknown, unknown> | undefined>();
 });
 
 test("IsValidGetRoutePath type tests", () => {
   // Should return true for valid GET route paths
-  expectTypeOf<IsValidGetRoutePath<typeof _testRoutes, "/">>().toEqualTypeOf<true>();
+  expectTypeOf<IsValidGetRoutePath<typeof _testRoutes, "/home">>().toEqualTypeOf<true>();
   expectTypeOf<IsValidGetRoutePath<typeof _testRoutes, "/users">>().toEqualTypeOf<true>();
   expectTypeOf<IsValidGetRoutePath<typeof _testRoutes, "/users/:id">>().toEqualTypeOf<true>();
   expectTypeOf<
@@ -217,7 +210,7 @@ test("GenerateHookTypeForPath type tests", () => {
   >();
 
   // Should generate hook with undefined schema for routes without output schema
-  type RootHook = GenerateHookTypeForPath<typeof _testRoutes, "/">;
+  type RootHook = GenerateHookTypeForPath<typeof _testRoutes, "/home">;
   expectTypeOf<RootHook>().toExtend<FragnoClientHook<undefined, string>>();
 
   type StaticHook = GenerateHookTypeForPath<typeof _testRoutes, "/static/**:path">;
@@ -226,7 +219,7 @@ test("GenerateHookTypeForPath type tests", () => {
 
 test("ValidateGetRoutePath type tests", () => {
   // Should return the path itself for valid GET routes
-  expectTypeOf<ValidateGetRoutePath<typeof _testRoutes, "/">>().toEqualTypeOf<"/">();
+  expectTypeOf<ValidateGetRoutePath<typeof _testRoutes, "/home">>().toEqualTypeOf<"/home">();
   expectTypeOf<ValidateGetRoutePath<typeof _testRoutes, "/users">>().toEqualTypeOf<"/users">();
   expectTypeOf<
     ValidateGetRoutePath<typeof _testRoutes, "/users/:id">
@@ -257,7 +250,7 @@ test("Real-world usage scenarios", () => {
   const _chatnoLikeRoutes = [
     addRoute({
       method: "GET",
-      path: "/",
+      path: "/home",
       outputSchema: z.string(),
       handler: async (_ctx, { json }) => json("Hello, world!"),
     }),
@@ -293,7 +286,7 @@ test("Real-world usage scenarios", () => {
 
   // Should extract only GET paths
   type ChatnoGetPaths = ExtractGetRoutePaths<typeof _chatnoLikeRoutes>;
-  expectTypeOf<ChatnoGetPaths>().toEqualTypeOf<"/" | "/thing/**:path" | "/ai-config">();
+  expectTypeOf<ChatnoGetPaths>().toEqualTypeOf<"/home" | "/thing/**:path" | "/ai-config">();
 
   // Should validate paths correctly
   expectTypeOf<IsValidGetRoutePath<typeof _chatnoLikeRoutes, "/ai-config">>().toEqualTypeOf<true>();
@@ -403,7 +396,7 @@ test("GET route with outputSchema", () => {
 });
 
 test("ClientHookParams type tests - no path params", () => {
-  type NoParamsRoot = ClientHookParams<"/", string>;
+  type NoParamsRoot = ClientHookParams<"/home", string>;
   expectTypeOf<NoParamsRoot>().toEqualTypeOf<{
     queryParams?: Record<string, string>;
   }>();

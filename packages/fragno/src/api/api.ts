@@ -5,6 +5,24 @@ import type { RequestOutputContext } from "./request-output-context";
 export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 export type NonGetHTTPMethod = Exclude<HTTPMethod, "GET">;
 
+// Helper type to create branded error messages that are still assignable to string
+type PathError<T extends string, TMessage extends string> = T & [`Error: ${TMessage}`];
+
+/**
+ * A valid path string that:
+ * - Is non-empty
+ * - Starts with "/"
+ * - Is not just "/"
+ * - Does not end with "/"
+ */
+export type ValidPath<T extends string = string> = T extends `/${infer Rest}`
+  ? Rest extends ""
+    ? PathError<T, "Path cannot be just '/'."> // Excludes "/"
+    : T extends `${string}/`
+      ? PathError<T, "Path cannot end with '/'."> // Excludes paths ending with "/"
+      : T
+  : PathError<T, "Path must start with '/'.">; // Excludes paths not starting with "/"
+
 export interface FragnoRouteConfig<
   TMethod extends HTTPMethod,
   TPath extends string,
@@ -35,7 +53,7 @@ export function addRoute<
 >(
   route: FragnoRouteConfig<
     TMethod,
-    TPath,
+    ValidPath<TPath>,
     undefined,
     TOutputSchema,
     TErrorCode,
@@ -54,7 +72,7 @@ export function addRoute<
 >(
   route: FragnoRouteConfig<
     TMethod,
-    TPath,
+    ValidPath<TPath>,
     TInputSchema,
     TOutputSchema,
     TErrorCode,
@@ -75,7 +93,7 @@ export function addRoute<
 >(
   route: FragnoRouteConfig<
     TMethod,
-    TPath,
+    ValidPath<TPath>,
     TInputSchema,
     TOutputSchema,
     TErrorCode,
