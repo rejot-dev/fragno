@@ -1,6 +1,5 @@
 {
   "name": "@fragno-dev/root",
-  "private": true,
   "devDependencies": {
     "@eslint/js": "^9.31.0",
     "@nanostores/query": "^0.3.4",
@@ -28,21 +27,23 @@
     "node": ">=22",
     "bun": ">=1.2.20"
   },
+  "packageManager": "bun@1.2.20",
+  "private": true,
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "clean": "rm -rf **/dist **/tsconfig.tsbuildinfo **/node_modules",
-    "clean:install": "bun run clean && bun install --linker=isolated"
+    "clean": "rm -rf **/dist **/tsconfig.tsbuildinfo **/node_modules **/.turbo **/next **/.output **/.nuxt **/.react-router",
+    "clean:install": "bun run clean && bun install --linker=isolated",
+    "build": "turbo run build",
+    "build:watch": "turbo watch build",
+    "build:clean": "turbo run build --force",
+    "types:check": "turbo run types:check"
   },
   "workspaces": [
     "examples/*",
     "packages/*",
     "packages-private/*"
-  ],
-  "packageManager": "bun@1.2.20",
-  "dependencies": {
-    "claude": "^0.1.2"
-  }
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "files": [],
-  "extends": "../../tsconfig.base.json",
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
   "references": [
     {
       "path": "./.nuxt/tsconfig.app.json"

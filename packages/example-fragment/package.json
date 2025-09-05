@@ -19,5 +19,8 @@
   "dependencies": {
     "@rejot-dev/fragno": "workspace:*",
     "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*"
   }
 }

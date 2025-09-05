@@ -21,10 +21,12 @@
     "node": "^20.0.0 || >=22.0.0"
   },
   "devDependencies": {
+    "@rejot-dev/fragno": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22",
     "@types/express": "^5.0.3",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "zod": "^4.0.5"
   },
   "dependencies": {
     "@remix-run/node-fetch-server": "^0.8.0"

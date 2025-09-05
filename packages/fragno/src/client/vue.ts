@@ -7,7 +7,7 @@ import {
   type WritableAtom,
 } from "nanostores";
 import type { DeepReadonly, Ref, ShallowRef, UnwrapNestedRefs } from "vue";
-import { computed, getCurrentScope, onScopeDispose, shallowRef, watch } from "vue";
+import { computed, getCurrentScope, onScopeDispose, ref, shallowRef, watch } from "vue";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
@@ -121,9 +121,9 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
       queryParams: queryParamsAtoms,
     });
 
-    const data = shallowRef();
-    const loading = shallowRef();
-    const error = shallowRef();
+    const data = ref();
+    const loading = ref();
+    const error = ref();
 
     const unsubscribe = store.subscribe((updatedStoreValue) => {
       data.value = updatedStoreValue.data;
@@ -132,7 +132,9 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
     });
 
     if (getCurrentScope()) {
-      onScopeDispose(unsubscribe);
+      onScopeDispose(() => {
+        unsubscribe();
+      });
     }
 
     return {
@@ -196,13 +198,9 @@ function createVueMutator<
         : undefined;
 
       // Call the store's mutate function with normalized params
-      // Cast is safe because we've transformed Ref values to strings above
       return store.value.mutate({
         body,
-        params: normalizedParams as {
-          pathParams?: Record<string, string | ReadableAtom<string>>;
-          queryParams?: Record<string, string | ReadableAtom<string>>;
-        },
+        params: normalizedParams ?? {},
       });
     };
 
@@ -244,7 +242,7 @@ export function useFragno<
   [K in keyof T]: TransformHook<T[K]>;
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
+  const result = {} as any;
 
   for (const key in clientObj) {
     if (!Object.prototype.hasOwnProperty.call(clientObj, key)) {

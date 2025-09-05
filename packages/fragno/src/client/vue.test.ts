@@ -60,7 +60,7 @@ describe("createVueHook", () => {
     expect(error.value).toBeUndefined();
   });
 
-  test.only("Should support path parameters w/ reactive updating", async () => {
+  test("Should support path parameters w/ reactive updating", async () => {
     const testLibraryConfig = {
       name: "test-library",
       routes: [

@@ -16,5 +16,9 @@
     "vue-router": "^4.5.1",
     "@rejot-dev/fragno": "workspace:*",
     "@rejot-dev/example-fragment": "workspace:*"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "vue-tsc": "^3.0.4"
   }
 }

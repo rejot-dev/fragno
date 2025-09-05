@@ -218,7 +218,6 @@ describe("invalidation", () => {
       userStore,
       (state) => state.loading === false,
     );
-    console.log(stateAfterInitialLoad.error);
 
     expect(stateAfterInitialLoad).toEqual({
       loading: false,

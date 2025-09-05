@@ -9,15 +9,10 @@ export interface ModuleOptions extends Options {}
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: "nuxt-unplugin-fragno",
-    configKey: "unpluginStarter",
-  },
-  defaults: {
-    // ...default options
+    configKey: "unpluginFragno",
   },
   setup(options, _nuxt) {
     addVitePlugin(() => vite(options));
     addWebpackPlugin(() => webpack(options));
-
-    // ...
   },
 });

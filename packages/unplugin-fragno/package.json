@@ -46,8 +46,8 @@
   },
   "peerDependencies": {
     "@farmfe/core": ">=1",
-    "@nuxt/kit": "^3",
-    "@nuxt/schema": "^3",
+    "@nuxt/kit": "^3 || ^4",
+    "@nuxt/schema": "^3 || ^4",
     "esbuild": "*",
     "rollup": "^3",
     "vite": ">=3",
@@ -86,9 +86,10 @@
     "babel-dead-code-elimination": "^1.0.6"
   },
   "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
     "@antfu/eslint-config": "^4.13.2",
-    "@nuxt/kit": "^3.17.4",
-    "@nuxt/schema": "^3.17.4",
+    "@nuxt/kit": "^4.0.3",
+    "@nuxt/schema": "^4.0.3",
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.6.8",
     "@types/babel__traverse": "^7.20.5",

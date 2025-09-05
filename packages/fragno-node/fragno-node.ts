@@ -8,6 +8,9 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * @example
  * import { createServer } from "node:http";
  * import { toNodeHandler } from "@fragno-dev/node";
+ * import { createExampleFragment } from "@rejot-dev/example-fragment";
+ *
+ * const library = createExampleFragment();
  *
  * const server = createServer(toNodeHandler(library.handler));
  * server.listen(8080);
@@ -15,6 +18,9 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * @example
  * import { createServer } from "node:http";
  * import { toNodeHandler } from "@fragno-dev/node";
+ * import { createExampleFragment } from "@rejot-dev/example-fragment";
+ *
+ * const library = createExampleFragment();
  *
  * const server = createServer((req, res) => {
  *   if (req.url?.startsWith(library.mountRoute)) {

@@ -10,6 +10,9 @@ pre-commit:
       run:
         sh -c 'bunx prettier --ignore-unknown --check {staged_files}; code=$?; bunx prettier
         --ignore-unknown --write {staged_files}; exit $code'
-    - name: type-check
-      run: bunx turbo run types:check
+    - name: build & type-check
+      run: bunx turbo run build types:check
+      glob: "{*.ts,tsconfig.json}"
+    - name: test
+      run: bunx vitest run
       glob: "{*.ts,tsconfig.json}"
