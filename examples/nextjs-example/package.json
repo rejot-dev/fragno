@@ -1,5 +1,5 @@
 {
-  "name": "@rejot-dev/fragno-nextjs-example",
+  "name": "@fragno-example/nextjs",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,8 +10,8 @@
     "types:check": "tsc --noEmit"
   },
   "dependencies": {
-    "@rejot-dev/example-fragment": "workspace:*",
-    "@rejot-dev/fragno": "workspace:*",
+    "@fragno-dev/example-fragment": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "next": "15.1.6"

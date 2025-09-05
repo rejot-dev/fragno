@@ -22,8 +22,8 @@ describe("transform robustness and error handling", () => {
 
   test("dead code elimination - only removes code that becomes unused after our transforms", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { createLibrary } from "@fragno-dev/core";
+      import { addRoute } from "@fragno-dev/core/api";
     `;
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(source);
@@ -38,8 +38,8 @@ describe("transform robustness and error handling", () => {
 
   test("mixed valid and invalid transforms", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { createLibrary } from "@fragno-dev/core";
+      import { addRoute } from "@fragno-dev/core/api";
       
       // Valid createLibrary
       const api = { service: myService };
@@ -78,8 +78,8 @@ describe("transform robustness and error handling", () => {
     ).join("\n");
 
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { createLibrary } from "@fragno-dev/core";
+      import { addRoute } from "@fragno-dev/core/api";
       
       ${createLibraryCalls}
       ${addRouteCalls}
@@ -102,7 +102,7 @@ describe("transform robustness and error handling", () => {
 
   test("unicode and special characters in code", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const api = { 
         "🚀service": rocketService,
@@ -122,7 +122,7 @@ describe("transform robustness and error handling", () => {
 
   test("deeply nested scopes", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       function outer() {
         function inner() {
@@ -143,8 +143,8 @@ describe("transform robustness and error handling", () => {
 
   test("class methods with transforms", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { createLibrary } from "@fragno-dev/core";
+      import { addRoute } from "@fragno-dev/core/api";
       
       class ApiBuilder {
         buildLibrary() {
@@ -171,7 +171,7 @@ describe("transform robustness and error handling", () => {
 
   test("arrow functions and function expressions", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { addRoute } from "@fragno-dev/core/api";
       
       const createRoute = () => addRoute({
         method: "GET",
@@ -200,7 +200,7 @@ describe("transform robustness and error handling", () => {
 
   test("template literals and complex expressions", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const serviceName = "myService";
       const api = {

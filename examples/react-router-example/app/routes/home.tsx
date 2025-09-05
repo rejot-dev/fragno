@@ -1,7 +1,7 @@
 import type { Route } from "./+types/home";
 import { WelcomeShell, WelcomeHero, WelcomeExperiments } from "../welcome/welcome";
-import { createChatnoClient } from "@rejot-dev/chatno";
-import { useFragno } from "@rejot-dev/fragno/react";
+import { createChatnoClient } from "@fragno-dev/chatno";
+import { useFragno } from "@fragno-dev/core/react";
 import { useState } from "react";
 
 export function meta(_: Route.MetaArgs) {

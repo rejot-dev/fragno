@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "astro": "^5.13.2",
-    "@rejot-dev/fragno": "workspace:*",
-    "@rejot-dev/example-fragment": "workspace:*"
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/example-fragment": "workspace:*"
   },
   "devDependencies": {
     "@astrojs/node": "^9.4.2"

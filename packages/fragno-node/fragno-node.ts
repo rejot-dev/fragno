@@ -8,7 +8,7 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * @example
  * import { createServer } from "node:http";
  * import { toNodeHandler } from "@fragno-dev/node";
- * import { createExampleFragment } from "@rejot-dev/example-fragment";
+ * import { createExampleFragment } from "@fragno-dev/example-fragment";
  *
  * const library = createExampleFragment();
  *
@@ -18,7 +18,7 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * @example
  * import { createServer } from "node:http";
  * import { toNodeHandler } from "@fragno-dev/node";
- * import { createExampleFragment } from "@rejot-dev/example-fragment";
+ * import { createExampleFragment } from "@fragno-dev/example-fragment";
  *
  * const library = createExampleFragment();
  *

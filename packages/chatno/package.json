@@ -1,5 +1,5 @@
 {
-  "name": "@rejot-dev/chatno",
+  "name": "@fragno-dev/chatno",
   "version": "0.0.0",
   "exports": {
     ".": {
@@ -12,13 +12,14 @@
   "module": "./dist/node/index.js",
   "types": "./dist/node/index.d.ts",
   "scripts": {
+    "dev": "tsdown --watch",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit"
   },
   "type": "module",
   "dependencies": {
-    "@rejot-dev/fragno": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
     "zod": "^4.0.5"
   },
   "devDependencies": {

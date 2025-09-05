@@ -10,18 +10,19 @@
   },
   "type": "module",
   "scripts": {
+    "dev": "tsdown --watch",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@rejot-dev/fragno": "workspace:*"
+    "@fragno-dev/core": "workspace:*"
   },
   "engines": {
     "node": "^20.0.0 || >=22.0.0"
   },
   "devDependencies": {
-    "@rejot-dev/fragno": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22",
     "@types/express": "^5.0.3",

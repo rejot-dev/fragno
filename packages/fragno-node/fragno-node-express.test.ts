@@ -5,8 +5,8 @@ import {
   createLibrary,
   type FragnoInstantiatedLibrary,
   type FragnoPublicClientConfig,
-} from "@rejot-dev/fragno";
-import { addRoute } from "@rejot-dev/fragno/api";
+} from "@fragno-dev/core";
+import { addRoute } from "@fragno-dev/core/api";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Fragno Express integration", () => {

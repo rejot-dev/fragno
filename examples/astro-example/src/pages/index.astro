@@ -1,5 +1,5 @@
 ---
-import { createExampleFragment } from "@rejot-dev/example-fragment";
+import { createExampleFragment } from "@fragno-dev/example-fragment";
 
 const exampleFragment = createExampleFragment();
 const initialData = exampleFragment.services.getData();
@@ -59,8 +59,8 @@ const initialData = exampleFragment.services.getData();
 
     <script>
       // Client-side JavaScript for interactivity
-      import { createExampleFragmentClient } from "@rejot-dev/example-fragment";
-      import { useFragno } from "@rejot-dev/fragno/vanilla";
+      import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
+      import { useFragno } from "@fragno-dev/core/vanilla";
 
       const exampleFragmentClient = createExampleFragmentClient();
       const { useData, useSampleMutator } = useFragno(exampleFragmentClient);

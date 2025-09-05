@@ -1,5 +1,5 @@
-import { createExampleFragment } from "@rejot-dev/example-fragment";
-import { toNextJsHandler } from "@rejot-dev/fragno";
+import { createExampleFragment } from "@fragno-dev/example-fragment";
+import { toNextJsHandler } from "@fragno-dev/core";
 
 const exampleFragment = createExampleFragment({});
 

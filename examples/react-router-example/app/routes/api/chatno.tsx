@@ -1,4 +1,4 @@
-import { createChatno } from "@rejot-dev/chatno";
+import { createChatno } from "@fragno-dev/chatno";
 import type { Route } from "./+types/chatno";
 
 // For GET

@@ -2,9 +2,9 @@ import {
   createLibrary,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
-} from "@rejot-dev/fragno";
-import { addRoute } from "@rejot-dev/fragno/api";
-import { createClientBuilder } from "@rejot-dev/fragno/client";
+} from "@fragno-dev/core";
+import { addRoute } from "@fragno-dev/core/api";
+import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
 import { readFile } from "node:fs/promises";
@@ -42,6 +42,7 @@ const libraryConfig = {
       outputSchema: z.string(),
       handler: async (_, { json }) => {
         const hash = await api.getHashFromHostsFileData();
+
         return json(hash ? `The hash of your 'hosts' file is: ${hash}` : "No hash found :(");
       },
     }),

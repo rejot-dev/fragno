@@ -2,9 +2,9 @@ import {
   createLibrary,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
-} from "@rejot-dev/fragno";
-import { createClientBuilder } from "@rejot-dev/fragno/client";
-import { addRoute } from "@rejot-dev/fragno/api";
+} from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { addRoute } from "@fragno-dev/core/api";
 import { z } from "zod";
 import { fileMessageService } from "./file-message-service.server";
 

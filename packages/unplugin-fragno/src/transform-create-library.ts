@@ -3,7 +3,7 @@ import type { Binding, NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 import type { Node } from "@babel/types";
 
-const FRAGNO_PACKAGES = ["@rejot-dev/fragno"];
+const FRAGNO_PACKAGES = ["@fragno-dev/core"];
 
 const isCreateLibraryBinding = (binding: Binding): boolean => {
   if (!t.isImportDeclaration(binding?.path.parent)) {

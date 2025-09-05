@@ -4,7 +4,7 @@ import { transform } from "./transform";
 
 describe("addRoute handler transformation", () => {
   const source = dedent`
-    import { addRoute } from "@rejot-dev/fragno/api"
+    import { addRoute } from "@fragno-dev/core/api"
 
     export const route = addRoute({
       method: "GET",
@@ -18,7 +18,7 @@ describe("addRoute handler transformation", () => {
   test("ssr:true - keeps handler", () => {
     const result = transform(source, "", { ssr: true });
     expect(result.code).toBe(dedent`
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { addRoute } from "@fragno-dev/core/api";
       export const route = addRoute({
         method: "GET",
         path: "/test",
@@ -34,7 +34,7 @@ describe("addRoute handler transformation", () => {
 
   test("ssr:false - replaces handler with noop", () => {
     const expected = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { addRoute } from "@fragno-dev/core/api";
       export const route = addRoute({
         method: "GET",
         path: "/test",
@@ -45,9 +45,9 @@ describe("addRoute handler transformation", () => {
   });
 });
 
-describe("addRoute from @rejot-dev/fragno", () => {
+describe("addRoute from @fragno-dev/core", () => {
   const source = dedent`
-    import { addRoute } from "@rejot-dev/fragno"
+    import { addRoute } from "@fragno-dev/core"
 
     const myRoute = addRoute({
       method: "POST",
@@ -68,7 +68,7 @@ describe("addRoute from @rejot-dev/fragno", () => {
 
 describe("addRoute with aliased import", () => {
   const source = dedent`
-    import { addRoute as createRoute } from "@rejot-dev/fragno/api"
+    import { addRoute as createRoute } from "@fragno-dev/core/api"
 
     export const route = createRoute({
       method: "PUT",
@@ -86,7 +86,7 @@ describe("addRoute with aliased import", () => {
 
 describe("removes dead code after transform", () => {
   const source = dedent`
-    import { addRoute } from "@rejot-dev/fragno"
+    import { addRoute } from "@fragno-dev/core"
     import { createFileSync } from "fs";
     const route = addRoute({
       method: "GET",
@@ -123,7 +123,7 @@ describe("non-fragno addRoute - should not transform", () => {
 describe("addRoute edge cases and potential breaking scenarios", () => {
   test("multiple addRoute calls in same file", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route1 = addRoute({
         method: "GET",
@@ -149,7 +149,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with method property as object method", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute({
         method: "GET",
@@ -168,7 +168,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with complex handler parameters", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute({
         method: "POST",
@@ -193,7 +193,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with destructured parameters in handler", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno"
+      import { addRoute } from "@fragno-dev/core"
 
       export const route = addRoute({
         method: "GET",
@@ -213,7 +213,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with arrow function handler with implicit return", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute({
         method: "GET",
@@ -229,7 +229,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with no handler property", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { addRoute } from "@fragno-dev/core/api";
       export const route = addRoute({
         method: "GET",
         path: "/no-handler"
@@ -242,7 +242,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with handler as variable reference", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       const myHandler = async (ctx, helpers) => {
         return helpers.json({ message: "hello" });
@@ -263,7 +263,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with spread operator in config", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       const baseConfig = { method: "GET", path: "/base" };
       const handler = (ctx) => ({ success: true });
@@ -281,7 +281,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with computed property for handler", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       const handlerKey = "handler";
       const myHandler = (ctx) => ({ data: "computed" });
@@ -307,7 +307,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with nested route configurations", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       const routes = [
         addRoute({
@@ -328,7 +328,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(dedent`
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { addRoute } from "@fragno-dev/core/api";
       const routes = [addRoute({
         method: "GET",
         path: "/nested1",
@@ -342,7 +342,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with handler that throws", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute({
         method: "GET",
@@ -360,7 +360,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("malformed addRoute - missing config object", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute();
     `;
@@ -372,7 +372,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("malformed addRoute - non-object config", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute("invalid-config");
     `;
@@ -384,7 +384,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with mixed import sources", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
       import { addRoute as otherAddRoute } from "other-package"
 
       export const route1 = addRoute({
@@ -402,7 +402,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(dedent`
-      import { addRoute } from "@rejot-dev/fragno/api";
+      import { addRoute } from "@fragno-dev/core/api";
       import { addRoute as otherAddRoute } from "other-package";
       export const route1 = addRoute({
         method: "GET",
@@ -420,7 +420,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with handler containing async/await", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute({
         method: "POST",
@@ -442,7 +442,7 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
   test("addRoute with handler containing try-catch", () => {
     const source = dedent`
-      import { addRoute } from "@rejot-dev/fragno/api"
+      import { addRoute } from "@fragno-dev/core/api"
 
       export const route = addRoute({
         method: "GET",

@@ -1,5 +1,5 @@
 import { toNodeHandler } from "@fragno-dev/node";
-import { createExampleFragment } from "@rejot-dev/example-fragment";
+import { createExampleFragment } from "@fragno-dev/example-fragment";
 import { createServer, type Server } from "node:http";
 
 const library = createExampleFragment();

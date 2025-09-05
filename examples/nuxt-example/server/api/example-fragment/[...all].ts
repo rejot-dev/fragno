@@ -1,4 +1,4 @@
-import { createExampleFragment } from "@rejot-dev/example-fragment";
+import { createExampleFragment } from "@fragno-dev/example-fragment";
 
 const exampleFragment = createExampleFragment({});
 

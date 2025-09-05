@@ -1,5 +1,5 @@
 {
-  "name": "@rejot-dev/fragno-react-router-example",
+  "name": "@fragno-example/react-router",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,8 +13,8 @@
     "@nanostores/react": "^1.0.0",
     "@react-router/node": "^7.5.3",
     "@react-router/serve": "^7.5.3",
-    "@rejot-dev/fragno": "workspace:*",
-    "@rejot-dev/chatno": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/chatno": "workspace:*",
     "isbot": "^5.1.27",
     "nanostores": "^1.0.1",
     "react": "^19.1.0",

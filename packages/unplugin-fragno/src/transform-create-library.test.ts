@@ -4,7 +4,7 @@ import { transform } from "./transform";
 
 describe("createLibrary API object transformation", () => {
   const source = dedent`
-    import { createLibrary } from "@rejot-dev/fragno";
+    import { createLibrary } from "@fragno-dev/core";
     const api = {
       messages: messageService,
       users: userService
@@ -19,7 +19,7 @@ describe("createLibrary API object transformation", () => {
 
   test("ssr:false - replaces api with undefined", () => {
     const expected = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       export const library = createLibrary(publicConfig, libraryConfig, undefined);
     `;
     const result = transform(source, "", { ssr: false });
@@ -29,7 +29,7 @@ describe("createLibrary API object transformation", () => {
 
 describe("createLibrary with inline api object", () => {
   const source = dedent`
-    import { createLibrary } from "@rejot-dev/fragno"
+    import { createLibrary } from "@fragno-dev/core"
 
     export function createMyLibrary(config) {
       return createLibrary(config, libConfig, {
@@ -47,7 +47,7 @@ describe("createLibrary with inline api object", () => {
 
 describe("createLibrary with aliased import", () => {
   const source = dedent`
-    import { createLibrary as makeLibrary } from "@rejot-dev/fragno"
+    import { createLibrary as makeLibrary } from "@fragno-dev/core"
 
     const myApi = { data: dataService };
     const lib = makeLibrary(pubConfig, libConfig, myApi);
@@ -61,7 +61,7 @@ describe("createLibrary with aliased import", () => {
 
 describe("createLibrary with only two arguments", () => {
   const source = dedent`
-    import { createLibrary } from "@rejot-dev/fragno"
+    import { createLibrary } from "@fragno-dev/core"
 
     export const lib = createLibrary(config, libraryConfig);
   `;
@@ -75,7 +75,7 @@ describe("createLibrary with only two arguments", () => {
 
 describe("removes dead code after transform", () => {
   const source = dedent`
-    import { createLibrary } from "@rejot-dev/fragno"
+    import { createLibrary } from "@fragno-dev/core"
     import { createFileSync } from "fs";
     const api = { 
       createFile: () => {
@@ -108,7 +108,7 @@ describe("non-fragno createLibrary - should not transform", () => {
 describe("edge cases and potential breaking scenarios", () => {
   test("multiple createLibrary calls in same file", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const api1 = { service1: s1 };
       const api2 = { service2: s2 };
@@ -126,7 +126,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with spread operator in api object", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const baseApi = { base: baseService };
       const api = { ...baseApi, extra: extraService };
@@ -142,7 +142,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with computed property names", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const key = "dynamicService";
       const api = { [key]: service, static: staticService };
@@ -158,7 +158,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with method shorthand", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const api = { 
         getData() { return data; },
@@ -176,7 +176,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with nested object expressions", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const lib = createLibrary(config, libConfig, {
         nested: {
@@ -194,7 +194,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with variable reference as argument", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const apiRef = someApiObject;
       export const lib = createLibrary(config, libConfig, apiRef);
@@ -207,7 +207,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with function call as api argument", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       function buildApi() {
         return { service: myService };
@@ -224,7 +224,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with more than 3 arguments", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const api = { service: myService };
       export const lib = createLibrary(config, libConfig, api, extraArg);
@@ -236,7 +236,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with TypeScript type annotations", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       interface ApiType {
         service: () => string;
@@ -253,7 +253,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary inside conditional blocks", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       const api = { service: myService };
       
@@ -272,7 +272,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with comments and whitespace", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       // API configuration
       const api = { 
@@ -308,7 +308,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("malformed code - missing arguments", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       export const lib = createLibrary();
     `;
@@ -320,7 +320,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with destructured import", () => {
     const source = dedent`
-      import { createLibrary, otherFunction } from "@rejot-dev/fragno";
+      import { createLibrary, otherFunction } from "@fragno-dev/core";
       
       const api = { service: myService };
       export const lib = createLibrary(config, libConfig, api);
@@ -335,7 +335,7 @@ describe("edge cases and potential breaking scenarios", () => {
 
   test("createLibrary with renamed binding in scope", () => {
     const source = dedent`
-      import { createLibrary } from "@rejot-dev/fragno";
+      import { createLibrary } from "@fragno-dev/core";
       
       function myFunction() {
         const createLibrary = someOtherFunction;

@@ -1,5 +1,5 @@
 {
-  "name": "@rejot-dev/fragno-nuxt-example",
+  "name": "@fragno-dev/core-nuxt-example",
   "type": "module",
   "private": true,
   "scripts": {
@@ -14,8 +14,8 @@
     "nuxt": "^4.0.3",
     "vue": "^3.5.18",
     "vue-router": "^4.5.1",
-    "@rejot-dev/fragno": "workspace:*",
-    "@rejot-dev/example-fragment": "workspace:*"
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/example-fragment": "workspace:*"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

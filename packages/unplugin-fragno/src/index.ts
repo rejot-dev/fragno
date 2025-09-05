@@ -17,7 +17,7 @@ export const unpluginFactory: UnpluginFactory<Options | undefined> = (options = 
         return false;
       }
 
-      if (id.includes("@fragno-dev/unplugin-fragno") || id.includes("@rejot-dev/fragno")) {
+      if (id.includes("@fragno-dev/unplugin-fragno") || id.includes("@fragno-dev/core")) {
         return false;
       }
 
