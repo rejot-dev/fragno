@@ -23,6 +23,7 @@ const {
 
 <template>
   <div style="margin-bottom: 30px">
+    <h1>Vue SPA Example</h1>
     <h2>Current Data:</h2>
     <div
       v-if="loading"

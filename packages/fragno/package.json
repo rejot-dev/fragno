@@ -3,26 +3,38 @@
   "version": "0.0.0",
   "exports": {
     ".": {
+      "bun": "./src/mod.ts",
+      "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./api": {
+      "bun": "./src/api/api.ts",
+      "development": "./src/api/api.ts",
       "types": "./dist/api/api.d.ts",
       "default": "./dist/api/api.js"
     },
     "./client": {
+      "bun": "./src/client/client.ts",
+      "development": "./src/client/client.ts",
       "types": "./dist/client/client.d.ts",
       "default": "./dist/client/client.js"
     },
     "./react": {
+      "bun": "./src/client/react.ts",
+      "development": "./src/client/react.ts",
       "types": "./dist/client/react.d.ts",
       "default": "./dist/client/react.js"
     },
     "./vanilla": {
+      "bun": "./src/client/vanilla.ts",
+      "development": "./src/client/vanilla.ts",
       "types": "./dist/client/vanilla.d.ts",
       "default": "./dist/client/vanilla.js"
     },
     "./vue": {
+      "bun": "./src/client/vue.ts",
+      "development": "./src/client/vue.ts",
       "types": "./dist/client/vue.d.ts",
       "default": "./dist/client/vue.js"
     },
@@ -32,7 +44,6 @@
   "module": "./dist/mod.js",
   "types": "./dist/mod.d.ts",
   "scripts": {
-    "dev": "tsdown --watch",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit"

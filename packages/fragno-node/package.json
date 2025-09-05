@@ -3,6 +3,8 @@
   "version": "0.0.0",
   "exports": {
     ".": {
+      "bun": "./fragno-node.ts",
+      "development": "./fragno-node.ts",
       "types": "./dist/fragno-node.d.ts",
       "default": "./dist/fragno-node.js"
     },
@@ -10,7 +12,6 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "tsdown --watch",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit"

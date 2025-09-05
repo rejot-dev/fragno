@@ -30,7 +30,8 @@
   "packageManager": "bun@1.2.20",
   "private": true,
   "scripts": {
-    "dev": "turbo run --ui tui --concurrency 20 dev",
+    "dev": "turbo watch --ui tui dev",
+    "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

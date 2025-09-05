@@ -1,5 +1,5 @@
 {
-  "name": "@fragno-dev/core-nuxt-example",
+  "name": "@fragno-example/nuxt",
   "type": "module",
   "private": true,
   "scripts": {
