@@ -18,6 +18,7 @@ import type { InferOrUnknown } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
 import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
+import { unwrapObject } from "../util/nanostores";
 
 /**
  * Extract only GET routes from a library config's routes array
@@ -335,19 +336,8 @@ export function buildUrl<TPath extends string>(
   const { baseUrl = "", mountRoute, path } = config;
   const { pathParams, queryParams } = params ?? {};
 
-  const normalizedPathParams = Object.fromEntries(
-    Object.entries(pathParams ?? {}).map(([key, value]) => [
-      key,
-      typeof value === "string" ? value : value.get(),
-    ]),
-  ) as ExtractPathParams<TPath, string>;
-
-  const normalizedQueryParams = Object.fromEntries(
-    Object.entries(queryParams ?? {}).map(([key, value]) => [
-      key,
-      typeof value === "string" ? value : value.get(),
-    ]),
-  );
+  const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath, string>;
+  const normalizedQueryParams = unwrapObject(queryParams) ?? {};
 
   const searchParams = new URLSearchParams(normalizedQueryParams);
   const builtPath = buildPath(path, normalizedPathParams ?? {});
@@ -609,19 +599,8 @@ export class ClientBuilder<
     }): Promise<Response> {
       const { pathParams, queryParams } = params ?? {};
 
-      const normalizedPathParams = Object.fromEntries(
-        Object.entries(pathParams ?? {}).map(([key, value]) => [
-          key,
-          typeof value === "string" ? value : value.get(),
-        ]),
-      ) as ExtractPathParams<TPath, string>;
-
-      const normalizedQueryParams = Object.fromEntries(
-        Object.entries(queryParams ?? {}).map(([key, value]) => [
-          key,
-          typeof value === "string" ? value : value.get(),
-        ]),
-      );
+      const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath, string>;
+      const normalizedQueryParams = unwrapObject(queryParams) ?? {};
 
       const searchParams = new URLSearchParams(normalizedQueryParams);
 
@@ -810,18 +789,8 @@ export class ClientBuilder<
         pathParams: ExtractPathParamsOrWiden<TPath, string>;
         queryParams?: Record<string, string>;
       } = {
-        pathParams: Object.fromEntries(
-          Object.entries(params.pathParams ?? {}).map(([key, value]) => [
-            key,
-            typeof value === "string" ? value : value.get(),
-          ]),
-        ) as ExtractPathParamsOrWiden<TPath, string>,
-        queryParams: Object.fromEntries(
-          Object.entries(params.queryParams ?? {}).map(([key, value]) => [
-            key,
-            typeof value === "string" ? value : value.get(),
-          ]),
-        ),
+        pathParams: unwrapObject(params.pathParams) as ExtractPathParamsOrWiden<TPath, string>,
+        queryParams: unwrapObject(params.queryParams),
       };
 
       onInvalidate(this.#invalidate.bind(this), resolvedParams);

@@ -1,9 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import { addRoute } from "../api/api";
 import { buildUrl, createClientBuilder, getCacheKey } from "./client";
 import { useFragno } from "./vanilla";
-import { waitForAsyncIterator } from "../util/async";
+import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
+import type { FragnoPublicClientConfig } from "../mod";
+import { atom } from "nanostores";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -242,5 +244,711 @@ describe("invalidation", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("parameter reactivity", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("should react to path parameters", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "GET",
+          path: "/users/:id",
+          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+        }),
+      ],
+    } as const;
+
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      assert(typeof input === "string");
+
+      // Regex to extract id value from a URL string, matching only on /users/:id
+      const [, id] = String(input).match(/\/users\/([^/]+)/) ?? [];
+
+      expect(id).toBeDefined();
+      expect(+id).not.toBeNaN();
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => ({ id: Number(id), name: "John" }),
+      } as Response;
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const useUsers = cb.createHook("/users/:id");
+
+    const idAtom = atom("123");
+    const store = useUsers.store({ pathParams: { id: idAtom } });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: { id: 123, name: "John" },
+      });
+    }
+
+    idAtom.set("456");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: { id: 456, name: "John" },
+      });
+    }
+  });
+
+  test("should react to query parameters", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "GET",
+          path: "/users",
+          outputSchema: z.array(z.object({ id: z.number(), name: z.string(), role: z.string() })),
+          handler: async (_ctx, { json }) => json([{ id: 1, name: "John", role: "admin" }]),
+        }),
+      ],
+    } as const;
+
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      assert(typeof input === "string");
+
+      const url = new URL(input);
+      const role = url.searchParams.get("role");
+      const limit = url.searchParams.get("limit");
+
+      expect(role).toBeDefined();
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [
+          { id: 1, name: "John", role: role! },
+          ...(limit === "2" ? [{ id: 2, name: "Jane", role: role! }] : []),
+        ],
+      } as Response;
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const useUsers = cb.createHook("/users");
+
+    const roleAtom = atom("admin");
+    const limitAtom = atom("1");
+    const store = useUsers.store({ queryParams: { role: roleAtom, limit: limitAtom } });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, name: "John", role: "admin" }],
+      });
+    }
+
+    // Change role
+    roleAtom.set("user");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, name: "John", role: "user" }],
+      });
+    }
+
+    // Change limit
+    limitAtom.set("2");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 1, name: "John", role: "user" },
+          { id: 2, name: "Jane", role: "user" },
+        ],
+      });
+    }
+  });
+
+  test("should react to combined path and query parameters", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "GET",
+          path: "/users/:id/posts",
+          outputSchema: z.array(
+            z.object({ id: z.number(), title: z.string(), userId: z.number() }),
+          ),
+          handler: async (_ctx, { json }) => json([{ id: 1, title: "Post", userId: 1 }]),
+        }),
+      ],
+    } as const;
+
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      assert(typeof input === "string");
+
+      const url = new URL(input);
+      const [, userId] = url.pathname.match(/\/users\/([^/]+)\/posts/) ?? [];
+      const status = url.searchParams.get("status");
+      const limit = url.searchParams.get("limit");
+
+      expect(userId).toBeDefined();
+      expect(status).toBeDefined();
+
+      const numPosts = limit === "2" ? 2 : 1;
+      const posts = Array.from({ length: numPosts }, (_, i) => ({
+        id: i + 1,
+        title: `${status} Post ${i + 1}`,
+        userId: Number(userId),
+      }));
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => posts,
+      } as Response;
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const usePosts = cb.createHook("/users/:id/posts");
+
+    const userIdAtom = atom("123");
+    const statusAtom = atom("published");
+    const store = usePosts.store({
+      pathParams: { id: userIdAtom },
+      queryParams: { status: statusAtom, limit: "1" },
+    });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, title: "published Post 1", userId: 123 }],
+      });
+    }
+
+    // Change path parameter
+    userIdAtom.set("456");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, title: "published Post 1", userId: 456 }],
+      });
+    }
+
+    // Change query parameter
+    statusAtom.set("draft");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, title: "draft Post 1", userId: 456 }],
+      });
+    }
+  });
+
+  test("should handle mixed atoms and non-atoms in parameters", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "GET",
+          path: "/users/:id/posts",
+          outputSchema: z.array(
+            z.object({ id: z.number(), title: z.string(), category: z.string() }),
+          ),
+          handler: async (_ctx, { json }) => json([{ id: 1, title: "Post", category: "tech" }]),
+        }),
+      ],
+    } as const;
+
+    let fetchCallCount = 0;
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      fetchCallCount++;
+      assert(typeof input === "string");
+
+      const url = new URL(input);
+      const [, userId] = url.pathname.match(/\/users\/([^/]+)\/posts/) ?? [];
+      const category = url.searchParams.get("category");
+      const sort = url.searchParams.get("sort");
+
+      expect(userId).toBeDefined();
+      expect(category).toBeDefined();
+      expect(sort).toBe("desc");
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [
+          {
+            id: fetchCallCount,
+            title: `Post ${fetchCallCount}`,
+            category: category!,
+          },
+        ],
+      } as Response;
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const usePosts = cb.createHook("/users/:id/posts");
+
+    const userIdAtom = atom("123");
+    const categoryAtom = atom("tech");
+    // sort is a non-atom (static value)
+    const store = usePosts.store({
+      pathParams: { id: userIdAtom },
+      queryParams: { category: categoryAtom, sort: "desc" },
+    });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, title: "Post 1", category: "tech" }],
+      });
+    }
+
+    expect(fetchCallCount).toBe(1);
+
+    // Change atom parameter - should trigger refetch
+    categoryAtom.set("science");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 2, title: "Post 2", category: "science" }],
+      });
+    }
+
+    expect(fetchCallCount).toBe(2);
+
+    // Change path atom parameter - should trigger refetch
+    userIdAtom.set("456");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 3, title: "Post 3", category: "science" }],
+      });
+    }
+
+    expect(fetchCallCount).toBe(3);
+  });
+
+  test("should not refetch when non-atom parameters remain unchanged", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "GET",
+          path: "/users/:id",
+          outputSchema: z.object({ id: z.number(), name: z.string() }),
+          handler: async (_ctx, { json }) => json({ id: 1, name: "John" }),
+        }),
+      ],
+    } as const;
+
+    let fetchCallCount = 0;
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      fetchCallCount++;
+      assert(typeof input === "string");
+
+      const [, id] = String(input).match(/\/users\/([^/]+)/) ?? [];
+      expect(id).toBeDefined();
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => ({ id: Number(id), name: `John${fetchCallCount}` }),
+      } as Response;
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const useUser = cb.createHook("/users/:id");
+
+    const reactiveIdAtom = atom("123");
+    // Create store with mixed params: one atom, one static
+    const store = useUser.store({ pathParams: { id: reactiveIdAtom } });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    // Initial load
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: { id: 123, name: "John1" },
+      });
+    }
+
+    expect(fetchCallCount).toBe(1);
+
+    // Create a second store with the same static parameter values
+    // This should not trigger additional fetches since the cache key is the same
+    const store2 = useUser.store({ pathParams: { id: "123" } });
+    const itt2 = createAsyncIteratorFromCallback(store2.listen);
+
+    // Should get cached result immediately
+    {
+      const { value } = await itt2.next();
+      expect(value).toEqual({
+        loading: false,
+        data: { id: 123, name: "John1" },
+      });
+    }
+
+    // No additional fetch should have occurred
+    expect(fetchCallCount).toBe(1);
+
+    // Now change the reactive atom - should trigger new fetch
+    reactiveIdAtom.set("456");
+
+    // Note: the behaviour in the next two steps is pretty weird, as first we keep the old data
+    //       but then we go to loading anyway.
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: { id: 123, name: "John1" },
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: { id: 456, name: "John2" },
+      });
+    }
+
+    expect(fetchCallCount).toBe(2);
+  });
+
+  test("should handle multiple reactive query parameters independently", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "GET",
+          path: "/posts",
+          outputSchema: z.array(
+            z.object({
+              id: z.number(),
+              title: z.string(),
+              category: z.string(),
+              status: z.string(),
+            }),
+          ),
+          handler: async (_ctx, { json }) =>
+            json([{ id: 1, title: "Post", category: "tech", status: "published" }]),
+        }),
+      ],
+    } as const;
+
+    let fetchCallCount = 0;
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      fetchCallCount++;
+      assert(typeof input === "string");
+
+      const url = new URL(input);
+      const category = url.searchParams.get("category") || "tech";
+      const status = url.searchParams.get("status") || "published";
+      const author = url.searchParams.get("author") || "john";
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [
+          {
+            id: fetchCallCount,
+            title: `${category} ${status} Post by ${author}`,
+            category,
+            status,
+          },
+        ],
+      } as Response;
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const usePosts = cb.createHook("/posts");
+
+    const categoryAtom = atom("tech");
+    const statusAtom = atom("published");
+    const authorAtom = atom("john");
+
+    const store = usePosts.store({
+      queryParams: {
+        category: categoryAtom,
+        status: statusAtom,
+        author: authorAtom,
+      },
+    });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    // Initial load
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 1, title: "tech published Post by john", category: "tech", status: "published" },
+        ],
+      });
+    }
+
+    expect(fetchCallCount).toBe(1);
+
+    // Change first atom
+    categoryAtom.set("science");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          {
+            id: 2,
+            title: "science published Post by john",
+            category: "science",
+            status: "published",
+          },
+        ],
+      });
+    }
+
+    expect(fetchCallCount).toBe(2);
+
+    // Change second atom
+    statusAtom.set("draft");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 3, title: "science draft Post by john", category: "science", status: "draft" },
+        ],
+      });
+    }
+
+    expect(fetchCallCount).toBe(3);
+
+    // Change third atom
+    authorAtom.set("jane");
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 4, title: "science draft Post by jane", category: "science", status: "draft" },
+        ],
+      });
+    }
+
+    expect(fetchCallCount).toBe(4);
   });
 });

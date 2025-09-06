@@ -7,7 +7,7 @@ import {
   type WritableAtom,
 } from "nanostores";
 import type { DeepReadonly, Ref, ShallowRef, UnwrapNestedRefs } from "vue";
-import { computed, getCurrentScope, onScopeDispose, ref, shallowRef, watch } from "vue";
+import { computed, getCurrentScope, isRef, onScopeDispose, ref, shallowRef, watch } from "vue";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
@@ -20,7 +20,9 @@ import type { FragnoClientError } from "./client-error";
 
 export type FragnoVueHook<
   T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
-> = (params?: ClientHookParams<T["route"]["path"], string | Ref<string>>) => {
+> = (
+  params?: ClientHookParams<T["route"]["path"], string | Ref<string> | ReadableAtom<string>>,
+) => {
   data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
   loading: Ref<boolean>;
   error: Ref<FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
@@ -44,6 +46,25 @@ export type FragnoVueMutator<
   data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
 };
 
+/**
+ * Converts a Vue Ref to a Nanostore Atom.
+ *
+ * This is used to convert Vue refs to atoms, so that we can use them in the store.
+ *
+ * @private
+ */
+export function refToAtom<T>(ref: Ref<T>): WritableAtom<T> {
+  const a = atom(ref.value);
+
+  watch(ref, (newVal) => {
+    a.set(newVal);
+  });
+
+  // TODO: Do we need to unsubscribe, or is this handled by `onScopeDispose` below?
+
+  return a;
+}
+
 // Helper function to create a Vue composable from a GET hook
 // We want 1 store per hook, so on updates to params, we need to update the store instead of creating a new one.
 // Nanostores only works with atoms (or strings), so we need to convert vue refs to atoms.
@@ -53,72 +74,27 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
   return (
     params?: ClientHookParams<T["route"]["path"], string | Ref<string> | ReadableAtom<string>>,
   ) => {
+    // FIXME: This obj is only here because of the shitty typing on ClientHookParams
     const paramsObj: {
       pathParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
       queryParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
     } = params ?? {};
 
-    // Create individual atoms for each parameter value
-    const pathParamsAtoms: Record<string, WritableAtom<string>> = {};
-    const queryParamsAtoms: Record<string, WritableAtom<string>> = {};
+    const pathParams: Record<string, string | ReadableAtom<string>> = {};
+    const queryParams: Record<string, string | ReadableAtom<string>> = {};
 
-    // Initialize atoms for existing params
-    for (const [key, _] of Object.entries(paramsObj.pathParams ?? {})) {
-      pathParamsAtoms[key] = atom();
+    for (const [key, value] of Object.entries(paramsObj.pathParams ?? {})) {
+      pathParams[key] = isRef(value) ? refToAtom(value) : value;
     }
 
-    for (const [key, _] of Object.entries(paramsObj.queryParams ?? {})) {
-      queryParamsAtoms[key] = atom();
+    for (const [key, value] of Object.entries(paramsObj.queryParams ?? {})) {
+      queryParams[key] = isRef(value) ? refToAtom(value) : value;
     }
-
-    // TODO(Thies): This feels hacky, and should be improved.
-    const normalizedParams = computed(() => {
-      return {
-        pathParams: paramsObj.pathParams
-          ? Object.fromEntries(
-              Object.entries(paramsObj.pathParams).map(([key, value]) => [
-                key,
-                typeof value === "string" ? value : value.value,
-              ]),
-            )
-          : undefined,
-        queryParams: paramsObj.queryParams
-          ? Object.fromEntries(
-              Object.entries(paramsObj.queryParams).map(([key, value]) => [
-                key,
-                typeof value === "string" ? value : value.value,
-              ]),
-            )
-          : undefined,
-      };
-    });
-
-    // Watch for changes in vue refs, and update the individual atoms with those values.
-    watch(
-      normalizedParams,
-      (newParams) => {
-        if (newParams.pathParams) {
-          for (const [key, value] of Object.entries(newParams.pathParams)) {
-            if (pathParamsAtoms[key]) {
-              pathParamsAtoms[key].set(value ?? "");
-            }
-          }
-        }
-        if (newParams.queryParams) {
-          for (const [key, value] of Object.entries(newParams.queryParams)) {
-            if (queryParamsAtoms[key]) {
-              queryParamsAtoms[key].set(value ?? "");
-            }
-          }
-        }
-      },
-      { immediate: true },
-    );
 
     // Now create a store, which updates whenever you change the path/query params.
     const store = hook.store({
-      pathParams: pathParamsAtoms,
-      queryParams: queryParamsAtoms,
+      pathParams,
+      queryParams,
     });
 
     const data = ref();
@@ -165,42 +141,27 @@ function createVueMutator<
     }) => {
       const { body, params } = args;
 
-      // Convert Ref<string> to string for the underlying store mutate
-      const normalizedParams = params
-        ? {
-            pathParams:
-              params && "pathParams" in params && params.pathParams
-                ? (() => {
-                    const entries = Object.entries(params.pathParams);
-                    if (!entries.length) return undefined;
-                    return Object.fromEntries(
-                      entries.map(([key, value]) => [
-                        key,
-                        typeof value === "string" ? value : value.value,
-                      ]),
-                    );
-                  })()
-                : undefined,
-            queryParams:
-              params && "queryParams" in params && params.queryParams
-                ? (() => {
-                    const entries = Object.entries(params.queryParams);
-                    if (!entries.length) return undefined;
-                    return Object.fromEntries(
-                      entries.map(([key, value]) => [
-                        key,
-                        typeof value === "string" ? value : value.value,
-                      ]),
-                    );
-                  })()
-                : undefined,
-          }
-        : undefined;
+      // FIXME: This obj is only here because of the shitty typing on ClientHookParams
+      const paramsObj: {
+        pathParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
+        queryParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
+      } = params ?? {};
+
+      const pathParams: Record<string, string | ReadableAtom<string>> = {};
+      const queryParams: Record<string, string | ReadableAtom<string>> = {};
+
+      for (const [key, value] of Object.entries(paramsObj.pathParams ?? {})) {
+        pathParams[key] = isRef(value) ? value.value : value;
+      }
+
+      for (const [key, value] of Object.entries(paramsObj.queryParams ?? {})) {
+        queryParams[key] = isRef(value) ? value.value : value;
+      }
 
       // Call the store's mutate function with normalized params
       return store.value.mutate({
         body,
-        params: normalizedParams ?? {},
+        params: { pathParams, queryParams },
       });
     };
 

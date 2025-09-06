@@ -14,5 +14,5 @@ pre-commit:
       run: bunx turbo run build types:check
       glob: "{*.ts,tsconfig.json}"
     - name: test
-      run: bunx vitest run
+      run: bunx vitest run --allowOnly=false
       glob: "{*.ts,tsconfig.json}"
