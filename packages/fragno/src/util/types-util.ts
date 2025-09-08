@@ -8,3 +8,12 @@ export type InferOr<T, U> =
       : U;
 
 export type InferOrUnknown<T> = InferOr<T, unknown>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyStandardSchema = StandardSchemaV1<any>;
+
+export type Prettify<T> = {
+  [K in keyof T]: T[K];
+} & {};
+
+export type EmptyObject = Record<never, never>;

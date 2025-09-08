@@ -46,6 +46,24 @@ describe("addRoute", () => {
     });
   });
 
+  test("HTTPMethod DELETE without inputSchema or outputSchema", () => {
+    addRoute({
+      method: "DELETE",
+      path: "/thing",
+      handler: async ({ input }, { empty, json }) => {
+        // FIXME: Would be nicer if input was not on the object at all
+        expect(input).toBeUndefined();
+        expectTypeOf<typeof input>().toEqualTypeOf<undefined>();
+
+        // FIXME: Would be nicer if parameter of json was never, or not have json as field at all.
+        expect(json).toBeDefined();
+        expectTypeOf<Parameters<typeof json>[0]>().toEqualTypeOf<unknown>();
+
+        return empty();
+      },
+    });
+  });
+
   test("Should have no type errors in createLibrary", () => {
     const config = {} as {
       readonly name: "test-library";

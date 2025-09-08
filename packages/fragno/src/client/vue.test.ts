@@ -144,7 +144,7 @@ describe("createVueHook", () => {
     const id = ref("123");
 
     const { useUser } = useFragno(clientObj);
-    const { loading, data, error } = useUser({ pathParams: { id } });
+    const { loading, data, error } = useUser({ id });
 
     await waitFor(() => {
       expect(loading.value).toBe(false);
@@ -202,7 +202,7 @@ describe("createVueHook", () => {
     const id = atom("123");
 
     const { useUser } = useFragno(clientObj);
-    const { loading, data, error } = useUser({ pathParams: { id } });
+    const { loading, data, error } = useUser({ id });
 
     await waitFor(() => {
       expect(loading.value).toBe(false);
@@ -391,9 +391,7 @@ describe("createVueHook", () => {
     const page = ref("1");
 
     const { useUsers } = useFragno(clientObj);
-    const { loading, data, error } = useUsers({
-      queryParams: { limit, page },
-    });
+    const { loading, data, error } = useUsers(undefined, { limit, page });
 
     await waitFor(() => {
       expect(loading.value).toBe(false);
@@ -493,7 +491,7 @@ describe("createVueHook", () => {
     // Use the mutator
     const result = await deleter.mutate({
       body: {},
-      params: { pathParams: { id: "1" } },
+      path: { id: "1" },
     });
 
     expect(result).toEqual({ success: true });
@@ -559,10 +557,7 @@ describe("createVueHook", () => {
     const sort = "desc"; // Normal string for query parameter
 
     const { useUserPosts } = useFragno(clientObj);
-    const { loading, data, error } = useUserPosts({
-      pathParams: { id: userId },
-      queryParams: { limit, category, sort },
-    });
+    const { loading, data, error } = useUserPosts({ id: userId }, { limit, category, sort });
 
     // Wait for initial load
     await waitFor(() => {
@@ -703,7 +698,7 @@ describe("createVueMutator", () => {
     const userId = ref("42");
     const result = await mutate({
       body: { name: "Updated Name" },
-      params: { pathParams: { id: userId } },
+      path: { id: userId },
     });
 
     expect(result).toEqual({ id: 42, name: "Updated Name" });
@@ -714,7 +709,7 @@ describe("createVueMutator", () => {
     userId.value = "100";
     const result2 = await mutate({
       body: { name: "Another Name" },
-      params: { pathParams: { id: userId } },
+      path: { id: userId },
     });
 
     expect(result2).toEqual({ id: 100, name: "Updated Name" });

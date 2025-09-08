@@ -101,11 +101,9 @@ const {
   loading,
   data,
   error: dataError,
-} = useData({
-  queryParams: {
-    name: computed(() => refreshKey.value.toString()),
-    error: computed(() => (shouldTriggerError.value ? "true" : "")),
-  },
+} = useData(undefined, {
+  name: computed(() => refreshKey.value.toString()),
+  error: computed(() => (shouldTriggerError.value ? "true" : "")),
 });
 
 const {

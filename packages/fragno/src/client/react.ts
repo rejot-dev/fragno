@@ -3,64 +3,65 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import { useCallback, useMemo, useRef, useSyncExternalStore, type DependencyList } from "react";
 import type { NonGetHTTPMethod } from "../api/api";
-import type { ClientHookParams, FragnoClientMutatorData, NewFragnoClientHookData } from "./client";
+import type { FragnoClientMutatorData, NewFragnoClientHookData } from "./client";
 import { isGetHook, isMutatorHook } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { hydrateFromWindow } from "../util/ssr";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyStandardSchema = StandardSchemaV1<any, any>;
+import type { InferOr, AnyStandardSchema } from "../util/types-util";
+import type { ExtractPathParamsOrWiden, HasPathParams } from "../api/internal/path";
 
 export type FragnoReactHook<
-  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
+  _TMethod extends "GET",
+  TPath extends string,
+  TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
 > = (
-  params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>,
+  path?: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
+  query?: Record<string, string | ReadableAtom<string>>,
 ) => FetcherValue<
-  StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>,
-  FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]>
+  StandardSchemaV1.InferOutput<TOutputSchema>,
+  FragnoClientError<NonNullable<TErrorCode>>
 >;
 
 export type FragnoReactMutator<
-  T extends FragnoClientMutatorData<
-    NonGetHTTPMethod,
-    string,
-    StandardSchemaV1,
-    StandardSchemaV1,
-    string
-  >,
+  _TMethod extends NonGetHTTPMethod,
+  TPath extends string,
+  TInputSchema extends StandardSchemaV1 | undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined,
+  TErrorCode extends string,
 > = () => {
   mutate: ({
     body,
-    params,
+    path,
+    query,
   }: {
-    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>;
-    params: {
-      pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
-    };
-  }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+    body?: InferOr<TInputSchema, undefined>;
+    path?: HasPathParams<TPath> extends true
+      ? ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>
+      : undefined;
+    query?: Record<string, string | ReadableAtom<string>>;
+  }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading?: boolean | undefined;
-  error?: FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined;
-  data?: StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined;
+  error?: FragnoClientError<NonNullable<TErrorCode>[number]> | undefined;
+  data?: InferOr<TOutputSchema, undefined> | undefined;
 };
 
 // Helper function to create a React hook from a GET hook
 function createReactHook<
-  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
->(hook: T): FragnoReactHook<T> {
-  return (params?: ClientHookParams<T["route"]["path"], string | ReadableAtom<string>>) => {
-    const paramsObj: {
-      pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
-    } = params ?? {};
-
-    const pathParamValues =
-      "pathParams" in paramsObj ? Object.values(paramsObj.pathParams ?? {}) : [];
-    const queryParamValues = Object.values(paramsObj.queryParams ?? {});
+  TMethod extends "GET",
+  TPath extends string,
+  TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
+>(
+  hook: NewFragnoClientHookData<TMethod, TPath, TOutputSchema, TErrorCode>,
+): FragnoReactHook<TMethod, TPath, TOutputSchema, TErrorCode> {
+  return (path?, query?) => {
+    const pathParamValues = path ? Object.values(path) : [];
+    const queryParamValues = query ? Object.values(query) : [];
 
     const deps = [...pathParamValues, ...queryParamValues];
 
-    const store = useMemo(() => hook.store(paramsObj), [hook, ...deps]);
+    const store = useMemo(() => hook.store(path, query), [hook, ...deps]);
 
     if (typeof window === "undefined") {
       // TODO(Wilco): Handle server-side rendering. In React we have to implement onShellReady
@@ -75,14 +76,14 @@ function createReactHook<
 
 // Helper function to create a React mutator from a mutator hook
 function createReactMutator<
-  T extends FragnoClientMutatorData<
-    NonGetHTTPMethod,
-    string,
-    StandardSchemaV1,
-    StandardSchemaV1,
-    string
-  >,
->(hook: T): FragnoReactMutator<T> {
+  TMethod extends NonGetHTTPMethod,
+  TPath extends string,
+  TInput extends AnyStandardSchema | undefined,
+  TOutput extends AnyStandardSchema | undefined,
+  TError extends string,
+>(
+  hook: FragnoClientMutatorData<TMethod, TPath, TInput, TOutput, TError>,
+): FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError> {
   return () => {
     const store = useMemo(() => hook.mutatorStore, [hook]);
     return useStore(store);
@@ -97,10 +98,16 @@ function createReactMutator<
  */
 // Helper type to transform a single hook/mutator
 type TransformHook<T> =
-  T extends NewFragnoClientHookData<"GET", infer Path, infer O, infer E>
-    ? FragnoReactHook<NewFragnoClientHookData<"GET", Path, O, E>>
-    : T extends FragnoClientMutatorData<infer M, infer Path, infer I, infer O, infer E>
-      ? FragnoReactMutator<FragnoClientMutatorData<M, Path, I, O, E>>
+  T extends NewFragnoClientHookData<"GET", infer TPath, infer TOutputSchema, infer TErrorCode>
+    ? FragnoReactHook<"GET", TPath, TOutputSchema, TErrorCode>
+    : T extends FragnoClientMutatorData<
+          infer TMethod,
+          infer TPath,
+          infer TInput,
+          infer TOutput,
+          infer TError
+        >
+      ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError>
       : never;
 
 export function useFragno<
@@ -110,8 +117,8 @@ export function useFragno<
     | FragnoClientMutatorData<
         NonGetHTTPMethod,
         string,
-        AnyStandardSchema,
-        AnyStandardSchema,
+        AnyStandardSchema | undefined,
+        AnyStandardSchema | undefined,
         string
       >
   >,
