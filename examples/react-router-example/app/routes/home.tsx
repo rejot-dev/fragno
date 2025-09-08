@@ -28,24 +28,20 @@ export default function Home() {
     data: echoData,
     loading: echoLoading,
     error: echoError,
-  } = useEcho({
-    pathParams: {
+  } = useEcho(
+    {
       message: messageKey,
     },
-    queryParams: {
+    {
       capital: String(capital),
     },
-  });
+  );
   const { data: aiConfig, loading: aiConfigLoading } = useAiConfig();
   const { data: thing } = useThing({
-    pathParams: {
-      path: "hello",
-    },
+    path: "hello",
   });
-  const { data: streamData, loading: streamLoading } = useStream({
-    queryParams: {
-      timeToUserForInvalidation: String(timeToUserForInvalidation),
-    },
+  const { data: streamData, loading: streamLoading } = useStream(undefined, {
+    timeToUserForInvalidation: String(timeToUserForInvalidation),
   });
 
   const {
@@ -61,10 +57,8 @@ export default function Home() {
     try {
       await echoMutate({
         body: { message: newMessage },
-        params: {
-          pathParams: {
-            messageKey: newMessageKey,
-          },
+        path: {
+          messageKey: newMessageKey,
         },
       });
 

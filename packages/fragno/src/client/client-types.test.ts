@@ -12,10 +12,9 @@ import type {
   HasGetRoutes,
   FragnoClientHook,
   ExtractOutputSchemaFromHook,
-  ClientHookParams,
+  FragnoClientMutatorData,
 } from "./client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ReadableAtom } from "nanostores";
 
 // Test route configurations for type testing
 const _testRoutes = [
@@ -395,69 +394,6 @@ test("GET route with outputSchema", () => {
   expectTypeOf<ConstPaths>().toEqualTypeOf<"/test">();
 });
 
-test("ClientHookParams type tests - no path params", () => {
-  type NoParamsRoot = ClientHookParams<"/home", string>;
-  expectTypeOf<NoParamsRoot>().toEqualTypeOf<{
-    queryParams?: Record<string, string>;
-  }>();
-
-  type NoParamsUsers = ClientHookParams<"/users", string>;
-  expectTypeOf<NoParamsUsers>().toEqualTypeOf<{
-    queryParams?: Record<string, string>;
-  }>();
-});
-
-test("ClientHookParams type tests - single param", () => {
-  type SingleParam = ClientHookParams<"/users/:id", string>;
-  expectTypeOf<SingleParam>().toEqualTypeOf<{
-    pathParams: { id: string };
-    queryParams?: Record<string, string>;
-  }>();
-});
-
-test("ClientHookParams type tests - wildcard params", () => {
-  type AnonymousWildcard = ClientHookParams<"/files/**", string>;
-  expectTypeOf<AnonymousWildcard>().toEqualTypeOf<{
-    pathParams: { "**": string };
-    queryParams?: Record<string, string>;
-  }>();
-
-  type NamedWildcard = ClientHookParams<"/files/**:path", string>;
-  expectTypeOf<NamedWildcard>().toEqualTypeOf<{
-    pathParams: { path: string };
-    queryParams?: Record<string, string>;
-  }>();
-});
-
-test("ClientHookParams type tests - custom value type is propagated", () => {
-  type ValueType = string | ReadableAtom<string>;
-
-  type WithParam = ClientHookParams<"/users/:id", ValueType>;
-  expectTypeOf<WithParam>().toEqualTypeOf<{
-    pathParams: { id: ValueType };
-    queryParams?: Record<string, ValueType>;
-  }>();
-
-  type WithoutParam = ClientHookParams<"/settings", ValueType>;
-  expectTypeOf<WithoutParam>().toEqualTypeOf<{
-    queryParams?: Record<string, ValueType>;
-  }>();
-});
-
-test("ClientHookParams type tests - string", () => {
-  type StringString = ClientHookParams<string, string>;
-  expectTypeOf<StringString>().toEqualTypeOf<{
-    pathParams?: Record<string, string>;
-    queryParams?: Record<string, string>;
-  }>();
-
-  type StringAtom = ClientHookParams<string, ReadableAtom<string>>;
-  expectTypeOf<StringAtom>().toEqualTypeOf<{
-    pathParams?: Record<string, ReadableAtom<string>>;
-    queryParams?: Record<string, ReadableAtom<string>>;
-  }>();
-});
-
 describe("ExtractRouteByPath", () => {
   const _libraryConfig = {
     name: "test-library",
@@ -506,6 +442,84 @@ describe("ExtractRouteByPath", () => {
         string,
         string
       >
+    >();
+  });
+});
+
+// FIXME: These are not great now
+describe("FragnoClientMutatorData", () => {
+  type ZodObjectIdName = z.ZodObject<{
+    id: z.ZodNumber;
+    name: z.ZodString;
+  }>;
+
+  test("No inputSchema or outputSchema", () => {
+    type _Mutator1 = FragnoClientMutatorData<"DELETE", "/users/:id", undefined, undefined, string>;
+    type MutateQuery = _Mutator1["mutateQuery"];
+
+    expectTypeOf<MutateQuery>().toEqualTypeOf<
+      ({
+        path,
+        query,
+      }: {
+        body?: undefined;
+        path?: Record<"id", string> | undefined;
+        query?: Record<string, string>;
+      }) => Promise<undefined>
+    >();
+  });
+
+  test("No inputSchema", () => {
+    type _Mutator2 = FragnoClientMutatorData<
+      "DELETE",
+      "/users/:id",
+      undefined,
+      ZodObjectIdName,
+      string
+    >;
+    type MutateQuery = _Mutator2["mutateQuery"];
+
+    expectTypeOf<MutateQuery>().toEqualTypeOf<
+      ({
+        body,
+        path,
+        query,
+      }: {
+        body?: undefined;
+        path?: Record<"id", string> | undefined;
+        query?: Record<string, string>;
+      }) => Promise<{
+        id: number;
+        name: string;
+      }>
+    >();
+  });
+
+  test("No outputSchema", () => {
+    type _Mutator3 = FragnoClientMutatorData<
+      "PUT",
+      "/users/:id",
+      ZodObjectIdName,
+      undefined,
+      string
+    >;
+    type MutateQuery = _Mutator3["mutateQuery"];
+
+    expectTypeOf<MutateQuery>().toEqualTypeOf<
+      ({
+        body,
+        path,
+        query,
+      }: {
+        body?:
+          | {
+              id: number;
+              name: string;
+            }
+          | undefined;
+        path?: Record<"id", string> | undefined;
+        query?: Record<string, string>;
+      }) => Promise<undefined>
     >();
   });
 });

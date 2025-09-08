@@ -151,7 +151,6 @@ const initialData = exampleFragment.services.getData();
           const { data: currentData } = dataHook.get();
           await sampleMutator.mutate({
             body: { message: (currentData || "") + "!" },
-            params: {},
           });
           dataHook.refetch();
         });
@@ -162,7 +161,6 @@ const initialData = exampleFragment.services.getData();
         mutateErrorBtn.addEventListener("click", async () => {
           await sampleMutator.mutate({
             body: { message: "123" },
-            params: {},
           });
         });
       }

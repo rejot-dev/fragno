@@ -7,14 +7,16 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "types:check": "tsc --noEmit"
+    "types:check": "astro check"
   },
   "dependencies": {
-    "astro": "^5.13.2",
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/example-fragment": "workspace:*"
+    "@fragno-dev/example-fragment": "workspace:*",
+    "astro": "^5.13.2",
+    "typescript": "^5.9.2"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.4",
     "@astrojs/node": "^9.4.2"
   }
 }

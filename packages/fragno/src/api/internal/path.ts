@@ -1,13 +1,3 @@
-/**
- * Type helper to extract path parameters from a const string path
- *
- * Supports:
- * - Regular paths: "/path" -> never
- * - Named parameters: "/path/:name" -> "name"
- * - Wildcard paths: "/path/foo/**" -> "**"
- * - Named wildcard paths: "/path/foo/**:name" -> "name"
- */
-
 // Helper type to split a string by '/'
 type SplitPath<T extends string> = T extends `${infer First}/${infer Rest}`
   ? First extends ""
@@ -38,15 +28,36 @@ type ExtractParamsFromSegments<T extends readonly string[]> = T extends readonly
     : never
   : never;
 
-// Main type to extract path parameters from a path string
+/**
+ * Type helper to extract path parameters from a const string path
+ *
+ * Supports:
+ * - Regular paths: "/path" -> never
+ * - Named parameters: "/path/:name" -> "name"
+ * - Wildcard paths: "/path/foo/**" -> "**"
+ * - Named wildcard paths: "/path/foo/**:name" -> "name"
+ * - String (narrows): string -> never
+ */
 export type ExtractPathParams<T extends string, ValueType = string> =
   ExtractParamsFromSegments<SplitPath<T>> extends never
     ? Record<string, never>
     : Record<ExtractParamsFromSegments<SplitPath<T>>, ValueType>;
 
+/**
+ * Same as @see ExtractPathParams, but returns `Record<string, ValueType>` when a string is
+ * passed in.
+ */
 export type ExtractPathParamsOrWiden<T extends string, ValueType = string> = string extends T
   ? Record<string, ValueType>
   : ExtractPathParams<T, ValueType>;
+
+// TODO: MaybeExtractPathParamsOrWiden<string> --> undefined, should that be Record<string, string>?
+/**
+ * Same as @see ExtractPathParamsOrWiden, but returns `undefined` when no path parameters in the
+ * const.
+ */
+export type MaybeExtractPathParamsOrWiden<T extends string, ValueType = string> =
+  HasPathParams<T> extends true ? ExtractPathParamsOrWiden<T, ValueType> : undefined;
 
 // Alternative version that returns the parameter names as a union type
 export type ExtractPathParamNames<T extends string> = ExtractParamsFromSegments<SplitPath<T>>;

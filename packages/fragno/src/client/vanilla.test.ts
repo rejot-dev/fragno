@@ -170,7 +170,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const userStore = user({ pathParams: { id: "123" } });
+    const userStore = user({ id: "123" });
 
     // Subscribe to trigger the fetch - this will keep the store active
     const unsubscribe = userStore.subscribe(() => {});
@@ -200,7 +200,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { search } = useFragno(clientObj);
-    const searchStore = search({ queryParams: { q: "test" } });
+    const searchStore = search(undefined, { q: "test" });
 
     // Subscribe to trigger the fetch - this will keep the store active
     const unsubscribe = searchStore.subscribe(() => {});
@@ -273,7 +273,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const userStore = user({ pathParams: { id: idAtom } });
+    const userStore = user({ id: idAtom });
 
     // Subscribe to trigger the fetch - this will keep the store active
     const unsubscribe = userStore.subscribe(() => {});
@@ -316,7 +316,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const userStore = user({ pathParams: { id: "123" } });
+    const userStore = user({ id: "123" });
 
     const asyncIterator = userStore[Symbol.asyncIterator]();
 
@@ -423,7 +423,6 @@ describe("createVanillaMutator", () => {
 
     const result = await mutator.mutate({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     expect(result).toEqual({ id: 1, name: "John", email: "john@example.com" });
@@ -463,7 +462,6 @@ describe("createVanillaMutator", () => {
     // Start mutation
     const mutatePromise = mutator.mutate({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     // Check loading state
@@ -505,7 +503,7 @@ describe("createVanillaMutator", () => {
 
     const result = await mutator.mutate({
       body: { name: "Jane" },
-      params: { pathParams: { id: "123" } },
+      path: { id: "123" },
     });
 
     expect(result).toEqual({ id: 123, name: "Jane" });
@@ -534,7 +532,7 @@ describe("createVanillaMutator", () => {
 
     const result = await mutator.mutate({
       body: {},
-      params: { pathParams: { id: "123" } },
+      path: { id: "123" },
     });
 
     expect(result).toEqual({ success: true });
@@ -565,7 +563,6 @@ describe("createVanillaMutator", () => {
 
     await mutator.mutate({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     // Should be called for loading state changes
@@ -589,7 +586,6 @@ describe("createVanillaMutator", () => {
     // Start the mutation
     const mutatePromise = mutator.mutate({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     // Use waitForAsyncIterator to wait for the completed state
@@ -685,7 +681,6 @@ describe("useFragno", () => {
     const mutator = postAction();
     const mutatorResult = await mutator.mutate({
       body: { value: "test value" },
-      params: {},
     });
 
     expect(mutatorResult).toEqual({ result: "test value" });
@@ -834,7 +829,6 @@ describe("error handling", () => {
 
     mutator.mutate({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     const finalState = await waitForAsyncIterator(

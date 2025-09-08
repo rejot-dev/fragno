@@ -6,6 +6,7 @@ import type {
   ExtractPathParamsAsLabeledTuple,
   HasPathParams,
   ExtractPathParamsOrWiden,
+  MaybeExtractPathParamsOrWiden,
 } from "./path";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -342,6 +343,8 @@ test("ExtractPathParams edge cases", () => {
   expectTypeOf<ExtractPathParams<"/api/**:first/**:second">>().toEqualTypeOf<
     Record<"first" | "second", string>
   >();
+
+  expectTypeOf<ExtractPathParams<string>>().toEqualTypeOf<Record<string, never>>();
 });
 
 test("Real-world route examples", () => {
@@ -428,4 +431,13 @@ test("ExtractPathParamsOrWiden type tests", () => {
 
   // This is the actual tests
   expectTypeOf<ExtractPathParamsOrWiden<string>>().toEqualTypeOf<Record<string, string>>();
+});
+
+test("MaybeExtractPathParamsOrWiden type tests", () => {
+  expectTypeOf<MaybeExtractPathParamsOrWiden<"/path">>().toEqualTypeOf<undefined>();
+  expectTypeOf<MaybeExtractPathParamsOrWiden<"/path/:id">>().toEqualTypeOf<Record<"id", string>>();
+  expectTypeOf<MaybeExtractPathParamsOrWiden<"/path/:id", number>>().toEqualTypeOf<
+    Record<"id", number>
+  >();
+  expectTypeOf<MaybeExtractPathParamsOrWiden<string>>().toEqualTypeOf<undefined>();
 });

@@ -177,7 +177,6 @@ describe("invalidation", () => {
     // The second fetch call is the mutation.
     await useMutateUsers().mutate({
       body: { name: "John" },
-      params: {},
     });
 
     const stateAfterRefetch = await waitForAsyncIterator(
@@ -230,7 +229,6 @@ describe("invalidation", () => {
     // The second fetch call is the mutation.
     await modifyUsersManual().mutate({
       body: { name: "John" },
-      params: {},
     });
     expect(invalidateCalled).toBe(true);
 
@@ -247,7 +245,7 @@ describe("invalidation", () => {
   });
 });
 
-describe("parameter reactivity", () => {
+describe("hook parameter reactivity", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
   };
@@ -294,7 +292,7 @@ describe("parameter reactivity", () => {
     const useUsers = cb.createHook("/users/:id");
 
     const idAtom = atom("123");
-    const store = useUsers.store({ pathParams: { id: idAtom } });
+    const store = useUsers.store({ id: idAtom });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -374,7 +372,8 @@ describe("parameter reactivity", () => {
 
     const roleAtom = atom("admin");
     const limitAtom = atom("1");
-    const store = useUsers.store({ queryParams: { role: roleAtom, limit: limitAtom } });
+    // TODO: Ugly undefined should not be here
+    const store = useUsers.store(undefined, { role: roleAtom, limit: limitAtom });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -487,10 +486,7 @@ describe("parameter reactivity", () => {
 
     const userIdAtom = atom("123");
     const statusAtom = atom("published");
-    const store = usePosts.store({
-      pathParams: { id: userIdAtom },
-      queryParams: { status: statusAtom, limit: "1" },
-    });
+    const store = usePosts.store({ id: userIdAtom }, { status: statusAtom, limit: "1" });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -603,10 +599,7 @@ describe("parameter reactivity", () => {
     const userIdAtom = atom("123");
     const categoryAtom = atom("tech");
     // sort is a non-atom (static value)
-    const store = usePosts.store({
-      pathParams: { id: userIdAtom },
-      queryParams: { category: categoryAtom, sort: "desc" },
-    });
+    const store = usePosts.store({ id: userIdAtom }, { category: categoryAtom, sort: "desc" });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -710,7 +703,7 @@ describe("parameter reactivity", () => {
 
     const reactiveIdAtom = atom("123");
     // Create store with mixed params: one atom, one static
-    const store = useUser.store({ pathParams: { id: reactiveIdAtom } });
+    const store = useUser.store({ id: reactiveIdAtom });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -737,7 +730,7 @@ describe("parameter reactivity", () => {
 
     // Create a second store with the same static parameter values
     // This should not trigger additional fetches since the cache key is the same
-    const store2 = useUser.store({ pathParams: { id: "123" } });
+    const store2 = useUser.store({ id: "123" });
     const itt2 = createAsyncIteratorFromCallback(store2.listen);
 
     // Should get cached result immediately
@@ -838,12 +831,10 @@ describe("parameter reactivity", () => {
     const statusAtom = atom("published");
     const authorAtom = atom("john");
 
-    const store = usePosts.store({
-      queryParams: {
-        category: categoryAtom,
-        status: statusAtom,
-        author: authorAtom,
-      },
+    const store = usePosts.store(undefined, {
+      category: categoryAtom,
+      status: statusAtom,
+      author: authorAtom,
     });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
@@ -950,5 +941,46 @@ describe("parameter reactivity", () => {
     }
 
     expect(fetchCallCount).toBe(4);
+  });
+});
+
+describe("createMutator", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("body is optional when no inputSchema in route", async () => {
+    const testLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "DELETE",
+          path: "/users/:id",
+          handler: async (_ctx, { empty }) => empty(),
+        }),
+      ],
+    } as const;
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      return new Response(null, { status: 201 });
+    });
+
+    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const deleteUser = cb.createMutator("DELETE", "/users/:id");
+
+    const result = await deleteUser.mutateQuery({
+      path: { id: "123" },
+    });
+
+    expect(result).toBeUndefined();
   });
 });

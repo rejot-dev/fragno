@@ -86,7 +86,7 @@ describe("createReactHook", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const { result } = renderHook(() => user({ pathParams: { id: "123" } }));
+    const { result } = renderHook(() => user({ id: "123" }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -109,7 +109,7 @@ describe("createReactHook", () => {
     };
 
     const { search } = useFragno(clientObj);
-    const { result } = renderHook(() => search({ queryParams: { q: "test" } }));
+    const { result } = renderHook(() => search(undefined, { q: "test" }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -140,7 +140,7 @@ describe("createReactHook", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const { result } = renderHook(() => user({ pathParams: { id: idAtom } }));
+    const { result } = renderHook(() => user({ id: idAtom }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -199,13 +199,6 @@ describe("createReactMutator", () => {
         handler: async ({ pathParams }, { json }) =>
           json({ id: Number(pathParams["id"]), name: "" }),
       }),
-      addRoute({
-        method: "DELETE",
-        path: "/users/:id",
-        inputSchema: z.object({}), // TODO: Fix client to allow DELETE without inputSchema
-        outputSchema: z.object({ success: z.boolean() }),
-        handler: async (_ctx, { json }) => json({ success: true }),
-      }),
     ],
   } as const;
 
@@ -225,6 +218,9 @@ describe("createReactMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
+    const _route1 = testLibraryConfig.routes[0];
+    type _Route1 = typeof _route1;
+
     const client = createClientBuilder(clientConfig, testLibraryConfig);
     const clientObj = {
       useCreateUserMutator: client.createMutator("POST", "/users"),
@@ -236,7 +232,6 @@ describe("createReactMutator", () => {
 
     const result = await createUser({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     expect(result).toEqual({ id: 1, name: "John", email: "john@example.com" });
@@ -267,7 +262,6 @@ describe("createReactMutator", () => {
 
     await createUser({
       body: { name: "John", email: "john@example.com" },
-      params: {},
     });
 
     await waitFor(() => {
@@ -302,7 +296,7 @@ describe("createReactMutator", () => {
 
     const result = await updateUser({
       body: { name: "Jane" },
-      params: { pathParams: { id: "123" } },
+      path: { id: "123" },
     });
 
     expect(result).toEqual({ id: 123, name: "Jane" });
@@ -315,28 +309,107 @@ describe("createReactMutator", () => {
     );
   });
 
-  test("should create a mutator for DELETE route", async () => {
+  test("should create a mutator for DELETE route (with inputSchema and outputSchema)", async () => {
+    const testLocalLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "DELETE",
+          path: "/users/:id",
+          inputSchema: z.object({}),
+          outputSchema: z.object({ success: z.boolean() }),
+          handler: async (_ctx, { json }) => json({ success: true }),
+        }),
+      ],
+    } as const;
+
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       headers: new Headers(),
       ok: true,
       json: async () => ({ success: true }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(clientConfig, testLocalLibraryConfig);
     const clientObj = {
       useDeleteUserMutator: client.createMutator("DELETE", "/users/:id"),
     };
 
     const { useDeleteUserMutator } = useFragno(clientObj);
     const { result: renderedHook } = renderHook(() => useDeleteUserMutator());
-    const { mutate: deleteUser } = renderedHook.current;
+    const hook = renderedHook.current;
 
-    const result = await deleteUser({
+    const result = await hook.mutate({
       body: {},
-      params: { pathParams: { id: "123" } },
+      path: { id: "123" },
     });
 
     expect(result).toEqual({ success: true });
+
+    await waitFor(() => {
+      expect(hook.loading).toBe(false);
+    });
+
+    expect(hook).toEqual({
+      loading: false,
+      // TODO: Error and data should be in here, right?
+      // error: undefined,
+      // data: { success: true },
+      mutate: expect.any(Function),
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/users/123"),
+      expect.objectContaining({
+        method: "DELETE",
+      }),
+    );
+  });
+
+  test("should create a mutator for DELETE route (withOUT inputSchema and outputSchema)", async () => {
+    const testLocalLibraryConfig = {
+      name: "test-library",
+      routes: [
+        addRoute({
+          method: "DELETE",
+          path: "/users/:id",
+          handler: async (_ctx, { empty }) => empty(),
+        }),
+      ],
+    } as const;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
+      ok: true,
+      status: 204,
+    });
+
+    const client = createClientBuilder(clientConfig, testLocalLibraryConfig);
+    const clientObj = {
+      useDeleteUserMutator: client.createMutator("DELETE", "/users/:id"),
+    };
+
+    const { useDeleteUserMutator } = useFragno(clientObj);
+    const { result: renderedHook } = renderHook(() => useDeleteUserMutator());
+    const hook = renderedHook.current;
+
+    const result = await hook.mutate({
+      path: { id: "123" },
+    });
+
+    expect(result).toBeUndefined();
+
+    await waitFor(() => {
+      expect(hook.loading).toBe(false);
+    });
+
+    expect(hook).toEqual({
+      loading: false,
+      // TODO: Error and data should be in here, right?
+      // error: undefined,
+      // data: { success: true },
+      mutate: expect.any(Function),
+    });
+
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining("/users/123"),
       expect.objectContaining({
@@ -360,7 +433,6 @@ describe("createReactMutator", () => {
     await expect(
       createUser({
         body: { name: "John", email: "john@example.com" },
-        params: {},
       }),
     );
 
@@ -432,7 +504,6 @@ describe("useFragno", () => {
 
     const mutatorResult = await postAction({
       body: { value: "test value" },
-      params: {},
     });
     expect(mutatorResult).toEqual({ result: "test value" });
   });

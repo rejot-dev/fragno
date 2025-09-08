@@ -1,59 +1,59 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import {
-  atom,
-  type ReadableAtom,
-  type Store,
-  type StoreValue,
-  type WritableAtom,
-} from "nanostores";
+import { atom, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import type { DeepReadonly, Ref, ShallowRef, UnwrapNestedRefs } from "vue";
 import { computed, getCurrentScope, isRef, onScopeDispose, ref, shallowRef, watch } from "vue";
 import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
   isMutatorHook,
-  type ClientHookParams,
   type FragnoClientMutatorData,
   type NewFragnoClientHookData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
+import type { ExtractPathParamsOrWiden, HasPathParams } from "../api/internal/path";
+import type { InferOr, AnyStandardSchema } from "../util/types-util";
 
 export type FragnoVueHook<
-  T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>,
+  _TMethod extends "GET",
+  TPath extends string,
+  TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
 > = (
-  params?: ClientHookParams<T["route"]["path"], string | Ref<string> | ReadableAtom<string>>,
+  path?: ExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>,
+  query?: Record<string, string | Ref<string> | ReadableAtom<string>>,
 ) => {
-  data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
+  data: Ref<InferOr<TOutputSchema, undefined>>;
   loading: Ref<boolean>;
-  error: Ref<FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
+  error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
 };
 
 export type FragnoVueMutator<
-  T extends FragnoClientMutatorData<
-    NonGetHTTPMethod,
-    string,
-    StandardSchemaV1,
-    StandardSchemaV1,
-    string
-  >,
+  _TMethod extends NonGetHTTPMethod,
+  TPath extends string,
+  TInputSchema extends StandardSchemaV1 | undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined,
+  TErrorCode extends string,
 > = () => {
   mutate: (args: {
-    body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>;
-    params?: ClientHookParams<T["route"]["path"], string | Ref<string>>;
-  }) => Promise<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>>>;
+    body?: InferOr<TInputSchema, undefined>;
+    path?: HasPathParams<TPath> extends true
+      ? ExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>
+      : undefined;
+    query?: Record<string, string | Ref<string> | ReadableAtom<string>>;
+  }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading: Ref<boolean | undefined>;
-  error: Ref<FragnoClientError<NonNullable<T["route"]["errorCodes"]>[number]> | undefined>;
-  data: Ref<StandardSchemaV1.InferOutput<NonNullable<T["route"]["outputSchema"]>> | undefined>;
+  error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
+  data: Ref<InferOr<TOutputSchema, undefined>>;
 };
 
 /**
- * Converts a Vue Ref to a Nanostore Atom.
+ * Converts a Vue Ref to a NanoStore Atom.
  *
  * This is used to convert Vue refs to atoms, so that we can use them in the store.
  *
  * @private
  */
-export function refToAtom<T>(ref: Ref<T>): WritableAtom<T> {
+export function refToAtom<T>(ref: Ref<T>): ReadableAtom<T> {
   const a = atom(ref.value);
 
   watch(ref, (newVal) => {
@@ -68,34 +68,31 @@ export function refToAtom<T>(ref: Ref<T>): WritableAtom<T> {
 // Helper function to create a Vue composable from a GET hook
 // We want 1 store per hook, so on updates to params, we need to update the store instead of creating a new one.
 // Nanostores only works with atoms (or strings), so we need to convert vue refs to atoms.
-function createVueHook<T extends NewFragnoClientHookData<"GET", string, StandardSchemaV1, string>>(
-  hook: T,
-): FragnoVueHook<T> {
-  return (
-    params?: ClientHookParams<T["route"]["path"], string | Ref<string> | ReadableAtom<string>>,
-  ) => {
-    // FIXME: This obj is only here because of the shitty typing on ClientHookParams
-    const paramsObj: {
-      pathParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
-      queryParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
-    } = params ?? {};
-
+function createVueHook<
+  TMethod extends "GET",
+  TPath extends string,
+  TOutputSchema extends StandardSchemaV1,
+  TErrorCode extends string,
+>(
+  hook: NewFragnoClientHookData<TMethod, TPath, TOutputSchema, TErrorCode>,
+): FragnoVueHook<TMethod, TPath, TOutputSchema, TErrorCode> {
+  return (path?, query?) => {
     const pathParams: Record<string, string | ReadableAtom<string>> = {};
     const queryParams: Record<string, string | ReadableAtom<string>> = {};
 
-    for (const [key, value] of Object.entries(paramsObj.pathParams ?? {})) {
+    for (const [key, value] of Object.entries(path ?? {})) {
       pathParams[key] = isRef(value) ? refToAtom(value) : value;
     }
 
-    for (const [key, value] of Object.entries(paramsObj.queryParams ?? {})) {
-      queryParams[key] = isRef(value) ? refToAtom(value) : value;
+    for (const [key, value] of Object.entries(query ?? {})) {
+      // Dunno why the cast is necessary
+      queryParams[key] = isRef(value) ? (refToAtom(value) as ReadableAtom<string>) : value;
     }
 
-    // Now create a store, which updates whenever you change the path/query params.
-    const store = hook.store({
-      pathParams,
+    const store = hook.store(
+      pathParams as ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
       queryParams,
-    });
+    );
 
     const data = ref();
     const loading = ref();
@@ -123,45 +120,43 @@ function createVueHook<T extends NewFragnoClientHookData<"GET", string, Standard
 
 // Helper function to create a Vue mutator from a mutator hook
 function createVueMutator<
-  T extends FragnoClientMutatorData<
-    NonGetHTTPMethod,
-    string,
-    StandardSchemaV1,
-    StandardSchemaV1,
-    string
-  >,
->(hook: T): FragnoVueMutator<T> {
+  TMethod extends NonGetHTTPMethod,
+  TPath extends string,
+  TInputSchema extends StandardSchemaV1 | undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined,
+  TErrorCode extends string,
+>(
+  hook: FragnoClientMutatorData<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode>,
+): FragnoVueMutator<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
   return () => {
     const store = useStore(hook.mutatorStore);
 
     // Create a wrapped mutate function that handles Vue refs
     const mutate = async (args: {
-      body: StandardSchemaV1.InferInput<NonNullable<T["route"]["inputSchema"]>>;
-      params?: ClientHookParams<T["route"]["path"], string | Ref<string>>;
+      body?: InferOr<TInputSchema, undefined>;
+      path?: ExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>;
+      query?: Record<string, string | Ref<string> | ReadableAtom<string>>;
     }) => {
-      const { body, params } = args;
-
-      // FIXME: This obj is only here because of the shitty typing on ClientHookParams
-      const paramsObj: {
-        pathParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
-        queryParams?: Record<string, string | Ref<string> | ReadableAtom<string>>;
-      } = params ?? {};
+      const { body, path, query } = args;
 
       const pathParams: Record<string, string | ReadableAtom<string>> = {};
       const queryParams: Record<string, string | ReadableAtom<string>> = {};
 
-      for (const [key, value] of Object.entries(paramsObj.pathParams ?? {})) {
+      for (const [key, value] of Object.entries(path ?? {})) {
         pathParams[key] = isRef(value) ? value.value : value;
       }
 
-      for (const [key, value] of Object.entries(paramsObj.queryParams ?? {})) {
-        queryParams[key] = isRef(value) ? value.value : value;
+      for (const [key, value] of Object.entries(query ?? {})) {
+        queryParams[key] = isRef(value) ? (value.value as string) : value;
       }
 
       // Call the store's mutate function with normalized params
       return store.value.mutate({
         body,
-        params: { pathParams, queryParams },
+        path: pathParams as HasPathParams<TPath> extends true
+          ? ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>
+          : undefined,
+        query: queryParams,
       });
     };
 
@@ -170,7 +165,7 @@ function createVueMutator<
       mutate,
       loading: computed(() => store.value.loading),
       error: computed(() => store.value.error),
-      data: computed(() => store.value.data),
+      data: computed(() => store.value.data) as Ref<InferOr<TOutputSchema, undefined>>,
     };
   };
 }
@@ -183,19 +178,29 @@ function createVueMutator<
  */
 // Helper type to transform a single hook/mutator
 type TransformHook<T> =
-  T extends NewFragnoClientHookData<"GET", string, infer O, infer E>
-    ? FragnoVueHook<NewFragnoClientHookData<"GET", string, O, E>>
-    : T extends FragnoClientMutatorData<infer M, string, infer I, infer O, infer E>
-      ? FragnoVueMutator<FragnoClientMutatorData<M, string, I, O, E>>
+  T extends NewFragnoClientHookData<"GET", infer TPath, infer TOutputSchema, infer TErrorCode>
+    ? FragnoVueHook<"GET", TPath, TOutputSchema, TErrorCode>
+    : T extends FragnoClientMutatorData<
+          infer M,
+          infer TPath,
+          infer TInputSchema,
+          infer TOutputSchema,
+          infer TErrorCode
+        >
+      ? FragnoVueMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode>
       : never;
 
 export function useFragno<
   T extends Record<
     string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1<any, any>, string>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, any, any, string>
+    | NewFragnoClientHookData<"GET", string, AnyStandardSchema, string>
+    | FragnoClientMutatorData<
+        NonGetHTTPMethod,
+        string,
+        AnyStandardSchema | undefined,
+        AnyStandardSchema | undefined,
+        string
+      >
   >,
 >(
   clientObj: T,

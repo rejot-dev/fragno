@@ -96,4 +96,4 @@ follows a modular architecture with generic core implementations and framework-s
 - Use `vitest` for testing: `bunx vitest run` to run tests
 - Do not run `vite`, or `bun run dev` to run the application. It's already running in the
   background.
-- Always run `bun run check` in the folder of the package, to check for type errors.
+- Always run `bun run types:check` in the folder of the package, to check for type errors.
