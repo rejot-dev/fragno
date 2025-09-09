@@ -1,8 +1,8 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
-import type { AnyFragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
 import { addRoute } from "../api/api";
+import type { AnyFragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../api/library";
 
 // Test route configurations
 const testLibraryConfig = {
