@@ -170,7 +170,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const userStore = user({ id: "123" });
+    const userStore = user({ path: { id: "123" } });
 
     // Subscribe to trigger the fetch - this will keep the store active
     const unsubscribe = userStore.subscribe(() => {});
@@ -200,7 +200,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { search } = useFragno(clientObj);
-    const searchStore = search(undefined, { q: "test" });
+    const searchStore = search({ query: { q: "test" } });
 
     // Subscribe to trigger the fetch - this will keep the store active
     const unsubscribe = searchStore.subscribe(() => {});
@@ -273,7 +273,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const userStore = user({ id: idAtom });
+    const userStore = user({ path: { id: idAtom } });
 
     // Subscribe to trigger the fetch - this will keep the store active
     const unsubscribe = userStore.subscribe(() => {});
@@ -316,7 +316,7 @@ describe("createVanillaListeners", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const userStore = user({ id: "123" });
+    const userStore = user({ path: { id: "123" } });
 
     const asyncIterator = userStore[Symbol.asyncIterator]();
 

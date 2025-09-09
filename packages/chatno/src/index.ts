@@ -23,13 +23,13 @@ export const chatnoLibraryConfig = {
         message: z.string(),
         query: z.record(z.string(), z.string()),
       }),
-      handler: async ({ path, searchParams, pathParams }, { json }) => {
+      handler: async ({ path, query, pathParams }, { json }) => {
         const message = pathParams.path;
 
         return json({
           path,
           message,
-          query: Object.fromEntries(searchParams),
+          query: Object.fromEntries(query),
         });
       },
     }),
@@ -40,9 +40,9 @@ export const chatnoLibraryConfig = {
       outputSchema: z.string(),
       errorCodes: ["MESSAGE_NOT_FOUND"],
       queryParameters: ["capital"],
-      handler: async ({ pathParams, searchParams }, { json, error }) => {
+      handler: async ({ pathParams, query }, { json, error }) => {
         const messageKey = pathParams.message;
-        const shouldCapitalize = searchParams.get("capital") === "true";
+        const shouldCapitalize = query.get("capital") === "true";
 
         const data = await api.messages.getData(messageKey);
 

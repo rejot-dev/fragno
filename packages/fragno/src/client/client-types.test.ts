@@ -7,11 +7,8 @@ import type {
   ExtractOutputSchemaForPath,
   ExtractRouteByPath,
   IsValidGetRoutePath,
-  GenerateHookTypeForPath,
   ValidateGetRoutePath,
   HasGetRoutes,
-  FragnoClientHook,
-  ExtractOutputSchemaFromHook,
   FragnoClientMutatorData,
 } from "./client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -182,40 +179,6 @@ test("IsValidGetRoutePath type tests", () => {
   expectTypeOf<IsValidGetRoutePath<typeof _noGetRoutes, "/create">>().toEqualTypeOf<false>();
 });
 
-test("GenerateHookTypeForPath type tests", () => {
-  // Should generate correct hook type for routes with output schema
-  type UsersHook = GenerateHookTypeForPath<typeof _testRoutes, "/users">;
-  expectTypeOf<UsersHook>().toEqualTypeOf<
-    FragnoClientHook<
-      z.ZodArray<
-        z.ZodObject<{
-          id: z.ZodNumber;
-          name: z.ZodString;
-        }>
-      >,
-      string
-    >
-  >();
-
-  type UserHook = GenerateHookTypeForPath<typeof _testRoutes, "/users/:id">;
-  expectTypeOf<UserHook>().toEqualTypeOf<
-    FragnoClientHook<
-      z.ZodObject<{
-        id: z.ZodNumber;
-        name: z.ZodString;
-      }>,
-      string
-    >
-  >();
-
-  // Should generate hook with undefined schema for routes without output schema
-  type RootHook = GenerateHookTypeForPath<typeof _testRoutes, "/home">;
-  expectTypeOf<RootHook>().toExtend<FragnoClientHook<undefined, string>>();
-
-  type StaticHook = GenerateHookTypeForPath<typeof _testRoutes, "/static/**:path">;
-  expectTypeOf<StaticHook>().toMatchTypeOf<FragnoClientHook<undefined, string>>();
-});
-
 test("ValidateGetRoutePath type tests", () => {
   // Should return the path itself for valid GET routes
   expectTypeOf<ValidateGetRoutePath<typeof _testRoutes, "/home">>().toEqualTypeOf<"/home">();
@@ -290,21 +253,6 @@ test("Real-world usage scenarios", () => {
   // Should validate paths correctly
   expectTypeOf<IsValidGetRoutePath<typeof _chatnoLikeRoutes, "/ai-config">>().toEqualTypeOf<true>();
   expectTypeOf<IsValidGetRoutePath<typeof _chatnoLikeRoutes, "/echo">>().toEqualTypeOf<false>(); // POST route
-
-  // Should generate correct hook type for ai-config
-  type AiConfigHook = GenerateHookTypeForPath<typeof _chatnoLikeRoutes, "/ai-config">;
-
-  type AiConfigHookOutputSchema = ExtractOutputSchemaFromHook<AiConfigHook>;
-  expectTypeOf<AiConfigHookOutputSchema>().toEqualTypeOf<
-    z.ZodObject<{
-      apiProvider: z.ZodEnum<{
-        openai: "openai";
-        anthropic: "anthropic";
-      }>;
-      model: z.ZodString;
-      systemPrompt: z.ZodString;
-    }>
-  >();
 });
 
 test("Edge cases and error handling", () => {
@@ -416,7 +364,7 @@ describe("ExtractRouteByPath", () => {
       addRoute({
         method: "DELETE",
         path: "/users/:id",
-        inputSchema: z.object({}), // TODO: Fix client to allow DELETE without inputSchema
+        inputSchema: z.object({}),
         outputSchema: z.object({ success: z.boolean() }),
         handler: async (_ctx, { json }) => json({ success: true }),
       }),
@@ -454,7 +402,14 @@ describe("FragnoClientMutatorData", () => {
   }>;
 
   test("No inputSchema or outputSchema", () => {
-    type _Mutator1 = FragnoClientMutatorData<"DELETE", "/users/:id", undefined, undefined, string>;
+    type _Mutator1 = FragnoClientMutatorData<
+      "DELETE",
+      "/users/:id",
+      undefined,
+      undefined,
+      string,
+      string
+    >;
     type MutateQuery = _Mutator1["mutateQuery"];
 
     expectTypeOf<MutateQuery>().toEqualTypeOf<
@@ -475,6 +430,7 @@ describe("FragnoClientMutatorData", () => {
       "/users/:id",
       undefined,
       ZodObjectIdName,
+      string,
       string
     >;
     type MutateQuery = _Mutator2["mutateQuery"];
@@ -501,6 +457,7 @@ describe("FragnoClientMutatorData", () => {
       "/users/:id",
       ZodObjectIdName,
       undefined,
+      string,
       string
     >;
     type MutateQuery = _Mutator3["mutateQuery"];
@@ -519,6 +476,30 @@ describe("FragnoClientMutatorData", () => {
           | undefined;
         path?: Record<"id", string> | undefined;
         query?: Record<string, string>;
+      }) => Promise<undefined>
+    >();
+  });
+
+  test("With query parameters", () => {
+    type _Mutator4 = FragnoClientMutatorData<
+      "DELETE",
+      "/users/:id",
+      undefined,
+      undefined,
+      string,
+      "id" | "name"
+    >;
+
+    type MutateQuery = _Mutator4["mutateQuery"];
+
+    expectTypeOf<MutateQuery>().toEqualTypeOf<
+      ({
+        path,
+        query,
+      }: {
+        body?: undefined;
+        path?: Record<"id", string> | undefined;
+        query?: Record<"id" | "name", string>;
       }) => Promise<undefined>
     >();
   });

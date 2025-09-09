@@ -28,20 +28,24 @@ export default function Home() {
     data: echoData,
     loading: echoLoading,
     error: echoError,
-  } = useEcho(
-    {
+  } = useEcho({
+    path: {
       message: messageKey,
     },
-    {
+    query: {
       capital: String(capital),
     },
-  );
+  });
   const { data: aiConfig, loading: aiConfigLoading } = useAiConfig();
   const { data: thing } = useThing({
-    path: "hello",
+    path: {
+      path: "hello",
+    },
   });
-  const { data: streamData, loading: streamLoading } = useStream(undefined, {
-    timeToUserForInvalidation: String(timeToUserForInvalidation),
+  const { data: streamData, loading: streamLoading } = useStream({
+    query: {
+      timeToUserForInvalidation: String(timeToUserForInvalidation),
+    },
   });
 
   const {

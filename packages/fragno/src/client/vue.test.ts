@@ -144,7 +144,7 @@ describe("createVueHook", () => {
     const id = ref("123");
 
     const { useUser } = useFragno(clientObj);
-    const { loading, data, error } = useUser({ id });
+    const { loading, data, error } = useUser({ path: { id } });
 
     await waitFor(() => {
       expect(loading.value).toBe(false);
@@ -202,7 +202,7 @@ describe("createVueHook", () => {
     const id = atom("123");
 
     const { useUser } = useFragno(clientObj);
-    const { loading, data, error } = useUser({ id });
+    const { loading, data, error } = useUser({ path: { id } });
 
     await waitFor(() => {
       expect(loading.value).toBe(false);
@@ -391,7 +391,7 @@ describe("createVueHook", () => {
     const page = ref("1");
 
     const { useUsers } = useFragno(clientObj);
-    const { loading, data, error } = useUsers(undefined, { limit, page });
+    const { loading, data, error } = useUsers({ query: { limit, page } });
 
     await waitFor(() => {
       expect(loading.value).toBe(false);
@@ -557,7 +557,10 @@ describe("createVueHook", () => {
     const sort = "desc"; // Normal string for query parameter
 
     const { useUserPosts } = useFragno(clientObj);
-    const { loading, data, error } = useUserPosts({ id: userId }, { limit, category, sort });
+    const { loading, data, error } = useUserPosts({
+      path: { id: userId },
+      query: { limit, category, sort },
+    });
 
     // Wait for initial load
     await waitFor(() => {

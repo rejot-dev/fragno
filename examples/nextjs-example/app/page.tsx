@@ -9,8 +9,10 @@ const exampleFragmentClient = createExampleFragmentClient();
 const { useData, useHash } = useFragno(exampleFragmentClient);
 
 export default function Home() {
-  const { data: currentData, loading: dataLoading } = useData(undefined, {
-    name: "this-is-unused",
+  const { data: currentData, loading: dataLoading } = useData({
+    query: {
+      unused: "this-is-unused",
+    },
   });
   const { data: hashData, loading: hashLoading } = useHash();
 

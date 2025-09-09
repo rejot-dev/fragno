@@ -51,8 +51,9 @@ const libraryConfig = {
       method: "GET",
       path: "/data",
       outputSchema: z.string(),
-      handler: async ({ searchParams }, { json, error }) => {
-        if (searchParams.get("error")) {
+      queryParameters: ["error"],
+      handler: async ({ query }, { json, error }) => {
+        if (query.get("error")) {
           return error(
             {
               message: "An error was triggered",

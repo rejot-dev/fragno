@@ -102,6 +102,30 @@ export type ExtractPathParamsAsLabeledTuple<
 // Type to check if a path has parameters
 export type HasPathParams<T extends string> = ExtractPathParamNames<T> extends never ? false : true;
 
+/**
+ * Creates a query parameters type where the specified keys are hints (optional)
+ * and additional string keys are also allowed.
+ *
+ * This allows for flexible query parameter typing where:
+ * - All hinted parameters are optional
+ * - Additional parameters beyond the hints are allowed
+ * - Values can be of any specified type (defaults to string)
+ *
+ * @example
+ * ```ts
+ * type MyQuery = QueryParamsHint<"page" | "limit", string>;
+ * // Allows: { page?: string, limit?: string, [key: string]: string }
+ *
+ * const query1: MyQuery = {}; // Valid - no params required
+ * const query2: MyQuery = { page: "1" }; // Valid - hinted param
+ * const query3: MyQuery = { page: "1", sort: "asc" }; // Valid - additional param
+ * ```
+ */
+export type QueryParamsHint<TQueryParameters extends string, ValueType = string> = Partial<
+  Record<TQueryParameters, ValueType>
+> &
+  Record<string, ValueType>;
+
 // Runtime utilities
 
 /**

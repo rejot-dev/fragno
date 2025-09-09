@@ -107,7 +107,7 @@ export class RequestInputContext<
     return this.#pathParams;
   }
 
-  get searchParams(): URLSearchParams {
+  get query(): URLSearchParams {
     return this.#searchParams;
   }
 

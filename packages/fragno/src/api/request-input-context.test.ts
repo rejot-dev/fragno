@@ -43,7 +43,7 @@ describe("RequestContext", () => {
       body: undefined,
     });
 
-    const { path, pathParams, searchParams, input, rawBody: body } = ctx;
+    const { path, pathParams, query: searchParams, input, rawBody: body } = ctx;
 
     expect(path).toBe("/");
     expect(pathParams).toEqual({});
@@ -381,7 +381,7 @@ describe("RequestContext", () => {
         body: undefined,
       });
 
-      expect(ctx.searchParams.toString()).toBe("");
+      expect(ctx.query.toString()).toBe("");
     });
 
     test("Should handle search params with values", () => {
@@ -394,8 +394,8 @@ describe("RequestContext", () => {
         body: undefined,
       });
 
-      expect(ctx.searchParams.get("key")).toBe("value");
-      expect(ctx.searchParams.get("another")).toBe("test");
+      expect(ctx.query.get("key")).toBe("value");
+      expect(ctx.query.get("another")).toBe("test");
     });
 
     test("Should extract search params from request URL in fromRequest", async () => {
@@ -407,7 +407,7 @@ describe("RequestContext", () => {
         method: "POST",
       });
 
-      expect(ctx.searchParams.get("param")).toBe("value");
+      expect(ctx.query.get("param")).toBe("value");
     });
 
     test("Should use default empty search params in fromSSRContext when not provided", () => {
@@ -418,7 +418,7 @@ describe("RequestContext", () => {
         body: undefined,
       });
 
-      expect(ctx.searchParams.toString()).toBe("");
+      expect(ctx.query.toString()).toBe("");
     });
 
     test("Should use provided search params in fromSSRContext", () => {
@@ -431,7 +431,7 @@ describe("RequestContext", () => {
         body: undefined,
       });
 
-      expect(ctx.searchParams.get("ssr")).toBe("true");
+      expect(ctx.query.get("ssr")).toBe("true");
     });
   });
 });

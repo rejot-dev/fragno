@@ -3,22 +3,28 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nanostores";
 import { useCallback, useMemo, useRef, useSyncExternalStore, type DependencyList } from "react";
 import type { NonGetHTTPMethod } from "../api/api";
-import type { FragnoClientMutatorData, NewFragnoClientHookData } from "./client";
+import type { FragnoClientMutatorData, FragnoClientHookData } from "./client";
 import { isGetHook, isMutatorHook } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { hydrateFromWindow } from "../util/ssr";
 import type { InferOr, AnyStandardSchema } from "../util/types-util";
-import type { ExtractPathParamsOrWiden, HasPathParams } from "../api/internal/path";
+import type {
+  ExtractPathParamsOrWiden,
+  HasPathParams,
+  MaybeExtractPathParamsOrWiden,
+  QueryParamsHint,
+} from "../api/internal/path";
 
 export type FragnoReactHook<
   _TMethod extends "GET",
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
-> = (
-  path?: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
-  query?: Record<string, string | ReadableAtom<string>>,
-) => FetcherValue<
+  TQueryParameters extends string,
+> = (args?: {
+  path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
+  query?: QueryParamsHint<TQueryParameters, string | ReadableAtom<string>>;
+}) => FetcherValue<
   StandardSchemaV1.InferOutput<TOutputSchema>,
   FragnoClientError<NonNullable<TErrorCode>>
 >;
@@ -29,6 +35,7 @@ export type FragnoReactMutator<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
+  TQueryParameters extends string,
 > = () => {
   mutate: ({
     body,
@@ -39,7 +46,7 @@ export type FragnoReactMutator<
     path?: HasPathParams<TPath> extends true
       ? ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>
       : undefined;
-    query?: Record<string, string | ReadableAtom<string>>;
+    query?: QueryParamsHint<TQueryParameters, string | ReadableAtom<string>>;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading?: boolean | undefined;
   error?: FragnoClientError<NonNullable<TErrorCode>[number]> | undefined;
@@ -52,16 +59,17 @@ function createReactHook<
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
+  TQueryParameters extends string,
 >(
-  hook: NewFragnoClientHookData<TMethod, TPath, TOutputSchema, TErrorCode>,
-): FragnoReactHook<TMethod, TPath, TOutputSchema, TErrorCode> {
-  return (path?, query?) => {
+  hook: FragnoClientHookData<TMethod, TPath, TOutputSchema, TErrorCode, TQueryParameters>,
+): FragnoReactHook<TMethod, TPath, TOutputSchema, TErrorCode, TQueryParameters> {
+  return ({ path, query } = {}) => {
     const pathParamValues = path ? Object.values(path) : [];
     const queryParamValues = query ? Object.values(query) : [];
 
     const deps = [...pathParamValues, ...queryParamValues];
 
-    const store = useMemo(() => hook.store(path, query), [hook, ...deps]);
+    const store = useMemo(() => hook.store({ path, query }), [hook, ...deps]);
 
     if (typeof window === "undefined") {
       // TODO(Wilco): Handle server-side rendering. In React we have to implement onShellReady
@@ -81,9 +89,10 @@ function createReactMutator<
   TInput extends AnyStandardSchema | undefined,
   TOutput extends AnyStandardSchema | undefined,
   TError extends string,
+  TQueryParameters extends string,
 >(
-  hook: FragnoClientMutatorData<TMethod, TPath, TInput, TOutput, TError>,
-): FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError> {
+  hook: FragnoClientMutatorData<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>,
+): FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters> {
   return () => {
     const store = useMemo(() => hook.mutatorStore, [hook]);
     return useStore(store);
@@ -98,27 +107,35 @@ function createReactMutator<
  */
 // Helper type to transform a single hook/mutator
 type TransformHook<T> =
-  T extends NewFragnoClientHookData<"GET", infer TPath, infer TOutputSchema, infer TErrorCode>
-    ? FragnoReactHook<"GET", TPath, TOutputSchema, TErrorCode>
+  T extends FragnoClientHookData<
+    "GET",
+    infer TPath,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters
+  >
+    ? FragnoReactHook<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters>
     : T extends FragnoClientMutatorData<
           infer TMethod,
           infer TPath,
           infer TInput,
           infer TOutput,
-          infer TError
+          infer TError,
+          infer TQueryParameters
         >
-      ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError>
+      ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
       : never;
 
 export function useFragno<
   T extends Record<
     string,
-    | NewFragnoClientHookData<"GET", string, AnyStandardSchema, string>
+    | FragnoClientHookData<"GET", string, AnyStandardSchema, string, string>
     | FragnoClientMutatorData<
         NonGetHTTPMethod,
         string,
         AnyStandardSchema | undefined,
         AnyStandardSchema | undefined,
+        string,
         string
       >
   >,

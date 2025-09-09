@@ -42,7 +42,8 @@
     "build:watch": "turbo watch build",
     "build:ui": "turbo watch --ui tui build",
     "build:clean": "turbo run build --force",
-    "types:check": "turbo run types:check"
+    "types:check": "turbo run types:check",
+    "types:check:watch": "turbo watch types:check"
   },
   "workspaces": [
     "examples/*",

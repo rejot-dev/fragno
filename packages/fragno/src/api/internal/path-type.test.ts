@@ -7,6 +7,7 @@ import type {
   HasPathParams,
   ExtractPathParamsOrWiden,
   MaybeExtractPathParamsOrWiden,
+  QueryParamsHint,
 } from "./path";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -440,4 +441,162 @@ test("MaybeExtractPathParamsOrWiden type tests", () => {
     Record<"id", number>
   >();
   expectTypeOf<MaybeExtractPathParamsOrWiden<string>>().toEqualTypeOf<undefined>();
+});
+
+test("QueryParamsHint type tests", () => {
+  // Basic usage with string union
+  expectTypeOf<QueryParamsHint<"page" | "limit">>().toEqualTypeOf<
+    Partial<Record<"page" | "limit", string>> & Record<string, string>
+  >();
+
+  // Single parameter hint
+  expectTypeOf<QueryParamsHint<"search">>().toEqualTypeOf<
+    Partial<Record<"search", string>> & Record<string, string>
+  >();
+
+  // Empty hint (never) - should still allow any string keys
+  expectTypeOf<QueryParamsHint<never>>().toEqualTypeOf<
+    Partial<Record<never, string>> & Record<string, string>
+  >();
+
+  // With custom value type
+  expectTypeOf<QueryParamsHint<"page" | "limit", number>>().toEqualTypeOf<
+    Partial<Record<"page" | "limit", number>> & Record<string, number>
+  >();
+
+  // With boolean value type
+  expectTypeOf<QueryParamsHint<"enabled" | "debug", boolean>>().toEqualTypeOf<
+    Partial<Record<"enabled" | "debug", boolean>> & Record<string, boolean>
+  >();
+
+  // With union value type
+  type StringOrNumber = string | number;
+  expectTypeOf<QueryParamsHint<"value", StringOrNumber>>().toEqualTypeOf<
+    Partial<Record<"value", StringOrNumber>> & Record<string, StringOrNumber>
+  >();
+
+  // With custom object type
+  type CustomType = { raw: string; parsed: boolean };
+  expectTypeOf<QueryParamsHint<"data", CustomType>>().toEqualTypeOf<
+    Partial<Record<"data", CustomType>> & Record<string, CustomType>
+  >();
+});
+
+test("QueryParamsHint assignability tests", () => {
+  // Test that the type allows the expected assignments
+  type TestQuery = QueryParamsHint<"page" | "limit">;
+
+  // Empty object should be assignable
+  const query1: TestQuery = {};
+  expect(query1).toEqual({});
+
+  // Hinted parameters should be assignable
+  const query2: TestQuery = { page: "1" };
+  expect(query2.page).toBe("1");
+
+  const query3: TestQuery = { limit: "10" };
+  expect(query3.limit).toBe("10");
+
+  const query4: TestQuery = { page: "1", limit: "10" };
+  expect(query4.page).toBe("1");
+  expect(query4.limit).toBe("10");
+
+  // Additional parameters should be assignable
+  const query5: TestQuery = { page: "1", sort: "asc" };
+  expect(query5.page).toBe("1");
+  expect(query5["sort"]).toBe("asc");
+
+  const query6: TestQuery = { search: "test", filter: "active" };
+  expect(query6["search"]).toBe("test");
+  expect(query6["filter"]).toBe("active");
+
+  // Mixed hinted and additional parameters
+  const query7: TestQuery = { page: "1", limit: "10", sort: "desc", filter: "all" };
+  expect(query7.page).toBe("1");
+  expect(query7.limit).toBe("10");
+  expect(query7["sort"]).toBe("desc");
+  expect(query7["filter"]).toBe("all");
+});
+
+test("QueryParamsHint with different value types", () => {
+  // Number value type
+  type NumberQuery = QueryParamsHint<"count" | "offset", number>;
+
+  const numQuery1: NumberQuery = {};
+  expect(numQuery1).toEqual({});
+
+  const numQuery2: NumberQuery = { count: 5 };
+  expect(numQuery2.count).toBe(5);
+
+  const numQuery3: NumberQuery = { count: 5, extra: 10 };
+  expect(numQuery3.count).toBe(5);
+  expect(numQuery3["extra"]).toBe(10);
+
+  // Boolean value type
+  type BooleanQuery = QueryParamsHint<"enabled" | "debug", boolean>;
+
+  const boolQuery1: BooleanQuery = {};
+  expect(boolQuery1).toEqual({});
+
+  const boolQuery2: BooleanQuery = { enabled: true };
+  expect(boolQuery2.enabled).toBe(true);
+
+  const boolQuery3: BooleanQuery = { enabled: true, verbose: false };
+  expect(boolQuery3.enabled).toBe(true);
+  expect(boolQuery3["verbose"]).toBe(false);
+
+  // Union type
+  type MixedQuery = QueryParamsHint<"value", string | number>;
+
+  const mixedQuery1: MixedQuery = { value: "text" };
+  expect(mixedQuery1.value).toBe("text");
+
+  const mixedQuery2: MixedQuery = { value: 42 };
+  expect(mixedQuery2.value).toBe(42);
+
+  const mixedQuery3: MixedQuery = { value: "text", other: 123 };
+  expect(mixedQuery3.value).toBe("text");
+  expect(mixedQuery3["other"]).toBe(123);
+});
+
+test("QueryParamsHint real-world examples", () => {
+  // Pagination query
+  type PaginationQuery = QueryParamsHint<"page" | "limit" | "offset">;
+
+  const paginationQuery: PaginationQuery = {
+    page: "1",
+    limit: "20",
+    sort: "created_at",
+    order: "desc",
+  };
+  expect(paginationQuery.page).toBe("1");
+  expect(paginationQuery.limit).toBe("20");
+  expect(paginationQuery["sort"]).toBe("created_at");
+  expect(paginationQuery["order"]).toBe("desc");
+
+  // Search and filter query
+  type SearchQuery = QueryParamsHint<"q" | "category" | "tags">;
+
+  const searchQuery: SearchQuery = {
+    q: "typescript",
+    status: "published",
+    author: "john",
+  };
+  expect(searchQuery.q).toBe("typescript");
+  expect(searchQuery["status"]).toBe("published");
+  expect(searchQuery["author"]).toBe("john");
+
+  // API configuration query
+  type ApiQuery = QueryParamsHint<"version" | "format">;
+
+  const apiQuery: ApiQuery = {
+    version: "v2",
+    format: "json",
+    include: "metadata",
+    fields: "id,name,created_at",
+  };
+  expect(apiQuery.version).toBe("v2");
+  expect(apiQuery.format).toBe("json");
+  expect(apiQuery["include"]).toBe("metadata");
+  expect(apiQuery["fields"]).toBe("id,name,created_at");
 });

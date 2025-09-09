@@ -86,7 +86,7 @@ describe("createReactHook", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const { result } = renderHook(() => user({ id: "123" }));
+    const { result } = renderHook(() => user({ path: { id: "123" } }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -109,7 +109,7 @@ describe("createReactHook", () => {
     };
 
     const { search } = useFragno(clientObj);
-    const { result } = renderHook(() => search(undefined, { q: "test" }));
+    const { result } = renderHook(() => search({ query: { q: "test" } }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -140,7 +140,7 @@ describe("createReactHook", () => {
     };
 
     const { user } = useFragno(clientObj);
-    const { result } = renderHook(() => user({ id: idAtom }));
+    const { result } = renderHook(() => user({ path: { id: idAtom } }));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

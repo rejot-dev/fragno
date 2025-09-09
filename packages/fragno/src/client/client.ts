@@ -12,9 +12,9 @@ import {
 import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
-import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../mod";
+import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../api/library";
 import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
-import type { InferOr, InferOrUnknown } from "../util/types-util";
+import type { InferOr } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
 import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
@@ -202,37 +202,12 @@ export type HasGetRoutes<
   >[],
 > = ExtractGetRoutePaths<T> extends never ? false : true;
 
-/**
- * Generate the proper hook type for a given route path
- */
-export type GenerateHookTypeForPath<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-  TPath extends ExtractGetRoutePaths<TRoutes>,
-> = FragnoClientHook<
-  ExtractOutputSchemaForPath<TRoutes, TPath>,
-  NonNullable<ExtractRouteByPath<TRoutes, TPath>["errorCodes"]>[number]
->;
-
-export interface FragnoClientHook<
-  TOutputSchema extends StandardSchemaV1 | undefined,
-  TErrorCode extends string,
-> {
-  name: string;
-  store: FetcherStore<InferOrUnknown<TOutputSchema>, FragnoClientError<TErrorCode>>;
-}
-
-export type NewFragnoClientHookData<
+export type FragnoClientHookData<
   TMethod extends HTTPMethod,
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
+  TQueryParameters extends string,
 > = {
   route: FragnoRouteConfig<
     TMethod,
@@ -240,16 +215,22 @@ export type NewFragnoClientHookData<
     StandardSchemaV1 | undefined,
     TOutputSchema,
     TErrorCode,
-    string
+    TQueryParameters
   >;
-  query(
-    path?: ExtractPathParamsOrWiden<TPath, string>,
-    query?: Record<string, string>,
-  ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
-  store(
-    path?: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
-    query?: Record<string, string | ReadableAtom<string>>,
-  ): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>;
+  query({
+    path,
+    query,
+  }: {
+    path?: MaybeExtractPathParamsOrWiden<TPath, string>;
+    query?: Record<TQueryParameters, string>;
+  }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
+  store({
+    path,
+    query,
+  }: {
+    path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
+    query?: Record<TQueryParameters, string | ReadableAtom<string>>;
+  }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>;
 } & {
   // Phantom field that preserves the specific TOutputSchema type parameter
   // in the structural type. This makes the type covariant, allowing more
@@ -264,8 +245,16 @@ export type FragnoClientMutatorData<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
+  TQueryParameters extends string,
 > = {
-  route: FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode, string>;
+  route: FragnoRouteConfig<
+    TMethod,
+    TPath,
+    TInputSchema,
+    TOutputSchema,
+    TErrorCode,
+    TQueryParameters
+  >;
 
   mutateQuery({
     body,
@@ -274,14 +263,14 @@ export type FragnoClientMutatorData<
   }: {
     body?: InferOr<TInputSchema, undefined>;
     path?: MaybeExtractPathParamsOrWiden<TPath, string>;
-    query?: Record<string, string>;
+    query?: Record<TQueryParameters, string>;
   }): Promise<InferOr<TOutputSchema, undefined>>;
 
   mutatorStore: MutatorStore<
     {
       body?: InferOr<TInputSchema, undefined>;
       path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
-      query?: Record<string, string | ReadableAtom<string>>;
+      query?: Record<TQueryParameters, string | ReadableAtom<string>>;
     },
     InferOr<TOutputSchema, undefined>,
     FragnoClientError<TErrorCode>
@@ -293,9 +282,6 @@ export type FragnoClientMutatorData<
   readonly _outputSchema?: TOutputSchema;
   readonly _errorCodes?: TErrorCode;
 };
-
-export type ExtractOutputSchemaFromHook<T> =
-  T extends FragnoClientHook<infer OutputSchema, infer _ErrorCode> ? OutputSchema : never;
 
 export function buildUrl<TPath extends string>(
   config: {
@@ -387,11 +373,19 @@ export function isGetHook<
   TErrorCode extends string,
   TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TMutOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
+  TQueryParameters extends string = string,
 >(
   hook:
-    | NewFragnoClientHookData<"GET", string, TOutputSchema, TErrorCode>
-    | FragnoClientMutatorData<NonGetHTTPMethod, string, TInputSchema, TMutOutputSchema, TErrorCode>,
-): hook is NewFragnoClientHookData<"GET", string, TOutputSchema, TErrorCode> {
+    | FragnoClientHookData<"GET", string, TOutputSchema, TErrorCode, TQueryParameters>
+    | FragnoClientMutatorData<
+        NonGetHTTPMethod,
+        string,
+        TInputSchema,
+        TMutOutputSchema,
+        TErrorCode,
+        TQueryParameters
+      >,
+): hook is FragnoClientHookData<"GET", string, TOutputSchema, TErrorCode, TQueryParameters> {
   return hook.route.method === "GET" && "store" in hook && "query" in hook;
 }
 
@@ -402,11 +396,26 @@ export function isMutatorHook<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
+  TQueryParameters extends string,
 >(
   hook:
-    | NewFragnoClientHookData<"GET", string, StandardSchemaV1, TErrorCode>
-    | FragnoClientMutatorData<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode>,
-): hook is FragnoClientMutatorData<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
+    | FragnoClientHookData<"GET", string, StandardSchemaV1, TErrorCode, TQueryParameters>
+    | FragnoClientMutatorData<
+        TMethod,
+        TPath,
+        TInputSchema,
+        TOutputSchema,
+        TErrorCode,
+        TQueryParameters
+      >,
+): hook is FragnoClientMutatorData<
+  TMethod,
+  TPath,
+  TInputSchema,
+  TOutputSchema,
+  TErrorCode,
+  TQueryParameters
+> {
   return hook.route.method !== "GET" && "mutateQuery" in hook && "mutatorStore" in hook;
 }
 
@@ -484,11 +493,12 @@ export class ClientBuilder<
   createHook<TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
     path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
     options?: CreateHookOptions,
-  ): NewFragnoClientHookData<
+  ): FragnoClientHookData<
     "GET",
     TPath,
     NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number],
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["queryParameters"]>[number]
   > {
     const route = this.#libraryConfig.routes.find(
       (
@@ -519,7 +529,8 @@ export class ClientBuilder<
     TPath,
     ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"],
     ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"],
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number]
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number],
+    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["queryParameters"]>[number]
   > {
     type TRoute = ExtractRouteByPath<TLibraryConfig["routes"], TPath>;
 
@@ -550,10 +561,18 @@ export class ClientBuilder<
     TInputSchema extends StandardSchemaV1 | undefined,
     TOutputSchema extends StandardSchemaV1,
     TErrorCode extends string,
+    TQueryParameters extends string,
   >(
-    route: FragnoRouteConfig<"GET", TPath, TInputSchema, TOutputSchema, TErrorCode, string>,
+    route: FragnoRouteConfig<
+      "GET",
+      TPath,
+      TInputSchema,
+      TOutputSchema,
+      TErrorCode,
+      TQueryParameters
+    >,
     options: CreateHookOptions = {},
-  ): NewFragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode> {
+  ): FragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters> {
     if (route.method !== "GET") {
       throw new Error(
         `Only GET routes are supported for hooks. Route '${route.path}' is a ${route.method} route.`,
@@ -622,7 +641,7 @@ export class ClientBuilder<
 
     return {
       route,
-      store: (path?, query?) => {
+      store: ({ path, query }) => {
         const key = getCacheKey(route.method, route.path, {
           pathParams: path,
           queryParams: query,
@@ -675,11 +694,8 @@ export class ClientBuilder<
 
         return store;
       },
-      query: async (params?: {
-        pathParams?: Record<string, string>;
-        queryParams?: Record<string, string>;
-      }) => {
-        const response = await executeQuery(params);
+      query: async ({ path, query }) => {
+        const response = await executeQuery({ pathParams: path, queryParams: query });
 
         const isStreaming = isStreamingResponse(response);
 
@@ -697,6 +713,7 @@ export class ClientBuilder<
     TInputSchema extends StandardSchemaV1 | undefined,
     TOutputSchema extends StandardSchemaV1 | undefined,
     TErrorCode extends string,
+    TQueryParameters extends string,
   >(
     route: FragnoRouteConfig<
       NonGetHTTPMethod,
@@ -704,11 +721,18 @@ export class ClientBuilder<
       TInputSchema,
       TOutputSchema,
       TErrorCode,
-      string
+      TQueryParameters
     >,
     onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
       invalidate("GET", route.path, params),
-  ): FragnoClientMutatorData<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
+  ): FragnoClientMutatorData<
+    NonGetHTTPMethod,
+    TPath,
+    TInputSchema,
+    TOutputSchema,
+    TErrorCode,
+    TQueryParameters
+  > {
     const method = route.method;
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
@@ -755,7 +779,8 @@ export class ClientBuilder<
       TPath,
       TInputSchema,
       TOutputSchema,
-      TErrorCode
+      TErrorCode,
+      TQueryParameters
     >["mutateQuery"];
 
     const mutatorStore: FragnoClientMutatorData<
@@ -763,7 +788,8 @@ export class ClientBuilder<
       TPath,
       TInputSchema,
       TOutputSchema,
-      TErrorCode
+      TErrorCode,
+      TQueryParameters
     >["mutatorStore"] = this.#createMutationStore(
       async ({ data }) => {
         if (typeof window === "undefined") {

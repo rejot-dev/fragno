@@ -292,7 +292,7 @@ describe("hook parameter reactivity", () => {
     const useUsers = cb.createHook("/users/:id");
 
     const idAtom = atom("123");
-    const store = useUsers.store({ id: idAtom });
+    const store = useUsers.store({ path: { id: idAtom } });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -373,7 +373,7 @@ describe("hook parameter reactivity", () => {
     const roleAtom = atom("admin");
     const limitAtom = atom("1");
     // TODO: Ugly undefined should not be here
-    const store = useUsers.store(undefined, { role: roleAtom, limit: limitAtom });
+    const store = useUsers.store({ query: { role: roleAtom, limit: limitAtom } });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -486,7 +486,10 @@ describe("hook parameter reactivity", () => {
 
     const userIdAtom = atom("123");
     const statusAtom = atom("published");
-    const store = usePosts.store({ id: userIdAtom }, { status: statusAtom, limit: "1" });
+    const store = usePosts.store({
+      path: { id: userIdAtom },
+      query: { status: statusAtom, limit: "1" },
+    });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -599,7 +602,10 @@ describe("hook parameter reactivity", () => {
     const userIdAtom = atom("123");
     const categoryAtom = atom("tech");
     // sort is a non-atom (static value)
-    const store = usePosts.store({ id: userIdAtom }, { category: categoryAtom, sort: "desc" });
+    const store = usePosts.store({
+      path: { id: userIdAtom },
+      query: { category: categoryAtom, sort: "desc" },
+    });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -703,7 +709,7 @@ describe("hook parameter reactivity", () => {
 
     const reactiveIdAtom = atom("123");
     // Create store with mixed params: one atom, one static
-    const store = useUser.store({ id: reactiveIdAtom });
+    const store = useUser.store({ path: { id: reactiveIdAtom } });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
 
@@ -730,7 +736,7 @@ describe("hook parameter reactivity", () => {
 
     // Create a second store with the same static parameter values
     // This should not trigger additional fetches since the cache key is the same
-    const store2 = useUser.store({ id: "123" });
+    const store2 = useUser.store({ path: { id: "123" } });
     const itt2 = createAsyncIteratorFromCallback(store2.listen);
 
     // Should get cached result immediately
@@ -794,6 +800,7 @@ describe("hook parameter reactivity", () => {
               status: z.string(),
             }),
           ),
+          queryParameters: ["category", "status", "author"],
           handler: async (_ctx, { json }) =>
             json([{ id: 1, title: "Post", category: "tech", status: "published" }]),
         }),
@@ -831,10 +838,12 @@ describe("hook parameter reactivity", () => {
     const statusAtom = atom("published");
     const authorAtom = atom("john");
 
-    const store = usePosts.store(undefined, {
-      category: categoryAtom,
-      status: statusAtom,
-      author: authorAtom,
+    const store = usePosts.store({
+      query: {
+        category: categoryAtom,
+        status: statusAtom,
+        author: authorAtom,
+      },
     });
 
     const itt = createAsyncIteratorFromCallback(store.listen);

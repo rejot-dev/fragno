@@ -5,12 +5,16 @@ import {
   isGetHook,
   isMutatorHook,
   type FragnoClientMutatorData,
-  type NewFragnoClientHookData,
+  type FragnoClientHookData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { createAsyncIteratorFromCallback } from "../util/async";
 import type { InferOr, AnyStandardSchema } from "../util/types-util";
-import type { ExtractPathParamsOrWiden, HasPathParams } from "../api/internal/path";
+import type {
+  ExtractPathParamsOrWiden,
+  HasPathParams,
+  MaybeExtractPathParamsOrWiden,
+} from "../api/internal/path";
 
 export type StoreData<
   TOutputSchema extends StandardSchemaV1 | undefined,
@@ -26,10 +30,11 @@ export type FragnoVanillaListeners<
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
-> = (
-  path?: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
-  query?: Record<string, string | ReadableAtom<string>>,
-) => {
+  TQueryParameters extends string,
+> = (args?: {
+  path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
+  query?: Record<TQueryParameters, string | ReadableAtom<string>>;
+}) => {
   listen: (callback: (value: StoreData<TOutputSchema, TErrorCode[number]>) => void) => () => void;
   subscribe: (
     callback: (value: StoreData<TOutputSchema, TErrorCode[number]>) => void,
@@ -48,11 +53,12 @@ function createVanillaListeners<
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
+  TQueryParameters extends string,
 >(
-  hook: NewFragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode>,
-): FragnoVanillaListeners<_TMethod, TPath, TOutputSchema, TErrorCode> {
-  return (path?, query?) => {
-    const store = hook.store(path, query);
+  hook: FragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters>,
+): FragnoVanillaListeners<_TMethod, TPath, TOutputSchema, TErrorCode, TQueryParameters> {
+  return ({ path, query } = {}) => {
+    const store = hook.store({ path, query });
 
     return {
       listen: (callback) => {
@@ -100,10 +106,11 @@ export type FragnoVanillaMutator<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
-> = (
-  path?: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
-  query?: Record<string, string | ReadableAtom<string>>,
-) => {
+  TQueryParameters extends string,
+> = (args?: {
+  path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
+  query?: Record<TQueryParameters, string | ReadableAtom<string>>;
+}) => {
   subscribe: (
     callback: (value: {
       loading: boolean;
@@ -136,9 +143,24 @@ function createVanillaMutator<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
+  TQueryParameters extends string,
 >(
-  hook: FragnoClientMutatorData<_TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode>,
-): FragnoVanillaMutator<_TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
+  hook: FragnoClientMutatorData<
+    _TMethod,
+    TPath,
+    TInputSchema,
+    TOutputSchema,
+    TErrorCode,
+    TQueryParameters
+  >,
+): FragnoVanillaMutator<
+  _TMethod,
+  TPath,
+  TInputSchema,
+  TOutputSchema,
+  TErrorCode,
+  TQueryParameters
+> {
   return () => {
     const store = hook.mutatorStore;
     return {
@@ -180,33 +202,43 @@ function createVanillaMutator<
 export function useFragno<
   T extends Record<
     string,
-    | NewFragnoClientHookData<"GET", string, AnyStandardSchema, string>
+    | FragnoClientHookData<"GET", string, AnyStandardSchema, string, string>
     | FragnoClientMutatorData<
         NonGetHTTPMethod,
         string,
         AnyStandardSchema | undefined,
         AnyStandardSchema | undefined,
+        string,
         string
       >
   >,
 >(
   clientObj: T,
 ): {
-  [K in keyof T]: T[K] extends NewFragnoClientHookData<
+  [K in keyof T]: T[K] extends FragnoClientHookData<
     "GET",
     infer TPath,
     infer TOutputSchema,
-    infer TErrorCode
+    infer TErrorCode,
+    infer TQueryParameters
   >
-    ? FragnoVanillaListeners<"GET", TPath, TOutputSchema, TErrorCode>
+    ? FragnoVanillaListeners<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters>
     : T[K] extends FragnoClientMutatorData<
           NonGetHTTPMethod,
           infer TPath,
           infer TInputSchema,
           infer TOutputSchema,
-          infer TErrorCode
+          infer TErrorCode,
+          infer TQueryParameters
         >
-      ? FragnoVanillaMutator<NonGetHTTPMethod, TPath, TInputSchema, TOutputSchema, TErrorCode>
+      ? FragnoVanillaMutator<
+          NonGetHTTPMethod,
+          TPath,
+          TInputSchema,
+          TOutputSchema,
+          TErrorCode,
+          TQueryParameters
+        >
       : never;
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

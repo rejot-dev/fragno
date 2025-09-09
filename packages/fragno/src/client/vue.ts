@@ -7,10 +7,10 @@ import {
   isGetHook,
   isMutatorHook,
   type FragnoClientMutatorData,
-  type NewFragnoClientHookData,
+  type FragnoClientHookData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
-import type { ExtractPathParamsOrWiden, HasPathParams } from "../api/internal/path";
+import type { MaybeExtractPathParamsOrWiden, QueryParamsHint } from "../api/internal/path";
 import type { InferOr, AnyStandardSchema } from "../util/types-util";
 
 export type FragnoVueHook<
@@ -18,10 +18,11 @@ export type FragnoVueHook<
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
-> = (
-  path?: ExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>,
-  query?: Record<string, string | Ref<string> | ReadableAtom<string>>,
-) => {
+  TQueryParameters extends string,
+> = (args?: {
+  path?: MaybeExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>;
+  query?: QueryParamsHint<TQueryParameters, string | Ref<string> | ReadableAtom<string>>;
+}) => {
   data: Ref<InferOr<TOutputSchema, undefined>>;
   loading: Ref<boolean>;
   error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
@@ -33,13 +34,12 @@ export type FragnoVueMutator<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
+  TQueryParameters extends string,
 > = () => {
   mutate: (args: {
     body?: InferOr<TInputSchema, undefined>;
-    path?: HasPathParams<TPath> extends true
-      ? ExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>
-      : undefined;
-    query?: Record<string, string | Ref<string> | ReadableAtom<string>>;
+    path?: MaybeExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>;
+    query?: QueryParamsHint<TQueryParameters, string | Ref<string> | ReadableAtom<string>>;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading: Ref<boolean | undefined>;
   error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
@@ -73,26 +73,29 @@ function createVueHook<
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
+  TQueryParameters extends string,
 >(
-  hook: NewFragnoClientHookData<TMethod, TPath, TOutputSchema, TErrorCode>,
-): FragnoVueHook<TMethod, TPath, TOutputSchema, TErrorCode> {
-  return (path?, query?) => {
+  hook: FragnoClientHookData<TMethod, TPath, TOutputSchema, TErrorCode, TQueryParameters>,
+): FragnoVueHook<TMethod, TPath, TOutputSchema, TErrorCode, TQueryParameters> {
+  return ({ path, query } = {}) => {
     const pathParams: Record<string, string | ReadableAtom<string>> = {};
     const queryParams: Record<string, string | ReadableAtom<string>> = {};
 
     for (const [key, value] of Object.entries(path ?? {})) {
-      pathParams[key] = isRef(value) ? refToAtom(value) : value;
+      const v = value as string | Ref<string> | ReadableAtom<string>;
+      pathParams[key] = isRef(v) ? refToAtom(v) : v;
     }
 
     for (const [key, value] of Object.entries(query ?? {})) {
       // Dunno why the cast is necessary
-      queryParams[key] = isRef(value) ? (refToAtom(value) as ReadableAtom<string>) : value;
+      const v = value as string | Ref<string> | ReadableAtom<string>;
+      queryParams[key] = isRef(v) ? (refToAtom(v) as ReadableAtom<string>) : v;
     }
 
-    const store = hook.store(
-      pathParams as ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
-      queryParams,
-    );
+    const store = hook.store({
+      path: pathParams as MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
+      query: queryParams,
+    });
 
     const data = ref();
     const loading = ref();
@@ -125,17 +128,25 @@ function createVueMutator<
   TInputSchema extends StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string,
+  TQueryParameters extends string,
 >(
-  hook: FragnoClientMutatorData<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode>,
-): FragnoVueMutator<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode> {
+  hook: FragnoClientMutatorData<
+    TMethod,
+    TPath,
+    TInputSchema,
+    TOutputSchema,
+    TErrorCode,
+    TQueryParameters
+  >,
+): FragnoVueMutator<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters> {
   return () => {
     const store = useStore(hook.mutatorStore);
 
     // Create a wrapped mutate function that handles Vue refs
     const mutate = async (args: {
       body?: InferOr<TInputSchema, undefined>;
-      path?: ExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>;
-      query?: Record<string, string | Ref<string> | ReadableAtom<string>>;
+      path?: MaybeExtractPathParamsOrWiden<TPath, string | Ref<string> | ReadableAtom<string>>;
+      query?: QueryParamsHint<TQueryParameters, string | Ref<string> | ReadableAtom<string>>;
     }) => {
       const { body, path, query } = args;
 
@@ -143,19 +154,19 @@ function createVueMutator<
       const queryParams: Record<string, string | ReadableAtom<string>> = {};
 
       for (const [key, value] of Object.entries(path ?? {})) {
-        pathParams[key] = isRef(value) ? value.value : value;
+        const v = value as string | Ref<string> | ReadableAtom<string>;
+        pathParams[key] = isRef(v) ? v.value : v;
       }
 
       for (const [key, value] of Object.entries(query ?? {})) {
-        queryParams[key] = isRef(value) ? (value.value as string) : value;
+        const v = value as string | Ref<string> | ReadableAtom<string>;
+        queryParams[key] = isRef(v) ? v.value : v;
       }
 
       // Call the store's mutate function with normalized params
       return store.value.mutate({
         body,
-        path: pathParams as HasPathParams<TPath> extends true
-          ? ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>
-          : undefined,
+        path: pathParams as MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
         query: queryParams,
       });
     };
@@ -178,27 +189,35 @@ function createVueMutator<
  */
 // Helper type to transform a single hook/mutator
 type TransformHook<T> =
-  T extends NewFragnoClientHookData<"GET", infer TPath, infer TOutputSchema, infer TErrorCode>
-    ? FragnoVueHook<"GET", TPath, TOutputSchema, TErrorCode>
+  T extends FragnoClientHookData<
+    "GET",
+    infer TPath,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters
+  >
+    ? FragnoVueHook<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters>
     : T extends FragnoClientMutatorData<
           infer M,
           infer TPath,
           infer TInputSchema,
           infer TOutputSchema,
-          infer TErrorCode
+          infer TErrorCode,
+          infer TQueryParameters
         >
-      ? FragnoVueMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode>
+      ? FragnoVueMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>
       : never;
 
 export function useFragno<
   T extends Record<
     string,
-    | NewFragnoClientHookData<"GET", string, AnyStandardSchema, string>
+    | FragnoClientHookData<"GET", string, AnyStandardSchema, string, string>
     | FragnoClientMutatorData<
         NonGetHTTPMethod,
         string,
         AnyStandardSchema | undefined,
         AnyStandardSchema | undefined,
+        string,
         string
       >
   >,
