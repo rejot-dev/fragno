@@ -7,7 +7,7 @@ import type { FragnoClientMutatorData, FragnoClientHookData } from "./client";
 import { isGetHook, isMutatorHook } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { hydrateFromWindow } from "../util/ssr";
-import type { InferOr, AnyStandardSchema } from "../util/types-util";
+import type { InferOr } from "../util/types-util";
 import type {
   ExtractPathParamsOrWiden,
   HasPathParams,
@@ -86,8 +86,8 @@ function createReactHook<
 function createReactMutator<
   TMethod extends NonGetHTTPMethod,
   TPath extends string,
-  TInput extends AnyStandardSchema | undefined,
-  TOutput extends AnyStandardSchema | undefined,
+  TInput extends StandardSchemaV1 | undefined,
+  TOutput extends StandardSchemaV1 | undefined,
   TError extends string,
   TQueryParameters extends string,
 >(
@@ -99,15 +99,10 @@ function createReactMutator<
   };
 }
 
-/**
- * Given a record of Fragno client hooks, returns a record mapping each key to the route path string.
- *
- * @param clientObj - A record of Fragno client hooks
- * @returns A record with the same keys, where each value is the route's path string
- */
-// Helper type to transform a single hook/mutator
-type TransformHook<T> =
-  T extends FragnoClientHookData<
+export function useFragno<T extends Record<string, unknown>>(
+  clientObj: T,
+): {
+  [K in keyof T]: T[K] extends FragnoClientHookData<
     "GET",
     infer TPath,
     infer TOutputSchema,
@@ -115,7 +110,7 @@ type TransformHook<T> =
     infer TQueryParameters
   >
     ? FragnoReactHook<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters>
-    : T extends FragnoClientMutatorData<
+    : T[K] extends FragnoClientMutatorData<
           infer TMethod,
           infer TPath,
           infer TInput,
@@ -124,25 +119,7 @@ type TransformHook<T> =
           infer TQueryParameters
         >
       ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
-      : never;
-
-export function useFragno<
-  T extends Record<
-    string,
-    | FragnoClientHookData<"GET", string, AnyStandardSchema, string, string>
-    | FragnoClientMutatorData<
-        NonGetHTTPMethod,
-        string,
-        AnyStandardSchema | undefined,
-        AnyStandardSchema | undefined,
-        string,
-        string
-      >
-  >,
->(
-  clientObj: T,
-): {
-  [K in keyof T]: TransformHook<T[K]>;
+      : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
@@ -158,7 +135,8 @@ export function useFragno<
     } else if (isMutatorHook(hook)) {
       result[key] = createReactMutator(hook);
     } else {
-      throw new Error(`Hook ${key} doesn't match either GET or mutator type guard`);
+      // Pass through non-hook values unchanged
+      result[key] = hook;
     }
   }
 

@@ -688,18 +688,32 @@ describe("useFragno", () => {
     unsubscribe();
   });
 
-  test("should throw error for invalid hook types", () => {
-    const invalidHook = {
-      route: { method: "INVALID" as never, path: "/test" },
-    };
-
+  test("should pass through non-hook values unchanged", () => {
+    const client = createClientBuilder(clientConfig, testLibraryConfig);
     const clientObj = {
-      invalid: invalidHook as never,
+      useData: client.createHook("/data"),
+      someString: "hello world",
+      someNumber: 42,
+      someObject: { foo: "bar", nested: { value: true } },
+      someArray: [1, 2, 3],
+      someFunction: () => "test",
+      someNull: null,
+      someUndefined: undefined,
     };
 
-    expect(() => useFragno(clientObj)).toThrow(
-      "Hook invalid doesn't match either GET or mutator type guard",
-    );
+    const result = useFragno(clientObj);
+
+    // Check that non-hook values are passed through unchanged
+    expect(result.someString).toBe("hello world");
+    expect(result.someNumber).toBe(42);
+    expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
+    expect(result.someArray).toEqual([1, 2, 3]);
+    expect(result.someFunction()).toBe("test");
+    expect(result.someNull).toBeNull();
+    expect(result.someUndefined).toBeUndefined();
+
+    // Verify that the hook is still transformed
+    expect(typeof result.useData).toBe("function");
   });
 
   test("multiple GET hooks for the same path should share the same store", async () => {

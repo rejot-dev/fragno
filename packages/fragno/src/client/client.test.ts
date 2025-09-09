@@ -1,7 +1,7 @@
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import { addRoute } from "../api/api";
-import { buildUrl, createClientBuilder, getCacheKey } from "./client";
+import { buildUrl, createClientBuilder, getCacheKey, isGetHook, isMutatorHook } from "./client";
 import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
@@ -372,7 +372,6 @@ describe("hook parameter reactivity", () => {
 
     const roleAtom = atom("admin");
     const limitAtom = atom("1");
-    // TODO: Ugly undefined should not be here
     const store = useUsers.store({ query: { role: roleAtom, limit: limitAtom } });
 
     const itt = createAsyncIteratorFromCallback(store.listen);
@@ -991,5 +990,80 @@ describe("createMutator", () => {
     });
 
     expect(result).toBeUndefined();
+  });
+});
+
+describe("type guards", () => {
+  const testLibraryConfig = {
+    name: "test-library",
+    routes: [
+      addRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+      addRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async (_ctx, { json }) => json({ id: 2, name: "Jane" }),
+      }),
+    ],
+  } as const;
+
+  test("isGetHook should correctly identify GET hooks using symbols", () => {
+    const client = createClientBuilder({}, testLibraryConfig);
+    const getHook = client.createHook("/users");
+    const mutatorHook = client.createMutator("POST", "/users");
+
+    expect(isGetHook(getHook)).toBe(true);
+    // Test that it correctly identifies non-GET hooks
+    expect(isGetHook(mutatorHook)).toBe(false);
+  });
+
+  test("isMutatorHook should correctly identify mutator hooks using symbols", () => {
+    const client = createClientBuilder({}, testLibraryConfig);
+    const getHook = client.createHook("/users");
+    const mutatorHook = client.createMutator("POST", "/users");
+
+    expect(isMutatorHook(mutatorHook)).toBe(true);
+    // Test that it correctly identifies non-mutator hooks
+    expect(isMutatorHook(getHook)).toBe(false);
+  });
+
+  test("type guards should work correctly with symbol checking", () => {
+    const client = createClientBuilder({}, testLibraryConfig);
+    const getHook = client.createHook("/users");
+    const mutatorHook = client.createMutator("POST", "/users");
+
+    // Test that the hooks have the expected methods/properties
+    expect("store" in getHook).toBe(true);
+    expect("query" in getHook).toBe(true);
+    expect("mutateQuery" in mutatorHook).toBe(true);
+    expect("mutatorStore" in mutatorHook).toBe(true);
+
+    // The type guards should work based on symbols
+    expect(isGetHook(getHook)).toBe(true);
+    expect(isMutatorHook(mutatorHook)).toBe(true);
+  });
+
+  test("type guards should work correctly with object checking", () => {
+    expect(isGetHook(1)).toBe(false);
+    expect(isMutatorHook("absence of hook")).toBe(false);
+    expect(isGetHook({})).toBe(false);
+    expect(isMutatorHook({})).toBe(false);
+    expect(isGetHook(null)).toBe(false);
+    expect(isMutatorHook(null)).toBe(false);
+    expect(isGetHook(undefined)).toBe(false);
+    expect(isMutatorHook(undefined)).toBe(false);
+    expect(isGetHook(true)).toBe(false);
+    expect(isMutatorHook(true)).toBe(false);
+    expect(isGetHook(false)).toBe(false);
+    expect(isMutatorHook(false)).toBe(false);
+    expect(isGetHook(Symbol("fragno-get-hook"))).toBe(false);
+    expect(isMutatorHook(Symbol("fragno-mutator-hook"))).toBe(false);
+    expect(isGetHook(Symbol("fragno-get-hook"))).toBe(false);
   });
 });

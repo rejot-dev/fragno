@@ -718,3 +718,58 @@ describe("createVueMutator", () => {
     expect(result2).toEqual({ id: 100, name: "Updated Name" });
   });
 });
+
+describe("useFragno", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  const testLibraryConfig = {
+    name: "test-library",
+    routes: [
+      addRoute({
+        method: "GET",
+        path: "/data",
+        outputSchema: z.string(),
+        handler: async (_ctx, { json }) => json("test data"),
+      }),
+      addRoute({
+        method: "POST",
+        path: "/action",
+        inputSchema: z.object({ value: z.string() }),
+        outputSchema: z.object({ result: z.string() }),
+        handler: async (_ctx, { json }) => json({ result: "test value" }),
+      }),
+    ],
+  } as const;
+
+  test("should pass through non-hook values unchanged", () => {
+    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const clientObj = {
+      useData: client.createHook("/data"),
+      usePostAction: client.createMutator("POST", "/action"),
+      someString: "hello world",
+      someNumber: 42,
+      someObject: { foo: "bar", nested: { value: true } },
+      someArray: [1, 2, 3],
+      someFunction: () => "test",
+      someNull: null,
+      someUndefined: undefined,
+    };
+
+    const result = useFragno(clientObj);
+
+    // Check that non-hook values are passed through unchanged
+    expect(result.someString).toBe("hello world");
+    expect(result.someNumber).toBe(42);
+    expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
+    expect(result.someArray).toEqual([1, 2, 3]);
+    expect(result.someFunction()).toBe("test");
+    expect(result.someNull).toBeNull();
+    expect(result.someUndefined).toBeUndefined();
+
+    // Verify that hooks are still transformed
+    expect(typeof result.useData).toBe("function");
+    expect(typeof result.usePostAction).toBe("function");
+  });
+});

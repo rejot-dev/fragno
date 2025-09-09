@@ -153,6 +153,7 @@ export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClie
       invalidate("GET", "/echo/:message", { pathParams: { message: pathParams.messageKey } });
     }),
     useStream: b.createHook("/stream"),
+    x: 3,
   };
 
   return client;

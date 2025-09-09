@@ -21,6 +21,12 @@ import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
 
 /**
+ * Symbols used to identify hook types
+ */
+const GET_HOOK_SYMBOL = Symbol("fragno-get-hook");
+const MUTATOR_HOOK_SYMBOL = Symbol("fragno-mutator-hook");
+
+/**
  * Extract only GET routes from a library config's routes array
  */
 export type ExtractGetRoutes<
@@ -231,6 +237,7 @@ export type FragnoClientHookData<
     path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
     query?: Record<TQueryParameters, string | ReadableAtom<string>>;
   }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>;
+  [GET_HOOK_SYMBOL]: true;
 } & {
   // Phantom field that preserves the specific TOutputSchema type parameter
   // in the structural type. This makes the type covariant, allowing more
@@ -275,6 +282,7 @@ export type FragnoClientMutatorData<
     InferOr<TOutputSchema, undefined>,
     FragnoClientError<TErrorCode>
   >;
+  [MUTATOR_HOOK_SYMBOL]: true;
 } & {
   readonly _method?: TMethod;
   readonly _path?: TPath;
@@ -369,24 +377,19 @@ function isStreamingResponse(response: Response): false | "ndjson" | "octet-stre
 
 // Type guard to check if a hook is a GET hook
 export function isGetHook<
+  TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
-  TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
-  TMutOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
-  TQueryParameters extends string = string,
+  TQueryParameters extends string,
 >(
-  hook:
-    | FragnoClientHookData<"GET", string, TOutputSchema, TErrorCode, TQueryParameters>
-    | FragnoClientMutatorData<
-        NonGetHTTPMethod,
-        string,
-        TInputSchema,
-        TMutOutputSchema,
-        TErrorCode,
-        TQueryParameters
-      >,
-): hook is FragnoClientHookData<"GET", string, TOutputSchema, TErrorCode, TQueryParameters> {
-  return hook.route.method === "GET" && "store" in hook && "query" in hook;
+  hook: unknown,
+): hook is FragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters> {
+  return (
+    typeof hook === "object" &&
+    hook !== null &&
+    GET_HOOK_SYMBOL in hook &&
+    hook[GET_HOOK_SYMBOL] === true
+  );
 }
 
 // Type guard to check if a hook is a mutator
@@ -398,16 +401,7 @@ export function isMutatorHook<
   TErrorCode extends string,
   TQueryParameters extends string,
 >(
-  hook:
-    | FragnoClientHookData<"GET", string, StandardSchemaV1, TErrorCode, TQueryParameters>
-    | FragnoClientMutatorData<
-        TMethod,
-        TPath,
-        TInputSchema,
-        TOutputSchema,
-        TErrorCode,
-        TQueryParameters
-      >,
+  hook: unknown,
 ): hook is FragnoClientMutatorData<
   TMethod,
   TPath,
@@ -416,7 +410,12 @@ export function isMutatorHook<
   TErrorCode,
   TQueryParameters
 > {
-  return hook.route.method !== "GET" && "mutateQuery" in hook && "mutatorStore" in hook;
+  return (
+    typeof hook === "object" &&
+    hook !== null &&
+    MUTATOR_HOOK_SYMBOL in hook &&
+    hook[MUTATOR_HOOK_SYMBOL] === true
+  );
 }
 
 type OnErrorRetryFn = (opts: {
@@ -705,6 +704,7 @@ export class ClientBuilder<
 
         throw new Error("Streaming responses are not supported server side");
       },
+      [GET_HOOK_SYMBOL]: true,
     };
   }
 
@@ -830,6 +830,7 @@ export class ClientBuilder<
       route,
       mutateQuery,
       mutatorStore,
+      [MUTATOR_HOOK_SYMBOL]: true,
     };
   }
 

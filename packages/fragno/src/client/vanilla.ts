@@ -9,7 +9,7 @@ import {
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { createAsyncIteratorFromCallback } from "../util/async";
-import type { InferOr, AnyStandardSchema } from "../util/types-util";
+import type { InferOr } from "../util/types-util";
 import type {
   ExtractPathParamsOrWiden,
   HasPathParams,
@@ -199,20 +199,7 @@ function createVanillaMutator<
   };
 }
 
-export function useFragno<
-  T extends Record<
-    string,
-    | FragnoClientHookData<"GET", string, AnyStandardSchema, string, string>
-    | FragnoClientMutatorData<
-        NonGetHTTPMethod,
-        string,
-        AnyStandardSchema | undefined,
-        AnyStandardSchema | undefined,
-        string,
-        string
-      >
-  >,
->(
+export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
   [K in keyof T]: T[K] extends FragnoClientHookData<
@@ -239,7 +226,7 @@ export function useFragno<
           TErrorCode,
           TQueryParameters
         >
-      : never;
+      : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
@@ -255,7 +242,8 @@ export function useFragno<
     } else if (isMutatorHook(hook)) {
       result[key] = createVanillaMutator(hook);
     } else {
-      throw new Error(`Hook ${key} doesn't match either GET or mutator type guard`);
+      // Pass through non-hook values unchanged
+      result[key] = hook;
     }
   }
 

@@ -1,4 +1,4 @@
-import { test, expect, describe, vi, beforeEach, afterEach } from "vitest";
+import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { atom, computed } from "nanostores";
 import { z } from "zod";
@@ -508,18 +508,127 @@ describe("useFragno", () => {
     expect(mutatorResult).toEqual({ result: "test value" });
   });
 
-  test("should throw error for invalid hook types", () => {
-    const invalidHook = {
-      route: { method: "INVALID" as never, path: "/test" },
+  test("should pass through non-hook values unchanged", () => {
+    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const clientObj = {
+      useData: client.createHook("/data"),
+      someString: "hello world",
+      someNumber: 42,
+      someObject: { foo: "bar", nested: { value: true } },
+      someArray: [1, 2, 3],
+      someFunction: () => "test",
+      someNull: null,
+      someUndefined: undefined,
     };
+
+    const result = useFragno(clientObj);
+
+    // Check that non-hook values are passed through unchanged
+    expect(result.someString).toBe("hello world");
+    expect(result.someNumber).toBe(42);
+    expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
+    expect(result.someArray).toEqual([1, 2, 3]);
+    expect(result.someFunction()).toBe("test");
+    expect(result.someNull).toBeNull();
+    expect(result.someUndefined).toBeUndefined();
+
+    // Verify that the hook is still transformed
+    expect(typeof result.useData).toBe("function");
+  });
+
+  test("should preserve reference equality for non-hook objects", () => {
+    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const sharedObject = { shared: true };
+    const sharedArray = [1, 2, 3];
+    const sharedFunction = () => "shared";
 
     const clientObj = {
-      invalid: invalidHook as never,
+      useData: client.createHook("/data"),
+      obj: sharedObject,
+      arr: sharedArray,
+      fn: sharedFunction,
     };
 
-    expect(() => useFragno(clientObj)).toThrow(
-      "Hook invalid doesn't match either GET or mutator type guard",
-    );
+    const result = useFragno(clientObj);
+
+    // Check that references are preserved
+    expect(result.obj).toBe(sharedObject);
+    expect(result.arr).toBe(sharedArray);
+    expect(result.fn).toBe(sharedFunction);
+  });
+
+  test("should handle mixed object with hooks, mutators, and other values", () => {
+    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const clientObj = {
+      // Hooks and mutators
+      useData: client.createHook("/data"),
+      usePostAction: client.createMutator("POST", "/action"),
+      // Regular values
+      config: { apiKey: "test-key", timeout: 5000 },
+      utils: {
+        formatDate: (date: Date) => date.toISOString(),
+        parseId: (id: string) => parseInt(id, 10),
+      },
+      constants: {
+        MAX_RETRIES: 3,
+        DEFAULT_PAGE_SIZE: 20,
+      },
+      metadata: {
+        version: "1.0.0",
+        environment: "test",
+      },
+    };
+
+    const result = useFragno(clientObj);
+
+    // Check hooks are transformed
+    expect(typeof result.useData).toBe("function");
+    expect(typeof result.usePostAction).toBe("function");
+
+    // Check other values are passed through
+    expect(result.config).toEqual({ apiKey: "test-key", timeout: 5000 });
+    expect(result.utils.formatDate(new Date("2024-01-01"))).toBe("2024-01-01T00:00:00.000Z");
+    expect(result.utils.parseId("123")).toBe(123);
+    expect(result.constants.MAX_RETRIES).toBe(3);
+    expect(result.constants.DEFAULT_PAGE_SIZE).toBe(20);
+    expect(result.metadata).toEqual({ version: "1.0.0", environment: "test" });
+
+    expectTypeOf<(typeof result)["config"]>().toEqualTypeOf<{ apiKey: string; timeout: number }>();
+    expectTypeOf<(typeof result)["utils"]>().toEqualTypeOf<{
+      formatDate: (date: Date) => string;
+      parseId: (id: string) => number;
+    }>();
+    expectTypeOf<(typeof result)["constants"]>().toEqualTypeOf<{
+      MAX_RETRIES: number;
+      DEFAULT_PAGE_SIZE: number;
+    }>();
+    expectTypeOf<(typeof result)["metadata"]>().toEqualTypeOf<{
+      version: string;
+      environment: string;
+    }>();
+  });
+
+  test("should handle empty object", () => {
+    const clientObj = {};
+    const result = useFragno(clientObj);
+    expect(result).toEqual({});
+  });
+
+  test("should handle object with only non-hook values", () => {
+    const clientObj = {
+      a: 1,
+      b: "two",
+      c: { three: 3 },
+      d: [4, 5, 6],
+    };
+
+    const result = useFragno(clientObj);
+
+    expect(result).toEqual(clientObj);
+    expect(result.a).toBe(1);
+    expect(result.b).toBe("two");
+    expect(result.c).toEqual({ three: 3 });
+    expect(result.d).toEqual([4, 5, 6]);
   });
 });
 
