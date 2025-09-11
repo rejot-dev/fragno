@@ -1,6 +1,7 @@
 import { test, expectTypeOf, describe } from "vitest";
 import { z } from "zod";
-import { addRoute, type FragnoRouteConfig, type HTTPMethod } from "../api/api";
+import { type FragnoRouteConfig, type HTTPMethod } from "../api/api";
+import { defineRoute } from "../api/route";
 import type {
   ExtractGetRoutes,
   ExtractGetRoutePaths,
@@ -16,12 +17,12 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 // Test route configurations for type testing
 const _testRoutes = [
   // GET routes
-  addRoute({
+  defineRoute({
     method: "GET",
     path: "/home",
     handler: async (_ctx, { json }) => json({}),
   }),
-  addRoute({
+  defineRoute({
     method: "GET",
     path: "/users",
     outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
@@ -29,7 +30,7 @@ const _testRoutes = [
       return json([{ id: 1, name: "" } as const]);
     },
   }),
-  addRoute({
+  defineRoute({
     method: "GET",
     path: "/users/:id",
     outputSchema: z.object({ id: z.number(), name: z.string() }),
@@ -37,32 +38,32 @@ const _testRoutes = [
       return json({ id: Number(pathParams.id), name: "" } as const);
     },
   }),
-  addRoute({
+  defineRoute({
     method: "GET",
     path: "/posts/:postId/comments",
     outputSchema: z.array(z.object({ id: z.number(), content: z.string() })),
     handler: async (_ctx, { json }) => json([]),
   }),
-  addRoute({
+  defineRoute({
     method: "GET",
     path: "/static/**:path",
     handler: async (_ctx, { json }) => json({}),
   }),
   // Non-GET routes (should be filtered out)
-  addRoute({
+  defineRoute({
     method: "POST",
     path: "/users",
     inputSchema: z.object({ name: z.string() }),
     outputSchema: z.object({ id: z.number(), name: z.string() }),
     handler: async (_ctx, { json }) => json({ id: 1, name: "" }),
   }),
-  addRoute({
+  defineRoute({
     method: "PUT",
     path: "/users/:id",
     inputSchema: z.object({ name: z.string() }),
     handler: async (_ctx, { json }) => json({}),
   }),
-  addRoute({
+  defineRoute({
     method: "DELETE",
     path: "/users/:id",
     handler: async (_ctx, { json }) => json({}),
@@ -81,12 +82,12 @@ const _emptyRoutes = [] as const satisfies readonly FragnoRouteConfig<
 
 // Routes with no GET methods
 const _noGetRoutes = [
-  addRoute({
+  defineRoute({
     method: "POST",
     path: "/create",
     handler: async (_ctx, { json }) => json({}),
   }),
-  addRoute({
+  defineRoute({
     method: "DELETE",
     path: "/delete/:id",
     handler: async (_ctx, { json }) => json({}),
@@ -210,26 +211,26 @@ test("HasGetRoutes type tests", () => {
 test("Real-world usage scenarios", () => {
   // Test with Chatno-like route configuration
   const _chatnoLikeRoutes = [
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/home",
       outputSchema: z.string(),
       handler: async (_ctx, { json }) => json("Hello, world!"),
     }),
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/thing/**:path",
       outputSchema: z.string(),
       handler: async (_ctx, { json }) => json("thing"),
     }),
-    addRoute({
+    defineRoute({
       method: "POST",
       path: "/echo",
       inputSchema: z.object({ number: z.number() }),
       outputSchema: z.string(),
       handler: async (_ctx, { json }) => json(""),
     }),
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/ai-config",
       outputSchema: z.object({
@@ -258,18 +259,18 @@ test("Real-world usage scenarios", () => {
 test("Edge cases and error handling", () => {
   // Routes with complex path patterns
   const _complexRoutes = [
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/api/v1/users/:userId/posts/:postId/comments/:commentId",
       outputSchema: z.object({ id: z.number(), content: z.string() }),
       handler: async (_ctx, { json }) => json({ id: 1, content: "" }),
     }),
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/files/**:filepath",
       handler: async (_ctx, { json }) => json({}),
     }),
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/admin/:section/:action",
       outputSchema: z.object({ success: z.boolean() }),
@@ -314,7 +315,7 @@ test("Type constraint validation", () => {
 
   // Should maintain type safety with const assertions
   const _constRoutes = [
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/const-test",
       handler: async (_ctx, { json }) => json({}),
@@ -328,7 +329,7 @@ test("Type constraint validation", () => {
 test("GET route with outputSchema", () => {
   // These tests ensure the types work correctly with const assertions and readonly arrays
   const _routes = [
-    addRoute({
+    defineRoute({
       method: "GET" as const,
       path: "/test",
       outputSchema: z.object({
@@ -346,14 +347,14 @@ describe("ExtractRouteByPath", () => {
   const _libraryConfig = {
     name: "test-library",
     routes: [
-      addRoute({
+      defineRoute({
         method: "POST",
         path: "/users",
         inputSchema: z.object({ name: z.string(), email: z.string() }),
         outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
         handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
       }),
-      addRoute({
+      defineRoute({
         method: "PUT",
         path: "/users/:id",
         inputSchema: z.object({ name: z.string() }),
@@ -361,7 +362,7 @@ describe("ExtractRouteByPath", () => {
         handler: async ({ pathParams }, { json }) =>
           json({ id: Number(pathParams["id"]), name: "" }),
       }),
-      addRoute({
+      defineRoute({
         method: "DELETE",
         path: "/users/:id",
         inputSchema: z.object({}),

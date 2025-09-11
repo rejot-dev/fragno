@@ -6,6 +6,32 @@ import { addRoute, createRouter, findRoute } from "rou3";
 import { RequestInputContext } from "./request-input-context";
 import type { ExtractPathParams } from "./internal/path";
 import { RequestOutputContext } from "./request-output-context";
+import {
+  type EmptyObject,
+  type AnyFragnoRouteConfig,
+  type AnyRouteOrFactory,
+  type FlattenRouteFactories,
+  resolveRouteFactories,
+} from "./route";
+
+export interface FragnoPublicConfig {
+  mountRoute?: string;
+}
+
+export interface FragnoPublicClientConfig {
+  mountRoute?: string;
+  baseUrl?: string;
+}
+
+export interface FragnoInstantiatedLibrary<
+  TRoutes extends readonly AnyFragnoRouteConfig[] = [],
+  TServices extends Record<string, unknown> = Record<string, unknown>,
+> {
+  config: FragnoLibrarySharedConfig<TRoutes>;
+  services: TServices;
+  handler: (req: Request) => Promise<Response>;
+  mountRoute: string;
+}
 
 export interface FragnoLibrarySharedConfig<
   TRoutes extends readonly FragnoRouteConfig<
@@ -22,51 +48,85 @@ export interface FragnoLibrarySharedConfig<
 }
 
 export type AnyFragnoLibrarySharedConfig = FragnoLibrarySharedConfig<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly FragnoRouteConfig<HTTPMethod, string, any, any, any, any>[]
+  readonly AnyFragnoRouteConfig[]
 >;
 
-export interface FragnoPublicConfig {
-  mountRoute?: string;
-}
-
-export interface FragnoPublicClientConfig {
-  mountRoute?: string;
-  baseUrl?: string;
-}
-
-export interface FragnoInstantiatedLibrary<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TRoutes extends readonly FragnoRouteConfig<HTTPMethod, string, any, any, any, any>[] = [],
-  TServices extends Record<string, unknown> = Record<string, unknown>,
+interface LibraryDefinition<
+  TConfig,
+  TDeps = EmptyObject,
+  TServices extends Record<string, unknown> = EmptyObject,
 > {
-  config: FragnoLibrarySharedConfig<TRoutes>;
-  services: TServices;
-  handler: (req: Request) => Promise<Response>;
-  mountRoute: string;
+  name: string;
+  dependencies?: (config: TConfig) => TDeps;
+  services?: (config: TConfig, deps: TDeps) => TServices;
+}
+
+export class LibraryBuilder<
+  TConfig,
+  TDeps = EmptyObject,
+  TServices extends Record<string, unknown> = EmptyObject,
+> {
+  #definition: LibraryDefinition<TConfig, TDeps, TServices>;
+
+  constructor(definition: LibraryDefinition<TConfig, TDeps, TServices>) {
+    this.#definition = definition;
+  }
+
+  get definition() {
+    return this.#definition;
+  }
+
+  withDependencies<TNewDeps>(
+    fn: (config: TConfig) => TNewDeps,
+  ): LibraryBuilder<TConfig, TNewDeps, TServices> {
+    return new LibraryBuilder<TConfig, TNewDeps, TServices>({
+      ...this.#definition,
+      dependencies: fn,
+    } as LibraryDefinition<TConfig, TNewDeps, TServices>);
+  }
+
+  withServices<TNewServices extends Record<string, unknown>>(
+    fn: (config: TConfig, deps: TDeps) => TNewServices,
+  ): LibraryBuilder<TConfig, TDeps, TNewServices> {
+    return new LibraryBuilder<TConfig, TDeps, TNewServices>({
+      ...this.#definition,
+      services: fn,
+    } as LibraryDefinition<TConfig, TDeps, TNewServices>);
+  }
+}
+
+export function defineLibrary<TConfig>(name: string): LibraryBuilder<TConfig> {
+  return new LibraryBuilder({
+    name,
+  });
 }
 
 export function createLibrary<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-  TServices extends Record<string, unknown> = Record<string, unknown>,
+  TConfig,
+  TDeps,
+  TServices extends Record<string, unknown>,
+  const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  publicConfig: FragnoPublicConfig,
-  config: FragnoLibrarySharedConfig<TRoutes>,
-  services: TServices,
-): FragnoInstantiatedLibrary<TRoutes, TServices> {
+  libraryDefinition: LibraryBuilder<TConfig, TDeps, TServices>,
+  config: TConfig,
+  routesOrFactories: TRoutesOrFactories,
+  fragnoConfig: FragnoPublicConfig = {},
+): FragnoInstantiatedLibrary<FlattenRouteFactories<TRoutesOrFactories>, TServices> {
+  const definition = libraryDefinition.definition;
+
+  const dependencies = definition.dependencies ? definition.dependencies(config) : ({} as TDeps);
+  const services = definition.services
+    ? definition.services(config, dependencies)
+    : ({} as TServices);
+
+  const context = { config, deps: dependencies, services };
+  const routes = resolveRouteFactories(context, routesOrFactories);
+
   const mountRoute = getMountRoute({
-    name: config.name,
-    mountRoute: publicConfig.mountRoute,
+    name: definition.name,
+    mountRoute: fragnoConfig.mountRoute,
   });
 
-  // Allow routes to declare undefined schemas so the RequestContext accurately reflects the presence or absence of `input`/`output`.
   const router =
     createRouter<
       FragnoRouteConfig<
@@ -79,24 +139,26 @@ export function createLibrary<
       >
     >();
 
-  for (const routeConfig of config.routes) {
+  for (const routeConfig of routes) {
     addRoute(router, routeConfig.method.toUpperCase(), routeConfig.path, routeConfig);
   }
 
   return {
     mountRoute,
-    config,
+    config: {
+      name: definition.name,
+      routes,
+    },
     services,
     handler: async (req: Request) => {
       const url = new URL(req.url);
       const pathname = url.pathname;
 
-      // Remove the mount route from the pathname, then lookup the route based on that.
       const matchRoute = pathname.startsWith(mountRoute) ? pathname.slice(mountRoute.length) : null;
 
       if (matchRoute === null) {
         return new Response(
-          `Fragno: Route for '${config.name}' not found. Is the library mounted on the right route? ` +
+          `Fragno: Route for '${definition.name}' not found. Is the library mounted on the right route? ` +
             `Expecting: '${mountRoute}'.`,
           { status: 404 },
         );
@@ -105,7 +167,7 @@ export function createLibrary<
       const route = findRoute(router, req.method, matchRoute);
 
       if (!route) {
-        return new Response(`Fragno: Route for '${config.name}' not found`, { status: 404 });
+        return new Response(`Fragno: Route for '${definition.name}' not found`, { status: 404 });
       }
 
       const { handler, inputSchema, outputSchema, path } = route.data;

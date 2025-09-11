@@ -2,39 +2,35 @@ import { createServer, type RequestListener, type Server } from "node:http";
 import { test, expect, describe } from "vitest";
 import { z } from "zod";
 import {
+  defineLibrary,
+  defineRoute,
   createLibrary,
   type FragnoInstantiatedLibrary,
   type FragnoPublicClientConfig,
 } from "@fragno-dev/core";
-import { addRoute } from "@fragno-dev/core/api";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Fragno Node.js integration", () => {
-  const testLibraryConfig = {
-    name: "test-library",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/users",
-        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library");
+
+  const usersRoute = defineRoute({
+    method: "GET",
+    path: "/users",
+    outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+    handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+  });
 
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost",
   };
-  let testLibrary: FragnoInstantiatedLibrary<typeof testLibraryConfig.routes>;
+  let testLibrary: FragnoInstantiatedLibrary<[typeof usersRoute]>;
   let server: Server;
   let port: number;
 
   function createServerForTest(
-    listenerFactory: (
-      library: FragnoInstantiatedLibrary<typeof testLibraryConfig.routes>,
-    ) => RequestListener,
+    listenerFactory: (library: FragnoInstantiatedLibrary<[typeof usersRoute]>) => RequestListener,
   ) {
-    testLibrary = createLibrary(clientConfig, testLibraryConfig, {});
+    testLibrary = createLibrary(testLibraryDefinition, {}, [usersRoute], clientConfig);
     server = createServer(listenerFactory(testLibrary));
     server.listen(0);
 

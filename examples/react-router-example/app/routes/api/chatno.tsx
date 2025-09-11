@@ -1,5 +1,5 @@
-import { createChatno } from "@fragno-dev/chatno";
 import type { Route } from "./+types/chatno";
+import { createChatno } from "../../chatno/chatno.server";
 
 // For GET
 export async function loader({ request }: Route.LoaderArgs) {

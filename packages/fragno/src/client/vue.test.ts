@@ -1,7 +1,8 @@
 import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vitest";
 import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
-import { addRoute } from "../api/api";
+import { defineRoute } from "../api/route";
+import { defineLibrary } from "../api/library";
 import { z } from "zod";
 import { refToAtom, useFragno } from "./vue";
 import { waitFor } from "@testing-library/vue";
@@ -68,17 +69,15 @@ describe("createVueHook", () => {
   });
 
   test("Hook should function", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementationOnce(
       async () =>
@@ -89,7 +88,7 @@ describe("createVueHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -106,18 +105,16 @@ describe("createVueHook", () => {
   });
 
   test("Should support path parameters and update reactively when Vue ref changes", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id",
-          outputSchema: z.object({ id: z.number(), name: z.string() }),
-          handler: async ({ pathParams }, { json }) =>
-            json({ id: Number(pathParams["id"]), name: "John" }),
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ pathParams }, { json }) =>
+          json({ id: Number(pathParams["id"]), name: "John" }),
+      }),
+    ] as const;
 
     // Mock fetch to extract the user ID from the URL and return a user object with that ID.
     vi.mocked(global.fetch).mockImplementation(async (input) => {
@@ -136,7 +133,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -164,18 +161,16 @@ describe("createVueHook", () => {
   });
 
   test("Should support path parameters and update reactively when Nanostores Atom changes", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id",
-          outputSchema: z.object({ id: z.number(), name: z.string() }),
-          handler: async ({ pathParams }, { json }) =>
-            json({ id: Number(pathParams["id"]), name: "John" }),
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ pathParams }, { json }) =>
+          json({ id: Number(pathParams["id"]), name: "John" }),
+      }),
+    ] as const;
 
     // Mock fetch to extract the user ID from the URL and return a user object with that ID.
     vi.mocked(global.fetch).mockImplementation(async (input) => {
@@ -194,7 +189,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -222,17 +217,15 @@ describe("createVueHook", () => {
   });
 
   test("Should handle errors gracefully", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementationOnce(
       async () =>
@@ -245,7 +238,7 @@ describe("createVueHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -263,17 +256,15 @@ describe("createVueHook", () => {
   });
 
   test("Should track loading states correctly", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+    ] as const;
 
     let resolvePromise: (value: Response) => void;
     const fetchPromise = new Promise<Response>((resolve) => {
@@ -282,7 +273,7 @@ describe("createVueHook", () => {
 
     vi.mocked(global.fetch).mockImplementationOnce(() => fetchPromise);
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -311,21 +302,19 @@ describe("createVueHook", () => {
   });
 
   test("Should handle mutator hooks", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "POST",
-          path: "/users",
-          inputSchema: z.object({ name: z.string(), email: z.string() }),
-          outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-          handler: async ({ input }, { json }) => {
-            const { name, email } = await input.valid();
-            return json({ id: 1, name, email });
-          },
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string(), email: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+        handler: async ({ input }, { json }) => {
+          const { name, email } = await input.valid();
+          return json({ id: 1, name, email });
+        },
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementationOnce(
       async () =>
@@ -336,7 +325,7 @@ describe("createVueHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -358,17 +347,15 @@ describe("createVueHook", () => {
   });
 
   test("Should handle query parameters", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -382,7 +369,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -415,30 +402,28 @@ describe("createVueHook", () => {
   });
 
   test("Should handle multiple hooks together", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-        }),
-        addRoute({
-          method: "GET",
-          path: "/posts",
-          outputSchema: z.array(z.object({ id: z.number(), title: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, title: "First Post" }]),
-        }),
-        addRoute({
-          method: "DELETE",
-          path: "/users/:id",
-          inputSchema: z.object({}),
-          outputSchema: z.object({ success: z.boolean() }),
-          handler: async (_ctx, { json }) => json({ success: true }),
-        }),
-      ],
-    } as const;
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/posts",
+        outputSchema: z.array(z.object({ id: z.number(), title: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, title: "First Post" }]),
+      }),
+      defineRoute({
+        method: "DELETE",
+        path: "/users/:id",
+        inputSchema: z.object({}),
+        outputSchema: z.object({ success: z.boolean() }),
+        handler: async (_ctx, { json }) => json({ success: true }),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -466,7 +451,7 @@ describe("createVueHook", () => {
       throw new Error(`Unexpected URL: ${input}`);
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
       usePosts: client.createHook("/posts"),
@@ -498,24 +483,22 @@ describe("createVueHook", () => {
   });
 
   test("Should handle mixed reactive parameters - ref path param, atom and ref query params, with reactive updates", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id/posts",
-          inputSchema: z.object({
-            limit: z.string().optional(),
-            category: z.string().optional(),
-            sort: z.string().optional(),
-          }),
-          outputSchema: z.array(
-            z.object({ id: z.number(), title: z.string(), category: z.string() }),
-          ),
-          handler: async (_ctx, { empty }) => empty(),
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id/posts",
+        inputSchema: z.object({
+          limit: z.string().optional(),
+          category: z.string().optional(),
+          sort: z.string().optional(),
         }),
-      ],
-    };
+        outputSchema: z.array(
+          z.object({ id: z.number(), title: z.string(), category: z.string() }),
+        ),
+        handler: async (_ctx, { empty }) => empty(),
+      }),
+    ] as const;
 
     // Mock fetch to verify URL construction and parameter passing
     vi.mocked(global.fetch).mockImplementation(async (input) => {
@@ -545,7 +528,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUserPosts: client.createHook("/users/:id/posts"),
     };
@@ -663,21 +646,19 @@ describe("createVueMutator", () => {
   });
 
   test("Should handle mutator with path parameters", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "PUT",
-          path: "/users/:id",
-          inputSchema: z.object({ name: z.string() }),
-          outputSchema: z.object({ id: z.number(), name: z.string() }),
-          handler: async ({ pathParams, input }, { json }) => {
-            const { name } = await input.valid();
-            return json({ id: Number(pathParams["id"]), name });
-          },
-        }),
-      ],
-    };
+    const testLibraryDefinition = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "PUT",
+        path: "/users/:id",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ pathParams, input }, { json }) => {
+          const { name } = await input.valid();
+          return json({ id: Number(pathParams["id"]), name });
+        },
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -690,7 +671,7 @@ describe("createVueMutator", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       updateUser: client.createMutator("PUT", "/users/:id"),
     };
@@ -724,27 +705,25 @@ describe("useFragno", () => {
     baseUrl: "http://localhost:3000",
   };
 
-  const testLibraryConfig = {
-    name: "test-library",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/data",
-        outputSchema: z.string(),
-        handler: async (_ctx, { json }) => json("test data"),
-      }),
-      addRoute({
-        method: "POST",
-        path: "/action",
-        inputSchema: z.object({ value: z.string() }),
-        outputSchema: z.object({ result: z.string() }),
-        handler: async (_ctx, { json }) => json({ result: "test value" }),
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/data",
+      outputSchema: z.string(),
+      handler: async (_ctx, { json }) => json("test data"),
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/action",
+      inputSchema: z.object({ value: z.string() }),
+      outputSchema: z.object({ result: z.string() }),
+      handler: async (_ctx, { json }) => json({ result: "test value" }),
+    }),
+  ] as const;
 
   test("should pass through non-hook values unchanged", () => {
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       usePostAction: client.createMutator("POST", "/action"),

@@ -3,7 +3,7 @@ import type { Binding, NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 import type { Node } from "@babel/types";
 
-const FRAGNO_PACKAGES = ["@fragno-dev/core", "@fragno-dev/core/api"];
+const FRAGNO_PACKAGES = ["@fragno-dev/core"];
 
 const isAddRouteBinding = (binding: Binding): boolean => {
   if (!t.isImportDeclaration(binding?.path.parent)) {
@@ -11,7 +11,7 @@ const isAddRouteBinding = (binding: Binding): boolean => {
   }
 
   const source = binding.path.parent.source.value;
-  if (!FRAGNO_PACKAGES.includes(source)) {
+  if (!FRAGNO_PACKAGES.some((pkg) => source.startsWith(pkg))) {
     return false;
   }
 
@@ -24,7 +24,7 @@ const isAddRouteBinding = (binding: Binding): boolean => {
     return false;
   }
 
-  if (imported.name !== "addRoute") {
+  if (imported.name !== "addRoute" && imported.name !== "defineRoute") {
     return false;
   }
 
@@ -69,7 +69,7 @@ function replaceHandlerWithNoop(routeConfig: t.Expression) {
   }
 }
 
-export function transformAddRoute(ast: Node, options: { ssr: boolean }) {
+export function transformDefineRoute(ast: Node, options: { ssr: boolean }) {
   if (options.ssr) {
     return;
   }

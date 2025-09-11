@@ -35,8 +35,8 @@ export interface FragnoRouteConfig<
   path: TPath;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
-  errorCodes?: TErrorCode[];
-  queryParameters?: TQueryParameters[];
+  errorCodes?: readonly TErrorCode[];
+  queryParameters?: readonly TQueryParameters[];
   handler(
     inputCtx: RequestInputContext<TPath, TInputSchema>,
     outputCtx: RequestOutputContext<TOutputSchema, TErrorCode>,

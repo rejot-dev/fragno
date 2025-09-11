@@ -2,42 +2,40 @@ import express, { type Application } from "express";
 import { test, expect, describe, beforeAll, afterAll, assert } from "vitest";
 import { z } from "zod";
 import {
+  defineLibrary,
+  defineRoute,
   createLibrary,
   type FragnoInstantiatedLibrary,
   type FragnoPublicClientConfig,
 } from "@fragno-dev/core";
-import { addRoute } from "@fragno-dev/core/api";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Node.js Streaming", () => {
-  const testLibraryConfig = {
-    name: "test-library",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/stream",
-        outputSchema: z.array(z.object({ message: z.string() })),
-        handler: async (_ctx, { jsonStream }) => {
-          return jsonStream(async (stream) => {
-            await stream.write({ message: "Hello, " });
-            await stream.sleep(1);
-            await stream.write({ message: "World!" });
-          });
-        },
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library");
+
+  const streamRoute = defineRoute({
+    method: "GET",
+    path: "/stream",
+    outputSchema: z.array(z.object({ message: z.string() })),
+    handler: async (_ctx, { jsonStream }) => {
+      return jsonStream(async (stream) => {
+        await stream.write({ message: "Hello, " });
+        await stream.sleep(1);
+        await stream.write({ message: "World!" });
+      });
+    },
+  });
 
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost",
   };
-  let testLibrary: FragnoInstantiatedLibrary<typeof testLibraryConfig.routes>;
+  let testLibrary: FragnoInstantiatedLibrary<[typeof streamRoute]>;
   let app: Application;
   let server: ReturnType<typeof app.listen>;
   let port: number;
 
   function createExpressServerForTest() {
-    testLibrary = createLibrary(clientConfig, testLibraryConfig, {});
+    testLibrary = createLibrary(testLibraryDefinition, {}, [streamRoute], clientConfig);
     app = express();
 
     app.all("/api/test-library/{*any}", toNodeHandler(testLibrary.handler));

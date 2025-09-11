@@ -88,6 +88,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown -w",
+    "types:check": "tsc --noEmit",
     "lint": "eslint .",
     "play": "npm -C playground run dev",
     "prepublishOnly": "npm run build",
