@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./internal/path";
-import { FragnoApiValidationError } from "./api";
+import { FragnoApiValidationError, type HTTPMethod } from "./api";
 
 export type RequestBodyType =
   | unknown // JSON
@@ -78,19 +78,30 @@ export class RequestInputContext<
   static fromSSRContext<
     TPath extends string,
     TInputSchema extends StandardSchemaV1 | undefined = undefined,
-  >(config: {
-    method: string;
-    path: TPath;
-    pathParams: ExtractPathParams<TPath>;
-    searchParams?: URLSearchParams;
-    body: RequestBodyType;
-  }): RequestInputContext<TPath, TInputSchema> {
+  >(
+    config:
+      | {
+          method: "GET";
+          path: TPath;
+          pathParams: ExtractPathParams<TPath>;
+          searchParams?: URLSearchParams;
+        }
+      | {
+          method: Exclude<HTTPMethod, "GET">;
+          path: TPath;
+          pathParams: ExtractPathParams<TPath>;
+          searchParams?: URLSearchParams;
+          body: RequestBodyType;
+          inputSchema?: TInputSchema;
+        },
+  ): RequestInputContext<TPath, TInputSchema> {
     return new RequestInputContext({
       method: config.method,
       path: config.path,
       pathParams: config.pathParams,
       searchParams: config.searchParams ?? new URLSearchParams(),
-      body: config.body,
+      body: "body" in config ? config.body : undefined,
+      inputSchema: "inputSchema" in config ? config.inputSchema : undefined,
       shouldValidateInput: false, // No input validation in SSR context
     });
   }
@@ -120,7 +131,9 @@ export class RequestInputContext<
     : {
         schema: TInputSchema;
         valid: () => Promise<
-          TInputSchema extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<TInputSchema> : never
+          TInputSchema extends StandardSchemaV1
+            ? StandardSchemaV1.InferOutput<TInputSchema>
+            : unknown
         >;
       } {
     if (!this.#inputSchema) {
@@ -132,7 +145,8 @@ export class RequestInputContext<
       schema: this.#inputSchema,
       valid: async () => {
         if (!this.#shouldValidateInput) {
-          return;
+          // In SSR context, return the body directly without validation
+          return this.#body;
         }
 
         return this.#validateInput();

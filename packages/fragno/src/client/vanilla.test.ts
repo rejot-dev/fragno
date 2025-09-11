@@ -467,6 +467,7 @@ describe("createVanillaMutator", () => {
 
     // Resolve the fetch
     resolvePromise!({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
@@ -485,6 +486,7 @@ describe("createVanillaMutator", () => {
 
   test("should create a vanilla mutator for PUT route with path params", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 123, name: "Jane" }),
     });
@@ -514,6 +516,7 @@ describe("createVanillaMutator", () => {
 
   test("should create a vanilla mutator for DELETE route", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ success: true }),
     });
@@ -567,6 +570,7 @@ describe("createVanillaMutator", () => {
 
   test("should support async iteration over mutator state changes", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });

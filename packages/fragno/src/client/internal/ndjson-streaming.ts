@@ -1,4 +1,3 @@
-import type { FetcherStore } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   FragnoClientError,
@@ -6,6 +5,7 @@ import {
   FragnoClientFetchAbortError,
   FragnoClientUnknownApiError,
 } from "../client-error";
+import type { FetcherStore } from "@nanostores/query";
 
 /**
  * Creates a promise that rejects when the abort signal is triggered
@@ -29,7 +29,7 @@ function createAbortPromise(abortSignal: AbortSignal): Promise<never> {
  */
 export interface NdjsonStreamingResult<T> {
   firstItem: T;
-  streamingPromise: Promise<void>;
+  streamingPromise: Promise<T[]>;
 }
 
 /**
@@ -50,7 +50,7 @@ export async function handleNdjsonStreamingFirstItem<
   TErrorCode extends string,
 >(
   response: Response,
-  store: FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>,
+  store?: FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>,
   abortSignal?: AbortSignal,
 ): Promise<NdjsonStreamingResult<StandardSchemaV1.InferOutput<TOutputSchema>>> {
   if (!response.body) {
@@ -137,14 +137,14 @@ export async function handleNdjsonStreamingFirstItem<
   } catch (error) {
     // Handle errors during streaming
     if (error instanceof FragnoClientError) {
-      store.setKey("error", error);
+      store?.setKey("error", error);
       throw error;
     } else {
       // TODO: Not sure about the typing here
       const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 500, {
         cause: error,
       }) as unknown as FragnoClientError<TErrorCode>;
-      store.setKey("error", clientError);
+      store?.setKey("error", clientError);
       throw clientError;
     }
   }
@@ -152,15 +152,17 @@ export async function handleNdjsonStreamingFirstItem<
 
 /**
  * Continues streaming the remaining items in the background
+ *
+ * FIXME: Shitty code
  */
 async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorCode extends string>(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   decoder: TextDecoder,
   initialBuffer: string,
   items: StandardSchemaV1.InferOutput<TOutputSchema>[],
-  store: FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>,
+  store?: FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>,
   abortSignal?: AbortSignal,
-): Promise<void> {
+): Promise<StandardSchemaV1.InferOutput<TOutputSchema>[]> {
   let buffer = initialBuffer;
 
   try {
@@ -184,9 +186,11 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
             try {
               const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;
               items.push(jsonObject);
-              store.mutate([...items]);
+              store?.mutate([...items]);
             } catch (parseError) {
-              console.warn("Failed to parse NDJSON line:", line, parseError);
+              throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 400, {
+                cause: parseError,
+              });
             }
           }
         }
@@ -206,22 +210,29 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
         try {
           const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;
           items.push(jsonObject);
-          store.mutate([...items]);
+          store?.mutate([...items]);
         } catch (parseError) {
-          console.warn("Failed to parse NDJSON line:", line, parseError);
+          throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 400, {
+            cause: parseError,
+          });
         }
       }
     }
   } catch (error) {
     if (error instanceof FragnoClientError) {
-      store.setKey("error", error);
+      store?.setKey("error", error);
     } else {
-      const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 500, {
+      const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 400, {
         cause: error,
       }) as unknown as FragnoClientError<TErrorCode>;
-      store.setKey("error", clientError);
+      store?.setKey("error", clientError);
+      throw clientError;
     }
+
+    throw error;
   } finally {
     reader.releaseLock();
   }
+
+  return items;
 }

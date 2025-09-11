@@ -219,9 +219,9 @@ describe("RequestContext", () => {
         method: "POST",
       });
 
-      // Should not throw even with invalid data
+      // Should return the raw body without validation when validation is disabled
       const result = await ctx.input?.valid();
-      expect(result).toBeUndefined();
+      expect(result).toBe(123);
     });
 
     test("Should throw error when trying to validate FormData", async () => {

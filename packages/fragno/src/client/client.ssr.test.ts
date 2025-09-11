@@ -240,4 +240,128 @@ describe("server side rendering", () => {
     assert(error!.cause instanceof SyntaxError); // JSON parse failure gives a SyntaxError
     expect(error!.cause.message).toMatch(/Unexpected (token|identifier)/);
   });
+
+  describe("mutation streaming", () => {
+    test("should support streaming responses for mutations", async () => {
+      const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+      const mutationStreamRoutes = [
+        defineRoute({
+          method: "POST",
+          path: "/process-items",
+          inputSchema: z.object({ items: z.array(z.string()) }),
+          outputSchema: z.array(z.object({ item: z.string(), status: z.string() })),
+          handler: async ({ input }, { jsonStream }) => {
+            const data = await input.valid();
+            const { items } = data!;
+            return jsonStream(async (stream) => {
+              for (const item of items) {
+                await stream.write({ item, status: "processed" });
+                await stream.sleep(1);
+              }
+            });
+          },
+        }),
+      ] as const;
+
+      const client = createClientBuilder(
+        mutationStreamLibraryDefinition,
+        clientConfig,
+        mutationStreamRoutes,
+      );
+      const mutator = client.createMutator("POST", "/process-items");
+
+      const result = await mutator.mutateQuery({
+        body: { items: ["item1", "item2", "item3"] },
+      });
+
+      // Streaming mutations return only the first item
+      expect(result).toEqual([
+        { item: "item1", status: "processed" },
+        { item: "item2", status: "processed" },
+        { item: "item3", status: "processed" },
+      ]);
+    });
+
+    test("should handle streaming mutations with mutatorStore", async () => {
+      const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+      const mutationStreamRoutes = [
+        defineRoute({
+          method: "PUT",
+          path: "/update-batch",
+          inputSchema: z.object({ ids: z.array(z.number()) }),
+          outputSchema: z.array(z.object({ id: z.number(), updated: z.boolean() })),
+          handler: async (ctx, { jsonStream }) => {
+            const data = await ctx.input?.valid();
+            const { ids } = data!;
+            return jsonStream(async (stream) => {
+              for (const id of ids) {
+                await stream.write({ id, updated: true });
+                await stream.sleep(1);
+              }
+            });
+          },
+        }),
+      ] as const;
+
+      const client = createClientBuilder(
+        mutationStreamLibraryDefinition,
+        clientConfig,
+        mutationStreamRoutes,
+      );
+      const mutator = client.createMutator("PUT", "/update-batch");
+
+      const promise = new Promise((resolve, reject) => {
+        const unsubscribe = mutator.mutatorStore.listen((state) => {
+          if (!state.loading && state.data) {
+            unsubscribe();
+            resolve(state.data);
+          }
+          if (!state.loading && state.error) {
+            unsubscribe();
+            reject(state.error);
+          }
+        });
+      });
+
+      mutator.mutatorStore.mutate({ body: { ids: [1, 2, 3] } });
+
+      const result = await promise;
+      expect(result).toEqual([
+        { id: 1, updated: true },
+        { id: 2, updated: true },
+        { id: 3, updated: true },
+      ]);
+    });
+
+    test("should handle empty streaming response for mutations", async () => {
+      const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+      const mutationStreamRoutes = [
+        defineRoute({
+          method: "DELETE",
+          path: "/delete-items",
+          inputSchema: z.object({ ids: z.array(z.number()) }),
+          outputSchema: z.array(z.object({ id: z.number(), deleted: z.boolean() })),
+          handler: async (_ctx, { jsonStream }) => {
+            return jsonStream(async (_stream) => {
+              // Don't write anything
+            });
+          },
+        }),
+      ] as const;
+
+      const client = createClientBuilder(
+        mutationStreamLibraryDefinition,
+        clientConfig,
+        mutationStreamRoutes,
+      );
+      const mutator = client.createMutator("DELETE", "/delete-items");
+
+      // Empty streaming response should throw an error
+      await expect(
+        mutator.mutateQuery({
+          body: { ids: [1, 2, 3] },
+        }),
+      ).rejects.toThrow("NDJSON stream contained no valid items");
+    });
+  });
 });

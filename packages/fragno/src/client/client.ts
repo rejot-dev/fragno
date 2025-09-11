@@ -607,7 +607,6 @@ export class ClientBuilder<
           path: route.path,
           pathParams: normalizedPathParams,
           searchParams,
-          body: undefined, // No body for GET
         }),
         new RequestOutputContext(route.outputSchema),
       );
@@ -705,7 +704,18 @@ export class ClientBuilder<
           return (await response.json()) as StandardSchemaV1.InferOutput<TOutputSchema>;
         }
 
-        throw new Error("Streaming responses are not supported server side");
+        if (isStreaming === "ndjson") {
+          const { streamingPromise } = await handleNdjsonStreamingFirstItem(response);
+          // Resolves once the stream is done
+          return await streamingPromise;
+        }
+
+        if (isStreaming === "octet-stream") {
+          // TODO(Wilco): Implement this
+          throw new Error("Octet-stream streaming is not supported.");
+        }
+
+        throw new Error("Unreachable");
       },
       [GET_HOOK_SYMBOL]: true,
     };
@@ -741,16 +751,29 @@ export class ClientBuilder<
     const baseUrl = this.#publicConfig.baseUrl ?? "";
     const mountRoute = getMountRoute(this.#libraryConfig);
 
-    const mutateQuery = (async (data) => {
-      // TypeScript infers the fields to not exist, even though they might
-      const { body, path, query } = data as {
-        body?: InferOr<TInputSchema, undefined>;
-        path?: ExtractPathParamsOrWiden<TPath, string>;
-        query?: Record<string, string>;
-      };
-
-      if (typeof body === "undefined" && route.inputSchema !== undefined) {
-        throw new Error("Body is required for mutateQuery");
+    async function executeMutateQuery({
+      body,
+      path,
+      query,
+    }: {
+      body?: InferOr<TInputSchema, undefined>;
+      path?: ExtractPathParamsOrWiden<TPath, string>;
+      query?: Record<string, string>;
+    }): Promise<Response> {
+      if (typeof window === "undefined") {
+        return task(async () =>
+          route.handler(
+            RequestInputContext.fromSSRContext({
+              inputSchema: route.inputSchema,
+              method,
+              path: route.path,
+              pathParams: (path ?? {}) as ExtractPathParams<TPath, string>,
+              searchParams: new URLSearchParams(query),
+              body,
+            }),
+            new RequestOutputContext(route.outputSchema),
+          ),
+        );
       }
 
       const url = buildUrl(
@@ -768,6 +791,23 @@ export class ClientBuilder<
         throw FragnoClientFetchError.fromUnknownFetchError(error);
       }
 
+      return response;
+    }
+
+    const mutateQuery = (async (data) => {
+      // TypeScript infers the fields to not exist, even though they might
+      const { body, path, query } = data as {
+        body?: InferOr<TInputSchema, undefined>;
+        path?: ExtractPathParamsOrWiden<TPath, string>;
+        query?: Record<string, string>;
+      };
+
+      if (typeof body === "undefined" && route.inputSchema !== undefined) {
+        throw new Error("Body is required for mutateQuery");
+      }
+
+      const response = await executeMutateQuery({ body, path, query });
+
       if (!response.ok) {
         throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
       }
@@ -776,7 +816,23 @@ export class ClientBuilder<
         return undefined;
       }
 
-      return response.json();
+      const isStreaming = isStreamingResponse(response);
+
+      if (!isStreaming) {
+        return response.json();
+      }
+
+      if (isStreaming === "ndjson") {
+        const { streamingPromise } = await handleNdjsonStreamingFirstItem(response);
+        // Resolves once the stream is done, i.e. we block until done
+        return await streamingPromise;
+      }
+
+      if (isStreaming === "octet-stream") {
+        throw new Error("Octet-stream streaming is not supported for mutations");
+      }
+
+      throw new Error("Unreachable");
     }) satisfies FragnoClientMutatorData<
       NonGetHTTPMethod,
       TPath,
@@ -814,8 +870,6 @@ export class ClientBuilder<
         const unwrappedQuery = unwrapObject(query);
 
         const result = await mutateQuery({ body, path: unwrappedPath, query: unwrappedQuery });
-
-        // TODO(Wilco): Support streaming response for mutations
 
         onInvalidate(this.#invalidate.bind(this), {
           pathParams: unwrappedPath,

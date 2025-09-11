@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { handleNdjsonStreamingFirstItem } from "./ndjson-streaming";
 import type { FetcherStore } from "@nanostores/query";
 import { FragnoClientError, FragnoClientFetchAbortError } from "../client-error";
 
 describe("handleNdjsonStreaming", () => {
-  it("should return first item and continue streaming updates", async () => {
+  test("should return first item and continue streaming updates", async () => {
     // Create a mock response with streaming body
     const mockReader = {
       read: vi
@@ -38,15 +38,22 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
 
     // Call the function
-    const result = await handleNdjsonStreamingFirstItem(mockResponse, mockStore);
+    const { firstItem, streamingPromise } = await handleNdjsonStreamingFirstItem(
+      mockResponse,
+      mockStore,
+    );
 
     // Verify the result structure
-    expect(result).toHaveProperty("firstItem");
-    expect(result).toHaveProperty("streamingPromise");
-    expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
+    expect(firstItem).toEqual({ id: 1, name: "Item 1" });
+    expect(streamingPromise).toBeInstanceOf(Promise);
 
     // Wait for the streaming to complete
-    await result.streamingPromise;
+    const streamingResult = await streamingPromise;
+    expect(streamingResult).toEqual([
+      { id: 1, name: "Item 1" },
+      { id: 2, name: "Item 2" },
+      { id: 3, name: "Item 3" },
+    ]);
 
     // Verify the store was updated with all items
     expect(mockStore.mutate).toHaveBeenCalledWith([
@@ -59,7 +66,7 @@ describe("handleNdjsonStreaming", () => {
     expect(mockReader.releaseLock).toHaveBeenCalled();
   });
 
-  it("should handle empty stream", async () => {
+  test("should handle empty stream", async () => {
     const mockReader = {
       read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
       releaseLock: vi.fn(),
@@ -82,7 +89,7 @@ describe("handleNdjsonStreaming", () => {
     );
   });
 
-  it("should handle response without body", async () => {
+  test("should handle response without body", async () => {
     const mockResponse = {
       body: null,
     } as unknown as Response;
@@ -98,7 +105,7 @@ describe("handleNdjsonStreaming", () => {
     );
   });
 
-  it("should handle abort signal that is already aborted", async () => {
+  test("should handle abort signal that is already aborted", async () => {
     const mockResponse = {
       body: {
         getReader: vi.fn(),
@@ -119,7 +126,7 @@ describe("handleNdjsonStreaming", () => {
     ).rejects.toThrow(FragnoClientFetchAbortError);
   });
 
-  it("should provide streaming promise that can be awaited", async () => {
+  test("should provide streaming promise that can be awaited", async () => {
     const abortController = new AbortController();
 
     const mockReader = {
@@ -161,7 +168,10 @@ describe("handleNdjsonStreaming", () => {
     expect(result.streamingPromise).toBeInstanceOf(Promise);
 
     // The streaming promise should resolve when all data is processed
-    await expect(result.streamingPromise).resolves.toBeUndefined();
+    await expect(result.streamingPromise).resolves.toEqual([
+      { id: 1, name: "Item 1" },
+      { id: 2, name: "Item 2" },
+    ]);
 
     // Verify all items were processed
     expect(mockStore.mutate).toHaveBeenCalledWith([
@@ -173,7 +183,7 @@ describe("handleNdjsonStreaming", () => {
     expect(mockReader.releaseLock).toHaveBeenCalled();
   });
 
-  it("should handle abort signal with no additional streaming data", async () => {
+  test("should handle abort signal with no additional streaming data", async () => {
     const abortController = new AbortController();
 
     const mockReader = {
@@ -208,13 +218,13 @@ describe("handleNdjsonStreaming", () => {
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
 
     // The streaming promise should resolve successfully since there's no more data
-    await expect(result.streamingPromise).resolves.toBeUndefined();
+    await expect(result.streamingPromise).resolves.toEqual([{ id: 1, name: "Item 1" }]);
 
     // Verify the reader was properly released
     expect(mockReader.releaseLock).toHaveBeenCalled();
   });
 
-  it("should complete streaming promise when all data is processed", async () => {
+  test("should complete streaming promise when all data is processed", async () => {
     const mockReader = {
       read: vi
         .fn()
@@ -247,7 +257,10 @@ describe("handleNdjsonStreaming", () => {
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
 
     // The streaming promise should resolve successfully
-    await expect(result.streamingPromise).resolves.toBeUndefined();
+    await expect(result.streamingPromise).resolves.toEqual([
+      { id: 1, name: "Item 1" },
+      { id: 2, name: "Item 2" },
+    ]);
 
     // Verify all items were processed
     expect(mockStore.mutate).toHaveBeenCalledWith([
@@ -259,7 +272,7 @@ describe("handleNdjsonStreaming", () => {
     expect(mockReader.releaseLock).toHaveBeenCalled();
   });
 
-  it("should handle streaming errors and set them in the store", async () => {
+  test("should handle streaming errors and set them in the store", async () => {
     const mockReader = {
       read: vi
         .fn()
@@ -287,8 +300,8 @@ describe("handleNdjsonStreaming", () => {
     // Verify the first item is returned
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
 
-    // Wait for the streaming promise to complete (should handle the error)
-    await result.streamingPromise;
+    // The streaming promise should reject with the error
+    await expect(result.streamingPromise).rejects.toThrow("Unknown streaming error");
 
     // Verify an error was set in the store
     expect(mockStore.setKey).toHaveBeenCalledWith("error", expect.any(Object));
@@ -297,7 +310,7 @@ describe("handleNdjsonStreaming", () => {
     expect(mockReader.releaseLock).toHaveBeenCalled();
   });
 
-  it("should support abort signal for interrupting hanging operations", async () => {
+  test("should support abort signal for interrupting hanging operations", async () => {
     // This test validates that the abort signal pattern is correctly implemented
     // The actual interruption behavior depends on the browser's ReadableStream implementation
     const abortController = new AbortController();
@@ -334,7 +347,7 @@ describe("handleNdjsonStreaming", () => {
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
 
     // The streaming promise should complete successfully since there's no more data
-    await expect(result.streamingPromise).resolves.toBeUndefined();
+    await expect(result.streamingPromise).resolves.toEqual([{ id: 1, name: "Item 1" }]);
 
     // Verify the reader was properly released
     expect(mockReader.releaseLock).toHaveBeenCalled();
