@@ -19,6 +19,12 @@ import { parseContentType } from "../util/content-type";
 import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
+import type { LibraryBuilder } from "../api/library";
+import {
+  type AnyRouteOrFactory,
+  type FlattenRouteFactories,
+  resolveRouteFactories,
+} from "../api/route";
 
 /**
  * Symbols used to identify hook types
@@ -284,11 +290,8 @@ export type FragnoClientMutatorData<
   >;
   [MUTATOR_HOOK_SYMBOL]: true;
 } & {
-  readonly _method?: TMethod;
-  readonly _path?: TPath;
   readonly _inputSchema?: TInputSchema;
   readonly _outputSchema?: TOutputSchema;
-  readonly _errorCodes?: TErrorCode;
 };
 
 export function buildUrl<TPath extends string>(
@@ -524,7 +527,7 @@ export class ClientBuilder<
     path: TPath,
     onInvalidate?: OnInvalidateFn<TPath>,
   ): FragnoClientMutatorData<
-    NonGetHTTPMethod,
+    NonGetHTTPMethod, // TODO: This can be any Method, but should be related to TPath
     TPath,
     ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"],
     ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"],
@@ -543,12 +546,12 @@ export class ClientBuilder<
         TRoute["outputSchema"],
         string,
         string
-      > => r.path === path && r.method === method,
+      > => r.method !== "GET" && r.path === path && r.method === method,
     );
 
     if (!route) {
       throw new Error(
-        `Route '${path}' not found or is not a ${method} route with an input and output schema.`,
+        `Route '${path}' not found or is a GET route with an input and output schema.`,
       );
     }
 
@@ -812,6 +815,8 @@ export class ClientBuilder<
 
         const result = await mutateQuery({ body, path: unwrappedPath, query: unwrappedQuery });
 
+        // TODO(Wilco): Support streaming response for mutations
+
         onInvalidate(this.#invalidate.bind(this), {
           pathParams: unwrappedPath,
           queryParams: unwrappedQuery,
@@ -853,7 +858,11 @@ export class ClientBuilder<
   }
 }
 
-export function createClientBuilder<
+/**
+ * Type to extract static routes from a LibraryBuilder
+ * This requires routes to be passed as a separate parameter since they're built dynamically
+ */
+export type NewClientBuilder<
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
     string,
@@ -862,10 +871,40 @@ export function createClientBuilder<
     string,
     string
   >[],
-  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
+> = ClientBuilder<TRoutes, FragnoLibrarySharedConfig<TRoutes>>;
+
+export function createClientBuilder<
+  TConfig,
+  TDeps,
+  TServices extends Record<string, unknown>,
+  const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
+  libraryDefinition: LibraryBuilder<TConfig, TDeps, TServices>,
   publicConfig: FragnoPublicClientConfig,
-  libraryConfig: TLibraryConfig,
-): ClientBuilder<TRoutes, TLibraryConfig> {
-  return new ClientBuilder(publicConfig, libraryConfig);
+  routesOrFactories: TRoutesOrFactories,
+): NewClientBuilder<FlattenRouteFactories<TRoutesOrFactories>> {
+  const definition = libraryDefinition.definition;
+
+  // For client-side, we resolve route factories with dummy context
+  // This will be removed by the bundle plugin anyway
+  const dummyContext = {
+    config: {} as TConfig,
+    deps: {} as TDeps,
+    services: {} as TServices,
+  };
+
+  const routes = resolveRouteFactories(dummyContext, routesOrFactories);
+
+  const libraryConfig: FragnoLibrarySharedConfig<FlattenRouteFactories<TRoutesOrFactories>> = {
+    name: definition.name,
+    routes,
+  };
+
+  const mountRoute = publicConfig.mountRoute ?? `/${definition.name}`;
+  const fullPublicConfig = {
+    ...publicConfig,
+    mountRoute,
+  };
+
+  return new ClientBuilder(fullPublicConfig, libraryConfig);
 }

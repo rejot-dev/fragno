@@ -1,9 +1,11 @@
 import {
+  defineLibrary,
+  defineRoute,
+  defineRoutes,
   createLibrary,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
-import { addRoute } from "@fragno-dev/core/api";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
@@ -11,10 +13,22 @@ import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { createHash } from "node:crypto";
 
-let serverSideData = "Hello World! This is a server-side data.";
+export interface ExampleFragmentServerConfig {
+  initialData?: string;
+}
 
-const api = {
-  getHashFromHostsFileData: async () => {
+type ExampleRouteConfig = {
+  initialData: string;
+};
+
+type ExampleRouteDeps = {
+  serverSideData: { value: string };
+};
+
+const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>()(({ deps }) => {
+  const { serverSideData } = deps;
+
+  const getHashFromHostsFileData = async () => {
     const hostsPath =
       platform() === "win32" ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts";
 
@@ -24,30 +38,20 @@ const api = {
     } catch {
       return null;
     }
-  },
-  setData: async (data: string) => {
-    serverSideData = data;
-  },
-  getData: () => {
-    return serverSideData;
-  },
-} as const;
+  };
 
-const libraryConfig = {
-  name: "example-fragment",
-  routes: [
-    addRoute({
+  return [
+    defineRoute({
       method: "GET",
       path: "/hash",
       outputSchema: z.string(),
       handler: async (_, { json }) => {
-        const hash = await api.getHashFromHostsFileData();
-
+        const hash = await getHashFromHostsFileData();
         return json(hash ? `The hash of your 'hosts' file is: ${hash}` : "No hash found :(");
       },
     }),
 
-    addRoute({
+    defineRoute({
       method: "GET",
       path: "/data",
       outputSchema: z.string(),
@@ -63,11 +67,11 @@ const libraryConfig = {
           );
         }
 
-        return json(api.getData());
+        return json(serverSideData.value);
       },
     }),
 
-    addRoute({
+    defineRoute({
       method: "POST",
       path: "/sample",
       inputSchema: z.object({ message: z.string() }),
@@ -76,7 +80,7 @@ const libraryConfig = {
       handler: async ({ input }, { json, error }) => {
         const { message } = await input.valid();
 
-        await api.setData(message);
+        serverSideData.value = message;
 
         if (/^\d+$/.test(message)) {
           return error(
@@ -91,21 +95,45 @@ const libraryConfig = {
         return json(message);
       },
     }),
-  ],
-} as const;
+  ];
+});
 
-export function createExampleFragment(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, libraryConfig, api);
+const exampleFragmentDefinition = defineLibrary<ExampleFragmentServerConfig>("example-fragment")
+  .withDependencies((config: ExampleFragmentServerConfig) => {
+    return {
+      serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
+    };
+  })
+  .withServices((_cfg, deps) => {
+    return {
+      getData: () => deps.serverSideData.value,
+    };
+  });
+
+export function createExampleFragment(
+  serverConfig: ExampleFragmentServerConfig = {},
+  fragnoConfig: FragnoPublicConfig = {},
+) {
+  const config: ExampleRouteConfig = {
+    initialData: serverConfig.initialData ?? "Hello World! This is a server-side data.",
+  };
+
+  return createLibrary(
+    exampleFragmentDefinition,
+    { ...serverConfig, ...config },
+    [exampleRoutesFactory],
+    fragnoConfig,
+  );
 }
 
-export function createExampleFragmentClient(publicConfig: FragnoPublicClientConfig = {}) {
-  const b = createClientBuilder(publicConfig, libraryConfig);
+export function createExampleFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const b = createClientBuilder(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
 
-  const client = {
+  return {
     useHash: b.createHook("/hash"),
     useData: b.createHook("/data"),
     useSampleMutator: b.createMutator("POST", "/sample"),
   };
-
-  return client;
 }
+
+export type { FragnoRouteConfig } from "@fragno-dev/core/api";

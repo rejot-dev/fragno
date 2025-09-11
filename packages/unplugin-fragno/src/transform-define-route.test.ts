@@ -2,11 +2,11 @@ import { describe, expect, test } from "vitest";
 import dedent from "dedent";
 import { transform } from "./transform";
 
-describe("addRoute handler transformation", () => {
+describe("defineRoute handler transformation", () => {
   const source = dedent`
-    import { addRoute } from "@fragno-dev/core/api"
+    import { defineRoute } from "@fragno-dev/core/api"
 
-    export const route = addRoute({
+    export const route = defineRoute({
       method: "GET",
       path: "/test",
       handler: async (ctx, { json }) => {
@@ -18,8 +18,8 @@ describe("addRoute handler transformation", () => {
   test("ssr:true - keeps handler", () => {
     const result = transform(source, "", { ssr: true });
     expect(result.code).toBe(dedent`
-      import { addRoute } from "@fragno-dev/core/api";
-      export const route = addRoute({
+      import { defineRoute } from "@fragno-dev/core/api";
+      export const route = defineRoute({
         method: "GET",
         path: "/test",
         handler: async (ctx, {
@@ -34,8 +34,8 @@ describe("addRoute handler transformation", () => {
 
   test("ssr:false - replaces handler with noop", () => {
     const expected = dedent`
-      import { addRoute } from "@fragno-dev/core/api";
-      export const route = addRoute({
+      import { defineRoute } from "@fragno-dev/core/api";
+      export const route = defineRoute({
         method: "GET",
         path: "/test",
         handler: () => {}
@@ -45,11 +45,11 @@ describe("addRoute handler transformation", () => {
   });
 });
 
-describe("addRoute from @fragno-dev/core", () => {
+describe("defineRoute from @fragno-dev/core", () => {
   const source = dedent`
-    import { addRoute } from "@fragno-dev/core"
+    import { defineRoute } from "@fragno-dev/core"
 
-    const myRoute = addRoute({
+    const myRoute = defineRoute({
       method: "POST",
       path: "/api/data",
       handler: async function(ctx, helpers) {
@@ -66,9 +66,9 @@ describe("addRoute from @fragno-dev/core", () => {
   });
 });
 
-describe("addRoute with aliased import", () => {
+describe("defineRoute with aliased import", () => {
   const source = dedent`
-    import { addRoute as createRoute } from "@fragno-dev/core/api"
+    import { defineRoute as createRoute } from "@fragno-dev/core/api"
 
     export const route = createRoute({
       method: "PUT",
@@ -86,9 +86,9 @@ describe("addRoute with aliased import", () => {
 
 describe("removes dead code after transform", () => {
   const source = dedent`
-    import { addRoute } from "@fragno-dev/core"
+    import { defineRoute } from "@fragno-dev/core"
     import { createFileSync } from "fs";
-    const route = addRoute({
+    const route = defineRoute({
       method: "GET",
       path: "/test",
       handler: () => {
@@ -103,35 +103,95 @@ describe("removes dead code after transform", () => {
   });
 });
 
-describe("non-fragno addRoute - should not transform", () => {
+describe("non-fragno defineRoute - should not transform", () => {
   const source = dedent`
-    import { addRoute } from "some-other-package"
+    import { defineRoute } from "some-other-package"
 
-    export const route = addRoute({
+    export const route = defineRoute({
       method: "GET",
       path: "/test",
       handler: async () => ({ data: "test" })
     })
   `;
 
-  test("ssr:false - does not transform non-fragno addRoute", () => {
+  test("ssr:false - does not transform non-fragno defineRoute", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).toContain('data: "test"');
   });
 });
 
-describe("addRoute edge cases and potential breaking scenarios", () => {
-  test("multiple addRoute calls in same file", () => {
+describe("addRoute backward compatibility", () => {
+  test("addRoute from @fragno-dev/core/api still works", () => {
     const source = dedent`
       import { addRoute } from "@fragno-dev/core/api"
 
-      export const route1 = addRoute({
+      export const route = addRoute({
+        method: "GET",
+        path: "/test",
+        handler: async (ctx, { json }) => {
+          return json({ message: "hello" });
+        }
+      })
+    `;
+
+    const result = transform(source, "", { ssr: false });
+    expect(result.code).toBe(dedent`
+      import { addRoute } from "@fragno-dev/core/api";
+      export const route = addRoute({
+        method: "GET",
+        path: "/test",
+        handler: () => {}
+      });`);
+  });
+
+  test("addRoute from @fragno-dev/core still works", () => {
+    const source = dedent`
+      import { addRoute } from "@fragno-dev/core"
+
+      const myRoute = addRoute({
+        method: "POST",
+        path: "/api/data",
+        handler: async function(ctx, helpers) {
+          const data = await fetchData();
+          return helpers.json(data);
+        }
+      })
+    `;
+
+    const result = transform(source, "", { ssr: false });
+    expect(result.code).toContain("handler: () => {}");
+    expect(result.code).not.toContain("fetchData");
+  });
+
+  test("addRoute with aliased import still works", () => {
+    const source = dedent`
+      import { addRoute as createRoute } from "@fragno-dev/core/api"
+
+      export const route = createRoute({
+        method: "PUT",
+        path: "/update",
+        handler: (ctx) => ctx.json({ updated: true })
+      })
+    `;
+
+    const result = transform(source, "", { ssr: false });
+    expect(result.code).toContain("handler: () => {}");
+    expect(result.code).not.toContain("updated: true");
+  });
+});
+
+describe("defineRoute edge cases and potential breaking scenarios", () => {
+  test("multiple defineRoute calls in same file", () => {
+    const source = dedent`
+      import { defineRoute } from "@fragno-dev/core/api"
+
+      export const route1 = defineRoute({
         method: "GET",
         path: "/test1",
         handler: async (ctx) => ({ data: "test1" })
       });
 
-      export const route2 = addRoute({
+      export const route2 = defineRoute({
         method: "POST", 
         path: "/test2",
         handler: (ctx, { json }) => json({ data: "test2" })
@@ -147,11 +207,11 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(matches).toHaveLength(2);
   });
 
-  test("addRoute with method property as object method", () => {
+  test("defineRoute with method property as object method", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/test",
         handler(ctx, helpers) {
@@ -166,11 +226,11 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("processData");
   });
 
-  test("addRoute with complex handler parameters", () => {
+  test("defineRoute with complex handler parameters", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "POST",
         path: "/complex",
         handler: async (
@@ -191,11 +251,11 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("ResponseHelpers");
   });
 
-  test("addRoute with destructured parameters in handler", () => {
+  test("defineRoute with destructured parameters in handler", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core"
+      import { defineRoute } from "@fragno-dev/core"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/destruct",
         handler: ({ request, params }, { json }) => {
@@ -211,11 +271,11 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("params");
   });
 
-  test("addRoute with arrow function handler with implicit return", () => {
+  test("defineRoute with arrow function handler with implicit return", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/implicit",
         handler: (ctx, { json }) => json({ quick: "response" })
@@ -227,10 +287,10 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("quick");
   });
 
-  test("addRoute with no handler property", () => {
+  test("defineRoute with no handler property", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api";
-      export const route = addRoute({
+      import { defineRoute } from "@fragno-dev/core/api";
+      export const route = defineRoute({
         method: "GET",
         path: "/no-handler"
       });
@@ -240,15 +300,15 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(source).toBe(result.code);
   });
 
-  test("addRoute with handler as variable reference", () => {
+  test("defineRoute with handler as variable reference", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
       const myHandler = async (ctx, helpers) => {
         return helpers.json({ message: "hello" });
       };
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/ref-handler",
         handler: myHandler
@@ -261,14 +321,14 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain('message: "hello"');
   });
 
-  test("addRoute with spread operator in config", () => {
+  test("defineRoute with spread operator in config", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
       const baseConfig = { method: "GET", path: "/base" };
       const handler = (ctx) => ({ success: true });
 
-      export const route = addRoute({
+      export const route = defineRoute({
         ...baseConfig,
         handler
       });
@@ -279,14 +339,14 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("success: true");
   });
 
-  test("addRoute with computed property for handler", () => {
+  test("defineRoute with computed property for handler", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
       const handlerKey = "handler";
       const myHandler = (ctx) => ({ data: "computed" });
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/computed",
         [handlerKey]: myHandler
@@ -305,17 +365,17 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     }
   });
 
-  test("addRoute with nested route configurations", () => {
+  test("defineRoute with nested route configurations", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
       const routes = [
-        addRoute({
+        defineRoute({
           method: "GET",
           path: "/nested1",
           handler: () => ({ data: "nested1" })
         }),
-        addRoute({
+        defineRoute({
           method: "POST",
           path: "/nested2", 
           handler: async (ctx) => {
@@ -328,23 +388,23 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(dedent`
-      import { addRoute } from "@fragno-dev/core/api";
-      const routes = [addRoute({
+      import { defineRoute } from "@fragno-dev/core/api";
+      const routes = [defineRoute({
         method: "GET",
         path: "/nested1",
         handler: () => {}
-      }), addRoute({
+      }), defineRoute({
         method: "POST",
         path: "/nested2",
         handler: () => {}
       })];`);
   });
 
-  test("addRoute with handler that throws", () => {
+  test("defineRoute with handler that throws", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/error",
         handler: (ctx) => {
@@ -358,42 +418,42 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("Server error");
   });
 
-  test("malformed addRoute - missing config object", () => {
+  test("malformed defineRoute - missing config object", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute();
+      export const route = defineRoute();
     `;
 
     const result = transform(source, "", { ssr: false });
     // Should not crash, just leave as-is
-    expect(result.code).toContain("addRoute()");
+    expect(result.code).toContain("defineRoute()");
   });
 
-  test("malformed addRoute - non-object config", () => {
+  test("malformed defineRoute - non-object config", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute("invalid-config");
+      export const route = defineRoute("invalid-config");
     `;
 
     const result = transform(source, "", { ssr: false });
     // Should not crash, just leave as-is
-    expect(result.code).toContain('addRoute("invalid-config")');
+    expect(result.code).toContain('defineRoute("invalid-config")');
   });
 
-  test("addRoute with mixed import sources", () => {
+  test("defineRoute with mixed import sources", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
-      import { addRoute as otherAddRoute } from "other-package"
+      import { defineRoute } from "@fragno-dev/core/api"
+      import { defineRoute as otherDefineRoute } from "other-package"
 
-      export const route1 = addRoute({
+      export const route1 = defineRoute({
         method: "GET",
         path: "/fragno",
         handler: () => ({ fragno: true })
       });
 
-      export const route2 = otherAddRoute({
+      export const route2 = otherDefineRoute({
         method: "GET", 
         path: "/other",
         handler: () => ({ other: true })
@@ -402,14 +462,14 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
 
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(dedent`
-      import { addRoute } from "@fragno-dev/core/api";
-      import { addRoute as otherAddRoute } from "other-package";
-      export const route1 = addRoute({
+      import { defineRoute } from "@fragno-dev/core/api";
+      import { defineRoute as otherDefineRoute } from "other-package";
+      export const route1 = defineRoute({
         method: "GET",
         path: "/fragno",
         handler: () => {}
       });
-      export const route2 = otherAddRoute({
+      export const route2 = otherDefineRoute({
         method: "GET",
         path: "/other",
         handler: () => ({
@@ -418,11 +478,11 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
       });`);
   });
 
-  test("addRoute with handler containing async/await", () => {
+  test("defineRoute with handler containing async/await", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "POST",
         path: "/async",
         handler: async (ctx, { json }) => {
@@ -440,11 +500,11 @@ describe("addRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).not.toContain("await");
   });
 
-  test("addRoute with handler containing try-catch", () => {
+  test("defineRoute with handler containing try-catch", () => {
     const source = dedent`
-      import { addRoute } from "@fragno-dev/core/api"
+      import { defineRoute } from "@fragno-dev/core/api"
 
-      export const route = addRoute({
+      export const route = defineRoute({
         method: "GET",
         path: "/error-handling",
         handler: (ctx, { json }) => {

@@ -1,160 +1,78 @@
 import {
+  defineLibrary,
+  defineRoute,
   createLibrary,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
-import { addRoute } from "@fragno-dev/core/api";
+import OpenAI from "openai";
 import { z } from "zod";
-import { fileMessageService } from "./file-message-service.server";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { chatRouteFactory } from "./server/chatno-api";
 
-const api = {
-  messages: fileMessageService,
+export interface ChatnoServerConfig {
+  openaiApiKey: string;
+  model?: "gpt-5-mini" | "4o-mini";
+  systemPrompt?: string;
+}
+
+type ChatRouteConfig = {
+  model: "gpt-5-mini" | "4o-mini";
+  systemPrompt: string;
 };
 
-export const chatnoLibraryConfig = {
-  name: "chatno",
-  routes: [
-    addRoute({
-      method: "GET",
-      path: "/thing/**:path",
-      outputSchema: z.object({
-        path: z.string(),
-        message: z.string(),
-        query: z.record(z.string(), z.string()),
+const healthRoute = defineRoute({
+  method: "GET",
+  path: "/health",
+  outputSchema: z.object({
+    status: z.literal("ok"),
+  }),
+  handler: async (_ctx, { json }) => {
+    return json({ status: "ok" });
+  },
+});
+
+const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
+
+// Library definition with builder pattern
+const chatnoDefinition = defineLibrary<ChatnoServerConfig>("chatno").withDependencies(
+  (config: ChatnoServerConfig) => {
+    return {
+      openaiClient: new OpenAI({
+        apiKey: config.openaiApiKey,
       }),
-      handler: async ({ path, query, pathParams }, { json }) => {
-        const message = pathParams.path;
+    };
+  },
+);
 
-        return json({
-          path,
-          message,
-          query: Object.fromEntries(query),
-        });
-      },
-    }),
-
-    addRoute({
-      method: "GET",
-      path: "/echo/:message",
-      outputSchema: z.string(),
-      errorCodes: ["MESSAGE_NOT_FOUND"],
-      queryParameters: ["capital"],
-      handler: async ({ pathParams, query }, { json, error }) => {
-        const messageKey = pathParams.message;
-        const shouldCapitalize = query.get("capital") === "true";
-
-        const data = await api.messages.getData(messageKey);
-
-        if (!data) {
-          return error(
-            {
-              message: "Message not found",
-              code: "MESSAGE_NOT_FOUND",
-            },
-            404,
-          );
-        }
-
-        const text = shouldCapitalize ? data.toUpperCase() : data;
-
-        return json(text);
-      },
-    }),
-
-    addRoute({
-      method: "PUT",
-      path: "/echo/:messageKey",
-      inputSchema: z.object({
-        message: z.string(),
-      }),
-      outputSchema: z.object({
-        messageKey: z.string(),
-        previous: z.string().optional(),
-        message: z.string(),
-      }),
-      errorCodes: ["MESSAGE_CANNOT_BE_DIGITS_ONLY"],
-      handler: async ({ pathParams, input }, { json, error }) => {
-        const { message } = await input.valid();
-        const messageKey = pathParams.messageKey;
-
-        const previous = await api.messages.getData(messageKey);
-        await api.messages.setData(messageKey, message);
-
-        if (/^\d+$/.test(message)) {
-          return error(
-            {
-              message: "Message cannot be digits only",
-              code: "MESSAGE_CANNOT_BE_DIGITS_ONLY",
-            },
-            400,
-          );
-        }
-
-        // console.log("PUT serverSideMessagesStores", serverSideMessagesStores);
-
-        return json({
-          previous,
-          messageKey,
-          message,
-        });
-      },
-    }),
-
-    addRoute({
-      method: "GET",
-      path: "/ai-config",
-      outputSchema: z.object({
-        apiProvider: z.enum(["openai", "anthropic"]),
-        model: z.string(),
-        systemPrompt: z.string(),
-      }),
-      handler: async (_ctx, { json }) => {
-        return json({
-          apiProvider: "openai" as const,
-          model: "gpt-4o",
-          systemPrompt: "You are a helpful assistant.",
-        });
-      },
-    }),
-
-    addRoute({
-      method: "GET",
-      path: "/stream",
-      outputSchema: z.array(z.object({ message: z.string() })),
-      handler: async (_ctx, { jsonStream }) => {
-        return jsonStream(async (stream) => {
-          await stream.sleep(1000);
-          await stream.write({ message: "Hello, " });
-          await stream.sleep(1000);
-          await stream.write({ message: "World!" });
-        });
-      },
-    }),
-  ],
-} as const;
-
-export function createChatno(publicConfig: FragnoPublicConfig = {}) {
-  return createLibrary(publicConfig, chatnoLibraryConfig, api);
-}
-
-export interface ChatnoConfig {
-  apiProvider?: "openai" | "anthropic";
-}
-
-export function createChatnoClient(publicConfig: ChatnoConfig & FragnoPublicClientConfig = {}) {
-  const b = createClientBuilder(publicConfig, chatnoLibraryConfig);
-
-  const client = {
-    useAiConfig: b.createHook("/ai-config"),
-    useThing: b.createHook("/thing/**:path"),
-    useEcho: b.createHook("/echo/:message"),
-    useEchoMutator: b.createMutator("PUT", "/echo/:messageKey", (invalidate, { pathParams }) => {
-      invalidate("GET", "/echo/:message", { pathParams: { message: pathParams.messageKey } });
-    }),
-    useStream: b.createHook("/stream"),
-    x: 3,
+// Server-side factory
+export function createChatno(
+  chatnoConfig: ChatnoServerConfig,
+  fragnoConfig: FragnoPublicConfig = {},
+) {
+  const config: ChatRouteConfig = {
+    model: chatnoConfig.model ?? "gpt-5-mini",
+    systemPrompt: chatnoConfig.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
   };
 
-  return client;
+  return createLibrary(
+    chatnoDefinition,
+    { ...chatnoConfig, ...config },
+    [chatRouteFactory, healthRoute],
+    fragnoConfig,
+  );
 }
+
+// Client-side factory
+export function createChatnoClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const b = createClientBuilder(chatnoDefinition, fragnoConfig, [chatRouteFactory, healthRoute]);
+
+  const useChat = b.createMutator("POST", "/chat/stream");
+
+  return {
+    useChat,
+    useHealth: b.createHook("/health"),
+  };
+}
+
+export type { FragnoRouteConfig } from "@fragno-dev/core/api";

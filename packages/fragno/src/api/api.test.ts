@@ -1,6 +1,5 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { addRoute, type FragnoRouteConfig, type ValidPath } from "./api";
-import { createLibrary } from "../mod";
+import { addRoute, type ValidPath } from "./api";
 import { z } from "zod";
 
 describe("addRoute", () => {
@@ -62,17 +61,6 @@ describe("addRoute", () => {
         return empty();
       },
     });
-  });
-
-  test("Should have no type errors in createLibrary", () => {
-    const config = {} as {
-      readonly name: "test-library";
-      readonly routes: readonly [Readonly<FragnoRouteConfig<"GET", "/", undefined, undefined>>];
-    };
-
-    expect(() => {
-      createLibrary({}, config, {});
-    }).toThrow();
   });
 });
 

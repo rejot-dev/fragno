@@ -162,6 +162,7 @@ function createVanillaMutator<
   TQueryParameters
 > {
   return () => {
+    // TODO(Wilco): it should be possible for `loading` to be undefined, before a mutation has taken place.
     const store = hook.mutatorStore;
     return {
       subscribe: (callback) => {

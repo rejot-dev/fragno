@@ -3,7 +3,8 @@ import { atom } from "nanostores";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno } from "./vanilla";
-import { addRoute } from "../api/api";
+import { defineRoute } from "../api/route";
+import { defineLibrary } from "../api/library";
 import type { FragnoPublicClientConfig } from "../mod";
 import { FragnoClientFetchNetworkError } from "./client-error";
 import { waitForAsyncIterator } from "../util/async";
@@ -12,30 +13,28 @@ import { waitForAsyncIterator } from "../util/async";
 global.fetch = vi.fn();
 
 describe("createVanillaListeners", () => {
-  const testLibraryConfig = {
-    name: "test-library",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/users",
-        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-      }),
-      addRoute({
-        method: "GET",
-        path: "/users/:id",
-        outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async ({ pathParams }, { json }) =>
-          json({ id: Number(pathParams["id"]), name: "John" }),
-      }),
-      addRoute({
-        method: "GET",
-        path: "/search",
-        outputSchema: z.array(z.string()),
-        handler: async (_ctx, { json }) => json(["result1", "result2"]),
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/users",
+      outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+      handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/users/:id",
+      outputSchema: z.object({ id: z.number(), name: z.string() }),
+      handler: async ({ pathParams }, { json }) =>
+        json({ id: Number(pathParams["id"]), name: "John" }),
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/search",
+      outputSchema: z.array(z.string()),
+      handler: async (_ctx, { json }) => json(["result1", "result2"]),
+    }),
+  ] as const;
 
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
@@ -57,7 +56,7 @@ describe("createVanillaListeners", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -90,7 +89,7 @@ describe("createVanillaListeners", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -125,7 +124,7 @@ describe("createVanillaListeners", () => {
       };
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -164,7 +163,7 @@ describe("createVanillaListeners", () => {
       json: async () => ({ id: 123, name: "John" }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id"),
     };
@@ -194,7 +193,7 @@ describe("createVanillaListeners", () => {
       json: async () => ["result1", "result2"],
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       search: client.createHook("/search"),
     };
@@ -224,7 +223,7 @@ describe("createVanillaListeners", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -267,7 +266,7 @@ describe("createVanillaListeners", () => {
         json: async () => ({ id: 2, name: "Jane" }),
       });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id"),
     };
@@ -308,7 +307,7 @@ describe("createVanillaListeners", () => {
         json: async () => ({ id: 1, name: "John" }),
       });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id", {
         onErrorRetry: () => 1, // Wait only 1ms before retrying
@@ -365,33 +364,30 @@ describe("createVanillaListeners", () => {
 });
 
 describe("createVanillaMutator", () => {
-  const testLibraryConfig = {
-    name: "test-library-mutator",
-    routes: [
-      addRoute({
-        method: "POST",
-        path: "/users",
-        inputSchema: z.object({ name: z.string(), email: z.string() }),
-        outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-        handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
-      }),
-      addRoute({
-        method: "PUT",
-        path: "/users/:id",
-        inputSchema: z.object({ name: z.string() }),
-        outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async ({ pathParams }, { json }) =>
-          json({ id: Number(pathParams["id"]), name: "" }),
-      }),
-      addRoute({
-        method: "DELETE",
-        path: "/users/:id",
-        inputSchema: z.object({}),
-        outputSchema: z.object({ success: z.boolean() }),
-        handler: async (_ctx, { json }) => json({ success: true }),
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library-mutator");
+  const testRoutes = [
+    defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({ name: z.string(), email: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+      handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
+    }),
+    defineRoute({
+      method: "PUT",
+      path: "/users/:id",
+      inputSchema: z.object({ name: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string() }),
+      handler: async ({ pathParams }, { json }) => json({ id: Number(pathParams["id"]), name: "" }),
+    }),
+    defineRoute({
+      method: "DELETE",
+      path: "/users/:id",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ success: z.boolean() }),
+      handler: async (_ctx, { json }) => json({ success: true }),
+    }),
+  ] as const;
 
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
@@ -413,7 +409,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -443,7 +439,7 @@ describe("createVanillaMutator", () => {
 
     (global.fetch as ReturnType<typeof vi.fn>).mockReturnValueOnce(fetchPromise);
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -493,7 +489,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 123, name: "Jane" }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       updateUser: client.createMutator("PUT", "/users/:id"),
     };
@@ -522,7 +518,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ success: true }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       deleteUser: client.createMutator("DELETE", "/users/:id"),
     };
@@ -550,7 +546,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -575,7 +571,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -609,24 +605,22 @@ describe("createVanillaMutator", () => {
 });
 
 describe("useFragno", () => {
-  const testLibraryConfig = {
-    name: "test-library-useFragno",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/data",
-        outputSchema: z.string(),
-        handler: async (_ctx, { json }) => json("test data"),
-      }),
-      addRoute({
-        method: "POST",
-        path: "/action",
-        inputSchema: z.object({ value: z.string() }),
-        outputSchema: z.object({ result: z.string() }),
-        handler: async (_ctx, { json }) => json({ result: "test value" }),
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library-useFragno");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/data",
+      outputSchema: z.string(),
+      handler: async (_ctx, { json }) => json("test data"),
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/action",
+      inputSchema: z.object({ value: z.string() }),
+      outputSchema: z.object({ result: z.string() }),
+      handler: async (_ctx, { json }) => json({ result: "test value" }),
+    }),
+  ] as const;
 
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
@@ -648,7 +642,7 @@ describe("useFragno", () => {
       json: async () => "test data",
     });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       data: client.createHook("/data"),
       postAction: client.createMutator("POST", "/action"),
@@ -689,7 +683,7 @@ describe("useFragno", () => {
   });
 
   test("should pass through non-hook values unchanged", () => {
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       someString: "hello world",
@@ -729,7 +723,7 @@ describe("useFragno", () => {
         json: async () => "data2",
       });
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       data1: client.createHook("/data"),
       data2: client.createHook("/data"),
@@ -762,24 +756,22 @@ describe("useFragno", () => {
 });
 
 describe("error handling", () => {
-  const testLibraryConfig = {
-    name: "test-library-errors",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/users",
-        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-      }),
-      addRoute({
-        method: "POST",
-        path: "/users",
-        inputSchema: z.object({ name: z.string(), email: z.string() }),
-        outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-        handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
-      }),
-    ],
-  } as const;
+  const testLibraryDefinition = defineLibrary("test-library-errors");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/users",
+      outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+      handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({ name: z.string(), email: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+      handler: async (_ctx, { json }) => json({ id: 1, name: "", email: "" }),
+    }),
+  ] as const;
 
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
@@ -797,7 +789,7 @@ describe("error handling", () => {
   test("should handle GET hook errors gracefully", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Network error"));
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users", {
         onErrorRetry: null,
@@ -833,7 +825,7 @@ describe("error handling", () => {
   test("should handle mutator errors gracefully", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Server error"));
 
-    const client = createClientBuilder(clientConfig, testLibraryConfig);
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };

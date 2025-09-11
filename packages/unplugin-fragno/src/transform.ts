@@ -5,8 +5,8 @@ import type { GeneratorResult } from "@babel/generator";
 
 import { deadCodeElimination, findReferencedIdentifiers } from "babel-dead-code-elimination";
 import { transformMacros } from "./transform-macros";
-import { transformAddRoute } from "./transform-add-route";
-import { transformCreateLibrary } from "./transform-create-library";
+import { transformDefineRoute } from "./transform-define-route";
+import { transformDefineLibrary } from "./transform-define-library";
 
 export const transform = (code: string, id: string, options: { ssr: boolean }): GeneratorResult => {
   const ast = parse(code, { sourceType: "module", plugins: [["typescript", {}]] });
@@ -19,8 +19,8 @@ export const transform = (code: string, id: string, options: { ssr: boolean }): 
   const refs = findReferencedIdentifiers(ast);
 
   transformMacros(ast, options);
-  transformAddRoute(ast, options);
-  transformCreateLibrary(ast, options);
+  transformDefineRoute(ast, options);
+  transformDefineLibrary(ast, options);
 
   deadCodeElimination(ast, refs);
   return generate(ast, { sourceMaps: true, sourceFileName: id }, code);

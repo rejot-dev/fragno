@@ -1,11 +1,12 @@
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
-import { addRoute } from "../api/api";
+import { defineRoute } from "../api/route";
 import { buildUrl, createClientBuilder, getCacheKey, isGetHook, isMutatorHook } from "./client";
 import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
 import { atom } from "nanostores";
+import { defineLibrary } from "../api/library";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -109,31 +110,29 @@ describe("getCacheKey", () => {
 });
 
 describe("invalidation", () => {
-  const testLibraryConfig = {
-    name: "test-library",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/users",
-        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-      }),
-      addRoute({
-        method: "POST",
-        path: "/users",
-        inputSchema: z.object({ name: z.string() }),
-        outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async (_ctx, { json }) => json({ id: 2, name: "Jane" }),
-      }),
-      addRoute({
-        method: "GET",
-        path: "/users/:id",
-        outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async ({ pathParams }, { json }) =>
-          json({ id: Number(pathParams["id"]), name: "John" }),
-      }),
-    ],
-  } as const;
+  const testLibrary = defineLibrary("test-library");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/users",
+      outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+      handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({ name: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string() }),
+      handler: async (_ctx, { json }) => json({ id: 2, name: "Jane" }),
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/users/:id",
+      outputSchema: z.object({ id: z.number(), name: z.string() }),
+      handler: async ({ pathParams }, { json }) =>
+        json({ id: Number(pathParams["id"]), name: "John" }),
+    }),
+  ] as const;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -155,7 +154,11 @@ describe("invalidation", () => {
       };
     });
 
-    const client = createClientBuilder({ baseUrl: "http://localhost:3000" }, testLibraryConfig);
+    const client = createClientBuilder(
+      testLibrary,
+      { baseUrl: "http://localhost:3000" },
+      testRoutes,
+    );
     const clientObj = {
       useUsers: client.createHook("/users"),
       useMutateUsers: client.createMutator("POST", "/users"),
@@ -202,7 +205,11 @@ describe("invalidation", () => {
       };
     });
 
-    const client = createClientBuilder({ baseUrl: "http://localhost:3000" }, testLibraryConfig);
+    const client = createClientBuilder(
+      testLibrary,
+      { baseUrl: "http://localhost:3000" },
+      testRoutes,
+    );
     let invalidateCalled = false;
     const clientObj = {
       useUsers: client.createHook("/users"),
@@ -260,17 +267,15 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to path parameters", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -288,7 +293,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const useUsers = cb.createHook("/users/:id");
 
     const idAtom = atom("123");
@@ -336,17 +341,15 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to query parameters", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(z.object({ id: z.number(), name: z.string(), role: z.string() })),
-          handler: async (_ctx, { json }) => json([{ id: 1, name: "John", role: "admin" }]),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string(), role: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John", role: "admin" }]),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -367,7 +370,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const useUsers = cb.createHook("/users");
 
     const roleAtom = atom("admin");
@@ -441,19 +444,15 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to combined path and query parameters", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id/posts",
-          outputSchema: z.array(
-            z.object({ id: z.number(), title: z.string(), userId: z.number() }),
-          ),
-          handler: async (_ctx, { json }) => json([{ id: 1, title: "Post", userId: 1 }]),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id/posts",
+        outputSchema: z.array(z.object({ id: z.number(), title: z.string(), userId: z.number() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, title: "Post", userId: 1 }]),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -480,7 +479,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const usePosts = cb.createHook("/users/:id/posts");
 
     const userIdAtom = atom("123");
@@ -554,19 +553,17 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should handle mixed atoms and non-atoms in parameters", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id/posts",
-          outputSchema: z.array(
-            z.object({ id: z.number(), title: z.string(), category: z.string() }),
-          ),
-          handler: async (_ctx, { json }) => json([{ id: 1, title: "Post", category: "tech" }]),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id/posts",
+        outputSchema: z.array(
+          z.object({ id: z.number(), title: z.string(), category: z.string() }),
+        ),
+        handler: async (_ctx, { json }) => json([{ id: 1, title: "Post", category: "tech" }]),
+      }),
+    ] as const;
 
     let fetchCallCount = 0;
     vi.mocked(global.fetch).mockImplementation(async (input) => {
@@ -595,7 +592,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const usePosts = cb.createHook("/users/:id/posts");
 
     const userIdAtom = atom("123");
@@ -676,17 +673,15 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should not refetch when non-atom parameters remain unchanged", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/users/:id",
-          outputSchema: z.object({ id: z.number(), name: z.string() }),
-          handler: async (_ctx, { json }) => json({ id: 1, name: "John" }),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async (_ctx, { json }) => json({ id: 1, name: "John" }),
+      }),
+    ] as const;
 
     let fetchCallCount = 0;
     vi.mocked(global.fetch).mockImplementation(async (input) => {
@@ -703,7 +698,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const useUser = cb.createHook("/users/:id");
 
     const reactiveIdAtom = atom("123");
@@ -785,26 +780,24 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should handle multiple reactive query parameters independently", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "GET",
-          path: "/posts",
-          outputSchema: z.array(
-            z.object({
-              id: z.number(),
-              title: z.string(),
-              category: z.string(),
-              status: z.string(),
-            }),
-          ),
-          queryParameters: ["category", "status", "author"],
-          handler: async (_ctx, { json }) =>
-            json([{ id: 1, title: "Post", category: "tech", status: "published" }]),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/posts",
+        outputSchema: z.array(
+          z.object({
+            id: z.number(),
+            title: z.string(),
+            category: z.string(),
+            status: z.string(),
+          }),
+        ),
+        queryParameters: ["category", "status", "author"],
+        handler: async (_ctx, { json }) =>
+          json([{ id: 1, title: "Post", category: "tech", status: "published" }]),
+      }),
+    ] as const;
 
     let fetchCallCount = 0;
     vi.mocked(global.fetch).mockImplementation(async (input) => {
@@ -830,7 +823,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const usePosts = cb.createHook("/posts");
 
     const categoryAtom = atom("tech");
@@ -967,22 +960,20 @@ describe("createMutator", () => {
   });
 
   test("body is optional when no inputSchema in route", async () => {
-    const testLibraryConfig = {
-      name: "test-library",
-      routes: [
-        addRoute({
-          method: "DELETE",
-          path: "/users/:id",
-          handler: async (_ctx, { empty }) => empty(),
-        }),
-      ],
-    } as const;
+    const testLibrary = defineLibrary("test-library");
+    const testRoutes = [
+      defineRoute({
+        method: "DELETE",
+        path: "/users/:id",
+        handler: async (_ctx, { empty }) => empty(),
+      }),
+    ] as const;
 
     vi.mocked(global.fetch).mockImplementation(async () => {
       return new Response(null, { status: 201 });
     });
 
-    const cb = createClientBuilder(clientConfig, testLibraryConfig);
+    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
     const deleteUser = cb.createMutator("DELETE", "/users/:id");
 
     const result = await deleteUser.mutateQuery({
@@ -994,27 +985,25 @@ describe("createMutator", () => {
 });
 
 describe("type guards", () => {
-  const testLibraryConfig = {
-    name: "test-library",
-    routes: [
-      addRoute({
-        method: "GET",
-        path: "/users",
-        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
-        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
-      }),
-      addRoute({
-        method: "POST",
-        path: "/users",
-        inputSchema: z.object({ name: z.string() }),
-        outputSchema: z.object({ id: z.number(), name: z.string() }),
-        handler: async (_ctx, { json }) => json({ id: 2, name: "Jane" }),
-      }),
-    ],
-  } as const;
+  const testLibrary = defineLibrary("test-library");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/users",
+      outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+      handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({ name: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string() }),
+      handler: async (_ctx, { json }) => json({ id: 2, name: "Jane" }),
+    }),
+  ] as const;
 
   test("isGetHook should correctly identify GET hooks using symbols", () => {
-    const client = createClientBuilder({}, testLibraryConfig);
+    const client = createClientBuilder(testLibrary, {}, testRoutes);
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
@@ -1024,7 +1013,7 @@ describe("type guards", () => {
   });
 
   test("isMutatorHook should correctly identify mutator hooks using symbols", () => {
-    const client = createClientBuilder({}, testLibraryConfig);
+    const client = createClientBuilder(testLibrary, {}, testRoutes);
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
@@ -1034,7 +1023,7 @@ describe("type guards", () => {
   });
 
   test("type guards should work correctly with symbol checking", () => {
-    const client = createClientBuilder({}, testLibraryConfig);
+    const client = createClientBuilder(testLibrary, {}, testRoutes);
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
