@@ -7,6 +7,8 @@ import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/a
 import type { FragnoPublicClientConfig } from "../mod";
 import { atom } from "nanostores";
 import { defineLibrary } from "../api/library";
+import { RequestOutputContext } from "../api/request-output-context";
+import { FragnoClientUnknownApiError } from "./client-error";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -945,6 +947,216 @@ describe("hook parameter reactivity", () => {
   });
 });
 
+describe("createHook - streaming", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("Should be able to stream data and receive updates in store (store.listen)", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const clientObj = {
+      useUsersStream: client.createHook("/users-stream"),
+    };
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1, name: "John" });
+        await stream.sleep(1);
+        await stream.write({ id: 2, name: "Jane" });
+        await stream.sleep(1);
+        await stream.write({ id: 3, name: "Jim" });
+      });
+    });
+
+    const { useUsersStream } = clientObj;
+    const userStore = useUsersStream.store({});
+
+    const itt = createAsyncIteratorFromCallback(userStore.listen);
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value.loading).toBe(true);
+      expect(value.data).toBeUndefined();
+      expect(value.error).toBeUndefined();
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value.loading).toBe(false);
+      expect(value.data).toEqual([{ id: 1, name: "John" }]);
+      expect(value.error).toBeUndefined();
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value.loading).toBe(false);
+      expect(value.data).toEqual([
+        { id: 1, name: "John" },
+        { id: 2, name: "Jane" },
+      ]);
+      expect(value.error).toBeUndefined();
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value.loading).toBe(false);
+      expect(value.data).toEqual([
+        { id: 1, name: "John" },
+        { id: 2, name: "Jane" },
+        { id: 3, name: "Jim" },
+      ]);
+      expect(value.error).toBeUndefined();
+    }
+  });
+
+  test("throws FragnoClientUnknownApiError when the stream is not valid JSON", async () => {
+    const streamErrorLibraryDefinition = defineLibrary("stream-error-library");
+    const streamErrorRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream-error",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamErrorRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.writeRaw("this is not json lol");
+      });
+    });
+
+    const client = createClientBuilder(
+      streamErrorLibraryDefinition,
+      clientConfig,
+      streamErrorRoutes,
+    );
+    const clientObj = {
+      useUsersStreamError: client.createHook("/users-stream-error"),
+    };
+
+    const { useUsersStreamError } = clientObj;
+    const userStore = useUsersStreamError.store({});
+
+    const { error } = await waitForAsyncIterator(
+      createAsyncIteratorFromCallback(userStore.listen),
+      (value) => value.loading === false && value.error !== undefined,
+    );
+
+    expect(error).toBeInstanceOf(FragnoClientUnknownApiError);
+  });
+
+  test("throws FragnoClientUnknownApiError when the stream is new lines only", async () => {
+    const streamErrorLibraryDefinition = defineLibrary("stream-error-library");
+    const streamErrorRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream-error",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamErrorRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.writeRaw("\n\n");
+      });
+    });
+
+    const client = createClientBuilder(
+      streamErrorLibraryDefinition,
+      clientConfig,
+      streamErrorRoutes,
+    );
+    const clientObj = {
+      useUsersStreamError: client.createHook("/users-stream-error"),
+    };
+
+    const { useUsersStreamError } = clientObj;
+    const userStore = useUsersStreamError.store({});
+
+    const { error } = await waitForAsyncIterator(
+      createAsyncIteratorFromCallback(userStore.listen),
+      (value) => value.loading === false && value.error !== undefined,
+    );
+
+    expect(error).toBeInstanceOf(FragnoClientUnknownApiError);
+  });
+
+  test("throws FragnoClientUnknownApiError with cause SyntaxError when the stream is not valid JSON (multiple empty lines)", async () => {
+    const streamErrorLibraryDefinition = defineLibrary("stream-error-library");
+    const streamErrorRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream-error",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamErrorRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.writeRaw("this is not json lol\n\n");
+      });
+    });
+
+    const client = createClientBuilder(
+      streamErrorLibraryDefinition,
+      clientConfig,
+      streamErrorRoutes,
+    );
+    const clientObj = {
+      useUsersStreamError: client.createHook("/users-stream-error"),
+    };
+
+    const { useUsersStreamError } = clientObj;
+    const userStore = useUsersStreamError.store({});
+
+    const { error } = await waitForAsyncIterator(
+      createAsyncIteratorFromCallback(userStore.listen),
+      (value) => value.loading === false && value.error !== undefined,
+    );
+
+    expect(error).toBeInstanceOf(FragnoClientUnknownApiError);
+    assert(error!.cause instanceof SyntaxError); // JSON parse failure gives a SyntaxError
+    expect(error!.cause.message).toMatch(/Unexpected (token|identifier)/);
+  });
+});
+
 describe("createMutator", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
@@ -981,6 +1193,288 @@ describe("createMutator", () => {
     });
 
     expect(result).toBeUndefined();
+  });
+});
+
+describe("createMutator - streaming", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("should support streaming responses for mutations", async () => {
+    const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+    const mutationStreamRoutes = [
+      defineRoute({
+        method: "POST",
+        path: "/process-items",
+        inputSchema: z.object({ items: z.array(z.string()) }),
+        outputSchema: z.array(z.object({ item: z.string(), status: z.string() })),
+        handler: async ({ input }, { jsonStream }) => {
+          const data = await input.valid();
+          const { items } = data!;
+          return jsonStream(async (stream) => {
+            for (const item of items) {
+              await stream.write({ item, status: "processed" });
+              await stream.sleep(1);
+            }
+          });
+        },
+      }),
+    ] as const;
+
+    // Mock the fetch response for streaming with proper ReadableStream
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const encoder = new TextEncoder();
+
+      const stream = new ReadableStream({
+        start(controller) {
+          // Enqueue all chunks at once
+          controller.enqueue(encoder.encode('{"item":"item1","status":"processed"}\n'));
+          controller.enqueue(encoder.encode('{"item":"item2","status":"processed"}\n'));
+          controller.enqueue(encoder.encode('{"item":"item3","status":"processed"}\n'));
+          controller.close();
+        },
+      });
+
+      // Create a proper Response object with the stream
+      const response = new Response(stream, {
+        status: 200,
+        headers: new Headers({
+          "transfer-encoding": "chunked",
+          "content-type": "application/x-ndjson",
+        }),
+      });
+
+      return response;
+    });
+
+    const client = createClientBuilder(
+      mutationStreamLibraryDefinition,
+      clientConfig,
+      mutationStreamRoutes,
+    );
+    const mutator = client.createMutator("POST", "/process-items");
+
+    const result = await mutator.mutateQuery({
+      body: { items: ["item1", "item2", "item3"] },
+    });
+
+    // Streaming mutations return all items
+    expect(result).toEqual([
+      { item: "item1", status: "processed" },
+      { item: "item2", status: "processed" },
+      { item: "item3", status: "processed" },
+    ]);
+  });
+
+  test("Should be able to mutate data and receive updates in store (store.subscribe)", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "POST",
+        path: "/users-stream",
+        inputSchema: z.object({ items: z.array(z.string()) }),
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const useUsersMutateStream = client.createMutator("POST", "/users-stream");
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1, name: "John" });
+        await stream.sleep(0);
+        await stream.write({ id: 2, name: "Jane" });
+        await stream.sleep(0);
+        await stream.write({ id: 3, name: "Jim" });
+      });
+    });
+
+    const { mutatorStore } = useUsersMutateStream;
+    const itt = createAsyncIteratorFromCallback(mutatorStore.subscribe);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: undefined,
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    const firstItem = await mutatorStore.mutate({ body: { items: ["item1", "item2", "item3"] } });
+    expect(firstItem).toEqual([{ id: 1, name: "John" }]);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        data: undefined,
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: true,
+        data: [{ id: 1, name: "John" }],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, name: "John" }],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 1, name: "John" },
+          { id: 2, name: "Jane" },
+        ],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 1, name: "John" },
+          { id: 2, name: "Jane" },
+          { id: 3, name: "Jim" },
+        ],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+  });
+
+  test("Should be able to mutate data and receive updates in store (store.listen)", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "POST",
+        path: "/users-stream",
+        inputSchema: z.object({ items: z.array(z.string()) }),
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const useUsersMutateStream = client.createMutator("POST", "/users-stream");
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1, name: "John" });
+        await stream.sleep(0);
+        await stream.write({ id: 2, name: "Jane" });
+        await stream.sleep(0);
+        await stream.write({ id: 3, name: "Jim" });
+      });
+    });
+
+    const { mutatorStore } = useUsersMutateStream;
+    const itt = createAsyncIteratorFromCallback(mutatorStore.listen);
+
+    const firstItem = await mutatorStore.mutate({ body: { items: ["item1", "item2", "item3"] } });
+    expect(firstItem).toEqual([{ id: 1, name: "John" }]);
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: true,
+        data: undefined,
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: true,
+        data: [{ id: 1, name: "John" }],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, name: "John" }],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 1, name: "John" },
+          { id: 2, name: "Jane" },
+        ],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      assert(value);
+      expect(value).toEqual({
+        loading: false,
+        data: [
+          { id: 1, name: "John" },
+          { id: 2, name: "Jane" },
+          { id: 3, name: "Jim" },
+        ],
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
   });
 });
 

@@ -12,12 +12,18 @@ export function meta(_: Route.MetaArgs) {
 }
 
 const chatnoClient = createChatnoClient();
-const { useChat, useHealth } = useFragno(chatnoClient);
+const { useChat, useSimpleStream, useCurrentMessage } = useFragno(chatnoClient);
 
 export default function Home() {
   const { mutate: submitMessageToAI, data: aiResponse, loading: aiResponseLoading } = useChat();
-  const { data: healthData, loading: healthLoading } = useHealth();
+  const {
+    data: simpleStreamData,
+    error: simpleStreamError,
+    loading: simpleStreamLoading,
+  } = useSimpleStream();
   const [message, setMessage] = useState("");
+
+  const currentMessage = useCurrentMessage();
 
   const handleSubmitMessage = async () => {
     if (!message.trim()) return;
@@ -41,8 +47,21 @@ export default function Home() {
       <section className="mx-auto max-w-5xl px-6 pb-16">
         <div className="space-y-6 rounded-lg bg-white p-6 shadow-lg">
           <h2 className="text-2xl font-bold text-gray-900">
-            Chat with AI {healthLoading ? " (...)" : ` (${healthData?.status})`}
+            Message ({simpleStreamData?.length ?? 0}): "{currentMessage}"
           </h2>
+
+          <p>
+            Error: {simpleStreamError?.message}
+            {simpleStreamError && (
+              <code>
+                {JSON.stringify(
+                  { simpleStreamData, simpleStreamError, simpleStreamLoading },
+                  null,
+                  2,
+                )}
+              </code>
+            )}
+          </p>
 
           {/* Response Display */}
           {aiResponse && (

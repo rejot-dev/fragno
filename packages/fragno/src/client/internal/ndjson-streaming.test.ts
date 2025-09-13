@@ -1,7 +1,10 @@
 import { describe, test, expect, vi } from "vitest";
-import { handleNdjsonStreamingFirstItem } from "./ndjson-streaming";
-import type { FetcherStore } from "@nanostores/query";
+import { handleNdjsonStreamingFirstItem, type NdjsonStreamingStore } from "./ndjson-streaming";
 import { FragnoClientError, FragnoClientFetchAbortError } from "../client-error";
+import { nanoquery } from "@nanostores/query";
+import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { createAsyncIteratorFromCallback } from "../../util/async";
 
 describe("handleNdjsonStreaming", () => {
   test("should return first item and continue streaming updates", async () => {
@@ -31,13 +34,11 @@ describe("handleNdjsonStreaming", () => {
       },
     } as unknown as Response;
 
-    // Create a mock store
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
-    // Call the function
     const { firstItem, streamingPromise } = await handleNdjsonStreamingFirstItem(
       mockResponse,
       mockStore,
@@ -56,7 +57,7 @@ describe("handleNdjsonStreaming", () => {
     ]);
 
     // Verify the store was updated with all items
-    expect(mockStore.mutate).toHaveBeenCalledWith([
+    expect(mockStore.setData).toHaveBeenCalledWith([
       { id: 1, name: "Item 1" },
       { id: 2, name: "Item 2" },
       { id: 3, name: "Item 3" },
@@ -79,9 +80,9 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
     // Should throw an error for empty stream
     await expect(handleNdjsonStreamingFirstItem(mockResponse, mockStore)).rejects.toThrow(
@@ -95,9 +96,9 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
     // Should throw an error for response without body
     await expect(handleNdjsonStreamingFirstItem(mockResponse, mockStore)).rejects.toThrow(
@@ -113,16 +114,18 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
     const abortController = new AbortController();
     abortController.abort();
 
     // Should throw an abort error immediately
     await expect(
-      handleNdjsonStreamingFirstItem(mockResponse, mockStore, abortController.signal),
+      handleNdjsonStreamingFirstItem(mockResponse, mockStore, {
+        abortSignal: abortController.signal,
+      }),
     ).rejects.toThrow(FragnoClientFetchAbortError);
   });
 
@@ -151,15 +154,13 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
-    const result = await handleNdjsonStreamingFirstItem(
-      mockResponse,
-      mockStore,
-      abortController.signal,
-    );
+    const result = await handleNdjsonStreamingFirstItem(mockResponse, mockStore, {
+      abortSignal: abortController.signal,
+    });
 
     // The function should succeed in getting the first item
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
@@ -174,7 +175,7 @@ describe("handleNdjsonStreaming", () => {
     ]);
 
     // Verify all items were processed
-    expect(mockStore.mutate).toHaveBeenCalledWith([
+    expect(mockStore.setData).toHaveBeenCalledWith([
       { id: 1, name: "Item 1" },
       { id: 2, name: "Item 2" },
     ]);
@@ -204,15 +205,13 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
-    const result = await handleNdjsonStreamingFirstItem(
-      mockResponse,
-      mockStore,
-      abortController.signal,
-    );
+    const result = await handleNdjsonStreamingFirstItem(mockResponse, mockStore, {
+      abortSignal: abortController.signal,
+    });
 
     // Verify the first item is returned
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
@@ -247,9 +246,9 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
     const result = await handleNdjsonStreamingFirstItem(mockResponse, mockStore);
 
@@ -263,7 +262,7 @@ describe("handleNdjsonStreaming", () => {
     ]);
 
     // Verify all items were processed
-    expect(mockStore.mutate).toHaveBeenCalledWith([
+    expect(mockStore.setData).toHaveBeenCalledWith([
       { id: 1, name: "Item 1" },
       { id: 2, name: "Item 2" },
     ]);
@@ -291,9 +290,9 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
     const result = await handleNdjsonStreamingFirstItem(mockResponse, mockStore);
 
@@ -304,7 +303,7 @@ describe("handleNdjsonStreaming", () => {
     await expect(result.streamingPromise).rejects.toThrow("Unknown streaming error");
 
     // Verify an error was set in the store
-    expect(mockStore.setKey).toHaveBeenCalledWith("error", expect.any(Object));
+    expect(mockStore.setError).toHaveBeenCalledWith(expect.any(Object));
 
     // Verify the reader was properly released
     expect(mockReader.releaseLock).toHaveBeenCalled();
@@ -333,15 +332,13 @@ describe("handleNdjsonStreaming", () => {
     } as unknown as Response;
 
     const mockStore = {
-      mutate: vi.fn(),
-      setKey: vi.fn(),
-    } as unknown as FetcherStore<unknown, FragnoClientError<string>>;
+      setData: vi.fn(),
+      setError: vi.fn(),
+    };
 
-    const result = await handleNdjsonStreamingFirstItem(
-      mockResponse,
-      mockStore,
-      abortController.signal,
-    );
+    const result = await handleNdjsonStreamingFirstItem(mockResponse, mockStore, {
+      abortSignal: abortController.signal,
+    });
 
     // Verify the first item is returned
     expect(result.firstItem).toEqual({ id: 1, name: "Item 1" });
@@ -349,10 +346,112 @@ describe("handleNdjsonStreaming", () => {
     // The streaming promise should complete successfully since there's no more data
     await expect(result.streamingPromise).resolves.toEqual([{ id: 1, name: "Item 1" }]);
 
-    // Verify the reader was properly released
     expect(mockReader.releaseLock).toHaveBeenCalled();
+  });
 
-    // The key improvement is that abort signals are now properly wired up with Promise.race
-    // This ensures that hanging read() operations can be interrupted when the signal is aborted
+  test("should update store as stream progresses", async () => {
+    const mockReader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: new TextEncoder().encode('{"id": 1, "name": "Item 1"}\n'),
+        })
+        .mockImplementationOnce(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          return {
+            done: false,
+            value: new TextEncoder().encode('{"id": 2, "name": "Item 2"}\n'),
+          };
+        })
+        .mockImplementationOnce(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          return {
+            done: false,
+            value: new TextEncoder().encode('{"id": 3, "name": "Item 3"}\n'),
+          };
+        })
+        .mockResolvedValueOnce({ done: true, value: undefined }),
+      releaseLock: vi.fn(),
+    };
+
+    const mockResponse = {
+      body: {
+        getReader: vi.fn().mockReturnValue(mockReader),
+      },
+    } as unknown as Response;
+
+    const [, createMutatorStore] = nanoquery();
+
+    const _schema = z.array(
+      z.object({
+        id: z.number(),
+        name: z.string(),
+      }),
+    );
+
+    const mutatorStore = createMutatorStore<
+      undefined,
+      StandardSchemaV1.InferOutput<typeof _schema>,
+      FragnoClientError<string>
+    >(() => {
+      return Promise.resolve([]);
+    });
+
+    const storeAdapter: NdjsonStreamingStore<typeof _schema, string> = {
+      setData: (value) => {
+        mutatorStore.set({
+          ...mutatorStore.get(),
+          data: value,
+        });
+      },
+      setError: (value) => {
+        mutatorStore.set({
+          ...mutatorStore.get(),
+          error: value,
+        });
+      },
+    };
+
+    const itt = createAsyncIteratorFromCallback(mutatorStore.listen);
+    const promise = handleNdjsonStreamingFirstItem(mockResponse, storeAdapter);
+
+    // We immediately skip to 2 items being available, because normally the fetcher method would
+    // return the first item (the `Promise.resolve` above).
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        data: [
+          { id: 1, name: "Item 1" },
+          { id: 2, name: "Item 2" },
+        ],
+        loading: false,
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        data: [
+          { id: 1, name: "Item 1" },
+          { id: 2, name: "Item 2" },
+          { id: 3, name: "Item 3" },
+        ],
+        loading: false,
+        error: undefined,
+        mutate: expect.any(Function),
+      });
+    }
+
+    const { streamingPromise } = await promise;
+
+    const result = await streamingPromise;
+    expect(result).toEqual([
+      { id: 1, name: "Item 1" },
+      { id: 2, name: "Item 2" },
+      { id: 3, name: "Item 3" },
+    ]);
   });
 });

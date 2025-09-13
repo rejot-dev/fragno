@@ -135,5 +135,4 @@ export function createExampleFragmentClient(fragnoConfig: FragnoPublicClientConf
     useSampleMutator: b.createMutator("POST", "/sample"),
   };
 }
-
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";

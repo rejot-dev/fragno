@@ -9,17 +9,13 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { chatRouteFactory } from "./server/chatno-api";
+import { computed } from "nanostores";
 
 export interface ChatnoServerConfig {
   openaiApiKey: string;
-  model?: "gpt-5-mini" | "4o-mini";
+  model?: "gpt-5-mini" | "4o-mini" | "gpt-5-nano";
   systemPrompt?: string;
 }
-
-type ChatRouteConfig = {
-  model: "gpt-5-mini" | "4o-mini";
-  systemPrompt: string;
-};
 
 const healthRoute = defineRoute({
   method: "GET",
@@ -32,9 +28,26 @@ const healthRoute = defineRoute({
   },
 });
 
+const simpleStreamRoute = defineRoute({
+  method: "GET",
+  path: "/simple-stream",
+  outputSchema: z.array(
+    z.object({
+      message: z.string(),
+    }),
+  ),
+  handler: async (_ctx, { jsonStream }) => {
+    return jsonStream(async (stream) => {
+      for (let i = 0; i < 10; i++) {
+        await stream.sleep(500);
+        await stream.write({ message: `Item ${i + 1}` });
+      }
+    });
+  },
+});
+
 const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
-// Library definition with builder pattern
 const chatnoDefinition = defineLibrary<ChatnoServerConfig>("chatno").withDependencies(
   (config: ChatnoServerConfig) => {
     return {
@@ -45,33 +58,37 @@ const chatnoDefinition = defineLibrary<ChatnoServerConfig>("chatno").withDepende
   },
 );
 
+const routes = [chatRouteFactory, healthRoute, simpleStreamRoute] as const;
+
 // Server-side factory
 export function createChatno(
   chatnoConfig: ChatnoServerConfig,
   fragnoConfig: FragnoPublicConfig = {},
 ) {
-  const config: ChatRouteConfig = {
-    model: chatnoConfig.model ?? "gpt-5-mini",
+  const config = {
+    model: chatnoConfig.model ?? "gpt-5-nano",
     systemPrompt: chatnoConfig.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
   };
 
-  return createLibrary(
-    chatnoDefinition,
-    { ...chatnoConfig, ...config },
-    [chatRouteFactory, healthRoute],
-    fragnoConfig,
-  );
+  return createLibrary(chatnoDefinition, { ...chatnoConfig, ...config }, routes, fragnoConfig);
 }
 
 // Client-side factory
 export function createChatnoClient(fragnoConfig: FragnoPublicClientConfig = {}) {
-  const b = createClientBuilder(chatnoDefinition, fragnoConfig, [chatRouteFactory, healthRoute]);
+  const b = createClientBuilder(chatnoDefinition, fragnoConfig, routes);
 
-  const useChat = b.createMutator("POST", "/chat/stream");
+  const useSimpleStream = b.createHook("/simple-stream");
+
+  const currentMessage = computed(useSimpleStream.store({}), ({ data }) => {
+    const msg = (data ?? []).map((item) => item.message).join(", ");
+    return msg;
+  });
 
   return {
-    useChat,
+    useChat: b.createMutator("POST", "/chat/stream"),
+    useSimpleStream: useSimpleStream,
     useHealth: b.createHook("/health"),
+    useCurrentMessage: b.createStore(currentMessage),
   };
 }
 

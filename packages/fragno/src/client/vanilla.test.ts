@@ -545,6 +545,7 @@ describe("createVanillaMutator", () => {
 
   test("should support subscribe method for mutator state changes", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      headers: new Headers(),
       ok: true,
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
@@ -566,6 +567,17 @@ describe("createVanillaMutator", () => {
 
     // Should be called for loading state changes
     expect(stateCallback).toHaveBeenCalled();
+    expect(stateCallback).toHaveBeenCalledWith({
+      loading: true,
+      error: undefined,
+      data: undefined,
+    });
+
+    expect(stateCallback).toHaveBeenCalledWith({
+      loading: false,
+      error: undefined,
+      data: { id: 1, name: "John", email: "john@example.com" },
+    });
   });
 
   test("should support async iteration over mutator state changes", async () => {
@@ -793,9 +805,9 @@ describe("error handling", () => {
   test("should handle GET hook errors gracefully", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Network error"));
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const builder = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
     const clientObj = {
-      users: client.createHook("/users", {
+      users: builder.createHook("/users", {
         onErrorRetry: null,
       }),
     };

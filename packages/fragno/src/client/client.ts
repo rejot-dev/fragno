@@ -1,6 +1,6 @@
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { task, type ReadableAtom } from "nanostores";
+import { task, type ReadableAtom, type Store } from "nanostores";
 import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
 import {
   buildPath,
@@ -16,7 +16,10 @@ import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../api
 import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
 import type { InferOr } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
-import { handleNdjsonStreamingFirstItem } from "./internal/ndjson-streaming";
+import {
+  handleNdjsonStreamingFirstItem,
+  type NdjsonStreamingStore,
+} from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
 import type { LibraryBuilder } from "../api/library";
@@ -31,6 +34,7 @@ import {
  */
 const GET_HOOK_SYMBOL = Symbol("fragno-get-hook");
 const MUTATOR_HOOK_SYMBOL = Symbol("fragno-mutator-hook");
+const STORE_SYMBOL = Symbol("fragno-store");
 
 /**
  * Extract only GET routes from a library config's routes array
@@ -213,6 +217,11 @@ export type HasGetRoutes<
     string
   >[],
 > = ExtractGetRoutePaths<T> extends never ? false : true;
+
+export type FragnoStore<TStore extends Store> = {
+  store: TStore;
+  [STORE_SYMBOL]: true;
+};
 
 export type FragnoClientHookData<
   TMethod extends HTTPMethod,
@@ -421,6 +430,12 @@ export function isMutatorHook<
   );
 }
 
+export function isStore<TStore extends Store>(obj: unknown): obj is FragnoStore<TStore> {
+  return (
+    typeof obj === "object" && obj !== null && STORE_SYMBOL in obj && obj[STORE_SYMBOL] === true
+  );
+}
+
 type OnErrorRetryFn = (opts: {
   error: unknown;
   key: string;
@@ -451,6 +466,14 @@ type OnInvalidateFn<TPath extends string> = (
   },
 ) => void;
 
+export type CacheLine = {
+  data: unknown;
+  error: unknown;
+  retryCount: number;
+  created: number;
+  expires: number;
+};
+
 export class ClientBuilder<
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
@@ -465,31 +488,30 @@ export class ClientBuilder<
   #publicConfig: FragnoPublicClientConfig;
   #libraryConfig: TLibraryConfig;
 
-  #cache = new Map<
-    string,
-    {
-      data: unknown;
-      error: unknown;
-      retryCount: number;
-      created: number;
-      expires: number;
-    }
-  >();
+  #cache = new Map<string, CacheLine>();
 
   #createFetcherStore;
-  #createMutationStore;
+  #createMutatorStore;
   #invalidateKeys;
 
   constructor(publicConfig: FragnoPublicClientConfig, libraryConfig: TLibraryConfig) {
     this.#publicConfig = publicConfig;
     this.#libraryConfig = libraryConfig;
 
-    const [createFetcherStore, createMutationStore, { invalidateKeys }] = nanoquery({
+    const [createFetcherStore, createMutatorStore, { invalidateKeys }] = nanoquery({
       cache: this.#cache,
     });
     this.#createFetcherStore = createFetcherStore;
-    this.#createMutationStore = createMutationStore;
+    this.#createMutatorStore = createMutatorStore;
     this.#invalidateKeys = invalidateKeys;
+  }
+
+  get cacheEntries(): Readonly<Record<string, CacheLine>> {
+    return Object.fromEntries(this.#cache.entries());
+  }
+
+  createStore<const TStore extends Store>(store: TStore): FragnoStore<TStore> {
+    return { store, [STORE_SYMBOL]: true };
   }
 
   createHook<TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
@@ -664,16 +686,35 @@ export class ClientBuilder<
             }
 
             const response = await executeQuery({ pathParams: path, queryParams: query });
-
             const isStreaming = isStreamingResponse(response);
 
             if (!isStreaming) {
               return response.json() as Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
             }
 
+            if (typeof window === "undefined") {
+              return [];
+            }
+
             if (isStreaming === "ndjson") {
+              const storeAdapter: NdjsonStreamingStore<TOutputSchema, TErrorCode> = {
+                setData: (value) => {
+                  store.set({
+                    ...store.get(),
+                    loading: !(Array.isArray(value) && value.length > 0),
+                    data: value as InferOr<TOutputSchema, undefined>,
+                  });
+                },
+                setError: (value) => {
+                  store.set({
+                    ...store.get(),
+                    error: value,
+                  });
+                },
+              };
+
               // Start streaming in background and return first item
-              const { firstItem } = await handleNdjsonStreamingFirstItem(response, store);
+              const { firstItem } = await handleNdjsonStreamingFirstItem(response, storeAdapter);
               return [firstItem];
             }
 
@@ -791,8 +832,90 @@ export class ClientBuilder<
         throw FragnoClientFetchError.fromUnknownFetchError(error);
       }
 
+      if (!response.ok) {
+        throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
+      }
+
       return response;
     }
+
+    const mutatorStore: FragnoClientMutatorData<
+      NonGetHTTPMethod,
+      TPath,
+      TInputSchema,
+      TOutputSchema,
+      TErrorCode,
+      TQueryParameters
+    >["mutatorStore"] = this.#createMutatorStore(
+      async ({ data }) => {
+        if (typeof window === "undefined") {
+          // TODO(Wilco): Handle server-side rendering.
+        }
+
+        const { body, path, query } = data as {
+          body?: InferOr<TInputSchema, undefined>;
+          path?: ExtractPathParamsOrWiden<TPath, string>;
+          query?: Record<string, string>;
+        };
+
+        if (typeof body === "undefined" && route.inputSchema !== undefined) {
+          throw new Error("Body is required.");
+        }
+
+        const response = await executeMutateQuery({ body, path, query });
+
+        onInvalidate(this.#invalidate.bind(this), {
+          pathParams: (path ?? {}) as MaybeExtractPathParamsOrWiden<TPath, string>,
+          queryParams: query,
+        });
+
+        const isStreaming = isStreamingResponse(response);
+
+        if (!isStreaming) {
+          return response.json();
+        }
+
+        if (typeof window === "undefined") {
+          return [];
+        }
+
+        if (isStreaming === "ndjson") {
+          const storeAdapter: NdjsonStreamingStore<NonNullable<TOutputSchema>, TErrorCode> = {
+            setData: (value) => {
+              mutatorStore.set({
+                ...mutatorStore.get(),
+                loading: !(Array.isArray(value) && value.length > 0),
+                data: value as InferOr<TOutputSchema, undefined>,
+              });
+            },
+            setError: (value) => {
+              mutatorStore.set({
+                ...mutatorStore.get(),
+                error: value,
+              });
+            },
+          };
+
+          // Start streaming in background and return first item
+          const { firstItem } = await handleNdjsonStreamingFirstItem(response, storeAdapter);
+
+          // Return the first item immediately. The streaming will continue in the background
+          return [firstItem];
+        }
+
+        if (isStreaming === "octet-stream") {
+          // TODO(Wilco): Implement this
+          throw new Error("Octet-stream streaming is not supported.");
+        }
+
+        throw new Error("Unreachable");
+      },
+      {
+        onError: (error) => {
+          console.error("Error in mutatorStore", error);
+        },
+      },
+    );
 
     const mutateQuery = (async (data) => {
       // TypeScript infers the fields to not exist, even though they might
@@ -807,10 +930,6 @@ export class ClientBuilder<
       }
 
       const response = await executeMutateQuery({ body, path, query });
-
-      if (!response.ok) {
-        throw await FragnoClientApiError.fromResponse<TErrorCode>(response);
-      }
 
       if (response.status === 201 || response.status === 204) {
         return undefined;
@@ -841,49 +960,6 @@ export class ClientBuilder<
       TErrorCode,
       TQueryParameters
     >["mutateQuery"];
-
-    const mutatorStore: FragnoClientMutatorData<
-      NonGetHTTPMethod,
-      TPath,
-      TInputSchema,
-      TOutputSchema,
-      TErrorCode,
-      TQueryParameters
-    >["mutatorStore"] = this.#createMutationStore(
-      async ({ data }) => {
-        if (typeof window === "undefined") {
-          // TODO(Wilco): Handle server-side rendering.
-        }
-
-        const { body, path, query } = data as {
-          body?: InferOr<TInputSchema, undefined>;
-          path?: ExtractPathParamsOrWiden<TPath, string>;
-          query?: Record<string, string>;
-        };
-
-        if (typeof body === "undefined" && route.inputSchema !== undefined) {
-          console.log("Body is required.");
-          throw new Error("Body is required.");
-        }
-
-        const unwrappedPath = unwrapObject(path) as MaybeExtractPathParamsOrWiden<TPath, string>;
-        const unwrappedQuery = unwrapObject(query);
-
-        const result = await mutateQuery({ body, path: unwrappedPath, query: unwrappedQuery });
-
-        onInvalidate(this.#invalidate.bind(this), {
-          pathParams: unwrappedPath,
-          queryParams: unwrappedQuery,
-        });
-
-        return result;
-      },
-      {
-        onError: (error) => {
-          console.error("Error in mutatorStore", error);
-        },
-      },
-    );
 
     return {
       route,

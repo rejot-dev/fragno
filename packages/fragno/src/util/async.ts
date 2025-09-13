@@ -12,27 +12,27 @@ type UnsubscribeFn = () => void;
 export function createAsyncIteratorFromCallback<T>(
   subscribe: SubscribeFn<T>,
 ): AsyncGenerator<T, void, unknown> {
-  return (async function* () {
-    const queue: T[] = [];
-    let unsubscribe: UnsubscribeFn | null = null;
-    let resolveNext: ((value: IteratorResult<T>) => void) | null = null;
+  const queue: T[] = [];
+  let unsubscribe: UnsubscribeFn | null = null;
+  let resolveNext: ((value: IteratorResult<T>) => void) | null = null;
 
-    const unsubscribeFunc = subscribe((value) => {
-      if (resolveNext) {
-        // If there's a pending promise, resolve it immediately
-        resolveNext({ value, done: false });
-        resolveNext = null;
-      } else {
-        // Otherwise, queue the value
-        queue.push(value);
-      }
-    });
-
-    // Store unsubscribe function if one was returned
-    if (typeof unsubscribeFunc === "function") {
-      unsubscribe = unsubscribeFunc;
+  const unsubscribeFunc = subscribe((value) => {
+    if (resolveNext) {
+      // If there's a pending promise, resolve it immediately
+      resolveNext({ value, done: false });
+      resolveNext = null;
+    } else {
+      // Otherwise, queue the value
+      queue.push(value);
     }
+  });
 
+  // Store unsubscribe function if one was returned
+  if (typeof unsubscribeFunc === "function") {
+    unsubscribe = unsubscribeFunc;
+  }
+
+  return (async function* () {
     try {
       while (true) {
         if (queue.length > 0) {

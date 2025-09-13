@@ -4,7 +4,7 @@ import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nano
 import { useCallback, useMemo, useRef, useSyncExternalStore, type DependencyList } from "react";
 import type { NonGetHTTPMethod } from "../api/api";
 import type { FragnoClientMutatorData, FragnoClientHookData } from "./client";
-import { isGetHook, isMutatorHook } from "./client";
+import { isGetHook, isMutatorHook, isStore, type FragnoStore } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { hydrateFromWindow } from "../util/ssr";
 import type { InferOr } from "../util/types-util";
@@ -119,7 +119,9 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
-      : T[K];
+      : T[K] extends FragnoStore<infer TStore>
+        ? () => StoreValue<TStore>
+        : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any; // We need one any cast here due to TypeScript's limitations with mapped types
@@ -134,6 +136,8 @@ export function useFragno<T extends Record<string, unknown>>(
       result[key] = createReactHook(hook);
     } else if (isMutatorHook(hook)) {
       result[key] = createReactMutator(hook);
+    } else if (isStore(hook)) {
+      result[key] = () => useStore(hook.store);
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;
