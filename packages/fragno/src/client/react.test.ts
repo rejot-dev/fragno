@@ -1,13 +1,15 @@
 import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { atom, computed } from "nanostores";
+import { atom, computed, type ReadableAtom } from "nanostores";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
-import { useFragno, useStore } from "./react";
+import { useFragno, useStore, type FragnoReactStore } from "./react";
 import { defineRoute } from "../api/route";
 import { defineLibrary } from "../api/library";
 import type { FragnoPublicClientConfig } from "../mod";
-import { FragnoClientFetchNetworkError } from "./client-error";
+import { FragnoClientFetchNetworkError, type FragnoClientError } from "./client-error";
+import { RequestOutputContext } from "../api/request-output-context";
+import type { FetcherStore } from "@nanostores/query";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -673,5 +675,273 @@ describe("useStore", () => {
     unmount();
 
     expect(unsubscribeSpy).toHaveBeenCalled();
+  });
+});
+
+describe("useFragno - createStore", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("FragnoReactStore type test - ReadableAtom fields", () => {
+    // Test that ReadableAtom fields are properly unwrapped to their value types
+    const stringAtom: ReadableAtom<string> = atom("hello");
+    const numberAtom: ReadableAtom<number> = atom(42);
+    const booleanAtom: ReadableAtom<boolean> = atom(true);
+    const objectAtom: ReadableAtom<{ count: number }> = atom({ count: 0 });
+    const arrayAtom: ReadableAtom<string[]> = atom(["a", "b", "c"]);
+
+    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const client = {
+      useStore: cb.createStore({
+        message: stringAtom,
+        count: numberAtom,
+        isActive: booleanAtom,
+        data: objectAtom,
+        items: arrayAtom,
+      }),
+    };
+
+    const { useStore } = useFragno(client);
+
+    // Type assertions to ensure the types are correctly inferred
+    expectTypeOf(useStore).toExtend<
+      () => {
+        message: string;
+        count: number;
+        isActive: boolean;
+        data: { count: number };
+        items: string[];
+      }
+    >();
+
+    // Runtime test
+    const { result } = renderHook(() => useStore());
+    expect(result.current.message).toBe("hello");
+    expect(result.current.count).toBe(42);
+    expect(result.current.isActive).toBe(true);
+    expect(result.current.data).toEqual({ count: 0 });
+    expect(result.current.items).toEqual(["a", "b", "c"]);
+  });
+
+  test("FragnoReactStore type test - computed stores", () => {
+    // Test that computed stores (which are also ReadableAtom) are properly unwrapped
+    const baseNumber = atom(10);
+    const doubled = computed(baseNumber, (n) => n * 2);
+    const tripled = computed(baseNumber, (n) => n * 3);
+    const combined = computed([doubled, tripled], (d, t) => ({ doubled: d, tripled: t }));
+
+    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const client = {
+      useComputedValues: cb.createStore({
+        base: baseNumber,
+        doubled: doubled,
+        tripled: tripled,
+        combined: combined,
+      }),
+    };
+
+    const { useComputedValues } = useFragno(client);
+
+    // Type assertions
+    expectTypeOf(useComputedValues).toExtend<
+      () => {
+        base: number;
+        doubled: number;
+        tripled: number;
+        combined: { doubled: number; tripled: number };
+      }
+    >();
+
+    // Runtime test
+    const { result } = renderHook(() => useComputedValues());
+    expect(result.current.base).toBe(10);
+    expect(result.current.doubled).toBe(20);
+    expect(result.current.tripled).toBe(30);
+    expect(result.current.combined).toEqual({ doubled: 20, tripled: 30 });
+  });
+
+  test("FragnoReactStore type test - mixed store and non-store fields", () => {
+    // Test that non-store fields are passed through unchanged
+    const messageAtom: ReadableAtom<string> = atom("test");
+    const regularFunction = (x: number) => x * 2;
+    const regularObject = { foo: "bar", baz: 123 };
+
+    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const client = {
+      useMixed: cb.createStore({
+        message: messageAtom,
+        multiply: regularFunction,
+        config: regularObject,
+        constant: 42,
+      }),
+    };
+
+    const { useMixed } = useFragno(client);
+
+    // Type assertions
+    expectTypeOf(useMixed).toExtend<
+      () => {
+        message: string;
+        multiply: (x: number) => number;
+        config: { foo: string; baz: number };
+        constant: number;
+      }
+    >();
+
+    // Runtime test
+    const { result } = renderHook(() => useMixed());
+    expect(result.current.message).toBe("test");
+    expect(result.current.multiply(5)).toBe(10);
+    expect(result.current.config).toEqual({ foo: "bar", baz: 123 });
+    expect(result.current.constant).toBe(42);
+  });
+
+  test("FragnoReactStore type test - single store vs object with stores", () => {
+    // Test that a single store is unwrapped directly
+    const singleAtom: ReadableAtom<string> = atom("single");
+    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+
+    // Single store case
+    const clientSingle = {
+      useSingle: cb.createStore(singleAtom),
+    };
+    const { useSingle } = useFragno(clientSingle);
+    expectTypeOf(useSingle).toExtend<() => string>();
+
+    // Object with stores case
+    const clientObject = {
+      useObject: cb.createStore({
+        value: singleAtom,
+      }),
+    };
+    const { useObject } = useFragno(clientObject);
+    expectTypeOf(useObject).toExtend<() => { value: string }>();
+
+    // Runtime test
+    const { result: singleResult } = renderHook(() => useSingle());
+    expect(singleResult.current).toBe("single");
+
+    const { result: objectResult } = renderHook(() => useObject());
+    expect(objectResult.current).toEqual({ value: "single" });
+  });
+
+  test("FragnoReactStore type test - complex nested atoms", () => {
+    // Test complex nested structures with atoms
+    type User = { id: number; name: string; email: string };
+    type Settings = { theme: "light" | "dark"; notifications: boolean };
+
+    const userAtom: ReadableAtom<User> = atom({ id: 1, name: "John", email: "john@example.com" });
+    const settingsAtom: ReadableAtom<Settings> = atom({ theme: "light", notifications: true });
+    const loadingAtom: ReadableAtom<boolean> = atom(false);
+    const errorAtom: ReadableAtom<string | null> = atom(null);
+
+    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const client = {
+      useAppState: cb.createStore({
+        user: userAtom,
+        settings: settingsAtom,
+        loading: loadingAtom,
+        error: errorAtom,
+      }),
+    };
+
+    const { useAppState } = useFragno(client);
+
+    // Type assertions for complex nested structure
+    expectTypeOf(useAppState).toExtend<
+      () => {
+        user: User;
+        settings: Settings;
+        loading: boolean;
+        error: string | null;
+      }
+    >();
+
+    // Runtime test
+    const { result } = renderHook(() => useAppState());
+    expect(result.current.user).toEqual({ id: 1, name: "John", email: "john@example.com" });
+    expect(result.current.settings).toEqual({ theme: "light", notifications: true });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  test("Derived from streaming route", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const cb = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const usersStream = cb.createHook("/users-stream");
+
+    // Create a single shared store instance
+    const sharedStore = usersStream.store({});
+
+    const names = computed(sharedStore, ({ data }) => {
+      return (data ?? []).map((user) => user.name).join(", ");
+    });
+
+    const client = {
+      useUsersStream: cb.createStore(sharedStore),
+      useNames: cb.createStore(names),
+    };
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1, name: "John" });
+        await stream.sleep(0);
+        await stream.write({ id: 2, name: "Jane" });
+        await stream.sleep(0);
+        await stream.write({ id: 3, name: "Jim" });
+      });
+    });
+
+    const { useNames, useUsersStream } = useFragno(client);
+
+    expectTypeOf(useUsersStream).toEqualTypeOf<
+      FragnoReactStore<
+        FetcherStore<
+          {
+            id: number;
+            name: string;
+          }[],
+          FragnoClientError<string>
+        >
+      >
+    >();
+
+    expectTypeOf(useNames).toEqualTypeOf<FragnoReactStore<ReadableAtom<string>>>();
+
+    const { result } = renderHook(() => ({
+      usersStream: useUsersStream(),
+      names: useNames(),
+    }));
+
+    await waitFor(() => {
+      expect(result.current.names).toEqual("John, Jane, Jim");
+      expect(result.current.usersStream.loading).toBe(false);
+      expect(result.current.usersStream.data).toEqual([
+        { id: 1, name: "John" },
+        { id: 2, name: "Jane" },
+        { id: 3, name: "Jim" },
+      ]);
+    });
   });
 });

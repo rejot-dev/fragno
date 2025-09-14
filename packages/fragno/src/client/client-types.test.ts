@@ -414,10 +414,7 @@ describe("FragnoClientMutatorData", () => {
     type MutateQuery = _Mutator1["mutateQuery"];
 
     expectTypeOf<MutateQuery>().toEqualTypeOf<
-      ({
-        path,
-        query,
-      }: {
+      (args?: {
         body?: undefined;
         path?: Record<"id", string> | undefined;
         query?: Record<string, string>;
@@ -437,11 +434,7 @@ describe("FragnoClientMutatorData", () => {
     type MutateQuery = _Mutator2["mutateQuery"];
 
     expectTypeOf<MutateQuery>().toEqualTypeOf<
-      ({
-        body,
-        path,
-        query,
-      }: {
+      (args?: {
         body?: undefined;
         path?: Record<"id", string> | undefined;
         query?: Record<string, string>;
@@ -464,11 +457,7 @@ describe("FragnoClientMutatorData", () => {
     type MutateQuery = _Mutator3["mutateQuery"];
 
     expectTypeOf<MutateQuery>().toEqualTypeOf<
-      ({
-        body,
-        path,
-        query,
-      }: {
+      (args?: {
         body?:
           | {
               id: number;
@@ -494,10 +483,7 @@ describe("FragnoClientMutatorData", () => {
     type MutateQuery = _Mutator4["mutateQuery"];
 
     expectTypeOf<MutateQuery>().toEqualTypeOf<
-      ({
-        path,
-        query,
-      }: {
+      (args?: {
         body?: undefined;
         path?: Record<"id", string> | undefined;
         query?: Record<"id" | "name", string>;

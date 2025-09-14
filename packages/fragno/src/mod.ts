@@ -15,4 +15,6 @@ export {
   defineRoutes,
   type RouteFactory,
   type RouteFactoryContext,
+  type AnyRouteOrFactory,
+  type FlattenRouteFactories,
 } from "./api/route";

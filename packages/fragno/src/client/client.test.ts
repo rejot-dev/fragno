@@ -5,7 +5,7 @@ import { buildUrl, createClientBuilder, getCacheKey, isGetHook, isMutatorHook } 
 import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
-import { atom } from "nanostores";
+import { atom, computed } from "nanostores";
 import { defineLibrary } from "../api/library";
 import { RequestOutputContext } from "../api/request-output-context";
 import { FragnoClientUnknownApiError } from "./client-error";
@@ -1474,6 +1474,68 @@ describe("createMutator - streaming", () => {
         error: undefined,
         mutate: expect.any(Function),
       });
+    }
+  });
+});
+
+describe("computed", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("Derived from streaming route", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const useUsersStream = client.createHook("/users-stream");
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1, name: "John" });
+        await stream.sleep(1);
+        await stream.write({ id: 2, name: "Jane" });
+        await stream.sleep(1);
+        await stream.write({ id: 3, name: "Jim" });
+      });
+    });
+
+    const userStore = useUsersStream.store({});
+
+    const names = computed(userStore, ({ data }) => data?.map((user) => user.name).join(", "));
+    const itt = createAsyncIteratorFromCallback(names.listen);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toBe("John");
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toBe("John, Jane");
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toBe("John, Jane, Jim");
     }
   });
 });
