@@ -4,7 +4,7 @@ import { listenKeys, type ReadableAtom, type Store, type StoreValue } from "nano
 import { useCallback, useMemo, useRef, useSyncExternalStore, type DependencyList } from "react";
 import type { NonGetHTTPMethod } from "../api/api";
 import type { FragnoClientMutatorData, FragnoClientHookData } from "./client";
-import { isGetHook, isMutatorHook, isStore, type FragnoStore } from "./client";
+import { isGetHook, isMutatorHook, isStore, type FragnoStoreData } from "./client";
 import type { FragnoClientError } from "./client-error";
 import { hydrateFromWindow } from "../util/ssr";
 import type { InferOr } from "../util/types-util";
@@ -14,6 +14,7 @@ import type {
   MaybeExtractPathParamsOrWiden,
   QueryParamsHint,
 } from "../api/internal/path";
+import { isReadableAtom } from "../util/nanostores";
 
 export type FragnoReactHook<
   _TMethod extends "GET",
@@ -99,6 +100,41 @@ function createReactMutator<
   };
 }
 
+/**
+ * Type helper that unwraps any Store fields of the object into StoreValues
+ */
+export type FragnoReactStore<T extends object> = () => T extends Store<infer TStore>
+  ? StoreValue<TStore>
+  : {
+      [K in keyof T]: T[K] extends Store ? StoreValue<T[K]> : T[K];
+    };
+
+function createReactStore<const T extends object>(hook: FragnoStoreData<T>): FragnoReactStore<T> {
+  if (isReadableAtom(hook.obj)) {
+    return () => useStore(hook.obj as Store);
+  }
+
+  return () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = {};
+
+    for (const key in hook.obj) {
+      if (!Object.prototype.hasOwnProperty.call(hook.obj, key)) {
+        continue;
+      }
+
+      const value = hook.obj[key];
+      if (isReadableAtom(value)) {
+        result[key] = useStore(value);
+      } else {
+        result[key] = value;
+      }
+    }
+
+    return result;
+  };
+}
+
 export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
@@ -119,8 +155,8 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
-      : T[K] extends FragnoStore<infer TStore>
-        ? () => StoreValue<TStore>
+      : T[K] extends FragnoStoreData<infer TStoreObj>
+        ? FragnoReactStore<TStoreObj>
         : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -137,7 +173,7 @@ export function useFragno<T extends Record<string, unknown>>(
     } else if (isMutatorHook(hook)) {
       result[key] = createReactMutator(hook);
     } else if (isStore(hook)) {
-      result[key] = () => useStore(hook.store);
+      result[key] = createReactStore(hook);
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;

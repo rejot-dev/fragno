@@ -75,20 +75,31 @@ export function createChatno(
 
 // Client-side factory
 export function createChatnoClient(fragnoConfig: FragnoPublicClientConfig = {}) {
-  const b = createClientBuilder(chatnoDefinition, fragnoConfig, routes);
+  const cb = createClientBuilder(chatnoDefinition, fragnoConfig, routes);
 
-  const useSimpleStream = b.createHook("/simple-stream");
+  const chatStream = cb.createMutator("POST", "/chat/stream");
 
-  const currentMessage = computed(useSimpleStream.store({}), ({ data }) => {
-    const msg = (data ?? []).map((item) => item.message).join(", ");
-    return msg;
+  const aggregatedMessage = computed(chatStream.mutatorStore, ({ data }) => {
+    return (data ?? [])
+      .filter((item) => item.type === "response.output_text.delta")
+      .map((item) => item.delta)
+      .join("");
   });
 
+  function sendMessage(message: string) {
+    chatStream.mutatorStore.mutate({
+      body: {
+        messages: [{ type: "chat", id: crypto.randomUUID(), role: "user", content: message }],
+      },
+    });
+  }
+
   return {
-    useChat: b.createMutator("POST", "/chat/stream"),
-    useSimpleStream: useSimpleStream,
-    useHealth: b.createHook("/health"),
-    useCurrentMessage: b.createStore(currentMessage),
+    useSendMessage: cb.createStore({
+      response: aggregatedMessage,
+      responseLoading: computed(chatStream.mutatorStore, ({ loading }) => loading),
+      sendMessage,
+    }),
   };
 }
 

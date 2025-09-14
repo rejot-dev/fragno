@@ -218,8 +218,16 @@ export type HasGetRoutes<
   >[],
 > = ExtractGetRoutePaths<T> extends never ? false : true;
 
-export type FragnoStore<TStore extends Store> = {
-  store: TStore;
+export type ObjectContainingStoreField<T extends object> = T extends Store
+  ? T
+  : {
+        [K in keyof T]: T[K] extends Store ? { [P in K]: T[P] } & Partial<Omit<T, K>> : never;
+      }[keyof T] extends never
+    ? never
+    : T;
+
+export type FragnoStoreData<T extends object> = {
+  obj: T;
   [STORE_SYMBOL]: true;
 };
 
@@ -238,17 +246,11 @@ export type FragnoClientHookData<
     TErrorCode,
     TQueryParameters
   >;
-  query({
-    path,
-    query,
-  }: {
+  query(args?: {
     path?: MaybeExtractPathParamsOrWiden<TPath, string>;
     query?: Record<TQueryParameters, string>;
   }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
-  store({
-    path,
-    query,
-  }: {
+  store(args?: {
     path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
     query?: Record<TQueryParameters, string | ReadableAtom<string>>;
   }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>;
@@ -278,11 +280,7 @@ export type FragnoClientMutatorData<
     TQueryParameters
   >;
 
-  mutateQuery({
-    body,
-    path,
-    query,
-  }: {
+  mutateQuery(args?: {
     body?: InferOr<TInputSchema, undefined>;
     path?: MaybeExtractPathParamsOrWiden<TPath, string>;
     query?: Record<TQueryParameters, string>;
@@ -430,7 +428,7 @@ export function isMutatorHook<
   );
 }
 
-export function isStore<TStore extends Store>(obj: unknown): obj is FragnoStore<TStore> {
+export function isStore<TStore extends Store>(obj: unknown): obj is FragnoStoreData<TStore> {
   return (
     typeof obj === "object" && obj !== null && STORE_SYMBOL in obj && obj[STORE_SYMBOL] === true
   );
@@ -510,8 +508,8 @@ export class ClientBuilder<
     return Object.fromEntries(this.#cache.entries());
   }
 
-  createStore<const TStore extends Store>(store: TStore): FragnoStore<TStore> {
-    return { store, [STORE_SYMBOL]: true };
+  createStore<const T extends object>(obj: T): FragnoStoreData<T> {
+    return { obj: obj, [STORE_SYMBOL]: true };
   }
 
   createHook<TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
@@ -664,7 +662,9 @@ export class ClientBuilder<
 
     return {
       route,
-      store: ({ path, query }) => {
+      store: (args) => {
+        const { path, query } = args ?? {};
+
         const key = getCacheKey(route.method, route.path, {
           pathParams: path,
           queryParams: query,
@@ -736,7 +736,9 @@ export class ClientBuilder<
 
         return store;
       },
-      query: async ({ path, query }) => {
+      query: async (args) => {
+        const { path, query } = args ?? {};
+
         const response = await executeQuery({ pathParams: path, queryParams: query });
 
         const isStreaming = isStreamingResponse(response);
@@ -988,21 +990,6 @@ export class ClientBuilder<
   }
 }
 
-/**
- * Type to extract static routes from a LibraryBuilder
- * This requires routes to be passed as a separate parameter since they're built dynamically
- */
-export type NewClientBuilder<
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-> = ClientBuilder<TRoutes, FragnoLibrarySharedConfig<TRoutes>>;
-
 export function createClientBuilder<
   TConfig,
   TDeps,
@@ -1012,7 +999,10 @@ export function createClientBuilder<
   libraryDefinition: LibraryBuilder<TConfig, TDeps, TServices>,
   publicConfig: FragnoPublicClientConfig,
   routesOrFactories: TRoutesOrFactories,
-): NewClientBuilder<FlattenRouteFactories<TRoutesOrFactories>> {
+): ClientBuilder<
+  FlattenRouteFactories<TRoutesOrFactories>,
+  FragnoLibrarySharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
+> {
   const definition = libraryDefinition.definition;
 
   // For client-side, we resolve route factories with dummy context
@@ -1038,3 +1028,5 @@ export function createClientBuilder<
 
   return new ClientBuilder(fullPublicConfig, libraryConfig);
 }
+
+export * from "./client-error";

@@ -27,3 +27,39 @@ export function unwrapObject<T>(
 
   return Object.fromEntries(Object.entries(params).map(([key, value]) => [key, unwrapAtom(value)]));
 }
+
+export function isReadableAtom(value: unknown): value is ReadableAtom<unknown> {
+  if (!value) {
+    return false;
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  if (!("get" in value) || typeof value.get !== "function") {
+    return false;
+  }
+
+  if (!("lc" in value) || typeof value.lc !== "number") {
+    return false;
+  }
+
+  if (!("notify" in value) || typeof value.notify !== "function") {
+    return false;
+  }
+
+  if (!("off" in value) || typeof value.off !== "function") {
+    return false;
+  }
+
+  if (!("subscribe" in value) || typeof value.subscribe !== "function") {
+    return false;
+  }
+
+  if (!("value" in value)) {
+    return false;
+  }
+
+  return true;
+}
