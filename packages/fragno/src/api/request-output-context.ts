@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ContentlessStatusCode, StatusCode } from "../http/http-status";
 import { ResponseStream } from "./internal/response-stream";
-import type { InferOr, InferOrUnknown } from "../util/types-util";
+import type { InferOrUnknown } from "../util/types-util";
 
 export type ResponseData = string | ArrayBuffer | ReadableStream | Uint8Array<ArrayBuffer>;
 
@@ -39,17 +39,7 @@ function mergeHeaders(...headerSources: (HeadersInit | undefined)[]): HeadersIni
   return mergedHeaders;
 }
 
-export class RequestOutputContext<
-  TOutputSchema extends StandardSchemaV1 | undefined = undefined,
-  TErrorCode extends string = string,
-> {
-  // eslint-disable-next-line no-unused-private-class-members
-  #outputSchema?: TOutputSchema;
-
-  constructor(outputSchema?: TOutputSchema) {
-    this.#outputSchema = outputSchema;
-  }
-
+export abstract class OutputContext<const TOutput, const TErrorCode extends string> {
   /**
    * Creates an error response.
    *
@@ -104,11 +94,7 @@ export class RequestOutputContext<
     });
   }
 
-  json(
-    object: InferOrUnknown<TOutputSchema>,
-    initOrStatus?: ResponseInit | StatusCode,
-    headers?: HeadersInit,
-  ): Response {
+  json(object: TOutput, initOrStatus?: ResponseInit | StatusCode, headers?: HeadersInit): Response {
     if (typeof initOrStatus === "undefined") {
       return Response.json(object, {
         status: 200,
@@ -131,15 +117,12 @@ export class RequestOutputContext<
   }
 
   jsonStream = (
-    cb: (stream: ResponseStream<InferOr<TOutputSchema, never>>) => void | Promise<void>,
+    cb: (stream: ResponseStream<TOutput>) => void | Promise<void>,
     {
       onError,
       headers,
     }: {
-      onError?: (
-        error: Error,
-        stream: ResponseStream<InferOr<TOutputSchema, never>>,
-      ) => void | Promise<void>;
+      onError?: (error: Error, stream: ResponseStream<TOutput>) => void | Promise<void>;
       headers?: HeadersInit;
     } = {},
   ): Response => {
@@ -176,4 +159,17 @@ export class RequestOutputContext<
       headers: mergeHeaders(defaultHeaders, headers),
     });
   };
+}
+
+export class RequestOutputContext<
+  const TOutputSchema extends StandardSchemaV1 | undefined = undefined,
+  const TErrorCode extends string = string,
+> extends OutputContext<InferOrUnknown<TOutputSchema>, TErrorCode> {
+  // eslint-disable-next-line no-unused-private-class-members
+  #outputSchema?: TOutputSchema;
+
+  constructor(outputSchema?: TOutputSchema) {
+    super();
+    this.#outputSchema = outputSchema;
+  }
 }

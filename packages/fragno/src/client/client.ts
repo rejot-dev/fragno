@@ -64,9 +64,9 @@ export type ExtractGetRoutes<
 }[number][];
 
 /**
- * Extract route paths from GET routes only for type validation
+ * Extract the path from a route configuration for a given method
  */
-export type ExtractGetRoutePaths<
+export type ExtractRoutePath<
   T extends readonly FragnoRouteConfig<
     HTTPMethod,
     string,
@@ -75,6 +75,7 @@ export type ExtractGetRoutePaths<
     string,
     string
   >[],
+  TExpectedMethod extends HTTPMethod = HTTPMethod,
 > = {
   [K in keyof T]: T[K] extends FragnoRouteConfig<
     infer Method,
@@ -84,11 +85,22 @@ export type ExtractGetRoutePaths<
     string,
     string
   >
-    ? Method extends "GET"
+    ? Method extends TExpectedMethod
       ? Path
       : never
     : never;
 }[number];
+
+export type ExtractGetRoutePaths<
+  T extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    string,
+    string
+  >[],
+> = ExtractRoutePath<T, "GET">;
 
 export type ExtractNonGetRoutePaths<
   T extends readonly FragnoRouteConfig<
@@ -99,20 +111,7 @@ export type ExtractNonGetRoutePaths<
     string,
     string
   >[],
-> = {
-  [K in keyof T]: T[K] extends FragnoRouteConfig<
-    infer Method,
-    infer Path,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >
-    ? Method extends NonGetHTTPMethod
-      ? Path
-      : never
-    : never;
-}[number];
+> = ExtractRoutePath<T, NonGetHTTPMethod>;
 
 /**
  * Extract the route configuration type(s) for a given path from a routes array.
