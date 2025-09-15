@@ -57,9 +57,12 @@ export class RequestInputContext<
   }): Promise<RequestInputContext<TPath, TInputSchema>> {
     const url = new URL(config.request.url);
 
+    // Clone the request to avoid consuming the body stream
+    // TODO: Probably we should just cache the result instead
+    const request = config.request.clone();
+
     // TODO: Support other body types other than json
-    const json =
-      config.request.body instanceof ReadableStream ? await config.request.json() : undefined;
+    const json = request.body instanceof ReadableStream ? await request.json() : undefined;
 
     return new RequestInputContext({
       method: config.method,
@@ -105,6 +108,8 @@ export class RequestInputContext<
       shouldValidateInput: false, // No input validation in SSR context
     });
   }
+
+  // TODO(Wilco): We should support reading/modifying headers here.
 
   get method(): string {
     return this.#method;

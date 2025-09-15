@@ -274,6 +274,84 @@ const protectedRoute = defineRoute({
 });
 ```
 
+### Middleware
+
+Add middleware to intercept and process requests before they reach your route handlers:
+
+```typescript
+const library = defineLibrary<Config>("my-api").withServices((config) => ({
+  auth: {
+    isAuthorized: (token?: string) => token === config.apiKey,
+  },
+  logger: {
+    log: (msg: string) => console.log(msg),
+  },
+}));
+
+const instance = createLibrary(library, config, routes).withMiddleware(
+  async (context, { deps, services }) => {
+    const { method, path, queryParams, pathParams } = context;
+
+    // Log request
+    services.logger.log(`${method} ${path}`);
+
+    // Handle CORS preflight
+    if (method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    }
+
+    // Check authentication
+    const authToken = queryParams.get("token");
+    if (!services.auth.isAuthorized(authToken ?? undefined)) {
+      return Response.json({ message: "Unauthorized", code: "AUTH_ERROR" }, { status: 401 });
+    }
+
+    // Route-specific middleware using ifMatchesRoute
+    const result = await context.ifMatchesRoute("POST", "/users/:id", async ({ pathParams }) => {
+      // This middleware only runs for POST requests to /users/:id
+
+      // pathParams is strongly typed
+      services.logger.log(`Creating user with ID: ${pathParams.id}`);
+
+      // Return undefined to continue to the original handler
+      return undefined;
+    });
+
+    if (result) {
+      return result;
+    }
+
+    // Return undefined to continue to handler
+    return undefined;
+  },
+);
+```
+
+Middleware receives:
+
+- **`context`**: Request context with:
+  - **`method`**: HTTP method
+  - **`path`**: Request path
+  - **`pathParams`**: Extracted path parameters
+  - **`queryParams`**: URL search parameters
+  - **`inputSchema`**: Route's input schema
+  - **`outputSchema`**: Route's output schema
+  - **`ifMatchesRoute()`**: Execute middleware only for specific routes with full type safety
+- **`deps`**: Library dependencies
+- **`services`**: Library services
+
+The `ifMatchesRoute` method allows you to write route-specific middleware with full TypeScript
+support for path parameters and request/response schemas.
+
+Return a Response to short-circuit, or `undefined` to continue to the handler.
+
 ## Package Structure
 
 - **`@fragno-dev/core`** - Core framework with React, Vue, and vanilla JS adapters

@@ -13,6 +13,7 @@ import {
   type FlattenRouteFactories,
   resolveRouteFactories,
 } from "./route";
+import { RequestMiddlewareContext, type FragnoMiddlewareCallback } from "./request-middleware";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -25,12 +26,17 @@ export interface FragnoPublicClientConfig {
 
 export interface FragnoInstantiatedLibrary<
   TRoutes extends readonly AnyFragnoRouteConfig[] = [],
+  TDeps = EmptyObject,
   TServices extends Record<string, unknown> = Record<string, unknown>,
 > {
   config: FragnoLibrarySharedConfig<TRoutes>;
+  deps: TDeps;
   services: TServices;
   handler: (req: Request) => Promise<Response>;
   mountRoute: string;
+  withMiddleware: (
+    handler: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>,
+  ) => FragnoInstantiatedLibrary<TRoutes, TDeps, TServices>;
 }
 
 export interface FragnoLibrarySharedConfig<
@@ -111,7 +117,7 @@ export function createLibrary<
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
   fragnoConfig: FragnoPublicConfig = {},
-): FragnoInstantiatedLibrary<FlattenRouteFactories<TRoutesOrFactories>, TServices> {
+): FragnoInstantiatedLibrary<FlattenRouteFactories<TRoutesOrFactories>, TDeps, TServices> {
   const definition = libraryDefinition.definition;
 
   const dependencies = definition.dependencies ? definition.dependencies(config) : ({} as TDeps);
@@ -139,17 +145,35 @@ export function createLibrary<
       >
     >();
 
+  let middlewareHandler:
+    | FragnoMiddlewareCallback<FlattenRouteFactories<TRoutesOrFactories>, TDeps, TServices>
+    | undefined;
+
   for (const routeConfig of routes) {
     addRoute(router, routeConfig.method.toUpperCase(), routeConfig.path, routeConfig);
   }
 
-  return {
+  const library: FragnoInstantiatedLibrary<
+    FlattenRouteFactories<TRoutesOrFactories>,
+    TDeps,
+    TServices
+  > = {
     mountRoute,
     config: {
       name: definition.name,
       routes,
     },
     services,
+    deps: dependencies,
+    withMiddleware: (handler) => {
+      if (middlewareHandler) {
+        throw new Error("Middleware already set");
+      }
+
+      middlewareHandler = handler;
+
+      return library;
+    },
     handler: async (req: Request) => {
       const url = new URL(req.url);
       const pathname = url.pathname;
@@ -157,9 +181,13 @@ export function createLibrary<
       const matchRoute = pathname.startsWith(mountRoute) ? pathname.slice(mountRoute.length) : null;
 
       if (matchRoute === null) {
-        return new Response(
-          `Fragno: Route for '${definition.name}' not found. Is the library mounted on the right route? ` +
-            `Expecting: '${mountRoute}'.`,
+        return Response.json(
+          {
+            error:
+              `Fragno: Route for '${definition.name}' not found. Is the library mounted on the right route? ` +
+              `Expecting: '${mountRoute}'.`,
+            code: "ROUTE_NOT_FOUND",
+          },
           { status: 404 },
         );
       }
@@ -167,10 +195,42 @@ export function createLibrary<
       const route = findRoute(router, req.method, matchRoute);
 
       if (!route) {
-        return new Response(`Fragno: Route for '${definition.name}' not found`, { status: 404 });
+        return Response.json(
+          { error: `Fragno: Route for '${definition.name}' not found`, code: "ROUTE_NOT_FOUND" },
+          { status: 404 },
+        );
       }
 
       const { handler, inputSchema, outputSchema, path } = route.data;
+
+      const outputContext = new RequestOutputContext(outputSchema);
+
+      if (middlewareHandler) {
+        const middlewareContext = new RequestMiddlewareContext(routes, {
+          method: req.method as HTTPMethod,
+          path,
+          pathParams: route.params,
+          searchParams: new URL(req.url).searchParams,
+          body: req.body,
+          request: req,
+        });
+
+        try {
+          const middlewareResult = await middlewareHandler(middlewareContext, {
+            deps: dependencies,
+            services,
+          });
+          if (middlewareResult !== undefined) {
+            return middlewareResult;
+          }
+        } catch (error) {
+          console.error("Error in middleware", error);
+          return Response.json(
+            { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
+            { status: 500 },
+          );
+        }
+      }
 
       const inputContext = await RequestInputContext.fromRequest({
         request: req,
@@ -180,20 +240,23 @@ export function createLibrary<
         inputSchema,
       });
 
-      const outputContext = new RequestOutputContext(outputSchema);
-
       try {
         const result = await handler(inputContext, outputContext);
         return result;
       } catch (error) {
-        console.error(error);
+        console.error("Error in handler", error);
 
         if (error instanceof FragnoApiError) {
           return error.toResponse();
         }
 
-        return Response.json({ error: "Internal server error" }, { status: 500 });
+        return Response.json(
+          { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
+          { status: 500 },
+        );
       }
     },
   };
+
+  return library;
 }

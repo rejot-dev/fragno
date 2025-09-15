@@ -1,0 +1,337 @@
+import { test, expect, describe, expectTypeOf } from "vitest";
+import { defineLibrary, createLibrary } from "./library";
+import { defineRoute } from "./route";
+import { z } from "zod";
+
+describe("Request Middleware", () => {
+  test("middleware can intercept and return early", async () => {
+    const config = { apiKey: "test" };
+
+    const library = defineLibrary<typeof config>("test-lib").withServices(() => ({
+      auth: { isAuthorized: (token?: string) => token === "valid-token" },
+    }));
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/protected",
+        handler: async (_input, output) => {
+          return output.json({ message: "You accessed protected resource" });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    });
+
+    // Add middleware that checks authorization
+    const withAuth = instance.withMiddleware(async ({ queryParams }, { services }) => {
+      const q = queryParams.get("q");
+
+      if (services.auth.isAuthorized(q ?? undefined)) {
+        return undefined;
+      }
+
+      return Response.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+    });
+
+    // Test unauthorized request
+    const unauthorizedReq = new Request("http://localhost/api/protected", {
+      method: "GET",
+    });
+    const unauthorizedRes = await withAuth.handler(unauthorizedReq);
+    expect(unauthorizedRes.status).toBe(401);
+    const unauthorizedBody = await unauthorizedRes.json();
+    expect(unauthorizedBody).toEqual({
+      error: "Unauthorized",
+      code: "UNAUTHORIZED",
+    });
+
+    // Test authorized request
+    const authorizedReq = new Request("http://localhost/api/protected?q=valid-token", {
+      method: "GET",
+    });
+    const authorizedRes = await withAuth.handler(authorizedReq);
+    expect(authorizedRes.status).toBe(200);
+    const authorizedBody = await authorizedRes.json();
+    expect(authorizedBody).toEqual({
+      message: "You accessed protected resource",
+    });
+  });
+
+  test("ifMatchesRoute - middleware has access to matched route information", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async (_, { json }) =>
+          json({
+            id: 1,
+            name: "John Doe",
+          }),
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/users/:id",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ input, pathParams }, { json }) => {
+          const body = await input.valid();
+
+          return json({
+            id: +pathParams.id,
+            name: body?.name,
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      const result = await ifMatchesRoute(
+        "POST",
+        "/users/:id",
+        async ({ path, pathParams, input }, { error }) => {
+          expectTypeOf(path).toEqualTypeOf<"/users/:id">();
+          expectTypeOf(pathParams).toEqualTypeOf<{ id: string }>();
+
+          expectTypeOf(input.schema).toEqualTypeOf<z.ZodObject<{ name: z.ZodString }>>();
+
+          return error(
+            {
+              message: "Creating users has been disabled.",
+              code: "CREATE_USERS_DISABLED",
+            },
+            403,
+          );
+        },
+      );
+
+      if (result) {
+        return result;
+      }
+
+      // This was a request to any other route
+      return undefined;
+    });
+
+    // Request to POST, should be disabled.
+    const req = new Request("http://localhost/api/users/123", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "John Doe" }),
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(403);
+
+    expect(await res.json()).toEqual({
+      error: "Creating users has been disabled.",
+      code: "CREATE_USERS_DISABLED",
+    });
+
+    // Request to GET, should be enabled.
+    const getReq = new Request("http://localhost/api/users", {
+      method: "GET",
+    });
+    const getRes = await instance.handler(getReq);
+    expect(getRes.status).toBe(200);
+    expect(await getRes.json()).toEqual({
+      id: 1,
+      name: "John Doe",
+    });
+  });
+
+  test("ifMatchesRoute - not called for other routes", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async (_, { json }) =>
+          json({
+            id: 1,
+            name: "John Doe",
+          }),
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/users/:id",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ input, pathParams }, { json }) => {
+          const body = await input.valid();
+
+          return json({
+            id: +pathParams.id,
+            name: body?.name,
+          });
+        },
+      }),
+    ] as const;
+
+    let middlewareCalled = false;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      return ifMatchesRoute("GET", "/users", () => {
+        middlewareCalled = true;
+      });
+    });
+
+    // Request to POST, should be disabled.
+    const req = new Request("http://localhost/api/users/123", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "John Doe" }),
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(200);
+
+    expect(await res.json()).toEqual({
+      id: 123,
+      name: "John Doe",
+    });
+
+    expect(middlewareCalled).toBe(false);
+  });
+
+  test("ifMatchesRoute - can return undefined", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async (_, { json }) =>
+          json({
+            id: 1,
+            name: "John Doe",
+          }),
+      }),
+    ] as const;
+
+    let middlewareCalled = false;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      await ifMatchesRoute("GET", "/users", async ({ path, pathParams, input }) => {
+        expectTypeOf(path).toEqualTypeOf<"/users">();
+        expectTypeOf(pathParams).toEqualTypeOf<{ [x: string]: never }>();
+        expectTypeOf(input).toEqualTypeOf<undefined>();
+
+        middlewareCalled = true;
+
+        return undefined;
+      });
+
+      return undefined;
+    });
+
+    const getReq = new Request("http://localhost/api/users", {
+      method: "GET",
+    });
+    const getRes = await instance.handler(getReq);
+    expect(getRes.status).toBe(200);
+    expect(await getRes.json()).toEqual({
+      id: 1,
+      name: "John Doe",
+    });
+    expect(middlewareCalled).toBe(true);
+  });
+
+  test("only one middleware is supported", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/test",
+        handler: async (_input, output) => {
+          return output.json({ message: "test" });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, config, routes);
+
+    const withMiddleware = instance.withMiddleware(async () => {
+      return undefined;
+    });
+
+    // Trying to add a third middleware should throw
+    expect(() => {
+      withMiddleware.withMiddleware(async () => {
+        return undefined;
+      });
+    }).toThrow("Middleware already set");
+  });
+
+  test("middleware and handler can both consume request body without double consumption", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ input }, { json }) => {
+          const body = await input.valid();
+          return json({
+            id: 1,
+            name: body?.name,
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      // Middleware consumes the request body
+      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+        const body = await input.valid();
+        // Middleware can read the body
+        expect(body).toEqual({ name: "John Doe" });
+        return undefined; // Continue to handler
+      });
+
+      return result;
+    });
+
+    const req = new Request("http://localhost/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "John Doe" }),
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      id: 1,
+      name: "John Doe",
+    });
+  });
+});
