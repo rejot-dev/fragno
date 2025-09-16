@@ -5,11 +5,11 @@ pre-commit:
   parallel: true
   jobs:
     - name: eslint
-      run: bunx eslint --fix --no-warn-ignored {staged_files}
+      run: bunx eslint --fix --no-warn-ignored "{staged_files}"
     - name: prettier
       run:
-        sh -c 'bunx prettier --ignore-unknown --check {staged_files}; code=$?; bunx prettier
-        --ignore-unknown --write {staged_files}; exit $code'
+        sh -c 'bunx prettier --ignore-unknown --check "{staged_files}"; code=$?; bunx prettier
+        --ignore-unknown --write "{staged_files}"; exit $code'
     - name: build & type-check
       run: bunx turbo run build types:check
       glob: "{*.ts,tsconfig.json}"

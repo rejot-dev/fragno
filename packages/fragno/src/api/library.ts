@@ -101,7 +101,8 @@ export class LibraryBuilder<
   }
 }
 
-export function defineLibrary<TConfig>(name: string): LibraryBuilder<TConfig> {
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export function defineLibrary<TConfig = {}>(name: string): LibraryBuilder<TConfig> {
   return new LibraryBuilder({
     name,
   });

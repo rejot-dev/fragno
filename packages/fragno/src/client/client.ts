@@ -870,6 +870,10 @@ export class ClientBuilder<
           queryParams: query,
         });
 
+        if (response.status === 201 || response.status === 204) {
+          return undefined;
+        }
+
         const isStreaming = isStreamingResponse(response);
 
         if (!isStreaming) {
