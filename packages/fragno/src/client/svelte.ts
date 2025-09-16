@@ -118,6 +118,73 @@ function createSvelteHook<
   };
 }
 
+function createSvelteMutator<
+  TMethod extends NonGetHTTPMethod,
+  TPath extends string,
+  TInputSchema extends StandardSchemaV1 | undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined,
+  TErrorCode extends string,
+  TQueryParameters extends string,
+>(
+  hook: FragnoClientMutatorData<
+    TMethod,
+    TPath,
+    TInputSchema,
+    TOutputSchema,
+    TErrorCode,
+    TQueryParameters
+  >,
+): FragnoSvelteMutator<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters> {
+  return () => {
+    const data = writable<InferOr<TOutputSchema, undefined>>(undefined);
+    const loading = writable<boolean | undefined>(undefined);
+    const error = writable<FragnoClientError<TErrorCode[number]> | undefined>(undefined);
+
+    // Subscribe to the mutator store and sync with our Svelte stores
+    const _unsubscribe = hook.mutatorStore.subscribe((storeValue) => {
+      data.set(storeValue.data as InferOr<TOutputSchema, undefined>);
+      loading.set(storeValue.loading);
+      error.set(storeValue.error);
+    });
+
+    // Create a wrapped mutate function that handles Svelte readable stores
+    const mutate = async (args: {
+      body?: InferOr<TInputSchema, undefined>;
+      path?: MaybeExtractPathParamsOrWiden<TPath, string | Readable<string> | ReadableAtom<string>>;
+      query?: QueryParamsHint<TQueryParameters, string | Readable<string> | ReadableAtom<string>>;
+    }) => {
+      const { body, path, query } = args;
+
+      const pathParams: Record<string, string | ReadableAtom<string>> = {};
+      const queryParams: Record<string, string | ReadableAtom<string>> = {};
+
+      for (const [key, value] of Object.entries(path ?? {})) {
+        const v = value as string | Readable<string> | ReadableAtom<string>;
+        pathParams[key] = isReadable(v) ? readableToAtom(v) : v;
+      }
+
+      for (const [key, value] of Object.entries(query ?? {})) {
+        const v = value as string | Readable<string> | ReadableAtom<string>;
+        queryParams[key] = isReadable(v) ? readableToAtom(v) : v;
+      }
+
+      // Call the store's mutate function with normalized params
+      return hook.mutatorStore.get().mutate({
+        body,
+        path: pathParams as MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
+        query: queryParams,
+      });
+    };
+
+    return {
+      mutate,
+      loading,
+      error,
+      data,
+    };
+  };
+}
+
 export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
@@ -152,8 +219,7 @@ export function useFragno<T extends Record<string, unknown>>(
     if (isGetHook(hook)) {
       result[key] = createSvelteHook(hook);
     } else if (isMutatorHook(hook)) {
-      // result[key] = createSvelteMutator(hook);
-      console.error("Not implemented");
+      result[key] = createSvelteMutator(hook);
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;
