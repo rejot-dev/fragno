@@ -19,38 +19,15 @@ vanilla JavaScript automatically. Fully type safe.
 
 ## Framework Support Matrix
 
-<div style="display: flex; gap: 2rem; flex-wrap: wrap;">
-
-<div style="flex: 1; min-width: 300px;">
-
-### Client-side
-
-| Framework          | Support    |
-| ------------------ | ---------- |
-| React              | ✅         |
-| Vue                | ✅         |
-| Vanilla JavaScript | ✅         |
-| Svelte             | 🔄 Planned |
-
-</div>
-
-<div style="flex: 1; min-width: 300px;">
-
-### Server-side
-
-| Framework               | Support    |
-| ----------------------- | ---------- |
-| Node.js / Express       | ✅         |
-| React Router v7 / Remix | ✅         |
-| Astro                   | ✅         |
-| Next.js                 | ✅         |
-| Nuxt                    | ✅         |
-| SvelteKit               | 🔄 Planned |
-| Tanstack Start          | 🔄 Planned |
-
-</div>
-
-</div>
+| Client-side Frameworks | Support    | —   | Server-side Frameworks  | Support    |
+| ---------------------- | ---------- | --- | ----------------------- | ---------- |
+| React                  | ✅         |     | Node.js / Express       | ✅         |
+| Vue                    | ✅         |     | React Router v7 / Remix | ✅         |
+| Vanilla JavaScript     | ✅         |     | Astro                   | ✅         |
+| Svelte                 | 🔄 Planned |     | Next.js                 | ✅         |
+|                        |            |     | Nuxt                    | ✅         |
+|                        |            |     | SvelteKit               | 🔄 Planned |
+|                        |            |     | Tanstack Start          | 🔄 Planned |
 
 ## Usage
 
@@ -196,15 +173,6 @@ There are also two examples showing the implementation of a Fragment (Fragno Lib
 - `packages/example-fragment` - Minimal fragment example
 - `packages/chatno` - Example fragment with OpenAI integration. Shows usage of config, dependencies,
   streaming, and advanced client-side state management.
-
-## Why Fragno?
-
-Traditional full-stack frameworks lock you into specific ecosystems. Fragno lets you build
-**portable full-stack libraries** that work everywhere:
-
-- **Library authors**: Build once, support all frameworks
-- **App developers**: Use any fragment with your preferred framework
-- **Teams**: Share full-stack features across different projects
 
 ## Contributing
 
