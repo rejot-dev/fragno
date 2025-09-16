@@ -10,15 +10,7 @@
 
   const refreshKey = writable("hey");
   const shouldTriggerError = writable(false);
-
-  const { loading, data, error: dataError } = useData({
-    query: {
-      name: derived(refreshKey, ($refreshKey) => $refreshKey.toString()),
-      error: derived(shouldTriggerError, ($shouldTriggerError) =>
-        $shouldTriggerError ? "true" : "",
-      ),
-    },
-  });
+  const shouldShowComponent = writable(true);
 
   const { loading: hashLoading, data: hashData, error: hashError } = useHash();
 
@@ -39,7 +31,7 @@
     });
     // Clear input and refresh data after successful mutation
     messageInput.set("");
-    refreshKey.update(n => n + 1);
+    refreshKey.update((n) => n + "!");
   }
 </script>
 
@@ -51,18 +43,15 @@
   <div style="margin-bottom: 30px">
     <h1>SvelteKit Fragno Example</h1>
     <h2>Current Data:</h2>
-    {#if $loading}
-      <div class="loading">
-        Loading…
-      </div>
-    {:else if $dataError}
-      <div class="error">
-        Error: {$dataError.message} (code: {$dataError.code})
-      </div>
-    {:else}
-      <div class="data">
-        {$data || "No data yet"}
-      </div>
+    <input
+      id="toggle-data"
+      type="checkbox"
+      bind:checked={$shouldShowComponent}
+      style="margin-right: 6px"
+    />
+    <label for="toggle-data" style="font-size: 14px; color: #333"> Show Data </label>
+    {#if $shouldShowComponent}
+      <DataDisplay {refreshKey} {shouldTriggerError} />
     {/if}
     <div style="margin-top: 15px; display: flex; align-items: center; gap: 8px">
       <input
@@ -76,58 +65,58 @@
   </div>
 
   <div style="margin-bottom: 30px">
-
-  <div style="margin-bottom: 30px">
-    <h2>Send Message:</h2>
-    <div style="display: flex; gap: 10px; margin-bottom: 15px">
-      <input
-        bind:value={$messageInput}
-        placeholder="Enter your message..."
-        disabled={$sampleMutateLoading}
-        style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px"
-      />
-      <button
-        on:click={sendMessage}
-        disabled={$sampleMutateLoading || !$messageInput.trim()}
-        style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer"
-      >
-        {$sampleMutateLoading ? 'Sending...' : 'Send Message'}
-      </button>
-    </div>
-
-    {#if $sampleMutateError}
-      <div class="error">
-        Mutation error: {$sampleMutateError.message} (code: {$sampleMutateError.code})
+    <div style="margin-bottom: 30px">
+      <h2>Send Message:</h2>
+      <div style="display: flex; gap: 10px; margin-bottom: 15px">
+        <input
+          bind:value={$messageInput}
+          placeholder="Enter your message..."
+          disabled={$sampleMutateLoading}
+          style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px"
+        />
+        <button
+          on:click={sendMessage}
+          disabled={$sampleMutateLoading || !$messageInput.trim()}
+          style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer"
+        >
+          {$sampleMutateLoading ? "Sending..." : "Send Message"}
+        </button>
       </div>
-    {/if}
 
-    {#if $sampleMutateData}
-      <div class="success">
-        Message sent: {$sampleMutateData}
+      {#if $sampleMutateError}
+        <div class="error">
+          Mutation error: {$sampleMutateError.message} (code: {$sampleMutateError.code})
+        </div>
+      {/if}
+
+      {#if $sampleMutateData}
+        <div class="success">
+          Message sent: {$sampleMutateData}
+        </div>
+      {/if}
+    </div>
+    <h2>Hash Data:</h2>
+    {#if $hashLoading}
+      <div class="loading">Loading hash…</div>
+    {:else if $hashError}
+      <div class="error">
+        Hash error: {$hashError.message} (code: {$hashError.code})
+      </div>
+    {:else}
+      <div class="data">
+        {$hashData || "No hash data"}
       </div>
     {/if}
   </div>
-  <h2>Hash Data:</h2>
-  {#if $hashLoading}
-    <div class="loading">
-      Loading hash…
-    </div>
-  {:else if $hashError}
-    <div class="error">
-      Hash error: {$hashError.message} (code: {$hashError.code})
-    </div>
-  {:else}
-    <div class="data">
-      {$hashData || "No hash data"}
-    </div>
-  {/if}
-</div>
 </main>
 
 <style>
   main {
     padding: 20px;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
 
   .loading {
