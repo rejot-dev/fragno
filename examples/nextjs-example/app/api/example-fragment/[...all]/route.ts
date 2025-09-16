@@ -1,6 +1,4 @@
-import { createExampleFragment } from "@fragno-dev/example-fragment";
 import { toNextJsHandler } from "@fragno-dev/core/next-js";
+import { createExampleFragmentServer } from "@/lib/example-fragment-server";
 
-const exampleFragment = createExampleFragment({});
-
-export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(exampleFragment);
+export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(createExampleFragmentServer());

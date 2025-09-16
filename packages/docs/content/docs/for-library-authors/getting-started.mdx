@@ -1,0 +1,456 @@
+---
+title: Getting Started
+description: Learn how to build your own Fragno fragments
+---
+
+# Getting Started: Building Fragments
+
+A Fragment is a full-stack library that works seamlessly across different frameworks. This guide
+will walk you through creating your first fragment.
+
+## Prerequisites
+
+- Node.js 18+ or Bun 1.2.20+
+- TypeScript knowledge
+- Basic understanding of REST APIs
+
+## Installation
+
+```bash
+bun add @fragno-dev/core zod
+# or
+npm install @fragno-dev/core zod
+```
+
+<Callout type="info">
+  Fragno uses [Zod](https://zod.dev/) for schema validation, but you can use any
+  StandardSchema-compatible library.
+</Callout>
+
+## Creating Your First Fragment
+
+Let's build a simple todos fragment that demonstrates the core concepts.
+
+### Step 1: Define Your Fragment
+
+```typescript title="src/index.ts"
+import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { z } from "zod";
+
+// Define the configuration interface
+export interface TodosConfig {
+  // Any configuration your users need to provide
+  maxTodos?: number;
+  onTodoCreated?: (todo: Todo) => void;
+}
+
+// Define your data types
+const TodoSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  done: z.boolean(),
+  createdAt: z.string(),
+});
+
+type Todo = z.infer<typeof TodoSchema>;
+
+// Define your library
+const todosDefinition = defineLibrary<TodosConfig>("todos-fragment");
+```
+
+### Step 2: Add Dependencies (Optional)
+
+If your fragment needs server-side dependencies like databases or external APIs:
+
+```typescript
+const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDependencies(
+  (config: TodosConfig) => {
+    return {
+      database: new DatabaseConnection(),
+      maxTodos: config.maxTodos ?? 100,
+      // These dependencies are automatically stripped from client bundles
+    };
+  },
+);
+```
+
+### Step 3: Define Routes
+
+```typescript
+// GET /todos - List all todos
+const getTodosRoute = defineRoute({
+  method: "GET",
+  path: "/todos",
+  outputSchema: z.array(TodoSchema),
+  handler: async (_, { json }) => {
+    // In a real app, fetch from your database
+    const todos: Todo[] = [
+      {
+        id: "1",
+        text: "Learn Fragno",
+        done: false,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    return json(todos);
+  },
+});
+
+// POST /todos - Create a new todo
+const addTodoRoute = defineRoute({
+  method: "POST",
+  path: "/todos",
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: TodoSchema,
+  handler: async ({ input, services }, { json }) => {
+    const { text } = await input.valid();
+
+    const todo: Todo = {
+      id: crypto.randomUUID(),
+      text,
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Call the user's callback if provided
+    services?.onTodoCreated?.(todo);
+
+    return json(todo);
+  },
+});
+
+// PUT /todos/:id - Update a todo
+const updateTodoRoute = defineRoute({
+  method: "PUT",
+  path: "/todos/:id",
+  pathSchema: z.object({ id: z.string() }),
+  inputSchema: z.object({
+    text: z.string().optional(),
+    done: z.boolean().optional(),
+  }),
+  outputSchema: TodoSchema,
+  handler: async ({ path, input }, { json, error }) => {
+    const { id } = await path.valid();
+    const updates = await input.valid();
+
+    // In a real app, find and update the todo in your database
+    const existingTodo = findTodoById(id);
+    if (!existingTodo) {
+      return error({ message: "Todo not found", code: "NOT_FOUND" }, 404);
+    }
+
+    const updatedTodo: Todo = {
+      ...existingTodo,
+      ...updates,
+    };
+
+    return json(updatedTodo);
+  },
+});
+```
+
+### Step 4: Export Server Creator
+
+```typescript
+export function createTodos(config: TodosConfig = {}, fragnoConfig = {}) {
+  return createLibrary(
+    todosDefinition,
+    config,
+    [getTodosRoute, addTodoRoute, updateTodoRoute],
+    fragnoConfig,
+  );
+}
+```
+
+### Step 5: Export Type-Safe Client Creator
+
+```typescript
+export function createTodosClient(fragnoConfig = {}) {
+  const builder = createClientBuilder(todosDefinition, fragnoConfig, [
+    getTodosRoute,
+    addTodoRoute,
+    updateTodoRoute,
+  ]);
+
+  return {
+    // Query hooks
+    useTodos: builder.createHook("/todos"),
+
+    // Mutation hooks
+    useAddTodo: builder.createMutator("POST", "/todos"),
+    useUpdateTodo: builder.createMutator("PUT", "/todos/:id"),
+  };
+}
+```
+
+## Complete Example
+
+Here's the complete fragment:
+
+```typescript title="src/index.ts"
+import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { z } from "zod";
+
+export interface TodosConfig {
+  maxTodos?: number;
+  onTodoCreated?: (todo: Todo) => void;
+}
+
+const TodoSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  done: z.boolean(),
+  createdAt: z.string(),
+});
+
+type Todo = z.infer<typeof TodoSchema>;
+
+const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDependencies(
+  (config: TodosConfig) => {
+    return {
+      maxTodos: config.maxTodos ?? 100,
+    };
+  },
+);
+
+// In-memory storage (use a real database in production)
+let todos: Todo[] = [];
+
+const getTodosRoute = defineRoute({
+  method: "GET",
+  path: "/todos",
+  outputSchema: z.array(TodoSchema),
+  handler: async ({ deps }, { json }) => {
+    return json(todos.slice(0, deps.maxTodos));
+  },
+});
+
+const addTodoRoute = defineRoute({
+  method: "POST",
+  path: "/todos",
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: TodoSchema,
+  handler: async ({ input, config, deps }, { json, error }) => {
+    if (todos.length >= deps.maxTodos) {
+      return error({ message: "Maximum todos reached", code: "LIMIT_EXCEEDED" }, 400);
+    }
+
+    const { text } = await input.valid();
+    const todo: Todo = {
+      id: crypto.randomUUID(),
+      text,
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    todos.push(todo);
+    config.onTodoCreated?.(todo);
+
+    return json(todo);
+  },
+});
+
+const updateTodoRoute = defineRoute({
+  method: "PUT",
+  path: "/todos/:id",
+  pathSchema: z.object({ id: z.string() }),
+  inputSchema: z.object({
+    text: z.string().optional(),
+    done: z.boolean().optional(),
+  }),
+  outputSchema: TodoSchema,
+  handler: async ({ path, input }, { json, error }) => {
+    const { id } = await path.valid();
+    const updates = await input.valid();
+
+    const todoIndex = todos.findIndex((t) => t.id === id);
+    if (todoIndex === -1) {
+      return error({ message: "Todo not found", code: "NOT_FOUND" }, 404);
+    }
+
+    todos[todoIndex] = { ...todos[todoIndex], ...updates };
+    return json(todos[todoIndex]);
+  },
+});
+
+export function createTodos(config: TodosConfig = {}, fragnoConfig = {}) {
+  return createLibrary(
+    todosDefinition,
+    config,
+    [getTodosRoute, addTodoRoute, updateTodoRoute],
+    fragnoConfig,
+  );
+}
+
+export function createTodosClient(fragnoConfig = {}) {
+  const builder = createClientBuilder(todosDefinition, fragnoConfig, [
+    getTodosRoute,
+    addTodoRoute,
+    updateTodoRoute,
+  ]);
+
+  return {
+    useTodos: builder.createHook("/todos"),
+    useAddTodo: builder.createMutator("POST", "/todos"),
+    useUpdateTodo: builder.createMutator("PUT", "/todos/:id"),
+  };
+}
+```
+
+## Project Structure
+
+Here's a recommended project structure for your fragment:
+
+```
+my-fragment/
+├── src/
+│   ├── index.ts          # Main fragment definition
+│   ├── routes/
+│   │   ├── todos.ts      # Todo-related routes
+│   │   └── index.ts      # Re-export all routes
+│   ├── types/
+│   │   └── index.ts      # Shared types and schemas
+│   └── utils/
+│       └── index.ts      # Utility functions
+├── package.json
+├── tsconfig.json
+└── tsdown.config.ts      # Build configuration
+```
+
+## Building and Publishing
+
+### Package.json Setup
+
+```json title="package.json"
+{
+  "name": "@your-org/todos-fragment",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "types:check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@fragno-dev/core": "^0.1.0"
+  },
+  "dependencies": {
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@fragno-dev/core": "^0.1.0",
+    "tsdown": "^0.2.0",
+    "typescript": "^5.0.0"
+  }
+}
+```
+
+### Build Configuration
+
+```typescript title="tsdown.config.ts"
+import { defineConfig } from "tsdown";
+
+export default defineConfig({
+  entry: ["src/index.ts"],
+  format: ["esm"],
+  dts: true,
+  clean: true,
+  external: ["@fragno-dev/core"],
+});
+```
+
+### Building
+
+```bash
+# Development build with watch mode
+bun run dev
+
+# Production build
+bun run build
+
+# Type checking
+bun run types:check
+```
+
+### Publishing
+
+```bash
+# Build the package
+bun run build
+
+# Publish to npm
+npm publish
+```
+
+## Testing Your Fragment
+
+Create a simple test to verify your fragment works:
+
+```typescript title="tests/todos.test.ts"
+import { describe, it, expect } from "vitest";
+import { createTodos } from "../src/index";
+
+describe("Todos Fragment", () => {
+  it("should handle GET /todos", async () => {
+    const fragment = createTodos();
+
+    const request = new Request("http://localhost:3000/todos", {
+      method: "GET",
+    });
+
+    const response = await fragment.handler(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(data)).toBe(true);
+  });
+
+  it("should handle POST /todos", async () => {
+    let createdTodo: any;
+    const fragment = createTodos({
+      onTodoCreated: (todo) => {
+        createdTodo = todo;
+      },
+    });
+
+    const request = new Request("http://localhost:3000/todos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Test todo" }),
+    });
+
+    const response = await fragment.handler(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.text).toBe("Test todo");
+    expect(data.done).toBe(false);
+    expect(createdTodo).toEqual(data);
+  });
+});
+```
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Advanced Features"
+    href="/docs/for-library-authors/advanced-features"
+    description="Learn about streaming, middleware, and error handling"
+  />
+  <Card
+    title="Best Practices"
+    href="/docs/for-library-authors/best-practices"
+    description="Follow our recommended patterns"
+  />
+  <Card title="Examples" href="/docs/examples" description="See real-world fragment examples" />
+</Cards>

@@ -12,7 +12,7 @@ pre-commit:
         --ignore-unknown --write "{staged_files}"; exit $code'
     - name: build & type-check
       run: bunx turbo run build types:check
-      glob: "{*.ts,tsconfig.json}"
+      glob: "{*.ts,*.tsx,tsconfig.json}"
     - name: test
       run: bunx vitest run --allowOnly=false
       glob: "{*.ts,tsconfig.json}"

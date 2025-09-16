@@ -13,4 +13,7 @@ export default defineConfig({
     "./src/integrations/react-ssr.ts",
   ],
   dts: true,
+  // TODO: This should be true, but we need some additional type exports in chatno/src/index.ts
+  // to make it work.
+  unbundle: false,
 });

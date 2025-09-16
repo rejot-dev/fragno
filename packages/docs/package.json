@@ -10,13 +10,17 @@
     "types:check": "tsc --noEmit"
   },
   "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "class-variance-authority": "^0.7.1",
     "fumadocs-core": "15.7.12",
     "fumadocs-mdx": "11.10.0",
+    "fumadocs-typescript": "^4.0.8",
     "fumadocs-ui": "15.7.12",
     "lucide-react": "^0.544.0",
     "next": "15.5.3",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@types/node": "24.3.3",

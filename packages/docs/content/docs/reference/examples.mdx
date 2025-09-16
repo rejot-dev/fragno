@@ -1,0 +1,816 @@
+---
+title: Examples
+description: Real-world examples of Fragno fragments and integrations
+---
+
+# Examples
+
+This page showcases real-world examples of Fragno fragments and how to integrate them into different
+frameworks.
+
+## Fragment Examples
+
+### 1. Todo Fragment (Simple CRUD)
+
+A basic CRUD fragment for managing todos:
+
+```typescript title="src/todos-fragment.ts"
+import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { z } from "zod";
+
+export interface TodosConfig {
+  maxTodos?: number;
+  onTodoCreated?: (todo: Todo) => void;
+}
+
+const TodoSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  done: z.boolean(),
+  createdAt: z.string(),
+});
+
+type Todo = z.infer<typeof TodoSchema>;
+
+const todosDefinition = defineLibrary<TodosConfig>("todos-fragment");
+
+// In-memory storage (use a database in production)
+let todos: Todo[] = [];
+
+const listTodosRoute = defineRoute({
+  method: "GET",
+  path: "/todos",
+  outputSchema: z.array(TodoSchema),
+  handler: async (_, { json }) => {
+    return json(todos);
+  },
+});
+
+const createTodoRoute = defineRoute({
+  method: "POST",
+  path: "/todos",
+  inputSchema: z.object({ text: z.string().min(1) }),
+  outputSchema: TodoSchema,
+  handler: async ({ input, config }, { json }) => {
+    const { text } = await input.valid();
+
+    const todo: Todo = {
+      id: crypto.randomUUID(),
+      text,
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    todos.push(todo);
+    config.onTodoCreated?.(todo);
+
+    return json(todo);
+  },
+});
+
+const updateTodoRoute = defineRoute({
+  method: "PUT",
+  path: "/todos/:id",
+  pathSchema: z.object({ id: z.string() }),
+  inputSchema: z.object({
+    text: z.string().optional(),
+    done: z.boolean().optional(),
+  }),
+  outputSchema: TodoSchema,
+  errorCodes: ["NOT_FOUND"] as const,
+  handler: async ({ path, input }, { json, error }) => {
+    const { id } = await path.valid();
+    const updates = await input.valid();
+
+    const todoIndex = todos.findIndex((t) => t.id === id);
+    if (todoIndex === -1) {
+      return error({ message: "Todo not found", code: "NOT_FOUND" }, 404);
+    }
+
+    todos[todoIndex] = { ...todos[todoIndex], ...updates };
+    return json(todos[todoIndex]);
+  },
+});
+
+const deleteTodoRoute = defineRoute({
+  method: "DELETE",
+  path: "/todos/:id",
+  pathSchema: z.object({ id: z.string() }),
+  outputSchema: z.object({ deleted: z.boolean() }),
+  errorCodes: ["NOT_FOUND"] as const,
+  handler: async ({ path }, { json, error }) => {
+    const { id } = await path.valid();
+
+    const todoIndex = todos.findIndex((t) => t.id === id);
+    if (todoIndex === -1) {
+      return error({ message: "Todo not found", code: "NOT_FOUND" }, 404);
+    }
+
+    todos.splice(todoIndex, 1);
+    return json({ deleted: true });
+  },
+});
+
+export function createTodos(config: TodosConfig = {}) {
+  return createLibrary(todosDefinition, config, [
+    listTodosRoute,
+    createTodoRoute,
+    updateTodoRoute,
+    deleteTodoRoute,
+  ]);
+}
+
+export function createTodosClient(fragnoConfig = {}) {
+  const builder = createClientBuilder(todosDefinition, fragnoConfig, [
+    listTodosRoute,
+    createTodoRoute,
+    updateTodoRoute,
+    deleteTodoRoute,
+  ]);
+
+  return {
+    useTodos: builder.createHook("/todos"),
+    useCreateTodo: builder.createMutator("POST", "/todos"),
+    useUpdateTodo: builder.createMutator("PUT", "/todos/:id"),
+    useDeleteTodo: builder.createMutator("DELETE", "/todos/:id"),
+  };
+}
+```
+
+### 2. Chat Fragment (with AI Streaming)
+
+A more complex fragment that integrates with OpenAI for streaming chat:
+
+```typescript title="src/chat-fragment.ts"
+import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { z } from "zod";
+import OpenAI from "openai";
+
+export interface ChatConfig {
+  openaiApiKey: string;
+  model?: string;
+  systemPrompt?: string;
+}
+
+const MessageSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  role: z.enum(["user", "assistant"]),
+  timestamp: z.string(),
+});
+
+type Message = z.infer<typeof MessageSchema>;
+
+const chatDefinition = defineLibrary<ChatConfig>("chat-fragment").withDependencies((config) => ({
+  openai: new OpenAI({ apiKey: config.openaiApiKey }),
+}));
+
+const chatRoute = defineRoute({
+  method: "POST",
+  path: "/chat",
+  inputSchema: z.object({
+    message: z.string().min(1),
+    conversationId: z.string(),
+  }),
+  outputSchema: z.array(MessageSchema),
+  handler: async ({ input, deps, config }, { jsonStream }) => {
+    const { message, conversationId } = await input.valid();
+
+    return jsonStream(async (stream) => {
+      // Send user message first
+      const userMessage: Message = {
+        id: crypto.randomUUID(),
+        content: message,
+        role: "user",
+        timestamp: new Date().toISOString(),
+      };
+      await stream.write(userMessage);
+
+      // Prepare messages for OpenAI
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: "system", content: config.systemPrompt ?? "You are a helpful assistant." },
+        { role: "user", content: message },
+      ];
+
+      // Stream AI response
+      const response = await deps.openai.chat.completions.create({
+        model: config.model ?? "gpt-3.5-turbo",
+        messages,
+        stream: true,
+      });
+
+      let assistantContent = "";
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        content: "",
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+      };
+
+      for await (const chunk of response) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          assistantContent += content;
+          assistantMessage.content = assistantContent;
+          await stream.write(assistantMessage);
+        }
+      }
+    });
+  },
+});
+
+export function createChat(config: ChatConfig) {
+  return createLibrary(chatDefinition, config, [chatRoute]);
+}
+
+export function createChatClient(fragnoConfig = {}) {
+  const builder = createClientBuilder(chatDefinition, fragnoConfig, [chatRoute]);
+
+  return {
+    useChat: builder.createMutator("POST", "/chat"),
+  };
+}
+```
+
+### 3. File Storage Fragment (with Uploads)
+
+A fragment for handling file uploads and storage:
+
+```typescript title="src/storage-fragment.ts"
+import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { z } from "zod";
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
+
+export interface StorageConfig {
+  uploadDir: string;
+  maxFileSize?: number; // in bytes
+  allowedTypes?: string[];
+}
+
+const FileInfoSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  size: z.number(),
+  mimetype: z.string(),
+  uploadedAt: z.string(),
+  url: z.string(),
+});
+
+type FileInfo = z.infer<typeof FileInfoSchema>;
+
+const storageDefinition = defineLibrary<StorageConfig>("storage-fragment").withDependencies(
+  (config) => ({
+    uploadDir: config.uploadDir,
+    maxFileSize: config.maxFileSize ?? 5 * 1024 * 1024, // 5MB default
+    allowedTypes: config.allowedTypes ?? ["image/*", "application/pdf"],
+  }),
+);
+
+// In-memory storage (use a database in production)
+let files: FileInfo[] = [];
+
+const uploadRoute = defineRoute({
+  method: "POST",
+  path: "/upload",
+  outputSchema: FileInfoSchema,
+  errorCodes: ["FILE_TOO_LARGE", "INVALID_FILE_TYPE", "NO_FILE"] as const,
+  handler: async ({ context, deps }, { json, error }) => {
+    const formData = await context.request.formData();
+    const file = formData.get("file") as File;
+
+    if (!file) {
+      return error({ message: "No file provided", code: "NO_FILE" }, 400);
+    }
+
+    // Validate file size
+    if (file.size > deps.maxFileSize) {
+      return error(
+        { message: `File too large. Max size: ${deps.maxFileSize} bytes`, code: "FILE_TOO_LARGE" },
+        400,
+      );
+    }
+
+    // Validate file type
+    const isAllowedType = deps.allowedTypes.some((type) => {
+      if (type.endsWith("/*")) {
+        const baseType = type.slice(0, -2);
+        return file.type.startsWith(baseType);
+      }
+      return file.type === type;
+    });
+
+    if (!isAllowedType) {
+      return error({ message: "Invalid file type", code: "INVALID_FILE_TYPE" }, 400);
+    }
+
+    // Save file
+    const fileId = crypto.randomUUID();
+    const filename = `${fileId}-${file.name}`;
+    const filepath = join(deps.uploadDir, filename);
+
+    await mkdir(deps.uploadDir, { recursive: true });
+
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    await writeFile(filepath, buffer);
+
+    const fileInfo: FileInfo = {
+      id: fileId,
+      filename: file.name,
+      size: file.size,
+      mimetype: file.type,
+      uploadedAt: new Date().toISOString(),
+      url: `/files/${filename}`,
+    };
+
+    files.push(fileInfo);
+
+    return json(fileInfo);
+  },
+});
+
+const listFilesRoute = defineRoute({
+  method: "GET",
+  path: "/files",
+  querySchema: z.object({
+    limit: z.coerce.number().default(10),
+    offset: z.coerce.number().default(0),
+  }),
+  outputSchema: z.object({
+    files: z.array(FileInfoSchema),
+    total: z.number(),
+    hasMore: z.boolean(),
+  }),
+  handler: async ({ query }, { json }) => {
+    const { limit, offset } = await query.valid();
+
+    const paginatedFiles = files.slice(offset, offset + limit);
+
+    return json({
+      files: paginatedFiles,
+      total: files.length,
+      hasMore: offset + limit < files.length,
+    });
+  },
+});
+
+export function createStorage(config: StorageConfig) {
+  return createLibrary(storageDefinition, config, [uploadRoute, listFilesRoute]);
+}
+
+export function createStorageClient(fragnoConfig = {}) {
+  const builder = createClientBuilder(storageDefinition, fragnoConfig, [
+    uploadRoute,
+    listFilesRoute,
+  ]);
+
+  return {
+    useUpload: builder.createMutator("POST", "/upload"),
+    useFiles: builder.createHook("/files"),
+  };
+}
+```
+
+## Framework Integration Examples
+
+### Next.js Example
+
+Complete Next.js application using the todos fragment:
+
+```typescript title="app/api/todos/[...all]/route.ts"
+import { createTodos } from "@/lib/todos-fragment";
+import { toNextJsHandler } from "@fragno-dev/core/next-js";
+
+const todos = createTodos({
+  maxTodos: 100,
+  onTodoCreated: (todo) => {
+    console.log("New todo created:", todo.text);
+  },
+});
+
+export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(todos);
+```
+
+```typescript title="components/TodoApp.tsx"
+"use client";
+
+import { createTodosClient } from "@/lib/todos-fragment";
+import { useFragno } from "@fragno-dev/core/react";
+import { useState } from "react";
+
+const todosClient = createTodosClient({
+  baseUrl: typeof window !== "undefined" ? window.location.origin : "",
+  mountRoute: "/api/todos",
+});
+
+const { useTodos, useCreateTodo, useUpdateTodo, useDeleteTodo } = useFragno(todosClient);
+
+export default function TodoApp() {
+  const [newTodoText, setNewTodoText] = useState("");
+
+  const { data: todos, loading, error, refetch } = useTodos();
+  const { mutate: createTodo, loading: creating } = useCreateTodo();
+  const { mutate: updateTodo } = useUpdateTodo();
+  const { mutate: deleteTodo } = useDeleteTodo();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTodoText.trim()) return;
+
+    try {
+      await createTodo({ body: { text: newTodoText.trim() } });
+      setNewTodoText("");
+      refetch(); // Refresh the list
+    } catch (err) {
+      console.error("Failed to create todo:", err);
+    }
+  };
+
+  const handleToggle = async (id: string, done: boolean) => {
+    try {
+      await updateTodo({
+        path: { id },
+        body: { done: !done }
+      });
+      refetch();
+    } catch (err) {
+      console.error("Failed to update todo:", err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTodo({ path: { id } });
+      refetch();
+    } catch (err) {
+      console.error("Failed to delete todo:", err);
+    }
+  };
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div className="max-w-md mx-auto mt-8">
+      <h1 className="text-2xl font-bold mb-4">Todo App</h1>
+
+      <form onSubmit={handleSubmit} className="mb-4">
+        <input
+          type="text"
+          value={newTodoText}
+          onChange={(e) => setNewTodoText(e.target.value)}
+          placeholder="Add a new todo..."
+          className="w-full px-3 py-2 border rounded-md"
+          disabled={creating}
+        />
+        <button
+          type="submit"
+          disabled={creating || !newTodoText.trim()}
+          className="w-full mt-2 px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+        >
+          {creating ? "Adding..." : "Add Todo"}
+        </button>
+      </form>
+
+      <div className="space-y-2">
+        {todos?.map((todo) => (
+          <div
+            key={todo.id}
+            className="flex items-center justify-between p-3 border rounded-md"
+          >
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={todo.done}
+                onChange={() => handleToggle(todo.id, todo.done)}
+              />
+              <span className={todo.done ? "line-through text-gray-500" : ""}>
+                {todo.text}
+              </span>
+            </div>
+            <button
+              onClick={() => handleDelete(todo.id)}
+              className="text-red-500 hover:text-red-700"
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### Vue Example
+
+```vue title="components/TodoApp.vue"
+<script setup lang="ts">
+import { ref } from "vue";
+import { createTodosClient } from "@/lib/todos-fragment";
+import { useFragno } from "@fragno-dev/core/vue";
+
+const todosClient = createTodosClient({
+  baseUrl: window.location.origin,
+  mountRoute: "/api/todos",
+});
+
+const { useTodos, useCreateTodo, useUpdateTodo, useDeleteTodo } = useFragno(todosClient);
+
+const newTodoText = ref("");
+const todos = useTodos();
+const createTodo = useCreateTodo();
+const updateTodo = useUpdateTodo();
+const deleteTodo = useDeleteTodo();
+
+const handleSubmit = async () => {
+  if (!newTodoText.value.trim()) return;
+
+  try {
+    await createTodo.mutate({ body: { text: newTodoText.value.trim() } });
+    newTodoText.value = "";
+    todos.refetch();
+  } catch (err) {
+    console.error("Failed to create todo:", err);
+  }
+};
+
+const handleToggle = async (id: string, done: boolean) => {
+  try {
+    await updateTodo.mutate({
+      path: { id },
+      body: { done: !done },
+    });
+    todos.refetch();
+  } catch (err) {
+    console.error("Failed to update todo:", err);
+  }
+};
+
+const handleDelete = async (id: string) => {
+  try {
+    await deleteTodo.mutate({ path: { id } });
+    todos.refetch();
+  } catch (err) {
+    console.error("Failed to delete todo:", err);
+  }
+};
+</script>
+
+<template>
+  <div class="mx-auto mt-8 max-w-md">
+    <h1 class="mb-4 text-2xl font-bold">Todo App</h1>
+
+    <div v-if="todos.loading.value">Loading...</div>
+    <div v-else-if="todos.error.value">Error: {{ todos.error.value.message }}</div>
+
+    <template v-else>
+      <form @submit.prevent="handleSubmit" class="mb-4">
+        <input
+          v-model="newTodoText"
+          type="text"
+          placeholder="Add a new todo..."
+          class="w-full rounded-md border px-3 py-2"
+          :disabled="createTodo.loading.value"
+        />
+        <button
+          type="submit"
+          :disabled="createTodo.loading.value || !newTodoText.trim()"
+          class="mt-2 w-full rounded-md bg-blue-500 px-4 py-2 text-white disabled:opacity-50"
+        >
+          {{ createTodo.loading.value ? "Adding..." : "Add Todo" }}
+        </button>
+      </form>
+
+      <div class="space-y-2">
+        <div
+          v-for="todo in todos.data.value"
+          :key="todo.id"
+          class="flex items-center justify-between rounded-md border p-3"
+        >
+          <div class="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              :checked="todo.done"
+              @change="handleToggle(todo.id, todo.done)"
+            />
+            <span :class="todo.done ? 'text-gray-500 line-through' : ''">
+              {{ todo.text }}
+            </span>
+          </div>
+          <button @click="handleDelete(todo.id)" class="text-red-500 hover:text-red-700">
+            Delete
+          </button>
+        </div>
+      </div>
+    </template>
+  </div>
+</template>
+```
+
+### React Router v7 Example
+
+```typescript title="app/routes/api.todos.tsx"
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+import { createTodos } from "~/lib/todos-fragment";
+
+const todos = createTodos({
+  maxTodos: 100,
+});
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  return await todos.handler(request);
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  return await todos.handler(request);
+}
+```
+
+### Astro Example
+
+```typescript title="src/pages/api/todos/[...all].ts"
+import type { APIRoute } from "astro";
+import { createTodos } from "../../../lib/todos-fragment";
+
+const todos = createTodos();
+
+export const ALL: APIRoute = async ({ request }) => {
+  return await todos.handler(request);
+};
+```
+
+## Testing Examples
+
+### Unit Testing a Fragment
+
+```typescript title="tests/todos.test.ts"
+import { describe, it, expect, beforeEach } from "vitest";
+import { createTodos } from "../src/todos-fragment";
+
+describe("Todos Fragment", () => {
+  let fragment: ReturnType<typeof createTodos>;
+
+  beforeEach(() => {
+    fragment = createTodos({
+      maxTodos: 5,
+    });
+  });
+
+  it("should create a todo", async () => {
+    const request = new Request("http://localhost/todos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Test todo" }),
+    });
+
+    const response = await fragment.handler(request);
+    const todo = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(todo.text).toBe("Test todo");
+    expect(todo.done).toBe(false);
+    expect(todo.id).toBeDefined();
+  });
+
+  it("should list todos", async () => {
+    // Create a todo first
+    await fragment.handler(
+      new Request("http://localhost/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Test todo" }),
+      }),
+    );
+
+    const request = new Request("http://localhost/todos");
+    const response = await fragment.handler(request);
+    const todos = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(todos)).toBe(true);
+    expect(todos).toHaveLength(1);
+    expect(todos[0].text).toBe("Test todo");
+  });
+
+  it("should handle validation errors", async () => {
+    const request = new Request("http://localhost/todos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "" }), // Empty text should fail validation
+    });
+
+    const response = await fragment.handler(request);
+
+    expect(response.status).toBe(400);
+    const error = await response.json();
+    expect(error.code).toBe("VALIDATION_ERROR");
+  });
+});
+```
+
+### Integration Testing with Framework
+
+```typescript title="tests/integration.test.ts"
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createServer } from "http";
+import { toNodeHandler } from "@fragno-dev/core/node";
+import { createTodos } from "../src/todos-fragment";
+
+describe("Todos Integration", () => {
+  let server: any;
+  let baseUrl: string;
+
+  beforeAll(() => {
+    const todos = createTodos();
+    const handler = toNodeHandler(todos);
+
+    server = createServer(handler);
+    server.listen(0); // Random port
+
+    const { port } = server.address();
+    baseUrl = `http://localhost:${port}`;
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  it("should handle full CRUD workflow", async () => {
+    // Create
+    const createResponse = await fetch(`${baseUrl}/todos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Integration test todo" }),
+    });
+    const todo = await createResponse.json();
+    expect(createResponse.status).toBe(200);
+
+    // Read
+    const listResponse = await fetch(`${baseUrl}/todos`);
+    const todos = await listResponse.json();
+    expect(listResponse.status).toBe(200);
+    expect(todos).toHaveLength(1);
+
+    // Update
+    const updateResponse = await fetch(`${baseUrl}/todos/${todo.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: true }),
+    });
+    const updatedTodo = await updateResponse.json();
+    expect(updateResponse.status).toBe(200);
+    expect(updatedTodo.done).toBe(true);
+
+    // Delete
+    const deleteResponse = await fetch(`${baseUrl}/todos/${todo.id}`, {
+      method: "DELETE",
+    });
+    expect(deleteResponse.status).toBe(200);
+  });
+});
+```
+
+## Performance Examples
+
+### Streaming Large Datasets
+
+```typescript
+const bigDataRoute = defineRoute({
+  method: "GET",
+  path: "/big-data",
+  querySchema: z.object({
+    batchSize: z.coerce.number().default(100),
+  }),
+  outputSchema: z.array(z.object({ id: z.string(), value: z.number() })),
+  handler: async ({ query }, { jsonStream }) => {
+    const { batchSize } = await query.valid();
+
+    return jsonStream(async (stream) => {
+      // Stream data in batches instead of loading everything into memory
+      let offset = 0;
+
+      while (true) {
+        const batch = await loadDataBatch(offset, batchSize);
+
+        if (batch.length === 0) break;
+
+        for (const item of batch) {
+          await stream.write(item);
+        }
+
+        offset += batchSize;
+
+        // Small delay to prevent overwhelming the client
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    });
+  },
+});
+```
+
+These examples demonstrate various patterns and use cases for Fragno fragments. You can find more
+examples in the `examples/` directory of the Fragno repository.

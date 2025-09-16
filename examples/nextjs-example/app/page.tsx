@@ -1,14 +1,11 @@
 "use client";
 
 import React from "react";
-
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/react";
-
-const exampleFragmentClient = createExampleFragmentClient();
-const { useData, useHash } = useFragno(exampleFragmentClient);
+import { exampleFragment } from "@/lib/example-fragment-client";
 
 export default function Home() {
+  const { useData, useHash } = exampleFragment;
+
   const { data: currentData, loading: dataLoading } = useData({
     query: {
       unused: "this-is-unused",

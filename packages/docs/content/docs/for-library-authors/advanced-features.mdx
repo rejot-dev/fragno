@@ -1,0 +1,555 @@
+---
+title: Advanced Features
+description: Learn about streaming, middleware, error handling, and more
+---
+
+# Advanced Features
+
+This guide covers the advanced features available when building Fragno fragments.
+
+## Streaming Responses
+
+Fragno supports real-time streaming with NDJSON (New-line Delimited JSON) format. This is perfect
+for AI responses, real-time data feeds, or long-running operations.
+
+### Basic Streaming
+
+```typescript
+const streamDataRoute = defineRoute({
+  method: "GET",
+  path: "/stream",
+  outputSchema: z.array(z.object({ message: z.string() })),
+  handler: async (_, { jsonStream }) => {
+    return jsonStream(async (stream) => {
+      for (let i = 0; i < 10; i++) {
+        await stream.write({ message: `Item ${i}` });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    });
+  },
+});
+```
+
+### AI Streaming Example
+
+```typescript
+const chatRoute = defineRoute({
+  method: "POST",
+  path: "/chat",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.array(
+    z.object({
+      content: z.string(),
+      role: z.enum(["user", "assistant"]),
+      finished: z.boolean().optional(),
+    }),
+  ),
+  handler: async ({ input, deps }, { jsonStream }) => {
+    const { message } = await input.valid();
+
+    return jsonStream(async (stream) => {
+      // Send user message first
+      await stream.write({ content: message, role: "user" });
+
+      // Stream AI response
+      const response = await deps.openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [{ role: "user", content: message }],
+        stream: true,
+      });
+
+      for await (const chunk of response) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          await stream.write({ content, role: "assistant" });
+        }
+      }
+
+      // Signal completion
+      await stream.write({ content: "", role: "assistant", finished: true });
+    });
+  },
+});
+```
+
+### Client-Side Streaming
+
+The client automatically handles streaming responses:
+
+```typescript
+function StreamingChat() {
+  const { mutate: sendMessage, data: messages, loading } = useChatStream();
+
+  const handleSend = (message: string) => {
+    sendMessage({ body: { message } });
+  };
+
+  return (
+    <div>
+      {messages?.map((msg, idx) => (
+        <div key={idx}>
+          <strong>{msg.role}:</strong> {msg.content}
+        </div>
+      ))}
+      {loading && <div>Streaming...</div>}
+    </div>
+  );
+}
+```
+
+## Path Parameters
+
+Handle dynamic routes with type-safe path parameters:
+
+```typescript
+const getUserRoute = defineRoute({
+  method: "GET",
+  path: "/users/:id",
+  pathSchema: z.object({ id: z.string() }),
+  outputSchema: z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string(),
+  }),
+  handler: async ({ path }, { json, error }) => {
+    const { id } = await path.valid();
+
+    const user = await findUserById(id);
+    if (!user) {
+      return error({ message: "User not found", code: "NOT_FOUND" }, 404);
+    }
+
+    return json(user);
+  },
+});
+
+// Nested path parameters
+const getPostCommentRoute = defineRoute({
+  method: "GET",
+  path: "/posts/:postId/comments/:commentId",
+  pathSchema: z.object({
+    postId: z.string(),
+    commentId: z.string(),
+  }),
+  handler: async ({ path }, { json }) => {
+    const { postId, commentId } = await path.valid();
+    // Both parameters are fully typed
+  },
+});
+```
+
+### Using Path Parameters on Client
+
+```typescript
+const client = createMyFragmentClient();
+const { useGetUser } = useFragno(client);
+
+function UserProfile({ userId }: { userId: string }) {
+  const { data: user, loading } = useGetUser({ id: userId });
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h1>{user?.name}</h1>
+      <p>{user?.email}</p>
+    </div>
+  );
+}
+```
+
+## Query Parameters
+
+Handle URL query parameters with validation:
+
+```typescript
+const searchRoute = defineRoute({
+  method: "GET",
+  path: "/search",
+  querySchema: z.object({
+    q: z.string(),
+    limit: z.coerce.number().default(10),
+    offset: z.coerce.number().default(0),
+    category: z.string().optional(),
+  }),
+  outputSchema: z.object({
+    results: z.array(z.any()),
+    total: z.number(),
+    hasMore: z.boolean(),
+  }),
+  handler: async ({ query }, { json }) => {
+    const { q, limit, offset, category } = await query.valid();
+
+    const results = await searchDatabase({
+      query: q,
+      limit,
+      offset,
+      category,
+    });
+
+    return json({
+      results: results.items,
+      total: results.total,
+      hasMore: results.total > offset + limit,
+    });
+  },
+});
+```
+
+## Error Handling
+
+Define custom error codes and handle them type-safely:
+
+```typescript
+const protectedRoute = defineRoute({
+  method: "POST",
+  path: "/protected",
+  inputSchema: z.object({ data: z.string() }),
+  outputSchema: z.object({ success: z.boolean() }),
+  errorCodes: ["UNAUTHORIZED", "FORBIDDEN", "RATE_LIMITED"] as const,
+  handler: async ({ input, context }, { error, json }) => {
+    // Check authentication
+    const token = context.request.headers.get("Authorization");
+    if (!token) {
+      return error(
+        {
+          message: "Authentication required",
+          code: "UNAUTHORIZED",
+        },
+        401,
+      );
+    }
+
+    // Check permissions
+    const user = await validateToken(token);
+    if (!user.canAccess) {
+      return error(
+        {
+          message: "Insufficient permissions",
+          code: "FORBIDDEN",
+        },
+        403,
+      );
+    }
+
+    // Check rate limits
+    if (await isRateLimited(user.id)) {
+      return error(
+        {
+          message: "Rate limit exceeded",
+          code: "RATE_LIMITED",
+          retryAfter: 60,
+        },
+        429,
+      );
+    }
+
+    return json({ success: true });
+  },
+});
+```
+
+### Client Error Handling
+
+```typescript
+function ProtectedAction() {
+  const { mutate, error, loading } = useProtectedAction();
+
+  const handleSubmit = async () => {
+    try {
+      await mutate({ body: { data: "sensitive" } });
+    } catch (err) {
+      // Error is fully typed based on errorCodes
+      if (err.code === "UNAUTHORIZED") {
+        redirectToLogin();
+      } else if (err.code === "RATE_LIMITED") {
+        showRateLimitMessage(err.retryAfter);
+      }
+    }
+  };
+
+  return (
+    <button onClick={handleSubmit} disabled={loading}>
+      {loading ? "Loading..." : "Submit"}
+      {error && <div>Error: {error.message}</div>}
+    </button>
+  );
+}
+```
+
+## Middleware
+
+Add middleware to intercept and process requests before they reach your route handlers:
+
+```typescript
+const library = defineLibrary<Config>("my-api").withServices((config) => ({
+  auth: {
+    isAuthorized: (token?: string) => token === config.apiKey,
+  },
+  logger: {
+    log: (msg: string) => console.log(msg),
+  },
+}));
+
+const instance = createLibrary(library, config, routes).withMiddleware(
+  async (context, { deps, services }) => {
+    const { method, path, queryParams, pathParams } = context;
+
+    // Log all requests
+    services.logger.log(`${method} ${path}`);
+
+    // Handle CORS preflight
+    if (method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+      });
+    }
+
+    // Global authentication check
+    const authToken = queryParams.get("token");
+    if (!services.auth.isAuthorized(authToken ?? undefined)) {
+      return Response.json({ message: "Unauthorized", code: "AUTH_ERROR" }, { status: 401 });
+    }
+
+    // Route-specific middleware using ifMatchesRoute
+    const result = await context.ifMatchesRoute("POST", "/users/:id", async ({ pathParams }) => {
+      // This middleware only runs for POST requests to /users/:id
+      services.logger.log(`Creating user with ID: ${pathParams.id}`);
+
+      // Return undefined to continue to the original handler
+      return undefined;
+    });
+
+    if (result) {
+      return result;
+    }
+
+    // Return undefined to continue to handler
+    return undefined;
+  },
+);
+```
+
+### Middleware Context
+
+Middleware receives a rich context object:
+
+- **`method`**: HTTP method (GET, POST, etc.)
+- **`path`**: Request path
+- **`pathParams`**: Extracted path parameters
+- **`queryParams`**: URL search parameters
+- **`inputSchema`**: Route's input schema
+- **`outputSchema`**: Route's output schema
+- **`ifMatchesRoute()`**: Execute middleware only for specific routes with full type safety
+
+## Services vs Dependencies
+
+Understand the difference between services and dependencies:
+
+```typescript
+const library = defineLibrary<Config>("my-lib")
+  // Dependencies: Heavy objects, database connections, etc.
+  // Stripped from client bundles
+  .withDependencies((config) => ({
+    database: new DatabaseConnection(config.dbUrl),
+    redis: new Redis(config.redisUrl),
+    secretKey: process.env.SECRET_KEY,
+  }))
+  // Services: Light utility functions
+  // Can be used in middleware and route handlers
+  .withServices((config) => ({
+    auth: {
+      validateToken: (token: string) => validateJWT(token, config.jwtSecret),
+    },
+    utils: {
+      formatDate: (date: Date) => date.toISOString(),
+    },
+  }));
+```
+
+## File Uploads
+
+Handle file uploads with proper validation:
+
+```typescript
+const uploadRoute = defineRoute({
+  method: "POST",
+  path: "/upload",
+  // Don't use inputSchema for file uploads
+  outputSchema: z.object({
+    filename: z.string(),
+    size: z.number(),
+    url: z.string(),
+  }),
+  handler: async ({ context }, { json, error }) => {
+    const contentType = context.request.headers.get("content-type");
+
+    if (!contentType?.includes("multipart/form-data")) {
+      return error({ message: "Must be multipart/form-data", code: "INVALID_CONTENT_TYPE" }, 400);
+    }
+
+    const formData = await context.request.formData();
+    const file = formData.get("file") as File;
+
+    if (!file) {
+      return error({ message: "No file provided", code: "NO_FILE" }, 400);
+    }
+
+    // Validate file
+    if (file.size > 5 * 1024 * 1024) {
+      // 5MB
+      return error({ message: "File too large", code: "FILE_TOO_LARGE" }, 400);
+    }
+
+    // Save file (implement your storage logic)
+    const filename = `uploads/${Date.now()}-${file.name}`;
+    await saveFile(filename, file);
+
+    return json({
+      filename: file.name,
+      size: file.size,
+      url: `/files/${filename}`,
+    });
+  },
+});
+```
+
+### Client File Upload
+
+```typescript
+function FileUpload() {
+  const { mutate: uploadFile, loading, error } = useUploadFile();
+
+  const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    uploadFile({ body: formData });
+  };
+
+  return (
+    <div>
+      <input type="file" onChange={handleUpload} disabled={loading} />
+      {loading && <div>Uploading...</div>}
+      {error && <div>Error: {error.message}</div>}
+    </div>
+  );
+}
+```
+
+## WebSockets (Coming Soon)
+
+WebSocket support is planned for real-time bidirectional communication:
+
+```typescript
+// Future API (not yet implemented)
+const wsRoute = defineWebSocketRoute({
+  path: "/ws",
+  onConnect: async ({ context }) => {
+    console.log("Client connected");
+  },
+  onMessage: async ({ message, send }) => {
+    // Echo messages back
+    await send({ type: "echo", data: message });
+  },
+  onDisconnect: async () => {
+    console.log("Client disconnected");
+  },
+});
+```
+
+## Performance Tips
+
+### 1. Use Streaming for Large Responses
+
+Instead of loading all data into memory:
+
+```typescript
+// ❌ Bad: Loads everything into memory
+const badRoute = defineRoute({
+  handler: async (_, { json }) => {
+    const allData = await loadMillionRecords();
+    return json(allData);
+  },
+});
+
+// ✅ Good: Stream data incrementally
+const goodRoute = defineRoute({
+  handler: async (_, { jsonStream }) => {
+    return jsonStream(async (stream) => {
+      const batches = await loadDataInBatches();
+      for (const batch of batches) {
+        await stream.write(batch);
+      }
+    });
+  },
+});
+```
+
+### 2. Leverage Caching
+
+Use proper cache headers:
+
+```typescript
+const cachedRoute = defineRoute({
+  method: "GET",
+  path: "/cached-data",
+  handler: async (_, { json }) => {
+    const data = await expensiveComputation();
+
+    return json(data, {
+      headers: {
+        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+      },
+    });
+  },
+});
+```
+
+### 3. Validate Early
+
+Put expensive operations after validation:
+
+```typescript
+const optimizedRoute = defineRoute({
+  inputSchema: z.object({
+    data: z.string().min(1).max(1000),
+  }),
+  handler: async ({ input }, { json }) => {
+    // Validate first (fast)
+    const { data } = await input.valid();
+
+    // Then do expensive work
+    const result = await expensiveProcess(data);
+    return json(result);
+  },
+});
+```
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Best Practices"
+    href="/docs/for-library-authors/best-practices"
+    description="Follow our recommended patterns and conventions"
+  />
+  <Card
+    title="Testing"
+    href="/docs/for-library-authors/testing"
+    description="Learn how to test your fragments"
+  />
+  <Card
+    title="Examples"
+    href="/docs/examples"
+    description="See real-world fragment implementations"
+  />
+</Cards>

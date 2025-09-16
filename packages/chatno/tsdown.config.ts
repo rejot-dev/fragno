@@ -21,5 +21,6 @@ export default defineConfig([
     outDir: "./dist/node",
     // This plugin can be omitted, because it doesn't do anything for platform "node".
     plugins: [unpluginFragno({ platform: "node" })],
+    unbundle: true,
   },
 ]);

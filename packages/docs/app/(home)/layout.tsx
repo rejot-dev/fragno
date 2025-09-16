@@ -1,6 +1,6 @@
 import { HomeLayout } from "fumadocs-ui/layouts/home";
 import { baseOptions } from "@/lib/layout.shared";
-import { ReJotWireframeLogo } from "@/_components/rejot-wireframe-logo";
+import { ReJotWireframeLogo } from "@/components/logos/rejot-wireframe-logo";
 import { Book } from "lucide-react";
 
 export default function Layout({ children }: LayoutProps<"/">) {

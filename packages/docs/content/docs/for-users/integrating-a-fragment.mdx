@@ -1,0 +1,348 @@
+---
+title: Integrating a Fragment
+description: Learn how to integrate Fragno fragments into your project
+---
+
+# Integrating a Fragment
+
+As a user of a Fragment (library built with Fragno), you can integrate it into your project with
+just a couple of lines of code. Fragments work seamlessly across different frameworks.
+
+## Installation
+
+First, install the fragment you want to use. Most fragments are published to npm:
+
+```bash
+bun add @your-org/example-fragment
+# or
+npm install @your-org/example-fragment
+```
+
+## Server-Side Integration
+
+### Next.js
+
+For Next.js applications, create an API route that handles all fragment requests:
+
+```typescript title="app/api/example/[...all]/route.ts"
+import { createExampleFragment } from "@your-org/example-fragment";
+import { toNextJsHandler } from "@fragno-dev/core/next-js";
+
+const exampleFragment = createExampleFragment({
+  // Fragment-specific configuration
+  apiKey: process.env.API_KEY,
+});
+
+export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(exampleFragment);
+```
+
+### React Router v7 / Remix
+
+```typescript title="app/routes/api.example.tsx"
+import { createExampleFragment } from "@your-org/example-fragment";
+
+const exampleFragment = createExampleFragment({
+  apiKey: process.env.API_KEY,
+});
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  return await exampleFragment.handler(request);
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  return await exampleFragment.handler(request);
+}
+```
+
+### Node.js / Express
+
+```typescript title="server.js"
+import express from "express";
+import { toNodeHandler } from "@fragno-dev/core/node";
+import { createExampleFragment } from "@your-org/example-fragment";
+
+const app = express();
+
+const exampleFragment = createExampleFragment({
+  apiKey: process.env.API_KEY,
+});
+
+app.use("/api/example", toNodeHandler(exampleFragment));
+
+app.listen(3000);
+```
+
+### Astro
+
+```typescript title="src/pages/api/example/[...all].ts"
+import { createExampleFragment } from "@your-org/example-fragment";
+
+const exampleFragment = createExampleFragment({
+  apiKey: process.env.API_KEY,
+});
+
+export async function ALL({ request }: { request: Request }) {
+  return await exampleFragment.handler(request);
+}
+```
+
+### Nuxt
+
+```typescript title="server/api/example/[...all].ts"
+import { createExampleFragment } from "@your-org/example-fragment";
+
+const exampleFragment = createExampleFragment({
+  apiKey: process.env.API_KEY,
+});
+
+export default defineEventHandler(async (event) => {
+  const request = new Request(getRequestURL(event), {
+    method: event.method,
+    headers: getHeaders(event),
+    body: event.method !== "GET" ? await readBody(event) : undefined,
+  });
+
+  const response = await exampleFragment.handler(request);
+  return response;
+});
+```
+
+## Client-Side Integration
+
+### React
+
+On the client side, you get fully-typed TanStack Query-style hooks:
+
+```typescript title="src/components/ExampleComponent.tsx"
+import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { useFragno } from "@fragno-dev/core/react";
+
+const exampleFragmentClient = createExampleFragmentClient({
+  baseUrl: "http://localhost:3000", // Your server URL
+  mountRoute: "/api/example", // Where you mounted the fragment
+});
+
+const { useTodos, useAddTodo } = useFragno(exampleFragmentClient);
+
+export default function ExampleComponent() {
+  const { data: todos, loading: todosLoading, error, refetch } = useTodos();
+  const { mutate: addTodo, loading: addTodoLoading } = useAddTodo();
+
+  if (todosLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <h1>Todos</h1>
+      {todos?.map(todo => (
+        <div key={todo.id}>
+          {todo.text} - {todo.done ? 'Done' : 'Pending'}
+        </div>
+      ))}
+
+      <button
+        onClick={() => addTodo({ body: { text: "New todo" } })}
+        disabled={addTodoLoading}
+      >
+        {addTodoLoading ? "Adding..." : "Add Todo"}
+      </button>
+
+      <button onClick={() => refetch()}>Refresh</button>
+    </div>
+  );
+}
+```
+
+### Vue
+
+```vue title="components/ExampleComponent.vue"
+<script setup>
+import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { useFragno } from "@fragno-dev/core/vue";
+
+const exampleFragmentClient = createExampleFragmentClient({
+  baseUrl: "http://localhost:3000",
+  mountRoute: "/api/example",
+});
+
+const { useTodos, useAddTodo } = useFragno(exampleFragmentClient);
+
+const todos = useTodos();
+const addTodo = useAddTodo();
+
+const handleAddTodo = () => {
+  addTodo.mutate({ body: { text: "New todo" } });
+};
+</script>
+
+<template>
+  <div>
+    <h1>Todos</h1>
+
+    <div v-if="todos.loading.value">Loading...</div>
+    <div v-else-if="todos.error.value">Error: {{ todos.error.value.message }}</div>
+
+    <div v-else>
+      <div v-for="todo in todos.data.value" :key="todo.id">
+        {{ todo.text }} - {{ todo.done ? "Done" : "Pending" }}
+      </div>
+    </div>
+
+    <button @click="handleAddTodo" :disabled="addTodo.loading.value">
+      {{ addTodo.loading.value ? "Adding..." : "Add Todo" }}
+    </button>
+
+    <button @click="todos.refetch">Refresh</button>
+  </div>
+</template>
+```
+
+### Vanilla JavaScript
+
+```typescript title="main.js"
+import { createExampleFragmentClient } from "@your-org/example-fragment";
+
+const client = createExampleFragmentClient({
+  baseUrl: "http://localhost:3000",
+  mountRoute: "/api/example",
+});
+
+// Access the underlying stores directly
+const todosStore = client.useTodos();
+const addTodoStore = client.useAddTodo();
+
+// Subscribe to data changes
+todosStore.data.subscribe((todos) => {
+  console.log("Todos updated:", todos);
+  renderTodos(todos);
+});
+
+// Subscribe to loading state
+todosStore.loading.subscribe((loading) => {
+  document.getElementById("loading").style.display = loading ? "block" : "none";
+});
+
+// Trigger actions
+document.getElementById("add-todo").addEventListener("click", () => {
+  addTodoStore.mutate({ body: { text: "New todo" } });
+});
+
+function renderTodos(todos) {
+  const container = document.getElementById("todos");
+  container.innerHTML =
+    todos?.map((todo) => `<div>${todo.text} - ${todo.done ? "Done" : "Pending"}</div>`).join("") ||
+    "";
+}
+```
+
+## Configuration Options
+
+Most fragments accept configuration during both server and client creation:
+
+### Server Configuration
+
+```typescript
+const fragment = createExampleFragment({
+  // Fragment-specific options
+  apiKey: process.env.API_KEY,
+  webhookUrl: process.env.WEBHOOK_URL,
+
+  // Callback functions
+  onTodoCreated: (todo) => {
+    console.log("New todo created:", todo);
+  },
+});
+```
+
+### Client Configuration
+
+```typescript
+const client = createExampleFragmentClient({
+  // Required: where your server is running
+  baseUrl: "http://localhost:3000",
+  mountRoute: "/api/example",
+
+  // Optional: customize behavior
+  retryAttempts: 3,
+  timeout: 5000,
+
+  // Optional: authentication
+  headers: {
+    Authorization: "Bearer " + getAuthToken(),
+  },
+});
+```
+
+## Working with Streaming
+
+Many fragments support real-time streaming. The client automatically handles NDJSON streams:
+
+```typescript
+const { useStreamingData } = useFragno(client);
+
+function StreamingComponent() {
+  const { data: streamData, loading } = useStreamingData();
+
+  // streamData updates in real-time as new data arrives
+  return (
+    <div>
+      {streamData?.map((item, index) => (
+        <div key={index}>{item.message}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Error Handling
+
+Fragno provides comprehensive error handling:
+
+```typescript
+function ErrorHandlingComponent() {
+  const { data, loading, error } = useTodos();
+  const { mutate, loading: mutating, error: mutationError } = useAddTodo();
+
+  if (error) {
+    return (
+      <div>
+        <h2>Error occurred:</h2>
+        <p>{error.message}</p>
+        {error.code && <p>Code: {error.code}</p>}
+      </div>
+    );
+  }
+
+  const handleAddTodo = async () => {
+    try {
+      await mutate({ body: { text: "New todo" } });
+    } catch (err) {
+      console.error('Failed to add todo:', err);
+    }
+  };
+
+  return (
+    <div>
+      {/* Your component */}
+      {mutationError && (
+        <div>Failed to add todo: {mutationError.message}</div>
+      )}
+    </div>
+  );
+}
+```
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Framework Examples"
+    href="/docs/examples"
+    description="See complete examples for different frameworks"
+  />
+  <Card
+    title="Build a Fragment"
+    href="/docs/for-library-authors/getting-started"
+    description="Learn how to create your own fragments"
+  />
+</Cards>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FragnoLogo } from "@/_components/fragno-logo";
+import { FragnoLogo } from "@/components/logos/fragno-logo";
 import { DynamicCodeBlock } from "fumadocs-ui/components/dynamic-codeblock";
 
 export default function HomePage() {

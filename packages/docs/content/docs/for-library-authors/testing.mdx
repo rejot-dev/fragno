@@ -1,0 +1,1077 @@
+---
+title: Testing
+description: Complete guide to testing your Fragno fragments
+---
+
+# Testing Fragno Fragments
+
+This guide covers everything you need to know about testing your Fragno fragments, from unit tests
+to integration tests and end-to-end testing.
+
+## Testing Setup
+
+### Dependencies
+
+Install testing dependencies:
+
+```bash
+bun add -D vitest @vitest/ui jsdom
+# or
+npm install -D vitest @vitest/ui jsdom
+```
+
+### Configuration
+
+```typescript title="vitest.config.ts"
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "jsdom", // For React/DOM testing
+    globals: true,
+    setupFiles: ["./test/setup.ts"],
+  },
+});
+```
+
+```typescript title="test/setup.ts"
+import { beforeEach } from "vitest";
+
+// Reset any global state before each test
+beforeEach(() => {
+  // Clear any mocks, reset databases, etc.
+});
+```
+
+## Unit Testing
+
+### Testing Route Handlers
+
+Test individual routes in isolation:
+
+```typescript title="test/routes/users.test.ts"
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { createUsers } from "../src/users-fragment";
+
+describe("Users Fragment", () => {
+  let fragment: ReturnType<typeof createUsers>;
+
+  beforeEach(() => {
+    fragment = createUsers({
+      maxUsers: 10,
+      onUserCreated: vi.fn(),
+    });
+  });
+
+  describe("GET /users", () => {
+    it("should return empty array initially", async () => {
+      const request = new Request("http://localhost/users", {
+        method: "GET",
+      });
+
+      const response = await fragment.handler(request);
+      const users = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(users)).toBe(true);
+      expect(users).toHaveLength(0);
+    });
+
+    it("should return paginated users", async () => {
+      // Create some test users first
+      await Promise.all([
+        createTestUser(fragment, { name: "User 1", email: "user1@test.com" }),
+        createTestUser(fragment, { name: "User 2", email: "user2@test.com" }),
+        createTestUser(fragment, { name: "User 3", email: "user3@test.com" }),
+      ]);
+
+      const request = new Request("http://localhost/users?limit=2&page=1");
+      const response = await fragment.handler(request);
+      const result = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(result.users).toHaveLength(2);
+      expect(result.pagination.total).toBe(3);
+      expect(result.pagination.hasNext).toBe(true);
+    });
+  });
+
+  describe("POST /users", () => {
+    it("should create user successfully", async () => {
+      const userData = {
+        name: "John Doe",
+        email: "john@example.com",
+        age: 25,
+      };
+
+      const request = new Request("http://localhost/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userData),
+      });
+
+      const response = await fragment.handler(request);
+      const user = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(user.name).toBe(userData.name);
+      expect(user.email).toBe(userData.email);
+      expect(user.id).toBeDefined();
+      expect(user.createdAt).toBeDefined();
+    });
+
+    it("should call onUserCreated callback", async () => {
+      const onUserCreated = vi.fn();
+      const testFragment = createUsers({
+        maxUsers: 10,
+        onUserCreated,
+      });
+
+      const userData = { name: "Jane Doe", email: "jane@example.com" };
+
+      await createTestUser(testFragment, userData);
+
+      expect(onUserCreated).toHaveBeenCalledOnce();
+      expect(onUserCreated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: userData.name,
+          email: userData.email,
+        }),
+      );
+    });
+
+    it("should validate required fields", async () => {
+      const request = new Request("http://localhost/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "John" }), // Missing email
+      });
+
+      const response = await fragment.handler(request);
+      const error = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(error.code).toBe("VALIDATION_ERROR");
+      expect(error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ["email"],
+          message: expect.stringContaining("required"),
+        }),
+      );
+    });
+
+    it("should reject duplicate emails", async () => {
+      const userData = { name: "John Doe", email: "john@example.com" };
+
+      // Create first user
+      await createTestUser(fragment, userData);
+
+      // Try to create duplicate
+      const request = new Request("http://localhost/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...userData, name: "Jane Doe" }),
+      });
+
+      const response = await fragment.handler(request);
+      const error = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(error.code).toBe("DUPLICATE_EMAIL");
+    });
+
+    it("should respect max users limit", async () => {
+      const limitedFragment = createUsers({ maxUsers: 1 });
+
+      // Create first user (should succeed)
+      await createTestUser(limitedFragment, {
+        name: "User 1",
+        email: "user1@test.com",
+      });
+
+      // Try to create second user (should fail)
+      const request = new Request("http://localhost/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "User 2",
+          email: "user2@test.com",
+        }),
+      });
+
+      const response = await limitedFragment.handler(request);
+      const error = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(error.code).toBe("MAX_USERS_REACHED");
+    });
+  });
+
+  describe("PUT /users/:id", () => {
+    it("should update existing user", async () => {
+      const user = await createTestUser(fragment, {
+        name: "John Doe",
+        email: "john@example.com",
+      });
+
+      const updateData = { name: "John Smith", age: 30 };
+      const request = new Request(`http://localhost/users/${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
+      });
+
+      const response = await fragment.handler(request);
+      const updatedUser = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(updatedUser.name).toBe(updateData.name);
+      expect(updatedUser.age).toBe(updateData.age);
+      expect(updatedUser.email).toBe(user.email); // Unchanged
+    });
+
+    it("should return 404 for non-existent user", async () => {
+      const request = new Request("http://localhost/users/non-existent-id", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Updated Name" }),
+      });
+
+      const response = await fragment.handler(request);
+      const error = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(error.code).toBe("USER_NOT_FOUND");
+    });
+  });
+
+  describe("DELETE /users/:id", () => {
+    it("should delete existing user", async () => {
+      const user = await createTestUser(fragment, {
+        name: "John Doe",
+        email: "john@example.com",
+      });
+
+      const request = new Request(`http://localhost/users/${user.id}`, {
+        method: "DELETE",
+      });
+
+      const response = await fragment.handler(request);
+      const result = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(result.deleted).toBe(true);
+
+      // Verify user is deleted
+      const getRequest = new Request(`http://localhost/users/${user.id}`);
+      const getResponse = await fragment.handler(getRequest);
+      expect(getResponse.status).toBe(404);
+    });
+  });
+});
+
+// Helper function to create test users
+async function createTestUser(
+  fragment: ReturnType<typeof createUsers>,
+  userData: { name: string; email: string; age?: number },
+) {
+  const request = new Request("http://localhost/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(userData),
+  });
+
+  const response = await fragment.handler(request);
+  return await response.json();
+}
+```
+
+### Testing Configuration Validation
+
+Test that your fragment handles configuration correctly:
+
+```typescript title="test/config.test.ts"
+import { describe, it, expect } from "vitest";
+import { createUsers } from "../src/users-fragment";
+
+describe("Configuration", () => {
+  it("should use default values", () => {
+    const fragment = createUsers({});
+
+    expect(fragment.config.maxUsers).toBe(100); // Default value
+    expect(fragment.config.enableLogging).toBe(false); // Default value
+  });
+
+  it("should override defaults with provided config", () => {
+    const fragment = createUsers({
+      maxUsers: 50,
+      enableLogging: true,
+    });
+
+    expect(fragment.config.maxUsers).toBe(50);
+    expect(fragment.config.enableLogging).toBe(true);
+  });
+
+  it("should validate required configuration", () => {
+    expect(() => {
+      createUsers({
+        apiKey: "", // Invalid empty string
+      });
+    }).toThrow("API key cannot be empty");
+  });
+
+  it("should validate configuration ranges", () => {
+    expect(() => {
+      createUsers({
+        maxUsers: -1, // Invalid negative number
+      });
+    }).toThrow("maxUsers must be positive");
+
+    expect(() => {
+      createUsers({
+        maxUsers: 0, // Invalid zero
+      });
+    }).toThrow("maxUsers must be positive");
+  });
+});
+```
+
+### Testing Error Handling
+
+Ensure your error handling works correctly:
+
+```typescript title="test/errors.test.ts"
+import { describe, it, expect } from "vitest";
+import { createUsers } from "../src/users-fragment";
+
+describe("Error Handling", () => {
+  let fragment: ReturnType<typeof createUsers>;
+
+  beforeEach(() => {
+    fragment = createUsers({});
+  });
+
+  it("should handle malformed JSON", async () => {
+    const request = new Request("http://localhost/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{ invalid json",
+    });
+
+    const response = await fragment.handler(request);
+    const error = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(error.code).toBe("INVALID_JSON");
+  });
+
+  it("should handle missing content-type", async () => {
+    const request = new Request("http://localhost/users", {
+      method: "POST",
+      body: JSON.stringify({ name: "John", email: "john@example.com" }),
+      // No Content-Type header
+    });
+
+    const response = await fragment.handler(request);
+    expect(response.status).toBe(400);
+  });
+
+  it("should handle route not found", async () => {
+    const request = new Request("http://localhost/nonexistent", {
+      method: "GET",
+    });
+
+    const response = await fragment.handler(request);
+    const error = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(error.code).toBe("ROUTE_NOT_FOUND");
+  });
+
+  it("should handle method not allowed", async () => {
+    const request = new Request("http://localhost/users/123", {
+      method: "PATCH", // Not supported by this route
+    });
+
+    const response = await fragment.handler(request);
+    const error = await response.json();
+
+    expect(response.status).toBe(405);
+    expect(error.code).toBe("METHOD_NOT_ALLOWED");
+  });
+});
+```
+
+## Integration Testing
+
+Test your fragment with actual HTTP requests:
+
+```typescript title="test/integration.test.ts"
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createServer, Server } from "http";
+import { AddressInfo } from "net";
+import { toNodeHandler } from "@fragno-dev/core/node";
+import { createUsers } from "../src/users-fragment";
+
+describe("Integration Tests", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const fragment = createUsers({
+      maxUsers: 1000,
+    });
+
+    const handler = toNodeHandler(fragment);
+
+    server = createServer((req, res) => {
+      handler(req as any, res as any);
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, () => {
+        const { port } = server.address() as AddressInfo;
+        baseUrl = `http://localhost:${port}`;
+        resolve();
+      });
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  });
+
+  it("should handle complete CRUD workflow", async () => {
+    // Create user
+    const createResponse = await fetch(`${baseUrl}/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Integration Test User",
+        email: "integration@test.com",
+        age: 25,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const user = await createResponse.json();
+    expect(user.id).toBeDefined();
+
+    // Read user
+    const readResponse = await fetch(`${baseUrl}/users/${user.id}`);
+    expect(readResponse.status).toBe(200);
+    const readUser = await readResponse.json();
+    expect(readUser.name).toBe("Integration Test User");
+
+    // Update user
+    const updateResponse = await fetch(`${baseUrl}/users/${user.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Updated Integration User",
+        age: 26,
+      }),
+    });
+
+    expect(updateResponse.status).toBe(200);
+    const updatedUser = await updateResponse.json();
+    expect(updatedUser.name).toBe("Updated Integration User");
+    expect(updatedUser.age).toBe(26);
+
+    // List users
+    const listResponse = await fetch(`${baseUrl}/users`);
+    expect(listResponse.status).toBe(200);
+    const users = await listResponse.json();
+    expect(users.users).toContainEqual(expect.objectContaining({ id: user.id }));
+
+    // Delete user
+    const deleteResponse = await fetch(`${baseUrl}/users/${user.id}`, {
+      method: "DELETE",
+    });
+
+    expect(deleteResponse.status).toBe(200);
+
+    // Verify deletion
+    const verifyResponse = await fetch(`${baseUrl}/users/${user.id}`);
+    expect(verifyResponse.status).toBe(404);
+  });
+
+  it("should handle concurrent requests", async () => {
+    const requests = Array.from({ length: 10 }, (_, i) =>
+      fetch(`${baseUrl}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Concurrent User ${i}`,
+          email: `concurrent${i}@test.com`,
+        }),
+      }),
+    );
+
+    const responses = await Promise.all(requests);
+
+    // All should succeed
+    responses.forEach((response, i) => {
+      expect(response.status).toBe(201);
+    });
+
+    // Verify all users were created
+    const listResponse = await fetch(`${baseUrl}/users?limit=20`);
+    const result = await listResponse.json();
+    expect(result.users.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("should handle streaming responses", async () => {
+    // Assuming you have a streaming endpoint
+    const response = await fetch(`${baseUrl}/users/stream`);
+    expect(response.status).toBe(200);
+
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+
+    const chunks = [];
+    let done = false;
+
+    while (!done) {
+      const { value, done: readerDone } = await reader!.read();
+      done = readerDone;
+
+      if (value) {
+        const chunk = new TextDecoder().decode(value);
+        chunks.push(chunk);
+      }
+    }
+
+    expect(chunks.length).toBeGreaterThan(0);
+
+    // Parse NDJSON
+    const objects = chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+
+    expect(objects.length).toBeGreaterThan(0);
+    objects.forEach((obj) => {
+      expect(obj).toHaveProperty("id");
+    });
+  });
+});
+```
+
+## Client Testing
+
+Test your client-side hooks:
+
+```typescript title="test/client.test.ts"
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { useFragno } from "@fragno-dev/core/react";
+import { createUsersClient } from "../src/users-fragment";
+
+// Mock fetch
+global.fetch = vi.fn();
+
+describe("Client Hooks", () => {
+  let client: ReturnType<typeof createUsersClient>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    client = createUsersClient({
+      baseUrl: "http://localhost:3000",
+      mountRoute: "/api/users",
+    });
+  });
+
+  describe("useUsers", () => {
+    it("should fetch users on mount", async () => {
+      const mockUsers = [
+        { id: "1", name: "John Doe", email: "john@example.com" },
+        { id: "2", name: "Jane Doe", email: "jane@example.com" },
+      ];
+
+      (fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockUsers,
+      });
+
+      const { useUsers } = useFragno(client);
+      const { result } = renderHook(() => useUsers());
+
+      expect(result.current.loading).toBe(true);
+      expect(result.current.data).toBeUndefined();
+
+      // Wait for the fetch to complete
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.data).toEqual(mockUsers);
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/users/users",
+        expect.objectContaining({
+          method: "GET",
+        }),
+      );
+    });
+
+    it("should handle fetch errors", async () => {
+      const mockError = new Error("Network error");
+      (fetch as any).mockRejectedValueOnce(mockError);
+
+      const { useUsers } = useFragno(client);
+      const { result } = renderHook(() => useUsers());
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toEqual(mockError);
+      expect(result.current.data).toBeUndefined();
+    });
+
+    it("should support refetching", async () => {
+      const mockUsers = [{ id: "1", name: "John", email: "john@example.com" }];
+
+      (fetch as any).mockResolvedValue({
+        ok: true,
+        json: async () => mockUsers,
+      });
+
+      const { useUsers } = useFragno(client);
+      const { result } = renderHook(() => useUsers());
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      // Refetch
+      await act(async () => {
+        await result.current.refetch();
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("useCreateUser", () => {
+    it("should create user", async () => {
+      const newUser = { id: "3", name: "New User", email: "new@example.com" };
+
+      (fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => newUser,
+      });
+
+      const { useCreateUser } = useFragno(client);
+      const { result } = renderHook(() => useCreateUser());
+
+      expect(result.current.loading).toBe(false);
+
+      let createdUser;
+      await act(async () => {
+        createdUser = await result.current.mutate({
+          body: { name: "New User", email: "new@example.com" },
+        });
+      });
+
+      expect(createdUser).toEqual(newUser);
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/api/users/users",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ name: "New User", email: "new@example.com" }),
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+          }),
+        }),
+      );
+    });
+
+    it("should handle mutation errors", async () => {
+      const mockError = { message: "Validation failed", code: "VALIDATION_ERROR" };
+
+      (fetch as any).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => mockError,
+      });
+
+      const { useCreateUser } = useFragno(client);
+      const { result } = renderHook(() => useCreateUser());
+
+      let error;
+      await act(async () => {
+        try {
+          await result.current.mutate({
+            body: { name: "", email: "invalid" },
+          });
+        } catch (e) {
+          error = e;
+        }
+      });
+
+      expect(error).toEqual(expect.objectContaining(mockError));
+      expect(result.current.error).toEqual(expect.objectContaining(mockError));
+    });
+  });
+});
+```
+
+## End-to-End Testing
+
+Use tools like Playwright or Cypress for E2E tests:
+
+```typescript title="test/e2e.test.ts"
+import { test, expect } from "@playwright/test";
+
+test.describe("Users Fragment E2E", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("http://localhost:3000");
+  });
+
+  test("should create, edit, and delete user", async ({ page }) => {
+    // Navigate to users page
+    await page.click('[data-testid="users-link"]');
+
+    // Create new user
+    await page.click('[data-testid="create-user-button"]');
+    await page.fill('[data-testid="user-name-input"]', "E2E Test User");
+    await page.fill('[data-testid="user-email-input"]', "e2e@test.com");
+    await page.click('[data-testid="submit-button"]');
+
+    // Verify user appears in list
+    await expect(page.locator('[data-testid="user-list"]')).toContainText("E2E Test User");
+
+    // Edit user
+    await page.click('[data-testid="edit-user-button"]:first-child');
+    await page.fill('[data-testid="user-name-input"]', "Updated E2E User");
+    await page.click('[data-testid="submit-button"]');
+
+    // Verify update
+    await expect(page.locator('[data-testid="user-list"]')).toContainText("Updated E2E User");
+
+    // Delete user
+    await page.click('[data-testid="delete-user-button"]:first-child');
+    await page.click('[data-testid="confirm-delete-button"]');
+
+    // Verify deletion
+    await expect(page.locator('[data-testid="user-list"]')).not.toContainText("Updated E2E User");
+  });
+
+  test("should handle validation errors", async ({ page }) => {
+    await page.click('[data-testid="users-link"]');
+    await page.click('[data-testid="create-user-button"]');
+
+    // Submit without filling required fields
+    await page.click('[data-testid="submit-button"]');
+
+    // Verify error messages
+    await expect(page.locator('[data-testid="error-message"]')).toContainText("Name is required");
+    await expect(page.locator('[data-testid="error-message"]')).toContainText("Email is required");
+  });
+
+  test("should handle network errors gracefully", async ({ page }) => {
+    // Mock network failure
+    await page.route("**/api/users/**", (route) => route.abort());
+
+    await page.click('[data-testid="users-link"]');
+
+    // Should show error state
+    await expect(page.locator('[data-testid="error-state"]')).toContainText("Failed to load users");
+  });
+});
+```
+
+## Performance Testing
+
+Test the performance characteristics of your fragment:
+
+```typescript title="test/performance.test.ts"
+import { describe, it, expect } from "vitest";
+import { createUsers } from "../src/users-fragment";
+
+describe("Performance Tests", () => {
+  it("should handle large payloads efficiently", async () => {
+    const fragment = createUsers({});
+
+    // Create large user data
+    const largeUserData = {
+      name: "Test User",
+      email: "test@example.com",
+      bio: "x".repeat(10000), // 10KB bio
+    };
+
+    const start = performance.now();
+
+    const request = new Request("http://localhost/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(largeUserData),
+    });
+
+    const response = await fragment.handler(request);
+    const user = await response.json();
+
+    const end = performance.now();
+
+    expect(response.status).toBe(201);
+    expect(user.bio).toBe(largeUserData.bio);
+    expect(end - start).toBeLessThan(1000); // Should complete within 1 second
+  });
+
+  it("should handle concurrent requests efficiently", async () => {
+    const fragment = createUsers({});
+
+    const start = performance.now();
+
+    // Create 100 concurrent requests
+    const requests = Array.from({ length: 100 }, (_, i) =>
+      fragment.handler(
+        new Request("http://localhost/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `User ${i}`,
+            email: `user${i}@test.com`,
+          }),
+        }),
+      ),
+    );
+
+    const responses = await Promise.all(requests);
+    const end = performance.now();
+
+    // All should succeed
+    responses.forEach((response) => {
+      expect(response.status).toBe(201);
+    });
+
+    // Should handle 100 requests efficiently
+    expect(end - start).toBeLessThan(5000); // Within 5 seconds
+  });
+
+  it("should stream large datasets efficiently", async () => {
+    const fragment = createUsers({});
+
+    // First create many users
+    const createRequests = Array.from({ length: 1000 }, (_, i) =>
+      fragment.handler(
+        new Request("http://localhost/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `User ${i}`,
+            email: `user${i}@test.com`,
+          }),
+        }),
+      ),
+    );
+
+    await Promise.all(createRequests);
+
+    // Now test streaming
+    const start = performance.now();
+
+    const request = new Request("http://localhost/users/stream");
+    const response = await fragment.handler(request);
+
+    expect(response.status).toBe(200);
+
+    const reader = response.body?.getReader();
+    let chunkCount = 0;
+    let firstChunkTime: number | null = null;
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (firstChunkTime === null) {
+          firstChunkTime = performance.now();
+        }
+
+        chunkCount++;
+      }
+    }
+
+    const end = performance.now();
+
+    expect(chunkCount).toBeGreaterThan(0);
+    expect(firstChunkTime! - start).toBeLessThan(100); // First chunk within 100ms
+    expect(end - start).toBeLessThan(10000); // Complete stream within 10s
+  });
+});
+```
+
+## Test Utilities
+
+Create reusable utilities to make testing easier:
+
+```typescript title="test/utils.ts"
+export function createTestRequest(
+  method: string,
+  path: string,
+  body?: any,
+  headers: Record<string, string> = {},
+): Request {
+  const defaultHeaders = {
+    "Content-Type": "application/json",
+    ...headers,
+  };
+
+  return new Request(`http://localhost${path}`, {
+    method,
+    headers: defaultHeaders,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+export async function expectError(response: Response, statusCode: number, errorCode?: string) {
+  expect(response.status).toBe(statusCode);
+
+  const error = await response.json();
+  expect(error).toHaveProperty("message");
+
+  if (errorCode) {
+    expect(error.code).toBe(errorCode);
+  }
+
+  return error;
+}
+
+export async function expectSuccess<T>(response: Response, statusCode: number = 200): Promise<T> {
+  expect(response.status).toBe(statusCode);
+  return await response.json();
+}
+
+export class TestDataBuilder {
+  static user(overrides: Partial<any> = {}) {
+    return {
+      name: "Test User",
+      email: "test@example.com",
+      age: 25,
+      ...overrides,
+    };
+  }
+
+  static users(count: number, overrides: Partial<any> = {}) {
+    return Array.from({ length: count }, (_, i) =>
+      this.user({
+        name: `Test User ${i}`,
+        email: `test${i}@example.com`,
+        ...overrides,
+      }),
+    );
+  }
+}
+```
+
+## Continuous Integration
+
+Example GitHub Actions workflow for testing:
+
+```yaml title=".github/workflows/test.yml"
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run type checking
+        run: bun run types:check
+
+      - name: Run unit tests
+        run: bun run test
+
+      - name: Run integration tests
+        run: bun run test:integration
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        if: success()
+        with:
+          files: ./coverage/lcov.info
+```
+
+## Best Practices
+
+### 1. Test Pyramid
+
+Follow the test pyramid approach:
+
+- **Lots of unit tests** - Fast, isolated, comprehensive
+- **Some integration tests** - Test component interactions
+- **Few E2E tests** - Test critical user workflows
+
+### 2. Mock External Dependencies
+
+Mock external APIs and services:
+
+```typescript
+import { vi } from "vitest";
+
+const mockApiClient = {
+  fetchUser: vi.fn(),
+  createUser: vi.fn(),
+};
+
+vi.mock("../src/api-client", () => ({
+  ApiClient: vi.fn(() => mockApiClient),
+}));
+```
+
+### 3. Test Error Conditions
+
+Don't just test the happy path - test error conditions, edge cases, and boundary conditions.
+
+### 4. Use Descriptive Test Names
+
+Write test names that clearly describe what is being tested:
+
+```typescript
+// ✅ Good
+it("should return 409 when creating user with duplicate email");
+
+// ❌ Bad
+it("should handle duplicates");
+```
+
+### 5. Clean Up Between Tests
+
+Reset state between tests to avoid test interdependence:
+
+```typescript
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetDatabase();
+  clearCache();
+});
+```
+
+Following these testing practices will help ensure your Fragno fragments are robust, reliable, and
+maintainable.

@@ -36,8 +36,8 @@ vanilla JavaScript automatically. Fully type safe.
 As a user of a Fragment (library built w/ Fragno), you integrate with only a couple of lines of
 code.
 
-```typescript app/api/my-nextjs-project/[...all]/route.ts
-// app/api/my-nextjs-project/[...all]/route.ts
+```typescript app/api/example-fragment/[...all]/route.ts
+// app/api/example-fragment/[...all]/route.ts
 import { createExampleFragment } from "@fragno-dev/example-fragment";
 import { toNextJsHandler } from "@fragno-dev/core/next-js";
 
