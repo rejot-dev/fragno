@@ -51,9 +51,7 @@ function isReadable(value: unknown): value is Readable<string> {
   return typeof value === "object" && value !== null && "subscribe" in value;
 }
 
-function readableToAtom<T>(value: Readable<T>): ReadableAtom<T> {
-  // The nanostore readme suggests that Svelte's stores are compatible with their stores,
-  // but in practice I found that it's missing the .listen() method.
+export function readableToAtom<T>(value: Readable<T>): ReadableAtom<T> {
   const a = atom(get(value));
 
   value.subscribe((newVal) => {
