@@ -6,13 +6,12 @@
   import { useFragno } from "@fragno-dev/core/svelte";
 
   const exampleFragmentClient = createExampleFragmentClient();
-  const { useData } = useFragno(exampleFragmentClient);
+  const { useHash, useSampleMutator } = useFragno(exampleFragmentClient);
 
   const refreshKey = writable("hey");
   const shouldTriggerError = writable(false);
 
-
-  const { loading, data, error } = useData({
+  const { loading, data, error: dataError } = useData({
     query: {
       name: derived(refreshKey, ($refreshKey) => $refreshKey.toString()),
       error: derived(shouldTriggerError, ($shouldTriggerError) =>
@@ -20,6 +19,28 @@
       ),
     },
   });
+
+  const { loading: hashLoading, data: hashData, error: hashError } = useHash();
+
+  // Mutator for sending messages
+  const {
+    mutate: sampleMutate,
+    loading: sampleMutateLoading,
+    error: sampleMutateError,
+    data: sampleMutateData,
+  } = useSampleMutator();
+  const messageInput = writable("");
+
+  async function sendMessage() {
+    const message = $messageInput;
+    if (!message.trim()) return;
+    await sampleMutate({
+      body: { message },
+    });
+    // Clear input and refresh data after successful mutation
+    messageInput.set("");
+    refreshKey.update(n => n + 1);
+  }
 </script>
 
 <svelte:head>
@@ -27,55 +48,108 @@
 </svelte:head>
 
 <main>
-  <section class="stack">
-    <h1>SvelteKit Fragno Example Fragment</h1>
-    <p>Simple data reading with example-fragment.</p>
-
+  <div style="margin-bottom: 30px">
+    <h1>SvelteKit Fragno Example</h1>
+    <h2>Current Data:</h2>
     {#if $loading}
-      <p class="muted">Loading hash…</p>
-    {:else if $error}
-      <p class="error">Hash error: {$error.message}</p>
+      <div class="loading">
+        Loading…
+      </div>
+    {:else if $dataError}
+      <div class="error">
+        Error: {$dataError.message} (code: {$dataError.code})
+      </div>
     {:else}
-      <p class="hash">{$data}</p>
+      <div class="data">
+        {$data || "No data yet"}
+      </div>
+    {/if}
+    <div style="margin-top: 15px; display: flex; align-items: center; gap: 8px">
+      <input
+        id="toggle-error"
+        type="checkbox"
+        bind:checked={$shouldTriggerError}
+        style="margin-right: 6px"
+      />
+      <label for="toggle-error" style="font-size: 14px; color: #333"> Trigger error </label>
+    </div>
+  </div>
+
+  <div style="margin-bottom: 30px">
+
+  <div style="margin-bottom: 30px">
+    <h2>Send Message:</h2>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px">
+      <input
+        bind:value={$messageInput}
+        placeholder="Enter your message..."
+        disabled={$sampleMutateLoading}
+        style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px"
+      />
+      <button
+        on:click={sendMessage}
+        disabled={$sampleMutateLoading || !$messageInput.trim()}
+        style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer"
+      >
+        {$sampleMutateLoading ? 'Sending...' : 'Send Message'}
+      </button>
+    </div>
+
+    {#if $sampleMutateError}
+      <div class="error">
+        Mutation error: {$sampleMutateError.message} (code: {$sampleMutateError.code})
+      </div>
     {/if}
 
-  </section>
+    {#if $sampleMutateData}
+      <div class="success">
+        Message sent: {$sampleMutateData}
+      </div>
+    {/if}
+  </div>
+  <h2>Hash Data:</h2>
+  {#if $hashLoading}
+    <div class="loading">
+      Loading hash…
+    </div>
+  {:else if $hashError}
+    <div class="error">
+      Hash error: {$hashError.message} (code: {$hashError.code})
+    </div>
+  {:else}
+    <div class="data">
+      {$hashData || "No hash data"}
+    </div>
+  {/if}
+</div>
 </main>
 
 <style>
   main {
-    font-family: "Fira Code", ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
-      "Liberation Mono", "Courier New", monospace;
-    min-height: 100vh;
-    background: #0f172a;
-    color: #e2e8f0;
-    display: flex;
-    justify-content: center;
-    padding: 3rem 1.5rem;
+    padding: 20px;
+    font-family: system-ui, -apple-system, sans-serif;
   }
 
-  .stack {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    max-width: 740px;
-    width: 100%;
-  }
-
-  .muted {
-    color: #94a3b8;
+  .loading {
+    padding: 15px;
+    background-color: #f5f5f5;
+    border-radius: 5px;
+    border: 1px solid #ddd;
   }
 
   .error {
-    color: #fecaca;
+    padding: 15px;
+    background-color: #f8d7da;
+    border-radius: 5px;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
   }
 
-  .hash {
-    font-size: 0.9rem;
-    word-break: break-all;
-    background: rgba(15, 118, 110, 0.15);
-    border: 1px solid rgba(45, 212, 191, 0.4);
-    padding: 0.75rem;
-    border-radius: 0.6rem;
+  .success {
+    padding: 15px;
+    background-color: #d4edda;
+    border-radius: 5px;
+    border: 1px solid #c3e6cb;
+    color: #155724;
   }
 </style>
