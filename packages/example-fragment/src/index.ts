@@ -66,7 +66,6 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
             400,
           );
         }
-
         return json(serverSideData.value);
       },
     }),
