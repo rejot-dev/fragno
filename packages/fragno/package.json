@@ -38,6 +38,12 @@
       "types": "./dist/client/vue.d.ts",
       "default": "./dist/client/vue.js"
     },
+    "./svelte": {
+      "bun": "./src/client/svelte.ts",
+      "development": "./src/client/svelte.ts",
+      "types": "./dist/client/svelte.d.ts",
+      "default": "./dist/client/svelte.js"
+    },
     "./astro": {
       "bun": "./src/integrations/astro.ts",
       "development": "./src/integrations/astro.ts",
@@ -55,6 +61,12 @@
       "development": "./src/integrations/react-ssr.ts",
       "types": "./dist/integrations/react-ssr.d.ts",
       "default": "./dist/integrations/react-ssr.js"
+    },
+    "./svelte-kit": {
+      "bun": "./src/integrations/svelte-kit.ts",
+      "development": "./src/integrations/svelte-kit.ts",
+      "types": "./dist/integrations/svelte-kit.d.ts",
+      "default": "./dist/integrations/svelte-kit.js"
     },
     "./package.json": "./package.json"
   },
@@ -84,17 +96,22 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "vue": "^3",
-    "zod": "^4.0.5"
+    "zod": "^4.0.5",
+    "svelte": "^5.1.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "vue": "^3"
+    "vue": "^3",
+    "svelte": "^5"
   },
   "peerDependenciesMeta": {
     "react": {
       "optional": true
     },
     "vue": {
+      "optional": true
+    },
+    "svelte": {
       "optional": true
     }
   }

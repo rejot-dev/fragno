@@ -24,6 +24,9 @@
     },
     {
       "path": "examples/react-router-example"
+    },
+    {
+      "path": "examples/svelte-kit-example"
     }
   ]
 }
