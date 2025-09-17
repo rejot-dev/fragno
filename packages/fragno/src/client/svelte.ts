@@ -139,11 +139,20 @@ function createSvelteMutator<
     const error = writable<FragnoClientError<TErrorCode[number]> | undefined>(undefined);
 
     // Subscribe to the mutator store and sync with our Svelte stores
-    const _unsubscribe = hook.mutatorStore.subscribe((storeValue) => {
+    const unsubscribe = hook.mutatorStore.subscribe((storeValue) => {
       data.set(storeValue.data as InferOr<TOutputSchema, undefined>);
       loading.set(storeValue.loading);
       error.set(storeValue.error);
     });
+
+    // onDestroy will fail outside of a component context, so to pass tests we try/catch this call
+    try {
+      onDestroy(() => {
+        unsubscribe();
+      });
+    } catch (error) {
+      console.error("Failed to unsubscribe from store", error);
+    }
 
     // Create a wrapped mutate function that handles Svelte readable stores
     const mutate = async (args: {

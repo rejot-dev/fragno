@@ -79,8 +79,6 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
       handler: async ({ input }, { json, error }) => {
         const { message } = await input.valid();
 
-        serverSideData.value = message;
-
         if (/^\d+$/.test(message)) {
           return error(
             {
@@ -90,6 +88,7 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
             400,
           );
         }
+        serverSideData.value = message;
 
         return json(message);
       },
