@@ -19,15 +19,15 @@ vanilla JavaScript automatically. Fully type safe.
 
 ## Framework Support Matrix
 
-| Client-side Frameworks | Support    | —   | Server-side Frameworks  | Support    |
-| ---------------------- | ---------- | --- | ----------------------- | ---------- |
-| React                  | ✅         |     | Node.js / Express       | ✅         |
-| Vue                    | ✅         |     | React Router v7 / Remix | ✅         |
-| Vanilla JavaScript     | ✅         |     | Astro                   | ✅         |
-| Svelte                 | 🔄 Planned |     | Next.js                 | ✅         |
-|                        |            |     | Nuxt                    | ✅         |
-|                        |            |     | SvelteKit               | 🔄 Planned |
-|                        |            |     | Tanstack Start          | 🔄 Planned |
+| Client-side Frameworks | Support | —   | Server-side Frameworks  | Support    |
+| ---------------------- | ------- | --- | ----------------------- | ---------- |
+| React                  | ✅      |     | Node.js / Express       | ✅         |
+| Vue                    | ✅      |     | React Router v7 / Remix | ✅         |
+| Vanilla JavaScript     | ✅      |     | Astro                   | ✅         |
+| Svelte                 | ✅      |     | Next.js                 | ✅         |
+|                        |         |     | Nuxt                    | ✅         |
+|                        |         |     | SvelteKit               | ✅         |
+|                        |         |     | Tanstack Start          | 🔄 Planned |
 
 ## Usage
 
