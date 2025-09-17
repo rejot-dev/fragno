@@ -1,0 +1,124 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache dependencies
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+
+  check-prettier:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+
+      - name: Check formatting
+        run: bunx prettier --ignore-unknown --check
+
+  check-eslint:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+
+      - name: Run linter
+        run: bunx eslint --no-warn-ignored
+
+  build:
+    needs: install
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+
+      - name: Cache turbo build setup
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            **/.turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Check types & build
+        run: bunx turbo run types:check build
+
+  test:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+
+      - name: Run tests
+        run: bunx vitest run --allowOnly=false

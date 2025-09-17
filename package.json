@@ -36,7 +36,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
-    "clean": "rm -rf **/dist **/tsconfig.tsbuildinfo **/node_modules **/.turbo **/next **/.output **/.nuxt **/.react-router",
+    "clean": "rm -rf **/dist **/tsconfig.tsbuildinfo **/node_modules **/.turbo **/.next **/.output **/.nuxt **/.react-router",
     "clean:install": "bun run clean && bun install --linker=isolated",
     "build": "turbo run build",
     "build:watch": "turbo watch build",

@@ -7,12 +7,7 @@ const prettierConfig = {
   printWidth: 100,
   proseWrap: "always",
   trailingComma: "all",
-  plugins: [
-    "prettier-plugin-embed",
-    "prettier-plugin-sql",
-    "prettier-plugin-tailwindcss",
-    "prettier-plugin-astro",
-  ],
+  plugins: ["prettier-plugin-sql", "prettier-plugin-tailwindcss", "prettier-plugin-astro"],
   overrides: [
     {
       files: "*.astro",
@@ -23,12 +18,6 @@ const prettierConfig = {
   ],
 };
 
-/** @type {import('prettier-plugin-embed').PrettierPluginEmbedOptions} */
-const prettierPluginEmbedConfig = {
-  // TODO(Wilco): we can try using https://gist.github.com/Sharaal/742b0537035720dba7bc85b6bc7854c5 to support node-postgres better.
-  embeddedSqlTags: ["sql"],
-};
-
 /** @type {import('prettier-plugin-sql').SqlBaseOptions} */
 const prettierPluginSqlConfig = {
   language: "sqlite",
@@ -37,6 +26,5 @@ const prettierPluginSqlConfig = {
 
 export default {
   ...prettierConfig,
-  ...prettierPluginEmbedConfig,
   ...prettierPluginSqlConfig,
 };
