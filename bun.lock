@@ -150,6 +150,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@fragno-dev/core": "workspace:*",
+        "@radix-ui/react-tabs": "^1.1.13",
         "class-variance-authority": "^0.7.1",
         "fumadocs-core": "15.7.12",
         "fumadocs-mdx": "11.10.0",

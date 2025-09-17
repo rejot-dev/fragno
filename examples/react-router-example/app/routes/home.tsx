@@ -3,6 +3,7 @@ import { WelcomeShell, WelcomeHero, WelcomeExperiments } from "../welcome/welcom
 import { createChatnoClient } from "@fragno-dev/chatno";
 import { useFragno } from "@fragno-dev/core/react";
 import { useState } from "react";
+import { createChatno } from "~/chatno/chatno.server";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -11,10 +12,19 @@ export function meta(_: Route.MetaArgs) {
   ];
 }
 
+export function loader() {
+  return {
+    openaiURL: createChatno().services.getOpenAIURL(),
+  };
+}
+
 const chatnoClient = createChatnoClient();
 const { useSendMessage } = useFragno(chatnoClient);
 
-export default function Home() {
+export default function Home({ loaderData }: Route.ComponentProps) {
+  const { openaiURL } = loaderData;
+  console.log({ openaiURL });
+
   const { response, responseLoading, sendMessage } = useSendMessage();
   const [message, setMessage] = useState("");
 

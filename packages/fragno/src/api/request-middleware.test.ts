@@ -15,8 +15,8 @@ describe("Request Middleware", () => {
       defineRoute({
         method: "GET",
         path: "/protected",
-        handler: async (_input, output) => {
-          return output.json({ message: "You accessed protected resource" });
+        handler: async (_input, { json }) => {
+          return json({ message: "You accessed protected resource" });
         },
       }),
     ] as const;
@@ -26,14 +26,14 @@ describe("Request Middleware", () => {
     });
 
     // Add middleware that checks authorization
-    const withAuth = instance.withMiddleware(async ({ queryParams }, { services }) => {
+    const withAuth = instance.withMiddleware(async ({ queryParams }, { services, error }) => {
       const q = queryParams.get("q");
 
       if (services.auth.isAuthorized(q ?? undefined)) {
         return undefined;
       }
 
-      return Response.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+      return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
     });
 
     // Test unauthorized request
@@ -332,6 +332,91 @@ describe("Request Middleware", () => {
     expect(await res.json()).toEqual({
       id: 1,
       name: "John Doe",
+    });
+  });
+
+  test("middleware can modify path parameters", async () => {
+    const library = defineLibrary("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.object({ id: z.number(), name: z.string(), role: z.string() }),
+        handler: async ({ pathParams, query }, { json }) => {
+          return json({
+            id: +pathParams.id,
+            name: "John Doe",
+            role: query.get("role") ?? "user",
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      // Middleware can read path and query parameters
+      const result = await ifMatchesRoute("GET", "/users/:id", async ({ pathParams }) => {
+        pathParams.id = "9999";
+      });
+
+      return result;
+    });
+
+    // Test with admin role
+    const adminReq = new Request("http://localhost/api/users/123?role=admin", {
+      method: "GET",
+    });
+    const adminRes = await instance.handler(adminReq);
+    expect(adminRes.status).toBe(200);
+    expect(await adminRes.json()).toEqual({
+      id: 9999,
+      name: "John Doe",
+      role: "admin",
+    });
+  });
+
+  // TODO: This is not currently supported
+  test.todo("middleware can modify query parameters", async () => {
+    const library = defineLibrary("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.object({ id: z.number(), name: z.string(), role: z.string() }),
+        handler: async ({ pathParams, query }, { json }) => {
+          return json({
+            id: +pathParams.id,
+            name: "John Doe",
+            role: query.get("role") ?? "user",
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      // Middleware can read path and query parameters
+      const result = await ifMatchesRoute("GET", "/users/:id", async ({ query }) => {
+        query.set("role", "some-other-role-defined-in-middleware");
+      });
+
+      return result;
+    });
+
+    // Test with admin role
+    const adminReq = new Request("http://localhost/api/users/123?role=admin", {
+      method: "GET",
+    });
+    const adminRes = await instance.handler(adminReq);
+    expect(adminRes.status).toBe(200);
+    expect(await adminRes.json()).toEqual({
+      id: 123,
+      name: "John Doe",
+      role: "some-other-role-defined-in-middleware",
     });
   });
 });

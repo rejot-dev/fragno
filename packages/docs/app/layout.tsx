@@ -1,10 +1,19 @@
 import "@/app/global.css";
 import { RootProvider } from "fumadocs-ui/provider";
+import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 const inter = Inter({
   subsets: ["latin"],
 });
+
+export const metadata: Metadata = {
+  title: {
+    template: "%s | Fragno",
+    default: "Fragno",
+  },
+  description: "Fragno is the toolkit for building full-stack TypeScript libraries.",
+};
 
 export default function Layout({ children }: LayoutProps<"/">) {
   return (

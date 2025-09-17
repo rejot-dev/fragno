@@ -25,20 +25,20 @@ type ExampleRouteDeps = {
   serverSideData: { value: string };
 };
 
+const getHashFromHostsFileData = async () => {
+  const hostsPath =
+    platform() === "win32" ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts";
+
+  try {
+    const data = await readFile(hostsPath, { encoding: "utf8" });
+    return createHash("sha256").update(data).digest("hex");
+  } catch {
+    return null;
+  }
+};
+
 const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>()(({ deps }) => {
   const { serverSideData } = deps;
-
-  const getHashFromHostsFileData = async () => {
-    const hostsPath =
-      platform() === "win32" ? "C:\\Windows\\System32\\drivers\\etc\\hosts" : "/etc/hosts";
-
-    try {
-      const data = await readFile(hostsPath, { encoding: "utf8" });
-      return createHash("sha256").update(data).digest("hex");
-    } catch {
-      return null;
-    }
-  };
 
   return [
     defineRoute({
@@ -107,6 +107,7 @@ const exampleFragmentDefinition = defineLibrary<ExampleFragmentServerConfig>("ex
   .withServices((_cfg, deps) => {
     return {
       getData: () => deps.serverSideData.value,
+      getHashFromHostsFileData,
     };
   });
 

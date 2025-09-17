@@ -13,7 +13,11 @@ import {
   type FlattenRouteFactories,
   resolveRouteFactories,
 } from "./route";
-import { RequestMiddlewareContext, type FragnoMiddlewareCallback } from "./request-middleware";
+import {
+  RequestMiddlewareInputContext,
+  RequestMiddlewareOutputContext,
+  type FragnoMiddlewareCallback,
+} from "./request-middleware";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -207,7 +211,7 @@ export function createLibrary<
       const outputContext = new RequestOutputContext(outputSchema);
 
       if (middlewareHandler) {
-        const middlewareContext = new RequestMiddlewareContext(routes, {
+        const middlewareInputContext = new RequestMiddlewareInputContext(routes, {
           method: req.method as HTTPMethod,
           path,
           pathParams: route.params,
@@ -216,11 +220,13 @@ export function createLibrary<
           request: req,
         });
 
+        const middlewareOutputContext = new RequestMiddlewareOutputContext(dependencies, services);
+
         try {
-          const middlewareResult = await middlewareHandler(middlewareContext, {
-            deps: dependencies,
-            services,
-          });
+          const middlewareResult = await middlewareHandler(
+            middlewareInputContext,
+            middlewareOutputContext,
+          );
           if (middlewareResult !== undefined) {
             return middlewareResult;
           }

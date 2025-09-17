@@ -87,12 +87,8 @@
 </template>
 
 <script setup lang="ts">
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/vue";
 import { ref } from "vue";
-
-const exampleFragmentClient = createExampleFragmentClient();
-const { useData, useSampleMutator } = useFragno(exampleFragmentClient);
+import { exampleFragment } from "@/utils/example-fragment";
 
 const refreshKey = ref(0);
 const shouldTriggerError = ref(false);
@@ -101,7 +97,7 @@ const {
   loading,
   data,
   error: dataError,
-} = useData({
+} = exampleFragment.useData({
   query: {
     name: computed(() => refreshKey.value.toString()),
     error: computed(() => (shouldTriggerError.value ? "true" : "")),
@@ -113,7 +109,7 @@ const {
   loading: sampleMutateLoading,
   error: sampleMutateError,
   data: sampleMutateData,
-} = useSampleMutator();
+} = exampleFragment.useSampleMutator();
 
 const handleClick = async () => {
   await sampleMutate({

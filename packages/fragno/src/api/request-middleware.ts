@@ -5,15 +5,15 @@ import type { ExtractPathParams } from "./internal/path";
 import type { RequestBodyType } from "./request-input-context";
 import type { AnyFragnoRouteConfig } from "./route";
 import { RequestInputContext } from "./request-input-context";
-import { RequestOutputContext } from "./request-output-context";
+import { OutputContext, RequestOutputContext } from "./request-output-context";
 
 export type FragnoMiddlewareCallback<
   TRoutes extends readonly AnyFragnoRouteConfig[],
   TDeps,
   TServices extends Record<string, unknown>,
 > = (
-  context: RequestMiddlewareContext<TRoutes>,
-  { deps, services }: { deps: TDeps; services: TServices },
+  inputContext: RequestMiddlewareInputContext<TRoutes>,
+  outputContext: RequestMiddlewareOutputContext<TDeps, TServices>,
 ) => Promise<Response | undefined> | Response | undefined;
 
 export interface RequestMiddlewareOptions {
@@ -25,7 +25,29 @@ export interface RequestMiddlewareOptions {
   request: Request;
 }
 
-export class RequestMiddlewareContext<const TRoutes extends readonly AnyFragnoRouteConfig[]> {
+export class RequestMiddlewareOutputContext<
+  const TDeps,
+  const TServices extends Record<string, unknown>,
+> extends OutputContext<unknown, string> {
+  readonly #deps: TDeps;
+  readonly #services: TServices;
+
+  constructor(deps: TDeps, services: TServices) {
+    super();
+    this.#deps = deps;
+    this.#services = services;
+  }
+
+  get deps(): TDeps {
+    return this.#deps;
+  }
+
+  get services(): TServices {
+    return this.#services;
+  }
+}
+
+export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFragnoRouteConfig[]> {
   readonly #options: RequestMiddlewareOptions;
   readonly #route: TRoutes[number];
 

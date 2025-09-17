@@ -1,0 +1,75 @@
+---
+title: React
+description: Learn how to integrate Fragno fragments into your React frontend
+---
+
+# React
+
+React support is included in the `@fragno-dev/core` package.
+
+To start, create a client instance and use it in your components:
+
+```typescript title="lib/example-fragment-client.ts"
+import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { useFragno } from "@fragno-dev/core/react";
+
+const exampleFragmentClient = createExampleFragmentClient();
+export const exampleFragment = useFragno(exampleFragmentClient);
+```
+
+## Basic Usage
+
+```typescript title="components/ExampleComponent.tsx"
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+export default function ExampleComponent() {
+  const { data, loading } = exampleFragment.useData();
+
+  return (
+    <div>
+      <h1>Example Component</h1>
+      {loading ? <div>Loading...</div> : <div>{data}</div>}
+    </div>
+  );
+}
+```
+
+## Mutations
+
+```typescript title="components/TodoComponent.tsx"
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+export default function TodoComponent() {
+  const { useTodos, useAddTodo } = exampleFragment;
+  const { data: todos, loading: todosLoading, error, refetch } = useTodos();
+  const { mutate: addTodo, loading: addTodoLoading } = useAddTodo();
+
+  if (todosLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  return (
+    <div>
+      <h1>Todos</h1>
+      {todos?.map(todo => (
+        <div key={todo.id}>
+          {todo.text} - {todo.done ? 'Done' : 'Pending'}
+        </div>
+      ))}
+
+      <button
+        onClick={() => addTodo({ body: { text: "New todo" } })}
+        disabled={addTodoLoading}
+      >
+        {addTodoLoading ? "Adding..." : "Add Todo"}
+      </button>
+
+      <button onClick={() => refetch()}>Refresh</button>
+    </div>
+  );
+}
+```

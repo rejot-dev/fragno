@@ -1,0 +1,56 @@
+---
+title: Vanilla JS
+description: Learn how to integrate Fragno fragments into your JavaScript frontend
+---
+
+```typescript title="lib/example-fragment-client.ts"
+import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { useFragno } from "@fragno-dev/core/vanilla";
+
+const exampleFragmentClient = createExampleFragmentClient();
+export const exampleFragment = useFragno(exampleFragmentClient);
+```
+
+## Basic Usage
+
+```typescript title="main.ts"
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+exampleFragment.useData().subscribe(({ data, loading }) => {
+  const dataDisplay = document.getElementById("data-display")!;
+  dataDisplay.textContent = loading ? "loading..." : data;
+});
+```
+
+## Complex Scenarios
+
+```typescript title="main.js"
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+// Access the underlying stores directly
+const todosStore = exampleFragment.useTodos();
+const addTodoStore = exampleFragment.useAddTodo();
+
+// Subscribe to data changes
+todosStore.data.subscribe((todos) => {
+  console.log("Todos updated:", todos);
+  renderTodos(todos);
+});
+
+// Subscribe to loading state
+todosStore.loading.subscribe((loading) => {
+  document.getElementById("loading").style.display = loading ? "block" : "none";
+});
+
+// Trigger actions
+document.getElementById("add-todo").addEventListener("click", () => {
+  addTodoStore.mutate({ body: { text: "New todo" } });
+});
+
+function renderTodos(todos) {
+  const container = document.getElementById("todos");
+  container.innerHTML =
+    todos?.map((todo) => `<div>${todo.text} - ${todo.done ? "Done" : "Pending"}</div>`).join("") ||
+    "";
+}
+```
