@@ -75,7 +75,7 @@
           style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px"
         />
         <button
-          on:click={sendMessage}
+          onclick={sendMessage}
           disabled={$sampleMutateLoading || !$messageInput.trim()}
           style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer"
         >
