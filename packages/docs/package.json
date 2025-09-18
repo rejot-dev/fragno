@@ -3,10 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "fumadocs-mdx && next build",
     "dev": "next dev --turbo --port 3003",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "postinstall": "fumadocs-mdx",
     "types:check": "tsc --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },

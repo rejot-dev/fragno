@@ -11,7 +11,8 @@
         ".output/**",
         ".nuxt/**",
         ".react-router/**",
-        ".output/**"
+        ".output/**",
+        ".source/**"
       ]
     },
     "types:check": {
