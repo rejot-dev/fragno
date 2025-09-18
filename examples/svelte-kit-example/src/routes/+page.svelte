@@ -42,6 +42,7 @@
 <main>
   <div style="margin-bottom: 30px">
     <h1>SvelteKit Fragno Example</h1>
+    <a href="/runes">See example using Runes</a>.
     <h2>Current Data:</h2>
     <input
       id="toggle-data"

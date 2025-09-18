@@ -21,8 +21,13 @@ export type FragnoSvelteHook<
   TErrorCode extends string,
   TQueryParameters extends string,
 > = (args?: {
-  path?: MaybeExtractPathParamsOrWiden<TPath, string | Readable<string> | ReadableAtom<string>>;
-  query?: QueryParamsHint<TQueryParameters, string | Readable<string> | ReadableAtom<string>>;
+  path?:
+    | MaybeExtractPathParamsOrWiden<TPath, string | Readable<string> | ReadableAtom<string>>
+    | (() => string);
+  query?: QueryParamsHint<
+    TQueryParameters,
+    string | Readable<string> | ReadableAtom<string> | (() => string)
+  >;
 }) => {
   data: Readable<InferOr<TOutputSchema, undefined>>;
   loading: Readable<boolean>;
@@ -39,8 +44,14 @@ export type FragnoSvelteMutator<
 > = () => {
   mutate: (args: {
     body?: InferOr<TInputSchema, undefined>;
-    path?: MaybeExtractPathParamsOrWiden<TPath, string | Readable<string> | ReadableAtom<string>>;
-    query?: QueryParamsHint<TQueryParameters, string | Readable<string> | ReadableAtom<string>>;
+    path?: MaybeExtractPathParamsOrWiden<
+      TPath,
+      string | Readable<string> | ReadableAtom<string> | (() => string)
+    >;
+    query?: QueryParamsHint<
+      TQueryParameters,
+      string | Readable<string> | ReadableAtom<string> | (() => string)
+    >;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading: Readable<boolean | undefined>;
   error: Readable<FragnoClientError<TErrorCode[number]> | undefined>;
@@ -51,11 +62,25 @@ function isReadable(value: unknown): value is Readable<string> {
   return typeof value === "object" && value !== null && "subscribe" in value;
 }
 
+function isCallable(value: unknown): value is () => string {
+  return typeof value === "function";
+}
+
 export function readableToAtom<T>(value: Readable<T>): ReadableAtom<T> {
   const a = atom(get(value));
 
   value.subscribe((newVal) => {
     a.set(newVal);
+  });
+
+  return a;
+}
+
+export function runeToAtom<T>(value: () => T): ReadableAtom<T> {
+  const a = atom(value());
+
+  $effect(() => {
+    a.set(value());
   });
 
   return a;
@@ -75,13 +100,21 @@ function createSvelteHook<
     const queryParams: Record<string, string | ReadableAtom<string>> = {};
 
     for (const [key, value] of Object.entries(path ?? {})) {
-      const v = value as string | Readable<string> | ReadableAtom<string>;
-      pathParams[key] = isReadable(v) ? readableToAtom(v) : v;
+      const v = value as string | Readable<string> | ReadableAtom<string> | (() => string);
+      if (isCallable(v)) {
+        pathParams[key] = runeToAtom(v);
+      } else {
+        pathParams[key] = isReadable(v) ? readableToAtom(v) : v;
+      }
     }
 
     for (const [key, value] of Object.entries(query ?? {})) {
-      const v = value as string | Readable<string> | ReadableAtom<string>;
-      queryParams[key] = isReadable(v) ? readableToAtom(v) : v;
+      const v = value as string | Readable<string> | ReadableAtom<string> | (() => string);
+      if (isCallable(v)) {
+        queryParams[key] = runeToAtom(v);
+      } else {
+        queryParams[key] = isReadable(v) ? readableToAtom(v) : v;
+      }
     }
 
     const store = hook.store({
@@ -147,8 +180,14 @@ function createSvelteMutator<
     // Create a wrapped mutate function that handles Svelte readable stores
     const mutate = async (args: {
       body?: InferOr<TInputSchema, undefined>;
-      path?: MaybeExtractPathParamsOrWiden<TPath, string | Readable<string> | ReadableAtom<string>>;
-      query?: QueryParamsHint<TQueryParameters, string | Readable<string> | ReadableAtom<string>>;
+      path?: MaybeExtractPathParamsOrWiden<
+        TPath,
+        string | Readable<string> | ReadableAtom<string> | (() => string)
+      >;
+      query?: QueryParamsHint<
+        TQueryParameters,
+        string | Readable<string> | ReadableAtom<string> | (() => string)
+      >;
     }) => {
       const { body, path, query } = args;
 
@@ -211,6 +250,7 @@ export function useFragno<T extends Record<string, unknown>>(
     if (!Object.prototype.hasOwnProperty.call(clientObj, key)) {
       continue;
     }
+    // TODO: support steams (see createChatnoClient)
 
     const hook = clientObj[key];
     if (isGetHook(hook)) {
