@@ -4,8 +4,10 @@ import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
   isMutatorHook,
+  isStore,
   type FragnoClientHookData,
   type FragnoClientMutatorData,
+  type FragnoStoreData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import type { InferOr } from "../util/types-util";
@@ -221,6 +223,12 @@ function createSvelteMutator<
   };
 }
 
+function createSvelteStore<T extends object>(hook: FragnoStoreData<T>) {
+  // Since nanostores already implement Svelte's store contract,
+  // we can return the store object directly for use with $ syntax
+  return hook.obj;
+}
+
 export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
@@ -241,7 +249,9 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoSvelteMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>
-      : T[K];
+      : T[K] extends FragnoStoreData<infer TStoreObj>
+        ? TStoreObj
+        : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any;
@@ -250,13 +260,14 @@ export function useFragno<T extends Record<string, unknown>>(
     if (!Object.prototype.hasOwnProperty.call(clientObj, key)) {
       continue;
     }
-    // TODO: support steams (see createChatnoClient)
 
     const hook = clientObj[key];
     if (isGetHook(hook)) {
       result[key] = createSvelteHook(hook);
     } else if (isMutatorHook(hook)) {
       result[key] = createSvelteMutator(hook);
+    } else if (isStore(hook)) {
+      result[key] = createSvelteStore(hook);
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;
