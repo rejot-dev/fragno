@@ -1,0 +1,106 @@
+---
+title: Svelte
+description: Learn how to integrate Fragno fragments into your Svelte frontend and SvelteKit backend
+---
+
+# Svelte
+
+Svelte and SvelteKit support is included in the `@fragno-dev/core` package.
+
+To start, create a client instance and use it in your components:
+
+```typescript title="lib/example-fragment-client.ts"
+import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { useFragno } from "@fragno-dev/core/svelte";
+
+const exampleFragmentClient = createExampleFragmentClient();
+export const exampleFragment = useFragno(exampleFragmentClient);
+```
+
+## Basic Usage
+
+```svelte title="components/ExampleComponent.svelte"
+<script lang="ts">
+  import { exampleFragment } from "@/lib/example-fragment-client";
+
+  const { data, loading } = exampleFragment.useData();
+</script>
+
+<div>
+  {#if $loading}
+    <div>Loading…</div>
+  {:else}
+    <div>{$data}</div>
+  {/if}
+</div>
+```
+
+## Reactivity
+
+Fragno currently only supports Svelte reactivity using Svelte stores, stores can be passed to hooks
+as path or query parameters to automatically update the hook when the store changes.
+
+```svelte title="components/UserProfile.svelte"
+<script lang="ts">
+  import { writable } from "svelte/store";
+  import { exampleFragment } from "@/lib/example-fragment-client";
+
+  const userId = writable("1");
+  const { data: user, loading } = exampleFragment.useUser({ path: { id: userId } });
+
+  const updateUser = () => {
+    userId.set("2");
+  };
+</script>
+
+<div>
+  {#if $loading}
+    <div>Loading user...</div>
+  {:else if $user}
+    <div>User: {$user.name}</div>
+    <button onclick={updateUser}>Switch to User 2</button>
+  {/if}
+</div>
+```
+
+### Mutations
+
+```svelte title="components/TodoComponent.svelte"
+<script lang="ts">
+  import { exampleFragment } from "@/lib/example-fragment-client";
+
+  const { data: todos, loading: todosLoading, error } = exampleFragment.useTodos();
+  const { mutate: addTodo, loading: addTodoLoading } = exampleFragment.useAddTodo();
+
+  const handleAddTodo = () => {
+    addTodo({ body: { text: "New todo" } });
+  };
+</script>
+
+<div>
+  <h1>Todos</h1>
+
+  {#if $todosLoading}
+    <div>Loading...</div>
+  {:else if $error}
+    <div>Error: {$error.message}</div>
+  {:else}
+    <div>
+      {#each $todos as todo (todo.id)}
+        <div>{todo.text} - {todo.done ? "Done" : "Pending"}</div>
+      {/each}
+    </div>
+  {/if}
+
+  <button onclick={handleAddTodo} disabled={$addTodoLoading}>
+    {$addTodoLoading ? "Adding..." : "Add Todo"}
+  </button>
+</div>
+```
+
+### Runes
+
+Svelte introduced a new reactivity syntax called [Runes][svelte-rune-migration] in version 5, Fragno
+does not (yet) support using this kind of reactivity.
+
+[svelte-rune-migration]: https://svelte.dev/docs/svelte/v5-migration-guide#Reactivity-syntax-changes
