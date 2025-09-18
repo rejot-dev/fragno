@@ -99,14 +99,9 @@ function createSvelteHook<
       error.set(updatedStoreValue.error);
     });
 
-    // onDestroy will fail outside of a component context, so to pass tests we try/catch this call
-    try {
-      onDestroy(() => {
-        unsubscribe();
-      });
-    } catch (error) {
-      console.error("Failed to unsubscribe from store", error);
-    }
+    onDestroy(() => {
+      unsubscribe();
+    });
 
     return {
       data,
@@ -145,14 +140,9 @@ function createSvelteMutator<
       error.set(storeValue.error);
     });
 
-    // onDestroy will fail outside of a component context, so to pass tests we try/catch this call
-    try {
-      onDestroy(() => {
-        unsubscribe();
-      });
-    } catch (error) {
-      console.error("Failed to unsubscribe from store", error);
-    }
+    onDestroy(() => {
+      unsubscribe();
+    });
 
     // Create a wrapped mutate function that handles Svelte readable stores
     const mutate = async (args: {

@@ -1,6 +1,7 @@
 import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vitest";
 import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
+import { render } from "@testing-library/svelte";
 import { defineRoute } from "../api/route";
 import { defineLibrary } from "../api/library";
 import { z } from "zod";
@@ -8,27 +9,42 @@ import { readableToAtom, useFragno } from "./svelte";
 import { writable, readable, get, derived } from "svelte/store";
 import { FragnoClientUnknownApiError } from "./client-error";
 import { atom } from "nanostores";
+import TestComponent from "./component.test.svelte";
+
+function renderHook(
+  clientObj: Record<string, unknown>,
+  hookName: string,
+  args: Record<string, unknown> = {},
+) {
+  const { component } = render(TestComponent, {
+    props: { clientObj, hookName, args },
+  });
+
+  return {
+    loading: component["loading"],
+    data: component["data"],
+    error: component["error"],
+  };
+}
+
+function renderMutator(
+  clientObj: Record<string, unknown>,
+  hookName: string,
+  args: Record<string, unknown> = {},
+) {
+  const { component } = render(TestComponent, {
+    props: { clientObj, hookName, args },
+  });
+
+  return {
+    loading: component["loading"],
+    data: component["data"],
+    error: component["error"],
+    mutate: component["mutate"],
+  };
+}
 
 global.fetch = vi.fn();
-
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitFor(
-  condition: () => boolean | void,
-  timeout: number = 5000,
-  interval: number = 50,
-): Promise<void> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeout) {
-    if (condition()) {
-      return;
-    }
-    await sleep(interval);
-  }
-  throw new Error(`Timeout waiting for condition after ${timeout}ms`);
-}
 
 describe("readableToAtom", () => {
   test("should create an atom from a readable store", () => {
@@ -96,26 +112,29 @@ describe("createSvelteHook", () => {
       useUsers: client.createHook("/users"),
     };
 
-    const { useUsers } = useFragno(clientObj);
-    const { loading, data, error } = useUsers();
+    const hook = renderHook(clientObj, "useUsers");
 
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toEqual([{ id: 1, name: "John" }]);
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.data)).toEqual([{ id: 1, name: "John" }]);
+    expect(get(hook.error)).toBeUndefined();
   });
 
   test("Should support path parameters and update reactively when Svelte store changes", async () => {
     const testLibraryDefinition = defineLibrary("test-library");
+    type TestData = {
+      id: number;
+      name: string;
+    };
     const testRoutes = [
       defineRoute({
         method: "GET",
         path: "/users/:id",
         outputSchema: z.object({ id: z.number(), name: z.string() }),
         handler: async ({ pathParams }, { json }) =>
-          json({ id: Number(pathParams["id"]), name: "John" }),
+          json({ id: Number(pathParams["id"]), name: "John" } satisfies TestData),
       }),
     ] as const;
 
@@ -143,21 +162,20 @@ describe("createSvelteHook", () => {
 
     const id = writable("123");
 
-    const { useUser } = useFragno(clientObj);
-    const { loading, data, error } = useUser({ path: { id } });
+    const hook = renderHook(clientObj, "useUser", { path: { id } });
 
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toEqual({ id: 123, name: "John" });
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.data)).toEqual({ id: 123, name: "John" });
+    expect(get(hook.error)).toBeUndefined();
 
     // Update the id value
     id.set("456");
 
-    await waitFor(() => {
-      return get(data)?.id === 456;
+    await vi.waitFor(() => {
+      expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -165,13 +183,14 @@ describe("createSvelteHook", () => {
 
   test("Should support path parameters and update reactively when Nanostores Atom changes", async () => {
     const testLibraryDefinition = defineLibrary("test-library");
+    type TestData = { id: number; name: string };
     const testRoutes = [
       defineRoute({
         method: "GET",
         path: "/users/:id",
         outputSchema: z.object({ id: z.number(), name: z.string() }),
         handler: async ({ pathParams }, { json }) =>
-          json({ id: Number(pathParams["id"]), name: "John" }),
+          json({ id: Number(pathParams["id"]), name: "John" } satisfies TestData),
       }),
     ] as const;
 
@@ -199,21 +218,20 @@ describe("createSvelteHook", () => {
 
     const id = atom("123");
 
-    const { useUser } = useFragno(clientObj);
-    const { loading, data, error } = useUser({ path: { id } });
+    const hook = renderHook(clientObj, "useUser", { path: { id } });
 
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toEqual({ id: 123, name: "John" });
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.data)).toEqual({ id: 123, name: "John" });
+    expect(get(hook.error)).toBeUndefined();
 
     // Update the id value
     id.set("456");
 
-    await waitFor(() => {
-      return get(data)?.id === 456;
+    await vi.waitFor(() => {
+      expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -246,16 +264,15 @@ describe("createSvelteHook", () => {
       useUsers: client.createHook("/users"),
     };
 
-    const { useUsers } = useFragno(clientObj);
-    const { loading, data, error } = useUsers();
+    const hook = renderHook(clientObj, "useUsers");
 
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toBeUndefined();
-    expect(get(error)).toBeDefined();
-    expect(get(error)).toBeInstanceOf(FragnoClientUnknownApiError);
+    expect(get(hook.data)).toBeUndefined();
+    expect(get(hook.error)).toBeDefined();
+    expect(get(hook.error)).toBeInstanceOf(FragnoClientUnknownApiError);
   });
 
   test("Should track loading states correctly", async () => {
@@ -281,13 +298,12 @@ describe("createSvelteHook", () => {
       useUsers: client.createHook("/users"),
     };
 
-    const { useUsers } = useFragno(clientObj);
-    const { loading, data, error } = useUsers();
+    const hook = renderHook(clientObj, "useUsers");
 
     // Initially loading should be true
-    expect(get(loading)).toBe(true);
-    expect(get(data)).toBeUndefined();
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.loading)).toBe(true);
+    expect(get(hook.data)).toBeUndefined();
+    expect(get(hook.error)).toBeUndefined();
 
     // Resolve the fetch
     resolvePromise!({
@@ -296,12 +312,12 @@ describe("createSvelteHook", () => {
       json: async () => [{ id: 1, name: "John" }],
     } as Response);
 
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toEqual([{ id: 1, name: "John" }]);
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.data)).toEqual([{ id: 1, name: "John" }]);
+    expect(get(hook.error)).toBeUndefined();
   });
 
   test("Should handle query parameters", async () => {
@@ -335,22 +351,21 @@ describe("createSvelteHook", () => {
     const limit = writable("10");
     const page = writable("1");
 
-    const { useUsers } = useFragno(clientObj);
-    const { loading, data, error } = useUsers({ query: { limit, page } });
+    const hook = renderHook(clientObj, "useUsers", { query: { limit, page } });
 
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toEqual([{ id: 1, name: "John" }]);
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.data)).toEqual([{ id: 1, name: "John" }]);
+    expect(get(hook.error)).toBeUndefined();
 
     // Update query params
     limit.set("20");
     page.set("2");
 
-    await waitFor(() => {
-      return vi.mocked(global.fetch).mock.calls.length === 2;
+    await vi.waitFor(() => {
+      expect(vi.mocked(global.fetch).mock.calls.length).toBe(2);
     });
 
     // Verify the second call has updated params
@@ -402,18 +417,17 @@ describe("createSvelteHook", () => {
       usePosts: client.createHook("/posts"),
     };
 
-    const { useUsers, usePosts } = useFragno(clientObj);
+    // Render two separate hooks
+    const usersHook = renderHook(clientObj, "useUsers");
+    const postsHook = renderHook(clientObj, "usePosts");
 
-    // Use multiple hooks
-    const users = useUsers();
-    const posts = usePosts();
-
-    await waitFor(() => {
-      return get(users.loading) === false && get(posts.loading) === false;
+    await vi.waitFor(() => {
+      expect(get(usersHook.loading)).toBe(false);
+      expect(get(postsHook.loading)).toBe(false);
     });
 
-    expect(get(users.data)).toEqual([{ id: 1, name: "John" }]);
-    expect(get(posts.data)).toEqual([{ id: 1, title: "First Post" }]);
+    expect(get(usersHook.data)).toEqual([{ id: 1, name: "John" }]);
+    expect(get(postsHook.data)).toEqual([{ id: 1, title: "First Post" }]);
   });
 
   test("Should handle mixed reactive parameters - writable path param, atom and writable query params, with reactive updates", async () => {
@@ -434,6 +448,12 @@ describe("createSvelteHook", () => {
       }),
     ] as const;
 
+    type TestData = {
+      id: number;
+      title: string;
+      category: string;
+    };
+
     // Mock fetch to verify URL construction and parameter passing
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
@@ -448,17 +468,17 @@ describe("createSvelteHook", () => {
       const limit = url.searchParams.get("limit") || "5";
       const category = url.searchParams.get("category") || "general";
       const sort = url.searchParams.get("sort") || "asc";
-
       return {
         headers: new Headers(),
         ok: true,
-        json: async () => [
-          {
-            id: Number(userId) * 100,
-            title: `Post for user ${userId}`,
-            category: `${category}-${limit}-${sort}`,
-          },
-        ],
+        json: async () =>
+          [
+            {
+              id: Number(userId) * 100,
+              title: `Post for user ${userId}`,
+              category: `${category}-${limit}-${sort}`,
+            },
+          ] satisfies TestData[],
       } as Response;
     });
 
@@ -473,19 +493,20 @@ describe("createSvelteHook", () => {
     const category = writable("tech"); // Svelte writable for query parameter
     const sort = "desc"; // Normal string for query parameter
 
-    const { useUserPosts } = useFragno(clientObj);
-    const { loading, data, error } = useUserPosts({
+    const hook = renderHook(clientObj, "useUserPosts", {
       path: { id: userId },
       query: { limit, category, sort },
     });
 
     // Wait for initial load
-    await waitFor(() => {
-      return get(loading) === false;
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
     });
 
-    expect(get(data)).toEqual([{ id: 100, title: "Post for user 1", category: "tech-10-desc" }]);
-    expect(get(error)).toBeUndefined();
+    expect(get(hook.data)).toEqual([
+      { id: 100, title: "Post for user 1", category: "tech-10-desc" },
+    ]);
+    expect(get(hook.error)).toBeUndefined();
     expect(fetch).toHaveBeenCalledTimes(1);
 
     // Verify initial URL construction
@@ -498,8 +519,8 @@ describe("createSvelteHook", () => {
     // Update the Svelte writable path parameter
     userId.set("2");
 
-    await waitFor(() => {
-      return get(data)?.[0]?.id === 200;
+    await vi.waitFor(() => {
+      expect((get(hook.data) as TestData[])?.[0]?.id).toBe(200);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -507,8 +528,8 @@ describe("createSvelteHook", () => {
     // Update the nanostores atom query parameter
     limit.set("20");
 
-    await waitFor(() => {
-      return get(data)?.[0]?.category?.includes("20");
+    await vi.waitFor(() => {
+      expect((get(hook.data) as TestData[])?.[0]?.category?.includes("20")).toBe(true);
     });
 
     expect(fetch).toHaveBeenCalledTimes(3);
@@ -516,8 +537,8 @@ describe("createSvelteHook", () => {
     // Update the Svelte writable query parameter
     category.set("science");
 
-    await waitFor(() => {
-      return get(data)?.[0]?.category?.includes("science");
+    await vi.waitFor(() => {
+      expect((get(hook.data) as TestData[])?.[0]?.category?.includes("science")).toBe(true);
     });
 
     expect(fetch).toHaveBeenCalledTimes(4);
@@ -567,20 +588,19 @@ describe("createSvelteMutator", () => {
       createUser: client.createMutator("POST", "/users"),
     };
 
-    const { createUser } = useFragno(clientObj);
-    const { mutate, loading, data, error } = createUser();
+    const mutator = renderMutator(clientObj, "createUser");
 
-    expect(get(loading)).toBe(false);
-    expect(get(data)).toBeUndefined();
-    expect(get(error)).toBeUndefined();
+    expect(get(mutator.loading)).toBe(false);
+    expect(get(mutator.data)).toBeUndefined();
+    expect(get(mutator.error)).toBeUndefined();
 
-    const result = await mutate({
+    const result = await mutator.mutate({
       body: { name: "John Doe", email: "john@example.com" },
     });
 
     expect(result).toEqual({ id: 1, name: "John Doe", email: "john@example.com" });
-    expect(get(data)).toEqual({ id: 1, name: "John Doe", email: "john@example.com" });
-    expect(get(error)).toBeUndefined();
+    expect(get(mutator.data)).toEqual({ id: 1, name: "John Doe", email: "john@example.com" });
+    expect(get(mutator.error)).toBeUndefined();
   });
 
   test("Should handle mutator with path parameters", async () => {
@@ -614,22 +634,21 @@ describe("createSvelteMutator", () => {
       updateUser: client.createMutator("PUT", "/users/:id"),
     };
 
-    const { updateUser } = useFragno(clientObj);
-    const { mutate, data, error } = updateUser();
+    const mutator = renderMutator(clientObj, "updateUser");
 
     const userId = writable("42");
-    const result = await mutate({
+    const result = await mutator.mutate({
       body: { name: "Updated Name" },
       path: { id: userId },
     });
 
     expect(result).toEqual({ id: 42, name: "Updated Name" });
-    expect(get(data)).toEqual({ id: 42, name: "Updated Name" });
-    expect(get(error)).toBeUndefined();
+    expect(get(mutator.data)).toEqual({ id: 42, name: "Updated Name" });
+    expect(get(mutator.error)).toBeUndefined();
 
     // Update the writable and call again
     userId.set("100");
-    const result2 = await mutate({
+    const result2 = await mutator.mutate({
       body: { name: "Another Name" },
       path: { id: userId },
     });
