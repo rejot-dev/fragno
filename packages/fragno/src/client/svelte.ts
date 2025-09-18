@@ -166,7 +166,7 @@ function createSvelteMutator<
       }
 
       // Call the store's mutate function with normalized params
-      return hook.mutatorStore.get().mutate({
+      return hook.mutatorStore.mutate({
         body,
         path: pathParams as MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>,
         query: queryParams,
