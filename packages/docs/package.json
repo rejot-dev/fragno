@@ -5,12 +5,14 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev --turbo --port 3003",
-    "preview": "next start",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "postinstall": "fumadocs-mdx",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "types:generate": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
+    "@opennextjs/cloudflare": "^1.8.2",
     "@radix-ui/react-tabs": "^1.1.13",
     "class-variance-authority": "^0.7.1",
     "fumadocs-core": "15.7.12",
@@ -24,13 +26,14 @@
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/mdx": "^2.0.13",
     "@types/node": "24.3.3",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "typescript": "^5.9.2",
-    "@types/mdx": "^2.0.13",
-    "@tailwindcss/postcss": "^4.1.13",
+    "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
-    "postcss": "^8.5.6"
+    "typescript": "^5.9.2",
+    "wrangler": "^4.37.1"
   }
 }
