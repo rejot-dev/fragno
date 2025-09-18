@@ -5,7 +5,7 @@ import { render } from "@testing-library/svelte";
 import { defineRoute } from "../api/route";
 import { defineLibrary } from "../api/library";
 import { z } from "zod";
-import { readableToAtom, useFragno } from "./svelte";
+import { readableToAtom, useFragno } from "./client.svelte";
 import { writable, readable, get, derived } from "svelte/store";
 import { FragnoClientUnknownApiError } from "./client-error";
 import { atom } from "nanostores";
@@ -707,5 +707,64 @@ describe("useFragno", () => {
     // Verify that hooks are still transformed
     expect(typeof result.useData).toBe("function");
     expect(typeof result.usePostAction).toBe("function");
+  });
+
+  test("Should support path parameters and update reactively when using Svelte runes", async () => {
+    const testLibraryDefinition = defineLibrary("test-library");
+    type TestData = {
+      id: number;
+      name: string;
+    };
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users/:id",
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async ({ pathParams }, { json }) =>
+          json({ id: Number(pathParams["id"]), name: "John" } satisfies TestData),
+      }),
+    ] as const;
+
+    // Mock fetch to extract the user ID from the URL and return a user object with that ID.
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      assert(typeof input === "string");
+
+      // Regex to extract id value from a URL string, matching only on /users/:id
+      const [, id] = String(input).match(/\/users\/([^/]+)/) ?? [];
+
+      expect(id).toBeDefined();
+      expect(+id).not.toBeNaN();
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => ({ id: Number(id), name: "John" }),
+      } as Response;
+    });
+
+    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const clientObj = {
+      useUser: client.createHook("/users/:id"),
+    };
+
+    let id = $state("123");
+
+    const hook = renderHook(clientObj, "useUser", { path: { id: () => id } });
+
+    await vi.waitFor(() => {
+      expect(get(hook.loading)).toBe(false);
+    });
+
+    expect(get(hook.data)).toEqual({ id: 123, name: "John" });
+    expect(get(hook.error)).toBeUndefined();
+
+    // Update the id value
+    id = "456";
+
+    await vi.waitFor(() => {
+      expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

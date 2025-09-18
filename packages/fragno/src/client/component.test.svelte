@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Readable } from "svelte/store";
-  import { useFragno } from "./svelte";
+  import { useFragno } from "./client.svelte";
 
   export let clientObj: Record<string, unknown>;
   export let hookName: string;

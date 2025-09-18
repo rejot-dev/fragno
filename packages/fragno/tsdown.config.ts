@@ -6,7 +6,7 @@ export default defineConfig({
     "./src/api/api.ts",
     "./src/client/client.ts",
     "./src/client/vanilla.ts",
-    "./src/client/svelte.ts",
+    "./src/client/client.svelte.ts",
     "./src/client/react.ts",
     "./src/client/vue.ts",
     "./src/integrations/astro.ts",

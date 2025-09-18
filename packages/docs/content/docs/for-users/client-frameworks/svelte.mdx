@@ -37,19 +37,29 @@ export const exampleFragment = useFragno(exampleFragmentClient);
 
 ## Reactivity
 
-Fragno currently only supports Svelte reactivity using Svelte stores, stores can be passed to hooks
-as path or query parameters to automatically update the hook when the store changes.
+Fragno currently supports Svelte reactivity using Svelte stores and runes, stores can be passed to
+hooks as path or query parameters to automatically update the hook when the store changes. When
+using runes you must wrap these variables in closures in order to keep reactive links working.
 
 ```svelte title="components/UserProfile.svelte"
 <script lang="ts">
   import { writable } from "svelte/store";
   import { exampleFragment } from "@/lib/example-fragment-client";
 
+  // Store
   const userId = writable("1");
-  const { data: user, loading } = exampleFragment.useUser({ path: { id: userId } });
+
+  // Rune
+  let orgId = $state("1");
+
+  // Note that the hooks always return Svelte stores
+  const { data: user, loading } = exampleFragment.useUser({
+    path: { id: userId, orgId: () => orgId },
+  });
 
   const updateUser = () => {
     userId.set("2");
+    orgId = "2";
   };
 </script>
 
@@ -97,10 +107,3 @@ as path or query parameters to automatically update the hook when the store chan
   </button>
 </div>
 ```
-
-### Runes
-
-Svelte introduced a new reactivity syntax called [Runes][svelte-rune-migration] in version 5, Fragno
-does not (yet) support using this kind of reactivity.
-
-[svelte-rune-migration]: https://svelte.dev/docs/svelte/v5-migration-guide#Reactivity-syntax-changes

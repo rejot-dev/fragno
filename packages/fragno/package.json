@@ -39,10 +39,10 @@
       "default": "./dist/client/vue.js"
     },
     "./svelte": {
-      "bun": "./src/client/svelte.ts",
-      "development": "./src/client/svelte.ts",
-      "types": "./dist/client/svelte.d.ts",
-      "default": "./dist/client/svelte.js"
+      "bun": "./src/client/client.svelte.ts",
+      "development": "./src/client/client.svelte.ts",
+      "types": "./dist/client/client.svelte.d.ts",
+      "default": "./dist/client/client.svelte.js"
     },
     "./astro": {
       "bun": "./src/integrations/astro.ts",
