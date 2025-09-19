@@ -3,14 +3,12 @@ title: React
 description: Learn how to integrate Fragno fragments into your React frontend
 ---
 
-# React
-
 React support is included in the `@fragno-dev/core` package.
 
-To start, create a client instance and use it in your components:
+To start, create a client instance and call the React `useFragno` function.
 
 ```typescript title="lib/example-fragment-client.ts"
-import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
 import { useFragno } from "@fragno-dev/core/react";
 
 const exampleFragmentClient = createExampleFragmentClient();

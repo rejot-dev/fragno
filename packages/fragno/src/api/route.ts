@@ -133,18 +133,20 @@ export function defineRoutes<
   TDeps = EmptyObject,
   TServices = EmptyObject,
 >() {
-  return <
-    const TRoutes extends readonly FragnoRouteConfig<
-      HTTPMethod,
-      string,
-      StandardSchemaV1 | undefined,
-      StandardSchemaV1 | undefined,
-      string,
-      string
-    >[],
-  >(
-    fn: (context: RouteFactoryContext<TConfig, TDeps, TServices>) => TRoutes,
-  ): RouteFactory<TConfig, TDeps, TServices, TRoutes> => {
-    return fn;
+  return {
+    create: <
+      const TRoutes extends readonly FragnoRouteConfig<
+        HTTPMethod,
+        string,
+        StandardSchemaV1 | undefined,
+        StandardSchemaV1 | undefined,
+        string,
+        string
+      >[],
+    >(
+      fn: (context: RouteFactoryContext<TConfig, TDeps, TServices>) => TRoutes,
+    ): RouteFactory<TConfig, TDeps, TServices, TRoutes> => {
+      return fn;
+    },
   };
 }

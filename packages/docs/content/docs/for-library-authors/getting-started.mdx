@@ -3,9 +3,16 @@ title: Getting Started
 description: Learn how to build your own Fragno fragments
 ---
 
-# Getting Started: Building Fragments
+There are a number of concepts you should be familiar with before publishing a Fragment:
 
-This guide will walk you through creating a Fragment.
+- Defining Routes
+- Dependencies and Services
+- Client-side State Management
+- Code-Splitting (Client and Server bundles)
+
+But before getting into that, we'll start with the basics and ignore the details for now. In this
+walkthrough, we'll create two simple server routes for getting and creating todos, then we'll also
+create a client-side Fragment that provides TanStack Query-style hooks for the two routes.
 
 ## Installation
 
@@ -28,14 +35,14 @@ import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
-// Define the configuration interface
+// Any configuration the users of your Fragment will need to provide
 export interface TodosConfig {
-  // Any configuration your users need to provide
-  maxTodos?: number;
-  onTodoCreated?: (todo: Todo) => void;
+  openaiApiKey: string;
+  onTodoCreated?: (todo: Todo & { textSummary?: string }) => void;
 }
 
-// Define your data types
+export type Todo = z.infer<typeof TodoSchema>;
+
 const TodoSchema = z.object({
   id: z.string(),
   text: z.string(),
@@ -43,23 +50,25 @@ const TodoSchema = z.object({
   createdAt: z.string(),
 });
 
-type Todo = z.infer<typeof TodoSchema>;
-
-// Define your library
 const todosDefinition = defineLibrary<TodosConfig>("todos-fragment");
 ```
 
 ### Step 2: Add Dependencies (Optional)
 
-If your fragment needs server-side dependencies like databases or external APIs:
+Dependencies are private to the library/fragment and are not included in the client bundle. They can
+be used in the server-side route handlers. Dependencies can be defined using the `withDependencies`
+method, this method has access to the config object.
 
-```typescript
+```typescript title="src/index.ts"
+import { defineLibrary } from "@fragno-dev/core";
+import { MyOpenAIWrapper } from "./lib/my-openai-wrapper";
+
 const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDependencies(
   (config: TodosConfig) => {
     return {
-      database: new DatabaseConnection(),
-      maxTodos: config.maxTodos ?? 100,
-      // These dependencies are automatically stripped from client bundles
+      aiWrapper: new MyOpenAIWrapper({
+        apiKey: config.openaiApiKey,
+      }),
     };
   },
 );
@@ -67,380 +76,143 @@ const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDepende
 
 ### Step 3: Define Routes
 
-```typescript
-// GET /todos - List all todos
-const getTodosRoute = defineRoute({
+A basic route can be defined using the `defineRoute` function. Options are: `method`, `path`,
+`inputSchema`, `outputSchema`, `handler`, `errorCodes`, and `queryParameters`.
+
+The first argument passed to the handler is the input context object, this object has an `input`
+field with a `valid` method that can be used to validate the input. It also contains other fields
+related to the request.
+
+The second argument passed to the handler is the output context object, this object contains a
+number of method fields: `json`, `jsonStream`, `empty`, and `error`. These methods can be used to
+return a response.
+
+```typescript title="routes/get-todos.ts"
+import { defineRoute } from "@fragno-dev/core";
+
+export const getTodosRoute = defineRoute({
   method: "GET",
   path: "/todos",
   outputSchema: z.array(TodoSchema),
-  handler: async (_, { json }) => {
-    // In a real app, fetch from your database
-    const todos: Todo[] = [
+  handler: async ({ query }, { json }) => {
+    return json([
       {
         id: "1",
         text: "Learn Fragno",
-        done: false,
+        done: query.get("done") === "true",
         createdAt: new Date().toISOString(),
       },
+    ]);
+  },
+});
+```
+
+The `defineRoute` function does _not_ have access to the dependencies or services. These are
+available in the route factory context object that can be accessed by using `defineRoutes` (note the
+plural).
+
+```typescript title="routes/post-todos.ts"
+import { defineRoute, defineRoutes } from "@fragno-dev/core";
+import type { Todo } from "../index";
+import type { MyOpenAIWrapper } from "../lib/my-openai-wrapper";
+
+// Dependencies and services can be defined on a per-route level, since they might be a subset
+// of all dependencies/services.
+type AddTodoRouteDeps = {
+  aiWrapper: MyOpenAIWrapper;
+};
+
+type AddTodoRouteServices = {
+  onTodoCreated?: (todo: Todo & { textSummary?: string }) => void;
+};
+
+export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>().create(
+  ({ config, deps, services }) => {
+    const { aiWrapper } = deps;
+
+    return [
+      defineRoute({
+        method: "POST",
+        path: "/todos",
+        inputSchema: z.object({ text: z.string() }),
+        outputSchema: TodoSchema,
+        queryParameters: ["summarize"],
+        errorCodes: ["SUMMARY_ERROR"],
+        handler: async ({ input, query }, { json, error }) => {
+          const { text } = await input.valid();
+
+          const todo = {
+            id: crypto.randomUUID(),
+            text,
+            done: false,
+            createdAt: new Date().toISOString(),
+          } satisfies Todo;
+
+          try {
+            const textSummary = query.get("summarize")
+              ? await aiWrapper.summarizeText(text)
+              : undefined;
+          } catch {
+            return error({ message: "Summary error", code: "SUMMARY_ERROR" }, 503);
+          }
+
+          // Call the user's callback if provided
+          services?.onTodoCreated?.({
+            ...todo,
+            textSummary,
+          });
+
+          return json(todo);
+        },
+      }),
     ];
-    return json(todos);
-  },
-});
-
-// POST /todos - Create a new todo
-const addTodoRoute = defineRoute({
-  method: "POST",
-  path: "/todos",
-  inputSchema: z.object({ text: z.string() }),
-  outputSchema: TodoSchema,
-  handler: async ({ input, services }, { json }) => {
-    const { text } = await input.valid();
-
-    const todo: Todo = {
-      id: crypto.randomUUID(),
-      text,
-      done: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Call the user's callback if provided
-    services?.onTodoCreated?.(todo);
-
-    return json(todo);
-  },
-});
-
-// PUT /todos/:id - Update a todo
-const updateTodoRoute = defineRoute({
-  method: "PUT",
-  path: "/todos/:id",
-  pathSchema: z.object({ id: z.string() }),
-  inputSchema: z.object({
-    text: z.string().optional(),
-    done: z.boolean().optional(),
-  }),
-  outputSchema: TodoSchema,
-  handler: async ({ path, input }, { json, error }) => {
-    const { id } = await path.valid();
-    const updates = await input.valid();
-
-    // In a real app, find and update the todo in your database
-    const existingTodo = findTodoById(id);
-    if (!existingTodo) {
-      return error({ message: "Todo not found", code: "NOT_FOUND" }, 404);
-    }
-
-    const updatedTodo: Todo = {
-      ...existingTodo,
-      ...updates,
-    };
-
-    return json(updatedTodo);
-  },
-});
-```
-
-### Step 4: Export Server Creator
-
-```typescript
-export function createTodos(config: TodosConfig = {}, fragnoConfig = {}) {
-  return createLibrary(
-    todosDefinition,
-    config,
-    [getTodosRoute, addTodoRoute, updateTodoRoute],
-    fragnoConfig,
-  );
-}
-```
-
-### Step 5: Export Type-Safe Client Creator
-
-```typescript
-export function createTodosClient(fragnoConfig = {}) {
-  const builder = createClientBuilder(todosDefinition, fragnoConfig, [
-    getTodosRoute,
-    addTodoRoute,
-    updateTodoRoute,
-  ]);
-
-  return {
-    // Query hooks
-    useTodos: builder.createHook("/todos"),
-
-    // Mutation hooks
-    useAddTodo: builder.createMutator("POST", "/todos"),
-    useUpdateTodo: builder.createMutator("PUT", "/todos/:id"),
-  };
-}
-```
-
-## Complete Example
-
-Here's the complete fragment:
-
-```typescript title="src/index.ts"
-import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
-import { z } from "zod";
-
-export interface TodosConfig {
-  maxTodos?: number;
-  onTodoCreated?: (todo: Todo) => void;
-}
-
-const TodoSchema = z.object({
-  id: z.string(),
-  text: z.string(),
-  done: z.boolean(),
-  createdAt: z.string(),
-});
-
-type Todo = z.infer<typeof TodoSchema>;
-
-const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDependencies(
-  (config: TodosConfig) => {
-    return {
-      maxTodos: config.maxTodos ?? 100,
-    };
   },
 );
+```
 
-// In-memory storage (use a real database in production)
-let todos: Todo[] = [];
+### Step 4: Create the Server-Side Fragment
 
-const getTodosRoute = defineRoute({
-  method: "GET",
-  path: "/todos",
-  outputSchema: z.array(TodoSchema),
-  handler: async ({ deps }, { json }) => {
-    return json(todos.slice(0, deps.maxTodos));
-  },
-});
+To finalize the server-side Fragment, we need to export a function that creates the library
+instance. We pass the library definition, the config, and the routes to the `createLibrary`
+function.
 
-const addTodoRoute = defineRoute({
-  method: "POST",
-  path: "/todos",
-  inputSchema: z.object({ text: z.string() }),
-  outputSchema: TodoSchema,
-  handler: async ({ input, config, deps }, { json, error }) => {
-    if (todos.length >= deps.maxTodos) {
-      return error({ message: "Maximum todos reached", code: "LIMIT_EXCEEDED" }, 400);
-    }
+```typescript title="src/index.ts"
+import { getTodosRoute } from "./routes/get-todos";
+import { addTodoRoute } from "./routes/post-todos";
 
-    const { text } = await input.valid();
-    const todo: Todo = {
-      id: crypto.randomUUID(),
-      text,
-      done: false,
-      createdAt: new Date().toISOString(),
-    };
+import { createLibrary } from "@fragno-dev/core";
+import type { FragnoPublicConfig } from "@fragno-dev/core";
 
-    todos.push(todo);
-    config.onTodoCreated?.(todo);
-
-    return json(todo);
-  },
-});
-
-const updateTodoRoute = defineRoute({
-  method: "PUT",
-  path: "/todos/:id",
-  pathSchema: z.object({ id: z.string() }),
-  inputSchema: z.object({
-    text: z.string().optional(),
-    done: z.boolean().optional(),
-  }),
-  outputSchema: TodoSchema,
-  handler: async ({ path, input }, { json, error }) => {
-    const { id } = await path.valid();
-    const updates = await input.valid();
-
-    const todoIndex = todos.findIndex((t) => t.id === id);
-    if (todoIndex === -1) {
-      return error({ message: "Todo not found", code: "NOT_FOUND" }, 404);
-    }
-
-    todos[todoIndex] = { ...todos[todoIndex], ...updates };
-    return json(todos[todoIndex]);
-  },
-});
-
-export function createTodos(config: TodosConfig = {}, fragnoConfig = {}) {
-  return createLibrary(
-    todosDefinition,
-    config,
-    [getTodosRoute, addTodoRoute, updateTodoRoute],
-    fragnoConfig,
-  );
+export function createTodos(config: TodosConfig, fragnoConfig: FragnoPublicConfig = {}) {
+  return createLibrary(todosDefinition, config, [getTodosRoute, addTodoRoute], fragnoConfig);
 }
+```
 
-export function createTodosClient(fragnoConfig = {}) {
-  const builder = createClientBuilder(todosDefinition, fragnoConfig, [
-    getTodosRoute,
-    addTodoRoute,
-    updateTodoRoute,
-  ]);
+### Step 5: Create the Client-Side Fragment
+
+The last step is to create the client-side Fragment. This object defines how your users will use the
+Fragment on the client-side. These are React-style hooks (or Vue composables, etc). In this example,
+we simply create hooks for the two routes we defined.
+
+```typescript title="src/index.ts"
+import { getTodosRoute } from "./routes/get-todos";
+import { addTodoRoute } from "./routes/post-todos";
+
+import { createLibrary } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+
+export function createTodosClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const cb = createClientBuilder(todosDefinition, fragnoConfig, [getTodosRoute, addTodoRoute]);
 
   return {
-    useTodos: builder.createHook("/todos"),
-    useAddTodo: builder.createMutator("POST", "/todos"),
-    useUpdateTodo: builder.createMutator("PUT", "/todos/:id"),
+    useTodos: cb.createHook("/todos"),
+    useAddTodo: cb.createMutator("POST", "/todos"),
   };
 }
-```
-
-## Project Structure
-
-Here's a recommended project structure for your fragment:
-
-```
-my-fragment/
-├── src/
-│   ├── index.ts          # Main fragment definition
-│   ├── routes/
-│   │   ├── todos.ts      # Todo-related routes
-│   │   └── index.ts      # Re-export all routes
-│   ├── types/
-│   │   └── index.ts      # Shared types and schemas
-│   └── utils/
-│       └── index.ts      # Utility functions
-├── package.json
-├── tsconfig.json
-└── tsdown.config.ts      # Build configuration
-```
-
-## Building and Publishing
-
-### Package.json Setup
-
-```json title="package.json"
-{
-  "name": "@your-org/todos-fragment",
-  "version": "1.0.0",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsdown",
-    "dev": "tsdown --watch",
-    "types:check": "tsc --noEmit"
-  },
-  "peerDependencies": {
-    "@fragno-dev/core": "^0.1.0"
-  },
-  "dependencies": {
-    "zod": "^3.22.0"
-  },
-  "devDependencies": {
-    "@fragno-dev/core": "^0.1.0",
-    "tsdown": "^0.2.0",
-    "typescript": "^5.0.0"
-  }
-}
-```
-
-### Build Configuration
-
-```typescript title="tsdown.config.ts"
-import { defineConfig } from "tsdown";
-
-export default defineConfig({
-  entry: ["src/index.ts"],
-  format: ["esm"],
-  dts: true,
-  clean: true,
-  external: ["@fragno-dev/core"],
-});
-```
-
-### Building
-
-```bash
-# Development build with watch mode
-bun run dev
-
-# Production build
-bun run build
-
-# Type checking
-bun run types:check
-```
-
-### Publishing
-
-```bash
-# Build the package
-bun run build
-
-# Publish to npm
-npm publish
-```
-
-## Testing Your Fragment
-
-Create a simple test to verify your fragment works:
-
-```typescript title="tests/todos.test.ts"
-import { describe, it, expect } from "vitest";
-import { createTodos } from "../src/index";
-
-describe("Todos Fragment", () => {
-  it("should handle GET /todos", async () => {
-    const fragment = createTodos();
-
-    const request = new Request("http://localhost:3000/todos", {
-      method: "GET",
-    });
-
-    const response = await fragment.handler(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(Array.isArray(data)).toBe(true);
-  });
-
-  it("should handle POST /todos", async () => {
-    let createdTodo: any;
-    const fragment = createTodos({
-      onTodoCreated: (todo) => {
-        createdTodo = todo;
-      },
-    });
-
-    const request = new Request("http://localhost:3000/todos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "Test todo" }),
-    });
-
-    const response = await fragment.handler(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.text).toBe("Test todo");
-    expect(data.done).toBe(false);
-    expect(createdTodo).toEqual(data);
-  });
-});
 ```
 
 ## Next Steps
 
-<Cards>
-  <Card
-    title="Advanced Features"
-    href="/docs/for-library-authors/advanced-features"
-    description="Learn about streaming, middleware, and error handling"
-  />
-  <Card
-    title="Best Practices"
-    href="/docs/for-library-authors/best-practices"
-    description="Follow our recommended patterns"
-  />
-  <Card title="Examples" href="/docs/examples" description="See real-world fragment examples" />
-</Cards>
+We went over building a basic Fragment. In the next section, we'll go over the advanced features of
+Fragno. It's also important to have a look at the [Building & Publishing](./building-publishing)
+page.

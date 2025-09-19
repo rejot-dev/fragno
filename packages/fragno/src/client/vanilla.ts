@@ -35,12 +35,26 @@ export type FragnoVanillaListeners<
   path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
   query?: Record<TQueryParameters, string | ReadableAtom<string>>;
 }) => {
+  /** Called for every change in the store. */
   listen: (callback: (value: StoreData<TOutputSchema, TErrorCode[number]>) => void) => () => void;
+  /** Called once initially, then called for every change in the store. */
   subscribe: (
     callback: (value: StoreData<TOutputSchema, TErrorCode[number]>) => void,
   ) => () => void;
   get: () => StoreData<TOutputSchema, TErrorCode[number]>;
   refetch: () => void;
+  /**
+   * Produces an item for every change in the store.
+   * Note: the iterator does NOT return.
+   *
+   * @example
+   * ```typescript
+   * const store = useFragno(clientObj).store;
+   * for await (const value of store[Symbol.asyncIterator]()) {
+   *   console.log(value);
+   * }
+   * ```
+   */
   [Symbol.asyncIterator]: () => AsyncGenerator<
     StoreData<TOutputSchema, TErrorCode[number]>,
     void,
@@ -49,14 +63,13 @@ export type FragnoVanillaListeners<
 };
 
 function createVanillaListeners<
-  _TMethod extends "GET",
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
   TErrorCode extends string,
   TQueryParameters extends string,
 >(
   hook: FragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters>,
-): FragnoVanillaListeners<_TMethod, TPath, TOutputSchema, TErrorCode, TQueryParameters> {
+): FragnoVanillaListeners<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters> {
   return ({ path, query } = {}) => {
     const store = hook.store({ path, query });
 

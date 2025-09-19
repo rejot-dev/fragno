@@ -1,28 +1,24 @@
 ---
 title: Integrating a Fragment
-description: Learn how to integrate Fragno fragments into your project
+description: Specifics for integration per framework.
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { TypeTable } from "fumadocs-ui/components/type-table";
 
-# Integrating a Fragment
-
-Integrating a Fragment into your project is a straightforward process. This page contains the
-specifics for integration per framework.
+Integrating a Fragment into your project is a straightforward process. There are two main
+integration points for a Fragment: server-side & client-side. This page contains the specifics for
+integration per framework.
 
 A full run-through of integrating a Fragment is available on the previous page:
 
 <Cards>
   <Card
-    title="Installing a Fragment as a User"
-    href="/docs#installing-a-fragment-as-a-user"
+    title="User Quick Start"
+    href="/docs/user-quick-start"
     description="Learn how to integrate a Fragment into your codebase."
   />
 </Cards>
-
-There are two main integration points for a Fragment: server-side & client-side. In the reference
-documentation below you'll find examples for each framework.
 
 ## Fragno Configuration
 
@@ -90,6 +86,16 @@ import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 import { toAstroHandler } from "@fragno-dev/core/astro";
 
 export const { ALL } = toAstroHandler(createExampleFragmentInstance().handler);
+export const prerender = false;
+```
+
+#### SvelteKit
+
+```ts title="routes/api/example-fragment/[...path].ts"
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+import { toSvelteHandler } from "@fragno-dev/core/svelte-kit";
+
+export const { GET, POST, PUT, PATCH, DELETE } = toSvelteHandler(createExampleFragmentInstance());
 export const prerender = false;
 ```
 

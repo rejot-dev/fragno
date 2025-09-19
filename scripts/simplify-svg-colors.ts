@@ -17,32 +17,7 @@ type PrimaryColorMethod =
 
 type BucketingStrategy = "kmeans" | "uniform" | "perceptual";
 
-type TailwindColorFamily =
-  | "all"
-  | "warm"
-  | "cool"
-  | "neutral"
-  | "red"
-  | "orange"
-  | "amber"
-  | "yellow"
-  | "lime"
-  | "green"
-  | "emerald"
-  | "teal"
-  | "cyan"
-  | "sky"
-  | "blue"
-  | "indigo"
-  | "violet"
-  | "purple"
-  | "fuchsia"
-  | "pink"
-  | "rose"
-  | "slate"
-  | "gray"
-  | "zinc"
-  | "stone";
+type TailwindPreset = "all" | "warm" | "cool" | "neutral" | "random";
 
 interface ColorInfo {
   hex: string;
@@ -64,6 +39,8 @@ interface SimplificationOptions {
   strategy: BucketingStrategy;
   useTailwind: boolean;
   tailwindFamily: string; // Now accepts comma-separated families
+  tailwindPreset?: TailwindPreset; // Preset option for special families
+  randomCount?: number; // Number of random colors to choose when using random preset
   preserveGradients: boolean;
   mergeSimilar: boolean;
   similarityThreshold: number;
@@ -566,10 +543,15 @@ class SVGColorSimplifier {
     }
   }
 
-  private findNearestTailwindColor(color: ColorInfo, family: string): TailwindColor | undefined {
+  private findNearestTailwindColor(
+    color: ColorInfo,
+    family: string,
+    preset?: TailwindPreset,
+    randomCount?: number,
+  ): TailwindColor | undefined {
     if (this.tailwindColors.length === 0) return undefined;
 
-    const familyColors = this.filterTailwindColorsByFamily(family);
+    const familyColors = this.filterTailwindColorsByFamily(family, preset, randomCount);
     if (familyColors.length === 0) return undefined;
 
     let nearest: TailwindColor | undefined;
@@ -586,31 +568,50 @@ class SVGColorSimplifier {
     return nearest;
   }
 
-  private filterTailwindColorsByFamily(family: string): TailwindColor[] {
-    if (family === "all") return this.tailwindColors;
-
-    const familyMap: Record<string, string[]> = {
-      warm: ["red", "orange", "amber", "yellow"],
-      cool: ["lime", "green", "emerald", "teal", "cyan", "sky", "blue", "indigo"],
-      neutral: ["slate", "gray", "zinc", "neutral", "stone"],
-    };
-
-    // Parse comma-separated families
-    const requestedFamilies = family.split(",").map((f) => f.trim());
-
-    // Expand meta-families (warm, cool, neutral) and collect individual families
-    const expandedFamilies: string[] = [];
-    for (const f of requestedFamilies) {
-      if (familyMap[f]) {
-        expandedFamilies.push(...familyMap[f]);
-      } else {
-        expandedFamilies.push(f);
+  private filterTailwindColorsByFamily(
+    family: string,
+    preset?: TailwindPreset,
+    randomCount?: number,
+  ): TailwindColor[] {
+    // Handle presets first
+    if (preset) {
+      switch (preset) {
+        case "all":
+          return this.tailwindColors;
+        case "random":
+          return this.getRandomTailwindColors(randomCount || 3);
+        case "warm":
+          return this.filterByFamilyNames(["red", "orange", "amber", "yellow"]);
+        case "cool":
+          return this.filterByFamilyNames([
+            "lime",
+            "green",
+            "emerald",
+            "teal",
+            "cyan",
+            "sky",
+            "blue",
+            "indigo",
+          ]);
+        case "neutral":
+          return this.filterByFamilyNames(["slate", "gray", "zinc", "neutral", "stone"]);
       }
     }
 
+    // Handle comma-separated families
+    const requestedFamilies = family.split(",").map((f) => f.trim());
+    return this.filterByFamilyNames(requestedFamilies);
+  }
+
+  private filterByFamilyNames(familyNames: string[]): TailwindColor[] {
     return this.tailwindColors.filter((color) =>
-      expandedFamilies.some((f) => color.name.startsWith(f + "-") || color.name === f),
+      familyNames.some((f) => color.name.startsWith(f + "-") || color.name === f),
     );
+  }
+
+  private getRandomTailwindColors(count: number): TailwindColor[] {
+    const shuffled = [...this.tailwindColors].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, Math.min(count, this.tailwindColors.length));
   }
 
   async simplifyColors(svgContent: string, options: SimplificationOptions): Promise<string> {
@@ -635,7 +636,12 @@ class SVGColorSimplifier {
       bucket.primary = this.selectPrimaryColor(bucket, options.method);
 
       if (options.useTailwind) {
-        const tailwindMatch = this.findNearestTailwindColor(bucket.primary, options.tailwindFamily);
+        const tailwindMatch = this.findNearestTailwindColor(
+          bucket.primary,
+          options.tailwindFamily,
+          options.tailwindPreset,
+          options.randomCount,
+        );
         if (tailwindMatch) {
           bucket.tailwindMatch = {
             name: tailwindMatch.name,
@@ -688,18 +694,19 @@ class SVGColorSimplifier {
     baseName: string,
     bucketCounts: number[] = [3, 5, 8, 12, 16, 24],
     methods: PrimaryColorMethod[] = ["most-frequent", "centroid", "most-saturated", "most-vibrant"],
-    tailwindOptions: Array<{ use: boolean; family: TailwindColorFamily }> = [
-      { use: false, family: "all" },
-      { use: true, family: "all" },
+    tailwindOptions: Array<{ use: boolean; family: string; preset?: TailwindPreset }> = [
+      { use: false, family: "red" },
+      { use: true, family: "red", preset: "all" },
     ],
   ): Promise<void> {
     const variants: Array<{ name: string; options: SimplificationOptions }> = [];
 
     for (const buckets of bucketCounts) {
       for (const method of methods) {
-        for (const { use: useTailwind, family } of tailwindOptions) {
+        for (const { use: useTailwind, family, preset } of tailwindOptions) {
+          const presetSuffix = preset ? `-${preset}` : "";
           const suffix = useTailwind
-            ? `_${buckets}b_${method}_tw-${family}`
+            ? `_${buckets}b_${method}_tw-${family}${presetSuffix}`
             : `_${buckets}b_${method}`;
 
           variants.push({
@@ -710,6 +717,8 @@ class SVGColorSimplifier {
               strategy: "uniform", // Default strategy for batch generation
               useTailwind,
               tailwindFamily: family,
+              tailwindPreset: preset,
+              randomCount: preset === "random" ? 10 : undefined,
               preserveGradients: false,
               mergeSimilar: true,
               similarityThreshold: 0.1,
@@ -746,6 +755,8 @@ class SVGColorSimplifier {
     baseName: string,
     buckets: number,
     tailwindFamily: string,
+    tailwindPreset?: TailwindPreset,
+    randomCount?: number,
   ): Promise<void> {
     const methods: PrimaryColorMethod[] = [
       "most-frequent",
@@ -767,7 +778,8 @@ class SVGColorSimplifier {
       for (const strategy of strategies) {
         for (const mergeSimilar of mergeSimilarOptions) {
           for (const threshold of similarityThresholds) {
-            const suffix = `_${buckets}b_${method}_${strategy}_${mergeSimilar ? "merged" : "no-merge"}_${threshold.toString().replace(".", "")}_tw-${tailwindFamily}`;
+            const presetSuffix = tailwindPreset ? `-${tailwindPreset}` : "";
+            const suffix = `_${buckets}b_${method}_${strategy}_${mergeSimilar ? "merged" : "no-merge"}_${threshold.toString().replace(".", "")}_tw-${tailwindFamily}${presetSuffix}`;
 
             variants.push({
               name: `${baseName}${suffix}.svg`,
@@ -777,6 +789,8 @@ class SVGColorSimplifier {
                 strategy,
                 useTailwind: true,
                 tailwindFamily,
+                tailwindPreset,
+                randomCount: tailwindPreset === "random" ? randomCount : undefined,
                 preserveGradients: true,
                 mergeSimilar,
                 similarityThreshold: threshold,
@@ -828,8 +842,13 @@ async function main(): Promise<void> {
     .option(
       "-f, --tailwind-family <family>",
       "Tailwind color family restriction (comma-separated)",
-      "all",
+      "red",
     )
+    .option(
+      "-p, --tailwind-preset <preset>",
+      "Tailwind color preset (all, warm, cool, neutral, random)",
+    )
+    .option("-r, --random-count <count>", "Number of random colors when using random preset", "3")
     .option("--generate-variants", "Generate multiple variants automatically")
     .option(
       "--generate-variants-advanced",
@@ -857,16 +876,12 @@ async function main(): Promise<void> {
 
           await simplifier.generateVariants(svgContent, outputDir, inputBaseName, bucketCounts);
         } else if (options.generateVariantsAdvanced) {
-          if (!options.tailwindFamily || options.tailwindFamily === "all") {
-            throw new Error(
-              "--generate-variants-advanced requires a specific --tailwind-family (not 'all')",
-            );
-          }
-
           const inputBaseName = basename(input, extname(input));
           const outputDir = options.output || "./advanced-variants";
           const buckets = parseInt(options.buckets);
           const tailwindFamily = options.tailwindFamily as string;
+          const tailwindPreset = options.tailwindPreset as TailwindPreset | undefined;
+          const randomCount = options.randomCount ? parseInt(options.randomCount) : undefined;
 
           await simplifier.generateVariantsAdvanced(
             svgContent,
@@ -874,6 +889,8 @@ async function main(): Promise<void> {
             inputBaseName,
             buckets,
             tailwindFamily,
+            tailwindPreset,
+            randomCount,
           );
         } else {
           const simplificationOptions: SimplificationOptions = {
@@ -882,6 +899,8 @@ async function main(): Promise<void> {
             strategy: options.strategy as BucketingStrategy,
             useTailwind: options.tailwind || false,
             tailwindFamily: options.tailwindFamily as string,
+            tailwindPreset: options.tailwindPreset as TailwindPreset | undefined,
+            randomCount: options.randomCount ? parseInt(options.randomCount) : undefined,
             preserveGradients: options.preserveGradients || false,
             mergeSimilar: options.mergeSimilar,
             similarityThreshold: parseFloat(options.similarityThreshold),

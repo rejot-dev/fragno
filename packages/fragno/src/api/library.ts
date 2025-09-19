@@ -232,6 +232,14 @@ export function createLibrary<
           }
         } catch (error) {
           console.error("Error in middleware", error);
+
+          if (error instanceof FragnoApiError) {
+            // TODO: If a validation error occurs in middleware (when calling `await input.valid()`)
+            //       the processing is short-circuited and a potential `catch` block around the call
+            //       to `input.valid()` in the actual handler will not be executed.
+            return error.toResponse();
+          }
+
           return Response.json(
             { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
             { status: 500 },

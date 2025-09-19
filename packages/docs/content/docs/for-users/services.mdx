@@ -7,13 +7,15 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 # Services
 
-Services are a way to expose functions that can be called by users of the Fragment. Their purpose is
-to be called on the server, such as in loader functions or background processing.
+Services are functions exposed by the Fragment author to the user. Their purpose is to be called on
+the server, such as in loader functions or background processing.
 
 ## Basic Usage
 
+The `services` object is available on the Fragment server-side instance.
+
 ```typescript title="jobs/my-background-process.ts"
-import { createExampleFragmentInstance } from "lib/example-fragment-server";
+import { createExampleFragmentInstance } from "../lib/example-fragment-server";
 
 export async function myBackgroundProcess() {
   const { getHashFromHostsFileData } = createExampleFragmentInstance().services;

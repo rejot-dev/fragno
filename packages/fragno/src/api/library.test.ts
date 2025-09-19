@@ -116,29 +116,31 @@ describe("new-library API", () => {
         cache: Map<string, unknown>;
       };
 
-      const _routeFactory = defineRoutes<Config, Deps, Services>()(({ config, deps, services }) => {
-        expectTypeOf(config).toEqualTypeOf<Config>();
-        expectTypeOf(deps).toEqualTypeOf<Deps>();
-        expectTypeOf(services).toEqualTypeOf<Services>();
+      const _routeFactory = defineRoutes<Config, Deps, Services>().create(
+        ({ config, deps, services }) => {
+          expectTypeOf(config).toEqualTypeOf<Config>();
+          expectTypeOf(deps).toEqualTypeOf<Deps>();
+          expectTypeOf(services).toEqualTypeOf<Services>();
 
-        return [
-          defineRoute({
-            method: "POST",
-            path: "/complete",
-            inputSchema: z.object({ prompt: z.string() }),
-            outputSchema: z.object({ result: z.string() }),
-            handler: async ({ input }, { json }) => {
-              const { prompt } = await input.valid();
-              expectTypeOf(prompt).toEqualTypeOf<string>();
-              expectTypeOf<Parameters<typeof json>[0]>().toEqualTypeOf<{ result: string }>();
+          return [
+            defineRoute({
+              method: "POST",
+              path: "/complete",
+              inputSchema: z.object({ prompt: z.string() }),
+              outputSchema: z.object({ result: z.string() }),
+              handler: async ({ input }, { json }) => {
+                const { prompt } = await input.valid();
+                expectTypeOf(prompt).toEqualTypeOf<string>();
+                expectTypeOf<Parameters<typeof json>[0]>().toEqualTypeOf<{ result: string }>();
 
-              const result = await deps.openai.complete(prompt);
-              services.cache.set(prompt, result);
-              return json({ result });
-            },
-          }),
-        ];
-      });
+                const result = await deps.openai.complete(prompt);
+                services.cache.set(prompt, result);
+                return json({ result });
+              },
+            }),
+          ];
+        },
+      );
 
       expectTypeOf<Parameters<typeof _routeFactory>[0]>().toEqualTypeOf<{
         config: Config;
@@ -193,7 +195,7 @@ describe("new-library API", () => {
         { prefix: string },
         { formatter: (s: string) => string },
         { logger: { log: (s: string) => void } }
-      >()(({ config, deps, services }) => [
+      >().create(({ config, deps, services }) => [
         defineRoute({
           method: "POST",
           path: "/greet",
@@ -274,7 +276,7 @@ describe("new-library API", () => {
         { setting: string },
         { tool: string },
         { storage: string }
-      >()(({ config, deps, services }) => {
+      >().create(({ config, deps, services }) => {
         capturedConfig = config;
         capturedDeps = deps;
         capturedServices = services;
@@ -348,7 +350,7 @@ describe("new-library API", () => {
 
   describe("resolveRouteFactories", () => {
     test("resolveRouteFactories returns correct routes", () => {
-      const routeFactory = defineRoutes()(() => {
+      const routeFactory = defineRoutes().create(() => {
         const firstRoute = defineRoute({
           method: "GET",
           path: "/first",
@@ -447,33 +449,35 @@ describe("new-library API", () => {
         cache: Map<string, unknown>;
       };
 
-      const routeFactory = defineRoutes<Config, Deps, Services>()(({ config, deps, services }) => {
-        expectTypeOf(config).toEqualTypeOf<Config>();
-        expectTypeOf(deps).toEqualTypeOf<Deps>();
-        expectTypeOf(services).toEqualTypeOf<Services>();
+      const routeFactory = defineRoutes<Config, Deps, Services>().create(
+        ({ config, deps, services }) => {
+          expectTypeOf(config).toEqualTypeOf<Config>();
+          expectTypeOf(deps).toEqualTypeOf<Deps>();
+          expectTypeOf(services).toEqualTypeOf<Services>();
 
-        return [
-          defineRoute({
-            method: "POST",
-            path: "/complete",
-            inputSchema: z.object({ prompt: z.string() }),
-            outputSchema: z.object({ result: z.string() }),
-            errorCodes: ["RATE_LIMITED"],
-            handler: async ({ input }, { json }) => {
-              const { prompt } = await input.valid();
-              const result = await deps.openai.complete(prompt);
-              services.cache.set(prompt, result);
-              return json({ result });
-            },
-          }),
-          defineRoute({
-            method: "GET",
-            path: "/status",
-            outputSchema: z.object({ status: z.literal("ok") }),
-            handler: async (_, { json }) => json({ status: "ok" }),
-          }),
-        ];
-      });
+          return [
+            defineRoute({
+              method: "POST",
+              path: "/complete",
+              inputSchema: z.object({ prompt: z.string() }),
+              outputSchema: z.object({ result: z.string() }),
+              errorCodes: ["RATE_LIMITED"],
+              handler: async ({ input }, { json }) => {
+                const { prompt } = await input.valid();
+                const result = await deps.openai.complete(prompt);
+                services.cache.set(prompt, result);
+                return json({ result });
+              },
+            }),
+            defineRoute({
+              method: "GET",
+              path: "/status",
+              outputSchema: z.object({ status: z.literal("ok") }),
+              handler: async (_, { json }) => json({ status: "ok" }),
+            }),
+          ];
+        },
+      );
 
       type RouteFactoryRoutes =
         typeof routeFactory extends RouteFactory<infer _T1, infer _T2, infer _T3, infer TRoutes>

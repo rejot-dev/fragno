@@ -103,7 +103,7 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
     path: TPath,
     handler: (
       ...args: Parameters<TRoute["handler"]>
-    ) => Promise<Response> | Promise<undefined> | Promise<void> | Response | undefined | void,
+    ) => Promise<Response | undefined | void> | Response | undefined | void,
   ): Promise<Response | undefined> => {
     if (this.path !== path || this.method !== method) {
       return undefined;

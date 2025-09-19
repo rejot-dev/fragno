@@ -1,6 +1,6 @@
 ---
 title: Middleware
-description: Learn how to use middleware in Fragno
+description: Intercept and process requests before they reach the route handlers.
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
@@ -9,10 +9,10 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 Middleware can be used to intercept and process requests before they reach the route handlers
 defined as part of a Fragment. This can be used to implement features such as authentication, rate
-limiting, and more.
+limiting, and selectively disable routes.
 
 Middleware is fully type-safe and can be used to access the request body, path parameters, query
-parameters, and more.
+parameters, etc.
 
 ## Basic Usage
 
@@ -45,7 +45,7 @@ export function createExampleFragmentInstance() {
 }
 ```
 
-<Callout type="warn">
+<Callout type="warn" title="Modifying the Request">
   Request body and query parameters currently cannot be modified in middleware. See [Issue
   #19](https://github.com/rejot-dev/fragno/issues/19).
 </Callout>
@@ -53,10 +53,10 @@ export function createExampleFragmentInstance() {
 ## Route-specific Usage
 
 `ifMatchesRoute` can be used to execute middleware only for specific routes. It has full type safety
-for parameters and request input. The callback passed to `ifMatchesRoute` is only executed when that
-route is matched.
+for parameters and request input. The callback passed to `ifMatchesRoute` is only executed when the
+given route is matched.
 
-<Callout type="info">
+<Callout type="info" title="Returning the Response">
   Make sure that the response returned from the `ifMatchesRoute` callback is also returned from the
   `withMiddleware` callback.
 </Callout>

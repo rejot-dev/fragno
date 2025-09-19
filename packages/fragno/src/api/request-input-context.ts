@@ -127,6 +127,7 @@ export class RequestInputContext<
     return this.#searchParams;
   }
 
+  // TODO: Should probably remove this
   get rawBody(): RequestBodyType {
     return this.#body;
   }

@@ -73,89 +73,88 @@ type ChatRouteDeps = {
   openaiClient: OpenAI;
 };
 
-export const chatRouteFactory = defineRoutes<ChatRouteConfig, ChatRouteDeps>()(({
-  config,
-  deps,
-}) => {
-  const { openaiClient } = deps;
-  const { model, systemPrompt } = config;
+export const chatRouteFactory = defineRoutes<ChatRouteConfig, ChatRouteDeps>().create(
+  ({ config, deps }) => {
+    const { openaiClient } = deps;
+    const { model, systemPrompt } = config;
 
-  return [
-    defineRoute({
-      method: "POST",
-      path: "/chat/stream",
-      inputSchema: ChatStreamRequestSchema,
-      outputSchema: z.array(ResponseEventSchema),
-      handler: async ({ input }, { jsonStream }) => {
-        const { messages } = await input.valid();
+    return [
+      defineRoute({
+        method: "POST",
+        path: "/chat/stream",
+        inputSchema: ChatStreamRequestSchema,
+        outputSchema: z.array(ResponseEventSchema),
+        handler: async ({ input }, { jsonStream }) => {
+          const { messages } = await input.valid();
 
-        const openAIMessages: ResponseInputItem[] = messages.map((message) => {
-          if (message.type === "chat") {
-            return {
-              role: message.role,
-              content: message.content,
-            } satisfies EasyInputMessage;
-          }
-
-          if (message.type === "functionCall") {
-            return {
-              type: "function_call",
-              id: message.id,
-              call_id: message.functionCallId,
-              name: message.name,
-              arguments: message.arguments,
-            } satisfies ResponseFunctionToolCall;
-          }
-
-          if (message.type === "functionCallOutput") {
-            return {
-              type: "function_call_output",
-              call_id: message.functionCallId,
-              output: message.output,
-              status:
-                message.status === "inProgress"
-                  ? "in_progress"
-                  : message.status === "completed"
-                    ? "completed"
-                    : "incomplete",
-            } satisfies ResponseInputItem.FunctionCallOutput;
-          }
-
-          throw new Error("unreachable");
-        });
-
-        try {
-          const eventStream = await openaiClient.responses.create({
-            model,
-            input: [
-              {
-                role: "system",
-                content: systemPrompt,
-              },
-              ...openAIMessages,
-            ],
-            // tools: [],
-            // tool_choice: "auto",
-            stream: true,
-          });
-
-          return jsonStream(async (stream) => {
-            for await (const event of eventStream) {
-              if (
-                event.type !== "response.output_text.delta" &&
-                event.type !== "response.output_text.done"
-              ) {
-                continue;
-              }
-
-              await stream.write(event);
+          const openAIMessages: ResponseInputItem[] = messages.map((message) => {
+            if (message.type === "chat") {
+              return {
+                role: message.role,
+                content: message.content,
+              } satisfies EasyInputMessage;
             }
+
+            if (message.type === "functionCall") {
+              return {
+                type: "function_call",
+                id: message.id,
+                call_id: message.functionCallId,
+                name: message.name,
+                arguments: message.arguments,
+              } satisfies ResponseFunctionToolCall;
+            }
+
+            if (message.type === "functionCallOutput") {
+              return {
+                type: "function_call_output",
+                call_id: message.functionCallId,
+                output: message.output,
+                status:
+                  message.status === "inProgress"
+                    ? "in_progress"
+                    : message.status === "completed"
+                      ? "completed"
+                      : "incomplete",
+              } satisfies ResponseInputItem.FunctionCallOutput;
+            }
+
+            throw new Error("unreachable");
           });
-        } catch (error) {
-          console.error("OpenAI API error:", error);
-          throw error;
-        }
-      },
-    }),
-  ];
-});
+
+          try {
+            const eventStream = await openaiClient.responses.create({
+              model,
+              input: [
+                {
+                  role: "system",
+                  content: systemPrompt,
+                },
+                ...openAIMessages,
+              ],
+              // tools: [],
+              // tool_choice: "auto",
+              stream: true,
+            });
+
+            return jsonStream(async (stream) => {
+              for await (const event of eventStream) {
+                if (
+                  event.type !== "response.output_text.delta" &&
+                  event.type !== "response.output_text.done"
+                ) {
+                  continue;
+                }
+
+                await stream.write(event);
+              }
+            });
+          } catch (error) {
+            console.error("OpenAI API error:", error);
+            throw error;
+          }
+        },
+      }),
+    ];
+  },
+);

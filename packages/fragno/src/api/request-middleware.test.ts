@@ -2,6 +2,7 @@ import { test, expect, describe, expectTypeOf } from "vitest";
 import { defineLibrary, createLibrary } from "./library";
 import { defineRoute } from "./route";
 import { z } from "zod";
+import { FragnoApiValidationError } from "./error";
 
 describe("Request Middleware", () => {
   test("middleware can intercept and return early", async () => {
@@ -374,6 +375,127 @@ describe("Request Middleware", () => {
       id: 9999,
       name: "John Doe",
       role: "admin",
+    });
+  });
+
+  test("middleware calling input.valid() can catch validation error", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({
+          name: z.string().min(1, "Name is required"),
+          email: z.string().email("Invalid email format"),
+        }),
+        outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+        handler: async ({ input }, { json }) => {
+          const body = await input.valid();
+          return json({
+            id: 1,
+            name: body.name,
+            email: body.email,
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      // Middleware tries to validate the input
+      const result = await ifMatchesRoute("POST", "/users", async ({ input }, { error }) => {
+        try {
+          await input.valid();
+          return undefined; // Continue to handler if valid
+        } catch (validationError) {
+          expect(validationError).toBeInstanceOf(FragnoApiValidationError);
+
+          return error(
+            {
+              message: "Request validation failed in middleware",
+              code: "MIDDLEWARE_VALIDATION_ERROR",
+            },
+            400,
+          );
+        }
+      });
+
+      return result;
+    });
+
+    // Test with invalid request (missing required fields)
+    const invalidReq = new Request("http://localhost/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "" }), // Invalid: empty name and missing email
+    });
+
+    const res = await instance.handler(invalidReq);
+    expect(res.status).toBe(400);
+
+    const body = await res.json();
+    expect(body).toEqual({
+      error: "Request validation failed in middleware",
+      code: "MIDDLEWARE_VALIDATION_ERROR",
+    });
+  });
+
+  test("middleware calling input.valid() can ignore validation error", async () => {
+    const config = {};
+
+    const library = defineLibrary<typeof config>("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({
+          name: z.string().min(1, "Name is required"),
+          email: z.email("Invalid email format"),
+        }),
+        outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+        handler: async (_ctx, { error }) => {
+          return error(
+            {
+              message: "Handler should not be called",
+              code: "HANDLER_SHOULD_NOT_BE_CALLED",
+            },
+            400,
+          );
+        },
+      }),
+    ] as const;
+
+    const instance = createLibrary(library, config, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      // Middleware tries to validate the input
+      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+        await input.valid();
+      });
+
+      return result;
+    });
+
+    // Test with invalid request (missing required fields)
+    const invalidReq = new Request("http://localhost/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "" }), // Invalid: empty name and missing email
+    });
+
+    const res = await instance.handler(invalidReq);
+    expect(res.status).toBe(400);
+
+    const body = await res.json();
+    expect(body).toEqual({
+      error: "Validation failed",
+      issues: expect.any(Array),
+      code: "FRAGNO_VALIDATION_ERROR",
     });
   });
 

@@ -37,64 +37,66 @@ const getHashFromHostsFileData = async () => {
   }
 };
 
-const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>()(({ deps }) => {
-  const { serverSideData } = deps;
+const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>().create(
+  ({ deps }) => {
+    const { serverSideData } = deps;
 
-  return [
-    defineRoute({
-      method: "GET",
-      path: "/hash",
-      outputSchema: z.string(),
-      handler: async (_, { json }) => {
-        const hash = await getHashFromHostsFileData();
-        return json(hash ? `The hash of your 'hosts' file is: ${hash}` : "No hash found :(");
-      },
-    }),
+    return [
+      defineRoute({
+        method: "GET",
+        path: "/hash",
+        outputSchema: z.string(),
+        handler: async (_, { json }) => {
+          const hash = await getHashFromHostsFileData();
+          return json(hash ? `The hash of your 'hosts' file is: ${hash}` : "No hash found :(");
+        },
+      }),
 
-    defineRoute({
-      method: "GET",
-      path: "/data",
-      outputSchema: z.string(),
-      queryParameters: ["error"],
-      handler: async ({ query }, { json, error }) => {
-        if (query.get("error")) {
-          return error(
-            {
-              message: "An error was triggered",
-              code: "TEST_ERROR",
-            },
-            400,
-          );
-        }
-        return json(serverSideData.value);
-      },
-    }),
+      defineRoute({
+        method: "GET",
+        path: "/data",
+        outputSchema: z.string(),
+        queryParameters: ["error"],
+        handler: async ({ query }, { json, error }) => {
+          if (query.get("error")) {
+            return error(
+              {
+                message: "An error was triggered",
+                code: "TEST_ERROR",
+              },
+              400,
+            );
+          }
+          return json(serverSideData.value);
+        },
+      }),
 
-    defineRoute({
-      method: "POST",
-      path: "/sample",
-      inputSchema: z.object({ message: z.string() }),
-      outputSchema: z.string(),
-      errorCodes: ["MESSAGE_CANNOT_BE_DIGITS_ONLY"],
-      handler: async ({ input }, { json, error }) => {
-        const { message } = await input.valid();
+      defineRoute({
+        method: "POST",
+        path: "/sample",
+        inputSchema: z.object({ message: z.string() }),
+        outputSchema: z.string(),
+        errorCodes: ["MESSAGE_CANNOT_BE_DIGITS_ONLY"],
+        handler: async ({ input }, { json, error }) => {
+          const { message } = await input.valid();
 
-        if (/^\d+$/.test(message)) {
-          return error(
-            {
-              message: "Message cannot be digits only",
-              code: "MESSAGE_CANNOT_BE_DIGITS_ONLY",
-            },
-            400,
-          );
-        }
-        serverSideData.value = message;
+          if (/^\d+$/.test(message)) {
+            return error(
+              {
+                message: "Message cannot be digits only",
+                code: "MESSAGE_CANNOT_BE_DIGITS_ONLY",
+              },
+              400,
+            );
+          }
+          serverSideData.value = message;
 
-        return json(message);
-      },
-    }),
-  ];
-});
+          return json(message);
+        },
+      }),
+    ];
+  },
+);
 
 const exampleFragmentDefinition = defineLibrary<ExampleFragmentServerConfig>("example-fragment")
   .withDependencies((config: ExampleFragmentServerConfig) => {
