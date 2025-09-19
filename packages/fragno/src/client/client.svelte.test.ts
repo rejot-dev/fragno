@@ -8,8 +8,9 @@ import { z } from "zod";
 import { readableToAtom, useFragno } from "./client.svelte";
 import { writable, readable, get, derived } from "svelte/store";
 import { FragnoClientUnknownApiError } from "./client-error";
-import { atom } from "nanostores";
 import TestComponent from "./component.test.svelte";
+import { atom, computed } from "nanostores";
+import { RequestOutputContext } from "../api/request-output-context";
 
 function renderHook(
   clientObj: Record<string, unknown>,
@@ -766,5 +767,71 @@ describe("useFragno", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createSvelteStore", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("streaming routes", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const cb = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const usersStream = cb.createHook("/users-stream");
+
+    // Create a single shared store instance
+    const sharedStore = usersStream.store({});
+
+    const names = computed(sharedStore, ({ data }) => {
+      return (data ?? []).map((user) => user.name).join(", ");
+    });
+
+    const client = {
+      useUsersStream: cb.createStore(sharedStore),
+      useNames: cb.createStore(names),
+    };
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ id: 1, name: "John" });
+        await stream.sleep(0);
+        await stream.write({ id: 2, name: "Jane" });
+        await stream.sleep(0);
+        await stream.write({ id: 3, name: "Jim" });
+      });
+    });
+
+    const { useUsersStream, useNames } = useFragno(client);
+
+    await vi.waitFor(() => {
+      expect(useNames.get()).toEqual("John, Jane, Jim");
+      expect(useUsersStream.get().loading).toBe(false);
+      expect(useUsersStream.get().data).toEqual([
+        { id: 1, name: "John" },
+        { id: 2, name: "Jane" },
+        { id: 3, name: "Jim" },
+      ]);
+    });
   });
 });

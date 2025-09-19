@@ -223,7 +223,7 @@ function createSvelteMutator<
   };
 }
 
-function createSvelteStore<T extends object>(hook: FragnoStoreData<T>) {
+export function createSvelteStore<T extends object>(hook: FragnoStoreData<T>): T {
   // Since nanostores already implement Svelte's store contract,
   // we can return the store object directly for use with $ syntax
   return hook.obj;
