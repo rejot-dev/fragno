@@ -1,0 +1,20 @@
+{
+  "name": "fragno-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "simplify-svg": "bun simplify-svg-colors.ts",
+    "generate-gallery": "bun generate-gallery.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.4.1",
+    "culori": "^4.0.1",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "typescript": "^5.8.3",
+    "@types/culori": "^2.1.1"
+  }
+}

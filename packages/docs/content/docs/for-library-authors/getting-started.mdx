@@ -5,27 +5,17 @@ description: Learn how to build your own Fragno fragments
 
 # Getting Started: Building Fragments
 
-A Fragment is a full-stack library that works seamlessly across different frameworks. This guide
-will walk you through creating your first fragment.
-
-## Prerequisites
-
-- Node.js 18+ or Bun 1.2.20+
-- TypeScript knowledge
-- Basic understanding of REST APIs
+This guide will walk you through creating a Fragment.
 
 ## Installation
 
-```bash
-bun add @fragno-dev/core zod
-# or
-npm install @fragno-dev/core zod
-```
+Before getting started, add the core package to your project as a regular dependency. You'll also
+need a [Standard Schema](https://standardschema.dev/) compatible library for schema validation, such
+as [Zod](https://zod.dev/).
 
-<Callout type="info">
-  Fragno uses [Zod](https://zod.dev/) for schema validation, but you can use any
-  StandardSchema-compatible library.
-</Callout>
+```npm
+npm install @fragno-dev/core
+```
 
 ## Creating Your First Fragment
 
