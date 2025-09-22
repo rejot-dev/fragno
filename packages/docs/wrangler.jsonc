@@ -8,6 +8,11 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS",
   },
+  "observability": {
+    "logs": {
+      "enabled": true,
+    },
+  },
   "r2_buckets": [
     // Use R2 incremental cache
     // See https://opennext.js.org/cloudflare/caching

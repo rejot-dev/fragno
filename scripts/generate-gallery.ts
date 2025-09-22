@@ -28,7 +28,7 @@ class HTMLGalleryGenerator {
     }
 
     const sortedFiles = this.sortFiles(imageFiles, options.sortBy);
-    const html = this.generateHTML(sortedFiles, inputDir, options);
+    const html = this.generateHTML(sortedFiles, options);
 
     writeFileSync(options.outputFile, html, "utf-8");
     console.log(`Gallery generated: ${options.outputFile}`);
@@ -76,7 +76,7 @@ class HTMLGalleryGenerator {
     });
   }
 
-  private generateHTML(files: string[], baseDir: string, options: GalleryOptions): string {
+  private generateHTML(files: string[], options: GalleryOptions): string {
     const { columns, title, showFilenames, outputFile, originalImage } = options;
 
     // Generate original image grid item if provided

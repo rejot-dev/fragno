@@ -48,6 +48,7 @@
   "workspaces": [
     "examples/*",
     "packages/*",
-    "packages-private/*"
+    "packages-private/*",
+    "scripts"
   ]
 }

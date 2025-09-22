@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { Command } from "commander";
 import { rgb, oklch, lab, formatHex, differenceEuclidean, type Oklch, type Lab } from "culori";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
@@ -54,29 +53,8 @@ interface TailwindColor {
 
 class SVGColorSimplifier {
   private tailwindColors: TailwindColor[] = [];
-  private xmlParser: XMLParser;
-  private xmlBuilder: XMLBuilder;
 
   constructor() {
-    this.xmlParser = new XMLParser({
-      ignoreAttributes: false,
-      attributeNamePrefix: "@_",
-      parseTagValue: false,
-      parseAttributeValue: false,
-      trimValues: true,
-      preserveOrder: true,
-      processEntities: false,
-    });
-
-    this.xmlBuilder = new XMLBuilder({
-      ignoreAttributes: false,
-      attributeNamePrefix: "@_",
-      suppressEmptyNode: true,
-      format: true,
-      preserveOrder: true,
-      processEntities: false,
-    });
-
     this.loadTailwindColors();
   }
 
