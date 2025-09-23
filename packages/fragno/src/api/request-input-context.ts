@@ -110,28 +110,44 @@ export class RequestInputContext<
   }
 
   // TODO(Wilco): We should support reading/modifying headers here.
-
+  /**
+   * The HTTP method as string (e.g., `GET`, `POST`)
+   */
   get method(): string {
     return this.#method;
   }
-
+  /**
+   * The matched route path (e.g., `/users/:id`)
+   * @remarks `string`
+   */
   get path(): TPath {
     return this.#path;
   }
-
+  /**
+   * Extracted path parameters as object (e.g., `{ id: '123' }`)
+   * @remarks `Record<string, string>`
+   */
   get pathParams(): ExtractPathParams<TPath> {
     return this.#pathParams;
   }
-
+  /**
+   * [URLSearchParams](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams) object for query parameters
+   * @remarks `URLSearchParams`
+   */
   get query(): URLSearchParams {
     return this.#searchParams;
   }
-
   // TODO: Should probably remove this
+  /**
+   * @internal
+   */
   get rawBody(): RequestBodyType {
     return this.#body;
   }
-
+  /**
+   * Input validation context (only if inputSchema is defined)
+   * @remarks `InputContext`
+   */
   get input(): TInputSchema extends undefined
     ? undefined
     : {
