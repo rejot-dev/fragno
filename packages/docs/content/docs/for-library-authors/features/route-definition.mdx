@@ -212,35 +212,7 @@ methods.
 
 The first parameter provides access to all incoming request data. Available properties are:
 
-<TypeTable
-  type={{
-    path: {
-      description: "The matched route path (e.g., `/users/:id`)",
-      type: "string",
-      required: true,
-    },
-    method: {
-      description: "The HTTP method as string (e.g., `GET`, `POST`)",
-      type: "string",
-      required: true,
-    },
-    pathParams: {
-      description: "Extracted path parameters as object (e.g., `{ id: '123' }`)",
-      type: "Record<string, string>",
-      required: true,
-    },
-    query: {
-      description: "URLSearchParams object for query parameters",
-      type: "URLSearchParams",
-      required: true,
-    },
-    input: {
-      description: "Input validation context (only if inputSchema is defined)",
-      type: "InputContext",
-      required: true,
-    },
-  }}
-/>
+<AutoTypeTable path="fragno/src/api/request-input-context.ts" name="RequestInputContext" />
 
 The input property is only defined if an input schema is defined for the route.
 
