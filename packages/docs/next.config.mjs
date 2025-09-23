@@ -5,9 +5,15 @@ const withMDX = createMDX();
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
-};
 
-export default withMDX(config);
+  turbopack: false,
+  output: "standalone",
+  outputFileTracingExcludes: {
+    "/*": ["**/@opennextjs/aws/**"],
+  },
+};
 
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 initOpenNextCloudflareForDev();
+
+export default withMDX(config);
