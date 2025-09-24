@@ -12,7 +12,8 @@
         ".nuxt/**",
         ".react-router/**",
         ".output/**",
-        ".source/**"
+        ".source/**",
+        ".svelte-kit/**"
       ]
     },
     "types:check": {
