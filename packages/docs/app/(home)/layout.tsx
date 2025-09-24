@@ -1,7 +1,7 @@
 import { HomeLayout } from "fumadocs-ui/layouts/home";
 import { baseOptions } from "@/lib/layout.shared";
 import { ReJotWireframeLogo } from "@/components/logos/rejot-wireframe-logo";
-import { Book } from "lucide-react";
+import { Book, BookOpenText } from "lucide-react";
 
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
@@ -13,6 +13,11 @@ export default function Layout({ children }: LayoutProps<"/">) {
           url: "/docs",
 
           icon: <Book />,
+        },
+        {
+          text: "Blog",
+          url: "/blog",
+          icon: <BookOpenText />,
         },
         {
           type: "icon",
