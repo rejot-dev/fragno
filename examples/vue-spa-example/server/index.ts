@@ -2,19 +2,19 @@ import { toNodeHandler } from "@fragno-dev/node";
 import { createExampleFragment } from "@fragno-dev/example-fragment";
 import { createServer, type Server } from "node:http";
 
-const library = createExampleFragment();
-const server = createServer(toNodeHandler(library.handler));
+const fragment = createExampleFragment();
+const server = createServer(toNodeHandler(fragment.handler));
 server.listen(8080, undefined, () => {
   const host = addressToString(server);
-  console.log("Server is running on:", `${host}${library.mountRoute}`);
+  console.log("Server is running on:", `${host}${fragment.mountRoute}`);
 
   console.log("GET Routes:");
-  library.config.routes.forEach((route) => {
+  fragment.config.routes.forEach((route) => {
     if (route.method !== "GET") {
       return;
     }
 
-    console.log(`  ${host}${library.mountRoute}${route.path}`);
+    console.log(`  ${host}${fragment.mountRoute}${route.path}`);
   });
 });
 

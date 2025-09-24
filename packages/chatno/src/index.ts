@@ -1,7 +1,7 @@
 import {
-  defineLibrary,
+  defineFragment,
   defineRoute,
-  createLibrary,
+  createFragment,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
@@ -48,7 +48,7 @@ const simpleStreamRoute = defineRoute({
 
 const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
-const chatnoDefinition = defineLibrary<ChatnoServerConfig>("chatno")
+const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
   .withDependencies((config: ChatnoServerConfig) => {
     return {
       openaiClient: new OpenAI({
@@ -74,7 +74,7 @@ export function createChatno(
     systemPrompt: chatnoConfig.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
   };
 
-  return createLibrary(chatnoDefinition, { ...chatnoConfig, ...config }, routes, fragnoConfig);
+  return createFragment(chatnoDefinition, { ...chatnoConfig, ...config }, routes, fragnoConfig);
 }
 
 // Client-side factory

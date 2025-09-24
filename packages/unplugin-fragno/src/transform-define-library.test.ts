@@ -2,12 +2,12 @@ import { describe, expect, test } from "vitest";
 import dedent from "dedent";
 import { transform } from "./transform";
 
-describe("defineLibrary withDependencies and withServices transformation", () => {
+describe("defineFragment withDependencies and withServices transformation", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     import { OpenAI } from "openai";
     
-    const chatnoDefinition = defineLibrary("chatno")
+    const chatnoDefinition = defineFragment("chatno")
       .withDependencies((config) => {
         return {
           openaiClient: new OpenAI({
@@ -32,23 +32,23 @@ describe("defineLibrary withDependencies and withServices transformation", () =>
 
   test("ssr:false - replaces methods with no-ops", () => {
     const expected = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
-    const chatnoDefinition = defineLibrary("chatno").withDependencies(() => {}).withServices(() => {});
+    import { defineFragment } from "@fragno-dev/core";
+    const chatnoDefinition = defineFragment("chatno").withDependencies(() => {}).withServices(() => {});
     `;
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(expected);
   });
 });
 
-describe("defineLibrary with type parameters", () => {
+describe("defineFragment with type parameters", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
     interface ServerConfig {
       apiKey: string;
     }
     
-    const lib = defineLibrary<ServerConfig>("mylib")
+    const lib = defineFragment<ServerConfig>("mylib")
       .withDependencies((config: ServerConfig) => {
         return {
           client: createClient(config.apiKey)
@@ -69,11 +69,11 @@ describe("defineLibrary with type parameters", () => {
   });
 });
 
-describe("defineLibrary with only withDependencies", () => {
+describe("defineFragment with only withDependencies", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib = defineLibrary("mylib")
+    const lib = defineFragment("mylib")
       .withDependencies((config) => {
         return {
           db: connectDB(config.dbUrl)
@@ -88,11 +88,11 @@ describe("defineLibrary with only withDependencies", () => {
   });
 });
 
-describe("defineLibrary with only withServices", () => {
+describe("defineFragment with only withServices", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib = defineLibrary("mylib")
+    const lib = defineFragment("mylib")
       .withServices((config, deps) => {
         return {
           userService: new UserService()
@@ -107,9 +107,9 @@ describe("defineLibrary with only withServices", () => {
   });
 });
 
-describe("defineLibrary with aliased import", () => {
+describe("defineFragment with aliased import", () => {
   const source = dedent`
-    import { defineLibrary as createLib } from "@fragno-dev/core";
+    import { defineFragment as createLib } from "@fragno-dev/core";
     
     const lib = createLib("mylib")
       .withDependencies(() => ({ db: database }))
@@ -124,27 +124,27 @@ describe("defineLibrary with aliased import", () => {
   });
 });
 
-describe("non-fragno defineLibrary - should not transform", () => {
+describe("non-fragno defineFragment - should not transform", () => {
   const source = dedent`
-    import { defineLibrary } from "other-package";
+    import { defineFragment } from "other-package";
     
-    const lib = defineLibrary("mylib")
+    const lib = defineFragment("mylib")
       .withDependencies(() => ({ db: database }))
       .withServices(() => ({ api: apiService }));
   `;
 
-  test("ssr:false - does not transform non-fragno defineLibrary", () => {
+  test("ssr:false - does not transform non-fragno defineFragment", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).toContain("database");
     expect(result.code).toContain("apiService");
   });
 });
 
-describe("defineLibrary with multiple method calls", () => {
+describe("defineFragment with multiple method calls", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib = defineLibrary("mylib")
+    const lib = defineFragment("mylib")
       .withDependencies(() => ({ dep1: service1 }))
       .withOtherMethod(() => ({ other: otherService }))
       .withServices(() => ({ dep2: service2 }));
@@ -159,11 +159,11 @@ describe("defineLibrary with multiple method calls", () => {
   });
 });
 
-describe("defineLibrary with inline function expressions", () => {
+describe("defineFragment with inline function expressions", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib = defineLibrary("mylib")
+    const lib = defineFragment("mylib")
       .withDependencies(function(config) {
         return {
           client: new Client(config)
@@ -184,11 +184,11 @@ describe("defineLibrary with inline function expressions", () => {
   });
 });
 
-describe("defineLibrary with async functions", () => {
+describe("defineFragment with async functions", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib = defineLibrary("mylib")
+    const lib = defineFragment("mylib")
       .withDependencies(async (config) => {
         const client = await createAsyncClient(config);
         return { client };
@@ -207,20 +207,20 @@ describe("defineLibrary with async functions", () => {
   });
 });
 
-describe("multiple defineLibrary calls in same file", () => {
+describe("multiple defineFragment calls in same file", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib1 = defineLibrary("lib1")
+    const lib1 = defineFragment("lib1")
       .withDependencies(() => ({ dep1: service1 }))
       .withServices(() => ({ svc1: serviceA }));
     
-    const lib2 = defineLibrary("lib2")
+    const lib2 = defineFragment("lib2")
       .withDependencies(() => ({ dep2: service2 }))
       .withServices(() => ({ svc2: serviceB }));
   `;
 
-  test("ssr:false - transforms all defineLibrary calls", () => {
+  test("ssr:false - transforms all defineFragment calls", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("service1");
     expect(result.code).not.toContain("service2");
@@ -232,13 +232,13 @@ describe("multiple defineLibrary calls in same file", () => {
   });
 });
 
-describe("defineLibrary with complex dependency objects", () => {
+describe("defineFragment with complex dependency objects", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     import { OpenAI } from "openai";
     import { Database } from "./database";
     
-    const lib = defineLibrary("complex")
+    const lib = defineFragment("complex")
       .withDependencies((config) => {
         const openai = new OpenAI({ apiKey: config.apiKey });
         const db = new Database(config.dbUrl);
@@ -277,13 +277,13 @@ describe("defineLibrary with complex dependency objects", () => {
   });
 });
 
-describe("defineLibrary with spread operators and destructuring", () => {
+describe("defineFragment with spread operators and destructuring", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
     const baseDeps = { base: baseService };
     
-    const lib = defineLibrary("spread")
+    const lib = defineFragment("spread")
       .withDependencies(({ apiKey, ...rest }) => {
         return {
           ...baseDeps,
@@ -309,11 +309,11 @@ describe("defineLibrary with spread operators and destructuring", () => {
   });
 });
 
-describe("defineLibrary stored in variable then chained", () => {
+describe("defineFragment stored in variable then chained", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const baseLib = defineLibrary("mylib");
+    const baseLib = defineFragment("mylib");
     
     const fullLib = baseLib
       .withDependencies(() => ({ dep: dependency }))
@@ -328,11 +328,11 @@ describe("defineLibrary stored in variable then chained", () => {
   });
 });
 
-describe("defineLibrary with comments", () => {
+describe("defineFragment with comments", () => {
   const source = dedent`
-    import { defineLibrary } from "@fragno-dev/core";
+    import { defineFragment } from "@fragno-dev/core";
     
-    const lib = defineLibrary("commented")
+    const lib = defineFragment("commented")
       // Setup dependencies
       .withDependencies((config) => {
         // Create OpenAI client

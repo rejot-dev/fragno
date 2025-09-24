@@ -17,7 +17,7 @@ frameworks.
 A basic CRUD fragment for managing todos:
 
 ```typescript title="src/todos-fragment.ts"
-import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
@@ -35,7 +35,7 @@ const TodoSchema = z.object({
 
 type Todo = z.infer<typeof TodoSchema>;
 
-const todosDefinition = defineLibrary<TodosConfig>("todos-fragment");
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment");
 
 // In-memory storage (use a database in production)
 let todos: Todo[] = [];
@@ -115,7 +115,7 @@ const deleteTodoRoute = defineRoute({
 });
 
 export function createTodos(config: TodosConfig = {}) {
-  return createLibrary(todosDefinition, config, [
+  return createFragment(todosDefinition, config, [
     listTodosRoute,
     createTodoRoute,
     updateTodoRoute,
@@ -145,7 +145,7 @@ export function createTodosClient(fragnoConfig = {}) {
 A more complex fragment that integrates with OpenAI for streaming chat:
 
 ```typescript title="src/chat-fragment.ts"
-import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 import OpenAI from "openai";
@@ -165,7 +165,7 @@ const MessageSchema = z.object({
 
 type Message = z.infer<typeof MessageSchema>;
 
-const chatDefinition = defineLibrary<ChatConfig>("chat-fragment").withDependencies((config) => ({
+const chatDefinition = defineFragment<ChatConfig>("chat-fragment").withDependencies((config) => ({
   openai: new OpenAI({ apiKey: config.openaiApiKey }),
 }));
 
@@ -224,7 +224,7 @@ const chatRoute = defineRoute({
 });
 
 export function createChat(config: ChatConfig) {
-  return createLibrary(chatDefinition, config, [chatRoute]);
+  return createFragment(chatDefinition, config, [chatRoute]);
 }
 
 export function createChatClient(fragnoConfig = {}) {
@@ -241,7 +241,7 @@ export function createChatClient(fragnoConfig = {}) {
 A fragment for handling file uploads and storage:
 
 ```typescript title="src/storage-fragment.ts"
-import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 import { writeFile, mkdir } from "fs/promises";
@@ -264,7 +264,7 @@ const FileInfoSchema = z.object({
 
 type FileInfo = z.infer<typeof FileInfoSchema>;
 
-const storageDefinition = defineLibrary<StorageConfig>("storage-fragment").withDependencies(
+const storageDefinition = defineFragment<StorageConfig>("storage-fragment").withDependencies(
   (config) => ({
     uploadDir: config.uploadDir,
     maxFileSize: config.maxFileSize ?? 5 * 1024 * 1024, // 5MB default
@@ -360,7 +360,7 @@ const listFilesRoute = defineRoute({
 });
 
 export function createStorage(config: StorageConfig) {
-  return createLibrary(storageDefinition, config, [uploadRoute, listFilesRoute]);
+  return createFragment(storageDefinition, config, [uploadRoute, listFilesRoute]);
 }
 
 export function createStorageClient(fragnoConfig = {}) {

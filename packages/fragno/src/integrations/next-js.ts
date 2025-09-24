@@ -7,18 +7,18 @@ export interface NextJsHandlers {
 }
 
 export function toNextJsHandler<T extends { handler: (req: Request) => Promise<Response> }>(
-  library: T,
+  fragment: T,
 ): NextJsHandlers;
 export function toNextJsHandler(handler: (req: Request) => Promise<Response>): NextJsHandlers;
 export function toNextJsHandler(
-  libraryOrHandler:
+  fragmentOrHandler:
     | { handler: (req: Request) => Promise<Response> }
     | ((req: Request) => Promise<Response>),
 ): NextJsHandlers {
   const handler = async (request: Request) => {
-    return "handler" in libraryOrHandler
-      ? libraryOrHandler.handler(request)
-      : libraryOrHandler(request);
+    return "handler" in fragmentOrHandler
+      ? fragmentOrHandler.handler(request)
+      : fragmentOrHandler(request);
   };
 
   return {

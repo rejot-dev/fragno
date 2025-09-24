@@ -12,7 +12,7 @@ import {
 import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
-import type { FragnoLibrarySharedConfig, FragnoPublicClientConfig } from "../api/library";
+import type { FragnoFragmentSharedConfig, FragnoPublicClientConfig } from "../api/fragment";
 import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
 import type { InferOr } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
@@ -22,7 +22,7 @@ import {
 } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
-import type { LibraryBuilder } from "../api/library";
+import type { FragmentBuilder } from "../api/fragment";
 import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
@@ -480,10 +480,10 @@ export class ClientBuilder<
     string,
     string
   >[],
-  TLibraryConfig extends FragnoLibrarySharedConfig<TRoutes>,
+  TFragmentConfig extends FragnoFragmentSharedConfig<TRoutes>,
 > {
   #publicConfig: FragnoPublicClientConfig;
-  #libraryConfig: TLibraryConfig;
+  #fragmentConfig: TFragmentConfig;
 
   #cache = new Map<string, CacheLine>();
 
@@ -491,9 +491,9 @@ export class ClientBuilder<
   #createMutatorStore;
   #invalidateKeys;
 
-  constructor(publicConfig: FragnoPublicClientConfig, libraryConfig: TLibraryConfig) {
+  constructor(publicConfig: FragnoPublicClientConfig, fragmentConfig: TFragmentConfig) {
     this.#publicConfig = publicConfig;
-    this.#libraryConfig = libraryConfig;
+    this.#fragmentConfig = fragmentConfig;
 
     const [createFetcherStore, createMutatorStore, { invalidateKeys }] = nanoquery({
       cache: this.#cache,
@@ -511,17 +511,17 @@ export class ClientBuilder<
     return { obj: obj, [STORE_SYMBOL]: true };
   }
 
-  createHook<TPath extends ExtractGetRoutePaths<TLibraryConfig["routes"]>>(
-    path: ValidateGetRoutePath<TLibraryConfig["routes"], TPath>,
+  createHook<TPath extends ExtractGetRoutePaths<TFragmentConfig["routes"]>>(
+    path: ValidateGetRoutePath<TFragmentConfig["routes"], TPath>,
     options?: CreateHookOptions,
   ): FragnoClientHookData<
     "GET",
     TPath,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"]>,
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number],
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["queryParameters"]>[number]
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["outputSchema"]>,
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["errorCodes"]>[number],
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["queryParameters"]>[number]
   > {
-    const route = this.#libraryConfig.routes.find(
+    const route = this.#fragmentConfig.routes.find(
       (
         r,
       ): r is FragnoRouteConfig<
@@ -541,21 +541,21 @@ export class ClientBuilder<
     return this.#createRouteQueryHook(route, options);
   }
 
-  createMutator<TPath extends ExtractNonGetRoutePaths<TLibraryConfig["routes"]>>(
+  createMutator<TPath extends ExtractNonGetRoutePaths<TFragmentConfig["routes"]>>(
     method: NonGetHTTPMethod,
     path: TPath,
     onInvalidate?: OnInvalidateFn<TPath>,
   ): FragnoClientMutatorData<
     NonGetHTTPMethod, // TODO: This can be any Method, but should be related to TPath
     TPath,
-    ExtractRouteByPath<TLibraryConfig["routes"], TPath>["inputSchema"],
-    ExtractRouteByPath<TLibraryConfig["routes"], TPath>["outputSchema"],
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["errorCodes"]>[number],
-    NonNullable<ExtractRouteByPath<TLibraryConfig["routes"], TPath>["queryParameters"]>[number]
+    ExtractRouteByPath<TFragmentConfig["routes"], TPath>["inputSchema"],
+    ExtractRouteByPath<TFragmentConfig["routes"], TPath>["outputSchema"],
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["errorCodes"]>[number],
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["queryParameters"]>[number]
   > {
-    type TRoute = ExtractRouteByPath<TLibraryConfig["routes"], TPath>;
+    type TRoute = ExtractRouteByPath<TFragmentConfig["routes"], TPath>;
 
-    const route = this.#libraryConfig.routes.find(
+    const route = this.#fragmentConfig.routes.find(
       (
         r,
       ): r is FragnoRouteConfig<
@@ -607,7 +607,7 @@ export class ClientBuilder<
     }
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
-    const mountRoute = getMountRoute(this.#libraryConfig);
+    const mountRoute = getMountRoute(this.#fragmentConfig);
 
     async function callServerSideHandler(params: {
       pathParams?: Record<string, string | ReadableAtom<string>>;
@@ -791,7 +791,7 @@ export class ClientBuilder<
     const method = route.method;
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
-    const mountRoute = getMountRoute(this.#libraryConfig);
+    const mountRoute = getMountRoute(this.#fragmentConfig);
 
     async function executeMutateQuery({
       body,
@@ -999,14 +999,14 @@ export function createClientBuilder<
   TServices extends Record<string, unknown>,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  libraryDefinition: LibraryBuilder<TConfig, TDeps, TServices>,
+  fragmentDefinition: FragmentBuilder<TConfig, TDeps, TServices>,
   publicConfig: FragnoPublicClientConfig,
   routesOrFactories: TRoutesOrFactories,
 ): ClientBuilder<
   FlattenRouteFactories<TRoutesOrFactories>,
-  FragnoLibrarySharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
+  FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
 > {
-  const definition = libraryDefinition.definition;
+  const definition = fragmentDefinition.definition;
 
   // For client-side, we resolve route factories with dummy context
   // This will be removed by the bundle plugin anyway
@@ -1018,7 +1018,7 @@ export function createClientBuilder<
 
   const routes = resolveRouteFactories(dummyContext, routesOrFactories);
 
-  const libraryConfig: FragnoLibrarySharedConfig<FlattenRouteFactories<TRoutesOrFactories>> = {
+  const fragmentConfig: FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>> = {
     name: definition.name,
     routes,
   };
@@ -1029,7 +1029,7 @@ export function createClientBuilder<
     mountRoute,
   };
 
-  return new ClientBuilder(fullPublicConfig, libraryConfig);
+  return new ClientBuilder(fullPublicConfig, fragmentConfig);
 }
 
 export * from "./client-error";

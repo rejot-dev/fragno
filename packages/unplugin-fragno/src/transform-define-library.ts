@@ -24,7 +24,7 @@ const isDefineLibraryBinding = (binding: Binding): boolean => {
     return false;
   }
 
-  if (imported.name !== "defineLibrary") {
+  if (imported.name !== "defineFragment") {
     return false;
   }
 
@@ -48,7 +48,7 @@ const createNoOpArrowFunction = (): t.ArrowFunctionExpression => {
 };
 
 const isDefineLibraryChain = (node: t.Node, scope: Scope): boolean => {
-  // Check direct defineLibrary call
+  // Check direct defineFragment call
   if (t.isCallExpression(node) && isDefineLibraryCall(node, scope)) {
     return true;
   }
@@ -58,7 +58,7 @@ const isDefineLibraryChain = (node: t.Node, scope: Scope): boolean => {
     return isDefineLibraryChain(node.callee.object, scope);
   }
 
-  // Check if it's an identifier that refers to a defineLibrary result
+  // Check if it's an identifier that refers to a defineFragment result
   if (t.isIdentifier(node)) {
     const binding = scope.getBinding(node.name);
     if (binding && binding.path.isVariableDeclarator()) {
@@ -98,7 +98,7 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
         return;
       }
 
-      // Check if this is part of a defineLibrary chain
+      // Check if this is part of a defineFragment chain
       if (!isDefineLibraryChain(object, path.scope)) {
         return;
       }

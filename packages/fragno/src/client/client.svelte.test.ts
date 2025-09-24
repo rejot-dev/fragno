@@ -3,7 +3,7 @@ import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
 import { render } from "@testing-library/svelte";
 import { defineRoute } from "../api/route";
-import { defineLibrary } from "../api/library";
+import { defineFragment } from "../api/fragment";
 import { z } from "zod";
 import { readableToAtom, useFragno } from "./client.svelte";
 import { writable, readable, get, derived } from "svelte/store";
@@ -89,7 +89,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Hook should function", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -108,7 +108,7 @@ describe("createSvelteHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -124,7 +124,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should support path parameters and update reactively when Svelte store changes", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     type TestData = {
       id: number;
       name: string;
@@ -156,7 +156,7 @@ describe("createSvelteHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -183,7 +183,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should support path parameters and update reactively when Nanostores Atom changes", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     type TestData = { id: number; name: string };
     const testRoutes = [
       defineRoute({
@@ -212,7 +212,7 @@ describe("createSvelteHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -239,7 +239,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle errors gracefully", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -260,7 +260,7 @@ describe("createSvelteHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -277,7 +277,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should track loading states correctly", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -294,7 +294,7 @@ describe("createSvelteHook", () => {
 
     vi.mocked(global.fetch).mockImplementationOnce(() => fetchPromise);
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -322,7 +322,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle query parameters", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -344,7 +344,7 @@ describe("createSvelteHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -376,7 +376,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle multiple hooks together", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -412,7 +412,7 @@ describe("createSvelteHook", () => {
       throw new Error(`Unexpected URL: ${input}`);
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
       usePosts: client.createHook("/posts"),
@@ -432,7 +432,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle mixed reactive parameters - writable path param, atom and writable query params, with reactive updates", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -483,7 +483,7 @@ describe("createSvelteHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUserPosts: client.createHook("/users/:id/posts"),
     };
@@ -561,7 +561,7 @@ describe("createSvelteMutator", () => {
   });
 
   test("Should handle mutator hooks", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "POST",
@@ -584,7 +584,7 @@ describe("createSvelteMutator", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -605,7 +605,7 @@ describe("createSvelteMutator", () => {
   });
 
   test("Should handle mutator with path parameters", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "PUT",
@@ -630,7 +630,7 @@ describe("createSvelteMutator", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       updateUser: client.createMutator("PUT", "/users/:id"),
     };
@@ -663,7 +663,7 @@ describe("useFragno", () => {
     baseUrl: "http://localhost:3000",
   };
 
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -681,7 +681,7 @@ describe("useFragno", () => {
   ] as const;
 
   test("should pass through non-hook values unchanged", () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       usePostAction: client.createMutator("POST", "/action"),
@@ -711,7 +711,7 @@ describe("useFragno", () => {
   });
 
   test("Should support path parameters and update reactively when using Svelte runes", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     type TestData = {
       id: number;
       name: string;
@@ -743,7 +743,7 @@ describe("useFragno", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -785,7 +785,7 @@ describe("createSvelteStore", () => {
   });
 
   test("streaming routes", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -796,7 +796,7 @@ describe("createSvelteStore", () => {
         },
       }),
     ] as const;
-    const cb = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const cb = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const usersStream = cb.createHook("/users-stream");
 
     // Create a single shared store instance

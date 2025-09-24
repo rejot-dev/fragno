@@ -16,7 +16,7 @@ Choose clear, descriptive names for your fragment and routes:
 
 ```typescript
 // ✅ Good
-const userManagementDefinition = defineLibrary<UserConfig>("user-management");
+const userManagementDefinition = defineFragment<UserConfig>("user-management");
 
 const getUserRoute = defineRoute({
   method: "GET",
@@ -25,7 +25,7 @@ const getUserRoute = defineRoute({
 });
 
 // ❌ Bad
-const libDef = defineLibrary<Config>("lib");
+const libDef = defineFragment<Config>("lib");
 
 const route1 = defineRoute({
   method: "GET",
@@ -189,7 +189,7 @@ export interface MyFragmentConfig {
   debug?: boolean; // Optional with default
 }
 
-const myFragmentDefinition = defineLibrary<MyFragmentConfig>("my-fragment").withDependencies(
+const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment").withDependencies(
   (config) => ({
     timeout: config.timeout ?? 5000, // 5 second default
     retries: config.retries ?? 3,
@@ -224,7 +224,7 @@ const configSchema = z.object({
   retries: z.number().int().min(0).max(10).default(3),
 });
 
-const myFragmentDefinition = defineLibrary<MyFragmentConfig>("my-fragment").withDependencies(
+const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment").withDependencies(
   (config) => {
     // Validate config
     const validConfig = configSchema.parse(config);
@@ -660,7 +660,7 @@ function validateEnvironment() {
 export function createMyFragment(config: Config) {
   validateEnvironment();
 
-  return createLibrary(
+  return createFragment(
     definition,
     {
       apiKey: process.env.MY_API_KEY!,

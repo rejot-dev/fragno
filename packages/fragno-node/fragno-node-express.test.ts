@@ -2,16 +2,16 @@ import express, { type Application } from "express";
 import { test, expect, describe, beforeAll, afterAll } from "vitest";
 import { z } from "zod";
 import {
-  defineLibrary,
+  defineFragment,
   defineRoute,
-  createLibrary,
-  type FragnoInstantiatedLibrary,
+  createFragment,
+  type FragnoInstantiatedFragment,
   type FragnoPublicClientConfig,
 } from "@fragno-dev/core";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Fragno Express integration", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
 
   const usersRoute = defineRoute({
     method: "GET",
@@ -23,16 +23,16 @@ describe("Fragno Express integration", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost",
   };
-  let testLibrary: FragnoInstantiatedLibrary<[typeof usersRoute]>;
+  let testFragment: FragnoInstantiatedFragment<[typeof usersRoute]>;
   let app: Application;
   let server: ReturnType<typeof app.listen>;
   let port: number;
 
   function createExpressServerForTest() {
-    testLibrary = createLibrary(testLibraryDefinition, {}, [usersRoute], clientConfig);
+    testFragment = createFragment(testFragmentDefinition, {}, [usersRoute], clientConfig);
     app = express();
 
-    app.all("/api/test-library/{*any}", toNodeHandler(testLibrary.handler));
+    app.all("/api/test-fragment/{*any}", toNodeHandler(testFragment.handler));
 
     // Add JSON body parsing middleware
     app.use(express.json());
@@ -61,7 +61,7 @@ describe("Fragno Express integration", () => {
   });
 
   test("should fetch data from the GET /users route", async () => {
-    const response = await fetch(`${clientConfig.baseUrl}${testLibrary.mountRoute}/users`);
+    const response = await fetch(`${clientConfig.baseUrl}${testFragment.mountRoute}/users`);
 
     expect(response.ok).toBe(true);
 

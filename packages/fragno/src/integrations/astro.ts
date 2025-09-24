@@ -3,9 +3,9 @@ export interface AstroHandlers {
 }
 
 /**
- * Converts a Fragno library handler to an Astro API route handler
+ * Converts a Fragno fragment handler to an Astro API route handler
  *
- * @param library - The Fragno library instance
+ * @param fragment - The Fragno fragment instance
  * @returns An Astro API route handler function
  */
 export function toAstroHandler(handler: (req: Request) => Promise<Response>): AstroHandlers {

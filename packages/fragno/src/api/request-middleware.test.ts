@@ -1,5 +1,5 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
-import { defineLibrary, createLibrary } from "./library";
+import { defineFragment, createFragment } from "./fragment";
 import { defineRoute } from "./route";
 import { z } from "zod";
 import { FragnoApiValidationError } from "./error";
@@ -8,7 +8,7 @@ describe("Request Middleware", () => {
   test("middleware can intercept and return early", async () => {
     const config = { apiKey: "test" };
 
-    const library = defineLibrary<typeof config>("test-lib").withServices(() => ({
+    const fragment = defineFragment<typeof config>("test-lib").withServices(() => ({
       auth: { isAuthorized: (token?: string) => token === "valid-token" },
     }));
 
@@ -22,7 +22,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     });
 
@@ -64,7 +64,7 @@ describe("Request Middleware", () => {
   test("ifMatchesRoute - middleware has access to matched route information", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -93,7 +93,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       const result = await ifMatchesRoute(
@@ -153,7 +153,7 @@ describe("Request Middleware", () => {
   test("ifMatchesRoute - not called for other routes", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -184,7 +184,7 @@ describe("Request Middleware", () => {
 
     let middlewareCalled = false;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       return ifMatchesRoute("GET", "/users", () => {
@@ -213,7 +213,7 @@ describe("Request Middleware", () => {
   test("ifMatchesRoute - can return undefined", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -230,7 +230,7 @@ describe("Request Middleware", () => {
 
     let middlewareCalled = false;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       await ifMatchesRoute("GET", "/users", async ({ path, pathParams, input }) => {
@@ -261,7 +261,7 @@ describe("Request Middleware", () => {
   test("only one middleware is supported", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -273,7 +273,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, config, routes);
+    const instance = createFragment(fragment, config, routes);
 
     const withMiddleware = instance.withMiddleware(async () => {
       return undefined;
@@ -290,7 +290,7 @@ describe("Request Middleware", () => {
   test("middleware and handler can both consume request body without double consumption", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -308,7 +308,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       // Middleware consumes the request body
@@ -337,7 +337,7 @@ describe("Request Middleware", () => {
   });
 
   test("middleware can modify path parameters", async () => {
-    const library = defineLibrary("test-lib");
+    const fragment = defineFragment("test-lib");
 
     const routes = [
       defineRoute({
@@ -354,7 +354,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, {}, routes, {
+    const instance = createFragment(fragment, {}, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       // Middleware can read path and query parameters
@@ -381,7 +381,7 @@ describe("Request Middleware", () => {
   test("middleware calling input.valid() can catch validation error", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -403,7 +403,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       // Middleware tries to validate the input
@@ -447,7 +447,7 @@ describe("Request Middleware", () => {
   test("middleware calling input.valid() can ignore validation error", async () => {
     const config = {};
 
-    const library = defineLibrary<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib");
 
     const routes = [
       defineRoute({
@@ -470,7 +470,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, config, routes, {
+    const instance = createFragment(fragment, config, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       // Middleware tries to validate the input
@@ -501,7 +501,7 @@ describe("Request Middleware", () => {
 
   // TODO: This is not currently supported
   test.todo("middleware can modify query parameters", async () => {
-    const library = defineLibrary("test-lib");
+    const fragment = defineFragment("test-lib");
 
     const routes = [
       defineRoute({
@@ -518,7 +518,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createLibrary(library, {}, routes, {
+    const instance = createFragment(fragment, {}, routes, {
       mountRoute: "/api",
     }).withMiddleware(async ({ ifMatchesRoute }) => {
       // Middleware can read path and query parameters

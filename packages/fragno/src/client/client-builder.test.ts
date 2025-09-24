@@ -2,11 +2,11 @@ import { test, expect, expectTypeOf, describe } from "vitest";
 import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { addRoute } from "../api/api";
-import { defineLibrary } from "../api/library";
-import type { FragnoPublicClientConfig } from "../api/library";
+import { defineFragment } from "../api/fragment";
+import type { FragnoPublicClientConfig } from "../api/fragment";
 
 // Test route configurations
-const testLibrary = defineLibrary("test-library");
+const testFragment = defineFragment("test-fragment");
 const testRoutes = [
   // GET routes
   addRoute({
@@ -72,12 +72,12 @@ const testPublicConfig: FragnoPublicClientConfig = {
   mountRoute: "/api",
 };
 
-// Empty library config for edge case testing
-const _emptyLibrary = defineLibrary("empty-library");
+// Empty fragment config for edge case testing
+const _emptyFragment = defineFragment("empty-fragment");
 const _emptyRoutes = [] as const;
 
-// Library config with no GET routes
-const noGetLibrary = defineLibrary("no-get-library");
+// Fragment config with no GET routes
+const noGetFragment = defineFragment("no-get-fragment");
 const noGetRoutes = [
   addRoute({
     method: "POST",
@@ -93,15 +93,15 @@ const noGetRoutes = [
   }),
 ] as const;
 
-describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
+describe("Hook builder (createHookBuilder) and createFragmentHook", () => {
   describe("basic functionality", () => {
     test("should create builder object", () => {
-      const builder = createClientBuilder(testLibrary, testPublicConfig, testRoutes);
+      const builder = createClientBuilder(testFragment, testPublicConfig, testRoutes);
       expectTypeOf(builder.createHook).toBeFunction();
     });
 
     test("should create hook for valid GET route", () => {
-      const builder = createClientBuilder(testLibrary, testPublicConfig, testRoutes);
+      const builder = createClientBuilder(testFragment, testPublicConfig, testRoutes);
       const hook = builder.createHook("/users");
 
       expect(hook).toHaveProperty("route");
@@ -110,7 +110,7 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
     });
 
     test("should create multiple hooks independently", () => {
-      const builder = createClientBuilder(testLibrary, testPublicConfig, testRoutes);
+      const builder = createClientBuilder(testFragment, testPublicConfig, testRoutes);
       const usersHook = builder.createHook("/users");
       const userHook = builder.createHook("/users/:id");
       const aiHook = builder.createHook("/ai-config");
@@ -123,7 +123,7 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
 
   describe("error handling", () => {
     test("should throw error for non-existent route", () => {
-      const builder = createClientBuilder(testLibrary, testPublicConfig, testRoutes);
+      const builder = createClientBuilder(testFragment, testPublicConfig, testRoutes);
 
       expect(() => {
         // @ts-expect-error - Testing runtime error for invalid path
@@ -131,8 +131,8 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
       }).toThrow("Route '/nonexistent' not found or is not a GET route with an output schema.");
     });
 
-    test("should throw error for library with no GET routes", () => {
-      const builder = createClientBuilder(noGetLibrary, testPublicConfig, noGetRoutes);
+    test("should throw error for fragment with no GET routes", () => {
+      const builder = createClientBuilder(noGetFragment, testPublicConfig, noGetRoutes);
 
       expect(() => {
         // @ts-expect-error - Testing runtime error for no GET routes
@@ -141,7 +141,7 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
     });
 
     test("should handle complex route paths", () => {
-      const complexLibrary = defineLibrary("complex-library");
+      const complexFragment = defineFragment("complex-fragment");
       const complexRoutes = [
         addRoute({
           method: "GET",
@@ -157,7 +157,7 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
         }),
       ] as const;
 
-      const builder = createClientBuilder(complexLibrary, testPublicConfig, complexRoutes);
+      const builder = createClientBuilder(complexFragment, testPublicConfig, complexRoutes);
       const commentHook = builder.createHook(
         "/api/v1/users/:userId/posts/:postId/comments/:commentId",
       );
@@ -173,7 +173,7 @@ describe("Hook builder (createHookBuilder) and createLibraryHook", () => {
 
 describe("type safety tests", () => {
   test("should only allow valid GET route paths", () => {
-    const builder = createClientBuilder(testLibrary, testPublicConfig, testRoutes);
+    const builder = createClientBuilder(testFragment, testPublicConfig, testRoutes);
 
     // These should compile (valid GET routes)
     expect(() => builder.createHook("/home")).not.toThrow();
@@ -194,7 +194,7 @@ describe("type safety tests", () => {
 
 describe("real-world usage scenarios", () => {
   test("should work with Chatno-like configuration", () => {
-    const chatnoLibrary = defineLibrary("chatno");
+    const chatnoFragment = defineFragment("chatno");
     const chatnoRoutes = [
       addRoute({
         method: "GET",
@@ -234,7 +234,7 @@ describe("real-world usage scenarios", () => {
       }),
     ] as const;
 
-    const builder = createClientBuilder(chatnoLibrary, {}, chatnoRoutes);
+    const builder = createClientBuilder(chatnoFragment, {}, chatnoRoutes);
     const hook = builder.createHook("/ai-config");
 
     expect(hook).toHaveProperty("route");
@@ -255,7 +255,7 @@ describe("real-world usage scenarios", () => {
     ];
 
     configs.forEach((config) => {
-      const builder = createClientBuilder(testLibrary, config, testRoutes);
+      const builder = createClientBuilder(testFragment, config, testRoutes);
       const result = builder.createHook("/users");
 
       expect(result).toHaveProperty("store");

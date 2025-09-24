@@ -1,12 +1,12 @@
 export {
-  defineLibrary,
-  createLibrary,
-  LibraryBuilder,
-  type FragnoLibrarySharedConfig,
+  defineFragment,
+  createFragment,
+  FragmentBuilder,
+  type FragnoFragmentSharedConfig,
   type FragnoPublicConfig,
   type FragnoPublicClientConfig,
-  type FragnoInstantiatedLibrary,
-} from "./api/library";
+  type FragnoInstantiatedFragment,
+} from "./api/fragment";
 
 export { type FragnoRouteConfig } from "./api/api";
 

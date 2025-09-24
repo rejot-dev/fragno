@@ -282,7 +282,7 @@ function ProtectedAction() {
 Add middleware to intercept and process requests before they reach your route handlers:
 
 ```typescript
-const library = defineLibrary<Config>("my-api").withServices((config) => ({
+const fragment = defineFragment<Config>("my-api").withServices((config) => ({
   auth: {
     isAuthorized: (token?: string) => token === config.apiKey,
   },
@@ -291,7 +291,7 @@ const library = defineLibrary<Config>("my-api").withServices((config) => ({
   },
 }));
 
-const instance = createLibrary(library, config, routes).withMiddleware(
+const instance = createFragment(fragment, config, routes).withMiddleware(
   async (context, { deps, services }) => {
     const { method, path, queryParams, pathParams } = context;
 
@@ -352,7 +352,7 @@ Middleware receives a rich context object:
 Understand the difference between services and dependencies:
 
 ```typescript
-const library = defineLibrary<Config>("my-lib")
+const fragment = defineFragment<Config>("my-lib")
   // Dependencies: Heavy objects, database connections, etc.
   // Stripped from client bundles
   .withDependencies((config) => ({
