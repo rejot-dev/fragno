@@ -5,7 +5,7 @@ import { buildUrl, createClientBuilder, getCacheKey, isGetHook, isMutatorHook } 
 import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
-import { atom, computed } from "nanostores";
+import { atom, computed, effect } from "nanostores";
 import { defineLibrary } from "../api/library";
 import { RequestOutputContext } from "../api/request-output-context";
 import { FragnoClientUnknownApiError } from "./client-error";
@@ -1537,6 +1537,82 @@ describe("computed", () => {
       const { value } = await itt.next();
       expect(value).toBe("John, Jane, Jim");
     }
+  });
+
+  test("Derived from streaming route with atom usage", async () => {
+    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users-stream",
+        outputSchema: z.array(
+          z.object({ num: z.number(), status: z.enum(["continue", "half-way", "done"]) }),
+        ),
+        handler: async () => {
+          throw new Error("Not implemented");
+        },
+      }),
+    ] as const;
+    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const useUsersStream = client.createHook("/users-stream");
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      const ctx = new RequestOutputContext(streamRoutes[0].outputSchema);
+      return ctx.jsonStream(async (stream) => {
+        await stream.write({ num: 8, status: "continue" });
+        await stream.sleep(1);
+        await stream.write({ num: 17, status: "half-way" });
+        await stream.sleep(1);
+        await stream.write({ num: 3, status: "done" });
+      });
+    });
+
+    const userStore = useUsersStream.store({});
+
+    const product = computed(
+      userStore,
+      ({ data }) => data?.map((user) => user.num).reduce((acc, num) => acc * num, 1) ?? 1,
+    );
+    const highestNum = atom(0);
+    effect([userStore], ({ data }) => {
+      if (!Array.isArray(data) || data.length === 0) {
+        return;
+      }
+
+      const latest = data[data.length - 1];
+      highestNum.set(Math.max(highestNum.get(), latest.num));
+    });
+
+    const productItt = createAsyncIteratorFromCallback(product.listen);
+    const highestNumItt = createAsyncIteratorFromCallback(highestNum.listen);
+
+    {
+      const { value } = await productItt.next();
+      expect(value).toBe(8);
+    }
+
+    {
+      const { value } = await productItt.next();
+      expect(value).toBe(136);
+    }
+
+    {
+      const { value } = await productItt.next();
+      expect(value).toBe(408);
+    }
+
+    {
+      const { value } = await highestNumItt.next();
+      expect(value).toBe(8);
+    }
+
+    {
+      const { value } = await highestNumItt.next();
+      expect(value).toBe(17);
+    }
+
+    // No last value on the highestNum iterator as it will stay '17' and thus no store update is
+    // pushed.
   });
 });
 

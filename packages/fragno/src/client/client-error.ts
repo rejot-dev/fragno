@@ -122,17 +122,17 @@ export class FragnoClientApiError<
     const unknown = await response.json();
     const status = response.status as StatusCode;
 
-    if (!("error" in unknown || "code" in unknown)) {
+    if (!("message" in unknown || "code" in unknown)) {
       return new FragnoClientUnknownApiError("Unknown API error", status);
     }
 
-    if (!(typeof unknown.error === "string" && typeof unknown.code === "string")) {
+    if (!(typeof unknown.message === "string" && typeof unknown.code === "string")) {
       return new FragnoClientUnknownApiError("Unknown API error", status);
     }
 
     return new FragnoClientApiError(
       {
-        message: unknown.error,
+        message: unknown.message,
         code: unknown.code as TErrorCode,
       },
       status,

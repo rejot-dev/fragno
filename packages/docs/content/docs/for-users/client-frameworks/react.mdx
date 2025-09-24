@@ -17,16 +17,21 @@ export const exampleFragment = useFragno(exampleFragmentClient);
 
 ## Basic Usage
 
+In this example, we're using the `useData` hook to read from a `GET` route defined in the
+`example-fragment` library. An object can be passed to the hook to specify the path and query
+parameters. When these parameters change, the hook will automatically be re-fetched.
+
 ```typescript title="components/ExampleComponent.tsx"
 import { exampleFragment } from "@/lib/example-fragment-client";
 
 export default function ExampleComponent() {
-  const { data, loading } = exampleFragment.useData();
+  const { data, loading, error } = exampleFragment.useData();
 
   return (
     <div>
       <h1>Example Component</h1>
       {loading ? <div>Loading...</div> : <div>{data}</div>}
+      {error && <div>Error: {error.message}</div>}
     </div>
   );
 }

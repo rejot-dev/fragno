@@ -53,7 +53,7 @@ const TodoSchema = z.object({
 const todosDefinition = defineLibrary<TodosConfig>("todos-fragment");
 ```
 
-### Step 2: Add Dependencies (Optional)
+### Step 2: Add Dependencies and Services (Optional)
 
 Dependencies are private to the library/fragment and are not included in the client bundle. They can
 be used in the server-side route handlers. Dependencies can be defined using the `withDependencies`
@@ -73,6 +73,9 @@ const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDepende
   },
 );
 ```
+
+We'll skip over services for now, but you can read more about them in the
+[Dependencies and Services](./features/dependencies-and-services) page.
 
 ### Step 3: Define Routes
 
@@ -122,52 +125,46 @@ type AddTodoRouteDeps = {
   aiWrapper: MyOpenAIWrapper;
 };
 
-type AddTodoRouteServices = {
-  onTodoCreated?: (todo: Todo & { textSummary?: string }) => void;
-};
+export const addTodoRoute = defineRoutes<AddTodoRouteDeps, {}>().create(({ config, deps }) => {
+  const { aiWrapper } = deps;
 
-export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>().create(
-  ({ config, deps, services }) => {
-    const { aiWrapper } = deps;
+  return [
+    defineRoute({
+      method: "POST",
+      path: "/todos",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: TodoSchema,
+      queryParameters: ["summarize"],
+      errorCodes: ["SUMMARY_ERROR"],
+      handler: async ({ input, query }, { json, error }) => {
+        const { text } = await input.valid();
 
-    return [
-      defineRoute({
-        method: "POST",
-        path: "/todos",
-        inputSchema: z.object({ text: z.string() }),
-        outputSchema: TodoSchema,
-        queryParameters: ["summarize"],
-        errorCodes: ["SUMMARY_ERROR"],
-        handler: async ({ input, query }, { json, error }) => {
-          const { text } = await input.valid();
+        const todo = {
+          id: crypto.randomUUID(),
+          text,
+          done: false,
+          createdAt: new Date().toISOString(),
+        } satisfies Todo;
 
-          const todo = {
-            id: crypto.randomUUID(),
-            text,
-            done: false,
-            createdAt: new Date().toISOString(),
-          } satisfies Todo;
+        try {
+          const textSummary = query.get("summarize")
+            ? await aiWrapper.summarizeText(text)
+            : undefined;
+        } catch {
+          return error({ message: "Summary error", code: "SUMMARY_ERROR" }, 503);
+        }
 
-          try {
-            const textSummary = query.get("summarize")
-              ? await aiWrapper.summarizeText(text)
-              : undefined;
-          } catch {
-            return error({ message: "Summary error", code: "SUMMARY_ERROR" }, 503);
-          }
+        // Call the user's callback if provided
+        config?.onTodoCreated?.({
+          ...todo,
+          textSummary,
+        });
 
-          // Call the user's callback if provided
-          services?.onTodoCreated?.({
-            ...todo,
-            textSummary,
-          });
-
-          return json(todo);
-        },
-      }),
-    ];
-  },
-);
+        return json(todo);
+      },
+    }),
+  ];
+});
 ```
 
 ### Step 4: Create the Server-Side Fragment

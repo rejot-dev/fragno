@@ -493,7 +493,7 @@ describe("Request Middleware", () => {
 
     const body = await res.json();
     expect(body).toEqual({
-      error: "Validation failed",
+      message: "Validation failed",
       issues: expect.any(Array),
       code: "FRAGNO_VALIDATION_ERROR",
     });

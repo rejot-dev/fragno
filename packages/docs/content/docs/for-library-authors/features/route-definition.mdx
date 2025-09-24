@@ -1,5 +1,5 @@
 ---
-title: Route Definition
+title: Route Definitions
 description: Learn how to define routes in Fragno
 ---
 
@@ -32,6 +32,8 @@ Paths must follow these rules:
 - Start with `/` (cannot be empty or missing leading slash)
 - Cannot be just `/` (root path)
 - Cannot end with `/`
+
+Example paths:
 
 ```typescript
 "/users"; // Basic path
@@ -171,11 +173,11 @@ defineRoute({
 });
 ```
 
-Error responses are automatically formatted as:
+Error responses are returned to the client as:
 
 ```json
 {
-  "error": "User already exists",
+  "message": "User already exists",
   "code": "USER_EXISTS"
 }
 ```
@@ -329,18 +331,7 @@ return error(
 return error({ message: "Bad request", code: "BAD_REQUEST" }, 400);
 ```
 
-All error responses are automatically formatted as:
-
-```json
-{
-  "error": "Your error message",
-  "code": "YOUR_ERROR_CODE"
-}
-```
-
 #### Streaming Responses
-
-Create real-time streaming responses using Server-Sent Events format:
 
 ```typescript
 return jsonStream(async (stream) => {

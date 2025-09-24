@@ -21,7 +21,7 @@ export class FragnoApiError extends Error {
   }
 
   toResponse() {
-    return Response.json({ error: this.message, code: this.code }, { status: this.status });
+    return Response.json({ message: this.message, code: this.code }, { status: this.status });
   }
 }
 
@@ -40,7 +40,7 @@ export class FragnoApiValidationError extends FragnoApiError {
 
   override toResponse() {
     return Response.json(
-      { error: this.message, issues: this.#issues, code: this.code },
+      { message: this.message, issues: this.#issues, code: this.code },
       { status: this.status },
     );
   }

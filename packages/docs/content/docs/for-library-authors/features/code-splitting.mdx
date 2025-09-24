@@ -2,3 +2,103 @@
 title: Code Splitting
 description: Learn how code splitting and tree-shaking work in Fragno
 ---
+
+Fragments are "full-stack" libraries. As such, they contain both server-side and client-side
+components. Since frameworks differ in how they handle code splitting, Fragno must provide a way to
+split the code between client and server bundles on the Fragment level.
+
+## Code Splitting
+
+The `@fragno-dev/unplugin-fragno` plugin must be used to split the Fragment's code between client
+and server bundles. This plugin is only required for Fragment authors, **not** for end-users.
+
+When creating the client bundle with the plugin, calls to `defineLibrary` and `defineRoute` will be
+transformed. The contents of the `withDependencies` and `withServices` methods are removed from the
+client bundle, as well as the contents of the `handler` functions in `defineRoute`. All code and
+imports that become unused after this transformation are removed from the client bundle
+(tree-shaking). At this time, there's **no** specific transformation step that happens for
+server-side code. All code is included in the final server bundle.
+
+<Callout title="Unplugin" type="info">
+  Unplugin is a unified plugin system that supports _"Vite, Rollup, webpack, esbuild, and every
+  framework built on top of them."_ This means that we'll integrate with your preferred build tool.
+</Callout>
+
+## Building
+
+Get started by installing the `@fragno-dev/unplugin-fragno` as a development dependency.
+
+```npm
+npm install --save-dev @fragno-dev/unplugin-fragno
+```
+
+Depending on your build tool, you can import the plugin from the `unplugin-fragno` package into your
+build configuration:
+
+```typescript
+// esbuild:
+import unpluginFragno from "@fragno-dev/unplugin-fragno/esbuild";
+// rollup / rolldown:
+import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
+// webpack:
+import unpluginFragno from "@fragno-dev/unplugin-fragno/webpack";
+// rspack:
+import unpluginFragno from "@fragno-dev/unplugin-fragno/rspack";
+// farm:
+import unpluginFragno from "@fragno-dev/unplugin-fragno/farm";
+```
+
+Other build tools are also supported: `/vite`, `/nuxt`, `/astro`. But it's unlikely that you'll
+build your Fragment with these tools.
+
+### TSDown Example
+
+The Fragno monorepo uses TSDown to build the packages. A minimal example is the following:
+
+```typescript title="tsdown.config.ts"
+import { defineConfig } from "tsdown";
+import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
+
+export default defineConfig([
+  {
+    entry: "./src/index.ts",
+    platform: "browser",
+    outDir: "./dist/browser",
+    plugins: [unpluginFragno({ platform: "browser" })],
+  },
+  {
+    entry: "./src/index.ts",
+    outDir: "./dist/node",
+    plugins: [unpluginFragno({ platform: "node" })],
+  },
+]);
+```
+
+<Callout title="Plugin in the server build" type="info">
+  The plugin can be omitted in the server build, because it currently doesn't do anything. This
+  might change in the future.
+</Callout>
+
+### Package.json Example
+
+As we have now created two builds, we need to set the `exports` field in the `package.json` file.
+
+```json title="package.json"
+{
+  "name": "@fragno-dev/chatno",
+  "exports": {
+    ".": {
+      "types": "./dist/browser/index.d.ts",
+      "browser": "./dist/browser/index.js",
+      "default": "./dist/node/index.js"
+    }
+  },
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "type": "module"
+}
+```
+
+The key fields here is "browser". This is all we need to make the user's framework import the
+correct bundle.
