@@ -3,16 +3,16 @@ title: Getting Started
 description: Learn how to build your own Fragno fragments
 ---
 
-There are a number of concepts you should be familiar with before publishing a Fragment:
+There are several concepts you should be familiar with before publishing a Fragment:
 
 - Defining Routes
 - Dependencies and Services
 - Client-side State Management
 - Code-Splitting (Client and Server bundles)
 
-But before getting into that, we'll start with the basics and ignore the details for now. In this
-walkthrough, we'll create two simple server routes for getting and creating todos, then we'll also
-create a client-side Fragment that provides TanStack Query-style hooks for the two routes.
+But before getting into those details, we'll start with the basics. In this walkthrough, we'll
+create two simple server routes for getting and creating todos, and then create a client-side
+Fragment that provides TanStack Query-style hooks for the two routes.
 
 ## Installation
 
@@ -57,7 +57,7 @@ const todosDefinition = defineFragment<TodosConfig>("todos-fragment");
 
 Dependencies are private to the library/fragment and are not included in the client bundle. They can
 be used in the server-side route handlers. Dependencies can be defined using the `withDependencies`
-method, this method has access to the config object.
+method, which has access to the config object.
 
 ```typescript title="src/index.ts"
 import { defineFragment } from "@fragno-dev/core";
@@ -82,13 +82,13 @@ We'll skip over services for now, but you can read more about them in the
 A basic route can be defined using the `defineRoute` function. Options are: `method`, `path`,
 `inputSchema`, `outputSchema`, `handler`, `errorCodes`, and `queryParameters`.
 
-The first argument passed to the handler is the input context object, this object has an `input`
-field with a `valid` method that can be used to validate the input. It also contains other fields
-related to the request.
+The first argument passed to the handler is the input context object, which has an `input` field
+with a `valid` method that can be used to validate the input. It also contains other fields related
+to the request.
 
-The second argument passed to the handler is the output context object, this object contains a
-number of method fields: `json`, `jsonStream`, `empty`, and `error`. These methods can be used to
-return a response.
+The second argument passed to the handler is the output context object, which contains several
+method fields: `json`, `jsonStream`, `empty`, and `error`. These methods can be used to return a
+response.
 
 ```typescript title="routes/get-todos.ts"
 import { defineRoute } from "@fragno-dev/core";
@@ -119,8 +119,8 @@ import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import type { Todo } from "../index";
 import type { MyOpenAIWrapper } from "../lib/my-openai-wrapper";
 
-// Dependencies and services can be defined on a per-route level, since they might be a subset
-// of all dependencies/services.
+// Dependencies and services can be defined on a per-route level, since they might be a subset of
+// all dependencies/services.
 type AddTodoRouteDeps = {
   aiWrapper: MyOpenAIWrapper;
 };
@@ -210,6 +210,5 @@ export function createTodosClient(fragnoConfig: FragnoPublicClientConfig = {}) {
 
 ## Next Steps
 
-We went over building a basic Fragment. In the next section, we'll go over the advanced features of
-Fragno. It's also important to have a look at the [Building & Publishing](./building-publishing)
-page.
+We went over building a basic Fragment. In the next section, we'll cover the advanced features of
+Fragno. It's also important to review the [Building & Publishing](./building-publishing) page.

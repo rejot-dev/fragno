@@ -10,7 +10,7 @@ Svelte and SvelteKit support is included in the `@fragno-dev/core` package.
 To start, create a client instance and use it in your components:
 
 ```typescript title="lib/example-fragment-client.ts"
-import { createExampleFragmentClient } from "@your-org/example-fragment";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
 import { useFragno } from "@fragno-dev/core/svelte";
 
 const exampleFragmentClient = createExampleFragmentClient();
@@ -37,9 +37,9 @@ export const exampleFragment = useFragno(exampleFragmentClient);
 
 ## Reactivity
 
-Fragno currently supports Svelte reactivity using Svelte stores and runes, stores can be passed to
+Fragno currently supports Svelte reactivity using Svelte stores and runes. Stores can be passed to
 hooks as path or query parameters to automatically update the hook when the store changes. When
-using runes you must wrap these variables in closures in order to keep reactive links working.
+using runes, you must wrap these variables in closures in order to keep reactive links working.
 
 ```svelte title="components/UserProfile.svelte"
 <script lang="ts">

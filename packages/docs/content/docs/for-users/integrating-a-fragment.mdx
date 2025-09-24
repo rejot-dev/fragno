@@ -7,10 +7,10 @@ import { Callout } from "fumadocs-ui/components/callout";
 import { TypeTable } from "fumadocs-ui/components/type-table";
 
 Integrating a Fragment into your project is a straightforward process. There are two main
-integration points for a Fragment: server-side & client-side. This page contains the specifics for
-integration per framework.
+integration points for a Fragment: server-side and client-side. This page contains
+framework-specific integration details.
 
-A full run-through of integrating a Fragment is available on the previous page:
+A complete guide to integrating a Fragment is available on the previous page:
 
 <Cards>
   <Card
@@ -22,7 +22,7 @@ A full run-through of integrating a Fragment is available on the previous page:
 
 ## Fragno Configuration
 
-Every Fragno Fragment can be configured with a few different built-in options:
+Every Fragno Fragment can be configured with several built-in options:
 
 <TypeTable
   type={{
@@ -40,14 +40,13 @@ Every Fragno Fragment can be configured with a few different built-in options:
   }}
 />
 
-These options can be configured within the frontend integration point, and are relevant when
-mounting the backend route in a non-standard location.
+These options can be configured at the frontend integration point, and are relevant when mounting
+the backend route in a non-standard location.
 
 ## Fragment-specific Configuration
 
-Most Fragments will also require some configuration specific to that Fragment. Check the
-documentation for the specific Fragment you're integrating to figure out what configuration is
-required.
+Most Fragments will also require some configuration specific to them. Check the documentation for
+the specific Fragment you are integrating to figure out what configuration is required.
 
 ## Reference
 
@@ -64,7 +63,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(createExampleFr
 
 #### React Router v7 / Remix
 
-Note that in Remix the file location might be different, as well as the `Route` type import.
+Note that in Remix, the file location might be different, as well as the `Route` type import.
 
 ```typescript title="app/routes/api/example-fragment.tsx"
 import type { Route } from "./+types/example-fragment";
@@ -127,7 +126,7 @@ The `toNodeHandler` function is defined in a separate npm package:
 npm install @fragno-dev/node
 ```
 
-When using Node.js without a framework, it's important to only handle the request when the request
+When using Node.js without a framework, it is important to only handle the request when the request
 URL starts with the Fragment's mount route.
 
 ```typescript title="index.ts"

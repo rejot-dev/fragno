@@ -5,8 +5,6 @@ description: Intercept and process requests before they reach the route handlers
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-# Middleware
-
 Middleware can be used to intercept and process requests before they reach the route handlers
 defined as part of a Fragment. This can be used to implement features such as authentication, rate
 limiting, and selectively disable routes.
@@ -16,15 +14,15 @@ parameters, etc.
 
 ## Basic Usage
 
-Middleware is defined as part of the Fragment's server configuration. It's called for every request
+Middleware is defined as part of the Fragment's server configuration. It is called for every request
 and can modify the request before it reaches the route handlers. Fragno only supports a single
-middleware method, it's not possible to add multiple middleware handlers like in other frameworks.
+middleware method; it is not possible to add multiple middleware handlers like in other frameworks.
 
 Returning `undefined` (or void) will continue the request to the route handler. Returning a Response
 will short-circuit the request and return the Response. The first argument of the `withMiddleware`
 callback handler contains the input context, which can be used to access the request body, path
-parameters, query parameters, and more. The second argument contains the output context, which can
-be used create responses.
+parameters, query parameters, and other request data. The second argument contains the output
+context, which can be used to create responses.
 
 ```typescript title="lib/example-fragment-server.ts"
 import { createExampleFragment } from "@fragno-dev/example-fragment";
@@ -46,7 +44,7 @@ export function createExampleFragmentInstance() {
 ```
 
 <Callout type="warn" title="Modifying the Request">
-  Request body and query parameters currently cannot be modified in middleware. See [Issue
+  Request bodies and query parameters currently cannot be modified in middleware. See [Issue
   #19](https://github.com/rejot-dev/fragno/issues/19).
 </Callout>
 

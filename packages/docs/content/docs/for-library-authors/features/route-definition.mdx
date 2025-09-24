@@ -42,14 +42,13 @@ Example paths:
 "/files/**:path"; // With wildcard
 ```
 
-Unless the user specifically changes this, paths are mounted under `/api/<fragment-name>`. This
-means that when you define the `/users` route, it will be mounted under
-`/api/<fragment-name>/users`.
+By default, paths are mounted under `/api/<fragment-name>`. This means that when you define the
+`/users` route, it will be mounted under `/api/<fragment-name>/users`.
 
 ### Path Parameters
 
 Use `:name` for single-segment parameters and `**:name` for wildcard parameters that capture the
-remainder of the path.
+entire remainder of the path.
 
 ```typescript
 // Single parameter
@@ -86,8 +85,8 @@ defineRoute({
 
 ## Input Schema
 
-Define input validation using any [Standard Schema](https://standardschema.dev/) compatible library
-like Zod:
+Define input validation using any [Standard Schema](https://standardschema.dev/) compatible library,
+such as Zod:
 
 ```typescript
 import { z } from "zod";
@@ -142,15 +141,15 @@ defineRoute({
 ```
 
 <Callout type="info" title="Output Schema when Streaming">
-  When using streaming responses, `jsonStream`, the output schema object is expected to be an array
-  of the items you want to stream.
+  When using streaming responses with `jsonStream`, the output schema object is expected to be an
+  array of the items you want to stream.
 </Callout>
 
 ## Error Codes
 
-Error codes can be defined on a route as a _hint_ to the client. The codes are just a hint for
-forward-compatibility reasons, the error codes are expected to be strings, as updating a Fragment
-might introduce new error codes.
+Error codes can be defined on a route as a _hint_ to the client. These codes serve as hints for
+forward-compatibility reasons. Error codes are expected to be strings, as updating a Fragment might
+introduce new error codes.
 
 ```typescript
 defineRoute({
@@ -184,7 +183,7 @@ Error responses are returned to the client as:
 
 ## Query Parameters
 
-Same as error codes, query parameters are just a hint. The `query` object is a web-standard
+Like error codes, query parameters are just a hint. The `query` object is a web-standard
 `URLSearchParams` object.
 
 ```typescript

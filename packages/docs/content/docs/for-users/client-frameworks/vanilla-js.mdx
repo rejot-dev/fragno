@@ -17,7 +17,8 @@ export const exampleFragment = useFragno(exampleFragmentClient);
 
 ## Basic Usage
 
-Use the `subscribe` method to listen for changes to the store.
+Use the `subscribe` method to listen for changes to the store. This method will call your callback
+immediately with the current value, then again for every future change.
 
 ```typescript title="main.ts"
 import { exampleFragment } from "@/lib/example-fragment-client";

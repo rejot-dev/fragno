@@ -4,8 +4,8 @@ description: Learn how to interface with the Fragment user.
 ---
 
 The **config** is the basic contract between the Fragment author and the user. It is used to pass
-configuration to the Fragment, such as API keys and options. It can also be used as a way to let the
-user react to events happening in the Fragment, by letting the user provide callback functions.
+configuration to the Fragment, such as API keys and options. It can also be used to let the user
+react to events happening in the Fragment by providing callback functions.
 
 **Dependencies** are objects that are available to route handlers. They are provided using the
 `withDependencies` method in the library definition. Dependencies are server-side only and are not
@@ -24,7 +24,7 @@ In the following snippet:
 1. The user is asked to provide an API key, as well as an optional callback function to be called
    when the text is summarized.
 2. A dependency is provided called `aiWrapper`. The `withDependencies` method has access to the
-   config object. Using this to construct object that require an API key is a common pattern.
+   config object. Using this to construct objects that require an API key is a common pattern.
 3. A service method called `summarizeText` is provided. The `withServices` method has access to both
    the config object and the dependencies. This can be used to make internal methods available to
    the user. Here, the callback function is called if it is provided.
@@ -61,19 +61,19 @@ const myFragmentDefinition = defineLibrary<MyFragmentConfig>("my-fragment")
 
 ## Using `defineRoutes` to work with Dependencies and Services
 
-In the previous section, we saw how to define routes using the `defineRoute` function. This function
-has a twin, `defineRoutes` (note the plural), this is a factory function that can be used to define
-a number of routes that have access to the dependencies and services.
+The `defineRoute` function has a companion, `defineRoutes` (note the plural), which is a factory
+function that can be used to define multiple routes that have access to the dependencies and
+services.
 
-The required dependencies and services are local to the `defineRoutes` call. This means that we do
-not need a global type for the dependencies and services, and instead we can define them locally.
+The dependencies and services are scoped to the `defineRoutes` call. This means that we don't need
+global types for the dependencies and services, and can define them locally instead.
 
-Another benefit of this approach is that we can define a single route per TypeScript file (like the
-`post-todos.ts` file in the previous section). This makes it easier to reason about the codebase and
-to maintain it.
+Another benefit of this approach is that we can define routes in a single TypeScript file (like the
+`post-todos.ts` file in the previous section). This makes the codebase easier to understand and
+maintain.
 
 We define two types per `defineRoutes` call: one for the dependencies and one for the services.
-These are passed to the call as generic parameters.
+These types are passed to the call as generic parameters.
 
 ```typescript title="routes/post-todos.ts"
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
@@ -94,8 +94,8 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>
     const { summarizeText } = services;
 
     return [
-      /* Calls to `defineRoute` that use internal methods on `aiWrapper`, or public methods such 
-         as `summarizeText`. */
+      /* Calls to `defineRoute` that use internal methods on `aiWrapper` or public methods such 
+         as `summarizeText` from the services. */
     ];
   },
 );
@@ -104,8 +104,8 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>
 The `create` callback should return one or more routes. The config, dependencies, and services are
 available in the callback.
 
-The `addTodoRoute` object is a route factory, which will be instantiated by a call to
-`createLibrary`. At this point, the dependencies and services are passed to the route object.
+The `addTodoRoute` object is a route factory that will be instantiated by a call to `createLibrary`.
+At that point, the dependencies and services are passed to the route object.
 
 ## The `createLibrary` function
 
