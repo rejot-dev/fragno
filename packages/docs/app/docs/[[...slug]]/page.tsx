@@ -6,12 +6,17 @@ import { createRelativeLink } from "fumadocs-ui/mdx";
 import { getMDXComponents } from "@/mdx-components";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { CopyMarkdownButton } from "@/components/copy-markdown-button";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
   const page = source.getPage(params.slug);
-  if (!page) notFound();
 
+  if (!page) {
+    notFound();
+  }
+
+  const markdownText = await page.data.getText("raw");
   const MDXContent = page.data.body;
 
   return (
@@ -33,6 +38,7 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
         >
           Edit on GitHub
         </a>
+        <CopyMarkdownButton markdownText={markdownText} />
       </div>
       <DocsBody>
         <MDXContent
