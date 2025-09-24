@@ -1,5 +1,0 @@
-#exclude package-lock from git diff
-package-lock.json -diff
-deno.lock -diff
-bun.lockb -diff
-bun.lock -diff
