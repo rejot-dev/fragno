@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno } from "./vanilla";
 import { defineRoute } from "../api/route";
-import { defineLibrary } from "../api/library";
+import { defineFragment } from "../api/fragment";
 import type { FragnoPublicClientConfig } from "../mod";
 import { FragnoClientFetchNetworkError } from "./client-error";
 import { waitForAsyncIterator } from "../util/async";
@@ -13,7 +13,7 @@ import { waitForAsyncIterator } from "../util/async";
 global.fetch = vi.fn();
 
 describe("createVanillaListeners", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -56,7 +56,7 @@ describe("createVanillaListeners", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -89,7 +89,7 @@ describe("createVanillaListeners", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -124,7 +124,7 @@ describe("createVanillaListeners", () => {
       };
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -163,7 +163,7 @@ describe("createVanillaListeners", () => {
       json: async () => ({ id: 123, name: "John" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id"),
     };
@@ -181,7 +181,7 @@ describe("createVanillaListeners", () => {
     });
 
     expect(userStore.get().data).toEqual({ id: 123, name: "John" });
-    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-library/users/123");
+    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-fragment/users/123");
 
     unsubscribe();
   });
@@ -193,7 +193,7 @@ describe("createVanillaListeners", () => {
       json: async () => ["result1", "result2"],
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       search: client.createHook("/search"),
     };
@@ -211,7 +211,7 @@ describe("createVanillaListeners", () => {
     });
 
     expect(searchStore.get().data).toEqual(["result1", "result2"]);
-    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-library/search?q=test");
+    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-fragment/search?q=test");
 
     unsubscribe();
   });
@@ -223,7 +223,7 @@ describe("createVanillaListeners", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -266,7 +266,7 @@ describe("createVanillaListeners", () => {
         json: async () => ({ id: 2, name: "Jane" }),
       });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id"),
     };
@@ -307,7 +307,7 @@ describe("createVanillaListeners", () => {
         json: async () => ({ id: 1, name: "John" }),
       });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id", {
         onErrorRetry: () => 1, // Wait only 1ms before retrying
@@ -364,7 +364,7 @@ describe("createVanillaListeners", () => {
 });
 
 describe("createVanillaMutator", () => {
-  const testLibraryDefinition = defineLibrary("test-library-mutator");
+  const testFragmentDefinition = defineFragment("test-fragment-mutator");
   const testRoutes = [
     defineRoute({
       method: "POST",
@@ -409,7 +409,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -439,7 +439,7 @@ describe("createVanillaMutator", () => {
 
     (global.fetch as ReturnType<typeof vi.fn>).mockReturnValueOnce(fetchPromise);
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -491,7 +491,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 123, name: "Jane" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       updateUser: client.createMutator("PUT", "/users/:id"),
     };
@@ -521,7 +521,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ success: true }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       deleteUser: client.createMutator("DELETE", "/users/:id"),
     };
@@ -550,7 +550,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -587,7 +587,7 @@ describe("createVanillaMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -621,7 +621,7 @@ describe("createVanillaMutator", () => {
 });
 
 describe("useFragno", () => {
-  const testLibraryDefinition = defineLibrary("test-library-useFragno");
+  const testFragmentDefinition = defineFragment("test-fragment-useFragno");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -658,7 +658,7 @@ describe("useFragno", () => {
       json: async () => "test data",
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       data: client.createHook("/data"),
       postAction: client.createMutator("POST", "/action"),
@@ -699,7 +699,7 @@ describe("useFragno", () => {
   });
 
   test("should pass through non-hook values unchanged", () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       someString: "hello world",
@@ -739,7 +739,7 @@ describe("useFragno", () => {
         json: async () => "data2",
       });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       data1: client.createHook("/data"),
       data2: client.createHook("/data"),
@@ -772,7 +772,7 @@ describe("useFragno", () => {
 });
 
 describe("error handling", () => {
-  const testLibraryDefinition = defineLibrary("test-library-errors");
+  const testFragmentDefinition = defineFragment("test-fragment-errors");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -805,7 +805,7 @@ describe("error handling", () => {
   test("should handle GET hook errors gracefully", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Network error"));
 
-    const builder = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const builder = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: builder.createHook("/users", {
         onErrorRetry: null,
@@ -841,7 +841,7 @@ describe("error handling", () => {
   test("should handle mutator errors gracefully", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Server error"));
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };

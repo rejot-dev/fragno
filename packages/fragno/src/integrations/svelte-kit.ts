@@ -16,18 +16,18 @@ export interface SvelteKitHandlers {
 }
 
 export function toSvelteHandler<T extends { handler: (req: Request) => Promise<Response> }>(
-  library: T,
+  fragment: T,
 ): SvelteKitHandlers;
 export function toSvelteHandler(handler: (req: Request) => Promise<Response>): SvelteKitHandlers;
 export function toSvelteHandler(
-  libraryOrHandler:
+  fragmentOrHandler:
     | { handler: (req: Request) => Promise<Response> }
     | ((req: Request) => Promise<Response>),
 ): SvelteKitHandlers {
   const requestHandler: SvelteKitRequestHandler = async ({ request }) => {
-    return "handler" in libraryOrHandler
-      ? libraryOrHandler.handler(request)
-      : libraryOrHandler(request);
+    return "handler" in fragmentOrHandler
+      ? fragmentOrHandler.handler(request)
+      : fragmentOrHandler(request);
   };
 
   return {

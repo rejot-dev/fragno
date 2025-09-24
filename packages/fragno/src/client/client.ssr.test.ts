@@ -10,12 +10,12 @@ import { describe, expect, test } from "vitest";
 import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
 import { defineRoute } from "../api/route";
-import { defineLibrary } from "../api/library";
+import { defineFragment } from "../api/fragment";
 import { z } from "zod";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 
 describe("server side rendering", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -36,7 +36,7 @@ describe("server side rendering", () => {
   });
 
   test("should call the handler directly", async () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -49,7 +49,7 @@ describe("server side rendering", () => {
   });
 
   test("should be able to use the store server side", async () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -67,7 +67,7 @@ describe("server side rendering", () => {
 
   describe("mutation streaming", () => {
     test("should support streaming responses for mutations", async () => {
-      const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+      const mutationStreamFragmentDefinition = defineFragment("mutation-stream-fragment");
       const mutationStreamRoutes = [
         defineRoute({
           method: "POST",
@@ -88,7 +88,7 @@ describe("server side rendering", () => {
       ] as const;
 
       const client = createClientBuilder(
-        mutationStreamLibraryDefinition,
+        mutationStreamFragmentDefinition,
         clientConfig,
         mutationStreamRoutes,
       );
@@ -107,7 +107,7 @@ describe("server side rendering", () => {
     });
 
     test("should immediately return empty array for streaming mutations", async () => {
-      const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+      const mutationStreamFragmentDefinition = defineFragment("mutation-stream-fragment");
       const mutationStreamRoutes = [
         defineRoute({
           method: "PUT",
@@ -128,7 +128,7 @@ describe("server side rendering", () => {
       ] as const;
 
       const client = createClientBuilder(
-        mutationStreamLibraryDefinition,
+        mutationStreamFragmentDefinition,
         clientConfig,
         mutationStreamRoutes,
       );
@@ -140,7 +140,7 @@ describe("server side rendering", () => {
     });
 
     test("should handle empty streaming response for mutations", async () => {
-      const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+      const mutationStreamFragmentDefinition = defineFragment("mutation-stream-fragment");
       const mutationStreamRoutes = [
         defineRoute({
           method: "DELETE",
@@ -156,7 +156,7 @@ describe("server side rendering", () => {
       ] as const;
 
       const client = createClientBuilder(
-        mutationStreamLibraryDefinition,
+        mutationStreamFragmentDefinition,
         clientConfig,
         mutationStreamRoutes,
       );

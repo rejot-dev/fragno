@@ -22,7 +22,7 @@ describe("transform robustness and error handling", () => {
 
   test("dead code elimination - only removes code that becomes unused after our transforms", () => {
     const source = dedent`
-      import { createLibrary } from "@fragno-dev/core";
+      import { createFragment } from "@fragno-dev/core";
       import { addRoute } from "@fragno-dev/core/api";
     `;
 
@@ -38,11 +38,11 @@ describe("transform robustness and error handling", () => {
 
   test("mixed valid and invalid transforms", () => {
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       import { defineRoute } from "@fragno-dev/core/api";
       
-      // Valid defineLibrary with withDependencies
-      const lib = defineLibrary("test")
+      // Valid defineFragment with withDependencies
+      const lib = defineFragment("test")
         .withDependencies((config) => ({ db: createDB(config) }))
         .withServices(() => ({ cache: new Map() }));
       
@@ -67,10 +67,10 @@ describe("transform robustness and error handling", () => {
   });
 
   test("very large file with many transforms", () => {
-    const defineLibraryCalls = Array.from(
+    const defineFragmentCalls = Array.from(
       { length: 50 },
       (_, i) =>
-        `export const lib${i} = defineLibrary("lib${i}").withDependencies((config) => ({ service${i}: service${i} }));`,
+        `export const lib${i} = defineFragment("lib${i}").withDependencies((config) => ({ service${i}: service${i} }));`,
     ).join("\n");
 
     const defineRouteCalls = Array.from(
@@ -80,16 +80,16 @@ describe("transform robustness and error handling", () => {
     ).join("\n");
 
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       import { defineRoute } from "@fragno-dev/core/api";
       
-      ${defineLibraryCalls}
+      ${defineFragmentCalls}
       ${defineRouteCalls}
     `;
 
     const result = transform(source, "", { ssr: false });
 
-    // All defineLibrary withDependencies calls should be transformed
+    // All defineFragment withDependencies calls should be transformed
     const withDepsMatches = result.code.match(/\.withDependencies\(\(\) => \{\}\)/g);
     expect(withDepsMatches).toHaveLength(50);
 
@@ -104,9 +104,9 @@ describe("transform robustness and error handling", () => {
 
   test("unicode and special characters in code", () => {
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       
-      export const lib = defineLibrary("my-lib")
+      export const lib = defineFragment("my-lib")
         .withDependencies((config) => ({ 
           "🚀service": rocketService,
           "特殊服务": specialService,
@@ -126,12 +126,12 @@ describe("transform robustness and error handling", () => {
 
   test("deeply nested scopes", () => {
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       
       function outer() {
         function inner() {
           function deepest() {
-            return defineLibrary("nested")
+            return defineFragment("nested")
               .withDependencies((config) => ({ service: deepService }));
           }
           return deepest();
@@ -147,12 +147,12 @@ describe("transform robustness and error handling", () => {
 
   test("class methods with transforms", () => {
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       import { defineRoute } from "@fragno-dev/core/api";
       
       class ApiBuilder {
         buildLibrary() {
-          return defineLibrary("class-lib")
+          return defineFragment("class-lib")
             .withDependencies((config) => ({ service: this.service }));
         }
         
@@ -175,11 +175,11 @@ describe("transform robustness and error handling", () => {
 
   test("arrow functions and function expressions", () => {
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       import { defineRoute } from "@fragno-dev/core/api";
       
       const makeLib = () => {
-        return defineLibrary("arrow-lib")
+        return defineFragment("arrow-lib")
           .withServices(() => ({ service }));
       };
       
@@ -204,10 +204,10 @@ describe("transform robustness and error handling", () => {
 
   test("template literals and complex expressions", () => {
     const source = dedent`
-      import { defineLibrary } from "@fragno-dev/core";
+      import { defineFragment } from "@fragno-dev/core";
       import { defineRoute } from "@fragno-dev/core/api";
       
-      export const lib = defineLibrary("template-lib")
+      export const lib = defineFragment("template-lib")
         .withDependencies((config) => ({
           [\`service_\${process.env.NODE_ENV}\`]: envService,
           [Symbol.for("special")]: symbolService

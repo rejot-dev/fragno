@@ -1,24 +1,24 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
-import { defineLibrary, createLibrary, type LibraryBuilder } from "./library";
+import { defineFragment, createFragment, type FragmentBuilder } from "./fragment";
 import { defineRoute, defineRoutes, type RouteFactory, resolveRouteFactories } from "./route";
 import { z } from "zod";
 import type { InferOr } from "../util/types-util";
 
 type Empty = Record<never, never>;
 
-describe("new-library API", () => {
+describe("new-fragment API", () => {
   describe("Type inference", () => {
-    test("defineLibrary infers config type correctly", () => {
+    test("defineFragment infers config type correctly", () => {
       const _config = {
         apiKey: "test-key",
         maxRetries: 3,
         debug: false,
       };
 
-      const _library = defineLibrary<typeof _config>("test");
+      const _fragment = defineFragment<typeof _config>("test");
 
-      expectTypeOf<typeof _library>().toEqualTypeOf<
-        LibraryBuilder<
+      expectTypeOf<typeof _fragment>().toEqualTypeOf<
+        FragmentBuilder<
           {
             apiKey: string;
             maxRetries: number;
@@ -35,7 +35,7 @@ describe("new-library API", () => {
         apiKey: "test-key",
       };
 
-      const _library = defineLibrary<typeof _config>("test").withDependencies((cfg) => {
+      const _fragment = defineFragment<typeof _config>("test").withDependencies((cfg) => {
         expectTypeOf(cfg).toEqualTypeOf<typeof _config>();
         return {
           httpClient: { fetch: () => Promise.resolve(new Response()) },
@@ -43,8 +43,8 @@ describe("new-library API", () => {
         };
       });
 
-      expectTypeOf<typeof _library>().toEqualTypeOf<
-        LibraryBuilder<
+      expectTypeOf<typeof _fragment>().toEqualTypeOf<
+        FragmentBuilder<
           typeof _config,
           {
             httpClient: { fetch: () => Promise<Response> };
@@ -61,7 +61,7 @@ describe("new-library API", () => {
         baseUrl: "https://api.example.com",
       };
 
-      const _library = defineLibrary<typeof _config>("test")
+      const _fragment = defineFragment<typeof _config>("test")
         .withDependencies((cfg) => {
           expectTypeOf(cfg).toEqualTypeOf<{
             apiKey: string;
@@ -85,8 +85,8 @@ describe("new-library API", () => {
           };
         });
 
-      expectTypeOf<typeof _library>().toEqualTypeOf<
-        LibraryBuilder<
+      expectTypeOf<typeof _fragment>().toEqualTypeOf<
+        FragmentBuilder<
           typeof _config,
           { httpClient: { baseUrl: string } },
           {
@@ -154,14 +154,14 @@ describe("new-library API", () => {
     test("Builder methods return new instances", () => {
       const _config = { test: true };
 
-      const lib1 = defineLibrary<typeof _config>("test");
-      expectTypeOf(lib1).toEqualTypeOf<LibraryBuilder<typeof _config, Empty, Empty>>();
+      const lib1 = defineFragment<typeof _config>("test");
+      expectTypeOf(lib1).toEqualTypeOf<FragmentBuilder<typeof _config, Empty, Empty>>();
 
       const lib2 = lib1.withDependencies(() => ({ dep1: "value1" }));
-      expectTypeOf(lib2).toEqualTypeOf<LibraryBuilder<typeof _config, { dep1: string }, Empty>>();
+      expectTypeOf(lib2).toEqualTypeOf<FragmentBuilder<typeof _config, { dep1: string }, Empty>>();
       const lib3 = lib2.withServices(() => ({ service1: "value1" }));
       expectTypeOf(lib3).toEqualTypeOf<
-        LibraryBuilder<typeof _config, { dep1: string }, { service1: string }>
+        FragmentBuilder<typeof _config, { dep1: string }, { service1: string }>
       >();
 
       expect(lib1).not.toBe(lib2);
@@ -172,7 +172,7 @@ describe("new-library API", () => {
     test("Each builder step preserves previous configuration", () => {
       const _config = { apiKey: "test" };
 
-      const library = defineLibrary<typeof _config>("my-lib")
+      const fragment = defineFragment<typeof _config>("my-lib")
         .withDependencies((_cfg) => ({
           client: `Client for ${_cfg.apiKey}`,
         }))
@@ -180,14 +180,14 @@ describe("new-library API", () => {
           service: `Service using ${deps.client}`,
         }));
 
-      expect(library.definition.name).toBe("my-lib");
-      expect(library.definition.dependencies).toBeDefined();
-      expect(library.definition.services).toBeDefined();
+      expect(fragment.definition.name).toBe("my-lib");
+      expect(fragment.definition.dependencies).toBeDefined();
+      expect(fragment.definition.services).toBeDefined();
     });
   });
 
-  describe("Library creation", () => {
-    test("createLibrary instantiates library with config", async () => {
+  describe("Fragment creation", () => {
+    test("createFragment instantiates fragment with config", async () => {
       const InputSchema = z.object({ name: z.string() });
       const OutputSchema = z.object({ greeting: z.string() });
 
@@ -210,7 +210,7 @@ describe("new-library API", () => {
         }),
       ]);
 
-      const libraryDef = defineLibrary("greeting")
+      const fragmentDef = defineFragment("greeting")
         .withDependencies((_config) => ({
           formatter: (s: string) => s.toUpperCase(),
         }))
@@ -218,12 +218,12 @@ describe("new-library API", () => {
           logger: { log: (s: string) => console.log(s) },
         }));
 
-      const library = createLibrary(libraryDef, { prefix: "Hello" }, [routeFactory], {});
+      const fragment = createFragment(fragmentDef, { prefix: "Hello" }, [routeFactory], {});
 
-      expect(library.mountRoute).toBe("/api/greeting");
-      expect(library.config.name).toBe("greeting");
-      expect(library.services).toHaveProperty("logger");
-      expect(library.handler).toBeInstanceOf(Function);
+      expect(fragment.mountRoute).toBe("/api/greeting");
+      expect(fragment.config.name).toBe("greeting");
+      expect(fragment.services).toHaveProperty("logger");
+      expect(fragment.handler).toBeInstanceOf(Function);
 
       const request = new Request("http://localhost/api/greeting/greet", {
         method: "POST",
@@ -231,7 +231,7 @@ describe("new-library API", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-      const response = await library.handler(request);
+      const response = await fragment.handler(request);
       expect(response.status).toBe(200);
 
       const data = await response.json();
@@ -248,8 +248,8 @@ describe("new-library API", () => {
         },
       });
 
-      const libraryDef = defineLibrary("test-library");
-      const library = createLibrary(libraryDef, {}, [route], {
+      const fragmentDef = defineFragment("test-fragment");
+      const fragment = createFragment(fragmentDef, {}, [route], {
         mountRoute: "/api",
       });
 
@@ -259,7 +259,7 @@ describe("new-library API", () => {
       });
 
       // Call the handler
-      const response = await library.handler(request);
+      const response = await fragment.handler(request);
 
       // Verify the response
       expect(response.status).toBe(200);
@@ -267,7 +267,7 @@ describe("new-library API", () => {
       expect(data).toEqual({ message: "Hello, World!" });
     });
 
-    test("Routes receive correct context from library definition", async () => {
+    test("Routes receive correct context from fragment definition", async () => {
       let capturedConfig;
       let capturedDeps;
       let capturedServices;
@@ -289,11 +289,11 @@ describe("new-library API", () => {
         ];
       });
 
-      const libraryDef = defineLibrary("test")
+      const fragmentDef = defineFragment("test")
         .withDependencies(() => ({ tool: "hammer" }))
         .withServices(() => ({ storage: "memory" }));
 
-      createLibrary(libraryDef, { setting: "value" }, [routeFactory], {});
+      createFragment(fragmentDef, { setting: "value" }, [routeFactory], {});
 
       expect(capturedConfig).toEqual({ setting: "value" });
       expect(capturedDeps).toEqual({ tool: "hammer" });
@@ -303,15 +303,15 @@ describe("new-library API", () => {
 
   describe("Type constraints", () => {
     test("Services must extend Record<string, unknown>", () => {
-      const libraryDef = defineLibrary("test").withServices(() => ({
+      const fragmentDef = defineFragment("test").withServices(() => ({
         validService: { method: () => {} },
         anotherService: "string value",
         numberService: 123,
       }));
 
-      const _library = createLibrary(libraryDef, {}, [], {});
+      const _fragment = createFragment(fragmentDef, {}, [], {});
 
-      expectTypeOf<typeof _library.services>().toEqualTypeOf<{
+      expectTypeOf<typeof _fragment.services>().toEqualTypeOf<{
         validService: { method: () => void };
         anotherService: string;
         numberService: number;

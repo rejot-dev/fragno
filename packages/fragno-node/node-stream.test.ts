@@ -2,16 +2,16 @@ import express, { type Application } from "express";
 import { test, expect, describe, beforeAll, afterAll, assert } from "vitest";
 import { z } from "zod";
 import {
-  defineLibrary,
+  defineFragment,
   defineRoute,
-  createLibrary,
-  type FragnoInstantiatedLibrary,
+  createFragment,
+  type FragnoInstantiatedFragment,
   type FragnoPublicClientConfig,
 } from "@fragno-dev/core";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Node.js Streaming", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
 
   const streamRoute = defineRoute({
     method: "GET",
@@ -29,16 +29,16 @@ describe("Node.js Streaming", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost",
   };
-  let testLibrary: FragnoInstantiatedLibrary<[typeof streamRoute]>;
+  let testFragment: FragnoInstantiatedFragment<[typeof streamRoute]>;
   let app: Application;
   let server: ReturnType<typeof app.listen>;
   let port: number;
 
   function createExpressServerForTest() {
-    testLibrary = createLibrary(testLibraryDefinition, {}, [streamRoute], clientConfig);
+    testFragment = createFragment(testFragmentDefinition, {}, [streamRoute], clientConfig);
     app = express();
 
-    app.all("/api/test-library/{*any}", toNodeHandler(testLibrary.handler));
+    app.all("/api/test-fragment/{*any}", toNodeHandler(testFragment.handler));
 
     // Add JSON body parsing middleware
     app.use(express.json());
@@ -67,7 +67,7 @@ describe("Node.js Streaming", () => {
   });
 
   test("should fetch data from the GET /stream route", async () => {
-    const response = await fetch(`${clientConfig.baseUrl}${testLibrary.mountRoute}/stream`);
+    const response = await fetch(`${clientConfig.baseUrl}${testFragment.mountRoute}/stream`);
 
     assert(response.body, "Response body is missing");
 

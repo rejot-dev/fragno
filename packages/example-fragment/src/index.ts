@@ -1,8 +1,8 @@
 import {
-  defineLibrary,
+  defineFragment,
   defineRoute,
   defineRoutes,
-  createLibrary,
+  createFragment,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
@@ -98,7 +98,7 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
   },
 );
 
-const exampleFragmentDefinition = defineLibrary<ExampleFragmentServerConfig>("example-fragment")
+const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("example-fragment")
   .withDependencies((config: ExampleFragmentServerConfig) => {
     return {
       serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
@@ -119,7 +119,7 @@ export function createExampleFragment(
     initialData: serverConfig.initialData ?? "Hello World! This is a server-side data.",
   };
 
-  return createLibrary(
+  return createFragment(
     exampleFragmentDefinition,
     { ...serverConfig, ...config },
     [exampleRoutesFactory],

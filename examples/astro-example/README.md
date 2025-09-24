@@ -5,7 +5,7 @@ web framework and Astro's static site generation capabilities.
 
 ## Features
 
-- **Server-side API routes** using Fragno's library system with Astro's native API route system
+- **Server-side API routes** using Fragno's fragment system with Astro's native API route system
 - **Client-side data fetching** with Fragno's Astro client
 - **Real-time data mutations** with automatic refetching
 - **Type-safe API interactions** using Zod schemas
@@ -46,7 +46,7 @@ bun run preview
 This example follows the same pattern as other Fragno examples:
 
 - Uses the `example-fragment` package for the API implementation
-- Leverages Fragno's library system directly with Astro's API routes
+- Leverages Fragno's fragment system directly with Astro's API routes
 - Implements both server-side and client-side data handling
 - Demonstrates the core + adapter pattern that Fragno promotes
 

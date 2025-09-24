@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno, useStore, type FragnoReactStore } from "./react";
 import { defineRoute } from "../api/route";
-import { defineLibrary } from "../api/library";
+import { defineFragment } from "../api/fragment";
 import type { FragnoPublicClientConfig } from "../mod";
 import { FragnoClientFetchNetworkError, type FragnoClientError } from "./client-error";
 import { RequestOutputContext } from "../api/request-output-context";
@@ -15,7 +15,7 @@ import type { FetcherStore } from "@nanostores/query";
 global.fetch = vi.fn();
 
 describe("createReactHook", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -58,7 +58,7 @@ describe("createReactHook", () => {
       json: async () => [{ id: 1, name: "John" }],
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       users: client.createHook("/users"),
     };
@@ -81,7 +81,7 @@ describe("createReactHook", () => {
       json: async () => ({ id: 123, name: "John" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id"),
     };
@@ -94,7 +94,7 @@ describe("createReactHook", () => {
     });
 
     expect(result.current.data).toEqual({ id: 123, name: "John" });
-    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-library/users/123");
+    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-fragment/users/123");
   });
 
   test("should create a hook with query parameters", async () => {
@@ -104,7 +104,7 @@ describe("createReactHook", () => {
       json: async () => ["result1", "result2"],
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       search: client.createHook("/search"),
     };
@@ -117,7 +117,7 @@ describe("createReactHook", () => {
     });
 
     expect(result.current.data).toEqual(["result1", "result2"]);
-    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-library/search?q=test");
+    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/test-fragment/search?q=test");
   });
 
   test("should support reactive path parameters with atoms", async () => {
@@ -135,7 +135,7 @@ describe("createReactHook", () => {
         json: async () => ({ id: 2, name: "Jane" }),
       });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       user: client.createHook("/users/:id"),
     };
@@ -164,7 +164,7 @@ describe("createReactHook", () => {
   test("should handle errors gracefully", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Network error"));
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -182,7 +182,7 @@ describe("createReactHook", () => {
 });
 
 describe("createReactMutator", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "POST",
@@ -219,7 +219,7 @@ describe("createReactMutator", () => {
     const _route1 = testRoutes[0];
     type _Route1 = typeof _route1;
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useCreateUserMutator: client.createMutator("POST", "/users"),
     };
@@ -249,7 +249,7 @@ describe("createReactMutator", () => {
       json: async () => ({ id: 1, name: "John", email: "john@example.com" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useCreateUserMutator: client.createMutator("POST", "/users"),
     };
@@ -283,7 +283,7 @@ describe("createReactMutator", () => {
       json: async () => ({ id: 123, name: "Jane" }),
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUpdateUserMutator: client.createMutator("PUT", "/users/:id"),
     };
@@ -308,7 +308,7 @@ describe("createReactMutator", () => {
   });
 
   test("should create a mutator for DELETE route (with inputSchema and outputSchema)", async () => {
-    const testLocalLibraryDefinition = defineLibrary("test-library");
+    const testLocalFragmentDefinition = defineFragment("test-fragment");
     const testLocalRoutes = [
       defineRoute({
         method: "DELETE",
@@ -325,7 +325,7 @@ describe("createReactMutator", () => {
       json: async () => ({ success: true }),
     });
 
-    const client = createClientBuilder(testLocalLibraryDefinition, clientConfig, testLocalRoutes);
+    const client = createClientBuilder(testLocalFragmentDefinition, clientConfig, testLocalRoutes);
     const clientObj = {
       useDeleteUserMutator: client.createMutator("DELETE", "/users/:id"),
     };
@@ -362,7 +362,7 @@ describe("createReactMutator", () => {
   });
 
   test("should create a mutator for DELETE route (withOUT inputSchema and outputSchema)", async () => {
-    const testLocalLibraryDefinition = defineLibrary("test-library");
+    const testLocalFragmentDefinition = defineFragment("test-fragment");
     const testLocalRoutes = [
       defineRoute({
         method: "DELETE",
@@ -377,7 +377,7 @@ describe("createReactMutator", () => {
       status: 204,
     });
 
-    const client = createClientBuilder(testLocalLibraryDefinition, clientConfig, testLocalRoutes);
+    const client = createClientBuilder(testLocalFragmentDefinition, clientConfig, testLocalRoutes);
     const clientObj = {
       useDeleteUserMutator: client.createMutator("DELETE", "/users/:id"),
     };
@@ -415,7 +415,7 @@ describe("createReactMutator", () => {
   test("should handle mutation errors", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Server error"));
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useCreateUserMutator: client.createMutator("POST", "/users"),
     };
@@ -439,7 +439,7 @@ describe("createReactMutator", () => {
 });
 
 describe("useFragno", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -467,7 +467,7 @@ describe("useFragno", () => {
       json: async () => "test data",
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       usePostAction: client.createMutator("POST", "/action"),
@@ -501,7 +501,7 @@ describe("useFragno", () => {
   });
 
   test("should pass through non-hook values unchanged", () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       someString: "hello world",
@@ -529,7 +529,7 @@ describe("useFragno", () => {
   });
 
   test("should preserve reference equality for non-hook objects", () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const sharedObject = { shared: true };
     const sharedArray = [1, 2, 3];
     const sharedFunction = () => "shared";
@@ -550,7 +550,7 @@ describe("useFragno", () => {
   });
 
   test("should handle mixed object with hooks, mutators, and other values", () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       // Hooks and mutators
       useData: client.createHook("/data"),
@@ -700,7 +700,7 @@ describe("useFragno - createStore", () => {
     const objectAtom: ReadableAtom<{ count: number }> = atom({ count: 0 });
     const arrayAtom: ReadableAtom<string[]> = atom(["a", "b", "c"]);
 
-    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
     const client = {
       useStore: cb.createStore({
         message: stringAtom,
@@ -740,7 +740,7 @@ describe("useFragno - createStore", () => {
     const tripled = computed(baseNumber, (n) => n * 3);
     const combined = computed([doubled, tripled], (d, t) => ({ doubled: d, tripled: t }));
 
-    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
     const client = {
       useComputedValues: cb.createStore({
         base: baseNumber,
@@ -776,7 +776,7 @@ describe("useFragno - createStore", () => {
     const regularFunction = (x: number) => x * 2;
     const regularObject = { foo: "bar", baz: 123 };
 
-    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
     const client = {
       useMixed: cb.createStore({
         message: messageAtom,
@@ -809,7 +809,7 @@ describe("useFragno - createStore", () => {
   test("FragnoReactStore type test - single store vs object with stores", () => {
     // Test that a single store is unwrapped directly
     const singleAtom: ReadableAtom<string> = atom("single");
-    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
 
     // Single store case
     const clientSingle = {
@@ -845,7 +845,7 @@ describe("useFragno - createStore", () => {
     const loadingAtom: ReadableAtom<boolean> = atom(false);
     const errorAtom: ReadableAtom<string | null> = atom(null);
 
-    const cb = createClientBuilder(defineLibrary("test-library"), clientConfig, []);
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
     const client = {
       useAppState: cb.createStore({
         user: userAtom,
@@ -876,7 +876,7 @@ describe("useFragno - createStore", () => {
   });
 
   test("Derived from streaming route", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -887,7 +887,7 @@ describe("useFragno - createStore", () => {
         },
       }),
     ] as const;
-    const cb = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const cb = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const usersStream = cb.createHook("/users-stream");
 
     // Create a single shared store instance

@@ -2,16 +2,16 @@ import { createServer, type RequestListener, type Server } from "node:http";
 import { test, expect, describe } from "vitest";
 import { z } from "zod";
 import {
-  defineLibrary,
+  defineFragment,
   defineRoute,
-  createLibrary,
-  type FragnoInstantiatedLibrary,
+  createFragment,
+  type FragnoInstantiatedFragment,
   type FragnoPublicClientConfig,
 } from "@fragno-dev/core";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Fragno Node.js integration", () => {
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
 
   const usersRoute = defineRoute({
     method: "GET",
@@ -23,15 +23,15 @@ describe("Fragno Node.js integration", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost",
   };
-  let testLibrary: FragnoInstantiatedLibrary<[typeof usersRoute]>;
+  let testFragment: FragnoInstantiatedFragment<[typeof usersRoute]>;
   let server: Server;
   let port: number;
 
   function createServerForTest(
-    listenerFactory: (library: FragnoInstantiatedLibrary<[typeof usersRoute]>) => RequestListener,
+    listenerFactory: (fragment: FragnoInstantiatedFragment<[typeof usersRoute]>) => RequestListener,
   ) {
-    testLibrary = createLibrary(testLibraryDefinition, {}, [usersRoute], clientConfig);
-    server = createServer(listenerFactory(testLibrary));
+    testFragment = createFragment(testFragmentDefinition, {}, [usersRoute], clientConfig);
+    server = createServer(listenerFactory(testFragment));
     server.listen(0);
 
     const address = server.address();
@@ -48,9 +48,9 @@ describe("Fragno Node.js integration", () => {
   }
 
   test("should fetch data from the GET /users route", async () => {
-    const { close } = createServerForTest((library) => toNodeHandler(library.handler));
+    const { close } = createServerForTest((fragment) => toNodeHandler(fragment.handler));
 
-    const response = await fetch(`${clientConfig.baseUrl}${testLibrary.mountRoute}/users`);
+    const response = await fetch(`${clientConfig.baseUrl}${testFragment.mountRoute}/users`);
 
     expect(response.ok).toBe(true);
 
@@ -61,9 +61,9 @@ describe("Fragno Node.js integration", () => {
   });
 
   test("should fall back to normal server for non-lib routes", async () => {
-    const { close } = createServerForTest((library) => (req, res) => {
-      if (req.url?.startsWith(library.mountRoute)) {
-        const handler = toNodeHandler(library.handler);
+    const { close } = createServerForTest((fragment) => (req, res) => {
+      if (req.url?.startsWith(fragment.mountRoute)) {
+        const handler = toNodeHandler(fragment.handler);
         return handler(req, res);
       } else {
         res.writeHead(200, { "Content-Type": "application/json" });

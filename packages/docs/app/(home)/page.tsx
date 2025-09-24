@@ -88,7 +88,7 @@ export default function HomePage() {
             </div>
             <DynamicCodeBlock
               lang="ts"
-              code={`import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+              code={`import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
 
 const getTodosRoute = defineRoute({
   method: "GET",

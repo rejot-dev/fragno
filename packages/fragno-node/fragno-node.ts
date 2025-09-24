@@ -10,9 +10,9 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * import { toNodeHandler } from "@fragno-dev/node";
  * import { createExampleFragment } from "@fragno-dev/example-fragment";
  *
- * const library = createExampleFragment();
+ * const fragment = createExampleFragment();
  *
- * const server = createServer(toNodeHandler(library.handler));
+ * const server = createServer(toNodeHandler(fragment.handler));
  * server.listen(8080);
  *
  * @example
@@ -20,11 +20,11 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * import { toNodeHandler } from "@fragno-dev/node";
  * import { createExampleFragment } from "@fragno-dev/example-fragment";
  *
- * const library = createExampleFragment();
+ * const fragment = createExampleFragment();
  *
  * const server = createServer((req, res) => {
- *   if (req.url?.startsWith(library.mountRoute)) {
- *     const handler = toNodeHandler(library.handler);
+ *   if (req.url?.startsWith(fragment.mountRoute)) {
+ *     const handler = toNodeHandler(fragment.handler);
  *     return handler(req, res);
  *   }
  *   // ... Your route handling
@@ -34,7 +34,7 @@ import { createRequestListener } from "@remix-run/node-fetch-server";
  * import { toNodeHandler } from "@fragno-dev/node";
  *
  * const app = express();
- * app.all("/api/my-library/{*any}", toNodeHandler(library.handler));
+ * app.all("/api/my-library/{*any}", toNodeHandler(fragment.handler));
  *
  * app.listen(8080);
  */

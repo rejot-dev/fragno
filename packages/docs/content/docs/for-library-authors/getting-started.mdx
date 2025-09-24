@@ -31,7 +31,7 @@ Let's build a simple todos fragment that demonstrates the core concepts.
 ### Step 1: Define Your Fragment
 
 ```typescript title="src/index.ts"
-import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
@@ -50,7 +50,7 @@ const TodoSchema = z.object({
   createdAt: z.string(),
 });
 
-const todosDefinition = defineLibrary<TodosConfig>("todos-fragment");
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment");
 ```
 
 ### Step 2: Add Dependencies and Services (Optional)
@@ -60,10 +60,10 @@ be used in the server-side route handlers. Dependencies can be defined using the
 method, this method has access to the config object.
 
 ```typescript title="src/index.ts"
-import { defineLibrary } from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core";
 import { MyOpenAIWrapper } from "./lib/my-openai-wrapper";
 
-const todosDefinition = defineLibrary<TodosConfig>("todos-fragment").withDependencies(
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment").withDependencies(
   (config: TodosConfig) => {
     return {
       aiWrapper: new MyOpenAIWrapper({
@@ -170,18 +170,18 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, {}>().create(({ confi
 ### Step 4: Create the Server-Side Fragment
 
 To finalize the server-side Fragment, we need to export a function that creates the library
-instance. We pass the library definition, the config, and the routes to the `createLibrary`
+instance. We pass the library definition, the config, and the routes to the `createFragment`
 function.
 
 ```typescript title="src/index.ts"
 import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
-import { createLibrary } from "@fragno-dev/core";
+import { createFragment } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
 export function createTodos(config: TodosConfig, fragnoConfig: FragnoPublicConfig = {}) {
-  return createLibrary(todosDefinition, config, [getTodosRoute, addTodoRoute], fragnoConfig);
+  return createFragment(todosDefinition, config, [getTodosRoute, addTodoRoute], fragnoConfig);
 }
 ```
 
@@ -195,7 +195,7 @@ we simply create hooks for the two routes we defined.
 import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
-import { createLibrary } from "@fragno-dev/core";
+import { createFragment } from "@fragno-dev/core";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 
 export function createTodosClient(fragnoConfig: FragnoPublicClientConfig = {}) {

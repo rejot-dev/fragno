@@ -92,7 +92,7 @@ npm install @fragno-dev/core
 
 ```typescript
 // my-fragment/index.ts
-import { defineLibrary, defineRoute, createLibrary } from "@fragno-dev/core";
+import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 import OpenAI from "openai";
@@ -103,8 +103,8 @@ export interface FragmentConfig {
   onTodoCreated?: (todo: { id: string; text: string; done: boolean }) => void;
 }
 
-// Define your library
-const todosDefinition = defineLibrary<FragmentConfig>("example-fragment").withDependencies(
+// Define your fragment
+const todosDefinition = defineFragment<FragmentConfig>("example-fragment").withDependencies(
   (config: FragmentConfig) => {
     return {
       openaiClient: new OpenAI({
@@ -149,7 +149,7 @@ const addTodoRoute = defineRoute({
 
 // Export server creator
 export function createTodos(serverConfig: FragmentConfig = {}, fragnoConfig = {}) {
-  return createLibrary(todosDefinition, serverConfig, [getTodosRoute, addTodoRoute], fragnoConfig);
+  return createFragment(todosDefinition, serverConfig, [getTodosRoute, addTodoRoute], fragnoConfig);
 }
 
 // Export type-safe client creator

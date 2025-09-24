@@ -2,7 +2,7 @@ import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vites
 import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
 import { defineRoute } from "../api/route";
-import { defineLibrary } from "../api/library";
+import { defineFragment } from "../api/fragment";
 import { z } from "zod";
 import { refToAtom, useFragno } from "./vue";
 import { waitFor } from "@testing-library/vue";
@@ -69,7 +69,7 @@ describe("createVueHook", () => {
   });
 
   test("Hook should function", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -88,7 +88,7 @@ describe("createVueHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -105,7 +105,7 @@ describe("createVueHook", () => {
   });
 
   test("Should support path parameters and update reactively when Vue ref changes", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -133,7 +133,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -161,7 +161,7 @@ describe("createVueHook", () => {
   });
 
   test("Should support path parameters and update reactively when Nanostores Atom changes", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -189,7 +189,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUser: client.createHook("/users/:id"),
     };
@@ -217,7 +217,7 @@ describe("createVueHook", () => {
   });
 
   test("Should handle errors gracefully", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -238,7 +238,7 @@ describe("createVueHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -256,7 +256,7 @@ describe("createVueHook", () => {
   });
 
   test("Should track loading states correctly", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -273,7 +273,7 @@ describe("createVueHook", () => {
 
     vi.mocked(global.fetch).mockImplementationOnce(() => fetchPromise);
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -302,7 +302,7 @@ describe("createVueHook", () => {
   });
 
   test("Should handle mutator hooks", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "POST",
@@ -325,7 +325,7 @@ describe("createVueHook", () => {
         }) as Response,
     );
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       createUser: client.createMutator("POST", "/users"),
     };
@@ -347,7 +347,7 @@ describe("createVueHook", () => {
   });
 
   test("Should handle query parameters", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -369,7 +369,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
     };
@@ -402,7 +402,7 @@ describe("createVueHook", () => {
   });
 
   test("Should handle multiple hooks together", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -451,7 +451,7 @@ describe("createVueHook", () => {
       throw new Error(`Unexpected URL: ${input}`);
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUsers: client.createHook("/users"),
       usePosts: client.createHook("/posts"),
@@ -483,7 +483,7 @@ describe("createVueHook", () => {
   });
 
   test("Should handle mixed reactive parameters - ref path param, atom and ref query params, with reactive updates", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -528,7 +528,7 @@ describe("createVueHook", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useUserPosts: client.createHook("/users/:id/posts"),
     };
@@ -646,7 +646,7 @@ describe("createVueMutator", () => {
   });
 
   test("Should handle mutator with path parameters", async () => {
-    const testLibraryDefinition = defineLibrary("test-library");
+    const testFragmentDefinition = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "PUT",
@@ -671,7 +671,7 @@ describe("createVueMutator", () => {
       } as Response;
     });
 
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       updateUser: client.createMutator("PUT", "/users/:id"),
     };
@@ -705,7 +705,7 @@ describe("useFragno", () => {
     baseUrl: "http://localhost:3000",
   };
 
-  const testLibraryDefinition = defineLibrary("test-library");
+  const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -723,7 +723,7 @@ describe("useFragno", () => {
   ] as const;
 
   test("should pass through non-hook values unchanged", () => {
-    const client = createClientBuilder(testLibraryDefinition, clientConfig, testRoutes);
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
     const clientObj = {
       useData: client.createHook("/data"),
       usePostAction: client.createMutator("POST", "/action"),

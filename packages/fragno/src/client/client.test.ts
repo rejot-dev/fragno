@@ -6,7 +6,7 @@ import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
 import { atom, computed, effect } from "nanostores";
-import { defineLibrary } from "../api/library";
+import { defineFragment } from "../api/fragment";
 import { RequestOutputContext } from "../api/request-output-context";
 import { FragnoClientUnknownApiError } from "./client-error";
 
@@ -112,7 +112,7 @@ describe("getCacheKey", () => {
 });
 
 describe("invalidation", () => {
-  const testLibrary = defineLibrary("test-library");
+  const testFragment = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -157,7 +157,7 @@ describe("invalidation", () => {
     });
 
     const client = createClientBuilder(
-      testLibrary,
+      testFragment,
       { baseUrl: "http://localhost:3000" },
       testRoutes,
     );
@@ -208,7 +208,7 @@ describe("invalidation", () => {
     });
 
     const client = createClientBuilder(
-      testLibrary,
+      testFragment,
       { baseUrl: "http://localhost:3000" },
       testRoutes,
     );
@@ -269,7 +269,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to path parameters", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -295,7 +295,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const useUsers = cb.createHook("/users/:id");
 
     const idAtom = atom("123");
@@ -343,7 +343,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to query parameters", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -372,7 +372,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const useUsers = cb.createHook("/users");
 
     const roleAtom = atom("admin");
@@ -446,7 +446,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to combined path and query parameters", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -481,7 +481,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const usePosts = cb.createHook("/users/:id/posts");
 
     const userIdAtom = atom("123");
@@ -555,7 +555,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should handle mixed atoms and non-atoms in parameters", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -594,7 +594,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const usePosts = cb.createHook("/users/:id/posts");
 
     const userIdAtom = atom("123");
@@ -675,7 +675,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should not refetch when non-atom parameters remain unchanged", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -700,7 +700,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const useUser = cb.createHook("/users/:id");
 
     const reactiveIdAtom = atom("123");
@@ -782,7 +782,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should handle multiple reactive query parameters independently", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -825,7 +825,7 @@ describe("hook parameter reactivity", () => {
       } as Response;
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const usePosts = cb.createHook("/posts");
 
     const categoryAtom = atom("tech");
@@ -962,7 +962,7 @@ describe("createHook - streaming", () => {
   });
 
   test("Should be able to stream data and receive updates in store (store.listen)", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -973,7 +973,7 @@ describe("createHook - streaming", () => {
         },
       }),
     ] as const;
-    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const client = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const clientObj = {
       useUsersStream: client.createHook("/users-stream"),
     };
@@ -1035,7 +1035,7 @@ describe("createHook - streaming", () => {
   });
 
   test("throws FragnoClientUnknownApiError when the stream is not valid JSON", async () => {
-    const streamErrorLibraryDefinition = defineLibrary("stream-error-library");
+    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment");
     const streamErrorRoutes = [
       defineRoute({
         method: "GET",
@@ -1055,7 +1055,7 @@ describe("createHook - streaming", () => {
     });
 
     const client = createClientBuilder(
-      streamErrorLibraryDefinition,
+      streamErrorFragmentDefinition,
       clientConfig,
       streamErrorRoutes,
     );
@@ -1075,7 +1075,7 @@ describe("createHook - streaming", () => {
   });
 
   test("throws FragnoClientUnknownApiError when the stream is new lines only", async () => {
-    const streamErrorLibraryDefinition = defineLibrary("stream-error-library");
+    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment");
     const streamErrorRoutes = [
       defineRoute({
         method: "GET",
@@ -1095,7 +1095,7 @@ describe("createHook - streaming", () => {
     });
 
     const client = createClientBuilder(
-      streamErrorLibraryDefinition,
+      streamErrorFragmentDefinition,
       clientConfig,
       streamErrorRoutes,
     );
@@ -1115,7 +1115,7 @@ describe("createHook - streaming", () => {
   });
 
   test("throws FragnoClientUnknownApiError with cause SyntaxError when the stream is not valid JSON (multiple empty lines)", async () => {
-    const streamErrorLibraryDefinition = defineLibrary("stream-error-library");
+    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment");
     const streamErrorRoutes = [
       defineRoute({
         method: "GET",
@@ -1135,7 +1135,7 @@ describe("createHook - streaming", () => {
     });
 
     const client = createClientBuilder(
-      streamErrorLibraryDefinition,
+      streamErrorFragmentDefinition,
       clientConfig,
       streamErrorRoutes,
     );
@@ -1172,7 +1172,7 @@ describe("createMutator", () => {
   });
 
   test("body is optional when no inputSchema in route", async () => {
-    const testLibrary = defineLibrary("test-library");
+    const testFragment = defineFragment("test-fragment");
     const testRoutes = [
       defineRoute({
         method: "DELETE",
@@ -1185,7 +1185,7 @@ describe("createMutator", () => {
       return new Response(null, { status: 201 });
     });
 
-    const cb = createClientBuilder(testLibrary, clientConfig, testRoutes);
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
     const deleteUser = cb.createMutator("DELETE", "/users/:id");
 
     const result = await deleteUser.mutateQuery({
@@ -1211,7 +1211,7 @@ describe("createMutator - streaming", () => {
   });
 
   test("should support streaming responses for mutations", async () => {
-    const mutationStreamLibraryDefinition = defineLibrary("mutation-stream-library");
+    const mutationStreamFragmentDefinition = defineFragment("mutation-stream-fragment");
     const mutationStreamRoutes = [
       defineRoute({
         method: "POST",
@@ -1258,7 +1258,7 @@ describe("createMutator - streaming", () => {
     });
 
     const client = createClientBuilder(
-      mutationStreamLibraryDefinition,
+      mutationStreamFragmentDefinition,
       clientConfig,
       mutationStreamRoutes,
     );
@@ -1277,7 +1277,7 @@ describe("createMutator - streaming", () => {
   });
 
   test("Should be able to mutate data and receive updates in store (store.subscribe)", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "POST",
@@ -1289,7 +1289,7 @@ describe("createMutator - streaming", () => {
         },
       }),
     ] as const;
-    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const client = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const useUsersMutateStream = client.createMutator("POST", "/users-stream");
 
     vi.mocked(global.fetch).mockImplementation(async () => {
@@ -1382,7 +1382,7 @@ describe("createMutator - streaming", () => {
   });
 
   test("Should be able to mutate data and receive updates in store (store.listen)", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "POST",
@@ -1394,7 +1394,7 @@ describe("createMutator - streaming", () => {
         },
       }),
     ] as const;
-    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const client = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const useUsersMutateStream = client.createMutator("POST", "/users-stream");
 
     vi.mocked(global.fetch).mockImplementation(async () => {
@@ -1493,7 +1493,7 @@ describe("computed", () => {
   });
 
   test("Derived from streaming route", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -1504,7 +1504,7 @@ describe("computed", () => {
         },
       }),
     ] as const;
-    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const client = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const useUsersStream = client.createHook("/users-stream");
 
     vi.mocked(global.fetch).mockImplementation(async () => {
@@ -1540,7 +1540,7 @@ describe("computed", () => {
   });
 
   test("Derived from streaming route with atom usage", async () => {
-    const streamLibraryDefinition = defineLibrary("stream-library");
+    const streamFragmentDefinition = defineFragment("stream-fragment");
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -1553,7 +1553,7 @@ describe("computed", () => {
         },
       }),
     ] as const;
-    const client = createClientBuilder(streamLibraryDefinition, clientConfig, streamRoutes);
+    const client = createClientBuilder(streamFragmentDefinition, clientConfig, streamRoutes);
     const useUsersStream = client.createHook("/users-stream");
 
     vi.mocked(global.fetch).mockImplementation(async () => {
@@ -1617,7 +1617,7 @@ describe("computed", () => {
 });
 
 describe("type guards", () => {
-  const testLibrary = defineLibrary("test-library");
+  const testFragment = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -1635,7 +1635,7 @@ describe("type guards", () => {
   ] as const;
 
   test("isGetHook should correctly identify GET hooks using symbols", () => {
-    const client = createClientBuilder(testLibrary, {}, testRoutes);
+    const client = createClientBuilder(testFragment, {}, testRoutes);
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
@@ -1645,7 +1645,7 @@ describe("type guards", () => {
   });
 
   test("isMutatorHook should correctly identify mutator hooks using symbols", () => {
-    const client = createClientBuilder(testLibrary, {}, testRoutes);
+    const client = createClientBuilder(testFragment, {}, testRoutes);
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
@@ -1655,7 +1655,7 @@ describe("type guards", () => {
   });
 
   test("type guards should work correctly with symbol checking", () => {
-    const client = createClientBuilder(testLibrary, {}, testRoutes);
+    const client = createClientBuilder(testFragment, {}, testRoutes);
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 

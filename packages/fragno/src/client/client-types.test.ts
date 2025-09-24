@@ -344,8 +344,8 @@ test("GET route with outputSchema", () => {
 });
 
 describe("ExtractRouteByPath", () => {
-  const _libraryConfig = {
-    name: "test-library",
+  const _fragmentConfig = {
+    name: "test-fragment",
     routes: [
       defineRoute({
         method: "POST",
@@ -373,7 +373,7 @@ describe("ExtractRouteByPath", () => {
   } as const;
 
   test("basic", () => {
-    type UsersRoute = ExtractRouteByPath<typeof _libraryConfig.routes, "/users">;
+    type UsersRoute = ExtractRouteByPath<typeof _fragmentConfig.routes, "/users">;
 
     expectTypeOf<UsersRoute>().toEqualTypeOf<
       FragnoRouteConfig<

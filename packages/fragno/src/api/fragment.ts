@@ -28,22 +28,22 @@ export interface FragnoPublicClientConfig {
   baseUrl?: string;
 }
 
-export interface FragnoInstantiatedLibrary<
+export interface FragnoInstantiatedFragment<
   TRoutes extends readonly AnyFragnoRouteConfig[] = [],
   TDeps = EmptyObject,
   TServices extends Record<string, unknown> = Record<string, unknown>,
 > {
-  config: FragnoLibrarySharedConfig<TRoutes>;
+  config: FragnoFragmentSharedConfig<TRoutes>;
   deps: TDeps;
   services: TServices;
   handler: (req: Request) => Promise<Response>;
   mountRoute: string;
   withMiddleware: (
     handler: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>,
-  ) => FragnoInstantiatedLibrary<TRoutes, TDeps, TServices>;
+  ) => FragnoInstantiatedFragment<TRoutes, TDeps, TServices>;
 }
 
-export interface FragnoLibrarySharedConfig<
+export interface FragnoFragmentSharedConfig<
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
     string,
@@ -57,11 +57,11 @@ export interface FragnoLibrarySharedConfig<
   routes: TRoutes;
 }
 
-export type AnyFragnoLibrarySharedConfig = FragnoLibrarySharedConfig<
+export type AnyFragnoFragmentSharedConfig = FragnoFragmentSharedConfig<
   readonly AnyFragnoRouteConfig[]
 >;
 
-interface LibraryDefinition<
+interface FragmentDefinition<
   TConfig,
   TDeps = EmptyObject,
   TServices extends Record<string, unknown> = EmptyObject,
@@ -71,14 +71,14 @@ interface LibraryDefinition<
   services?: (config: TConfig, deps: TDeps) => TServices;
 }
 
-export class LibraryBuilder<
+export class FragmentBuilder<
   TConfig,
   TDeps = EmptyObject,
   TServices extends Record<string, unknown> = EmptyObject,
 > {
-  #definition: LibraryDefinition<TConfig, TDeps, TServices>;
+  #definition: FragmentDefinition<TConfig, TDeps, TServices>;
 
-  constructor(definition: LibraryDefinition<TConfig, TDeps, TServices>) {
+  constructor(definition: FragmentDefinition<TConfig, TDeps, TServices>) {
     this.#definition = definition;
   }
 
@@ -88,42 +88,42 @@ export class LibraryBuilder<
 
   withDependencies<TNewDeps>(
     fn: (config: TConfig) => TNewDeps,
-  ): LibraryBuilder<TConfig, TNewDeps, TServices> {
-    return new LibraryBuilder<TConfig, TNewDeps, TServices>({
+  ): FragmentBuilder<TConfig, TNewDeps, TServices> {
+    return new FragmentBuilder<TConfig, TNewDeps, TServices>({
       ...this.#definition,
       dependencies: fn,
-    } as LibraryDefinition<TConfig, TNewDeps, TServices>);
+    } as FragmentDefinition<TConfig, TNewDeps, TServices>);
   }
 
   withServices<TNewServices extends Record<string, unknown>>(
     fn: (config: TConfig, deps: TDeps) => TNewServices,
-  ): LibraryBuilder<TConfig, TDeps, TNewServices> {
-    return new LibraryBuilder<TConfig, TDeps, TNewServices>({
+  ): FragmentBuilder<TConfig, TDeps, TNewServices> {
+    return new FragmentBuilder<TConfig, TDeps, TNewServices>({
       ...this.#definition,
       services: fn,
-    } as LibraryDefinition<TConfig, TDeps, TNewServices>);
+    } as FragmentDefinition<TConfig, TDeps, TNewServices>);
   }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export function defineLibrary<TConfig = {}>(name: string): LibraryBuilder<TConfig> {
-  return new LibraryBuilder({
+export function defineFragment<TConfig = {}>(name: string): FragmentBuilder<TConfig> {
+  return new FragmentBuilder({
     name,
   });
 }
 
-export function createLibrary<
+export function createFragment<
   TConfig,
   TDeps,
   TServices extends Record<string, unknown>,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  libraryDefinition: LibraryBuilder<TConfig, TDeps, TServices>,
+  fragmentDefinition: FragmentBuilder<TConfig, TDeps, TServices>,
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
   fragnoConfig: FragnoPublicConfig = {},
-): FragnoInstantiatedLibrary<FlattenRouteFactories<TRoutesOrFactories>, TDeps, TServices> {
-  const definition = libraryDefinition.definition;
+): FragnoInstantiatedFragment<FlattenRouteFactories<TRoutesOrFactories>, TDeps, TServices> {
+  const definition = fragmentDefinition.definition;
 
   const dependencies = definition.dependencies ? definition.dependencies(config) : ({} as TDeps);
   const services = definition.services
@@ -158,7 +158,7 @@ export function createLibrary<
     addRoute(router, routeConfig.method.toUpperCase(), routeConfig.path, routeConfig);
   }
 
-  const library: FragnoInstantiatedLibrary<
+  const fragment: FragnoInstantiatedFragment<
     FlattenRouteFactories<TRoutesOrFactories>,
     TDeps,
     TServices
@@ -177,7 +177,7 @@ export function createLibrary<
 
       middlewareHandler = handler;
 
-      return library;
+      return fragment;
     },
     handler: async (req: Request) => {
       const url = new URL(req.url);
@@ -189,7 +189,7 @@ export function createLibrary<
         return Response.json(
           {
             error:
-              `Fragno: Route for '${definition.name}' not found. Is the library mounted on the right route? ` +
+              `Fragno: Route for '${definition.name}' not found. Is the fragment mounted on the right route? ` +
               `Expecting: '${mountRoute}'.`,
             code: "ROUTE_NOT_FOUND",
           },
@@ -273,5 +273,5 @@ export function createLibrary<
     },
   };
 
-  return library;
+  return fragment;
 }
