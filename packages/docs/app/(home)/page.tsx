@@ -19,6 +19,7 @@ import {
   Users,
   FileText,
 } from "lucide-react";
+import ExampleCycler from "@/components/example-cycler";
 
 function Hero() {
   return (
@@ -46,7 +47,8 @@ function Hero() {
         libraries, compatible with all major frameworks. Front-end state management included.
       </p>
 
-      <div className="flex flex-row items-center justify-center gap-3 pt-2">
+      <ExampleCycler />
+      <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
         <Link
           href="/docs"
           className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
@@ -189,7 +191,7 @@ export function createMyFragmentClient() {
       code: `import { useFragno } from "@fragno-dev/core/react";
 import { createMyFragmentClient } from "example-fragment";
 
-const { useChatStream, useAggregatedMessage } 
+const { useChatStream, useAggregatedMessage }
     = useFragno(createMyFragmentClient());
 
 export function Chat() {
