@@ -7,7 +7,6 @@ import { Control } from "@/app/(home)/blog/[slug]/page.client";
 import { getMDXComponents } from "@/mdx-components";
 import { cn } from "@/lib/cn";
 import { ArrowLeft, Calendar, User } from "lucide-react";
-import path from "node:path";
 
 type TocItem = {
   url?: string;
@@ -16,6 +15,13 @@ type TocItem = {
   depth?: number;
   items?: TocItem[];
 };
+
+const publishDateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
 
 function CustomTOC({ items }: { items: TocItem[] }) {
   const renderItems = (nodes: TocItem[], level = 0) => {
@@ -33,11 +39,11 @@ function CustomTOC({ items }: { items: TocItem[] }) {
             <li key={`${href}${label}`}>
               <a
                 href={href}
-                className="group relative inline-flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                className="group relative inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
               >
-                <span className="relative grid h-3 w-3 place-items-center">
+                <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
                   <span className="absolute inset-0 rounded-sm border border-gray-300 dark:border-gray-600" />
-                  <span className="h-1 w-1 rotate-45 rounded-sm bg-gray-300 transition-colors group-hover:bg-gray-900 dark:bg-gray-600 dark:group-hover:bg-white" />
+                  <span className="h-2 w-2 rotate-45 rounded-sm bg-gray-300 transition-colors group-hover:bg-gray-900 dark:bg-gray-600 dark:group-hover:bg-white" />
                 </span>
                 <span className="whitespace-normal break-words leading-snug">{label}</span>
               </a>
@@ -63,7 +69,16 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
   if (!page) notFound();
   const { body: Mdx, toc } = page.data;
 
-  const publishDate = new Date(page.data.date ?? path.basename(page.path, path.extname(page.path)));
+  const publishDateSource = page.data.date;
+  if (!publishDateSource) {
+    throw new Error(`Missing publish date for blog post at ${page.url}`);
+  }
+  const publishDate = new Date(publishDateSource);
+  if (Number.isNaN(publishDate.getTime())) {
+    throw new Error(`Invalid publish date for blog post at ${page.url}`);
+  }
+  const publishDateIso = publishDate.toISOString();
+  const publishDateDisplay = publishDateFormatter.format(publishDate);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-stone-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-stone-950">
@@ -114,13 +129,7 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
             <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500 dark:text-gray-400">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                <time dateTime={publishDate.toISOString()}>
-                  {publishDate.toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </time>
+                <time dateTime={publishDateIso}>{publishDateDisplay}</time>
               </div>
 
               {page.data.author && (
@@ -161,7 +170,7 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
 
           {/* Sidebar */}
           <aside className="lg:w-auto">
-            <div className="sticky top-8 space-y-6">
+            <div className="sticky top-16 space-y-6">
               {/* Table of Contents */}
               {toc.length > 0 && (
                 <div className="card-shell relative overflow-hidden rounded-2xl border border-black/5 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-900/40">
@@ -169,31 +178,26 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
                   <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-200">
                     Table of contents
                   </h3>
-                  {/* The content source TOC matches TocItem shape */}
-                  <CustomTOC items={toc as unknown as TocItem[]} />
+                  <div className="max-h-[40vh] overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {/* The content source TOC matches TocItem shape */}
+                    <CustomTOC items={toc as unknown as TocItem[]} />
+                  </div>
                 </div>
               )}
 
-              {/* Article Actions */}
-              <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-800/60">
-                <div className="pointer-events-none absolute -left-6 -top-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
-                <div className="pointer-events-none absolute bottom-0 right-6 h-10 w-10 rotate-12 border-b border-r border-gray-200/60 dark:border-white/10" />
-                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
-                  Share
-                </h3>
-                <Control url={page.url} />
-              </div>
-
-              {/* Author Info */}
-              {page.data.author && (
+              {page.data.author ? (
                 <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-800/60">
-                  <div className="pointer-events-none absolute left-4 top-4 h-5 w-5 rotate-12 border border-gray-200/60 dark:border-white/10" />
+                  <div className="pointer-events-none absolute -left-6 -top-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
+                  <div className="pointer-events-none absolute bottom-0 right-6 h-10 w-10 rotate-12 border-b border-r border-gray-200/60 dark:border-white/10" />
                   <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
-                    About the author
+                    Stay connected
                   </h3>
-                  <div className="flex items-center gap-3">
+                  <div className="mb-4 flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full border border-gray-300 bg-white text-sm font-semibold text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
-                      {page.data.author.charAt(0).toUpperCase()}
+                      {page.data.author
+                        .split(" ")
+                        .map((part) => part.charAt(0).toUpperCase())
+                        .join("")}
                     </div>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">
@@ -202,6 +206,16 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
                       <p className="text-xs text-gray-600 dark:text-gray-400">Fragno Team</p>
                     </div>
                   </div>
+                  <Control url={page.url} author={page.data.author} />
+                </div>
+              ) : (
+                <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-gray-800/60">
+                  <div className="pointer-events-none absolute -left-6 -top-6 h-16 w-16 rounded-full border border-gray-200/60 dark:border-white/10" />
+                  <div className="pointer-events-none absolute bottom-0 right-6 h-10 w-10 rotate-12 border-b border-r border-gray-200/60 dark:border-white/10" />
+                  <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
+                    Share
+                  </h3>
+                  <Control url={page.url} />
                 </div>
               )}
             </div>

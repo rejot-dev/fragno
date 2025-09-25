@@ -838,7 +838,7 @@ async function main(): Promise<void> {
       "3,5,8,12,16,24",
     )
     .option("--preserve-gradients", "Preserve gradient colors")
-    .option("--merge-similar", "Merge similar colors before bucketing", true)
+    .option("--merge-similar", "Merge similar colors before bucketing", false)
     .option("--similarity-threshold <number>", "Threshold for merging similar colors", "0.1")
     .option("--preview", "Generate HTML preview (not implemented yet)")
     .option("--stats", "Output color statistics (not implemented yet)")

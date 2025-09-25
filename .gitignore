@@ -51,3 +51,11 @@ yarn-error.log*
 
 # Turbo
 .turbo
+
+.next
+.nuxt
+.react-router
+.open-next
+.source
+.output
+.svelte-kit

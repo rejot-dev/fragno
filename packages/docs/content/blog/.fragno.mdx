@@ -1,0 +1,35 @@
+---
+title: "Fragno"
+description: ""
+date: "2025-09-24"
+author: "Wilco Kruijer"
+---
+
+## Libraries are not sufficient
+
+- Traditional libraries integrate on _either_ the front-end _or_ the back-end, the library user is
+  responsible for the glue-code.
+- There are many cases where this is not sufficient.
+- When the domain is split between front-end and back-end, there's a lot of re-implementation needed
+  per project.
+- For example:
+  - AI/LLM Chat: user-interaction is key on the front-end, but also requires a back-end component to
+    handle API keys and function calling.
+  - Authentication: login forms, redirects on the front-end, back-end for verification and retrieval
+    of data from third-party providers.
+- Another area where traditional libraries are not sufficient is when there is a lot of integration
+  between back-end services.
+- For example:
+  - Payments: receiving updates from the payment provider is key to follow the customer lifecycle.
+  - Email: send emails, track bounces, open rates
+- AI "Deep Research" is an example that has both. Front-end interaction to set up the research,
+  back-end integration for function calls and webhooks for updates from the LLM provider.
+- Even "pure" back-end libraries that don't really need any front-end work can be improved by having
+  a more full-stack mindset. Imagine an API-first/API-only company that only provides one route that
+  verifies if a person's name corresponds to a bank-account number. Presumably this would be
+  integrated in some flow involving the user. A case is bound to come up where someone on the
+  support staff wants to verify the result of this check. To do that we would need an engineer to
+  create an API route on the internal back-end service, then a page on the front-end to display the
+  result. If the library was full-stack, the API provider could simply provide a front-end function
+  `verifyNameToBankAccount` that would call the internal back-end and forward to the provider. In
+  this example, we're moving integration work from the library user, to the library author.

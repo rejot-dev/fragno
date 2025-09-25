@@ -1,36 +1,60 @@
 "use client";
-import { Check, Twitter, Linkedin, Link as LinkIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useCopyButton } from "fumadocs-ui/utils/use-copy-button";
+import { TwitterXLogo } from "@/components/logos/twitter-x";
 
-export function Control({ url }: { url: string }) {
+type ControlProps = {
+  url: string;
+  author?: string;
+};
+
+export function Control({ url, author }: ControlProps) {
+  const [shareUrl, setShareUrl] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setShareUrl(`${window.location.origin}${url}`);
+  }, [url]);
+
   const [isChecked, onCopy] = useCopyButton(() => {
-    void navigator.clipboard.writeText(`${window.location.origin}${url}`);
+    if (shareUrl === "") {
+      return;
+    }
+    void navigator.clipboard.writeText(shareUrl);
   });
 
-  const fullUrl = typeof window !== "undefined" ? `${window.location.origin}${url}` : "";
-  const encodedUrl = encodeURIComponent(fullUrl);
-  const encodedTitle = encodeURIComponent("Check out this article on Fragno");
-
-  const shareLinks = [
-    {
-      name: "X",
-      icon: Twitter,
-      href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}`,
-      color:
-        "hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700/50 dark:hover:text-gray-100",
-    },
-    {
-      name: "LinkedIn",
-      icon: Linkedin,
-      href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
-      color:
-        "hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700/50 dark:hover:text-gray-100",
-    },
-  ];
+  const authorXUrl = useMemo(() => {
+    if (!author) {
+      return null;
+    }
+    const normalized = author.toLowerCase();
+    if (normalized.includes("wilco")) {
+      return "https://x.com/wilcokr";
+    }
+    if (normalized.includes("jan")) {
+      return "https://x.com/jan_schutte";
+    }
+    return null;
+  }, [author]);
 
   return (
     <div className="space-y-4">
+      {authorXUrl ? (
+        <a
+          href={authorXUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-all duration-200 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-700/50 dark:hover:text-gray-100",
+          )}
+        >
+          <TwitterXLogo className="size-4" />
+          Follow
+        </a>
+      ) : null}
       {/* Copy Link Button */}
       <button
         type="button"
@@ -43,35 +67,16 @@ export function Control({ url }: { url: string }) {
       >
         {isChecked ? (
           <>
-            <Check className="h-4 w-4" />
-            Link copied!
+            <Check className="size-4" />
+            Link ready to share
           </>
         ) : (
           <>
-            <LinkIcon className="h-4 w-4" />
-            Copy link
+            <LinkIcon className="size-4" />
+            Copy Article Link
           </>
         )}
       </button>
-
-      {/* Social Share Buttons */}
-      <div className="grid grid-cols-2 gap-2">
-        {shareLinks.map((link) => (
-          <a
-            key={link.name}
-            href={link.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-all duration-200 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300",
-              link.color,
-            )}
-          >
-            <link.icon className="h-4 w-4" />
-            <span className="hidden sm:inline">{link.name}</span>
-          </a>
-        ))}
-      </div>
     </div>
   );
 }
