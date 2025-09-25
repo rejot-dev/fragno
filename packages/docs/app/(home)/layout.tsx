@@ -40,8 +40,8 @@ export default function Layout({ children }: LayoutProps<"/">) {
 
 function Footer() {
   return (
-    <footer className="bg-fd-card text-fd-secondary-foreground mt-auto border-t py-12">
-      <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 text-sm text-[var(--color-gray)] sm:flex-row">
+    <footer className="bg-fd-card text-fd-secondary-foreground mt-auto border-t py-6 sm:py-12">
+      <div className="mx-auto flex max-w-4xl flex-col-reverse items-center gap-4 text-sm text-[var(--color-gray)] sm:flex-row sm:justify-between">
         <div>
           &copy; {new Date().getFullYear()}{" "}
           <a href="https://rejot.dev" className="hover:text-[var(--color-text)]">
