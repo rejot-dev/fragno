@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import BentoCake from "@/components/bento-cake";
+import Frameworks from "@/components/frameworks";
 
 function Hero() {
   return (
@@ -56,7 +57,6 @@ function Hero() {
           View Docs
         </Link>
       </div>
-      <BentoCake />
     </section>
   );
 }
@@ -93,7 +93,7 @@ function FeatureCard({ icon, title, description, glowClass, iconClass }: Feature
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function Features() {
   return (
-    <section className="mt-14 grid w-full max-w-6xl gap-6 md:grid-cols-3">
+    <section className="grid w-full max-w-6xl gap-6 md:grid-cols-3">
       <FeatureCard
         icon={<Shield className="size-6" />}
         title="End-to-end type safety"
@@ -244,7 +244,7 @@ export function Chat() {
   ];
 
   return (
-    <section className="mt-16 w-full max-w-6xl space-y-12">
+    <section className="w-full max-w-6xl space-y-12">
       <div className="relative flex flex-col items-start gap-12 lg:flex-row">
         <div className="space-y-6 lg:w-2/5">
           <p className="text-fd-muted-foreground font-medium">Fragno Provides</p>
@@ -356,7 +356,7 @@ export function Chat() {
 
 function DocsSection() {
   return (
-    <section className="mt-20 w-full max-w-4xl space-y-8">
+    <section className="w-full max-w-4xl space-y-8">
       <div className="space-y-4 text-center">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Documentation</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
@@ -471,12 +471,14 @@ function BlogSection() {
 
 export default function HomePage() {
   return (
-    <main className="relative flex flex-1 flex-col items-center overflow-x-hidden px-4 py-16">
+    <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-16">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div className="mx-auto mt-[-80px] h-[520px] w-[820px] rounded-full bg-gradient-to-br from-blue-500/25 via-sky-400/20 to-purple-500/20 opacity-20 blur-3xl dark:opacity-40" />
       </div>
 
       <Hero />
+      <BentoCake />
+      <Frameworks />
       <WhatFragnoProvides />
       {/* <Features /> */}
       <DocsSection />
