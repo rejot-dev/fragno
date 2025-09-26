@@ -19,7 +19,8 @@ import {
   Users,
   FileText,
 } from "lucide-react";
-import ExampleCycler from "@/components/example-cycler";
+
+import BentoCake from "@/components/bento-cake";
 
 function Hero() {
   return (
@@ -47,7 +48,6 @@ function Hero() {
         libraries, compatible with all major frameworks. Front-end state management included.
       </p>
 
-      <ExampleCycler />
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
         <Link
           href="/docs"
@@ -56,6 +56,7 @@ function Hero() {
           View Docs
         </Link>
       </div>
+      <BentoCake />
     </section>
   );
 }
