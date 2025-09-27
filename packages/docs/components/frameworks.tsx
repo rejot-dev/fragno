@@ -1,3 +1,5 @@
+"use client";
+
 import { cn } from "@/lib/cn";
 import { Astro } from "@/components/logos/frameworks/astro";
 import { Nextjs } from "@/components/logos/frameworks/nextjs";
@@ -6,8 +8,115 @@ import { Nuxt } from "@/components/logos/frameworks/nuxt";
 import { React as ReactLogo } from "@/components/logos/frameworks/react";
 import { Svelte } from "@/components/logos/frameworks/svelte";
 import { Vue } from "@/components/logos/frameworks/vue";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 export default function Frameworks({ className }: { className?: string }) {
+  const [mouseX, setMouseX] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(1);
+  const [hydrated, setHydrated] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setHydrated(true);
+
+    // Detect mobile devices
+    const checkIsMobile = () => {
+      return window.innerWidth < 768 || "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isMobile) {
+        setMouseX(e.clientX);
+      }
+    };
+
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth || 1);
+      setIsMobile(checkIsMobile());
+    };
+
+    // Initialize
+    handleResize();
+    setMouseX(window.innerWidth / 2);
+
+    if (!isMobile) {
+      window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    }
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [isMobile]);
+
+  const items = useMemo(() => {
+    return [
+      { name: "React", element: <ReactLogo className="size-12 text-blue-500" /> },
+      { name: "Vue", element: <Vue className="size-12 text-green-500" /> },
+      { name: "Svelte", element: <Svelte className="size-12 text-red-500" /> },
+      { name: "Astro", element: <Astro className="size-12" /> },
+      { name: "Next.js", element: <Nextjs className="size-12 text-gray-900 dark:text-white" /> },
+      { name: "Nuxt", element: <Nuxt className="size-12 text-green-400 dark:text-white" /> },
+      { name: "Node.js", element: <Nodejs className="size-12 text-green-600" /> },
+    ];
+  }, []);
+
+  const activeIndex = useMemo(() => {
+    if (items.length === 0) {
+      return 0;
+    }
+    let ratio: number;
+    const container = gridRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const width = rect.width > 0 ? rect.width : 1;
+      ratio = (mouseX - rect.left) / width;
+    } else {
+      const width = viewportWidth > 0 ? viewportWidth : 1;
+      ratio = mouseX / width;
+    }
+    ratio = Math.min(1, Math.max(0, ratio));
+    // Split into equal-width bins across the container
+    let index = Math.floor(ratio * items.length);
+    if (index >= items.length) {
+      index = items.length - 1;
+    }
+    return index;
+  }, [mouseX, viewportWidth, items.length]);
+
+  const getIntensityForIndex = (index: number): number => {
+    if (!hydrated || isMobile) {
+      // SSR, no-JS fallback, or mobile: everything stays grayscale
+      return 0;
+    }
+    const distance = Math.abs(index - activeIndex);
+    if (distance === 0) {
+      return 1;
+    }
+    if (distance === 1) {
+      return 0.5;
+    }
+    return 0;
+  };
+
+  const getStyleForIntensity = (intensity: number): CSSProperties => {
+    const grayscale = 1 - intensity; // 1: fully gray, 0: full color
+    const saturate = 1 + 0.6 * intensity;
+    const brightness = 1 + 0.12 * intensity;
+    const scale = 1 + 0.08 * intensity;
+    const translateY = -2 * intensity; // subtle lift when active
+    return {
+      filter: `grayscale(${grayscale}) saturate(${saturate}) brightness(${brightness})`,
+      transform: `translateY(${translateY}px) scale(${scale})`,
+      transition: "filter 250ms ease, transform 300ms ease, opacity 250ms ease",
+      opacity: 0.7 + 0.3 * intensity,
+      willChange: "transform, filter, opacity",
+    };
+  };
+
   return (
     <section className={cn("w-full max-w-6xl space-y-6", className)}>
       <div className="space-y-4 text-center">
@@ -20,35 +129,24 @@ export default function Frameworks({ className }: { className?: string }) {
           for more info.
         </p>
       </div>
-      <div className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-        <div className="flex flex-col items-center gap-2">
-          <ReactLogo className="size-12 text-blue-500" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">React</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Vue className="size-12 text-green-500" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Vue</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Svelte className="size-12 text-red-500" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Svelte</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Astro className="size-12" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Astro</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Nextjs className="size-12 text-gray-900 dark:text-white" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Next.js</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Nuxt className="size-12 text-green-400 dark:text-white" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Nuxt</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Nodejs className="size-12 text-green-600" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Node.js</span>
-        </div>
+      <div
+        ref={gridRef}
+        className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7"
+      >
+        {items.map((item, index) => {
+          const intensity = getIntensityForIndex(index);
+          const style = getStyleForIntensity(intensity);
+          return (
+            <div key={item.name} className="flex flex-col items-center gap-2">
+              <div className="rounded-md p-1" style={style} aria-label={`${item.name} logo`}>
+                {item.element}
+              </div>
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                {item.name}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
