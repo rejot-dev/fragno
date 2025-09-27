@@ -6,6 +6,7 @@
     "build": "fumadocs-mdx && next build",
     "dev": "next dev --turbo --port 3003",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "types:check": "tsc --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "cf-typegen": "bun run types:generate"

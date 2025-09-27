@@ -60,3 +60,45 @@ author: "Wilco Kruijer"
   dashboards have similar characteristics. Public and internal component libraries help with code
   re-use. In the end a bunch of tweaking local to the application is needed. ShadCN probably is the
   most well-known component library, and even has a pluggable registry of components.
+
+## This is still not sufficient
+
+- What would the requirements for integration with the data stack be?
+- Querying:
+  - For querying, we'd need some basics like: insert/insertMany, select, update, delete,
+    exists/count. The question is how complex the query language should get. A typical relational
+    database supports queries that are infeasible to support in a Framework-agnostic way. Even
+    compiling/transpiling a sql-based 'generic' language is problematic when there are different
+    targets such as Postgres, MySQL, SQLite, etc.
+  - Certainly when we involve other database systems such as MongoDB, the differences are huge.
+  - It has been shown that relational database systems can be implemented on top of key-value
+    stores. My favourite example is the "Record Layer" built on top of FoundationDB. The fact that
+    they're building an SQL engine on top thereof [^20] shows us that the key-value abstraction is
+    powerful enough to support a wide range of use cases.
+  - In essence this means that we'd only need `get`, `set`, `list`, `delete` operations. In a
+    relational database this could be supported by having a single `kv` table. The ergonomics of
+    this might be doubtful.
+  - A simple query language, _without_ common-table expressions, sub-queries, and windowing might be
+    sufficient. After all, the language should be able to get the job done for a library that wants
+    to store data. Complexer queries might be better handled by the application author.
+
+[^20]:
+    FoundationDB,
+    [Record Layer SQL Reference](https://foundationdb.github.io/fdb-record-layer/SQL_Reference.html)
+
+- Schema Definition:
+  - Using a single table key-value schema means we could sidestep the need for a schema definition
+    entirely.
+  - This would mean setting aside a lot of the benefits of relational databases, which most users
+    that would integrate a full-stack library are using.
+  - A basic schema definition DSL with simple types, supported by major databases could be useful.
+  - Rudimentary references and relationships could be supported.
+  - Indexes should be supported.
+  - The main problem to be solved is how schemas defined in libraries would make their way to the
+    user's application database schema.
+  - We could generate migrations from our schema changes, and direct the user to run them.
+  - If the user is using an ORM, it'd be harder to integrate with.
+
+- Last point of attention would be transactions. Not all systems support interactive transactions.
+- It could be worthwhile to take 'batched operations' as a lowest-common denominator. This, together
+  with some optimistic concurrency control, could be a good way to handle data integrity.
