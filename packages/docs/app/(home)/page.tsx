@@ -22,6 +22,7 @@ import {
 
 import BentoCake from "@/components/bento-cake";
 import Frameworks from "@/components/frameworks";
+import { GitHub } from "@/components/logos/github";
 
 function Hero() {
   return (
@@ -31,14 +32,15 @@ function Hero() {
       </div>
 
       <h1 className="text-fd-foreground text-6xl font-extrabold tracking-tight md:text-7xl dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Full-stack
+        Ship full-stack
         <br />
-        Libraries
+        libraries
       </h1>
       <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl">
         <span>
+          Build{" "}
           <span className="underline decoration-blue-600 underline-offset-4 dark:decoration-blue-400">
-            Fr
+            fr
           </span>
           amework-
           <span className="underline decoration-purple-600 underline-offset-4 dark:decoration-purple-400">
@@ -46,7 +48,7 @@ function Hero() {
           </span>
           stic
         </span>{" "}
-        libraries, compatible with all major frameworks. Front-end state management included.
+        libraries that embed backend and frontend logic in your users' application
       </p>
 
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
@@ -55,6 +57,15 @@ function Hero() {
           className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
         >
           View Docs
+        </Link>
+        <Link
+          href="https://github.com/rejot-dev/fragno"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 rounded-lg border border-gray-300 px-6 py-3 font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          <GitHub className="size-4" />
+          Star on GitHub
         </Link>
       </div>
     </section>
@@ -69,12 +80,15 @@ type FeatureCardProps = {
   iconClass?: string;
 };
 
-function FeatureCard({ icon, title, description, glowClass, iconClass }: FeatureCardProps) {
+function FeatureCard({
+  icon,
+  title,
+  description,
+  glowClass: _glowClass,
+  iconClass,
+}: FeatureCardProps) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/90 via-white/80 to-white/80 p-6 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10">
-      <span
-        className={`absolute inset-x-6 -top-16 h-28 rounded-full opacity-0 blur-3xl transition-opacity group-hover:opacity-80 ${glowClass ?? "bg-blue-500/15 dark:bg-blue-400/20"}`}
-      />
+    <div className="relative overflow-hidden rounded-2xl bg-white/90 p-6 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
       <div className="relative flex items-start gap-3">
         <span
           className={`flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${iconClass ?? "bg-blue-500/15 dark:bg-blue-400/20"}`}
@@ -219,7 +233,7 @@ export function Chat() {
   const highlightItems = [
     {
       icon: <Route className="size-6" />,
-      title: "Define Routes",
+      title: "Embed Routes",
       description: "HTTP Routes with automatic front-end bindings",
       background: "bg-[radial-gradient(circle_at_20%_20%,rgba(34,197,94,0.15),transparent_50%)]",
     },
@@ -237,8 +251,8 @@ export function Chat() {
     },
     {
       icon: <Layers className="size-6" />,
-      title: "Major Frameworks",
-      description: "All major front-end and full-stack frameworks supported",
+      title: "Middleware Support",
+      description: "Users can intercept and process requests before they reach your handlers",
       background: "bg-[radial-gradient(circle_at_80%_80%,rgba(245,158,11,0.15),transparent_50%)]",
     },
   ];
@@ -247,11 +261,9 @@ export function Chat() {
     <section className="w-full max-w-6xl space-y-12">
       <div className="relative flex flex-col items-center gap-12 lg:flex-row lg:items-start">
         <div className="space-y-6 lg:w-2/5">
-          <p className="text-fd-muted-foreground font-medium">Fragno Provides</p>
+          <p className="text-fd-muted-foreground font-medium">With Fragno you build</p>
           <h2 className="text-4xl font-extrabold tracking-tight md:text-6xl">
-            <span className="bg-gradient-to-b from-pink-500 to-rose-400 bg-clip-text text-transparent dark:from-pink-400 dark:to-rose-300">
-              End-to-end Integration
-            </span>
+            <span className="text-blue-700 dark:text-blue-400">End-to-end Libraries</span>
           </h2>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
             Traditional libraries integrate on <em>either</em> the front-end <em>or</em> the
@@ -261,9 +273,7 @@ export function Chat() {
             A <u>Fragment</u> does both, it's a full-stack library. The user integrates with only a
             couple lines of code. No glue.
           </p>
-          <p className="text-fd-muted-foreground max-w-xl text-lg">
-            All major frameworks are supported.
-          </p>
+          <p className="text-fd-muted-foreground max-w-xl text-lg">10x the developer experience.</p>
         </div>
 
         <div className="relative min-w-0 flex-1 overflow-hidden">
@@ -276,17 +286,17 @@ export function Chat() {
             className="pointer-events-none absolute -left-10 bottom-[-60px] h-40 w-56 rounded-full bg-gradient-to-br from-purple-400/20 via-transparent to-transparent blur-3xl"
           />
 
-          <div className="bg-white/94 relative overflow-hidden rounded-[26px] p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] transition-transform duration-500 dark:bg-slate-900/75">
+          <div className="bg-white/94 relative overflow-hidden rounded-[26px] p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] dark:bg-slate-900/75">
             <div className="bg-white/92 flex flex-wrap gap-2 rounded-full p-1 dark:bg-slate-900/70">
               {providesTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
+                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
                     activeTab === tab.id
-                      ? `bg-gradient-to-r ${tab.accent} text-white shadow-sm`
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-100/70 dark:hover:text-white"
+                      ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                      : "text-slate-700 dark:text-slate-300"
                   }`}
                   aria-pressed={activeTab === tab.id}
                 >
@@ -309,8 +319,8 @@ export function Chat() {
               )}
               {activeTab === "workflow-sketch" && (
                 <p className="text-fd-muted-foreground mb-4 text-sm">
-                  Use your fragment in any framework with simple hooks. Everything is typed and
-                  reactive out of the box.
+                  Your user has a seamless experience integrating your Fragment. They see typed,
+                  reactive hooks for any framework.
                 </p>
               )}
               <FragnoCodeBlock
@@ -328,13 +338,13 @@ export function Chat() {
         {highlightItems.map((item) => (
           <div
             key={item.title}
-            className="dark:border-white/12 group relative overflow-hidden rounded-3xl border border-white/20 bg-white/70 p-6 transition-all duration-500 hover:border-white/35 hover:shadow-[0_22px_50px_-36px_rgba(30,64,175,0.7)] dark:bg-slate-900/70"
+            className="dark:border-white/12 relative overflow-hidden rounded-3xl border border-white/20 bg-white/70 p-6 dark:bg-slate-900/70"
           >
             <span
-              className={`pointer-events-none absolute inset-0 opacity-30 transition-all duration-500 group-hover:scale-105 group-hover:opacity-60 ${item.background}`}
+              className={`pointer-events-none absolute inset-0 opacity-30 ${item.background}`}
             />
             <div className="relative flex items-start gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 transition-all duration-500 group-hover:shadow-md group-hover:ring-black/10 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10 dark:group-hover:ring-white/20">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
                 {item.icon}
               </span>
               <div>
@@ -346,7 +356,6 @@ export function Chat() {
                 </p>
               </div>
             </div>
-            <span className="pointer-events-none absolute -bottom-6 left-1/2 h-24 w-[110%] -translate-x-1/2 rounded-full bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
           </div>
         ))}
       </div>
@@ -415,8 +424,8 @@ function DocsSection() {
 
 function BlogSection() {
   return (
-    <section className="mx-auto mt-16 w-full max-w-3xl">
-      <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10">
+    <section className="mx-auto mt-8 w-full max-w-3xl">
+      <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
         {/* Background elements similar to blog page */}
         <div className="dark:from-zinc-400/3 dark:via-neutral-400/3 dark:to-stone-400/3 absolute inset-0 bg-gradient-to-r from-zinc-500/5 via-neutral-500/5 to-stone-500/5" />
         <div
@@ -437,7 +446,7 @@ function BlogSection() {
 
         <div className="relative">
           <div className="flex items-start gap-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 transition-all duration-500 hover:shadow-md hover:ring-black/10 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10 dark:hover:ring-white/20">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
               <FileText className="size-6 text-gray-700 dark:text-gray-300" />
             </div>
             <div className="flex-1">
@@ -482,6 +491,7 @@ export default function HomePage() {
       <WhatFragnoProvides />
       {/* <Features /> */}
       <DocsSection />
+      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <BlogSection />
     </main>
   );

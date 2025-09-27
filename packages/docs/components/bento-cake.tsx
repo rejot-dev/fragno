@@ -36,19 +36,17 @@ export default function BentoCake({ className }: { className?: string }) {
           </div>
         </div>
         <h3 className="mb-4 text-xl font-bold">Libraries</h3>
-        <p className="text-s">
-          Traditional libraries only target one layer of the stack; users are tasked with writing
-          the glue code to tie it all together into an app.
+        <p className="text-s text-fd-muted-foreground">
+          Traditional libraries target either the frontend or backend.
         </p>
       </div>
 
       {/* Fragment - Second on mobile, bottom-left on desktop */}
-      <div className="bg-white/94 flex flex-col items-center justify-center rounded-2xl border p-6 md:order-3 dark:bg-slate-900/75">
+      <div className="bg-white/94 flex flex-col items-center justify-center rounded-2xl border p-6 text-center md:order-3 dark:bg-slate-900/75">
         <Cake variant="cake-slice" className="mx-auto size-48" />
-        <h3 className="mb-4 text-xl font-bold">Fragno's Fragments</h3>
-        <p className="text-s">
-          With Fragno's fragments, library authors can target all layers without having to worry
-          about the specifics of their end users' stack.
+        <h3 className="mb-4 text-xl font-bold">Fragno Fragments</h3>
+        <p className="text-s text-fd-muted-foreground">
+          With Fragno, you build libraries as a full-stack package: Fragments.
         </p>
       </div>
 
@@ -59,9 +57,9 @@ export default function BentoCake({ className }: { className?: string }) {
             <Cake variant="cake-full" className="mx-auto size-72" />
           </div>
           <h3 className="text-2xl font-bold">Application</h3>
-          <p className="text-s">
-            Developers can use fragments to quickly build full-fledged applications with their
-            framework of choice.
+          <p className="text-s text-fd-muted-foreground">
+            Developers use Fragments to quickly build full-fledged applications in their framework
+            of choice.
           </p>
         </div>
       </div>
