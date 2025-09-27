@@ -31,7 +31,7 @@ function Hero() {
       </div>
 
       <h1 className="text-fd-foreground text-6xl font-extrabold tracking-tight md:text-7xl dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Full-stack TypeScript
+        Full-stack
         <br />
         Libraries
       </h1>
@@ -245,7 +245,7 @@ export function Chat() {
 
   return (
     <section className="w-full max-w-6xl space-y-12">
-      <div className="relative flex flex-col items-start gap-12 lg:flex-row">
+      <div className="relative flex flex-col items-center gap-12 lg:flex-row lg:items-start">
         <div className="space-y-6 lg:w-2/5">
           <p className="text-fd-muted-foreground font-medium">Fragno Provides</p>
           <h2 className="text-4xl font-extrabold tracking-tight md:text-6xl">
@@ -454,7 +454,7 @@ function BlogSection() {
                 framework-agnostic approach to full-stack TypeScript development.
               </p>
               <Link
-                href="/blog/fragno"
+                href="/blog/fragno-introduction"
                 className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
               >
                 Read Introduction

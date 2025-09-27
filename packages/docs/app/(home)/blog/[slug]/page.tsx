@@ -24,22 +24,43 @@ const publishDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 function CustomTOC({ items }: { items: TocItem[] }) {
-  const renderItems = (nodes: TocItem[], level = 0) => {
+  const getIndentClass = (depth: number) => {
+    switch (depth) {
+      case 1:
+        return "-pl-4"; // We don't typically use h1
+      case 2:
+        return "";
+      case 3:
+        return "pl-4";
+      case 4:
+        return "pl-8";
+      case 5:
+        return "pl-12";
+      case 6:
+        return "pl-16";
+      default:
+        return "pl-16";
+    }
+  };
+
+  const renderItems = (nodes: TocItem[]) => {
     if (!nodes || nodes.length === 0) {
       return null;
     }
-    const listClass =
-      (level > 0 ? "mt-2 pl-3 border-l border-gray-200 dark:border-gray-700 " : "") + "space-y-1";
+
     return (
-      <ul className={listClass}>
+      <ul className="space-y-1">
         {nodes.map((node) => {
           const label = node.title ?? node.text ?? "";
           const href = node.url ?? "";
+          const depth = node.depth ?? 1;
+          const indentClass = getIndentClass(depth);
+
           return (
             <li key={`${href}${label}`}>
               <a
                 href={href}
-                className="group relative inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                className={`group relative inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white ${indentClass}`}
               >
                 <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
                   <span className="absolute inset-0 rounded-sm border border-gray-300 dark:border-gray-600" />
@@ -47,7 +68,7 @@ function CustomTOC({ items }: { items: TocItem[] }) {
                 </span>
                 <span className="whitespace-normal break-words leading-snug">{label}</span>
               </a>
-              {node.items && node.items.length > 0 ? renderItems(node.items, level + 1) : null}
+              {node.items && node.items.length > 0 ? renderItems(node.items) : null}
             </li>
           );
         })}
