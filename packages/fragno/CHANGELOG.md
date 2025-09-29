@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.0.3
+
+### Patch Changes
+
+- 604caff: Update publishing process
+
 ## 0.0.2
 
 ### Patch Changes
