@@ -91,6 +91,8 @@ jobs:
           path: |
             **/node_modules
           key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-modules-
 
       - name: Cache turbo build setup
         uses: actions/cache@v4
