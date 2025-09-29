@@ -234,7 +234,7 @@ export function Chat() {
     {
       icon: <Route className="size-6" />,
       title: "Embed Routes",
-      description: "HTTP Routes with automatic front-end bindings",
+      description: "HTTP Routes with automatic frontend bindings",
       background: "bg-[radial-gradient(circle_at_20%_20%,rgba(34,197,94,0.15),transparent_50%)]",
     },
     {
@@ -266,8 +266,8 @@ export function Chat() {
             <span className="text-blue-700 dark:text-blue-400">End-to-end Libraries</span>
           </h2>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Traditional libraries integrate on <em>either</em> the front-end <em>or</em> the
-            back-end, and the user is responsible for the glue-code.
+            Traditional libraries integrate on <em>either</em> the frontend <em>or</em> the backend,
+            and the user is responsible for the glue-code.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
             A <u>Fragment</u> does both, it's a full-stack library. The user integrates with only a
