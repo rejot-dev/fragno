@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/core",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "exports": {
     ".": {
       "bun": "./src/mod.ts",
@@ -116,5 +116,12 @@
     "svelte": {
       "optional": true
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragno"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

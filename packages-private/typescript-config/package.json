@@ -1,6 +1,6 @@
 {
   "name": "@fragno-private/typescript-config",
-  "version": "0.1",
+  "version": "0.0.1",
   "exports": {
     "./tsconfig.base.json": "./tsconfig.base.json"
   }
