@@ -147,7 +147,7 @@
     },
     "packages/chatno": {
       "name": "@fragno-dev/chatno",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@fragno-dev/core": "workspace:*",
         "nanostores": "^1.0.1",
@@ -195,7 +195,7 @@
     },
     "packages/example-fragment": {
       "name": "@fragno-dev/example-fragment",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@fragno-dev/core": "workspace:*",
         "zod": "^4.0.5",
@@ -208,7 +208,7 @@
     },
     "packages/fragno": {
       "name": "@fragno-dev/core",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@nanostores/query": "^0.3.4",
         "@standard-schema/spec": "^1.0.0",
@@ -244,7 +244,7 @@
     },
     "packages/fragno-node": {
       "name": "@fragno-dev/node",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@remix-run/node-fetch-server": "^0.8.0",
       },
