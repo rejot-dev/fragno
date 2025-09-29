@@ -1,28 +1,13 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { findPackageDirectory } from "./util/workspace-utils";
+import { getNonPrivatePackages } from "./util/workspace-utils";
 
-interface ChangesetRelease {
+interface PackageToPublish {
   name: string;
-  type: string;
-  oldVersion?: string;
-  newVersion?: string;
-  changesets: string[];
-}
-
-interface ChangesetOutput {
-  changesets: Array<{
-    releases: Array<{
-      name: string;
-      type: string;
-    }>;
-    summary: string;
-    id: string;
-  }>;
-  releases: ChangesetRelease[];
+  path: string;
+  version: string;
 }
 
 async function main() {
@@ -52,9 +37,8 @@ Options:
   --help, -h             Show this help message
 
 This script:
-1. Runs 'bunx changeset status --output out.json' to get package updates
-2. Parses the output to find packages with new versions
-3. Publishes each updated package using 'bun publish' in the correct directory
+1. Finds all non-private packages in the workspace
+2. Publishes each non-private package using 'bun publish' in the correct directory
 
 Examples:
   bun scripts/src/publish-packages.ts --dry-run
@@ -75,30 +59,35 @@ Examples:
   }
 
   try {
-    // Run changeset status to get the output
-    console.log("📊 Checking changeset status...");
-    await $`bunx changeset status --output out.json`;
+    // Get all non-private packages
+    console.log("📊 Finding non-private packages...");
+    const nonPrivatePackages = getNonPrivatePackages();
 
-    // Read and parse the output
-    const outputPath = join(process.cwd(), "out.json");
-    const outputContent = readFileSync(outputPath, "utf-8");
-    const changesetData: ChangesetOutput = JSON.parse(outputContent);
-
-    console.log("✅ Changeset status retrieved\n");
-
-    // Find packages that have new versions
-    const packagesToPublish = changesetData.releases.filter(
-      (release) => release.type !== "none" && release.newVersion,
-    );
-
-    if (packagesToPublish.length === 0) {
-      console.log("📦 No packages to publish. All packages are up to date!");
+    if (nonPrivatePackages.length === 0) {
+      console.log("📦 No non-private packages found to publish!");
       return;
     }
 
-    console.log(`📦 Found ${packagesToPublish.length} package(s) to publish:`);
+    // Get version information for each package
+    const packagesToPublish: PackageToPublish[] = [];
+    for (const pkg of nonPrivatePackages) {
+      if (!pkg.pkgData.version) {
+        console.log(`Skipping ${pkg.pkgData.name} - no version in package.json`);
+        continue;
+      }
+
+      packagesToPublish.push({
+        name: pkg.pkgData.name,
+        path: pkg.path,
+        version: pkg.pkgData.version,
+      });
+    }
+
+    console.log("✅ Found non-private packages\n");
+
+    console.log(`📦 Found ${packagesToPublish.length} non-private package(s) to publish:`);
     packagesToPublish.forEach((pkg) => {
-      console.log(`  - ${pkg.name}: ${pkg.oldVersion} → ${pkg.newVersion} (${pkg.type})`);
+      console.log(`  - ${pkg.name}@${pkg.version}`);
     });
     console.log();
 
@@ -119,7 +108,7 @@ Examples:
 }
 
 async function publishPackage(
-  pkg: ChangesetRelease,
+  pkg: PackageToPublish,
   isDryRun: boolean,
   access: string,
   tag: string,
@@ -127,13 +116,8 @@ async function publishPackage(
   console.log(`📤 Publishing ${pkg.name}...`);
 
   try {
-    // Find the package directory
-    const packageDir = findPackageDirectory(pkg.name);
-
-    if (!packageDir) {
-      console.error(`❌ Could not find directory for package ${pkg.name}`);
-      return;
-    }
+    // Use the package path directly
+    const packageDir = join(process.cwd(), pkg.path);
 
     console.log(`   📁 Publishing from: ${packageDir}`);
 
@@ -141,16 +125,18 @@ async function publishPackage(
     const publishCommand = `bun publish --access ${access} --tag ${tag}`;
 
     if (isDryRun) {
-      console.log(`   🧪 DRY RUN: Would publish ${pkg.name}@${pkg.newVersion}`);
+      console.log(`   🧪 DRY RUN: Would publish ${pkg.name}@${pkg.version}`);
       console.log(`   🧪 DRY RUN: Command would be: cd ${packageDir} && ${publishCommand}`);
     } else {
       // Change to package directory and publish
       const result = await $`cd ${packageDir} && ${publishCommand}`.quiet();
 
       if (result.exitCode === 0) {
-        console.log(`   ✅ Successfully published ${pkg.name}@${pkg.newVersion} with tag "${tag}"`);
+        console.log(`   ✅ Successfully published ${pkg.name}@${pkg.version} with tag "${tag}"`);
       } else {
-        console.error(`   ❌ Failed to publish ${pkg.name}`);
+        console.error(
+          `   ❌ Failed to publish ${pkg.name}. This might be because the package is already published.`,
+        );
         console.error(`   📄 stdout: ${result.stdout.toString()}`);
         console.error(`   📄 stderr: ${result.stderr.toString()}`);
       }

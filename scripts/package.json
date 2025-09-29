@@ -10,8 +10,7 @@
   },
   "dependencies": {
     "commander": "^12.1.0",
-    "culori": "^4.0.1",
-    "jsonc-simple-parser": "^3.0.0"
+    "culori": "^4.0.1"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

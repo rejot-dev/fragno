@@ -2,9 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 export type WorkspacePackage = {
-  name: string;
   path: string;
-  isWorkspace: boolean;
+  pkgData: PackageJson;
 };
 
 export type PackageJson = {
@@ -13,6 +12,7 @@ export type PackageJson = {
   devDependencies?: Record<string, string>;
   workspaces?: string[];
   version?: string;
+  private: boolean;
 };
 
 export function getAllWorkspacePackages(): WorkspacePackage[] {
@@ -32,9 +32,15 @@ export function getAllWorkspacePackages(): WorkspacePackage[] {
         const path = join(dir, item);
         const pkg = JSON.parse(readFileSync(join(path, "package.json"), "utf-8"));
         packages.push({
-          name: pkg.name,
           path: relative(process.cwd(), path),
-          isWorkspace: true,
+          pkgData: {
+            name: pkg.name,
+            private: "private" in pkg ? pkg.private : false,
+            dependencies: pkg.dependencies,
+            devDependencies: pkg.devDependencies,
+            workspaces: pkg.workspaces,
+            version: pkg.version,
+          },
         });
       }
     }
@@ -43,9 +49,17 @@ export function getAllWorkspacePackages(): WorkspacePackage[] {
   return packages;
 }
 
+export function getNonPrivatePackages(): WorkspacePackage[] {
+  const allPackages = getAllWorkspacePackages();
+  console.log(allPackages);
+  return allPackages.filter((pkg) => {
+    return !pkg.pkgData.private;
+  });
+}
+
 export function findPackageDirectory(packageName: string): string | null {
   const workspacePackages = getAllWorkspacePackages();
-  const packageInfo = workspacePackages.find((pkg) => pkg.name === packageName);
+  const packageInfo = workspacePackages.find((pkg) => pkg.pkgData.name === packageName);
 
   if (!packageInfo) {
     return null;
