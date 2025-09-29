@@ -16,6 +16,7 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.7.4",
     "typescript": "^5.8.3",
-    "@types/culori": "^2.1.1"
+    "@types/culori": "^2.1.1",
+    "bun-types": "latest"
   }
 }

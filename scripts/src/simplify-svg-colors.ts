@@ -60,7 +60,10 @@ class SVGColorSimplifier {
 
   private loadTailwindColors(): void {
     try {
-      const cssContent = readFileSync(join(dirname(__filename), "tailwind-colors.css"), "utf-8");
+      const cssContent = readFileSync(
+        join(dirname(__filename), "colors/tailwind-colors.css"),
+        "utf-8",
+      );
       const colorRegex = /--color-(\w+-\d+):\s*oklch\(([^)]+)\)/g;
       let match;
 
