@@ -51,7 +51,6 @@ export function getAllWorkspacePackages(): WorkspacePackage[] {
 
 export function getNonPrivatePackages(): WorkspacePackage[] {
   const allPackages = getAllWorkspacePackages();
-  console.log(allPackages);
   return allPackages.filter((pkg) => {
     return !pkg.pkgData.private;
   });

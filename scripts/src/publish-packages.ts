@@ -121,28 +121,30 @@ async function publishPackage(
 
     console.log(`   📁 Publishing from: ${packageDir}`);
 
-    // Build the publish command with flags
-    const publishCommand = `bun publish --access ${access} --tag ${tag}`;
-
     if (isDryRun) {
-      console.log(`   🧪 DRY RUN: Would publish ${pkg.name}@${pkg.version}`);
-      console.log(`   🧪 DRY RUN: Command would be: cd ${packageDir} && ${publishCommand}`);
-    } else {
-      // Change to package directory and publish
-      const result = await $`cd ${packageDir} && ${publishCommand}`.quiet();
+      console.log(`   🧪 DRY RUN: Publishing ${pkg.name}@${pkg.version}`);
+    }
 
-      if (result.exitCode === 0) {
-        console.log(`   ✅ Successfully published ${pkg.name}@${pkg.version} with tag "${tag}"`);
+    const result =
+      await $`bun publish --access ${access} --tag ${tag} ${isDryRun ? "--dry-run" : ""}`
+        .cwd(packageDir)
+        .quiet();
+
+    if (result.exitCode === 0) {
+      if (isDryRun) {
+        console.log(`   ✅ Dry run completed for ${pkg.name}@${pkg.version}`);
       } else {
-        console.error(
-          `   ❌ Failed to publish ${pkg.name}. This might be because the package is already published.`,
-        );
-        console.error(`   📄 stdout: ${result.stdout.toString()}`);
-        console.error(`   📄 stderr: ${result.stderr.toString()}`);
+        console.log(`   ✅ Successfully published ${pkg.name}@${pkg.version} with tag "${tag}"`);
       }
+    } else {
+      console.error(
+        `   ❌ Failed to ${isDryRun ? "dry run" : "publish"} ${pkg.name}. This might be because the package is already published.`,
+      );
+      console.error(`   📄 stdout: ${result.stdout.toString()}`);
+      console.error(`   📄 stderr: ${result.stderr.toString()}`);
     }
   } catch (error) {
-    console.error(`   ❌ Error publishing ${pkg.name}:`, error);
+    console.error(`   ❌ Error publishing ${pkg.name}:\n`, error);
   }
 
   console.log();
