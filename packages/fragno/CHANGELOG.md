@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.0.5
+
+### Patch Changes
+
+- b9450b1: Run release process after CI
+
 ## 0.0.4
 
 ### Patch Changes

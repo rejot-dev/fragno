@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/example-fragment",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "exports": {
     ".": {
       "development": {
