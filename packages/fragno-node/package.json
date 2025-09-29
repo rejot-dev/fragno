@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/node",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "exports": {
     ".": {
       "bun": "./fragno-node.ts",
