@@ -15,42 +15,34 @@ export default function Frameworks({ className }: { className?: string }) {
   const [mouseX, setMouseX] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(1);
   const [hydrated, setHydrated] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (window.innerWidth < 1024) {
+      return;
+    }
     setHydrated(true);
 
-    // Detect mobile devices
-    const checkIsMobile = () => {
-      return window.innerWidth < 768 || "ontouchstart" in window || navigator.maxTouchPoints > 0;
-    };
-
     const handlePointerMove = (e: PointerEvent) => {
-      if (!isMobile) {
-        setMouseX(e.clientX);
-      }
+      setMouseX(e.clientX);
     };
 
     const handleResize = () => {
       setViewportWidth(window.innerWidth || 1);
-      setIsMobile(checkIsMobile());
     };
 
     // Initialize
     handleResize();
     setMouseX(window.innerWidth / 2);
 
-    if (!isMobile) {
-      window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    }
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("resize", handleResize);
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isMobile]);
+  }, []);
 
   const items = useMemo(() => {
     return [
@@ -61,6 +53,17 @@ export default function Frameworks({ className }: { className?: string }) {
       { name: "Next.js", element: <Nextjs className="size-12 text-gray-900 dark:text-white" /> },
       { name: "Nuxt", element: <Nuxt className="size-12 text-green-400 dark:text-white" /> },
       { name: "Node.js", element: <Nodejs className="size-12 text-green-600" /> },
+      {
+        name: "Go to Docs",
+        element: (
+          <a
+            href="/docs/frameworks"
+            className="flex size-12 items-center justify-center rounded-md border border-dashed border-gray-300 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
+          >
+            More
+          </a>
+        ),
+      },
     ];
   }, []);
 
@@ -88,7 +91,7 @@ export default function Frameworks({ className }: { className?: string }) {
   }, [mouseX, viewportWidth, items.length]);
 
   const getIntensityForIndex = (index: number): number => {
-    if (!hydrated || isMobile) {
+    if (!hydrated) {
       // SSR, no-JS fallback, or mobile: everything stays grayscale
       return 0;
     }
@@ -122,16 +125,16 @@ export default function Frameworks({ className }: { className?: string }) {
       <div className="space-y-4 text-center">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Frameworks</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          The majority of popular frameworks are already supported by Fragno. See{" "}
+          These frameworks{" "}
           <a href="/docs/frameworks" className="text-blue-500 hover:underline">
-            our docs
+            and more
           </a>{" "}
-          for more info.
+          are already supported
         </p>
       </div>
       <div
         ref={gridRef}
-        className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7"
+        className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8"
       >
         {items.map((item, index) => {
           const intensity = getIntensityForIndex(index);
