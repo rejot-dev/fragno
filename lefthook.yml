@@ -4,15 +4,18 @@
 pre-commit:
   parallel: true
   jobs:
-    - name: eslint
-      run: bunx eslint --fix --no-warn-ignored "{staged_files}"
     - name: prettier
+      priority: 0
       run:
         sh -c 'bunx prettier --ignore-unknown --check "{staged_files}"; code=$?; bunx prettier
         --ignore-unknown --write "{staged_files}"; exit $code'
+    - name: eslint
+      run: bunx eslint --fix --no-warn-ignored "{staged_files}"
     - name: build & type-check
+      priority: 1
       run: bunx turbo run build types:check
       glob: "{*.ts,*.tsx,tsconfig.json}"
     - name: test
+      priority: 1
       run: bunx vitest run --allowOnly=false
       glob: "{*.ts,tsconfig.json}"

@@ -7,31 +7,31 @@ author: "Wilco Kruijer"
 
 ## Libraries are _not_ sufficient
 
-Traditional libraries are usually built to integrate on _either_ the front-end _or_ the back-end,
+Traditional libraries are usually built to integrate on _either_ the frontend _or_ the backend,
 leaving the library implementer responsible for the glue code. Many, if not most, domains span both
 sides. Libraries take away some of the implementation burden, but this is not enough. Every project
 demands the re-implementation and custom wiring of the library.
 
-Take an AI/LLM chatbot: on the front-end, the user interaction is the heart of the experience, while
-the back-end holds API keys and handles function calling. If we look at the `openai` library, it
-only provides the back-end functionality. The user is responsible for defining routes and handling
+Take an AI/LLM chatbot: on the frontend, the user interaction is the heart of the experience, while
+the backend holds API keys and handles function calling. If we look at the `openai` library, it only
+provides the backend functionality. The user is responsible for defining routes and handling
 communication. Function calling requires code on both sides, you'd probably also want to support
 streaming responses. This all is to be implemented by the user.
 
-This is an example of a domain where most glue is in the communication between the front-end and the
-back-end. There's also webhooks, a form of integration between back-end services. Libraries
-typically provide helpers, but not much else.
+This is an example of a domain where most glue is in the communication between the frontend and the
+backend. There's also webhooks, a form of integration between backend services. Libraries typically
+provide helpers, but not much else.
 
 Some examples of domains that could use deeper integration are:
 
-- **Authentication**: the front-end needs login forms and redirects; the back-end verifies and
+- **Authentication**: the frontend needs login forms and redirects; the backend verifies and
   retrieves data from third-party providers.
 - **Payments**: receiving updates from the payment provider is key to follow the customer lifecycle.
 - **Email**: send emails, track bounces, and open rates.
 
 When extending the AI example to include _"Deep Research"_ we see that glue code on all sides comes
-into play: the front-end sets up the research, and the back-end integrates function calls and
-handles webhooks for updates from the LLM provider.
+into play: the frontend sets up the research, and the backend integrates function calls and handles
+webhooks for updates from the LLM provider.
 
 Imagine a code base after adding deep research functionality to your back office dashboard. **It's
 all over the place.** Integration points are everywhere and it's easy to lose track. How many files
@@ -42,7 +42,7 @@ are you touching when migrating from the `completions` to `responses` API? [^10]
     been superseded by the `responses` API. See
     [Migrate to the Responses API](https://platform.openai.com/docs/guides/migrate-to-responses).
 
-And it's not limited to the front-end/back-end divide. Let's say we're integrating with a company
+And it's not limited to the frontend/backend divide. Let's say we're integrating with a company
 called "IBAN Check, EU-Inc.", They expose a single route to check whether a person's name matches a
 bank-account number:
 
@@ -63,14 +63,14 @@ Presumably, in the initial implementation this API is only called in some KYC ba
 However, a case is bound to come up where a verification has failed and someone in the support team
 wants to verify the result. We have to get out the glue (code) again.
 
-It would have been great if the company had the ability to define internal API routes and a
-front-end function to go with it.
+It would have been great if the company had the ability to define internal API routes and a frontend
+function to go with it.
 
 ## How to make this better?
 
 So how do we go about solving this?
 
-### Back-end
+### Backend
 
 If there's only one takeaway from the earlier problem statement, it's this: **libraries need to be
 able to define API routes.**
@@ -87,11 +87,11 @@ The goal should be simplicity. The library user should only need to write a coup
 in their own codebase to start using a library. Anything more, and we're back to pushing complexity
 onto the user instead of the library.
 
-### Front-end
+### Frontend
 
-On the front-end side, there's also standardization around a few key abstractions. The most
-important one is reactivity: re-rendering the UI whenever data changes. Every major modern framework
-builds on this primitive, even if the implementations differ. React, Vue, Svelte, Solid, etc.
+On the frontend side, there's also standardization around a few key abstractions. The most important
+one is reactivity: re-rendering the UI whenever data changes. Every major modern framework builds on
+this primitive, even if the implementations differ. React, Vue, Svelte, Solid, etc.
 
 Data fetching is more diverse, but these days most developers prefer a TanStack Query-style
 approach. With it, you can declaratively define data-fetching logic with automatic caching,
@@ -126,19 +126,19 @@ application, by mounting them on a specific path in the application.
 The integration points the user has to deal with should be as minimal as possible. Only a couple
 lines of code, max.
 
-**Back-end**
+**Backend**
 
 The following code snippets show how a user would integrate a Fragno library into their application.
 As you can see, a bunch of frameworks are already supported.
 
-<include>../.includes/blog/fragno-introduction/users-back-end.md</include>
+<include>../.includes/blog/fragno-introduction/users-backend.md</include>
 
-**Front-end**
+**Frontend**
 
-Like the back-end component, it only takes a few lines of code to integrate. The `useFragno`
-function is framework-specific, and accommodates the reactivity of the framework.
+Like the backend component, it only takes a few lines of code to integrate. The `useFragno` function
+is framework-specific, and accommodates the reactivity of the framework.
 
-<include>../.includes/blog/fragno-introduction/users-front-end.md</include>
+<include>../.includes/blog/fragno-introduction/users-frontend.md</include>
 
 ### Usage
 
