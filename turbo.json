@@ -13,7 +13,8 @@
         ".react-router/**",
         ".output/**",
         ".source/**",
-        ".svelte-kit/**"
+        ".svelte-kit/**",
+        "build/**"
       ]
     },
     "types:check": {

@@ -1,5 +1,9 @@
 {
-  "private": true,
+  "name": "@fragno-dev/root",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git"
+  },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",
     "@eslint/js": "^9.36.0",
@@ -11,7 +15,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-refresh": "^0.4.22",
     "eslint-plugin-tailwindcss": "^3.18.2",
-    "lefthook": "^1.13.4",
+    "lefthook": "^1.13.5",
     "nanostores": "^1.0.1",
     "prettier": "3.6.2",
     "prettier-plugin-astro": "^0.14.1",
@@ -28,7 +32,10 @@
     "node": ">=22",
     "bun": ">=1.2.20"
   },
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
   "packageManager": "bun@1.2.20",
+  "private": true,
   "scripts": {
     "dev": "turbo watch --ui tui dev",
     "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
@@ -43,18 +50,15 @@
     "build:ui": "turbo watch --ui tui build",
     "build:clean": "turbo run build --force",
     "types:check": "turbo run types:check",
-    "types:check:watch": "turbo watch types:check"
+    "types:check:watch": "turbo watch types:check",
+    "ci:version": "changeset version && bun run scripts/src/update-bun-lock-versions.ts",
+    "ci:publish": "bun run scripts/src/publish-packages.ts --access public && changeset tag",
+    "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text bun.lock"
   },
   "workspaces": [
     "examples/*",
     "packages/*",
     "packages-private/*",
     "scripts"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rejot-dev/fragno.git"
-  },
-  "homepage": "https://fragno.dev",
-  "license": "MIT"
+  ]
 }

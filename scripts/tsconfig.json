@@ -1,6 +1,4 @@
 {
-  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
-  "compilerOptions": {
-    "types": ["bun-types"]
-  }
+  "include": ["src/**/*"],
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json"
 }

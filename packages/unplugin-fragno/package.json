@@ -86,14 +86,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown -w",
     "types:check": "tsc --noEmit",
-    "lint": "eslint .",
-    "play": "npm -C playground run dev",
-    "prepublishOnly": "npm run build",
-    "release": "bumpp && pnpm publish",
-    "start": "tsx src/index.ts",
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
     "test": "vitest"
   },
   "peerDependencies": {
@@ -138,15 +133,14 @@
     "babel-dead-code-elimination": "^1.0.6"
   },
   "devDependencies": {
-    "@fragno-private/typescript-config": "workspace:*",
     "@antfu/eslint-config": "^4.13.2",
+    "@fragno-private/typescript-config": "workspace:*",
     "@nuxt/kit": "^4.0.3",
     "@nuxt/schema": "^4.0.3",
     "@types/babel__core": "^7.20.5",
     "@types/babel__generator": "^7.6.8",
     "@types/babel__traverse": "^7.20.5",
     "@types/node": "^22.15.21",
-    "bumpp": "^10.1.1",
     "dedent": "^1.7.0",
     "eslint": "^9.27.0",
     "nodemon": "^3.1.10",
