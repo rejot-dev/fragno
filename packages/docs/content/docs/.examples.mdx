@@ -399,16 +399,13 @@ export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(todos);
 ```typescript title="components/TodoApp.tsx"
 "use client";
 
-import { createTodosClient } from "@/lib/todos-fragment";
-import { useFragno } from "@fragno-dev/core/react";
+import { createTodosClient } from "@/lib/todos-fragment/react";
 import { useState } from "react";
 
-const todosClient = createTodosClient({
+const { useTodos, useCreateTodo, useUpdateTodo, useDeleteTodo } = createTodosClient({
   baseUrl: typeof window !== "undefined" ? window.location.origin : "",
   mountRoute: "/api/todos",
 });
-
-const { useTodos, useCreateTodo, useUpdateTodo, useDeleteTodo } = useFragno(todosClient);
 
 export default function TodoApp() {
   const [newTodoText, setNewTodoText] = useState("");
@@ -512,15 +509,12 @@ export default function TodoApp() {
 ```vue title="components/TodoApp.vue"
 <script setup lang="ts">
 import { ref } from "vue";
-import { createTodosClient } from "@/lib/todos-fragment";
-import { useFragno } from "@fragno-dev/core/vue";
+import { createTodosClient } from "@/lib/todos-fragment/vue";
 
-const todosClient = createTodosClient({
+const { useTodos, useCreateTodo, useUpdateTodo, useDeleteTodo } = createTodosClient({
   baseUrl: window.location.origin,
   mountRoute: "/api/todos",
 });
-
-const { useTodos, useCreateTodo, useUpdateTodo, useDeleteTodo } = useFragno(todosClient);
 
 const newTodoText = ref("");
 const todos = useTodos();

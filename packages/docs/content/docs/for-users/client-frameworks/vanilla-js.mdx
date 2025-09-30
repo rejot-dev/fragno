@@ -5,14 +5,12 @@ description: Learn how to integrate Fragno fragments into your JavaScript fronte
 
 Vanilla JavaScript support is included in the `@fragno-dev/core` package.
 
-To start, create a client instance and call the Vanilla JavaScript `useFragno` function.
+To start, import the Vanilla JavaScript client creator from the fragment package.
 
 ```typescript title="lib/example-fragment-client.ts"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/vanilla";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vanilla";
 
-const exampleFragmentClient = createExampleFragmentClient();
-export const exampleFragment = useFragno(exampleFragmentClient);
+export const exampleFragment = createExampleFragmentClient();
 ```
 
 ## Basic Usage
