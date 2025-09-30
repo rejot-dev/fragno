@@ -13,6 +13,13 @@ export const metadata: Metadata = {
     default: "Fragno",
   },
   description: "Fragno is the toolkit for building full-stack TypeScript libraries.",
+  openGraph: {
+    images: "/social.webp",
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: "/social.webp",
+  },
 };
 
 export default function Layout({ children }: LayoutProps<"/">) {
