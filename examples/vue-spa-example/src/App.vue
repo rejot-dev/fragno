@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/vue";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vue";
 import { ref, computed } from "vue";
 
-const exampleFragmentClient = createExampleFragmentClient();
-const { useData } = useFragno(exampleFragmentClient);
+const { useData } = createExampleFragmentClient();
 
 const refreshKey = ref(0);
 const shouldTriggerError = ref(false);
