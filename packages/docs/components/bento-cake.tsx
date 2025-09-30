@@ -4,10 +4,7 @@ import { Cake } from "@/components/logos/cakes";
 export default function BentoCake({ className }: { className?: string }) {
   return (
     <div
-      className={cn(
-        "mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 p-4 md:grid-cols-2",
-        className,
-      )}
+      className={cn("mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-2", className)}
     >
       {/* Library - First on mobile, top-left on desktop */}
       <div className="bg-white/94 flex flex-col items-center justify-center rounded-2xl border p-6 md:order-1 dark:bg-slate-900/75">
