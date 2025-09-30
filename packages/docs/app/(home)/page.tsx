@@ -222,11 +222,10 @@ export function createMyFragmentClient() {
       id: "workflow-sketch",
       label: "User",
       accent: "from-amber-500/80 via-orange-500/70 to-rose-500/80",
-      code: `import { useFragno } from "@fragno-dev/core/react";
-import { createMyFragmentClient } from "example-fragment";
+      code: `import { createMyFragmentClient } from "example-fragment/react";
 
 const { useChatStream, useAggregatedMessage }
-    = useFragno(createMyFragmentClient());
+    = createMyFragmentClient();
 
 export function Chat() {
   const { mutate, loading } = useChatStream();

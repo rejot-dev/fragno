@@ -58,10 +58,9 @@ export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(fragment);
 
 ```ts
 // React
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/react";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/react";
 
-const example = useFragno(createExampleFragmentClient());
+const example = createExampleFragmentClient();
 
 export function Todos() {
   const { data, loading, error } = example.useTodos({ query: { done: false } });
@@ -142,7 +141,7 @@ No hidden framework magic, no re‑implementation per target.
 ## Try it
 
 1. Install a fragment, mount its handler.
-2. Create the client with `useFragno` for your UI framework.
+2. Create the client for your UI framework.
 3. Call a hook/composable and ship.
 
 If you’re authoring a library today, make it a Fragment. Own the full stack. Treat frameworks as
