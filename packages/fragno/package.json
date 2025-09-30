@@ -44,29 +44,11 @@
       "types": "./dist/client/client.svelte.d.ts",
       "default": "./dist/client/client.svelte.js"
     },
-    "./astro": {
-      "bun": "./src/integrations/astro.ts",
-      "development": "./src/integrations/astro.ts",
-      "types": "./dist/integrations/astro.d.ts",
-      "default": "./dist/integrations/astro.js"
-    },
-    "./next-js": {
-      "bun": "./src/integrations/next-js.ts",
-      "development": "./src/integrations/next-js.ts",
-      "types": "./dist/integrations/next-js.d.ts",
-      "default": "./dist/integrations/next-js.js"
-    },
     "./react-ssr": {
       "bun": "./src/integrations/react-ssr.ts",
       "development": "./src/integrations/react-ssr.ts",
       "types": "./dist/integrations/react-ssr.d.ts",
       "default": "./dist/integrations/react-ssr.js"
-    },
-    "./svelte-kit": {
-      "bun": "./src/integrations/svelte-kit.ts",
-      "development": "./src/integrations/svelte-kit.ts",
-      "types": "./dist/integrations/svelte-kit.d.ts",
-      "default": "./dist/integrations/svelte-kit.js"
     },
     "./package.json": "./package.json"
   },

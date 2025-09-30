@@ -11,7 +11,6 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "dependencies": {
-    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/example-fragment": "workspace:*"
   },
   "devDependencies": {

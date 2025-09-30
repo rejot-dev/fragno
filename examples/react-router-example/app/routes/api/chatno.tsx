@@ -3,12 +3,12 @@ import { createChatno } from "../../chatno/chatno.server";
 
 // For GET
 export async function loader({ request }: Route.LoaderArgs) {
-  const chatno = createChatno();
-  return await chatno.handler(request);
+  const { loader } = createChatno().handlersFor("react-router");
+  return await loader(request);
 }
 
 // For POST, PUT, PATCH, DELETE, etc
 export async function action({ request }: Route.ActionArgs) {
-  const chatno = createChatno();
-  return await chatno.handler(request);
+  const { action } = createChatno().handlersFor("react-router");
+  return await action(request);
 }

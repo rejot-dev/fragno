@@ -1,7 +1,6 @@
 import { createExampleFragment } from "@fragno-dev/example-fragment";
-import { toAstroHandler } from "@fragno-dev/core/astro";
 
 const exampleFragment = createExampleFragment({});
 
-export const { ALL } = toAstroHandler(exampleFragment.handler);
+export const { ALL } = exampleFragment.handlersFor("astro");
 export const prerender = false;
