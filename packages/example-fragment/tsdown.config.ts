@@ -15,4 +15,19 @@ export default defineConfig([
     platform: "node",
     outDir: "./dist/node",
   },
+  {
+    ignoreWatch: ["./dist"],
+    entry: [
+      "./src/client/react.ts",
+      "./src/client/svelte.ts",
+      "./src/client/vanilla.ts",
+      "./src/client/vue.ts",
+    ],
+    dts: {
+      sourcemap: true,
+    },
+    platform: "browser",
+    outDir: "./dist/browser/client",
+    plugins: [unpluginFragno({ platform: "browser" })],
+  },
 ]);

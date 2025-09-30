@@ -2,11 +2,9 @@
   import { writable } from "svelte/store";
   import DataDisplay from "$lib/components/DataDisplay.svelte";
 
-  import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-  import { useFragno } from "@fragno-dev/core/svelte";
+  import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
 
-  const exampleFragmentClient = createExampleFragmentClient();
-  const { useHash, useSampleMutator } = useFragno(exampleFragmentClient);
+  const { useHash, useSampleMutator } = createExampleFragmentClient();
 
   const refreshKey = writable("hey");
   const shouldTriggerError = writable(false);

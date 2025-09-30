@@ -1,14 +1,12 @@
 <script lang="ts">
   import { derived, type Writable } from "svelte/store";
   import { onMount, onDestroy } from "svelte";
-  import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-  import { useFragno } from "@fragno-dev/core/svelte";
+  import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
 
   export let refreshKey: Writable<string>;
   export let shouldTriggerError: Writable<boolean>;
 
-  const exampleFragmentClient = createExampleFragmentClient();
-  const { useData } = useFragno(exampleFragmentClient);
+  const { useData } = createExampleFragmentClient();
 
   const {
     loading,

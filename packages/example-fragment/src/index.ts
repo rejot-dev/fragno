@@ -127,7 +127,7 @@ export function createExampleFragment(
   );
 }
 
-export function createExampleFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
   const b = createClientBuilder(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
 
   return {

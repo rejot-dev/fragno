@@ -1,5 +1,3 @@
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/react";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/react";
 
-const exampleFragmentClient = createExampleFragmentClient();
-export const exampleFragment = useFragno(exampleFragmentClient);
+export const exampleFragment = createExampleFragmentClient();

@@ -59,11 +59,9 @@ const initialData = exampleFragment.services.getData();
 
     <script>
       // Client-side JavaScript for interactivity
-      import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-      import { useFragno } from "@fragno-dev/core/vanilla";
+      import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vanilla";
 
-      const exampleFragmentClient = createExampleFragmentClient();
-      const { useData, useSampleMutator } = useFragno(exampleFragmentClient);
+      const { useData, useSampleMutator } = createExampleFragmentClient();
 
       // Initialize client-side data hook
       const dataHook = useData();

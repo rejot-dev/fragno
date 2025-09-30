@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-  import { useFragno } from "@fragno-dev/core/svelte";
+  import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
   let refreshKey = $state("hey");
 
-  const exampleFragmentClient = createExampleFragmentClient();
-  const { useData } = useFragno(exampleFragmentClient);
+  const { useData } = createExampleFragmentClient();
 
   const { loading, data, error } = useData({
     query: {
