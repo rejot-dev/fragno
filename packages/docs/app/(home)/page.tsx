@@ -32,9 +32,28 @@ function Hero() {
       </div>
 
       <h1 className="text-fd-foreground text-6xl font-extrabold tracking-tight md:text-7xl dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Ship full-stack
+        Build Full-
+        <span className="text-fd-foreground relative inline-block dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
+          Stack
+          <span className="absolute -right-3 -top-2 inline-flex rotate-12 items-center md:-right-7 md:-top-3">
+            <span className="relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -inset-0.5 -z-10 rounded-full bg-gradient-to-r from-indigo-500/30 to-fuchsia-500/30 blur-md"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-white/10"
+              />
+
+              <span className="text-[11px] font-semibold tracking-wider md:text-xs">
+                Developer Beta
+              </span>
+            </span>
+          </span>
+        </span>
         <br />
-        libraries
+        Libraries
       </h1>
       <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl">
         <span>
@@ -158,7 +177,7 @@ function WhatFragnoProvides() {
   const providesTabs = [
     {
       id: "server-core",
-      label: "Route Definition",
+      label: "Server",
       accent: "from-sky-500/80 via-blue-500/70 to-indigo-500/80",
       code: `import { defineRoute } from "@fragno-dev/core";
 import { z } from "zod";
@@ -181,7 +200,7 @@ export const route = defineRoute({
     },
     {
       id: "client-builder",
-      label: "Client Builder",
+      label: "Client",
       accent: "from-rose-500/80 via-fuchsia-500/70 to-purple-500/80",
       code: `import { createClientBuilder } from "@fragno-dev/core/client";
 import { computed } from "nanostores";
@@ -270,7 +289,7 @@ export function Chat() {
             and the user is responsible for the glue-code.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
-            A <u>Fragment</u> does both, it's a full-stack library. The user integrates with only a
+            A <u>Fragment</u> does both, it's a full-stack library. Users integrate with only a
             couple lines of code. No glue.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">10x the developer experience.</p>
@@ -319,8 +338,8 @@ export function Chat() {
               )}
               {activeTab === "workflow-sketch" && (
                 <p className="text-fd-muted-foreground mb-4 text-sm">
-                  Your user has a seamless experience integrating your Fragment. They see typed,
-                  reactive hooks for any framework.
+                  Your user has a seamless experience integrating your Fragment. They get typed,
+                  reactive hooks for React, Vue, or Svelte.
                 </p>
               )}
               <FragnoCodeBlock
@@ -365,7 +384,7 @@ export function Chat() {
 
 function DocsSection() {
   return (
-    <section className="w-full max-w-4xl space-y-8">
+    <section className="w-full max-w-5xl space-y-8">
       <div className="space-y-4 text-center">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Documentation</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
@@ -424,7 +443,7 @@ function DocsSection() {
 
 function BlogSection() {
   return (
-    <section className="mx-auto mt-8 w-full max-w-3xl">
+    <section className="mx-auto w-full max-w-5xl">
       <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
         {/* Background elements similar to blog page */}
         <div className="dark:from-zinc-400/3 dark:via-neutral-400/3 dark:to-stone-400/3 absolute inset-0 bg-gradient-to-r from-zinc-500/5 via-neutral-500/5 to-stone-500/5" />
@@ -459,15 +478,18 @@ function BlogSection() {
                 Introduction to Fragno
               </h3>
               <p className="mb-4 text-gray-600 dark:text-gray-300">
-                Understand the philosophy and vision behind Fragno. Learn why we built a
-                framework-agnostic approach to full-stack TypeScript development.
+                Understand the philosophy and vision behind Fragno. Learn why we think a
+                framework-agnostic approach to building full-stack libraries is a great choice.
               </p>
-              <Link
+              {/* <Link
                 href="/blog/fragno-introduction"
                 className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
               >
                 Read Introduction
-              </Link>
+              </Link> */}
+              <div className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 font-medium text-gray-500 shadow-sm dark:bg-gray-800 dark:text-gray-400">
+                <span>Check Back Soon</span>
+              </div>
             </div>
           </div>
         </div>
@@ -490,8 +512,9 @@ export default function HomePage() {
       <Frameworks />
       <WhatFragnoProvides />
       {/* <Features /> */}
-      <DocsSection />
       <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+
+      <DocsSection />
       <BlogSection />
     </main>
   );
