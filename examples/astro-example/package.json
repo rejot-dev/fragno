@@ -10,7 +10,6 @@
     "types:check": "astro check"
   },
   "dependencies": {
-    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/example-fragment": "workspace:*",
     "astro": "^5.13.2",
     "typescript": "^5.9.2"

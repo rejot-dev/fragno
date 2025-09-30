@@ -31,7 +31,6 @@
     "examples/astro-example": {
       "name": "@fragno-example/astro",
       "dependencies": {
-        "@fragno-dev/core": "workspace:*",
         "@fragno-dev/example-fragment": "workspace:*",
         "astro": "^5.13.2",
         "typescript": "^5.9.2",
@@ -106,7 +105,6 @@
     "examples/svelte-kit-example": {
       "name": "@fragno-example/svelte-kit",
       "dependencies": {
-        "@fragno-dev/core": "workspace:*",
         "@fragno-dev/example-fragment": "workspace:*",
       },
       "devDependencies": {

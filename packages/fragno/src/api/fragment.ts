@@ -28,6 +28,34 @@ export interface FragnoPublicClientConfig {
   baseUrl?: string;
 }
 
+type AstroHandlers = {
+  ALL: (req: Request) => Promise<Response>;
+};
+
+type ReactRouterHandlers = {
+  loader: (req: Request) => Promise<Response>;
+  action: (req: Request) => Promise<Response>;
+};
+
+type StandardHandlers = {
+  GET: (req: Request) => Promise<Response>;
+  POST: (req: Request) => Promise<Response>;
+  PUT: (req: Request) => Promise<Response>;
+  DELETE: (req: Request) => Promise<Response>;
+  PATCH: (req: Request) => Promise<Response>;
+  HEAD: (req: Request) => Promise<Response>;
+  OPTIONS: (req: Request) => Promise<Response>;
+};
+
+type HandlersByFramework = {
+  astro: AstroHandlers;
+  "react-router": ReactRouterHandlers;
+  nextjs: StandardHandlers;
+  "svelte-kit": StandardHandlers;
+};
+
+type FullstackFrameworks = keyof HandlersByFramework;
+
 export interface FragnoInstantiatedFragment<
   TRoutes extends readonly AnyFragnoRouteConfig[] = [],
   TDeps = EmptyObject,
@@ -36,6 +64,7 @@ export interface FragnoInstantiatedFragment<
   config: FragnoFragmentSharedConfig<TRoutes>;
   deps: TDeps;
   services: TServices;
+  handlersFor: <T extends FullstackFrameworks>(framework: T) => HandlersByFramework[T];
   handler: (req: Request) => Promise<Response>;
   mountRoute: string;
   withMiddleware: (
@@ -178,6 +207,33 @@ export function createFragment<
       middlewareHandler = handler;
 
       return fragment;
+    },
+    handlersFor: <T extends FullstackFrameworks>(framework: T): HandlersByFramework[T] => {
+      const handler = fragment.handler;
+      const allHandlers = {
+        astro: { ALL: handler },
+        "react-router": { loader: handler, action: handler },
+        nextjs: {
+          GET: handler,
+          POST: handler,
+          PUT: handler,
+          DELETE: handler,
+          PATCH: handler,
+          HEAD: handler,
+          OPTIONS: handler,
+        },
+        "svelte-kit": {
+          GET: handler,
+          POST: handler,
+          PUT: handler,
+          DELETE: handler,
+          PATCH: handler,
+          HEAD: handler,
+          OPTIONS: handler,
+        },
+      } satisfies HandlersByFramework;
+
+      return allHandlers[framework];
     },
     handler: async (req: Request) => {
       const url = new URL(req.url);
