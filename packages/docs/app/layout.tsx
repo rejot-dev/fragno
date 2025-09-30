@@ -7,12 +7,18 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const baseUrl =
+  process.env.NODE_ENV === "development"
+    ? new URL("http://localhost:3000")
+    : new URL(`https://fragno.dev`);
+
 export const metadata: Metadata = {
   title: {
     template: "%s | Fragno",
     default: "Fragno",
   },
   description: "Fragno is the toolkit for building full-stack TypeScript libraries.",
+  metadataBase: baseUrl,
   openGraph: {
     images: "/social.webp",
   },
