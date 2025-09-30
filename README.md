@@ -53,11 +53,8 @@ On the frontend, the user gets fully-typed TanStack Query-style hooks.
 
 ```typescript
 // src/app/my-component.tsx
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/react";
-
-const exampleFragmentClient = createExampleFragmentClient();
-const { useTodos, useAddTodo } = useFragno(exampleFragmentClient);
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/react";
+const { useTodos, useAddTodo } = createExampleFragmentClient();
 
 export default function MyComponent() {
   const { data: todos, loading: todosLoading } = useTodos();
