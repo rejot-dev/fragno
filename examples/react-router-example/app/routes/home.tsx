@@ -1,7 +1,6 @@
 import type { Route } from "./+types/home";
 import { WelcomeShell, WelcomeHero, WelcomeExperiments } from "../welcome/welcome";
-import { createChatnoClient } from "@fragno-dev/chatno";
-import { useFragno } from "@fragno-dev/core/react";
+import { createChatnoClient } from "@fragno-dev/chatno/react";
 import { useState } from "react";
 import { createChatno } from "~/chatno/chatno.server";
 
@@ -18,8 +17,7 @@ export function loader() {
   };
 }
 
-const chatnoClient = createChatnoClient();
-const { useSendMessage } = useFragno(chatnoClient);
+const { useSendMessage } = createChatnoClient();
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { openaiURL } = loaderData;

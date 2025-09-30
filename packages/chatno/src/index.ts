@@ -77,8 +77,8 @@ export function createChatno(
   return createFragment(chatnoDefinition, { ...chatnoConfig, ...config }, routes, fragnoConfig);
 }
 
-// Client-side factory
-export function createChatnoClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+// Generic client-side factory
+export function createChatnoClients(fragnoConfig: FragnoPublicClientConfig) {
   const cb = createClientBuilder(chatnoDefinition, fragnoConfig, routes);
 
   const chatStream = cb.createMutator("POST", "/chat/stream");
