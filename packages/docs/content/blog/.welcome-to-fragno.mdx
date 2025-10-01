@@ -47,11 +47,10 @@ Two steps and you’re done:
 
 ```ts
 // Next.js
-import { toNextJsHandler } from "@fragno-dev/core/next-js";
 import { createExampleFragment } from "@fragno-dev/example-fragment";
 
 const fragment = createExampleFragment({ someApiKey: process.env.EXAMPLE_API_KEY! });
-export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(fragment);
+export const { GET, POST, PUT, PATCH, DELETE } = fragment.handlersFor("nextjs");
 ```
 
 2. Create the client and use it anywhere.
