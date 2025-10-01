@@ -61,7 +61,13 @@ import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
 
 export default defineConfig([
   {
-    entry: "./src/index.ts",
+    entry: [
+      "./src/index.ts",
+      "./src/client/react.ts",
+      "./src/client/svelte.ts",
+      "./src/client/vanilla.ts",
+      "./src/client/vue.ts",
+    ],
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
@@ -73,6 +79,9 @@ export default defineConfig([
   },
 ]);
 ```
+
+We need to add an entrypoint for every supported frontend framework, so that the user's application
+only imports the correct bundle.
 
 <Callout title="Plugin in the server build" type="info">
   The plugin can be omitted in the server build, because it currently doesn't do anything. This
@@ -86,19 +95,74 @@ As we have now created two builds, we need to set the `exports` field in the `pa
 ```json title="package.json"
 {
   "name": "@fragno-dev/chatno",
-  "exports": {
-    ".": {
-      "types": "./dist/browser/index.d.ts",
-      "browser": "./dist/browser/index.js",
-      "default": "./dist/node/index.js"
-    }
-  },
   "main": "./dist/node/index.js",
   "module": "./dist/node/index.js",
   "types": "./dist/node/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/browser/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./react": {
+      "types": "./dist/browser/client/react.d.ts",
+      "browser": "./dist/browser/client/react.js",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./svelte": {
+      "types": "./dist/browser/client/svelte.d.ts",
+      "browser": "./dist/browser/client/svelte.js",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./vanilla": {
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "browser": "./dist/browser/client/vanilla.js",
+      "default": "./dist/browser/client/vanilla.js"
+    },
+    "./vue": {
+      "types": "./dist/browser/client/vue.d.ts",
+      "browser": "./dist/browser/client/vue.js",
+      "default": "./dist/browser/client/vue.js"
+    }
+  },
   "type": "module"
 }
 ```
 
 The key fields here is "browser". This is all we need to make the user's framework import the
 correct bundle.
+
+<Callout title="The '.' import is server-only." type="warning">
+  Note that the main import ('.') is server-only, and the "main" field as well.
+</Callout>
+
+### External Dependencies
+
+The last thing we need to make sure of, is that the frontend frameworks are handled as external
+dependencies, so that they're not included in your Fragment's bundle.
+
+Most bundlers will look at the `peerDependencies` field in your `package.json` file to determine
+which dependencies to keep out of the bundle.
+
+Make sure to add the following to your `package.json` file:
+
+```json title="package.json"
+{
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "svelte": ">=4.0.0",
+    "vue": ">=3.0.0"
+  }
+}
+```
+
+Alternatively, your bundler might also have support for directly marking dependencies as external in
+your bundler configuration. **This is unnecessary in _most_ cases.**
+
+```typescript title="tsdown.config.ts"
+export default defineConfig([
+  {
+    // ...
+    external: ["react", "svelte", "vue"],
+  },
+]);
+```
