@@ -67,7 +67,7 @@ function Hero() {
           </span>
           stic
         </span>{" "}
-        libraries that embed backend and frontend logic in your users' application
+        libraries that embed backend and frontend logic in your users' applications
       </p>
 
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">

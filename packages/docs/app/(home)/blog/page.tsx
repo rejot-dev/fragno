@@ -15,13 +15,24 @@ export default function Page() {
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-zinc-500/15 via-neutral-500/15 to-stone-500/15 dark:from-zinc-400/10 dark:via-neutral-400/10 dark:to-stone-400/10" />
         <div
-          className="absolute inset-0 opacity-40"
+          className="absolute inset-0 opacity-30"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }}
         />
+        {/* Subtle diagonal stripes */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-20 mix-blend-multiply dark:opacity-10"
+          style={{
+            backgroundImage:
+              "linear-gradient(120deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.05) 75%, transparent 75%, transparent)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        {/* Geometric accents */}
+        <div className="pointer-events-none absolute -right-8 top-8 h-24 w-24 rotate-12 rounded-xl border border-gray-300/60 dark:border-white/10" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+        <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="text-center">
             <h1 className="text-5xl font-bold tracking-tight text-gray-900 sm:text-6xl lg:text-7xl dark:text-white">
               <span className="bg-gradient-to-r from-gray-900 via-zinc-800 to-stone-700 bg-clip-text text-transparent dark:from-gray-100 dark:via-zinc-300 dark:to-stone-400">
@@ -29,8 +40,7 @@ export default function Page() {
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-xl text-gray-600 dark:text-gray-300">
-              Insights, tutorials, and updates from the Fragno ecosystem. Building the future of
-              full-stack TypeScript development.
+              Keep up with the Fragno ecosystem.
             </p>
             <div className="mt-8 flex justify-center">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-sm font-medium text-gray-700 shadow-lg backdrop-blur-sm dark:bg-gray-800/80 dark:text-gray-200">
