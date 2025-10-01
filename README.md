@@ -39,10 +39,9 @@ code.
 ```typescript app/api/example-fragment/[...all]/route.ts
 // app/api/example-fragment/[...all]/route.ts
 import { createExampleFragment } from "@fragno-dev/example-fragment";
-import { toNextJsHandler } from "@fragno-dev/core/next-js";
 
 const exampleFragment = createExampleFragment({});
-export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(exampleFragment);
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("nextjs");
 ```
 
 Similar patterns apply for other frameworks as well.

@@ -384,7 +384,6 @@ Complete Next.js application using the todos fragment:
 
 ```typescript title="app/api/todos/[...all]/route.ts"
 import { createTodos } from "@/lib/todos-fragment";
-import { toNextJsHandler } from "@fragno-dev/core/next-js";
 
 const todos = createTodos({
   maxTodos: 100,
@@ -393,7 +392,7 @@ const todos = createTodos({
   },
 });
 
-export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(todos);
+export const { GET, POST, PUT, PATCH, DELETE } = todos.handlersFor("nextjs");
 ```
 
 ```typescript title="components/TodoApp.tsx"

@@ -190,21 +190,33 @@ export function createTodos(config: TodosConfig, fragnoConfig: FragnoPublicConfi
 
 The last step is to create the client-side Fragment. This object defines how your users will use the
 Fragment on the client-side. These are React-style hooks (or Vue composables, etc). In this example,
-we simply create hooks for the two routes we defined.
+we simply create hooks for the two routes we defined. Library authors must export client hooks for
+each of the supported frameworks.
 
-```typescript title="src/index.ts"
+```typescript title="src/fragment.ts"
 import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 
-export function createTodosClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+export function createTodosClients(fragnoConfig: FragnoPublicClientConfig) {
   const cb = createClientBuilder(todosDefinition, fragnoConfig, [getTodosRoute, addTodoRoute]);
   return {
     useTodos: cb.createHook("/todos"),
     useAddTodo: cb.createMutator("POST", "/todos"),
   };
+}
+```
+
+```typescript title="src/client/react.ts"
+import { createTodosClients } from "../fragment";
+
+import { useFragno } from "@fragno-dev/core/react";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+
+export function createTodosClient(config: FragnoPublicClientConfig = {}) {
+  return useFragno(createTodosClient(config));
 }
 ```
 

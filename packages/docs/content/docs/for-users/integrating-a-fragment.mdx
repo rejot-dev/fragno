@@ -55,10 +55,10 @@ the specific Fragment you are integrating to figure out what configuration is re
 #### Next.js
 
 ```typescript title="app/api/example-fragment/[...all]/route.ts"
-import { toNextJsHandler } from "@fragno-dev/core/next-js";
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
-export const { GET, POST, PUT, PATCH, DELETE } = toNextJsHandler(createExampleFragmentInstance());
+const exampleFragment = createExampleFragmentInstance();
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("nextjs");
 ```
 
 #### React Router v7 / Remix
@@ -82,9 +82,9 @@ export async function action({ request }: Route.ActionArgs) {
 
 ```typescript title="src/pages/api/example-fragment/[...all].ts"
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
-import { toAstroHandler } from "@fragno-dev/core/astro";
 
-export const { ALL } = toAstroHandler(createExampleFragmentInstance().handler);
+const exampleFragment = createExampleFragmentInstance();
+export const { ALL } = exampleFragment.handlersFor("astro");
 export const prerender = false;
 ```
 
@@ -92,9 +92,9 @@ export const prerender = false;
 
 ```ts title="routes/api/example-fragment/[...path].ts"
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
-import { toSvelteHandler } from "@fragno-dev/core/svelte-kit";
 
-export const { GET, POST, PUT, PATCH, DELETE } = toSvelteHandler(createExampleFragmentInstance());
+const exampleFragment = createExampleFragmentInstance();
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("sveltekit");
 export const prerender = false;
 ```
 
