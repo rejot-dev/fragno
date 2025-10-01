@@ -8,9 +8,7 @@ const config = {
 
   turbopack: false,
   output: "standalone",
-  outputFileTracingExcludes: {
-    "/*": ["**/@opennextjs/aws/**"],
-  },
+  devIndicators: undefined,
 };
 
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
