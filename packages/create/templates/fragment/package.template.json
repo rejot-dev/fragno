@@ -1,0 +1,69 @@
+{
+  "description": "A Fragno fragment",
+  "version": "0.0.1",
+  "exports": {
+    ".": {
+      "development": {
+        "browser": "./dist/browser/index.js",
+        "default": "./src/index.ts"
+      },
+      "browser": "./dist/browser/index.js",
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./react": {
+      "development": {
+        "browser": "./dist/browser/client/react.js",
+        "default": "./src/client/react.ts"
+      },
+      "types": "./dist/browser/client/react.d.ts",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./vue": {
+      "development": {
+        "browser": "./dist/browser/client/vue.js",
+        "default": "./src/client/vue.ts"
+      },
+      "types": "./dist/browser/client/vue.d.ts",
+      "default": "./dist/browser/client/vue.js"
+    },
+    "./svelte": {
+      "development": {
+        "browser": "./dist/browser/client/svelte.js",
+        "default": "./src/client/svelte.ts"
+      },
+      "types": "./dist/browser/client/svelte.d.ts",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./vanilla": {
+      "development": {
+        "browser": "./dist/browser/client/vanilla.js",
+        "default": "./src/client/vanilla.ts"
+      },
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "default": "./dist/browser/client/vanilla.js"
+    }
+  },
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "scripts": {
+    "types:check": "tsc --noEmit"
+  },
+  "type": "module",
+  "dependencies": {
+    "@fragno-dev/core": "^0.0.5",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@fragno-dev/unplugin-fragno": "^0.0.1",
+    "@types/node": "^20"
+  },
+  "private": true,
+  "peerDependencies": {
+    "typescript": "^5",
+    "react": ">=18.0.0",
+    "svelte": ">=4.0.0",
+    "vue": ">=3.0.0"
+  }
+}
