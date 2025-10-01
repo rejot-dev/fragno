@@ -1,31 +1,23 @@
 ```ts title="lib/example-fragment-client.ts" tab="React"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/react";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/react";
 
-const exampleFragmentClient = createExampleFragmentClient();
-export const exampleFragment = useFragno(exampleFragmentClient);
+export const exampleFragment = createExampleFragmentClient();
 ```
 
 ```ts title="lib/example-fragment-client.ts" tab="Vue"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/vue";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vue";
 
-const exampleFragmentClient = createExampleFragmentClient();
-export const exampleFragment = useFragno(exampleFragmentClient);
+export const exampleFragment = createExampleFragmentClient();
 ```
 
 ```ts title="lib/example-fragment-client.ts" tab="Svelte"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/svelte";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
 
-const exampleFragmentClient = createExampleFragmentClient();
-export const exampleFragment = useFragno(exampleFragmentClient);
+export const exampleFragment = createExampleFragmentClient();
 ```
 
 ```ts title="lib/example-fragment-client.ts" tab="Vanilla JavaScript"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment";
-import { useFragno } from "@fragno-dev/core/vanilla";
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vanilla";
 
-const exampleFragmentClient = createExampleFragmentClient();
-export const exampleFragment = useFragno(exampleFragmentClient);
+export const exampleFragment = createExampleFragmentClient();
 ```

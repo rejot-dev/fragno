@@ -8,7 +8,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("ne
 ```ts title="server/api/example-fragment/[...all].ts" tab="Nuxt"
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
-export default fromWebHandler(exampleFragment.handler);
+export default fromWebHandler(createExampleFragmentInstance().handler);
 ```
 
 ```ts title="app/routes/api/example-fragment.tsx" tab="React Router v7"

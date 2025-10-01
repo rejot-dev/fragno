@@ -147,29 +147,13 @@ const server = createServer((req, res) => {
 
 Again in a central place, but now for the client-side integration:
 
-```ts title="lib/example-fragment-client.ts" tab="React"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment/react";
+<include>../.includes/blog/fragno-introduction/users-frontend.md</include>
 
-export const exampleFragment = createExampleFragmentClient();
-```
-
-```ts title="lib/example-fragment-client.ts" tab="Vue"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vue";
-
-export const exampleFragment = createExampleFragmentClient();
-```
-
-```ts title="lib/example-fragment-client.ts" tab="Svelte"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
-
-export const exampleFragment = createExampleFragmentClient();
-```
-
-```ts title="lib/example-fragment-client.ts" tab="Vanilla JavaScript"
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vanilla";
-
-export const exampleFragment = createExampleFragmentClient();
-```
+<Callout type="warn" title="File Name">
+  Make sure the field name does **not** end with `.client.ts`. In some frameworks, this makes it so
+  that the file cannot be loaded on the server at all. Meaning it cannot be imported during server
+  render.
+</Callout>
 
 <Callout type="info" title="Mount Route">
   You're free to mount the backend routes on a different route. In that case it's important to pass
