@@ -58,7 +58,7 @@ the specific Fragment you are integrating to figure out what configuration is re
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
 const exampleFragment = createExampleFragmentInstance();
-export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("nextjs");
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("next-js");
 ```
 
 #### React Router v7 / Remix
@@ -94,7 +94,7 @@ export const prerender = false;
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
 const exampleFragment = createExampleFragmentInstance();
-export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("sveltekit");
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("svelte-kit");
 export const prerender = false;
 ```
 

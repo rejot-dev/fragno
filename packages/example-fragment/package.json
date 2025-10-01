@@ -15,7 +15,7 @@
     "./react": {
       "development": {
         "browser": "./dist/browser/client/react.js",
-        "default": "./src/index.ts"
+        "default": "./src/client/react.ts"
       },
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"

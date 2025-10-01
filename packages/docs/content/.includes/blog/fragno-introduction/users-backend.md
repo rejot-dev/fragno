@@ -2,7 +2,7 @@
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
 const exampleFragment = createExampleFragmentInstance();
-export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("nextjs");
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("next-js");
 ```
 
 ```ts title="server/api/example-fragment/[...all].ts" tab="Nuxt"
@@ -12,16 +12,13 @@ export default fromWebHandler(exampleFragment.handler);
 ```
 
 ```ts title="app/routes/api/example-fragment.tsx" tab="React Router v7"
-import type { Route } from "./+types/example-fragment";
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
-export async function loader({ request }: Route.LoaderArgs) {
-  return await createExampleFragmentInstance().handler(request);
-}
+export const handlers = createExampleFragmentInstance().handlersFor("react-router");
 
-export async function action({ request }: Route.ActionArgs) {
-  return await createExampleFragmentInstance().handler(request);
-}
+// Note: React Router requires individual exports, destructured exports don't work
+export const action = handlers.action;
+export const loader = handlers.loader;
 ```
 
 ```ts title="pages/api/example-fragment/[...all].ts" tab="Astro"
@@ -36,7 +33,7 @@ export const prerender = false;
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
 const exampleFragment = createExampleFragmentInstance();
-export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("sveltekit");
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("svelte-kit");
 export const prerender = false;
 ```
 

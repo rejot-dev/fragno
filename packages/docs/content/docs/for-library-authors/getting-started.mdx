@@ -220,6 +220,11 @@ export function createTodosClient(config: FragnoPublicClientConfig = {}) {
 }
 ```
 
+<Callout title="Be sure to include all frameworks" type="warning">
+  For now library authors must explicitly include a stub for every framework, make sure to create
+  this file for others frameworks as well using the respective `useFragno` hooks.
+</Callout>
+
 ## Next Steps
 
 We went over building a basic Fragment. In the next section, we'll cover the advanced features of

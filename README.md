@@ -41,7 +41,7 @@ code.
 import { createExampleFragment } from "@fragno-dev/example-fragment";
 
 const exampleFragment = createExampleFragment({});
-export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("nextjs");
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("next-js");
 ```
 
 Similar patterns apply for other frameworks as well.
