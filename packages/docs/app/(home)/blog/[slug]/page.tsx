@@ -136,12 +136,12 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
 
           {/* Article Header */}
           <header className="mb-12">
-            <h1 className="mb-6 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl dark:text-white">
+            <h1 className="mb-6 max-w-prose text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-6xl dark:text-white">
               {page.data.title}
             </h1>
 
             {page.data.description && (
-              <p className="mb-8 text-xl leading-relaxed text-gray-600 dark:text-gray-300">
+              <p className="mb-8 max-w-prose text-xl leading-relaxed text-gray-600 dark:text-gray-300">
                 {page.data.description}
               </p>
             )}

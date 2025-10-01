@@ -46,7 +46,7 @@ function Hero() {
                 className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-white/10"
               />
 
-              <span className="text-[11px] font-semibold tracking-wider md:text-xs">
+              <span className="select-none text-[11px] font-semibold tracking-wider md:text-xs">
                 Developer Beta
               </span>
             </span>
@@ -480,15 +480,15 @@ function BlogSection() {
                 Understand the philosophy and vision behind Fragno. Learn why we think a
                 framework-agnostic approach to building full-stack libraries is a great choice.
               </p>
-              {/* <Link
+              <Link
                 href="/blog/fragno-introduction"
                 className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
               >
                 Read Introduction
-              </Link> */}
-              <div className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 font-medium text-gray-500 shadow-sm dark:bg-gray-800 dark:text-gray-400">
+              </Link>
+              {/* <div className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 font-medium text-gray-500 shadow-sm dark:bg-gray-800 dark:text-gray-400">
                 <span>Check Back Soon</span>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
@@ -501,7 +501,7 @@ function BlogSection() {
 
 export default function HomePage() {
   return (
-    <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-16">
+    <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-16 md:px-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div className="mx-auto mt-[-80px] h-[520px] w-[820px] rounded-full bg-gradient-to-br from-blue-500/25 via-sky-400/20 to-purple-500/20 opacity-20 blur-3xl dark:opacity-40" />
       </div>

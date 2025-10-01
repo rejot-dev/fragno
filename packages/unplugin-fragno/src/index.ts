@@ -12,6 +12,7 @@ export const unpluginFactory: UnpluginFactory<Options | undefined> = (options = 
 
   return {
     name: "unplugin-fragno",
+
     transformInclude(id) {
       if (id.endsWith(".d.ts")) {
         return false;
