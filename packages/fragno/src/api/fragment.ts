@@ -33,8 +33,8 @@ type AstroHandlers = {
 };
 
 type ReactRouterHandlers = {
-  loader: (req: Request) => Promise<Response>;
-  action: (req: Request) => Promise<Response>;
+  loader: (args: { request: Request }) => Promise<Response>;
+  action: (args: { request: Request }) => Promise<Response>;
 };
 
 type StandardHandlers = {
@@ -50,7 +50,7 @@ type StandardHandlers = {
 type HandlersByFramework = {
   astro: AstroHandlers;
   "react-router": ReactRouterHandlers;
-  nextjs: StandardHandlers;
+  "next-js": StandardHandlers;
   "svelte-kit": StandardHandlers;
 };
 
@@ -212,8 +212,11 @@ export function createFragment<
       const handler = fragment.handler;
       const allHandlers = {
         astro: { ALL: handler },
-        "react-router": { loader: handler, action: handler },
-        nextjs: {
+        "react-router": {
+          loader: ({ request }: { request: Request }) => handler(request),
+          action: ({ request }: { request: Request }) => handler(request),
+        },
+        "next-js": {
           GET: handler,
           POST: handler,
           PUT: handler,
