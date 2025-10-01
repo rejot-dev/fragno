@@ -1,5 +1,12 @@
 # @fragno-dev/core
 
+## 0.0.6
+
+### Patch Changes
+
+- c3ff022: No longer require end-users to install/import @fragno-dev/core when integrating Fragments
+  into their application.
+
 ## 0.0.5
 
 ### Patch Changes
