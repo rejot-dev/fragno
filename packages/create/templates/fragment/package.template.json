@@ -52,7 +52,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@fragno-dev/core": "^0.0.5",
+    "@fragno-dev/core": "^0.0.6",
     "zod": "^4.0.5"
   },
   "devDependencies": {
