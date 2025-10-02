@@ -6,7 +6,7 @@ import { buildToolPkg } from "./package-json.ts";
 
 type TemplateTypes = "fragment";
 // TODO: the others
-export type BuildTools = "esbuild" | "tsdown" | "none";
+export type BuildTools = "esbuild" | "tsdown" | "vite" | "none";
 
 interface CreateOptions {
   path: string;
@@ -33,6 +33,9 @@ export function create(options: CreateOptions) {
       break;
     case "tsdown":
       writeOptionalTemplate(options.path, "builder/tsdown.config.ts");
+      break;
+    case "vite":
+      writeOptionalTemplate(options.path, "builder/vite.config.ts");
       break;
     case "none":
       break;

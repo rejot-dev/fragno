@@ -22,4 +22,13 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
       build: "./esbuild.config.js",
     },
   },
+  vite: {
+    devDependencies: {
+      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
+      vite: "^6.0.0",
+    },
+    scripts: {
+      build: "vite build",
+    },
+  },
 };
