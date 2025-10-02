@@ -8,10 +8,14 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Card, Cards } from "fumadocs-ui/components/card";
 import { Callout } from "fumadocs-ui/components/callout";
 
-Fragno is the <u>fr</u>amework-<u>agno</u>stic toolkit for building full-stack TypeScript libraries
-that work seamlessly across different frameworks such as Next.js and Nuxt. Your users will integrate
-in a couple lines of code. Write your API once, get type-safe clients for React, Vue, and vanilla
-JavaScript automatically.
+Fragno a toolkit for building full-stack TypeScript libraries that work seamlessly across different
+frameworks such as Next.js and Nuxt.
+
+With Fragno:
+
+- **Library authors** write API routes and client-side hooks/logic as part of their library.
+- **Users** integrate a library into their application in a couple lines of code. They can then
+  immediately use library functionality from both the frontend and the backend.
 
 A library built with Fragno is called a **Fragment**.
 
@@ -20,16 +24,38 @@ A library built with Fragno is called a **Fragment**.
 A **Fragment** is a full-stack **library** that:
 
 - Contains both server-side API logic and client-side integration code
-- Works across multiple frameworks (React, Vue, Next.js, Nuxt, etc.)
-- Provides end-to-end type safety
+- Works across multiple frameworks (React, Vue, Next.js, Nuxt, [etc.](./docs/frameworks))
+- Provides end-to-end functionality: type-safe & reactive
 
 Fragments enabled the Fragment-author to write API routes as a library, that will be **embedded**
-into the user's project. Fragno also provides a method for the Fragment-author to create a
+into the user's project. Fragno also provides building blocks for the Fragment-author to create
 client-side integration that's automatically reactive. Fragno's main goal is to make integrating
 into a user's project as simple as possible.
 
 **This differs from traditional libraries** in the sense that a library would usually be imported
 either on the server or client side, and the user would be responsible for the glue-code.
+
+## Benefits
+
+Compared to traditional libraries, Fragno libraries provide:
+
+- **Instant** integration for users: no glue-code required
+- **Frictionless** usage from both the frontend and the backend
+- **Fully integrated** experiences for amazing developer experience
+
+Fragno is the most **developer-friendly** way to ease users into using your API.
+
+## Features
+
+- 🔐 **End-to-end type safety**: routes are typed using Standard Schema and client-side hooks are
+  fully type-safe
+- 🚀 **Built-in state management**: reactive stores with caching built in (TanStack Query-style),
+  using [Nano Stores](https://github.com/nanostores/nanostores)
+- 🔄 **Middleware support**: Users can use middleware for custom request processing such as
+  authentication.
+- 🌊 **Streaming support**: Real-time data with NDJSON (New-line Delimited JSON) streaming
+- 📦 **Automatic code splitting**: code is split on the library level, no added build complexity for
+  end-users.
 
 ## What's Next?
 

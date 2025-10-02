@@ -1,33 +1,54 @@
 # Fragno
 
 Fragno is the <ins>fr</ins>amework-<ins>agno</ins>stic toolkit for building full-stack TypeScript
-libraries that work seamlessly across different frameworks and environments. Your users will
-integrate in a single line of code. Write your API once, get type-safe clients for React, Vue, and
-vanilla JavaScript automatically. Fully type safe.
+libraries that work seamlessly across different frameworks such as Next.js, Nuxt, and
+[way more](https://fragno.dev/docs/frameworks).
+
+With Fragno:
+
+- **Library authors** write API routes and client-side hooks as part of their library.
+- **Users** integrate a library into their application in a couple lines of code. They can then
+  immediately use library functionality from both the frontend and the backend.
+
+A library built with Fragno is called a **Fragment**.
+
+## Fragments
+
+A **Fragment** is a full-stack **library** that:
+
+- Contains both server-side API logic and client-side integration code
+- Works across multiple frameworks (React, Vue, Next.js, Nuxt,
+  [etc.](https://fragno.dev/docs/frameworks))
+- Provides end-to-end functionality: type-safe & reactive
+
+## Quick Start
+
+Start building a full-stack library:
+
+```bash
+bun add @fragno-dev/core
+# or
+npm install @fragno-dev/core
+```
+
+Full documentation is available at [fragno.dev](https://fragno.dev/docs).
+
+- If you're looking to build a Fragment, see the
+  [For Library Authors](https://fragno.dev/docs/for-library-authors/getting-started) section.
+- If you're looking to integrate a Fragment into your project, see the
+  [User Quick Start](https://fragno.dev/docs/user-quick-start) section.
 
 ## Features
 
-- 🔐 **End-to-end type safety** - From server to client, everything is typed
-- 🎯 **Framework agnostic** - Works with React, Vue, Next.js, Nuxt, React Router, with more on the
-  roadmap.
-- 📦 **Automatic code splitting** - Server code never reaches the client bundle
-- 🚀 **Built-in state management** - Reactive stores with caching (TanStack Query-style)
-- 🌊 **Streaming support** - Real-time data with NDJSON (New-line Delimited JSON) streaming
-- 🔄 **Middleware support** - Users can use middleware for custom request processing such as
+- 🔐 **End-to-end type safety**: routes are typed using Standard Schema and client-side hooks are
+  fully type-safe
+- 🚀 **Built-in state management**: reactive stores with caching built in (TanStack Query-style),
+  using [Nano Stores](https://github.com/nanostores/nanostores)
+- 🔄 **Middleware support**: Users can use middleware for custom request processing such as
   authentication.
-- 🛠️ **Developer friendly** - Simple API, great TypeScript support
-
-## Framework Support Matrix
-
-| Client-side Frameworks | Support | —   | Server-side Frameworks  | Support    |
-| ---------------------- | ------- | --- | ----------------------- | ---------- |
-| React                  | ✅      |     | Node.js / Express       | ✅         |
-| Vue                    | ✅      |     | React Router v7 / Remix | ✅         |
-| Vanilla JavaScript     | ✅      |     | Astro                   | ✅         |
-| Svelte                 | ✅      |     | Next.js                 | ✅         |
-|                        |         |     | Nuxt                    | ✅         |
-|                        |         |     | SvelteKit               | ✅         |
-|                        |         |     | Tanstack Start          | 🔄 Planned |
+- 🌊 **Streaming support**: Real-time data with NDJSON (New-line Delimited JSON) streaming
+- 📦 **Automatic code splitting**: code is split on the library level, no added build complexity for
+  end-users.
 
 ## Usage
 
@@ -158,6 +179,21 @@ export function createTodosClient(fragnoConfig = {}) {
   };
 }
 ```
+
+## Framework Support Matrix
+
+| Client-side Frameworks | Support | —   | Server-side Frameworks  | Support    |
+| ---------------------- | ------- | --- | ----------------------- | ---------- |
+| React                  | ✅      |     | Node.js / Express       | ✅         |
+| Vue                    | ✅      |     | React Router v7 / Remix | ✅         |
+| Vanilla JavaScript     | ✅      |     | Astro                   | ✅         |
+| Svelte                 | ✅      |     | Next.js                 | ✅         |
+|                        |         |     | Nuxt                    | ✅         |
+|                        |         |     | SvelteKit               | ✅         |
+|                        |         |     | Tanstack Start          | 🔄 Planned |
+
+See the [Framework Support](https://fragno.dev/docs/frameworks) page for the full list of supported
+frameworks.
 
 ## Examples
 
