@@ -23,6 +23,8 @@ export function create(options: CreateOptions) {
 
   if (options.template == "fragment") {
     writeFragmentTemplate(options.path, pkgOverride);
+  } else {
+    throw new Error(`Unsupported template type: ${options.template}`);
   }
 
   switch (options.buildTool) {
