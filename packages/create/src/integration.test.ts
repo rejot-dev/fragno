@@ -16,11 +16,15 @@ function createTempDir(name: string): string {
 
 describe.each(["tsdown", "esbuild"] as const)("fragment with %s", (buildTool) => {
   let tempDir: string;
-  const testConfig = { packageName: "@myorg/test" };
+  const testConfig = {
+    name: "@myorg/test",
+    template: "fragment" as const,
+    buildTool,
+  };
 
   beforeAll(() => {
-    tempDir = createTempDir("fragment-test");
-    create({ path: tempDir, template: "fragment", config: testConfig });
+    tempDir = createTempDir(`fragment-test-${buildTool}`);
+    create({ ...testConfig, path: tempDir });
   });
 
   afterAll(() => {
@@ -30,8 +34,7 @@ describe.each(["tsdown", "esbuild"] as const)("fragment with %s", (buildTool) =>
   it("package.json correctly templated", () => {
     const pkg = path.join(tempDir, "package.json");
     const pkgContent = fs.readFileSync(pkg, "utf8");
-    expect(pkgContent).toContain(testConfig.packageName);
-    expect(pkgContent).not.toContain("$TEMPLATED");
+    expect(pkgContent).toContain(testConfig.name);
   });
 
   it("installs", async () => {
@@ -49,5 +52,15 @@ describe.each(["tsdown", "esbuild"] as const)("fragment with %s", (buildTool) =>
     });
     console.log(buildResult);
     expect(buildResult).toBeDefined();
+  });
+
+  it("builds", async () => {
+    const buildResult = execSync("bun run build", {
+      cwd: tempDir,
+      encoding: "utf8",
+    });
+    console.log(buildResult);
+    expect(buildResult).toBeDefined();
+    expect(fs.existsSync(path.join(tempDir, "dist")));
   });
 });

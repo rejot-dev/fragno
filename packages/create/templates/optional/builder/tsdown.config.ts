@@ -1,6 +1,5 @@
 import { defineConfig } from "tsdown";
 
-// TODO: make build platform configurable
 import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
 
 export default defineConfig([
