@@ -1,5 +1,5 @@
 {
-  "name": "@fragno-dev/cli",
+  "name": "create-fragno",
   "version": "0.0.1",
   "exports": {
     ".": {
@@ -10,6 +10,9 @@
     }
   },
   "type": "module",
+  "bin": {
+    "create-fragno": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
@@ -22,7 +25,12 @@
     "@types/node": "^22",
     "@fragno-private/typescript-config": "workspace:*"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "@fragno-dev/create": "workspace:*",
+    "citty": "^0.1.6"
+  },
+  "private": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts"

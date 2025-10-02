@@ -28,7 +28,7 @@
     "@types/node": "^20",
     "@types/bun": "latest"
   },
-  "private": true,
+  "private": false,
   "peerDependencies": {
     "typescript": "^5"
   }
