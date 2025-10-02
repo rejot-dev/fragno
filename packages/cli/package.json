@@ -1,0 +1,29 @@
+{
+  "name": "@fragno-dev/cli",
+  "version": "0.0.1",
+  "exports": {
+    ".": {
+      "bun": "./index.ts",
+      "development": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": "^20.0.0 || >=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@fragno-private/typescript-config": "workspace:*"
+  },
+  "dependencies": {},
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}
