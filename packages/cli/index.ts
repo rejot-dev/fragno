@@ -49,6 +49,7 @@ const main = defineCommand({
     const buildTool = await p.select({
       message: "Pick a build tool",
       options: [
+        { value: "vite", label: "vite" },
         { value: "tsdown", label: "tsdown" },
         { value: "esbuild", label: "esbuild" },
         { value: "none", label: "none" },
