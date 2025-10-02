@@ -1,32 +1,58 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copy } from "./utils.ts";
+import { copy, merge } from "./utils.ts";
+import { buildToolPkg } from "./package-json.ts";
 
 type TemplateTypes = "fragment";
-
-interface FragmentTemplateOptions {
-  packageName: string;
-}
+// TODO: the others
+export type BuildTools = "esbuild" | "tsdown" | "none";
 
 interface CreateOptions {
   path: string;
+  buildTool: BuildTools;
+  name: string;
   template: TemplateTypes;
-  config: FragmentTemplateOptions;
 }
 
 export function create(options: CreateOptions) {
+  let pkgOverride: Record<string, unknown> = { name: options.name };
+
+  // Build tool pkg overrides
+  pkgOverride = merge(pkgOverride, buildToolPkg[options.buildTool]);
+
   if (options.template == "fragment") {
-    writeFragmentTemplate(options.path, options.config);
+    writeFragmentTemplate(options.path, pkgOverride);
+  }
+
+  switch (options.buildTool) {
+    case "esbuild":
+      writeOptionalTemplate(options.path, "builder/esbuild.config.js");
+      break;
+    case "tsdown":
+      writeOptionalTemplate(options.path, "builder/tsdown.config.ts");
+      break;
+    case "none":
+      break;
   }
 }
 
-function writeFragmentTemplate(targetPath: string, options: FragmentTemplateOptions) {
+function getTemplateDir(): string {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const templateDir = path.join(__dirname, "..", "templates", "fragment");
+  return path.join(__dirname, "..", "templates");
+}
 
-  console.log("Copying from", templateDir, "to", targetPath);
-  // Copy template files, renaming package.template.json to package.json
+function writeOptionalTemplate(targetPath: string, template: string) {
+  const templatePath = path.join(getTemplateDir(), "optional", template);
+  const targetFile = path.join(targetPath, path.basename(template));
+
+  copy(templatePath, targetFile);
+}
+
+function writeFragmentTemplate(targetPath: string, pkgOverrides: Record<string, unknown>) {
+  const templateDir = path.join(getTemplateDir(), "fragment");
+
+  // Copy template files
   copy(templateDir, targetPath, (basename) => {
     if (basename === "package.template.json") {
       return "package.json";
@@ -34,9 +60,11 @@ function writeFragmentTemplate(targetPath: string, options: FragmentTemplateOpti
     return basename;
   });
 
-  // Modify package.json to set the actual package name
+  // Update package.json based on chosen options
   const packageJsonPath = path.join(targetPath, "package.json");
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-  packageJson.name = options.packageName;
-  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
+  const basePkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+  const newPkg = merge(basePkg, pkgOverrides);
+
+  // Write to disk
+  fs.writeFileSync(packageJsonPath, JSON.stringify(newPkg, null, 2) + "\n");
 }
