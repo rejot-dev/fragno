@@ -12,6 +12,9 @@ import { z } from "zod";
 export const docs = defineDocs({
   docs: {
     schema: frontmatterSchema,
+    postprocess: {
+      includeProcessedMarkdown: true,
+    },
   },
   meta: {
     schema: metaSchema,
