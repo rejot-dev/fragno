@@ -26,7 +26,7 @@ server-side code. All code is included in the final server bundle.
 
 ## Building
 
-Get started by installing the `@fragno-dev/unplugin-fragno` as a development dependency.
+Get started by installing `@fragno-dev/unplugin-fragno` as a development dependency.
 
 ```npm
 npm install --save-dev @fragno-dev/unplugin-fragno
@@ -128,8 +128,8 @@ As we have now created two builds, we need to set the `exports` field in the `pa
 }
 ```
 
-The key fields here is "browser". This is all we need to make the user's framework import the
-correct bundle.
+The key field here is "browser". This is all we need to make the user's framework import the correct
+bundle.
 
 <Callout title="The '.' import is server-only." type="warning">
   Note that the main import ('.') is server-only, and the "main" field as well.
@@ -137,7 +137,7 @@ correct bundle.
 
 ### External Dependencies
 
-The last thing we need to make sure of, is that the frontend frameworks are handled as external
+The last thing we need to make sure of is that the frontend frameworks are handled as external
 dependencies, so that they're not included in your Fragment's bundle.
 
 Most bundlers will look at the `peerDependencies` field in your `package.json` file to determine

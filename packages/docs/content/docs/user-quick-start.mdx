@@ -26,10 +26,10 @@ npm i @fragno-dev/example-fragment
 
 <Step>
 ### Create a server-side instance of the Fragment
-Create a server-side instance of the Fragment, somewhere central in your codebase:
+Create a server-side instance of the Fragment in a central location in your codebase:
 
-This is the place where the Fragment is configured by passing Fragment-specific config fields such
-as API keys, but also callback methods.
+This is where the Fragment is configured by passing Fragment-specific config fields such as API keys
+and callback methods.
 
 ```ts title="lib/example-fragment-server.ts"
 import { createExampleFragment } from "@fragno-dev/example-fragment";
@@ -62,6 +62,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("ne
 ```ts title="server/api/example-fragment/[...all].ts" tab="Nuxt"
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
+const exampleFragment = createExampleFragmentInstance();
 export default fromWebHandler(exampleFragment.handler);
 ```
 
@@ -94,7 +95,7 @@ export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("sv
 export const prerender = false;
 ```
 
-```ts title="index.ts", tab="Hono"
+```ts title="index.ts" tab="Hono"
 import { Hono } from "hono";
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
@@ -102,7 +103,7 @@ const app = new Hono();
 app.all("/api/example-fragment/*", (c) => createExampleFragmentInstance().handler(c.req.raw));
 ```
 
-```ts title="index.ts", tab="Express"
+```ts title="index.ts" tab="Express"
 import express from "express";
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
@@ -145,14 +146,14 @@ const server = createServer((req, res) => {
 <Step>
 ### Create a client-side integration
 
-Again in a central place, but now for the client-side integration:
+Create the client-side integration in a central location:
 
 <include>../.includes/blog/fragno-introduction/users-frontend.md</include>
 
 <Callout type="warn" title="File Name">
-  Make sure the field name does **not** end with `.client.ts`. In some frameworks, this makes it so
-  that the file cannot be loaded on the server at all. Meaning it cannot be imported during server
-  render.
+  Make sure the file name does **not** end with `.client.ts`. In some frameworks, this makes it so
+  that the file cannot be loaded on the server at all, meaning it cannot be imported during
+  server-side rendering.
 </Callout>
 
 <Callout type="info" title="Mount Route">

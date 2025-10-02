@@ -12,35 +12,35 @@ import { Cake } from "../../components/logos/cakes";
 # The case for full-stack libraries
 
 Software libraries are built to integrate on _either_ the frontend _or_ the backend, leaving the
-library user responsible for the glue code. Many domains span both sides. Libraries reduce the
-implementation effort somewhat, but it could be better. Every project demands the re-implementation
-and custom wiring of the library: defining API routes, documentation (OpenAPI), client-side
-integration, and more.
+library user responsible for the glue code. Many domains span both sides. While libraries reduce the
+implementation effort somewhat, it could be better. Every project demands the re-implementation and
+custom wiring of the library: defining API routes, documentation (OpenAPI), client-side integration,
+and more.
 
-Take an AI/LLM chatbot: on the frontend, the user interaction is the heart of the experience, while
-the backend holds API keys and handles function calling. If we look at the `openai` library, it only
+Take an AI/LLM chatbot: on the frontend, user interaction is the heart of the experience, while the
+backend holds API keys and handles function calling. If we look at the `openai` library, it only
 provides the backend functionality. The user is responsible for defining routes and handling
-communication. Function calling requires code on both sides, you'd probably also want to support
-streaming responses. This all is to be implemented by the user.
+communication. Function calling requires code on both sides, and you'd probably also want to support
+streaming responses. All of this must be implemented by the user.
 
 As I was working on an AI chatbot, I realized that I needed a full-stack library, and there really
-was no good solution for building one. The biggest hurdle I saw was the great many frontend and
-backend frameworks that are out there. If a full-stack library is to be useful, it should be able to
-work with all of them. That's why I'm now building **Fragno**, a
+was no good solution for building one. The biggest hurdle I saw was the many frontend and backend
+frameworks that are out there. If a full-stack library is to be useful, it should be able to work
+with all of them. That's why I'm now building **Fragno**, a
 {/* prettier-ignore */} <ins>fr</ins>amework-<ins>agno</ins>stic toolkit for building full-stack
 libraries.
 
 ## Related work
 
-This is not entirely a new concept. There are already libraries that are making good use of a
-full-stack approach. These fall into domains that naturally span both the frontend and the backend.
+This is not entirely a new concept. There are already libraries that make good use of a full-stack
+approach. These fall into domains that naturally span both the frontend and the backend.
 
 Sources of inspiration are:
 
 1. [Better Auth](https://better-auth.com/). It shows that a full-stack approach to building a
-   library can be very successful. Authentication is a domain that very clearly has frontend and
-   backend components. Better Auth integrates with the major full-stack frameworks, and has a data
-   layer as well. It integrates easily and is very ergonomic to work with.[^1]
+   library can be very successful. Authentication is a domain that clearly has frontend and backend
+   components. Better Auth integrates with the major full-stack frameworks and has a data layer as
+   well. It integrates easily and is very ergonomic to work with.[^1]
 
 2. [Polar](https://polar.sh/). As a payment service provider, Polar integrates with full-stack
    frameworks to provide a checkout page that embeds into the user's application. Their list of
@@ -49,10 +49,10 @@ Sources of inspiration are:
 
 [^1]:
     [NextAuth.js](https://next-auth.js.org/) uses similar concepts and came before Better Auth, but
-    I believe Better Auth is more well-known.
+    I believe Better Auth is better known.
 
-Both of these don't expose their primitives to create full-stack libraries. This is precisely what
-the goal of Fragno is: providing the primitives to create full-stack libraries.
+Neither of these expose their primitives for creating full-stack libraries. This is precisely what
+Fragno aims to do: provide the primitives for creating full-stack libraries.
 
 ## Goals
 
@@ -68,24 +68,24 @@ Sub-goals naturally follow from these goals, we'll discuss them in the next sect
 
 **Goal 1: libraries need to be able to define API routes.**
 
-Naturally, this means that the routes defined in the library, should be able to be mounted into the
-user's application. Of course, that's easier said than done. There are a great many ways to define
-API routes, depending on the programming language and framework you're working with. In the
-JavaScript world, we have full-stack frameworks like Next.js, React Router/Remix, Nuxt, SvelteKit,
-and SolidStart. On the server-focused side, there are frameworks such as Astro, Express, and Hono. I
+Naturally, this means that the routes defined in the library should be able to be mounted into the
+user's application. Of course, that's easier said than done. There are many ways to define API
+routes, depending on the programming language and framework you're working with. In the JavaScript
+world, we have full-stack frameworks like Next.js, React Router/Remix, Nuxt, SvelteKit, and
+SolidStart. On the server-focused side, there are frameworks such as Astro, Express, and Hono. I
 believe these should all be supported for Fragno to be useful.[^2]
 
 [^2]:
     Fragno already supports most of these frameworks. The full list of supported frameworks can be
     found on the [Framework Support](/docs/frameworks) page.
 
-The focus point here is to support a wide range of frameworks. We do this by taking the common
+The focus here is to support a wide range of frameworks. We do this by taking the common
 denominator: HTTP. Modern frameworks have standardized on the `Request` and `Response` objects, so
 an abstraction is definitely possible.
 
 These days, expectations are high. If I'm defining API routes, I'd at least want: type safety,
 request validation, error handling, support for various content types, support for streaming, etc. I
-took inspiration from web frameworks such as [Hono](https://hono.dev/), and implemented a good chunk
+took inspiration from web frameworks such as [Hono](https://hono.dev/) and implemented a good chunk
 of these features.
 
 Defining a route in Fragno looks something like this:[^5]
@@ -121,7 +121,7 @@ export const getTodosRoute = defineRoute({
 
 On the frontend side, there's also standardization around a few key abstractions. The most important
 one is reactivity: re-rendering the UI whenever data changes. Every major modern framework builds on
-this primitive, even if the implementations differ. React, Vue, Svelte, Solid, etc.
+this primitive, even if the implementations differ: React, Vue, Svelte, Solid, etc.
 
 Data fetching is more diverse, but these days most developers prefer a
 [TanStack Query](https://tanstack.com/query/latest)-style approach. With it, you can declaratively
@@ -133,8 +133,8 @@ To offer these features, Fragno uses [Nano Stores](https://github.com/nanostores
 [Nano Stores Query](https://github.com/nanostores/query) to create fully reactive client-side data
 fetchers. This means that caching, re-fetching, and invalidation are all handled out of the box.
 
-Fragno offers a client builder that allows the library author to define the client-side interfaces
-based on the server-side routes:[^6]
+Fragno offers a client builder that allows library authors to define client-side interfaces based on
+the server-side routes:[^6]
 
 [^6]:
     More detailed documentation on client-side state management can be found in the
@@ -157,7 +157,7 @@ export function createClient() {
 }
 ```
 
-Library authors are not limited to using the client builder, they can also define the client-side
+Library authors are not limited to using the client builder; they can also define client-side
 interfaces manually. Nano Stores' primitives like `computed`, `atom`, and `effect` can be used to
 create custom stores.
 
@@ -165,7 +165,7 @@ create custom stores.
 
 **Goal 3: Integration for library users should be as easy as possible.**
 
-Both Better Auth as well as Polar show how backend integration can be done. A simple shim over the
+Both Better Auth and Polar show how backend integration can be done. A simple shim over the
 `(req: Request) => Response` functionality is sufficient to integrate with most frameworks.
 
 The following code snippets show how a user would integrate a Fragno library into their application.
@@ -174,11 +174,11 @@ As you can see, a bunch of frameworks are already supported.
 <include>../.includes/blog/fragno-introduction/users-backend.md</include>
 
 Like the backend component, it only takes a few lines of code to integrate. The `useFragno` function
-is framework-specific, and accommodates the reactivity of the framework.
+is framework-specific and accommodates the reactivity of the framework.
 
 <include>../.includes/blog/fragno-introduction/users-frontend.md</include>
 
-For the user to start using a Fragno library, they simply import the object created in the snippet
+For users to start using a Fragno library, they simply import the object created in the snippet
 above. It then looks very similar to TanStack Query's `useQuery` hook:
 
 ```tsx title="components/ExampleComponent.tsx"
@@ -202,7 +202,7 @@ The full integration process can be found on the [User Quick Start](/docs/user-q
 
 ## Under the hood
 
-I've already talked about integrating and client-side state management. There's a few other things
+I've already talked about integration and client-side state management. There are a few other things
 that had to happen to make Fragno work.
 
 ### Type safety & Code splitting
@@ -216,40 +216,40 @@ objects. Fragno schemas accept schemas that are compatible with
 A problem with this setup is that the single object contains code that should only be executed on
 the server (the route handlers). All full-stack frameworks solve this by code-splitting, and so does
 Fragno. `@fragno-dev/unplugin-fragno` is a plugin that automatically splits the code between client
-and server bundles. This build step is only required for library authors, not for end-users. Which I
-believe is important to not increase the friction on the user's side.
+and server bundles. This build step is only required for library authors, not for end-users. I
+believe this is important to avoid increasing friction on the user's side.
 
 ### Middleware
 
 Middleware in Fragno works a bit differently than in web frameworks such as Express or Hono. In
 Fragno, middleware is _not_ defined as part of the library route definition. Instead, it's a tool
-for users, to write code that runs in front of route handlers defined by the library. This enables
-the user to implement features such as authentication, rate-limiting, and more.
+for users to write code that runs in front of route handlers defined by the library. This enables
+users to implement features such as authentication, rate-limiting, and more.
 
 ### Config, dependencies, and services
 
-Most libraries have some level of configuration. In Fragno the library config is the basic contract
+Most libraries have some level of configuration. In Fragno, the library config is the basic contract
 between the library author and the user. It can be used to pass configuration to the library, such
-as API keys and other options. It can also be used to let the user react to events happening in the
+as API keys and other options. It can also be used to let users react to events happening in the
 library by providing callback functions. Think of something like `onTodoCreated`.
 
 **Dependencies** can be used to create library-private objects that can be used in route handlers.
-**Services** are functions that are available to the user in the server-side context. This lets the
-library author expose functionality to the user that they can in turn use to do things like
-background processing. Both dependencies and services are server-side only and are split out from
-the client bundle by the plugin.
+**Services** are functions that are available to users in the server-side context. This lets library
+authors expose functionality to users that they can in turn use to do things like background
+processing. Both dependencies and services are server-side only and are split out from the client
+bundle by the plugin.
 
 ## What's missing
 
 I've mostly talked about defining routes in the context of a frontend calling a server-side route.
-Another important thing routes are used for in the context of libraries is handling webhooks. This
-is a common use case when integrating with third-party services. Of course, Fragno can already
-receive webhook requests, but as long as there's no way to store the received data in a database,
-it's not very useful.
+Another important use case for routes in the context of libraries is handling webhooks. This is a
+common use case when integrating with third-party services. Of course, Fragno can already receive
+webhook requests, but as long as there's no way to store the received data in a database, it's not
+very useful.
 
 To be truly full-stack, I believe that libraries also need to be able to integrate with the data
-layer. Better Auth does this very cleanly, but I do believe there are pieces missing, such as
-support for transactions. This is something that should be supported in Fragno eventually.
+layer. Better Auth does this very cleanly, but I believe there are pieces missing, such as support
+for transactions. This is something that should be supported in Fragno eventually.
 
 Of course, there are other smaller (and bigger) things that are missing and could be added. Top of
 mind currently is server-side rendering support. Nanostores already has some support for

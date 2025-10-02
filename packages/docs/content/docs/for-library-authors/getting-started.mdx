@@ -147,10 +147,9 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, {}>().create(({ confi
           createdAt: new Date().toISOString(),
         } satisfies Todo;
 
+        let textSummary: string | undefined;
         try {
-          const textSummary = query.get("summarize")
-            ? await aiWrapper.summarizeText(text)
-            : undefined;
+          textSummary = query.get("summarize") ? await aiWrapper.summarizeText(text) : undefined;
         } catch {
           return error({ message: "Summary error", code: "SUMMARY_ERROR" }, 503);
         }
@@ -218,7 +217,7 @@ import { useFragno } from "@fragno-dev/core/react";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createTodosClient(config));
+  return useFragno(createTodosClients(config));
 }
 ```
 
@@ -229,7 +228,7 @@ import { useFragno } from "@fragno-dev/core/vue";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createTodosClient(config));
+  return useFragno(createTodosClients(config));
 }
 ```
 
@@ -240,7 +239,7 @@ import { useFragno } from "@fragno-dev/core/svelte";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createTodosClient(config));
+  return useFragno(createTodosClients(config));
 }
 ```
 
@@ -251,7 +250,7 @@ import { useFragno } from "@fragno-dev/core/vanilla";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createTodosClient(config));
+  return useFragno(createTodosClients(config));
 }
 ```
 
@@ -260,7 +259,7 @@ JavaScript. The only difference between these files is the import of the `useFra
 
 <Callout title="Create this file for every frontend framework" type="warning">
   Fragment authors must explicitly include a stub for every framework, make sure to create this file
-  for others frameworks as well using the respective `useFragno` hooks.
+  for other frameworks as well using the respective `useFragno` hooks.
 </Callout>
 
 ## Next Steps
