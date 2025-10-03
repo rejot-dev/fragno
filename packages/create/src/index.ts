@@ -6,7 +6,7 @@ import { buildToolPkg } from "./package-json.ts";
 
 type TemplateTypes = "fragment";
 // TODO: the others
-export type BuildTools = "esbuild" | "tsdown" | "vite" | "rollup" | "webpack" | "none";
+export type BuildTools = "esbuild" | "tsdown" | "vite" | "rollup" | "webpack" | "rspack" | "none";
 
 interface CreateOptions {
   path: string;
@@ -42,6 +42,9 @@ export function create(options: CreateOptions) {
       break;
     case "webpack":
       writeOptionalTemplate(options.path, "builder/webpack.config.js");
+      break;
+    case "rspack":
+      writeOptionalTemplate(options.path, "builder/rspack.config.js");
       break;
     case "none":
       break;

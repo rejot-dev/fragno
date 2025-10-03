@@ -14,7 +14,7 @@ function createTempDir(name: string): string {
   return dir;
 }
 
-describe.each(["tsdown", "esbuild", "vite", "rollup", "webpack"] as const)(
+describe.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rspack"] as const)(
   "fragment with %s",
   (buildTool) => {
     let tempDir: string;
