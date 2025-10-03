@@ -1,0 +1,33 @@
+{
+  "name": "@fragno-dev/db",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    "./schema": {
+      "bun": "./src/schema/create.ts",
+      "development": "./src/schema/create.ts",
+      "types": "./dist/schema/create.d.ts",
+      "default": "./dist/schema/create.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragno-db"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "dependencies": {
+    "@paralleldrive/cuid2": "^2.2.2"
+  }
+}
