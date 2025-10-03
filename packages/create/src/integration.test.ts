@@ -1,4 +1,4 @@
-import { it, expect, afterAll, beforeAll, describe } from "vitest";
+import { test, expect, afterAll, beforeAll, describe } from "vitest";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,7 +14,7 @@ function createTempDir(name: string): string {
   return dir;
 }
 
-describe.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rspack"] as const)(
+describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rspack"] as const)(
   "fragment with %s",
   (buildTool) => {
     let tempDir: string;
@@ -34,39 +34,41 @@ describe.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rspack"] as co
       fs.rmSync(tempDir, { recursive: true });
     });
 
-    it("package.json correctly templated", () => {
-      const pkg = path.join(tempDir, "package.json");
-      const pkgContent = fs.readFileSync(pkg, "utf8");
-      expect(pkgContent).toContain(testConfig.name);
-    });
-
-    it("installs", async () => {
-      const result = execSync("bun install", {
-        cwd: tempDir,
-        encoding: "utf8",
+    describe.sequential("", () => {
+      test("package.json correctly templated", () => {
+        const pkg = path.join(tempDir, "package.json");
+        const pkgContent = fs.readFileSync(pkg, "utf8");
+        expect(pkgContent).toContain(testConfig.name);
       });
-      expect(result).toBeDefined();
-    });
 
-    it("compiles", async () => {
-      const buildResult = execSync("bun run types:check", {
-        cwd: tempDir,
-        encoding: "utf8",
+      test("installs", { timeout: 10000 }, async () => {
+        const result = execSync("bun install", {
+          cwd: tempDir,
+          encoding: "utf8",
+        });
+        expect(result).toBeDefined();
       });
-      console.log(buildResult);
-      expect(buildResult).toBeDefined();
-    });
 
-    it("builds", { timeout: 20000 }, async () => {
-      const buildResult = execSync("bun run build", {
-        cwd: tempDir,
-        encoding: "utf8",
+      test("compiles", async () => {
+        const buildResult = execSync("bun run types:check", {
+          cwd: tempDir,
+          encoding: "utf8",
+        });
+        console.log(buildResult);
+        expect(buildResult).toBeDefined();
       });
-      console.log(buildResult);
-      expect(buildResult).toBeDefined();
-      expect(fs.existsSync(path.join(tempDir, "dist")));
-      expect(fs.existsSync(path.join(tempDir, "dist", "browser")));
-      expect(fs.existsSync(path.join(tempDir, "dist", "node")));
+
+      test("builds", { timeout: 20000 }, async () => {
+        const buildResult = execSync("bun run build", {
+          cwd: tempDir,
+          encoding: "utf8",
+        });
+        console.log(buildResult);
+        expect(buildResult).toBeDefined();
+        expect(fs.existsSync(path.join(tempDir, "dist")));
+        expect(fs.existsSync(path.join(tempDir, "dist", "browser")));
+        expect(fs.existsSync(path.join(tempDir, "dist", "node")));
+      });
     });
   },
 );
