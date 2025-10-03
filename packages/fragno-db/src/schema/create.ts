@@ -1,14 +1,3 @@
-/**
- * @module
- * Schema creation utilities.
- *
- * Modified from fumadb
- * Original source: https://github.com/fuma-nama/fumadb/blob/dev/packages/fumadb/src/schema/create.ts
- * License: MIT
- * Date obtained: October 3 2025
- * Copyright (c) 2025-present Fuma Nama and contributors
- */
-
 import { createId } from "../cuid";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
@@ -20,6 +9,44 @@ export type AnyTable = Table;
 export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
+
+/**
+ * Operations that can be performed on a table during its definition.
+ */
+export type TableOperation = {
+  type: "add-index";
+  name: string;
+  columns: string[];
+  unique: boolean;
+};
+
+/**
+ * Operations that can be performed on a schema during its definition.
+ * These are tracked so we can generate migrations for specific version ranges.
+ */
+export type SchemaOperation =
+  | {
+      type: "add-table";
+      tableName: string;
+      table: AnyTable;
+    }
+  | {
+      type: "add-reference";
+      tableName: string;
+      referenceName: string;
+      config: {
+        columns: string[];
+        targetTable: string;
+        targetColumns: string[];
+      };
+    }
+  | {
+      type: "add-index";
+      tableName: string;
+      name: string;
+      columns: string[];
+      unique: boolean;
+    };
 
 export interface ForeignKey {
   name: string;
@@ -51,6 +78,22 @@ export interface Index {
   name: string;
   columns: AnyColumn[];
   unique: boolean;
+}
+
+/**
+ * Helper function to add an index to a table's index array
+ */
+function addIndexToTable(
+  indexes: Index[],
+  name: string,
+  columns: AnyColumn[],
+  unique: boolean,
+): void {
+  indexes.push({
+    name,
+    columns,
+    unique,
+  });
 }
 
 export class ExplicitRelationInit<
@@ -324,6 +367,7 @@ export class TableBuilder<
   #indexes: Index[] = [];
   #version: number = 0;
   #ormName: string = "";
+  #operations: TableOperation[] = [];
 
   constructor(name: string) {
     this.#name = name;
@@ -370,6 +414,7 @@ export class TableBuilder<
     builder.#indexes = this.#indexes;
     builder.#version = this.#version;
     builder.#ormName = this.#ormName;
+    builder.#operations = this.#operations;
 
     // Set column metadata
     col.ormName = ormName;
@@ -396,10 +441,15 @@ export class TableBuilder<
       return column;
     });
 
-    this.#indexes.push({
+    const unique = options?.unique ?? false;
+    addIndexToTable(this.#indexes, name, cols, unique);
+
+    // Record the operation
+    this.#operations.push({
+      type: "add-index",
       name,
-      columns: cols,
-      unique: options?.unique ?? false,
+      columns: columns as string[],
+      unique,
     });
 
     return this;
@@ -441,6 +491,7 @@ export class TableBuilder<
         builder.#indexes = [...this.#indexes];
         builder.#version = this.#version;
         builder.#ormName = this.#ormName;
+        builder.#operations = [...this.#operations];
 
         const cloned = builder.build();
 
@@ -474,6 +525,13 @@ export class TableBuilder<
   getVersion(): number {
     return this.#version;
   }
+
+  /**
+   * Get the operations performed on this table.
+   */
+  getOperations(): TableOperation[] {
+    return this.#operations;
+  }
 }
 
 /**
@@ -499,6 +557,11 @@ export interface Schema<TTables extends Record<string, AnyTable> = Record<string
    */
   version: number;
   tables: TTables;
+  /**
+   * @description Operations performed on this schema, in order.
+   * Used to generate migrations for specific version ranges.
+   */
+  operations: SchemaOperation[];
 
   clone: () => Schema<TTables>;
 }
@@ -506,6 +569,7 @@ export interface Schema<TTables extends Record<string, AnyTable> = Record<string
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<string, never>> {
   #tables: TTables;
   #version: number = 0;
+  #operations: SchemaOperation[] = [];
 
   constructor() {
     this.#tables = {} as TTables;
@@ -536,7 +600,34 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     const builder = new SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations>>>();
     builder.#tables = { ...this.#tables, [ormName]: builtTable } as TTables &
       Record<TTableName, Table<TColumns, TRelations>>;
+
+    // Start with existing operations plus the add-table operation
+    const newOperations: SchemaOperation[] = [
+      ...this.#operations,
+      {
+        type: "add-table",
+        tableName: ormName,
+        table: builtTable,
+      },
+    ];
+
+    // Promote table operations to schema operations and increment version for each
+    const tableOps = result.getOperations();
+    for (const tableOp of tableOps) {
+      if (tableOp.type === "add-index") {
+        this.#version++;
+        newOperations.push({
+          type: "add-index",
+          tableName: ormName,
+          name: tableOp.name,
+          columns: tableOp.columns,
+          unique: tableOp.unique,
+        });
+      }
+    }
+
     builder.#version = this.#version;
+    builder.#operations = newOperations;
 
     return builder;
   }
@@ -644,6 +735,18 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     table.relations[referenceName] = relation;
     table.foreignKeys.push(relation.foreignKey);
 
+    // Record the operation
+    this.#operations.push({
+      type: "add-reference",
+      tableName: tableName as string,
+      referenceName,
+      config: {
+        columns: columns as string[],
+        targetTable: config.targetTable as string,
+        targetColumns: targetColumns as string[],
+      },
+    });
+
     return this;
   }
 
@@ -651,19 +754,25 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
    * Build the final schema. This should be called after all tables are added.
    */
   build(): Schema<TTables> {
+    const operations = this.#operations;
+    const version = this.#version;
+    const tables = this.#tables;
+
     const schema: Schema<TTables> = {
-      version: this.#version,
-      tables: this.#tables,
+      version,
+      tables,
+      operations,
       clone: () => {
         const cloneTables: Record<string, AnyTable> = {};
 
-        for (const [k, v] of Object.entries(this.#tables)) {
+        for (const [k, v] of Object.entries(tables)) {
           cloneTables[k] = v.clone();
         }
 
         const builder = new SchemaBuilder<TTables>();
         builder.#tables = cloneTables as TTables;
-        builder.#version = this.#version;
+        builder.#version = version;
+        builder.#operations = [...operations];
 
         return builder.build();
       },

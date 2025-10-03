@@ -28,6 +28,7 @@
   "homepage": "https://fragno.dev",
   "license": "MIT",
   "dependencies": {
-    "@paralleldrive/cuid2": "^2.2.2"
+    "@paralleldrive/cuid2": "^2.2.2",
+    "kysely": "^0.28.7"
   }
 }

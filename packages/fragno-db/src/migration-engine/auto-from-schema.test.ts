@@ -1,0 +1,238 @@
+import { describe, expect, it } from "vitest";
+import { column, idColumn, referenceColumn, schema } from "../schema/create";
+import { generateMigrationFromSchema } from "./auto-from-schema";
+
+describe("generateMigrationFromSchema", () => {
+  it("should generate create-table operation for new tables", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("posts", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("title", column("string"))
+            .addColumn("content", column("string"));
+        });
+    });
+
+    // Version 0 -> 1: users table created
+    // Version 1 -> 2: posts table created
+    // We want to generate the migration for version 1 -> 2
+    const operations = generateMigrationFromSchema(mySchema, 1, 2, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).toMatchObject({
+      type: "create-table",
+      value: mySchema.tables.posts,
+    });
+  });
+
+  it("should generate multiple table operations in sequence", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+        })
+        .addTable("comments", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+        });
+    });
+
+    // Generate migrations from version 0 to 3 (all three tables)
+    const operations = generateMigrationFromSchema(mySchema, 0, 3, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(3);
+    expect(operations[0]).toMatchObject({
+      type: "create-table",
+      value: mySchema.tables.users,
+    });
+    expect(operations[1]).toMatchObject({
+      type: "create-table",
+      value: mySchema.tables.posts,
+    });
+    expect(operations[2]).toMatchObject({
+      type: "create-table",
+      value: mySchema.tables.comments,
+    });
+  });
+
+  it("should generate add-foreign-key operation for new foreign keys", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn());
+        })
+        .addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
+        })
+        .addReference("posts", "author", {
+          columns: ["authorId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        });
+    });
+
+    // Version 0 -> 1: users table
+    // Version 1 -> 2: posts table
+    // Version 2 -> 3: author foreign key
+    const operations = generateMigrationFromSchema(mySchema, 2, 3, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).toMatchObject({
+      type: "add-foreign-key",
+      table: "posts",
+    });
+
+    const fkOp = operations[0];
+    if (fkOp.type === "add-foreign-key") {
+      expect(fkOp.value).toMatchObject({
+        name: "posts_users_author_fk",
+        table: "posts",
+        referencedTable: "users",
+        columns: ["authorId"],
+        referencedColumns: ["id"],
+      });
+    }
+  });
+
+  it("should generate add-index operation for indexes defined in createIndex", () => {
+    const mySchema = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("email", column("string"))
+          .createIndex("idx_email", ["email"], { unique: true });
+      });
+    });
+
+    // Version 0 -> 1: users table
+    // Version 1 -> 2: email index
+    const operations = generateMigrationFromSchema(mySchema, 1, 2, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).toMatchObject({
+      type: "add-index",
+      table: "users",
+      name: "idx_email",
+      columns: ["email"],
+      unique: true,
+    });
+  });
+
+  it("should generate mixed operations for tables and foreign keys", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
+        })
+        .addReference("posts", "author", {
+          columns: ["authorId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        });
+    });
+
+    // Generate all migrations from scratch
+    const operations = generateMigrationFromSchema(mySchema, 0, 3, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(3);
+    expect(operations[0].type).toBe("create-table");
+    expect(operations[1].type).toBe("create-table");
+    expect(operations[2].type).toBe("add-foreign-key");
+  });
+
+  it("should generate mixed operations for tables, indexes, and foreign keys", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .createIndex("idx_email", ["email"], { unique: true });
+        })
+        .addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
+        })
+        .addReference("posts", "author", {
+          columns: ["authorId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        });
+    });
+
+    // Generate all migrations from scratch
+    const operations = generateMigrationFromSchema(mySchema, 0, 4, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(4);
+    expect(operations[0].type).toBe("create-table");
+    expect(operations[1].type).toBe("add-index");
+    expect(operations[2].type).toBe("create-table");
+    expect(operations[3].type).toBe("add-foreign-key");
+  });
+
+  it("should generate no operations when version range is empty", () => {
+    const mySchema = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const operations = generateMigrationFromSchema(mySchema, 1, 1, {
+      provider: "postgresql",
+    });
+
+    expect(operations).toHaveLength(0);
+  });
+
+  it("should throw error when fromVersion exceeds schema version", () => {
+    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+
+    expect(() => {
+      generateMigrationFromSchema(mySchema, 999, 1000, { provider: "postgresql" });
+    }).toThrow("fromVersion (999) exceeds schema version (1)");
+  });
+
+  it("should throw error when toVersion exceeds schema version", () => {
+    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+
+    expect(() => {
+      generateMigrationFromSchema(mySchema, 0, 999, { provider: "postgresql" });
+    }).toThrow("toVersion (999) exceeds schema version (1)");
+  });
+
+  it("should throw error when trying to migrate backwards", () => {
+    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+
+    expect(() => {
+      generateMigrationFromSchema(mySchema, 1, 0, { provider: "postgresql" });
+    }).toThrow("Cannot migrate backwards");
+  });
+
+  it("should throw error for negative fromVersion", () => {
+    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+
+    expect(() => {
+      generateMigrationFromSchema(mySchema, -1, 1, { provider: "postgresql" });
+    }).toThrow("fromVersion cannot be negative");
+  });
+});
