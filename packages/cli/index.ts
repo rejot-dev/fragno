@@ -52,7 +52,8 @@ const main = defineCommand({
         { value: "vite", label: "vite" },
         { value: "tsdown", label: "tsdown" },
         { value: "esbuild", label: "esbuild" },
-        { value: "none", label: "none" },
+        { value: "rollup", label: "rollup" },
+        { value: "none", label: "None (bring your own)" },
       ],
     });
 
