@@ -54,6 +54,7 @@ const main = defineCommand({
         { value: "esbuild", label: "esbuild" },
         { value: "rollup", label: "rollup" },
         { value: "webpack", label: "webpack" },
+        { value: "rspack", label: "rspack" },
         { value: "none", label: "None (bring your own)" },
       ],
     });

@@ -53,4 +53,14 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
       build: "webpack",
     },
   },
+  rspack: {
+    devDependencies: {
+      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
+      "@rspack/core": "^1.5.8",
+      "@rspack/cli": "^1.5.8",
+    },
+    scripts: {
+      build: "rspack build",
+    },
+  },
 };
