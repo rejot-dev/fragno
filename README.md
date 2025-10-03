@@ -100,6 +100,12 @@ A Fragment is a full-stack library that works across different frameworks.
 ## Installation
 
 ```bash
+# Create from template
+bun create fragno@latest
+# or
+npm create fragno@latest
+
+# Add to existing package
 bun add @fragno-dev/core
 # or
 npm install @fragno-dev/core
