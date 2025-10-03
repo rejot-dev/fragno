@@ -210,6 +210,14 @@ export function createFragment<
     },
     handlersFor: <T extends FullstackFrameworks>(framework: T): HandlersByFramework[T] => {
       const handler = fragment.handler;
+
+      // LLMs hallucinate these values sometimes, solution isn't obvious so we throw this error
+      // @ts-expect-error TS2367
+      if (framework === "h3" || framework === "nuxt") {
+        throw new Error(`To get handlers for h3, use the 'fromWebHandler' utility function:
+          import { fromWebHandler } from "h3";
+          export default fromWebHandler(myFragment().handler);`);
+      }
       const allHandlers = {
         astro: { ALL: handler },
         "react-router": {
