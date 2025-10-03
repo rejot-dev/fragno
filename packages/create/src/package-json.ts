@@ -31,4 +31,15 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
       build: "vite build",
     },
   },
+  rollup: {
+    devDependencies: {
+      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
+      "@rollup/plugin-typescript": "^12.1.4",
+      tslib: "^2.8.1",
+      rollup: "^4.52.4",
+    },
+    scripts: {
+      build: "rollup -c",
+    },
+  },
 };
