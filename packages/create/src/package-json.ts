@@ -42,4 +42,15 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
       build: "rollup -c",
     },
   },
+  webpack: {
+    devDependencies: {
+      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
+      webpack: "^5.102.0",
+      "webpack-cli": "^6.0.1",
+      "ts-loader": "^9.5.1",
+    },
+    scripts: {
+      build: "webpack",
+    },
+  },
 };

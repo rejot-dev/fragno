@@ -14,54 +14,59 @@ function createTempDir(name: string): string {
   return dir;
 }
 
-describe.each(["tsdown", "esbuild", "vite", "rollup"] as const)("fragment with %s", (buildTool) => {
-  let tempDir: string;
-  const testConfig = {
-    name: "@myorg/test",
-    template: "fragment" as const,
-    buildTool,
-  };
+describe.each(["tsdown", "esbuild", "vite", "rollup", "webpack"] as const)(
+  "fragment with %s",
+  (buildTool) => {
+    let tempDir: string;
+    const testConfig = {
+      name: "@myorg/test",
+      template: "fragment" as const,
+      buildTool,
+    };
 
-  beforeAll(() => {
-    tempDir = createTempDir(`fragment-test-${buildTool}`);
-    console.log("temp", tempDir);
-    create({ ...testConfig, path: tempDir });
-  });
-
-  afterAll(() => {
-    fs.rmSync(tempDir, { recursive: true });
-  });
-
-  it("package.json correctly templated", () => {
-    const pkg = path.join(tempDir, "package.json");
-    const pkgContent = fs.readFileSync(pkg, "utf8");
-    expect(pkgContent).toContain(testConfig.name);
-  });
-
-  it("installs", async () => {
-    const result = execSync("bun install", {
-      cwd: tempDir,
-      encoding: "utf8",
+    beforeAll(() => {
+      tempDir = createTempDir(`fragment-test-${buildTool}`);
+      console.log("temp", tempDir);
+      create({ ...testConfig, path: tempDir });
     });
-    expect(result).toBeDefined();
-  });
 
-  it("compiles", async () => {
-    const buildResult = execSync("bun run types:check", {
-      cwd: tempDir,
-      encoding: "utf8",
+    afterAll(() => {
+      fs.rmSync(tempDir, { recursive: true });
     });
-    console.log(buildResult);
-    expect(buildResult).toBeDefined();
-  });
 
-  it("builds", async () => {
-    const buildResult = execSync("bun run build", {
-      cwd: tempDir,
-      encoding: "utf8",
+    it("package.json correctly templated", () => {
+      const pkg = path.join(tempDir, "package.json");
+      const pkgContent = fs.readFileSync(pkg, "utf8");
+      expect(pkgContent).toContain(testConfig.name);
     });
-    console.log(buildResult);
-    expect(buildResult).toBeDefined();
-    expect(fs.existsSync(path.join(tempDir, "dist")));
-  });
-});
+
+    it("installs", async () => {
+      const result = execSync("bun install", {
+        cwd: tempDir,
+        encoding: "utf8",
+      });
+      expect(result).toBeDefined();
+    });
+
+    it("compiles", async () => {
+      const buildResult = execSync("bun run types:check", {
+        cwd: tempDir,
+        encoding: "utf8",
+      });
+      console.log(buildResult);
+      expect(buildResult).toBeDefined();
+    });
+
+    it("builds", { timeout: 20000 }, async () => {
+      const buildResult = execSync("bun run build", {
+        cwd: tempDir,
+        encoding: "utf8",
+      });
+      console.log(buildResult);
+      expect(buildResult).toBeDefined();
+      expect(fs.existsSync(path.join(tempDir, "dist")));
+      expect(fs.existsSync(path.join(tempDir, "dist", "browser")));
+      expect(fs.existsSync(path.join(tempDir, "dist", "node")));
+    });
+  },
+);

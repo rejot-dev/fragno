@@ -53,6 +53,7 @@ const main = defineCommand({
         { value: "tsdown", label: "tsdown" },
         { value: "esbuild", label: "esbuild" },
         { value: "rollup", label: "rollup" },
+        { value: "webpack", label: "webpack" },
         { value: "none", label: "None (bring your own)" },
       ],
     });
