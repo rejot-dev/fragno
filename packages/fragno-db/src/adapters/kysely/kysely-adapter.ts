@@ -6,6 +6,8 @@ import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
 import { execute } from "./migration/execute";
+import type { AbstractQuery } from "../../query";
+import { fromKysely } from "./query";
 
 const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 
@@ -25,11 +27,16 @@ export class KyselyAdapter implements DatabaseAdapter {
     this.#kyselyConfig = config;
   }
 
+  createQueryEngine(schema: AnySchema): AbstractQuery<AnySchema> {
+    return fromKysely(schema, this.#kyselyConfig);
+  }
+
   createMigrationEngine(schema: AnySchema): Migrator {
     const manager = createSettingsManager(
       this.#kyselyConfig.db,
       this.#kyselyConfig.provider,
       SETTINGS_TABLE_NAME,
+      this.#kyselyConfig.namespace,
     );
 
     const onCustomNode = (node: CustomOperation, db: KyselyAny) => {
@@ -90,7 +97,7 @@ export class KyselyAdapter implements DatabaseAdapter {
 
       settings: {
         getVersion: async () => {
-          const v = await manager.get(`${this.#kyselyConfig.namespace}.schema_version`);
+          const v = await manager.get(`schema_version`);
           return v ? parseInt(v) : 0;
         },
         updateSettingsInMigration: async (version) => {
@@ -99,12 +106,18 @@ export class KyselyAdapter implements DatabaseAdapter {
           if (init) {
             return [
               { type: "custom", sql: init },
-              { type: "custom", sql: `UPDATE ${SETTINGS_TABLE_NAME} SET version = ${version}` },
+              {
+                type: "custom",
+                sql: manager.insert(`schema_version`, version.toString()),
+              },
             ];
           }
 
           return [
-            { type: "custom", sql: `UPDATE ${SETTINGS_TABLE_NAME} SET version = ${version}` },
+            {
+              type: "custom",
+              sql: manager.update(`schema_version`, version.toString()),
+            },
           ];
         },
       },
@@ -116,14 +129,19 @@ export class KyselyAdapter implements DatabaseAdapter {
       this.#kyselyConfig.db,
       this.#kyselyConfig.provider,
       SETTINGS_TABLE_NAME,
+      this.#kyselyConfig.namespace,
     );
 
-    return manager.get(`${this.#kyselyConfig.namespace}.schema_version`);
+    return manager.get(`schema_version`);
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createSettingsManager(db: Kysely<any>, provider: SQLProvider, settingsTableName: string) {
+function createSettingsManager(
+  db: KyselyAny,
+  provider: SQLProvider,
+  settingsTableName: string,
+  namespace: string,
+) {
   function initTable() {
     return db.schema
       .createTable(settingsTableName)
@@ -138,7 +156,7 @@ function createSettingsManager(db: Kysely<any>, provider: SQLProvider, settingsT
       try {
         const result = await db
           .selectFrom(settingsTableName)
-          .where("key", "=", key)
+          .where("key", "=", sql.lit(`${namespace}.${key}`))
           .select(["value"])
           .executeTakeFirstOrThrow();
         return result.value as string;
@@ -160,7 +178,7 @@ function createSettingsManager(db: Kysely<any>, provider: SQLProvider, settingsT
       return db
         .insertInto(settingsTableName)
         .values({
-          key: sql.lit(key),
+          key: sql.lit(`${namespace}.${key}`),
           value: sql.lit(value),
         })
         .compile().sql;
@@ -172,7 +190,7 @@ function createSettingsManager(db: Kysely<any>, provider: SQLProvider, settingsT
         .set({
           value: sql.lit(value),
         })
-        .where("key", "=", sql.lit(key))
+        .where("key", "=", sql.lit(`${namespace}.${key}`))
         .compile().sql;
     },
   };

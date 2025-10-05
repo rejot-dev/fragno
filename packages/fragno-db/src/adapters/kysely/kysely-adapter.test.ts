@@ -36,10 +36,40 @@ describe("KyselyAdapter", () => {
     expect(schemaVersion).toBeUndefined();
 
     const migrator = adapter.createMigrationEngine(testSchema);
-    const result = await migrator.migrate();
-    // expect(result.operations).toHaveLength(3);
-    assert(result.getSQL);
-    expect(result.getSQL()).toContain("create table");
-    // console.log(result.getSQL());
+    const preparedMigration = await migrator.prepareMigration();
+    assert(preparedMigration.getSQL);
+
+    await preparedMigration.execute();
+    expect(preparedMigration.getSQL()).toContain("create table");
+
+    const queryEngine = adapter.createQueryEngine(testSchema);
+    const insertResult = await queryEngine.create("users", {
+      name: "John Doe",
+      email: "john.doe@example.com",
+    });
+
+    expect(insertResult).toEqual({
+      id: expect.any(String),
+      name: "John Doe",
+      email: "john.doe@example.com",
+      age: null,
+    });
+
+    await queryEngine.updateMany("users", {
+      where: (b) => b("id", "=", insertResult["id"]),
+      set: {
+        name: "Jane Doe",
+      },
+    });
+
+    const queryResult = await queryEngine.findMany("users");
+    expect(queryResult).toEqual([
+      {
+        id: insertResult["id"],
+        name: "Jane Doe",
+        email: "john.doe@example.com",
+        age: null,
+      },
+    ]);
   });
 });

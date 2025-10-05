@@ -52,7 +52,7 @@ describe("createMigrator", () => {
     it("should migrate from version 0 to latest schema version", async () => {
       const { migrator, getVersion } = createTestMigrator(0);
 
-      const result = await migrator.migrate();
+      const result = await migrator.prepareMigration();
 
       expect(result.operations.length).toBeGreaterThan(0);
       expect(getVersion()).toBe(testSchema.version);
@@ -61,7 +61,7 @@ describe("createMigrator", () => {
     it("should migrate from intermediate version to latest", async () => {
       const { migrator, getVersion } = createTestMigrator(1);
 
-      const result = await migrator.migrate();
+      const result = await migrator.prepareMigration();
 
       expect(result.operations.length).toBeGreaterThan(0);
       expect(getVersion()).toBe(testSchema.version);
@@ -70,7 +70,7 @@ describe("createMigrator", () => {
     it("should return empty operations when already at latest version", async () => {
       const { migrator, getVersion } = createTestMigrator(testSchema.version);
 
-      const result = await migrator.migrate();
+      const result = await migrator.prepareMigration();
 
       expect(result.operations).toEqual([]);
       expect(getVersion()).toBe(testSchema.version);
@@ -79,7 +79,7 @@ describe("createMigrator", () => {
     it("should generate correct operations when jumping multiple versions", async () => {
       const { migrator } = createTestMigrator(0);
 
-      const result = await migrator.migrate();
+      const result = await migrator.prepareMigration();
 
       // Should create all 3 tables plus settings update
       const createTableOps = result.operations.filter((op) => op.type === "create-table");
@@ -91,7 +91,7 @@ describe("createMigrator", () => {
     it("should migrate forward from version 0 to version 2", async () => {
       const { migrator, getVersion } = createTestMigrator(0);
 
-      const result = await migrator.migrateTo(2);
+      const result = await migrator.prepareMigrationTo(2);
 
       expect(result.operations.length).toBeGreaterThan(0);
       expect(getVersion()).toBe(2);
@@ -100,7 +100,7 @@ describe("createMigrator", () => {
     it("should migrate forward by jumping multiple versions", async () => {
       const { migrator, getVersion } = createTestMigrator(0);
 
-      const result = await migrator.migrateTo(testSchema.version);
+      const result = await migrator.prepareMigrationTo(testSchema.version);
 
       expect(getVersion()).toBe(testSchema.version);
       const createTableOps = result.operations.filter((op) => op.type === "create-table");
@@ -110,20 +110,20 @@ describe("createMigrator", () => {
     it("should migrate forward one version at a time", async () => {
       const { migrator, getVersion } = createTestMigrator(0);
 
-      await migrator.migrateTo(1);
+      await migrator.prepareMigrationTo(1);
       expect(getVersion()).toBe(1);
 
-      await migrator.migrateTo(2);
+      await migrator.prepareMigrationTo(2);
       expect(getVersion()).toBe(2);
 
-      await migrator.migrateTo(3);
+      await migrator.prepareMigrationTo(3);
       expect(getVersion()).toBe(3);
     });
 
     it("should return empty operations when already at target version", async () => {
       const { migrator, getVersion } = createTestMigrator(2);
 
-      const result = await migrator.migrateTo(2);
+      const result = await migrator.prepareMigrationTo(2);
 
       expect(result.operations).toEqual([]);
       expect(getVersion()).toBe(2);
@@ -132,7 +132,7 @@ describe("createMigrator", () => {
     it("should throw error when trying to migrate backwards", async () => {
       const { migrator } = createTestMigrator(3);
 
-      await expect(migrator.migrateTo(1)).rejects.toThrow(
+      await expect(migrator.prepareMigrationTo(1)).rejects.toThrow(
         "Cannot migrate backwards: current version is 3, target is 1. Only forward migrations are supported.",
       );
     });
@@ -140,7 +140,7 @@ describe("createMigrator", () => {
     it("should throw error when migrating to negative version", async () => {
       const { migrator } = createTestMigrator(0);
 
-      await expect(migrator.migrateTo(-1)).rejects.toThrow(
+      await expect(migrator.prepareMigrationTo(-1)).rejects.toThrow(
         "Cannot migrate to negative version: -1",
       );
     });
@@ -148,7 +148,7 @@ describe("createMigrator", () => {
     it("should throw error when migrating beyond schema version", async () => {
       const { migrator } = createTestMigrator(0);
 
-      await expect(migrator.migrateTo(999)).rejects.toThrow(
+      await expect(migrator.prepareMigrationTo(999)).rejects.toThrow(
         `Cannot migrate to version 999: schema only has version ${testSchema.version}`,
       );
     });
@@ -166,7 +166,7 @@ describe("createMigrator", () => {
     it("should return updated version after migration", async () => {
       const { migrator } = createTestMigrator(0);
 
-      await migrator.migrateTo(2);
+      await migrator.prepareMigrationTo(2);
       const version = await migrator.getVersion();
 
       expect(version).toBe(2);
@@ -177,7 +177,7 @@ describe("createMigrator", () => {
     it("should execute migration operations", async () => {
       const { migrator, executedOperations } = createTestMigrator(0);
 
-      const result = await migrator.migrateTo(1);
+      const result = await migrator.prepareMigrationTo(1);
       await result.execute();
 
       expect(executedOperations).toHaveLength(1);
@@ -187,7 +187,7 @@ describe("createMigrator", () => {
     it("should not execute operations until execute() is called", async () => {
       const { migrator, executedOperations } = createTestMigrator(0);
 
-      await migrator.migrateTo(1);
+      await migrator.prepareMigrationTo(1);
 
       expect(executedOperations).toHaveLength(0);
     });
@@ -231,7 +231,7 @@ describe("createMigrator", () => {
       };
 
       const migrator = createMigrator(options);
-      const result = await migrator.migrateTo(1);
+      const result = await migrator.prepareMigrationTo(1);
 
       expect(afterAutoSpy).toHaveBeenCalledOnce();
       expect(result.operations.some((op) => op.type === "custom")).toBe(true);
@@ -274,7 +274,7 @@ describe("createMigrator", () => {
       };
 
       const migrator = createMigrator(options);
-      const result = await migrator.migrateTo(1);
+      const result = await migrator.prepareMigrationTo(1);
 
       expect(afterAllSpy).toHaveBeenCalledOnce();
       expect(result.operations.some((op) => op.type === "custom")).toBe(true);
@@ -285,7 +285,7 @@ describe("createMigrator", () => {
     it("should update settings by default", async () => {
       const { migrator } = createTestMigrator(0);
 
-      const result = await migrator.migrateTo(1);
+      const result = await migrator.prepareMigrationTo(1);
 
       const settingsOp = result.operations.find((op) => op.type === "custom");
       expect(settingsOp).toBeDefined();
@@ -294,7 +294,7 @@ describe("createMigrator", () => {
     it("should skip settings update when updateSettings is false", async () => {
       const { migrator } = createTestMigrator(0);
 
-      const result = await migrator.migrateTo(1, { updateSettings: false });
+      const result = await migrator.prepareMigrationTo(1, { updateSettings: false });
 
       // When updateSettings is false, we shouldn't have the settings update operation
       // Check that we only have create-table operations
@@ -337,7 +337,7 @@ describe("createMigrator", () => {
       };
 
       const migrator = createMigrator(options);
-      const result = await migrator.migrate();
+      const result = await migrator.prepareMigration();
 
       const createTableOps = result.operations.filter((op) => op.type === "create-table");
       const fkOps = result.operations.filter((op) => op.type === "add-foreign-key");

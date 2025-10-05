@@ -19,7 +19,7 @@ export interface MigrateOptions {
   updateSettings?: boolean;
 }
 
-export interface MigrationResult {
+export interface PreparedMigration {
   operations: MigrationOperation[];
   getSQL?: () => string;
   execute: () => Promise<void>;
@@ -34,12 +34,12 @@ export interface Migrator {
   /**
    * Migrate to the latest schema version
    */
-  migrate: (options?: MigrateOptions) => Promise<MigrationResult>;
+  prepareMigration: (options?: MigrateOptions) => Promise<PreparedMigration>;
 
   /**
    * Migrate to a specific version (only forward migrations allowed)
    */
-  migrateTo: (version: number, options?: MigrateOptions) => Promise<MigrationResult>;
+  prepareMigrationTo: (version: number, options?: MigrateOptions) => Promise<PreparedMigration>;
 }
 
 export interface MigrationEngineOptions {
@@ -111,10 +111,10 @@ export function createMigrator({
     getVersion() {
       return settings.getVersion();
     },
-    async migrate(options = {}) {
-      return this.migrateTo(targetSchema.version, options);
+    async prepareMigration(options = {}) {
+      return this.prepareMigrationTo(targetSchema.version, options);
     },
-    async migrateTo(toVersion, options = {}) {
+    async prepareMigrationTo(toVersion, options = {}) {
       const { updateSettings: updateVersion = true } = options;
       const fromVersion = await settings.getVersion();
 
