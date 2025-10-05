@@ -798,12 +798,14 @@ export function schema<TTables extends Record<string, AnyTable> = Record<string,
   return callback(new SchemaBuilder()).build();
 }
 
-export function compileForeignKey(key: ForeignKey) {
+export function compileForeignKey(key: ForeignKey, nameType: "sql" | "orm" = "orm") {
   return {
     name: key.name,
-    table: key.table.name,
-    referencedTable: key.referencedTable.name,
-    referencedColumns: key.referencedColumns.map((col) => col.name),
-    columns: key.columns.map((col) => col.name),
+    table: nameType === "sql" ? key.table.name : key.table.ormName,
+    referencedTable: nameType === "sql" ? key.referencedTable.name : key.referencedTable.ormName,
+    referencedColumns: key.referencedColumns.map((col) =>
+      nameType === "sql" ? col.name : col.ormName,
+    ),
+    columns: key.columns.map((col) => (nameType === "sql" ? col.name : col.ormName)),
   };
 }

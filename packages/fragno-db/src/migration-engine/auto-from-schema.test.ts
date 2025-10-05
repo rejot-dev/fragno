@@ -20,9 +20,7 @@ describe("generateMigrationFromSchema", () => {
     // Version 0 -> 1: users table created
     // Version 1 -> 2: posts table created
     // We want to generate the migration for version 1 -> 2
-    const operations = generateMigrationFromSchema(mySchema, 1, 2, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
     expect(operations).toHaveLength(1);
     expect(operations[0]).toMatchObject({
@@ -46,9 +44,7 @@ describe("generateMigrationFromSchema", () => {
     });
 
     // Generate migrations from version 0 to 3 (all three tables)
-    const operations = generateMigrationFromSchema(mySchema, 0, 3, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
     expect(operations).toHaveLength(3);
     expect(operations[0]).toMatchObject({
@@ -84,9 +80,7 @@ describe("generateMigrationFromSchema", () => {
     // Version 0 -> 1: users table
     // Version 1 -> 2: posts table
     // Version 2 -> 3: author foreign key
-    const operations = generateMigrationFromSchema(mySchema, 2, 3, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 2, 3);
 
     expect(operations).toHaveLength(1);
     expect(operations[0]).toMatchObject({
@@ -118,9 +112,7 @@ describe("generateMigrationFromSchema", () => {
 
     // Version 0 -> 1: users table
     // Version 1 -> 2: email index
-    const operations = generateMigrationFromSchema(mySchema, 1, 2, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
     expect(operations).toHaveLength(1);
     expect(operations[0]).toMatchObject({
@@ -149,9 +141,7 @@ describe("generateMigrationFromSchema", () => {
     });
 
     // Generate all migrations from scratch
-    const operations = generateMigrationFromSchema(mySchema, 0, 3, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
     expect(operations).toHaveLength(3);
     expect(operations[0].type).toBe("create-table");
@@ -179,9 +169,7 @@ describe("generateMigrationFromSchema", () => {
     });
 
     // Generate all migrations from scratch
-    const operations = generateMigrationFromSchema(mySchema, 0, 4, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 0, 4);
 
     expect(operations).toHaveLength(4);
     expect(operations[0].type).toBe("create-table");
@@ -197,9 +185,7 @@ describe("generateMigrationFromSchema", () => {
       });
     });
 
-    const operations = generateMigrationFromSchema(mySchema, 1, 1, {
-      provider: "postgresql",
-    });
+    const operations = generateMigrationFromSchema(mySchema, 1, 1);
 
     expect(operations).toHaveLength(0);
   });
@@ -208,7 +194,7 @@ describe("generateMigrationFromSchema", () => {
     const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
-      generateMigrationFromSchema(mySchema, 999, 1000, { provider: "postgresql" });
+      generateMigrationFromSchema(mySchema, 999, 1000);
     }).toThrow("fromVersion (999) exceeds schema version (1)");
   });
 
@@ -216,7 +202,7 @@ describe("generateMigrationFromSchema", () => {
     const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
-      generateMigrationFromSchema(mySchema, 0, 999, { provider: "postgresql" });
+      generateMigrationFromSchema(mySchema, 0, 999);
     }).toThrow("toVersion (999) exceeds schema version (1)");
   });
 
@@ -224,7 +210,7 @@ describe("generateMigrationFromSchema", () => {
     const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
-      generateMigrationFromSchema(mySchema, 1, 0, { provider: "postgresql" });
+      generateMigrationFromSchema(mySchema, 1, 0);
     }).toThrow("Cannot migrate backwards");
   });
 
@@ -232,7 +218,7 @@ describe("generateMigrationFromSchema", () => {
     const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
-      generateMigrationFromSchema(mySchema, -1, 1, { provider: "postgresql" });
+      generateMigrationFromSchema(mySchema, -1, 1);
     }).toThrow("fromVersion cannot be negative");
   });
 });

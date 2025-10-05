@@ -103,7 +103,6 @@ export function createMigrator({
   settings,
   generateMigrationFromSchema = defaultGenerateMigrationFromSchema,
   schema: targetSchema,
-  userConfig,
   executor,
   sql: sqlConfig,
   transformers = [],
@@ -146,12 +145,7 @@ export function createMigrator({
 
       const context: MigrationContext = {
         async auto() {
-          let generated = generateMigrationFromSchema(
-            targetSchema,
-            fromVersion,
-            toVersion,
-            userConfig,
-          );
+          let generated = generateMigrationFromSchema(targetSchema, fromVersion, toVersion);
 
           for (const transformer of transformers) {
             if (!transformer.afterAuto) {

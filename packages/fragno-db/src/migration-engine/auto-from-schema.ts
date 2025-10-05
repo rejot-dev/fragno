@@ -1,6 +1,5 @@
 import { compileForeignKey, type AnySchema } from "../schema/create";
 import type { MigrationOperation } from "./shared";
-import type { Provider } from "../shared/providers";
 
 /**
  * Generate migration operations from a schema's operation history
@@ -23,18 +22,13 @@ import type { Provider } from "../shared/providers";
  * );
  *
  * // Generate operations from version 0 to 1 (only creates users table)
- * const operations = generateMigrationFromSchema(mySchema, 0, 1, {
- *   provider: "postgresql"
- * });
+ * const operations = generateMigrationFromSchema(mySchema, 0, 1);
  * ```
  */
 export function generateMigrationFromSchema(
   targetSchema: AnySchema,
   fromVersion: number,
   toVersion: number,
-  _options: {
-    provider: Provider;
-  },
 ): MigrationOperation[] {
   if (fromVersion < 0) {
     throw new Error(`fromVersion cannot be negative: ${fromVersion}`);

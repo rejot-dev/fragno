@@ -16,8 +16,11 @@
     "types:check": "tsc --noEmit"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.10",
     "@fragno-private/typescript-config": "workspace:*",
+    "@types/bun": "^1.2.23",
     "@types/node": "^22",
+    "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4"
   },
   "repository": {
