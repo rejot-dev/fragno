@@ -66,7 +66,7 @@ describe("create", () => {
     expect(statusValue).toBe("active");
   });
 
-  it("should increment version on each builder operation", () => {
+  it("should increment schema version on each schema-level operation", () => {
     const userSchema = schema((s) => {
       return s
         .addTable("users", (t) => {
@@ -283,5 +283,99 @@ describe("create", () => {
     expect(fk.referencedTable).toBe(usersTable);
     expect(fk.columns).toEqual([usersTable.columns.invitedBy]);
     expect(fk.referencedColumns).toEqual([usersTable.columns.id]);
+  });
+
+  it("should allow altering an existing table to add columns", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t
+            .addColumn("email", column("string"))
+            .addColumn("age", column("integer").nullable());
+        });
+    });
+
+    const usersTable = userSchema.tables.users;
+
+    // Verify the original columns exist
+    expect(usersTable.columns.id).toBeDefined();
+    expect(usersTable.columns.name).toBeDefined();
+
+    // Verify the new columns were added
+    expect(usersTable.columns.email).toBeDefined();
+    expect(usersTable.columns.age).toBeDefined();
+    expect(usersTable.columns.age.isNullable).toBe(true);
+
+    // Verify the operations were recorded
+    const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");
+    expect(alterTableOps).toHaveLength(1);
+    expect(alterTableOps[0].modifications).toHaveLength(2);
+    expect(alterTableOps[0].modifications[0].columnName).toBe("email");
+    expect(alterTableOps[0].modifications[1].columnName).toBe("age");
+
+    // Version should be: 1 (addTable) + 1 (alter-table with 2 columns)
+    expect(userSchema.version).toBe(2);
+  });
+
+  it("should allow altering an existing table to add indexes", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("email", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t
+            .createIndex("idx_email", ["email"])
+            .createIndex("idx_name_unique", ["name"], { unique: true });
+        });
+    });
+
+    const usersTable = userSchema.tables.users;
+
+    // Verify the indexes were added
+    expect(usersTable.indexes).toHaveLength(2);
+    expect(usersTable.indexes[0].name).toBe("idx_email");
+    expect(usersTable.indexes[0].unique).toBe(false);
+    expect(usersTable.indexes[1].name).toBe("idx_name_unique");
+    expect(usersTable.indexes[1].unique).toBe(true);
+
+    // Verify the operations were recorded
+    const addIndexOps = userSchema.operations.filter((op) => op.type === "add-index");
+    expect(addIndexOps).toHaveLength(2);
+
+    // Version should be: 1 (addTable) + 2 (add-index ops)
+    expect(userSchema.version).toBe(3);
+  });
+
+  it("should allow multiple alterTable calls on the same table", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.addColumn("email", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.addColumn("age", column("integer").nullable());
+        });
+    });
+
+    const usersTable = userSchema.tables.users;
+
+    // Verify all columns exist
+    expect(usersTable.columns.id).toBeDefined();
+    expect(usersTable.columns.name).toBeDefined();
+    expect(usersTable.columns.email).toBeDefined();
+    expect(usersTable.columns.age).toBeDefined();
+
+    // Version should be: 1 (addTable) + 1 (first alter) + 1 (second alter)
+    expect(userSchema.version).toBe(3);
   });
 });

@@ -49,7 +49,7 @@ export type TableOperation =
       name: string;
     }
   | {
-      type: "update-table";
+      type: "alter-table";
       name: string;
       value: ColumnOperation[];
     }

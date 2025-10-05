@@ -63,6 +63,24 @@ export function generateMigrationFromSchema(
         type: "create-table",
         value: op.table,
       });
+    } else if (op.type === "alter-table") {
+      // Convert alter-table modifications to alter-table operation
+      const columnOperations = op.modifications.map((mod) => {
+        if (mod.type === "add-column") {
+          return {
+            type: "create-column" as const,
+            value: mod.column,
+          };
+        }
+        // Handle other modification types when added
+        throw new Error(`Unknown table modification type: ${mod.type}`);
+      });
+
+      migrationOperations.push({
+        type: "alter-table",
+        name: op.tableName,
+        value: columnOperations,
+      });
     } else if (op.type === "add-reference") {
       const table = targetSchema.tables[op.tableName];
       if (!table) {

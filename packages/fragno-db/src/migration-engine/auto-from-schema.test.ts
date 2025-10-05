@@ -100,22 +100,22 @@ describe("generateMigrationFromSchema", () => {
     }
   });
 
-  it("should generate add-index operation for indexes defined in createIndex", () => {
+  it("should generate add-index operation for indexes added via alterTable", () => {
     const mySchema = schema((s) => {
-      return s.addTable("users", (t) => {
-        return t
-          .addColumn("id", idColumn())
-          .addColumn("email", column("string"))
-          .createIndex("idx_email", ["email"], { unique: true });
-      });
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("email", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.createIndex("idx_email", ["email"], { unique: true });
+        });
     });
 
-    // Version 0 -> 1: users table
-    // Version 1 -> 2: email index
-    const operations = generateMigrationFromSchema(mySchema, 1, 2);
+    const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
-    expect(operations).toHaveLength(1);
-    expect(operations[0]).toMatchObject({
+    expect(operations).toHaveLength(2);
+    expect(operations[0].type).toBe("create-table");
+    expect(operations[1]).toMatchObject({
       type: "add-index",
       table: "users",
       name: "idx_email",
@@ -153,10 +153,10 @@ describe("generateMigrationFromSchema", () => {
     const mySchema = schema((s) => {
       return s
         .addTable("users", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("email", column("string"))
-            .createIndex("idx_email", ["email"], { unique: true });
+          return t.addColumn("id", idColumn()).addColumn("email", column("string"));
+        })
+        .alterTable("users", (t) => {
+          return t.createIndex("idx_email", ["email"], { unique: true });
         })
         .addTable("posts", (t) => {
           return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());

@@ -24,25 +24,29 @@ export type ExecuteNode = Compilable & {
   execute(): Promise<unknown>;
 };
 
-function getColumnBuilderCallback(col: AnyColumn, provider: SQLProvider): ColumnBuilderCallback {
-  return (build) => {
-    if (!col.isNullable) {
-      build = build.notNull();
-    }
-    if (col instanceof IdColumn) build = build.primaryKey();
-
-    const defaultValue = defaultValueToDB(col, provider);
-    if (defaultValue) build = build.defaultTo(defaultValue);
-    return build;
-  };
-}
-
 const errors = {
   IdColumnUpdate:
-    "ID columns must not be updated, not every database supports updating primary keys and often requires workarounds.",
+    "ID columns cannot be updated. Not every database supports updating primary keys and often requires workarounds.",
+  SQLiteUpdateColumn: "SQLite doesn't support updating columns. Recreate the table instead.",
   SQLiteUpdateForeignKeys:
-    "In SQLite, you cannot modify foreign keys directly, use `recreate-table` instead.",
-};
+    "SQLite doesn't support modifying foreign keys directly. Use `recreate-table` instead.",
+} as const;
+
+/**
+ * Returns the appropriate foreign key action based on the provider.
+ * MSSQL doesn't support RESTRICT, so we use NO ACTION (functionally equivalent).
+ */
+function getForeignKeyAction(provider: SQLProvider): "restrict" | "no action" {
+  return provider === "mssql" ? "no action" : "restrict";
+}
+
+/**
+ * Generates MSSQL default constraint name following the DF_tableName_columnName pattern.
+ */
+function getMssqlDefaultConstraintName(tableName: string, columnName: string): string {
+  const MSSQL_DEFAULT_CONSTRAINT_PREFIX = "DF" as const;
+  return `${MSSQL_DEFAULT_CONSTRAINT_PREFIX}_${tableName}_${columnName}`;
+}
 
 function createUniqueIndex(
   db: KyselyAny,
@@ -54,7 +58,7 @@ function createUniqueIndex(
   const query = db.schema.createIndex(name).on(tableName).columns(cols).unique();
 
   if (provider === "mssql") {
-    // ignore null by default
+    // MSSQL: ignore null values in unique indexes by default
     return query.where((b) => {
       return b.and(cols.map((col) => b(col, "is not", null)));
     });
@@ -63,42 +67,18 @@ function createUniqueIndex(
   return query;
 }
 
-function createUniqueIndexOrConstraint(
-  db: KyselyAny,
-  name: string,
-  tableName: string,
-  cols: string[],
-  provider: SQLProvider,
-) {
-  if (provider === "sqlite" || provider === "mssql") {
-    return createUniqueIndex(db, name, tableName, cols, provider);
+function dropUniqueIndex(db: KyselyAny, name: string, tableName: string, provider: SQLProvider) {
+  let query = db.schema.dropIndex(name).ifExists();
+
+  if (provider === "cockroachdb") {
+    query = query.cascade();
   }
 
-  return db.schema.alterTable(tableName).addUniqueConstraint(name, cols);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function dropUniqueIndexOrConstraint(
-  db: KyselyAny,
-  name: string,
-  tableName: string,
-  provider: SQLProvider,
-) {
-  // Cockroach DB needs to drop the index instead
-  if (provider === "cockroachdb" || provider === "sqlite" || provider === "mssql") {
-    let query = db.schema.dropIndex(name).ifExists();
-
-    if (provider === "cockroachdb") {
-      query = query.cascade();
-    }
-    if (provider === "mssql") {
-      query = query.on(tableName);
-    }
-
-    return query;
+  if (provider === "mssql") {
+    query = query.on(tableName);
   }
 
-  return db.schema.alterTable(tableName).dropConstraint(name);
+  return query;
 }
 
 function executeColumn(
@@ -135,9 +115,11 @@ function executeColumn(
     case "update-column": {
       const col = operation.value;
 
-      if (col instanceof IdColumn) throw new Error(errors.IdColumnUpdate);
+      if (col instanceof IdColumn) {
+        throw new Error(errors.IdColumnUpdate);
+      }
       if (provider === "sqlite") {
-        throw new Error("SQLite doesn't support updating column, recreate the table instead.");
+        throw new Error(errors.SQLiteUpdateColumn);
       }
 
       if (!isUpdated(operation)) {
@@ -154,6 +136,7 @@ function executeColumn(
         return results;
       }
 
+      // MSSQL requires dropping and recreating default constraints when changing data type or default value
       const mssqlRecreateDefaultConstraint = operation.updateDataType || operation.updateDefault;
 
       if (provider === "mssql" && mssqlRecreateDefaultConstraint) {
@@ -163,14 +146,17 @@ function executeColumn(
       if (operation.updateDataType) {
         const dbType = sql.raw(schemaToDBType(col, provider));
 
-        results.push(
-          provider === "postgresql" || provider === "cockroachdb"
-            ? rawToNode(
-                db,
-                sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`,
-              )
-            : next().alterColumn(operation.name, (b) => b.setDataType(dbType)),
-        );
+        if (provider === "postgresql" || provider === "cockroachdb") {
+          // PostgreSQL/CockroachDB: Use explicit USING clause for type conversion
+          results.push(
+            rawToNode(
+              db,
+              sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`,
+            ),
+          );
+        } else {
+          results.push(next().alterColumn(operation.name, (b) => b.setDataType(dbType)));
+        }
       }
 
       if (operation.updateNullable) {
@@ -185,21 +171,23 @@ function executeColumn(
         const defaultValue = defaultValueToDB(col, provider);
 
         if (defaultValue) {
-          const name = `DF_${tableName}_${col.name}`;
+          const constraintName = getMssqlDefaultConstraintName(tableName, col.name);
 
           results.push(
             rawToNode(
               db,
-              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(name)} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`,
+              sql`ALTER TABLE ${sql.ref(tableName)} ADD CONSTRAINT ${sql.ref(constraintName)} DEFAULT ${defaultValue} FOR ${sql.ref(col.name)}`,
             ),
           );
         }
-      } else if (provider !== "mssql" && operation.updateDefault) {
+      } else if (operation.updateDefault) {
         const defaultValue = defaultValueToDB(col, provider);
 
         results.push(
           next().alterColumn(operation.name, (build) => {
-            if (!defaultValue) return build.dropDefault();
+            if (!defaultValue) {
+              return build.dropDefault();
+            }
             return build.setDefault(defaultValue);
           }),
         );
@@ -231,8 +219,7 @@ export function execute(
 
     for (const foreignKey of table.foreignKeys) {
       const compiled = compileForeignKey(foreignKey, "sql");
-      // Foreign keys are always RESTRICT
-      const action = provider === "mssql" ? "no action" : "restrict";
+      const action = getForeignKeyAction(provider);
 
       builder = builder.addForeignKeyConstraint(
         compiled.name,
@@ -242,6 +229,7 @@ export function execute(
         (b) => {
           const fkBuilder = b.onUpdate(action).onDelete(action);
 
+          // SQLite: defer foreign key checks during table recreation
           if (sqliteDeferChecks) {
             return fkBuilder.deferrable().initiallyDeferred();
           }
@@ -253,7 +241,7 @@ export function execute(
     for (const idx of table.indexes) {
       if (idx.unique) {
         results.push(
-          createUniqueIndexOrConstraint(
+          createUniqueIndex(
             db,
             idx.name,
             table.name,
@@ -273,11 +261,14 @@ export function execute(
       return createTable(operation.value);
     case "rename-table":
       if (provider === "mssql") {
-        return rawToNode(db, sql.raw(`EXEC sp_rename ${operation.from}, ${operation.to}`));
+        return rawToNode(
+          db,
+          sql`EXEC sp_rename ${sql.lit(operation.from)}, ${sql.lit(operation.to)}`,
+        );
       }
 
       return db.schema.alterTable(operation.from).renameTo(operation.to);
-    case "update-table": {
+    case "alter-table": {
       const results: ExecuteNode[] = [];
 
       for (const op of operation.value) {
@@ -294,9 +285,9 @@ export function execute(
       if (provider === "sqlite") {
         throw new Error(errors.SQLiteUpdateForeignKeys);
       }
+
       const { table, value } = operation;
-      // Foreign keys are always RESTRICT
-      const action = provider === "mssql" ? "no action" : "restrict";
+      const action = getForeignKeyAction(provider);
 
       return db.schema
         .alterTable(table)
@@ -312,8 +303,11 @@ export function execute(
       if (provider === "sqlite") {
         throw new Error(errors.SQLiteUpdateForeignKeys);
       }
+
       const { table, name } = operation;
       let query = db.schema.alterTable(table).dropConstraint(name);
+
+      // MySQL doesn't support IF EXISTS for dropping constraints
       if (provider !== "mysql") {
         query = query.ifExists();
       }
@@ -322,24 +316,35 @@ export function execute(
     }
     case "add-index": {
       if (operation.unique) {
-        return createUniqueIndexOrConstraint(
-          db,
-          operation.name,
-          operation.table,
-          operation.columns,
-          provider,
-        );
+        return createUniqueIndex(db, operation.name, operation.table, operation.columns, provider);
       }
       return db.schema.createIndex(operation.name).on(operation.table).columns(operation.columns);
     }
     case "drop-index": {
-      let query = db.schema.dropIndex(operation.name).ifExists();
-      if (provider === "mssql") {
-        query = query.on(operation.table);
-      }
-      return query;
+      return dropUniqueIndex(db, operation.name, operation.table, provider);
     }
   }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+function getColumnBuilderCallback(col: AnyColumn, provider: SQLProvider): ColumnBuilderCallback {
+  return (build) => {
+    if (!col.isNullable) {
+      build = build.notNull();
+    }
+    if (col instanceof IdColumn) {
+      build = build.primaryKey();
+    }
+
+    const defaultValue = defaultValueToDB(col, provider);
+    if (defaultValue) {
+      build = build.defaultTo(defaultValue);
+    }
+    return build;
+  };
 }
 
 function rawToNode(db: KyselyAny, raw: RawBuilder<unknown>): ExecuteNode {
@@ -354,9 +359,8 @@ function rawToNode(db: KyselyAny, raw: RawBuilder<unknown>): ExecuteNode {
 }
 
 function mssqlDropDefaultConstraint(tableName: string, columnName: string) {
-  const alter = sql.lit(`ALTER TABLE "dbo"."${tableName}" DROP CONSTRAINT `);
-
-  return sql`DECLARE @ConstraintName NVARCHAR(200);
+  return sql`
+DECLARE @ConstraintName NVARCHAR(200);
 
 SELECT @ConstraintName = dc.name
 FROM sys.default_constraints dc
@@ -367,18 +371,19 @@ WHERE s.name = 'dbo' AND t.name = ${sql.lit(tableName)} AND c.name = ${sql.lit(c
 
 IF @ConstraintName IS NOT NULL
 BEGIN
-    EXEC(${alter} + @ConstraintName);
+    EXEC('ALTER TABLE [dbo].[' + ${sql.lit(tableName)} + '] DROP CONSTRAINT [' + @ConstraintName + ']');
 END`;
 }
 
 function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
   const value = column.default;
   if (!value) {
-    return;
+    return undefined;
   }
-  // mysql doesn't support default value for text
+
+  // MySQL doesn't support default values for TEXT columns
   if (provider === "mysql" && column.type === "string") {
-    return;
+    return undefined;
   }
 
   if ("runtime" in value && value.runtime === "now") {
