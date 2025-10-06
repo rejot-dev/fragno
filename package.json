@@ -51,6 +51,8 @@
     "build:clean": "turbo run build --force",
     "types:check": "turbo run types:check",
     "types:check:watch": "turbo watch types:check",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
     "ci:version": "changeset version && bun update && bun install --linker=isolated",
     "ci:publish": "bun run scripts/src/publish-packages.ts --access public && changeset tag",
     "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text bun.lock"

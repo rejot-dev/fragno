@@ -89,7 +89,8 @@
     "types:check": "tsc --noEmit",
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "peerDependencies": {
     "@farmfe/core": ">=1",
