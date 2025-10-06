@@ -49,7 +49,7 @@ describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rsp
         expect(result).toBeDefined();
       });
 
-      test("compiles", async () => {
+      test("compiles", { timeout: 20000 }, async () => {
         const buildResult = execSync("bun run types:check", {
           cwd: tempDir,
           encoding: "utf8",

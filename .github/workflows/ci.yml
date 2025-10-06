@@ -126,4 +126,4 @@ jobs:
           key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
 
       - name: Run tests
-        run: bunx vitest run --allowOnly=false
+        run: bun run test
