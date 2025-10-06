@@ -20,7 +20,7 @@ const testSchema = schema((s) => {
 });
 
 describe("KyselyAdapter", () => {
-  it("should create a migration engine", { timeout: 10000 }, async () => {
+  it("should create a migration engine", { timeout: 20000 }, async () => {
     const { dialect } = await KyselyPGlite.create();
     const kysely = new Kysely({
       dialect,

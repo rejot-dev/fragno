@@ -2,7 +2,8 @@ import { defineConfig } from "vite";
 import unpluginFragno from "@fragno-dev/unplugin-fragno/vite";
 
 export default defineConfig({
-  plugins: [unpluginFragno()],
+  plugins: [unpluginFragno({ platform: "browser" })],
+  // https://vite.dev/guide/build.html#library-mode
   build: {
     lib: {
       entry: {
@@ -14,7 +15,10 @@ export default defineConfig({
       },
       formats: ["es"],
     },
-    outDir: "./dist",
+    rollupOptions: {
+      external: ["react", "vue", "svelte", "zod"],
+    },
+    outDir: "./dist/browser",
     sourcemap: true,
     target: "es2020",
   },

@@ -7,6 +7,10 @@ import {
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
+
+// NOTE: We use zod here for defining schemas, but any StandardSchema library can be used!
+//       For a complete list see:
+// https://github.com/standard-schema/standard-schema#what-schema-libraries-implement-the-spec
 import { z } from "zod";
 
 export interface ExampleFragmentServerConfig {

@@ -4,6 +4,7 @@ import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
 
 export default defineConfig([
   {
+    ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
       "./src/client/react.ts",
@@ -15,11 +16,17 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
+    noExternal: [/^@fragno-dev\/core\//],
+    external: ["react", "vue", "svelte"],
   },
   {
+    ignoreWatch: ["./dist"],
     entry: "./src/index.ts",
     dts: true,
     platform: "node",
     outDir: "./dist/node",
+    plugins: [unpluginFragno({ platform: "node" })],
+    unbundle: true,
+    external: ["zod"],
   },
 ]);
