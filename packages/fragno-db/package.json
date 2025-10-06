@@ -31,7 +31,9 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.10",

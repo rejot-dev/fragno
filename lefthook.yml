@@ -17,5 +17,5 @@ pre-commit:
       glob: "{*.ts,*.tsx,tsconfig.json}"
     - name: test
       priority: 1
-      run: bunx vitest run --allowOnly=false
+      run: bunx turbo run test
       glob: "{*.ts,tsconfig.json}"
