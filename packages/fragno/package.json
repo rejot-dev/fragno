@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^6.2.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/svelte": "^5.2.8",
@@ -78,10 +79,12 @@
     "@types/node": "^22",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-istanbul": "^3.2.4",
     "happy-dom": "^18.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "svelte": "^5.1.0",
+    "vitest": "^3.2.4",
     "vue": "^3",
     "zod": "^4.0.5"
   },

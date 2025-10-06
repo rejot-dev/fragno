@@ -1,0 +1,34 @@
+{
+  "name": "@fragno-private/vitest-config",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "collect-json-reports": "bun src/scripts/collect-json-outputs.ts",
+    "merge-json-reports": "nyc merge coverage/raw coverage/merged/merged-coverage.json",
+    "report": "nyc report -t coverage/merged --report-dir coverage/report --reporter=html --exclude-after-remap false && echo -e '\nopen ./coverage/report/index.html'"
+  },
+  "dependencies": {
+    "vitest": "^3.2.4",
+    "@vitest/coverage-istanbul": "^3.2.4"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "@vitest/ui": "^3.2.4",
+    "glob": "^11.0.1",
+    "nyc": "^17.1.0",
+    "typescript": "^5.9.3"
+  }
+}

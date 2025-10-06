@@ -23,7 +23,8 @@
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@fragno-private/typescript-config": "workspace:*"
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
