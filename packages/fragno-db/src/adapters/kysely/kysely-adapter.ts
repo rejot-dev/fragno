@@ -6,7 +6,7 @@ import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
 import { execute } from "./migration/execute";
-import type { AbstractQuery } from "../../query";
+import type { AbstractQuery } from "../../query/query";
 import { fromKysely } from "./query";
 
 const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
@@ -17,7 +17,6 @@ type KyselyAny = Kysely<any>;
 export interface KyselyConfig {
   db: KyselyAny;
   provider: SQLProvider;
-  namespace: string;
 }
 
 export class KyselyAdapter implements DatabaseAdapter {
@@ -27,16 +26,16 @@ export class KyselyAdapter implements DatabaseAdapter {
     this.#kyselyConfig = config;
   }
 
-  createQueryEngine(schema: AnySchema): AbstractQuery<AnySchema> {
+  createQueryEngine<T extends AnySchema>(schema: T, _namespace: string): AbstractQuery<T> {
     return fromKysely(schema, this.#kyselyConfig);
   }
 
-  createMigrationEngine(schema: AnySchema): Migrator {
+  createMigrationEngine(schema: AnySchema, namespace: string): Migrator {
     const manager = createSettingsManager(
       this.#kyselyConfig.db,
       this.#kyselyConfig.provider,
       SETTINGS_TABLE_NAME,
-      this.#kyselyConfig.namespace,
+      namespace,
     );
 
     const onCustomNode = (node: CustomOperation, db: KyselyAny) => {
@@ -124,12 +123,12 @@ export class KyselyAdapter implements DatabaseAdapter {
     });
   }
 
-  getSchemaVersion() {
+  getSchemaVersion(namespace: string) {
     const manager = createSettingsManager(
       this.#kyselyConfig.db,
       this.#kyselyConfig.provider,
       SETTINGS_TABLE_NAME,
-      this.#kyselyConfig.namespace,
+      namespace,
     );
 
     return manager.get(`schema_version`);

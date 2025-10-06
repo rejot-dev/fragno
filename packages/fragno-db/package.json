@@ -3,11 +3,29 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
+    ".": {
+      "bun": "./src/mod.ts",
+      "development": "./src/mod.ts",
+      "types": "./dist/mod.d.ts",
+      "default": "./dist/mod.js"
+    },
     "./schema": {
       "bun": "./src/schema/create.ts",
       "development": "./src/schema/create.ts",
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"
+    },
+    "./query": {
+      "bun": "./src/query/query.ts",
+      "development": "./src/query/query.ts",
+      "types": "./dist/query/query.d.ts",
+      "default": "./dist/query/query.js"
+    },
+    "./adapters/kysely": {
+      "bun": "./src/adapters/kysely/kysely-adapter.ts",
+      "development": "./src/adapters/kysely/kysely-adapter.ts",
+      "types": "./dist/adapters/kysely/kysely-adapter.d.ts",
+      "default": "./dist/adapters/kysely/kysely-adapter.js"
     }
   },
   "scripts": {

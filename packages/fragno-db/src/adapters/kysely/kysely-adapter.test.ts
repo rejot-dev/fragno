@@ -8,7 +8,7 @@ const testSchema = schema((s) => {
   return s
     .addTable("users", (t) => {
       return t
-        .addColumn("id", idColumn())
+        .addColumn("id", idColumn().defaultTo("auto"))
         .addColumn("name", column("string"))
         .addColumn("email", column("string"));
     })
@@ -29,20 +29,19 @@ describe("KyselyAdapter", () => {
     const adapter = new KyselyAdapter({
       db: kysely,
       provider: "postgresql",
-      namespace: "test",
     });
 
-    const schemaVersion = await adapter.getSchemaVersion();
+    const schemaVersion = await adapter.getSchemaVersion("test");
     expect(schemaVersion).toBeUndefined();
 
-    const migrator = adapter.createMigrationEngine(testSchema);
+    const migrator = adapter.createMigrationEngine(testSchema, "test");
     const preparedMigration = await migrator.prepareMigration();
     assert(preparedMigration.getSQL);
 
     await preparedMigration.execute();
     expect(preparedMigration.getSQL()).toContain("create table");
 
-    const queryEngine = adapter.createQueryEngine(testSchema);
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
     const insertResult = await queryEngine.create("users", {
       name: "John Doe",
       email: "john.doe@example.com",

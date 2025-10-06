@@ -4,8 +4,8 @@ import {
   type ORMAdapter,
   type SimplifyFindOptions,
   toORM,
-} from "../../query/orm";
-import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query";
+} from "../../query/orm/orm";
+import type { AbstractQuery, AnySelectClause, FindManyOptions } from "../../query/query";
 import type { SqlBool } from "kysely";
 import { type AnyColumn, type AnySchema, type AnyTable, Column } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
@@ -138,7 +138,7 @@ function extendSelect(original: AnySelectClause): {
 }
 
 // always use raw SQL names since Kysely is a query builder
-export function fromKysely(schema: AnySchema, config: KyselyConfig): AbstractQuery<AnySchema> {
+export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig): AbstractQuery<T> {
   const { db: kysely, provider } = config;
 
   /**

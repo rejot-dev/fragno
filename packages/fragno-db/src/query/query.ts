@@ -1,6 +1,6 @@
 import type { IdColumn, AnySchema, AnyTable } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
-import type { ORMAdapter } from "./orm";
+import type { ORMAdapter } from "./orm/orm";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type EmptyObject = {};

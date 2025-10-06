@@ -9,7 +9,6 @@ export type AnyTable = Table;
 export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
-
 /**
  * Operations that can be performed on a schema during its definition.
  * These are tracked so we can generate migrations for specific version ranges.
@@ -283,11 +282,20 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
     return this.default.runtime();
   }
 
+  /**
+   * @description This is used for type inference only. Runtime value will be undefined.
+   * @internal
+   */
   get $in(): TIn {
-    throw new Error("Type inference only");
+    return undefined as unknown as TIn;
   }
+
+  /**
+   * @description This is used for type inference only. Runtime value will be undefined.
+   * @internal
+   */
   get $out(): TOut {
-    throw new Error("Type inference only");
+    return undefined as unknown as TOut;
   }
 }
 

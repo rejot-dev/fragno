@@ -293,6 +293,33 @@
         "vitest": "^3.2.4",
       },
     },
+    "packages/fragno-db-library": {
+      "name": "@fragno-dev/fragno-db-library",
+      "dependencies": {
+        "@fragno-dev/db": "workspace:*",
+        "zod": "^4.0.5",
+      },
+      "devDependencies": {
+        "@fragno-private/typescript-config": "workspace:*",
+        "@types/node": "^20",
+      },
+    },
+    "packages/fragno-db-usage": {
+      "name": "@fragno-dev/fragno-db-usage",
+      "dependencies": {
+        "@electric-sql/pglite": "^0.3.10",
+        "@fragno-dev/db": "workspace:*",
+        "@fragno-dev/fragno-db-library": "workspace:*",
+        "kysely": "^0.28.7",
+        "kysely-pglite": "^0.6.1",
+        "zod": "^4.0.5",
+      },
+      "devDependencies": {
+        "@fragno-private/typescript-config": "workspace:*",
+        "@types/bun": "^1.2.23",
+        "@types/node": "^20",
+      },
+    },
     "packages/fragno-node": {
       "name": "@fragno-dev/node",
       "version": "0.0.6",
@@ -773,6 +800,10 @@
     "@fragno-dev/docs": ["@fragno-dev/docs@workspace:packages/docs"],
 
     "@fragno-dev/example-fragment": ["@fragno-dev/example-fragment@workspace:packages/example-fragment"],
+
+    "@fragno-dev/fragno-db-library": ["@fragno-dev/fragno-db-library@workspace:packages/fragno-db-library"],
+
+    "@fragno-dev/fragno-db-usage": ["@fragno-dev/fragno-db-usage@workspace:packages/fragno-db-usage"],
 
     "@fragno-dev/node": ["@fragno-dev/node@workspace:packages/fragno-node"],
 

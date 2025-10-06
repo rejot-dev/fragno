@@ -1,14 +1,14 @@
 import type { Migrator } from "../migration-engine/create";
-import type { AbstractQuery } from "../query";
+import type { AbstractQuery } from "../query/query";
 import type { AnySchema } from "../schema/create";
 
 export interface DatabaseAdapter {
   /**
    * Get current schema version, undefined if not initialized.
    */
-  getSchemaVersion(): Promise<string | undefined>;
+  getSchemaVersion(namespace: string): Promise<string | undefined>;
 
-  createMigrationEngine?: (schema: AnySchema) => Migrator;
+  createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
 
-  createQueryEngine: (schema: AnySchema) => AbstractQuery<AnySchema>;
+  createQueryEngine: <const T extends AnySchema>(schema: T, namespace: string) => AbstractQuery<T>;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { column, compileForeignKey, idColumn, referenceColumn, schema, table } from "./create";
 
 describe("create", () => {
@@ -368,6 +368,19 @@ describe("create", () => {
     });
 
     const usersTable = userSchema.tables.users;
+    const columns = usersTable.columns;
+
+    expectTypeOf(columns.id.$in).toBeString();
+    expectTypeOf(columns.id.$out).toBeString();
+
+    expectTypeOf(columns.name.$in).toBeString();
+    expectTypeOf(columns.name.$out).toBeString();
+
+    expectTypeOf(columns.email.$in).toBeString();
+    expectTypeOf(columns.email.$out).toBeString();
+
+    expectTypeOf(columns.age.$in).toExtend<number | null>();
+    expectTypeOf(columns.age.$out).toExtend<number | null>();
 
     // Verify all columns exist
     expect(usersTable.columns.id).toBeDefined();

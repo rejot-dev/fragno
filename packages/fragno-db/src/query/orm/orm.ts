@@ -4,7 +4,7 @@ import type {
   FindFirstOptions,
   FindManyOptions,
   OrderBy,
-} from "..";
+} from "../query";
 import { buildCondition, type Condition } from "../condition-builder";
 import type { AnyColumn, AnyRelation, AnySchema, AnyTable } from "../../schema/create";
 
