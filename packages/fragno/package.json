@@ -21,7 +21,7 @@
       "default": "./dist/client/client.js"
     },
     "./react": {
-      "bun": "./src/client/react.tsx",
+      "bun": "./src/client/react.ts",
       "development": "./src/client/react.ts",
       "types": "./dist/client/react.d.ts",
       "default": "./dist/client/react.js"

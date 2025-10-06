@@ -2,16 +2,14 @@
 import { build } from "esbuild";
 import unpluginFragno from "@fragno-dev/unplugin-fragno/esbuild";
 
-const entryPoints = [
-  "./src/index.ts",
-  "./src/client/react.ts",
-  "./src/client/svelte.ts",
-  "./src/client/vanilla.ts",
-  "./src/client/vue.ts",
-];
-
 build({
-  entryPoints,
+  entryPoints: [
+    "./src/index.ts",
+    "./src/client/react.ts",
+    "./src/client/svelte.ts",
+    "./src/client/vanilla.ts",
+    "./src/client/vue.ts",
+  ],
   outdir: "./dist/browser",
   bundle: true,
   format: "esm",
@@ -19,7 +17,8 @@ build({
   target: "es2020",
   splitting: true,
   sourcemap: true,
-  plugins: [unpluginFragno()],
+  plugins: [unpluginFragno({ platform: "browser" })],
+  external: ["react", "svelte", "vue", "zod"],
 });
 
 build({
@@ -30,5 +29,6 @@ build({
   platform: "node",
   target: "node18",
   sourcemap: true,
-  plugins: [unpluginFragno()],
+  plugins: [unpluginFragno({ platform: "node" })],
+  external: ["zod"],
 });

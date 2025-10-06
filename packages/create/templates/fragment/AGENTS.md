@@ -161,29 +161,31 @@ Call them in handlers after operations complete: `config.onDataCreated?.(data);`
 
 ## Using Your Fragment in Other Projects
 
-Once you've built and published your fragment, users can integrate it into their projects. The integration has two parts:
+Once you've built and published your fragment, users can integrate it into their projects. The
+integration has two parts:
 
 ### 1. Server-Side Setup
 
 Create a server instance of your fragment (e.g., in `lib/fragment-server.ts`):
 
 ```typescript
-import { createFragment } from 'your-fragment-name';
+import { createFragment } from "your-fragment-name";
 
-export const createFragmentInstance = () => createFragment({
-  // Fragment-specific configuration here
-  apiKey: process.env.API_KEY,
-});
+export const createFragmentInstance = () =>
+  createFragment({
+    // Fragment-specific configuration here
+    apiKey: process.env.API_KEY,
+  });
 ```
 
 Then mount it as a route handler. For example, in Next.js:
 
 ```typescript
 // app/api/your-fragment/[...all]/route.ts
-import { createFragmentInstance } from '@/lib/fragment-server';
+import { createFragmentInstance } from "@/lib/fragment-server";
 
 const fragment = createFragmentInstance();
-export const { GET, POST, PUT, PATCH, DELETE } = fragment.handlersFor('next-js');
+export const { GET, POST, PUT, PATCH, DELETE } = fragment.handlersFor("next-js");
 ```
 
 ### 2. Client-Side Setup
@@ -192,22 +194,24 @@ Initialize the client in your app (e.g., React):
 
 ```typescript
 // lib/fragment-client.ts
-import { createFragmentClient } from 'your-fragment-name/react';
+import { createFragmentClient } from "your-fragment-name/react";
 
 export const { useData, useMutateData } = createFragmentClient({
   // Optional Fragno configuration
-  baseUrl: '/',
-  mountRoute: '/api/your-fragment',
+  baseUrl: "/",
+  mountRoute: "/api/your-fragment",
 });
 ```
 
 Then use the generated hooks in your components:
 
 ```tsx
-import { useData } from '@/lib/fragment-client';
+import { useData } from "@/lib/fragment-client";
 
 function MyComponent() {
-  const { data, loading, error } = useData({ /* input */ });
+  const { data, loading, error } = useData({
+    /* input */
+  });
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;

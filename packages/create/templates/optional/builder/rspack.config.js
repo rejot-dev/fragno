@@ -4,23 +4,19 @@ import unpluginFragno from "@fragno-dev/unplugin-fragno/rspack";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const entryPoints = {
-  index: "./src/index.ts",
-  "client/react": "./src/client/react.ts",
-  "client/svelte": "./src/client/svelte.ts",
-  "client/vanilla": "./src/client/vanilla.ts",
-  "client/vue": "./src/client/vue.ts",
-};
-
-const fragnoPlugin = unpluginFragno();
-
 /** @type {import('@rspack/core').Configuration[]} */
 export default [
   // Browser build
   {
     name: "browser",
     mode: "production",
-    entry: entryPoints,
+    entry: {
+      index: "./src/index.ts",
+      "client/react": "./src/client/react.ts",
+      "client/svelte": "./src/client/svelte.ts",
+      "client/vanilla": "./src/client/vanilla.ts",
+      "client/vue": "./src/client/vue.ts",
+    },
     output: {
       path: path.resolve(__dirname, "dist/browser"),
       filename: "[name].js",
@@ -50,12 +46,9 @@ export default [
         },
       ],
     },
-    plugins: [fragnoPlugin],
-    externals: {
-      "@fragno-dev/core": "@fragno-dev/core",
-      nanostores: "nanostores",
-    },
+    plugins: [unpluginFragno({ platform: "browser" })],
     devtool: "source-map",
+    externals: ["zod", "react", "vue", "svelte"],
   },
   // Node build
   {
@@ -93,11 +86,8 @@ export default [
         },
       ],
     },
-    plugins: [fragnoPlugin],
-    externals: {
-      "@fragno-dev/core": "@fragno-dev/core",
-      nanostores: "nanostores",
-    },
+    plugins: [unpluginFragno({ platform: "node" })],
     devtool: "source-map",
+    externals: ["zod"],
   },
 ];

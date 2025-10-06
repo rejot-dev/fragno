@@ -14,6 +14,8 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
+    noExternal: [/^@fragno-dev\/core\//],
+    external: ["react", "svelte", "vue"],
   },
   {
     entry: "./src/index.ts",

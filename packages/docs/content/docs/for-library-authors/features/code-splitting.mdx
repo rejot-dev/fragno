@@ -71,6 +71,7 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
+    external: ["react", "vue", "svelte"],
   },
   {
     entry: "./src/index.ts",
@@ -81,7 +82,8 @@ export default defineConfig([
 ```
 
 We need to add an entrypoint for every supported frontend framework, so that the user's application
-only imports the correct bundle.
+only imports the correct bundle. Make sure you don't package any peerDependencies in your frontend
+bundle by using the `external` config option in tsdown or equivalent.
 
 <Callout title="Plugin in the server build" type="info">
   The plugin can be omitted in the server build, because it currently doesn't do anything. This

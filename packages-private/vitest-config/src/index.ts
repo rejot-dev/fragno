@@ -1,4 +1,4 @@
-import { coverageConfigDefaults, type UserConfig } from "vitest/config";
+import { coverageConfigDefaults, type ViteUserConfig } from "vitest/config";
 
 export const baseConfig = {
   test: {
@@ -10,4 +10,4 @@ export const baseConfig = {
       enabled: true,
     },
   },
-} satisfies UserConfig;
+} satisfies ViteUserConfig;

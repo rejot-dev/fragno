@@ -17,6 +17,7 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
+    noExternal: [/^@fragno-dev\/core\//],
   },
   {
     ignoreWatch: ["./dist"],

@@ -34,6 +34,7 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   rollup: {
     devDependencies: {
       "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
+      "@rollup/plugin-node-resolve": "^16.0.2",
       "@rollup/plugin-typescript": "^12.1.4",
       tslib: "^2.8.1",
       rollup: "^4.52.4",
