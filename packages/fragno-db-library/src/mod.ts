@@ -6,13 +6,13 @@ export const userSchema = schema((s) => {
   return s
     .addTable("posts", (t) => {
       return t
-        .addColumn("id", idColumn().defaultTo("auto"))
+        .addColumn("id", idColumn())
         .addColumn("title", column("string"))
         .addColumn("content", column("string"))
         .addColumn("userId", referenceColumn());
     })
     .addTable("users", (t) => {
-      return t.addColumn("id", idColumn().defaultTo("auto")).addColumn("name", column("string"));
+      return t.addColumn("id", idColumn()).addColumn("name", column("string"));
     })
     .addReference("posts", "author", {
       columns: ["userId"],
