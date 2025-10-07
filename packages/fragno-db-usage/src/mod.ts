@@ -35,9 +35,14 @@ export const client = await fragnoDatabaseLibrary.createClient(adapter);
 
 export const libraryClient = createFragnoDatabaseLibrary(client);
 
-const post = await libraryClient.createPost({
-  title: "Hello, world!",
-  content: "This is a test post",
-});
+const post = await libraryClient.createUserAndPost(
+  {
+    name: "John Doe",
+  },
+  {
+    title: "Hello, world!",
+    content: "This is a test post",
+  },
+);
 
 console.log(post);

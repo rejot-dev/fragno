@@ -567,6 +567,25 @@ export interface Schema<TTables extends Record<string, AnyTable> = Record<string
   clone: () => Schema<TTables>;
 }
 
+/**
+ * Utility type for updating a single table's relations in a schema.
+ * Used to properly type the return value of addReference.
+ */
+type UpdateTableRelations<
+  TTables extends Record<string, AnyTable>,
+  TTableName extends keyof TTables,
+  TReferenceName extends string,
+  TReferencedTableName extends keyof TTables,
+> = {
+  [K in keyof TTables]: K extends TTableName
+    ? Table<
+        TTables[TTableName]["columns"],
+        TTables[TTableName]["relations"] &
+          Record<TReferenceName, Relation<"one", TTables[TReferencedTableName]>>
+      >
+    : TTables[K];
+};
+
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<string, never>> {
   #tables: TTables;
   #version: number = 0;
@@ -663,15 +682,18 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
   addReference<
     TTableName extends string & keyof TTables,
     TReferencedTableName extends string & keyof TTables,
+    TReferenceName extends string,
   >(
     tableName: TTableName,
-    referenceName: string,
+    referenceName: TReferenceName,
     config: {
       columns: (keyof TTables[TTableName]["columns"])[];
       targetTable: TReferencedTableName;
       targetColumns: (keyof TTables[TReferencedTableName]["columns"])[];
     },
-  ): SchemaBuilder<TTables> {
+  ): SchemaBuilder<
+    UpdateTableRelations<TTables, TTableName, TReferenceName, TReferencedTableName>
+  > {
     this.#version++;
 
     const table = this.#tables[tableName];
@@ -724,16 +746,21 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     // Record the operation
     this.#operations.push({
       type: "add-reference",
-      tableName: tableName as string,
+      tableName,
       referenceName,
       config: {
+        // TODO: Figure out why we need to cast to string[]
         columns: columns as string[],
-        targetTable: config.targetTable as string,
+        targetTable: config.targetTable,
         targetColumns: targetColumns as string[],
       },
     });
 
-    return this;
+    // Return this with updated type
+    // Safe: The relation was added to the table in place and now has the updated relations
+    return this as unknown as SchemaBuilder<
+      UpdateTableRelations<TTables, TTableName, TReferenceName, TReferencedTableName>
+    >;
   }
 
   /**
@@ -812,7 +839,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
       this.#version++;
       this.#operations.push({
         type: "alter-table",
-        tableName: tableName as string,
+        tableName: tableName,
         modifications: columnOperations.map((op) => ({
           type: "add-column",
           columnName: op.columnName,
@@ -826,7 +853,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
       this.#version++;
       this.#operations.push({
         type: "add-index",
-        tableName: tableName as string,
+        tableName: tableName,
         name: operation.name,
         columns: operation.columns.map((col) => col.ormName),
         unique: operation.unique,
@@ -882,7 +909,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
 /**
  * Create a new schema with callback pattern.
  */
-export function schema<TTables extends Record<string, AnyTable> = Record<string, never>>(
+export function schema<const TTables extends Record<string, AnyTable> = Record<string, never>>(
   callback: (builder: SchemaBuilder<Record<string, never>>) => SchemaBuilder<TTables>,
 ): Schema<TTables> {
   return callback(new SchemaBuilder()).build();

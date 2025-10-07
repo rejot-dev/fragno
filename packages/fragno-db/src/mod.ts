@@ -2,8 +2,6 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 
-export const hello = "world";
-
 export interface CreateFragnoDatabaseOptions<T extends AnySchema> {
   namespace: string;
   schema: T;
@@ -34,6 +32,7 @@ export class FragnoDatabase<const T extends AnySchema> {
 
     const migrator = adapter.createMigrationEngine(this.#schema, this.#namespace);
     const preparedMigration = await migrator.prepareMigration();
+    console.log(preparedMigration.getSQL?.());
     await preparedMigration.execute();
 
     return preparedMigration.operations.length > 0;

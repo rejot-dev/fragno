@@ -1,9 +1,10 @@
 import { describe, expectTypeOf, it } from "vitest";
-import { column, idColumn, schema } from "../schema/create";
+import { column, idColumn, referenceColumn, schema } from "../schema/create";
 import type {
   AbstractQuery,
   FindFirstOptions,
   FindManyOptions,
+  JoinBuilder,
   OrderBy,
   SelectClause,
 } from "./query";
@@ -375,6 +376,41 @@ describe("query type tests", () => {
         viewCount: number;
         publishedAt: Date;
       }>().toExtend<SetParam>();
+    });
+  });
+
+  describe("join", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("posts", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("title", column("string"))
+            .addColumn("userId", referenceColumn());
+        })
+        .addTable("tags", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addReference("posts", "author", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        });
+    });
+
+    it("should handle join correctly", () => {
+      const _table = userSchema.tables.posts;
+      const _relations = _table.relations;
+
+      type _Relations = typeof _table.relations;
+      type Builder1 = JoinBuilder<typeof _table>;
+
+      expectTypeOf<Builder1>().toExtend<{
+        author: () => void;
+      }>();
     });
   });
 });

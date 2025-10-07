@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`query-builder-joins > postgresql > should compile select with join condition comparing columns 1`] = `"select "author"."id" as "author:id", "author"."name" as "author:name", "posts"."id" as "id", "posts"."userId" as "userId" from "posts" left join "users" as "author" on "posts"."userId" = "author"."id""`;

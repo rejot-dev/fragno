@@ -1,6 +1,5 @@
-import type { IdColumn, AnySchema, AnyTable } from "../schema/create";
+import type { IdColumn, AnySchema, AnyTable, Relation } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
-import type { ORMAdapter } from "./orm/orm";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type EmptyObject = {};
@@ -46,6 +45,17 @@ type SelectResult<T extends AnyTable, JoinOut, Select extends SelectClause<T>> =
 > &
   JoinOut;
 
+export type JoinBuilder<TTable extends AnyTable> = {
+  [K in keyof TTable["relations"]]: TTable["relations"][K] extends Relation<
+    infer _Type,
+    infer TTargetTable
+  >
+    ? (
+        options?: FindManyOptions<TTargetTable, SelectClause<TTargetTable>, EmptyObject, false>,
+      ) => void
+    : never;
+};
+
 export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
 
 export type FindFirstOptions<
@@ -66,9 +76,9 @@ export type FindManyOptions<
 > = {
   select?: Select;
   where?: (eb: ConditionBuilder<T["columns"]>) => Condition | boolean;
-
   limit?: number;
   orderBy?: OrderBy<keyof T["columns"]> | OrderBy<keyof T["columns"]>[];
+  join?: (jb: JoinBuilder<T>) => void;
 } & (IsRoot extends true
   ? {
       // drizzle doesn't support `offset` in join queries (this may be changed in future, we can add it back)
@@ -77,8 +87,6 @@ export type FindManyOptions<
   : EmptyObject);
 
 export interface AbstractQuery<S extends AnySchema> {
-  internal: ORMAdapter;
-
   /**
    * Count (all)
    */
@@ -106,28 +114,6 @@ export interface AbstractQuery<S extends AnySchema> {
     table: TableName,
     v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>,
   ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
-
-  // not every database supports returning in update/delete, hence they will not be implemented.
-  // TODO: maybe reconsider this in future
-
-  /**
-   * Upsert a **single row**.
-   *
-   * For ORMs:
-   * - use built-in method whenever possible.
-   *
-   * Otherwise:
-   * - run `update`.
-   * - if updated zero rows, run `create`.
-   */
-  upsert: <TableName extends keyof S["tables"]>(
-    table: TableName,
-    v: {
-      where: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
-      update: TableToUpdateValues<S["tables"][TableName]>;
-      create: TableToInsertValues<S["tables"][TableName]>;
-    },
-  ) => Promise<void>;
 
   /**
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
