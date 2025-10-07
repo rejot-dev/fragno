@@ -1,25 +1,20 @@
 import type { AnyColumn } from "../schema/create";
 
-export enum ConditionType {
-  And,
-  Or,
-  Compare,
-  Not,
-}
+export type ConditionType = "compare" | "and" | "or" | "not";
 
 export type Condition =
   | {
-      type: ConditionType.Compare;
+      type: "compare";
       a: AnyColumn;
       operator: Operator;
       b: AnyColumn | unknown | null;
     }
   | {
-      type: ConditionType.Or | ConditionType.And;
+      type: "or" | "and";
       items: Condition[];
     }
   | {
-      type: ConditionType.Not;
+      type: "not";
       item: Condition;
     };
 
@@ -93,7 +88,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
       if (!operators.includes(operator)) throw new Error(`Unsupported operator: ${operator}`);
 
       return {
-        type: ConditionType.Compare,
+        type: "compare",
         a: col(a),
         b,
         operator,
@@ -101,7 +96,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     }
 
     return {
-      type: ConditionType.Compare,
+      type: "compare",
       a: col(args[0]),
       operator: "=",
       b: true,
@@ -114,14 +109,14 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     if (typeof condition === "boolean") return !condition;
 
     return {
-      type: ConditionType.Not,
+      type: "not",
       item: condition,
     };
   };
 
   builder.or = (...conditions) => {
     const out = {
-      type: ConditionType.Or,
+      type: "or",
       items: [] as Condition[],
     } as const;
 
@@ -138,7 +133,7 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
 
   builder.and = (...conditions) => {
     const out = {
-      type: ConditionType.And,
+      type: "and",
       items: [] as Condition[],
     } as const;
 
