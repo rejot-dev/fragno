@@ -150,3 +150,79 @@ export interface AbstractQuery<S extends AnySchema> {
     },
   ) => Promise<void>;
 }
+
+export interface AbstractQueryCompiler<S extends AnySchema, TOutput> {
+  /**
+   * Compile a count query
+   * Returns null if the where condition is always false
+   */
+  count: <TableName extends keyof S["tables"]>(
+    table: TableName,
+    v?: {
+      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+    },
+  ) => TOutput | null;
+
+  /**
+   * Compile a findFirst query
+   * Returns null if the where condition is always false
+   */
+  findFirst: <
+    TableName extends keyof S["tables"],
+    Select extends SelectClause<S["tables"][TableName]> = true,
+  >(
+    table: TableName,
+    v: FindFirstOptions<S["tables"][TableName], Select>,
+  ) => TOutput | null;
+
+  /**
+   * Compile a findMany query
+   * Returns null if the where condition is always false
+   */
+  findMany: <
+    TableName extends keyof S["tables"],
+    Select extends SelectClause<S["tables"][TableName]> = true,
+  >(
+    table: TableName,
+    v?: FindManyOptions<S["tables"][TableName], Select>,
+  ) => TOutput | null;
+
+  /**
+   * Compile an updateMany query
+   * Returns null if the where condition is always false
+   */
+  updateMany: <TableName extends keyof S["tables"]>(
+    table: TableName,
+    v: {
+      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+      set: TableToUpdateValues<S["tables"][TableName]>;
+    },
+  ) => TOutput | null;
+
+  /**
+   * Compile a createMany query
+   */
+  createMany: <TableName extends keyof S["tables"]>(
+    table: TableName,
+    values: TableToInsertValues<S["tables"][TableName]>[],
+  ) => TOutput;
+
+  /**
+   * Compile a create query
+   */
+  create: <TableName extends keyof S["tables"]>(
+    table: TableName,
+    values: TableToInsertValues<S["tables"][TableName]>,
+  ) => TOutput;
+
+  /**
+   * Compile a deleteMany query
+   * Returns null if the where condition is always false
+   */
+  deleteMany: <TableName extends keyof S["tables"]>(
+    table: TableName,
+    v: {
+      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+    },
+  ) => TOutput | null;
+}

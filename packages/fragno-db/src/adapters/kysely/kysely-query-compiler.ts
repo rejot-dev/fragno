@@ -1,11 +1,11 @@
 import type { CompiledQuery } from "kysely";
-import type { AbstractQueryCompiler } from "../../query/query-compiler";
 import type { AnySchema, AnyTable } from "../../schema/create";
 import { buildCondition } from "../../query/condition-builder";
 import { buildFindOptions } from "../../query/orm/orm";
 import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryBuilder } from "./query-builder";
 import { encodeValues } from "./result-transform";
+import type { AbstractQueryCompiler } from "../../query/query";
 
 export function createKyselyQueryCompiler<T extends AnySchema>(
   schema: T,
