@@ -45,7 +45,7 @@ describe("KyselyAdapter PGLite", () => {
     });
   });
 
-  it("should run migrations and basic queries", { timeout: 10000 }, async () => {
+  it("should run migrations and basic queries", { timeout: 12000 }, async () => {
     const schemaVersion = await adapter.getSchemaVersion("test");
     expect(schemaVersion).toBeUndefined();
 

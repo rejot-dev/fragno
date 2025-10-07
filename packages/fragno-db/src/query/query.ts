@@ -8,7 +8,7 @@ export type AnySelectClause = SelectClause<AnyTable>;
 
 export type SelectClause<T extends AnyTable> = true | (keyof T["columns"])[];
 
-type TableToColumnValues<T extends AnyTable> = {
+export type TableToColumnValues<T extends AnyTable> = {
   [K in keyof T["columns"]]: T["columns"][K]["$out"];
 };
 
@@ -20,7 +20,7 @@ type PickNotNullable<T> = {
   [P in keyof T as null extends T[P] ? never : P]: T[P];
 };
 
-type TableToInsertValues<T extends AnyTable> = Partial<
+export type TableToInsertValues<T extends AnyTable> = Partial<
   PickNullable<{
     [K in keyof T["columns"]]: T["columns"][K]["$in"];
   }>

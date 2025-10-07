@@ -505,6 +505,19 @@ type UpdateTableRelations<
     : TTables[K];
 };
 
+/**
+ * Utility type for updating a single table in a schema.
+ * Used to properly type the return value of alterTable.
+ */
+type UpdateTable<
+  TTables extends Record<string, AnyTable>,
+  TTableName extends keyof TTables,
+  TNewColumns extends Record<string, AnyColumn>,
+  TNewRelations extends Record<string, AnyRelation>,
+> = {
+  [K in keyof TTables]: K extends TTableName ? Table<TNewColumns, TNewRelations> : TTables[K];
+};
+
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<string, never>> {
   #tables: TTables;
   #version: number = 0;
@@ -729,9 +742,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     callback: (
       builder: TableBuilder<TTables[TTableName]["columns"], TTables[TTableName]["relations"]>,
     ) => TableBuilder<TNewColumns, TNewRelations>,
-  ): SchemaBuilder<
-    Omit<TTables, TTableName> & Record<TTableName, Table<TNewColumns, TNewRelations>>
-  > {
+  ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewRelations>> {
     const table = this.#tables[tableName];
 
     if (!table) {
@@ -798,7 +809,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     }
 
     return this as unknown as SchemaBuilder<
-      Omit<TTables, TTableName> & Record<TTableName, Table<TNewColumns, TNewRelations>>
+      UpdateTable<TTables, TTableName, TNewColumns, TNewRelations>
     >;
   }
 
