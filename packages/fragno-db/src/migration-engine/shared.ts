@@ -1,10 +1,29 @@
-import type { AnyColumn, AnyTable } from "../schema/create";
-
 export interface ForeignKeyInfo {
   name: string;
   columns: string[];
   referencedTable: string;
   referencedColumns: string[];
+}
+
+export interface ColumnInfo {
+  name: string;
+  type:
+    | "string"
+    | "integer"
+    | "bigint"
+    | "decimal"
+    | "bool"
+    | "date"
+    | "timestamp"
+    | "json"
+    | "binary"
+    | `varchar(${number})`;
+  isNullable: boolean;
+  role: "id" | "reference" | "regular";
+  default?: {
+    value?: unknown;
+    runtime?: "now" | "auto";
+  };
 }
 
 export type MigrationOperation =
@@ -42,7 +61,8 @@ export type CustomOperation = {
 export type TableOperation =
   | {
       type: "create-table";
-      value: AnyTable;
+      name: string;
+      columns: ColumnInfo[];
     }
   | {
       type: "drop-table";
@@ -74,7 +94,7 @@ export type ColumnOperation =
        * Note: unique constraints are not created, please use dedicated operations like `add-index` instead
        */
       type: "create-column";
-      value: AnyColumn;
+      value: ColumnInfo;
     }
   | {
       /**
@@ -90,7 +110,7 @@ export type ColumnOperation =
        *
        * Note: unique constraints are not updated, please use dedicated operations like `add-index` instead
        */
-      value: AnyColumn;
+      value: ColumnInfo;
 
       updateNullable: boolean;
       updateDefault: boolean;

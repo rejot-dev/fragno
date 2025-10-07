@@ -29,7 +29,7 @@ import { decodeResult, encodeValues } from "./result-transform";
  * ```
  */
 export function fullSQLName(column: AnyColumn) {
-  return `${column.table.name}.${column.name}`;
+  return `${column.tableName}.${column.name}`;
 }
 
 /**

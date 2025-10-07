@@ -1,5 +1,5 @@
-import { compileForeignKey, type AnySchema } from "../schema/create";
-import type { MigrationOperation } from "./shared";
+import { type AnySchema } from "../schema/create";
+import type { MigrationOperation, ColumnInfo } from "./shared";
 
 /**
  * Generate migration operations from a schema's operation history
@@ -59,57 +59,116 @@ export function generateMigrationFromSchema(
 
   for (const op of relevantOperations) {
     if (op.type === "add-table") {
+      // Collect columns for create-table operation
+      const columns: ColumnInfo[] = [];
+
+      for (const subOp of op.operations) {
+        if (subOp.type === "add-column") {
+          const col = subOp.column;
+          columns.push({
+            name: subOp.columnName,
+            type: col.type,
+            isNullable: col.isNullable,
+            role: col.role,
+            default: col.default
+              ? {
+                  value: "value" in col.default ? col.default.value : undefined,
+                  runtime:
+                    "runtime" in col.default
+                      ? typeof col.default.runtime === "string"
+                        ? col.default.runtime
+                        : undefined
+                      : undefined,
+                }
+              : undefined,
+          });
+        }
+      }
+
       migrationOperations.push({
         type: "create-table",
-        value: op.table,
-      });
-    } else if (op.type === "alter-table") {
-      // Convert alter-table modifications to alter-table operation
-      const columnOperations = op.modifications.map((mod) => {
-        if (mod.type === "add-column") {
-          return {
-            type: "create-column" as const,
-            value: mod.column,
-          };
-        }
-        // Handle other modification types when added
-        throw new Error(`Unknown table modification type: ${mod.type}`);
-      });
-
-      migrationOperations.push({
-        type: "alter-table",
         name: op.tableName,
-        value: columnOperations,
+        columns,
       });
+
+      // Add indexes and foreign keys as separate operations
+      for (const subOp of op.operations) {
+        if (subOp.type === "add-index") {
+          migrationOperations.push({
+            type: "add-index",
+            table: op.tableName,
+            name: subOp.name,
+            columns: subOp.columns,
+            unique: subOp.unique,
+          });
+        } else if (subOp.type === "add-foreign-key") {
+          migrationOperations.push({
+            type: "add-foreign-key",
+            table: op.tableName,
+            value: {
+              name: subOp.name,
+              columns: subOp.columns,
+              referencedTable: subOp.referencedTable,
+              referencedColumns: subOp.referencedColumns,
+            },
+          });
+        }
+      }
+    } else if (op.type === "alter-table") {
+      const columnOps = op.operations.filter((o) => o.type === "add-column");
+
+      if (columnOps.length > 0) {
+        migrationOperations.push({
+          type: "alter-table",
+          name: op.tableName,
+          value: columnOps.map((o) => {
+            const col = o.column;
+            return {
+              type: "create-column" as const,
+              value: {
+                name: o.columnName,
+                type: col.type,
+                isNullable: col.isNullable,
+                role: col.role,
+                default: col.default
+                  ? {
+                      value: "value" in col.default ? col.default.value : undefined,
+                      runtime:
+                        "runtime" in col.default
+                          ? typeof col.default.runtime === "string"
+                            ? col.default.runtime
+                            : undefined
+                          : undefined,
+                    }
+                  : undefined,
+              },
+            };
+          }),
+        });
+      }
+
+      // Add indexes as separate operations
+      for (const subOp of op.operations) {
+        if (subOp.type === "add-index") {
+          migrationOperations.push({
+            type: "add-index",
+            table: op.tableName,
+            name: subOp.name,
+            columns: subOp.columns,
+            unique: subOp.unique,
+          });
+        }
+      }
     } else if (op.type === "add-reference") {
-      const table = targetSchema.tables[op.tableName];
-      if (!table) {
-        throw new Error(`Table ${op.tableName} not found in schema`);
-      }
-
-      // Find the foreign key that matches this reference
-      const foreignKey = table.foreignKeys.find(
-        (fk) => fk.name === `${op.tableName}_${op.config.targetTable}_${op.referenceName}_fk`,
-      );
-
-      if (!foreignKey) {
-        throw new Error(
-          `Foreign key for reference ${op.referenceName} not found in table ${op.tableName}`,
-        );
-      }
-
       migrationOperations.push({
         type: "add-foreign-key",
         table: op.tableName,
-        value: compileForeignKey(foreignKey),
-      });
-    } else if (op.type === "add-index") {
-      migrationOperations.push({
-        type: "add-index",
-        table: op.tableName,
-        name: op.name,
-        columns: op.columns,
-        unique: op.unique,
+        value: {
+          name: `${op.tableName}_${op.config.targetTable}_${op.referenceName}_fk`,
+          columns: op.config.columns,
+          referencedTable: op.config.targetTable,
+          referencedColumns: op.config.targetColumns,
+        },
       });
     }
   }

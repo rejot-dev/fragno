@@ -11,9 +11,9 @@ import {
   isUpdated,
   type ColumnOperation,
   type MigrationOperation,
+  type ColumnInfo,
 } from "../../../migration-engine/shared";
 import type { SQLProvider } from "../../../shared/providers";
-import { type AnyColumn, type AnyTable, compileForeignKey, IdColumn } from "../../../schema/create";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../kysely-adapter";
 
@@ -115,7 +115,7 @@ function executeColumn(
     case "update-column": {
       const col = operation.value;
 
-      if (col instanceof IdColumn) {
+      if (col.role === "id") {
         throw new Error(errors.IdColumnUpdate);
       }
       if (provider === "sqlite") {
@@ -142,6 +142,8 @@ function executeColumn(
       if (provider === "mssql" && mssqlRecreateDefaultConstraint) {
         results.push(rawToNode(db, mssqlDropDefaultConstraint(tableName, col.name)));
       }
+
+      // TODO: We should maybe do some of these operations in a single query
 
       if (operation.updateDataType) {
         const dbType = sql.raw(schemaToDBType(col, provider));
@@ -205,60 +207,24 @@ export function execute(
 ): ExecuteNode | ExecuteNode[] {
   const { db, provider } = config;
 
-  function createTable(table: AnyTable, tableName = table.name, sqliteDeferChecks = false) {
-    const results: ExecuteNode[] = [];
+  function createTable(tableName: string, columns: ColumnInfo[]) {
     let builder = db.schema.createTable(tableName) as CreateTableBuilder<string, string>;
 
-    for (const col of Object.values(table.columns)) {
+    // Add columns from the column info array
+    for (const columnInfo of columns) {
       builder = builder.addColumn(
-        col.name,
-        sql.raw(schemaToDBType(col, provider)),
-        getColumnBuilderCallback(col, provider),
+        columnInfo.name,
+        sql.raw(schemaToDBType(columnInfo, provider)),
+        getColumnBuilderCallback(columnInfo, provider),
       );
     }
 
-    for (const foreignKey of table.foreignKeys) {
-      const compiled = compileForeignKey(foreignKey, "sql");
-      const action = getForeignKeyAction(provider);
-
-      builder = builder.addForeignKeyConstraint(
-        compiled.name,
-        compiled.columns,
-        compiled.referencedTable,
-        compiled.referencedColumns,
-        (b) => {
-          const fkBuilder = b.onUpdate(action).onDelete(action);
-
-          // SQLite: defer foreign key checks during table recreation
-          if (sqliteDeferChecks) {
-            return fkBuilder.deferrable().initiallyDeferred();
-          }
-          return fkBuilder;
-        },
-      );
-    }
-
-    for (const idx of table.indexes) {
-      if (idx.unique) {
-        results.push(
-          createUniqueIndex(
-            db,
-            idx.name,
-            table.name,
-            idx.columns.map((col) => col.name),
-            provider,
-          ),
-        );
-      }
-    }
-
-    results.unshift(builder);
-    return results;
+    return builder;
   }
 
   switch (operation.type) {
     case "create-table":
-      return createTable(operation.value);
+      return createTable(operation.name, operation.columns);
     case "rename-table":
       if (provider === "mssql") {
         return rawToNode(
@@ -330,12 +296,12 @@ export function execute(
 // Helper Functions
 // ============================================================================
 
-function getColumnBuilderCallback(col: AnyColumn, provider: SQLProvider): ColumnBuilderCallback {
+function getColumnBuilderCallback(col: ColumnInfo, provider: SQLProvider): ColumnBuilderCallback {
   return (build) => {
     if (!col.isNullable) {
       build = build.notNull();
     }
-    if (col instanceof IdColumn) {
+    if (col.role === "id") {
       build = build.primaryKey();
     }
 
@@ -375,7 +341,7 @@ BEGIN
 END`;
 }
 
-function defaultValueToDB(column: AnyColumn, provider: SQLProvider) {
+function defaultValueToDB(column: ColumnInfo, provider: SQLProvider) {
   const value = column.default;
   if (!value) {
     return undefined;

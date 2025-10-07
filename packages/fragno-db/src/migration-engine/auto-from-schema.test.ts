@@ -25,7 +25,12 @@ describe("generateMigrationFromSchema", () => {
     expect(operations).toHaveLength(1);
     expect(operations[0]).toMatchObject({
       type: "create-table",
-      value: mySchema.tables.posts,
+      name: "posts",
+      columns: expect.arrayContaining([
+        expect.objectContaining({ name: "id" }),
+        expect.objectContaining({ name: "title" }),
+        expect.objectContaining({ name: "content" }),
+      ]),
     });
   });
 
@@ -49,15 +54,27 @@ describe("generateMigrationFromSchema", () => {
     expect(operations).toHaveLength(3);
     expect(operations[0]).toMatchObject({
       type: "create-table",
-      value: mySchema.tables.users,
+      name: "users",
+      columns: expect.arrayContaining([
+        expect.objectContaining({ name: "id" }),
+        expect.objectContaining({ name: "name" }),
+      ]),
     });
     expect(operations[1]).toMatchObject({
       type: "create-table",
-      value: mySchema.tables.posts,
+      name: "posts",
+      columns: expect.arrayContaining([
+        expect.objectContaining({ name: "id" }),
+        expect.objectContaining({ name: "title" }),
+      ]),
     });
     expect(operations[2]).toMatchObject({
       type: "create-table",
-      value: mySchema.tables.comments,
+      name: "comments",
+      columns: expect.arrayContaining([
+        expect.objectContaining({ name: "id" }),
+        expect.objectContaining({ name: "text" }),
+      ]),
     });
   });
 
@@ -92,7 +109,6 @@ describe("generateMigrationFromSchema", () => {
     if (fkOp.type === "add-foreign-key") {
       expect(fkOp.value).toMatchObject({
         name: "posts_users_author_fk",
-        table: "posts",
         referencedTable: "users",
         columns: ["authorId"],
         referencedColumns: ["id"],
@@ -220,5 +236,63 @@ describe("generateMigrationFromSchema", () => {
     expect(() => {
       generateMigrationFromSchema(mySchema, -1, 1);
     }).toThrow("fromVersion cannot be negative");
+  });
+
+  it("should only create constraints for references, not for referenceColumns", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("posts", (t) => {
+          return t
+            .addColumn("id", idColumn().defaultTo("auto"))
+            .addColumn("title", column("string"))
+            .addColumn("content", column("string"))
+            .addColumn("userId", referenceColumn());
+        })
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn().defaultTo("auto"))
+            .addColumn("name", column("string"));
+        })
+        .addReference("posts", "author", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        })
+        .alterTable("posts", (t) => {
+          return t
+            .addColumn("summary", column("string").nullable())
+            .createIndex("idx_title", ["title"]);
+        });
+    });
+
+    const operations = generateMigrationFromSchema(mySchema, 0, mySchema.version);
+    expect(operations.map((o) => o.type)).toEqual([
+      "create-table",
+      "create-table",
+      "add-foreign-key",
+      "alter-table",
+      "add-index",
+    ]);
+  });
+
+  it("should not create duplicate foreign key constraints", () => {
+    const mySchema = schema((s) => {
+      return s
+        .addTable("users", (t) => t.addColumn("id", idColumn()))
+        .addTable("posts", (t) =>
+          t.addColumn("id", idColumn()).addColumn("userId", referenceColumn()),
+        )
+        .addReference("posts", "author", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        });
+    });
+
+    const operations = generateMigrationFromSchema(mySchema, 0, mySchema.version);
+
+    // Count foreign key operations
+    const fkOps = operations.filter((op) => op.type === "add-foreign-key");
+    expect(fkOps).toHaveLength(1); // Should be exactly one, not two
   });
 });
