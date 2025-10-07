@@ -5,13 +5,13 @@ import resolve from "@rollup/plugin-node-resolve";
 export default [
   // Browser build
   {
-    input: [
-      "./src/index.ts",
-      "./src/client/react.ts",
-      "./src/client/svelte.ts",
-      "./src/client/vanilla.ts",
-      "./src/client/vue.ts",
-    ],
+    input: {
+      index: "./src/index.ts",
+      "client/react": "./src/client/react.ts",
+      "client/svelte": "./src/client/svelte.ts",
+      "client/vanilla": "./src/client/vanilla.ts",
+      "client/vue": "./src/client/vue.ts",
+    },
     output: {
       dir: "./dist/browser",
       format: "es",

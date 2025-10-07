@@ -17,7 +17,6 @@ export default defineConfig([
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
     noExternal: [/^@fragno-dev\/core\//],
-    external: ["react", "vue", "svelte"],
   },
   {
     ignoreWatch: ["./dist"],
@@ -27,6 +26,5 @@ export default defineConfig([
     outDir: "./dist/node",
     plugins: [unpluginFragno({ platform: "node" })],
     unbundle: true,
-    external: ["zod"],
   },
 ]);
