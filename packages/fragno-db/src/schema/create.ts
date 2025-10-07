@@ -10,6 +10,21 @@ export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
   | IdColumn<IdColumnType, unknown, unknown>;
 /**
+ * Sub-operations that can be performed within table operations.
+ * These are stored in order within add-table and alter-table operations.
+ */
+export type TableSubOperation =
+  | { type: "add-column"; columnName: string; column: AnyColumn }
+  | { type: "add-index"; name: string; columns: string[]; unique: boolean }
+  | {
+      type: "add-foreign-key";
+      name: string;
+      columns: string[];
+      referencedTable: string;
+      referencedColumns: string[];
+    };
+
+/**
  * Operations that can be performed on a schema during its definition.
  * These are tracked so we can generate migrations for specific version ranges.
  */
@@ -17,13 +32,12 @@ export type SchemaOperation =
   | {
       type: "add-table";
       tableName: string;
-      table: AnyTable;
-      columns: AnyColumn[];
+      operations: TableSubOperation[]; // Ordered list of sub-operations
     }
   | {
       type: "alter-table";
       tableName: string;
-      modifications: TableModification[];
+      operations: TableSubOperation[]; // Ordered list of sub-operations
     }
   | {
       type: "add-reference";
@@ -34,23 +48,7 @@ export type SchemaOperation =
         targetTable: string;
         targetColumns: string[];
       };
-    }
-  | {
-      type: "add-index";
-      tableName: string;
-      name: string;
-      columns: string[];
-      unique: boolean;
     };
-
-/**
- * Modifications that can be applied to a table via alter-table operation
- */
-export type TableModification = {
-  type: "add-column";
-  columnName: string;
-  column: AnyColumn;
-};
 
 export interface ForeignKey {
   name: string;
@@ -116,7 +114,6 @@ export class ExplicitRelationInit<
 
     return {
       id,
-      foreignKey: this.initForeignKey(ormName),
       on: this.on,
       name: ormName,
       referencer: this.referencer,
@@ -146,7 +143,6 @@ export interface Relation<
   referencer: AnyTable;
 
   on: [string, string][];
-  foreignKey: ForeignKey;
 }
 
 export interface Table<
@@ -158,17 +154,12 @@ export interface Table<
 
   columns: TColumns;
   relations: TRelations;
-  foreignKeys: ForeignKey[];
-  indexes: Index[];
 
   /**
    * Get column by name
    */
   getColumnByName: (name: string) => AnyColumn | undefined;
   getIdColumn: () => AnyColumn;
-
-  clone: () => Table<TColumns, TRelations>;
-  builder: TableBuilder<TColumns, TRelations>;
 }
 
 type DefaultFunctionMap = {
@@ -203,15 +194,14 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
   name: string = "";
   ormName: string = "";
   isNullable: boolean = false;
-  isUnique: boolean = false;
-  isReference: boolean = false;
+  role: "id" | "reference" | "regular" = "regular";
   default?:
     | { value: TypeMap[TType] }
     | {
         runtime: DefaultFunction<TType>;
       };
 
-  table: AnyTable = undefined as unknown as AnyTable;
+  tableName: string = "";
 
   constructor(type: TType) {
     this.type = type;
@@ -243,22 +233,6 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
   defaultTo(value: TypeMap[TType]): Column<TType, TIn | null, TOut> {
     this.default = { value };
     return this;
-  }
-
-  clone() {
-    const clone = new Column(this.type);
-    clone.name = this.name;
-    clone.ormName = this.ormName;
-    clone.isNullable = this.isNullable;
-    clone.isUnique = this.isUnique;
-    clone.isReference = this.isReference;
-    clone.default = this.default;
-    clone.table = this.table;
-    return clone;
-  }
-
-  getUniqueConstraintName(): string {
-    return `unique_c_${this.table.ormName}_${this.ormName}`;
   }
 
   /**
@@ -306,18 +280,6 @@ export class IdColumn<
 > extends Column<TType, TIn, TOut> {
   id = true;
 
-  clone() {
-    const clone = new IdColumn(this.type);
-    clone.name = this.name;
-    clone.ormName = this.ormName;
-    clone.isNullable = this.isNullable;
-    clone.isUnique = this.isUnique;
-    clone.isReference = this.isReference;
-    clone.default = this.default;
-    clone.table = this.table;
-    return clone;
-  }
-
   override defaultTo$(fn: DefaultFunction<TType>) {
     return super.defaultTo$(fn) as IdColumn<TType, TIn | null, TOut>;
   }
@@ -342,30 +304,18 @@ export function referenceColumn<TType extends keyof TypeMap = "varchar(30)">(
 ): Column<TType, TypeMap[TType], TypeMap[TType]> {
   const actualType = (type ?? "varchar(30)") as TType;
   const col = new Column<TType, TypeMap[TType], TypeMap[TType]>(actualType);
-  col.isReference = true;
+  col.role = "reference";
   return col as Column<TType, TypeMap[TType], TypeMap[TType]>;
 }
 
 export function idColumn(): IdColumn<"varchar(30)", string, string> {
   const col = new IdColumn<"varchar(30)", string, string>("varchar(30)");
+  col.role = "id";
   col.defaultTo$("auto");
   return col as IdColumn<"varchar(30)", string, string>;
 }
 
 type RelationType = "one";
-
-type TableBuilderOperation =
-  | {
-      type: "add-column";
-      columnName: string;
-      column: AnyColumn;
-    }
-  | {
-      type: "add-index";
-      name: string;
-      columns: AnyColumn[];
-      unique: boolean;
-    };
 
 export class TableBuilder<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
@@ -374,15 +324,32 @@ export class TableBuilder<
   #name: string;
   #columns: TColumns;
   #relations: TRelations;
-  #foreignKeys: ForeignKey[] = [];
   #indexes: Index[] = [];
   #ormName: string = "";
-  #operations: TableBuilderOperation[] = [];
+  #columnOrder: string[] = [];
 
   constructor(name: string) {
     this.#name = name;
     this.#columns = {} as TColumns;
     this.#relations = {} as TRelations;
+  }
+
+  // For alterTable to set existing state
+  setColumns(columns: TColumns): void {
+    this.#columns = { ...columns };
+  }
+
+  setRelations(relations: TRelations): void {
+    this.#relations = { ...relations };
+  }
+
+  // For SchemaBuilder to read collected indexes
+  getIndexes(): Index[] {
+    return this.#indexes;
+  }
+
+  getColumnOrder(): string[] {
+    return this.#columnOrder;
   }
 
   /**
@@ -415,18 +382,11 @@ export class TableBuilder<
     col.ormName = ormName;
     col.name = ormName;
 
-    const clone = this.clone();
-    // Safe: We're adding the column to the cloned builder and returning the correctly typed builder
-    clone.#columns[ormName] = col as unknown as TColumns[TColumnName];
+    // Add column directly to this builder
+    this.#columns[ormName] = col as unknown as TColumns[TColumnName];
+    this.#columnOrder.push(ormName);
 
-    // Track the operation
-    clone.#operations.push({
-      type: "add-column",
-      columnName: ormName,
-      column: col,
-    });
-
-    return clone as TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations>;
+    return this as unknown as TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations>;
   }
 
   /**
@@ -448,34 +408,7 @@ export class TableBuilder<
     const unique = options?.unique ?? false;
     this.#indexes.push({ name, columns: cols, unique });
 
-    // Track the operation
-    this.#operations.push({
-      type: "add-index",
-      name,
-      columns: cols,
-      unique,
-    });
-
     return this;
-  }
-
-  clone(): TableBuilder<TColumns, TRelations> {
-    const clone = new TableBuilder(this.#name);
-    clone.#columns = { ...this.#columns };
-    clone.#relations = { ...this.#relations };
-    clone.#foreignKeys = [...this.#foreignKeys];
-    clone.#indexes = [...this.#indexes];
-    clone.#ormName = this.#ormName;
-    clone.#operations = [...this.#operations];
-    return clone as TableBuilder<TColumns, TRelations>;
-  }
-
-  /**
-   * Get the operations that have been performed on this builder.
-   * @internal
-   */
-  getOperations(): TableBuilderOperation[] {
-    return this.#operations;
   }
 
   /**
@@ -492,25 +425,11 @@ export class TableBuilder<
       ormName,
       columns: this.#columns,
       relations: this.#relations,
-      foreignKeys: this.#foreignKeys,
-      indexes: this.#indexes,
       getColumnByName: (name) => {
         return Object.values(this.#columns).find((c) => c.name === name);
       },
       getIdColumn: () => {
         return idCol!;
-      },
-      builder: this.clone(),
-      clone: () => {
-        const cloneColumns: Record<string, AnyColumn> = {};
-
-        for (const [k, v] of Object.entries(this.#columns)) {
-          cloneColumns[k] = v.clone();
-        }
-
-        const builder = this.clone();
-        const cloned = builder.build();
-        return cloned;
       },
     };
 
@@ -521,7 +440,7 @@ export class TableBuilder<
         continue;
       }
 
-      column.table = table;
+      column.tableName = table.name;
       if (column instanceof IdColumn) {
         idCol = column;
       }
@@ -613,28 +532,46 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     const tableBuilder = new TableBuilder(ormName);
     const result = callback(tableBuilder);
     const builtTable = result.build();
-
-    // Set table metadata
     builtTable.ormName = ormName;
 
-    const builder = new SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations>>>();
-    builder.#tables = { ...this.#tables, [ormName]: builtTable } as TTables &
+    // Collect sub-operations in order
+    const subOperations: TableSubOperation[] = [];
+
+    // Add columns in order
+    const columnOrder = result.getColumnOrder();
+    for (const colName of columnOrder) {
+      const col = builtTable.columns[colName];
+      subOperations.push({
+        type: "add-column",
+        columnName: colName,
+        column: col,
+      });
+    }
+
+    // Add indexes from builder
+    for (const idx of result.getIndexes()) {
+      subOperations.push({
+        type: "add-index",
+        name: idx.name,
+        columns: idx.columns.map((c) => c.ormName),
+        unique: idx.unique,
+      });
+    }
+
+    // Add the add-table operation
+    this.#operations.push({
+      type: "add-table",
+      tableName: ormName,
+      operations: subOperations,
+    });
+
+    // Update tables map
+    this.#tables = { ...this.#tables, [ormName]: builtTable } as TTables &
       Record<TTableName, Table<TColumns, TRelations>>;
 
-    // Add the add-table operation with columns list
-    builder.#operations = [
-      ...this.#operations,
-      {
-        type: "add-table",
-        tableName: ormName,
-        table: builtTable,
-        columns: Object.values(builtTable.columns),
-      },
-    ];
-
-    builder.#version = this.#version;
-
-    return builder;
+    return this as unknown as SchemaBuilder<
+      TTables & Record<TTableName, Table<TColumns, TRelations>>
+    >;
   }
 
   /**
@@ -739,9 +676,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     init.on.push([columnName, targetColumnName]);
     const relation = init.init(referenceName);
 
-    // Add relation and foreign key to the table
+    // Add relation to the table
     table.relations[referenceName] = relation;
-    table.foreignKeys.push(relation.foreignKey);
 
     // Record the operation
     this.#operations.push({
@@ -802,66 +738,65 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
       throw new Error(`Table ${tableName} not found in schema`);
     }
 
-    // Get the table builder and track the current operation count
-    const tableBuilder = table.builder;
-    const operationStartIndex = tableBuilder.getOperations().length;
+    // Create builder with existing table state
+    const tableBuilder = new TableBuilder(tableName);
+    tableBuilder.setColumns(table.columns);
+    tableBuilder.setRelations(table.relations);
 
-    // Apply the alterations - the callback returns a new builder with modifications
-    // Safe: we're casting the builder which already has the right columns/relations to the right type
+    // Track existing columns
+    const existingColumns = new Set(Object.keys(table.columns));
+
+    // Apply modifications
     const resultBuilder = callback(
       tableBuilder as TableBuilder<
         TTables[TTableName]["columns"],
         TTables[TTableName]["relations"]
       >,
     );
-
-    // Get only the new operations performed during the callback
-    const builderOperations = resultBuilder.getOperations().slice(operationStartIndex);
-
-    // Rebuild the table with the new columns/indexes from resultBuilder
     const newTable = resultBuilder.build();
 
-    // Update the table reference in the schema
-    // Safe: newTable has the updated columns/relations from resultBuilder
-    this.#tables[tableName] = newTable as unknown as TTables[TTableName];
+    // Collect sub-operations
+    const subOperations: TableSubOperation[] = [];
 
-    // Set table reference for all columns
-    for (const col of Object.values(newTable.columns)) {
-      col.table = newTable;
+    // Find new columns (preserve order from builder)
+    const columnOrder = resultBuilder.getColumnOrder();
+    for (const colName of columnOrder) {
+      if (!existingColumns.has(colName)) {
+        subOperations.push({
+          type: "add-column",
+          columnName: colName,
+          column: newTable.columns[colName],
+        });
+      }
     }
 
-    // Group add-column operations together, process add-index operations separately
-    const columnOperations = builderOperations.filter((op) => op.type === "add-column");
-    const indexOperations = builderOperations.filter((op) => op.type === "add-index");
+    // Add indexes
+    for (const idx of resultBuilder.getIndexes()) {
+      subOperations.push({
+        type: "add-index",
+        name: idx.name,
+        columns: idx.columns.map((c) => c.ormName),
+        unique: idx.unique,
+      });
+    }
 
-    // Add all column modifications as a single alter-table operation
-    if (columnOperations.length > 0) {
+    if (subOperations.length > 0) {
       this.#version++;
       this.#operations.push({
         type: "alter-table",
-        tableName: tableName,
-        modifications: columnOperations.map((op) => ({
-          type: "add-column",
-          columnName: op.columnName,
-          column: op.column,
-        })),
+        tableName,
+        operations: subOperations,
       });
     }
 
-    // Add each index as a separate add-index operation
-    for (const operation of indexOperations) {
-      this.#version++;
-      this.#operations.push({
-        type: "add-index",
-        tableName: tableName,
-        name: operation.name,
-        columns: operation.columns.map((col) => col.ormName),
-        unique: operation.unique,
-      });
+    // Update table reference in schema
+    this.#tables[tableName] = newTable as unknown as TTables[TTableName];
+
+    // Set table name for all columns
+    for (const col of Object.values(newTable.columns)) {
+      col.tableName = newTable.name;
     }
 
-    // Return this with updated type
-    // Safe: The table was mutated in place and now has the updated columns/relations
     return this as unknown as SchemaBuilder<
       Omit<TTables, TTableName> & Record<TTableName, Table<TNewColumns, TNewRelations>>
     >;
@@ -883,7 +818,24 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
         const cloneTables: Record<string, AnyTable> = {};
 
         for (const [k, v] of Object.entries(tables)) {
-          cloneTables[k] = v.clone();
+          // Create a new table with cloned columns
+          const clonedColumns: Record<string, AnyColumn> = {};
+          for (const [colName, col] of Object.entries(v.columns)) {
+            // Create a new column with the same properties
+            const clonedCol = new Column(col.type);
+            clonedCol.name = col.name;
+            clonedCol.ormName = col.ormName;
+            clonedCol.isNullable = col.isNullable;
+            clonedCol.role = col.role;
+            clonedCol.default = col.default;
+            clonedCol.tableName = col.tableName;
+            clonedColumns[colName] = clonedCol;
+          }
+
+          cloneTables[k] = {
+            ...v,
+            columns: clonedColumns,
+          };
         }
 
         const builder = new SchemaBuilder<TTables>();
