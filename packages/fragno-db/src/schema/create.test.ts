@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "./create";
+import type { TableToColumnValues, TableToInsertValues } from "../query/query";
 
 describe("create", () => {
   it("should create a table with columns using callback pattern", () => {
@@ -426,6 +427,61 @@ describe("create", () => {
 
     // Version should be: 1 (addTable) + 1 (first alter) + 1 (second alter)
     expect(userSchema.version).toBe(3);
+  });
+
+  it("Simple user table types", () => {
+    const _userSchema = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+      // .addTable("emails", (t) => {
+      //   return t.addColumn("id", idColumn()).addColumn("email", column("string"));
+      // });
+      // .alterTable("emails", (t) => {
+      //   return t.addColumn("is_primary", column("bool").defaultTo(false));
+      // });
+    });
+
+    type _UserInsert = TableToInsertValues<typeof _userSchema.tables.users>;
+    expectTypeOf<_UserInsert>().toExtend<{
+      [x: string]: unknown;
+      id?: string | null;
+      name: string;
+    }>();
+
+    type _UserResult = TableToColumnValues<typeof _userSchema.tables.users>;
+    expectTypeOf<_UserResult>().toExtend<{
+      id: string;
+      name: string;
+    }>();
+  });
+
+  it("Simple user table types after alter table statements", () => {
+    const _userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("emails", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("email", column("string"));
+        })
+        .alterTable("emails", (t) => {
+          return t.addColumn("is_primary", column("bool").defaultTo(false));
+        });
+    });
+
+    type _UserInsert = TableToInsertValues<typeof _userSchema.tables.users>;
+    expectTypeOf<_UserInsert>().toExtend<{
+      [x: string]: unknown;
+      id?: string | null;
+      name: string;
+    }>();
+
+    type _UserResult = TableToColumnValues<typeof _userSchema.tables.users>;
+    expectTypeOf<_UserResult>().toExtend<{
+      id: string;
+      name: string;
+    }>();
   });
 });
 
