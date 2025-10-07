@@ -1,6 +1,5 @@
-import { Kysely } from "kysely";
-import { KyselyPGlite } from "kysely-pglite";
-import { describe, expect, it, beforeAll } from "vitest";
+import { Kysely, PostgresDialect } from "kysely";
+import { beforeAll, describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import {
   fullSQLName,
@@ -511,8 +510,8 @@ describe("query-builder", () => {
     let kysely: KyselyType<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     beforeAll(async () => {
-      const { dialect } = await KyselyPGlite.create();
-      kysely = new Kysely({ dialect });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Fake Postgres connection information
+      kysely = new Kysely({ dialect: new PostgresDialect({} as any) });
     });
 
     describe("count", () => {
