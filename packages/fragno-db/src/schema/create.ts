@@ -305,14 +305,14 @@ export function referenceColumn<TType extends keyof TypeMap = "varchar(30)">(
   const actualType = (type ?? "varchar(30)") as TType;
   const col = new Column<TType, TypeMap[TType], TypeMap[TType]>(actualType);
   col.role = "reference";
-  return col as Column<TType, TypeMap[TType], TypeMap[TType]>;
+  return col;
 }
 
-export function idColumn(): IdColumn<"varchar(30)", string, string> {
-  const col = new IdColumn<"varchar(30)", string, string>("varchar(30)");
+export function idColumn(): IdColumn<"varchar(30)", string | null, string> {
+  const col = new IdColumn<"varchar(30)", string | null, string>("varchar(30)");
   col.role = "id";
   col.defaultTo$("auto");
-  return col as IdColumn<"varchar(30)", string, string>;
+  return col;
 }
 
 type RelationType = "one";

@@ -356,7 +356,7 @@ function defaultValueToDB(column: ColumnInfo, provider: SQLProvider) {
     return sql`CURRENT_TIMESTAMP`;
   }
 
-  if ("value" in value) {
+  if ("value" in value && value.value !== undefined) {
     return sql.lit(value.value);
   }
 

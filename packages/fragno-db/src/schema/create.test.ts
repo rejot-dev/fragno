@@ -406,7 +406,7 @@ describe("create", () => {
     const usersTable = userSchema.tables.users;
     const columns = usersTable.columns;
 
-    expectTypeOf(columns.id.$in).toBeString();
+    expectTypeOf(columns.id.$in).toExtend<string | null>();
     expectTypeOf(columns.id.$out).toBeString();
 
     expectTypeOf(columns.name.$in).toBeString();
@@ -434,7 +434,7 @@ describe("idColumn", () => {
     const idCol = idColumn();
     type _In = typeof idCol.$in;
     type _Out = typeof idCol.$out;
-    expectTypeOf<_In>().toBeString();
+    expectTypeOf<_In>().toExtend<string | null>();
     expectTypeOf<_Out>().toBeString();
 
     expect(idCol.generateDefaultValue()).toBeDefined();

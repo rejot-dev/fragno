@@ -63,6 +63,33 @@ describe("execute() - PostgreSQL", () => {
       );
     });
 
+    it("should generate SQL for able with id column with default undefined", () => {
+      const operation: MigrationOperation = {
+        type: "create-table",
+        name: "users",
+        columns: [
+          {
+            name: "id",
+            type: "varchar(30)",
+            isNullable: false,
+            role: "id",
+            default: { value: undefined, runtime: "auto" },
+          },
+        ],
+      };
+
+      const result = execute(operation, config, () => {
+        throw new Error("No custom operations");
+      });
+
+      assertSingleResult(result);
+
+      const compiled = result.compile();
+      expect(compiled.sql).toMatchInlineSnapshot(
+        `"create table "users" ("id" varchar(30) not null primary key)"`,
+      );
+    });
+
     it("should generate SQL for table with various column types", () => {
       const operation: MigrationOperation = {
         type: "create-table",
