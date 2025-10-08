@@ -25,7 +25,6 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["^build"],
       "outputs": ["coverage.json"]
     },
     "test:watch": {
