@@ -1,5 +1,11 @@
 # create-fragno
 
+## 0.0.3
+
+### Patch Changes
+
+- cef9155: fix: added shebang to index.ts file
+
 ## 0.0.2
 
 ### Patch Changes
