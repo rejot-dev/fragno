@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "./create";
+import { column, FragnoId, FragnoReference, idColumn, referenceColumn, schema } from "./create";
 import type { TableToColumnValues, TableToInsertValues } from "../query/query";
 
 describe("create", () => {
@@ -185,14 +185,14 @@ describe("create", () => {
     expect(userRef!.tableName).toBe("user_tags");
     expect(userRef!.config.columns).toEqual(["userId"]);
     expect(userRef!.config.targetTable).toBe("users");
-    expect(userRef!.config.targetColumns).toEqual(["id"]);
+    expect(userRef!.config.targetColumns).toEqual(["_internalId"]);
 
     const tagRef = addReferenceOps.find((op) => op.referenceName === "tag");
     expect(tagRef).toBeDefined();
     expect(tagRef!.tableName).toBe("user_tags");
     expect(tagRef!.config.columns).toEqual(["tagId"]);
     expect(tagRef!.config.targetTable).toBe("tags");
-    expect(tagRef!.config.targetColumns).toEqual(["id"]);
+    expect(tagRef!.config.targetColumns).toEqual(["_internalId"]);
   });
 
   it("should create a foreign key reference using addReference", () => {
@@ -233,7 +233,7 @@ describe("create", () => {
     expect(addReferenceOps[0].referenceName).toBe("author");
     expect(addReferenceOps[0].config.columns).toEqual(["authorId"]);
     expect(addReferenceOps[0].config.targetTable).toBe("users");
-    expect(addReferenceOps[0].config.targetColumns).toEqual(["id"]);
+    expect(addReferenceOps[0].config.targetColumns).toEqual(["_internalId"]);
   });
 
   it("should support multiple references by calling addReference multiple times", () => {
@@ -279,14 +279,14 @@ describe("create", () => {
     expect(authorRef!.tableName).toBe("posts");
     expect(authorRef!.config.columns).toEqual(["authorId"]);
     expect(authorRef!.config.targetTable).toBe("users");
-    expect(authorRef!.config.targetColumns).toEqual(["id"]);
+    expect(authorRef!.config.targetColumns).toEqual(["_internalId"]);
 
     const categoryRef = addReferenceOps.find((op) => op.referenceName === "category");
     expect(categoryRef).toBeDefined();
     expect(categoryRef!.tableName).toBe("posts");
     expect(categoryRef!.config.columns).toEqual(["categoryId"]);
     expect(categoryRef!.config.targetTable).toBe("categories");
-    expect(categoryRef!.config.targetColumns).toEqual(["id"]);
+    expect(categoryRef!.config.targetColumns).toEqual(["_internalId"]);
   });
 
   it("should support self-referencing foreign keys", () => {
@@ -321,7 +321,7 @@ describe("create", () => {
     expect(addReferenceOps[0].referenceName).toBe("inviter");
     expect(addReferenceOps[0].config.columns).toEqual(["invitedBy"]);
     expect(addReferenceOps[0].config.targetTable).toBe("users");
-    expect(addReferenceOps[0].config.targetColumns).toEqual(["id"]);
+    expect(addReferenceOps[0].config.targetColumns).toEqual(["_internalId"]);
   });
 
   it("should allow altering an existing table to add columns", () => {
@@ -407,8 +407,8 @@ describe("create", () => {
     const usersTable = userSchema.tables.users;
     const columns = usersTable.columns;
 
-    expectTypeOf(columns.id.$in).toExtend<string | null>();
-    expectTypeOf(columns.id.$out).toBeString();
+    expectTypeOf(columns.id.$in).toExtend<string | FragnoId | null>();
+    expectTypeOf(columns.id.$out).toEqualTypeOf<FragnoId>();
 
     expectTypeOf(columns.name.$in).toBeString();
     expectTypeOf(columns.name.$out).toBeString();
@@ -434,24 +434,18 @@ describe("create", () => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
-      // .addTable("emails", (t) => {
-      //   return t.addColumn("id", idColumn()).addColumn("email", column("string"));
-      // });
-      // .alterTable("emails", (t) => {
-      //   return t.addColumn("is_primary", column("bool").defaultTo(false));
-      // });
     });
 
     type _UserInsert = TableToInsertValues<typeof _userSchema.tables.users>;
     expectTypeOf<_UserInsert>().toExtend<{
       [x: string]: unknown;
-      id?: string | null;
+      id?: string | FragnoId | null;
       name: string;
     }>();
 
     type _UserResult = TableToColumnValues<typeof _userSchema.tables.users>;
     expectTypeOf<_UserResult>().toExtend<{
-      id: string;
+      id: FragnoId;
       name: string;
     }>();
   });
@@ -473,13 +467,13 @@ describe("create", () => {
     type _UserInsert = TableToInsertValues<typeof _userSchema.tables.users>;
     expectTypeOf<_UserInsert>().toExtend<{
       [x: string]: unknown;
-      id?: string | null;
+      id?: string | FragnoId | null;
       name: string;
     }>();
 
     type _UserResult = TableToColumnValues<typeof _userSchema.tables.users>;
     expectTypeOf<_UserResult>().toExtend<{
-      id: string;
+      id: FragnoId;
       name: string;
     }>();
   });
@@ -490,9 +484,19 @@ describe("idColumn", () => {
     const idCol = idColumn();
     type _In = typeof idCol.$in;
     type _Out = typeof idCol.$out;
-    expectTypeOf<_In>().toExtend<string | null>();
-    expectTypeOf<_Out>().toBeString();
+    expectTypeOf<_In>().toExtend<string | FragnoId | null>();
+    expectTypeOf<_Out>().toEqualTypeOf<FragnoId>();
 
     expect(idCol.generateDefaultValue()).toBeDefined();
+  });
+});
+
+describe("referenceColumn", () => {
+  it("should create a table with a reference column", () => {
+    const _referenceCol = referenceColumn();
+    type _In = typeof _referenceCol.$in;
+    type _Out = typeof _referenceCol.$out;
+    expectTypeOf<_In>().toExtend<string | bigint | FragnoId | FragnoReference>();
+    expectTypeOf<_Out>().toEqualTypeOf<FragnoReference>();
   });
 });

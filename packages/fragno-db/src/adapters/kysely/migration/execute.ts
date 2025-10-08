@@ -115,7 +115,7 @@ function executeColumn(
     case "update-column": {
       const col = operation.value;
 
-      if (col.role === "id") {
+      if (col.role === "external-id" || col.role === "internal-id") {
         throw new Error(errors.IdColumnUpdate);
       }
       if (provider === "sqlite") {
@@ -301,8 +301,26 @@ function getColumnBuilderCallback(col: ColumnInfo, provider: SQLProvider): Colum
     if (!col.isNullable) {
       build = build.notNull();
     }
-    if (col.role === "id") {
+
+    // Internal ID is the primary key with auto-increment
+    if (col.role === "internal-id") {
       build = build.primaryKey();
+      // Auto-increment for internal ID
+      if (provider === "postgresql" || provider === "cockroachdb") {
+        // SERIAL/BIGSERIAL handles auto-increment
+        // Already handled in schemaToDBType
+      } else if (provider === "mysql") {
+        build = build.autoIncrement();
+      } else if (provider === "sqlite") {
+        build = build.autoIncrement();
+      } else if (provider === "mssql") {
+        build = build.identity();
+      }
+    }
+
+    // External ID must be unique
+    if (col.role === "external-id") {
+      build = build.unique();
     }
 
     const defaultValue = defaultValueToDB(col, provider);

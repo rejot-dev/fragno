@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../schema/create";
+import { column, FragnoId, idColumn, referenceColumn, schema } from "../schema/create";
 import type {
   AbstractQuery,
   FindFirstOptions,
@@ -7,7 +7,9 @@ import type {
   JoinBuilder,
   OrderBy,
   SelectClause,
+  TableToInsertValues,
 } from "./query";
+import type { ConditionBuilder } from "./condition-builder";
 
 describe("query type tests", () => {
   // Create test schema
@@ -98,7 +100,7 @@ describe("query type tests", () => {
         type Result = Awaited<ReturnType<typeof _query.findFirst<"users">>>;
 
         expectTypeOf<Result>().toExtend<{
-          _id: string;
+          _id: FragnoId;
           name: string;
           email: string;
           age: number | null;
@@ -136,7 +138,7 @@ describe("query type tests", () => {
 
         expectTypeOf<Result>().toExtend<
           {
-            _id: string;
+            _id: FragnoId;
             name: string;
             email: string;
             age: number | null;
@@ -180,7 +182,7 @@ describe("query type tests", () => {
         expectTypeOf<{
           [x: string]: unknown;
           age?: number | null | undefined;
-          _id: string;
+          _id: FragnoId;
           name: string;
           email: string;
           isActive: boolean;
@@ -192,7 +194,7 @@ describe("query type tests", () => {
         type Result = Awaited<ReturnType<typeof _query.create<"users">>>;
 
         expectTypeOf<Result>().toExtend<{
-          _id: string;
+          _id: FragnoId;
           name: string;
           email: string;
           age: number | null;
@@ -208,7 +210,7 @@ describe("query type tests", () => {
         expectTypeOf<{
           publishedAt?: Date | null | undefined;
           likes?: number | null | undefined;
-          _id: string;
+          _id: FragnoId;
           title: string;
           content: string;
           userId: string;
@@ -227,7 +229,7 @@ describe("query type tests", () => {
           {
             name: string;
             age?: number | null | undefined;
-            _id: string;
+            _id: FragnoId;
             email: string;
             isActive: boolean;
           }[]
@@ -260,7 +262,7 @@ describe("query type tests", () => {
         type SetParam = Parameters<typeof _query.updateMany<"users">>[1]["set"];
 
         expectTypeOf<{
-          _id: string;
+          _id: FragnoId;
           name: string;
         }>().not.toExtend<SetParam>();
       });
@@ -308,7 +310,7 @@ describe("query type tests", () => {
       type Result = Awaited<ReturnType<typeof _query.findFirst<"users">>>;
       type User = Exclude<Result, null>;
 
-      expectTypeOf<User["_id"]>().toEqualTypeOf<string>();
+      expectTypeOf<User["_id"]>().toEqualTypeOf<FragnoId>();
       expectTypeOf<User["name"]>().toEqualTypeOf<string>();
       expectTypeOf<User["email"]>().toEqualTypeOf<string>();
       expectTypeOf<User["age"]>().toEqualTypeOf<number | null>();
@@ -320,7 +322,7 @@ describe("query type tests", () => {
       type Result = Awaited<ReturnType<typeof _query.findFirst<"posts">>>;
       type Post = Exclude<Result, null>;
 
-      expectTypeOf<Post["_id"]>().toEqualTypeOf<string>();
+      expectTypeOf<Post["_id"]>().toEqualTypeOf<FragnoId>();
       expectTypeOf<Post["title"]>().toEqualTypeOf<string>();
       expectTypeOf<Post["content"]>().toEqualTypeOf<string>();
       expectTypeOf<Post["userId"]>().toEqualTypeOf<string>();
@@ -333,7 +335,7 @@ describe("query type tests", () => {
       type Result = Awaited<ReturnType<typeof _query.findFirst<"comments">>>;
       type Comment = Exclude<Result, null>;
 
-      expectTypeOf<Comment["_id"]>().toEqualTypeOf<string>();
+      expectTypeOf<Comment["_id"]>().toEqualTypeOf<FragnoId>();
       expectTypeOf<Comment["postId"]>().toEqualTypeOf<string>();
       expectTypeOf<Comment["authorId"]>().toEqualTypeOf<string>();
       expectTypeOf<Comment["text"]>().toEqualTypeOf<string>();
@@ -347,11 +349,11 @@ describe("query type tests", () => {
 
       // Create user return type
       type UserResult = Awaited<ReturnType<typeof _query.create<"users">>>;
-      expectTypeOf<UserResult["_id"]>().toEqualTypeOf<string>();
+      expectTypeOf<UserResult["_id"]>().toEqualTypeOf<FragnoId>();
 
       // Create post return type
       type PostResult = Awaited<ReturnType<typeof _query.create<"posts">>>;
-      expectTypeOf<PostResult["_id"]>().toEqualTypeOf<string>();
+      expectTypeOf<PostResult["_id"]>().toEqualTypeOf<FragnoId>();
 
       // Find posts by user return type
       type UserPostsResult = Awaited<
@@ -411,6 +413,82 @@ describe("query type tests", () => {
       expectTypeOf<Builder1>().toExtend<{
         author: () => void;
       }>();
+    });
+  });
+
+  describe("FragnoId support", () => {
+    it("should accept FragnoId in insert values for id column", () => {
+      const fragnoId = FragnoId.fromExternal("user123", 0);
+      const _values: TableToInsertValues<typeof _testSchema.tables.users> = {
+        _id: fragnoId,
+        name: "John",
+        email: "john@example.com",
+        isActive: true,
+      };
+      // Verify the type accepts both string and FragnoId
+      type IdType = TableToInsertValues<typeof _testSchema.tables.users>["_id"];
+      expectTypeOf<string>().toExtend<IdType>();
+      expectTypeOf<FragnoId>().toExtend<IdType>();
+    });
+
+    it("should accept string in insert values for id column", () => {
+      const _values: TableToInsertValues<typeof _testSchema.tables.users> = {
+        _id: "user123",
+        name: "John",
+        email: "john@example.com",
+        isActive: true,
+      };
+      // Verify string is accepted
+      type IdType = TableToInsertValues<typeof _testSchema.tables.users>["_id"];
+      expectTypeOf<string>().toExtend<IdType>();
+    });
+
+    it("should accept FragnoId in where conditions", () => {
+      const fragnoId = FragnoId.fromExternal("user123", 0);
+      // This should compile without errors
+      const condition = (eb: ConditionBuilder<typeof _testSchema.tables.users.columns>) =>
+        eb("_id", "=", fragnoId);
+      expectTypeOf(condition).toBeFunction();
+    });
+
+    it("should accept FragnoId in array where conditions", () => {
+      const fragnoId1 = FragnoId.fromExternal("user123", 0);
+      const fragnoId2 = FragnoId.fromExternal("user456", 0);
+      // This should compile without errors
+      const condition = (eb: ConditionBuilder<typeof _testSchema.tables.users.columns>) =>
+        eb("_id", "in", [fragnoId1, fragnoId2, "user789"]);
+      expectTypeOf(condition).toBeFunction();
+    });
+
+    it("should accept FragnoId with both external and internal IDs", () => {
+      const fragnoId = new FragnoId({
+        externalId: "user123",
+        internalId: 1n,
+        version: 1,
+      });
+      const _values: TableToInsertValues<typeof _testSchema.tables.posts> = {
+        _id: fragnoId,
+        title: "Test Post",
+        content: "Content",
+        userId: "user123",
+        viewCount: 0,
+      };
+      // Verify FragnoId is accepted for id columns
+      type IdType = TableToInsertValues<typeof _testSchema.tables.posts>["_id"];
+      expectTypeOf<FragnoId>().toExtend<IdType>();
+    });
+
+    it("should not accept FragnoId for non-id columns", () => {
+      const _values: TableToInsertValues<typeof _testSchema.tables.users> = {
+        _id: "user123",
+        name: "John",
+        email: "john@example.com",
+        isActive: true,
+      };
+      // This should be a type error if we try to use FragnoId for name
+      type NameType = TableToInsertValues<typeof _testSchema.tables.users>["name"];
+      expectTypeOf<NameType>().toExtend<string>();
+      expectTypeOf<NameType>().not.toExtend<FragnoId>();
     });
   });
 });

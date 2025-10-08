@@ -1,4 +1,4 @@
-import type { AnyColumn } from "../schema/create";
+import type { AnyColumn, FragnoId, IdColumn } from "../schema/create";
 
 export type ConditionType = "compare" | "and" | "or" | "not";
 
@@ -20,17 +20,27 @@ export type Condition =
 
 // TODO: we temporarily dropped support for comparing against another column, because Prisma ORM still have problems with it.
 
+/**
+ * Helper type that allows FragnoId for ID columns and reference columns (bigint).
+ * Used in ConditionBuilder to accept FragnoId values in where conditions.
+ */
+type AcceptsFragnoId<T extends AnyColumn> = T extends IdColumn
+  ? T["$in"] | FragnoId
+  : T["$in"] extends bigint
+    ? T["$in"] | FragnoId
+    : T["$in"];
+
 export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
   <ColName extends keyof Columns>(
     a: ColName,
     operator: (typeof valueOperators)[number] | (typeof stringOperators)[number],
-    b: Columns[ColName]["$in"] | null,
+    b: AcceptsFragnoId<Columns[ColName]> | null,
   ): Condition;
 
   <ColName extends keyof Columns>(
     a: ColName,
     operator: (typeof arrayOperators)[number],
-    b: Columns[ColName]["$in"][],
+    b: AcceptsFragnoId<Columns[ColName]>[],
   ): Condition;
 
   /**

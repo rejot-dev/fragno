@@ -45,7 +45,8 @@ export function createFragnoDatabaseLibrary(orm: AbstractQuery<typeof userSchema
   return {
     createUserAndPost: async (u: { name: string }, p: { title: string; content: string }) => {
       const user = await internal.createUser(u);
-      const post = await internal.createPost({ ...p, userId: user.id });
+      console.log(user);
+      const post = await internal.createPost({ ...p, userId: user.id.toString() });
       return { user, post };
     },
     getPosts: internal.getPosts,

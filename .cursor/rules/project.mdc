@@ -62,6 +62,13 @@ follows a modular architecture with generic core implementations and framework-s
 - When using unsafe casts (`x as Y`), always add a comment explaining why it's safe. Prefer not to
   use them.
 
+### Testing
+
+- When testing _types_, do NOT use `.toMatchTypeOf(..)`, it's deprecated. Use either
+  toMatchObjectType or toExtend instead:
+  - Use toMatchObjectType to perform a strict check on a subset of your type's keys
+  - Use toExtend to check if your type extends the expected type
+
 ### File Naming
 
 - Use kebab-case for file names
