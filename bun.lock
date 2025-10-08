@@ -180,7 +180,7 @@
     },
     "packages/cli": {
       "name": "create-fragno",
-      "version": "0.0.2",
+      "version": "0.0.3",
       "bin": {
         "create-fragno": "./dist/index.js",
       },
