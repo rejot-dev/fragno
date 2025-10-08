@@ -11,5 +11,5 @@ pre-commit:
     - name: eslint
       run: bunx eslint --fix --no-warn-ignored "{staged_files}"
     - name: "turbo: build + test + type-check"
-      run: bunx turbo run build types:check test
+      run: bunx turbo run --no-daemon build types:check test
       glob: "{*.ts,*.tsx,tsconfig.json}"
