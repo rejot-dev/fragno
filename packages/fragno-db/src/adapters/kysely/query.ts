@@ -112,7 +112,8 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
 
       // Do a follow-up SELECT to get the created record
       const findCompiled = compiler.findFirst(name, {
-        where: (b) => b(idColumn.name as never, "=", idValue),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (b) => b(idColumn.name as any, "=", idValue as any),
       });
 
       if (findCompiled === null) {

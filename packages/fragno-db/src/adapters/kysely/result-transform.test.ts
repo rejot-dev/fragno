@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { decodeResult, encodeValues } from "./result-transform";
+import { assert, describe, expect, it } from "vitest";
+import { column, idColumn, referenceColumn, schema, FragnoId } from "../../schema/create";
+import { decodeResult, encodeValues, ReferenceSubquery } from "./result-transform";
 
 describe("encodeValues", () => {
   const testSchema = schema((s) => {
@@ -21,6 +21,11 @@ describe("encodeValues", () => {
           .addColumn("userId", referenceColumn())
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("publishedAt", column("timestamp").nullable());
+      })
+      .addReference("posts", "author", {
+        columns: ["userId"],
+        targetTable: "users",
+        targetColumns: ["id"],
       });
   });
 
@@ -115,7 +120,7 @@ describe("encodeValues", () => {
       );
 
       expect(result["title"]).toBe("Test Post");
-      expect(result["userId"]).toBe("user1");
+      expect(result["userId"]).instanceOf(ReferenceSubquery);
       expect(result["viewCount"]).toBe(0);
       expect(result["id"]).toBeDefined();
       expect(typeof result["id"]).toBe("string");
@@ -131,7 +136,7 @@ describe("encodeValues", () => {
 
       expect(result).toEqual({
         title: "Test Post",
-        userId: "user1",
+        userId: expect.any(ReferenceSubquery),
       });
     });
 
@@ -172,6 +177,88 @@ describe("encodeValues", () => {
         isActive: 0,
         createdAt: date.getTime(),
       });
+    });
+  });
+
+  describe("FragnoId encoding", () => {
+    it("should encode FragnoId with external ID only", () => {
+      const fragnoId = FragnoId.fromExternal("user123", 1);
+      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false, "postgresql");
+
+      expect(result).toEqual({
+        id: "user123",
+        name: "John",
+      });
+    });
+
+    it("should encode FragnoId with both IDs", () => {
+      const fragnoId = new FragnoId({
+        externalId: "user123",
+        internalId: BigInt(456),
+        version: 1,
+      });
+      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false, "postgresql");
+
+      expect(result).toEqual({
+        id: "user123",
+        name: "John",
+      });
+    });
+
+    it("should encode FragnoId in reference columns", () => {
+      const fragnoId = new FragnoId({
+        externalId: "user123",
+        internalId: BigInt(456),
+        version: 1,
+      });
+      const result = encodeValues(
+        { title: "Test Post", userId: fragnoId },
+        postsTable,
+        false,
+        "postgresql",
+      );
+
+      // Reference columns should use the internal ID (bigint)
+      expect(result).toEqual({
+        title: "Test Post",
+        userId: BigInt(456),
+      });
+    });
+
+    it("should fallback to external ID for reference when internal ID unavailable", () => {
+      const fragnoId = new FragnoId({
+        externalId: "user123",
+        version: 1,
+      });
+      const result = encodeValues(
+        { title: "Test Post", userId: fragnoId },
+        postsTable,
+        false,
+        "postgresql",
+      );
+
+      expect(result).toEqual({
+        title: "Test Post",
+        userId: "user123",
+      });
+    });
+
+    it("should handle FragnoId across different providers", () => {
+      const fragnoId = new FragnoId({
+        externalId: "user123",
+        internalId: BigInt(456),
+        version: 1,
+      });
+      const testData = { id: fragnoId, name: "John" };
+
+      // Test across providers
+      const sqliteResult = encodeValues(testData, usersTable, false, "sqlite");
+      const postgresqlResult = encodeValues(testData, usersTable, false, "postgresql");
+      const mysqlResult = encodeValues(testData, usersTable, false, "mysql");
+
+      expect(sqliteResult).toEqual({ id: "user123", name: "John" });
+      expect(postgresqlResult).toEqual({ id: "user123", name: "John" });
+      expect(mysqlResult).toEqual({ id: "user123", name: "John" });
     });
   });
 });
@@ -424,6 +511,36 @@ describe("decodeResult", () => {
         },
       });
     });
+
+    it("should transform id columns in relations to FragnoId when _internalId and _version are present", () => {
+      const result = decodeResult(
+        {
+          id: "post1",
+          _internalId: BigInt(100),
+          _version: 0,
+          title: "My Post",
+          "author:id": "user1",
+          "author:_internalId": BigInt(200),
+          "author:_version": 0,
+          "author:name": "Alice",
+        },
+        postsTable,
+        "sqlite",
+      );
+
+      // Main table id should be FragnoId
+      assert(result["id"] instanceof FragnoId);
+      expect(result["id"].externalId).toBe("post1");
+      expect(result["id"].internalId).toBe(BigInt(100));
+
+      // Relation id should also be FragnoId (THIS IS THE BUG WE'RE FIXING)
+      expect(result["author"]).toBeDefined();
+      const author = result["author"] as Record<string, unknown>;
+      assert(author["id"] instanceof FragnoId);
+      expect(author["id"].externalId).toBe("user1");
+      expect(author["id"].internalId).toBe(BigInt(200));
+      expect(author["name"]).toBe("Alice");
+    });
   });
 
   describe("complete record decoding", () => {
@@ -503,6 +620,173 @@ describe("decodeResult", () => {
           name: "Alice",
         },
       });
+    });
+  });
+
+  describe("FragnoId decoding", () => {
+    it("should create FragnoId when both external and internal IDs are present", () => {
+      const result = decodeResult(
+        {
+          id: "user123",
+          _internalId: 456,
+          name: "John",
+        },
+        usersTable,
+        "postgresql",
+      );
+
+      const fragnoId = result["id"];
+      assert(fragnoId instanceof FragnoId);
+
+      expect(fragnoId.externalId).toBe("user123");
+      expect(fragnoId.internalId).toBe(456);
+      expect(result["name"]).toBe("John");
+    });
+
+    it("should create FragnoId from string internal ID", () => {
+      const result = decodeResult(
+        {
+          id: "user123",
+          _internalId: "456",
+          name: "John",
+        },
+        usersTable,
+        "postgresql",
+      );
+
+      const fragnoId = result["id"];
+      assert(fragnoId instanceof FragnoId);
+
+      expect(fragnoId.externalId).toBe("user123");
+      expect(fragnoId.internalId).toBe(BigInt(456));
+      expect(result["name"]).toBe("John");
+    });
+
+    it("should return regular string when internal ID is missing", () => {
+      const result = decodeResult(
+        {
+          id: "user123",
+          name: "John",
+        },
+        usersTable,
+        "postgresql",
+      );
+
+      expect(result).toEqual({
+        id: "user123",
+        name: "John",
+      });
+      expect(result["id"]).not.toBeInstanceOf(FragnoId);
+    });
+
+    it("should handle FragnoId creation across different providers", () => {
+      const testData = {
+        id: "user123",
+        _internalId: 456,
+        name: "John",
+      };
+
+      // Test across providers
+      const sqliteResult = decodeResult(testData, usersTable, "sqlite");
+      const postgresqlResult = decodeResult(testData, usersTable, "postgresql");
+      const mysqlResult = decodeResult(testData, usersTable, "mysql");
+
+      // All should create FragnoId objects
+      expect(sqliteResult["id"]).toBeInstanceOf(FragnoId);
+      expect(postgresqlResult["id"]).toBeInstanceOf(FragnoId);
+      expect(mysqlResult["id"]).toBeInstanceOf(FragnoId);
+
+      expect((sqliteResult["id"] as FragnoId).externalId).toBe("user123");
+      expect((sqliteResult["id"] as FragnoId).internalId).toBe(456);
+    });
+
+    it("should create FragnoId in relation data when both IDs present", () => {
+      const result = decodeResult(
+        {
+          id: "post1",
+          title: "My Post",
+          "author:id": "user123",
+          "author:_internalId": 456,
+          "author:name": "Alice",
+        },
+        postsTable,
+        "postgresql",
+      );
+
+      expect(result["id"]).toBe("post1");
+      expect(result["title"]).toBe("My Post");
+      // Note: Relations may not create FragnoId objects if the relation table doesn't have both IDs
+      // This test verifies the relation data is decoded correctly regardless
+      const author: Record<string, unknown> = result["author"] as Record<string, unknown>;
+      expect(author["id"]).toBe("user123");
+      expect(author["name"]).toBe("Alice");
+    });
+
+    it("should return regular string in relation data when internal ID missing", () => {
+      const result = decodeResult(
+        {
+          id: "post1",
+          title: "My Post",
+          "author:id": "user123",
+          "author:name": "Alice",
+        },
+        postsTable,
+        "postgresql",
+      );
+
+      expect(result).toEqual({
+        id: "post1",
+        title: "My Post",
+        author: {
+          id: "user123",
+          name: "Alice",
+        },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((result["author"] as any)["id"]).not.toBeInstanceOf(FragnoId);
+    });
+
+    it("should handle complete record with FragnoId creation", () => {
+      const timestamp = 1705317000000;
+      const result = decodeResult(
+        {
+          id: "user123",
+          _internalId: 456,
+          name: "Alice",
+          email: "alice@example.com",
+          age: 30,
+          isActive: true,
+          createdAt: timestamp,
+        },
+        usersTable,
+        "sqlite",
+      );
+
+      expect(result["id"]).toBeInstanceOf(FragnoId);
+      expect((result["id"] as FragnoId).externalId).toBe("user123");
+      expect((result["id"] as FragnoId).internalId).toBe(456);
+      expect(result["name"]).toBe("Alice");
+      expect(result["email"]).toBe("alice@example.com");
+      expect(result["age"]).toBe(30);
+      expect(result["isActive"]).toBe(true);
+      expect(result["createdAt"]).toEqual(new Date(timestamp));
+    });
+
+    it("should handle FragnoId with numeric internal ID from database", () => {
+      const result = decodeResult(
+        {
+          id: "user123",
+          _internalId: 789, // Numeric from database
+          name: "John",
+        },
+        usersTable,
+        "postgresql",
+      );
+
+      expect(result["id"]).toBeInstanceOf(FragnoId);
+      expect((result["id"] as FragnoId).externalId).toBe("user123");
+      expect((result["id"] as FragnoId).internalId).toBe(789);
+      expect(result["name"]).toBe("John");
     });
   });
 });

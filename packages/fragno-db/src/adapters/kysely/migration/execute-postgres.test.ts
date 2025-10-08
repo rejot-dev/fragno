@@ -34,7 +34,7 @@ describe("execute() - PostgreSQL", () => {
             name: "id",
             type: "integer",
             isNullable: false,
-            role: "id",
+            role: "external-id",
           },
           {
             name: "name",
@@ -59,7 +59,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null primary key, "name" text not null, "email" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "name" text not null, "email" text not null)"`,
       );
     });
 
@@ -72,7 +72,7 @@ describe("execute() - PostgreSQL", () => {
             name: "id",
             type: "varchar(30)",
             isNullable: false,
-            role: "id",
+            role: "external-id",
             default: { value: undefined, runtime: "auto" },
           },
         ],
@@ -86,7 +86,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" varchar(30) not null primary key)"`,
+        `"create table "users" ("id" varchar(30) not null unique)"`,
       );
     });
 
@@ -95,7 +95,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "test_types",
         columns: [
-          { name: "col_int", type: "integer", isNullable: false, role: "id" },
+          { name: "col_int", type: "integer", isNullable: false, role: "external-id" },
           { name: "col_bigint", type: "bigint", isNullable: false, role: "regular" },
           { name: "col_decimal", type: "decimal", isNullable: false, role: "regular" },
           { name: "col_bool", type: "bool", isNullable: false, role: "regular" },
@@ -115,7 +115,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "test_types" ("col_int" integer not null primary key, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamp not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
+        `"create table "test_types" ("col_int" integer not null unique, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamp not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
       );
     });
 
@@ -124,7 +124,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "nullable_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           { name: "optional_name", type: "string", isNullable: true, role: "regular" },
           { name: "optional_age", type: "integer", isNullable: true, role: "regular" },
         ],
@@ -138,7 +138,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "nullable_test" ("id" integer not null primary key, "optional_name" text, "optional_age" integer)"`,
+        `"create table "nullable_test" ("id" integer not null unique, "optional_name" text, "optional_age" integer)"`,
       );
     });
 
@@ -147,7 +147,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "defaults_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "status",
             type: "string",
@@ -180,7 +180,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "defaults_test" ("id" integer not null primary key, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
+        `"create table "defaults_test" ("id" integer not null unique, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
       );
     });
 
@@ -189,7 +189,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "timestamps_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "created_at",
             type: "timestamp",
@@ -208,7 +208,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "timestamps_test" ("id" integer not null primary key, "created_at" timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table "timestamps_test" ("id" integer not null unique, "created_at" timestamp default CURRENT_TIMESTAMP not null)"`,
       );
     });
 
@@ -217,7 +217,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "posts",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           { name: "user_id", type: "integer", isNullable: false, role: "reference" },
           { name: "title", type: "string", isNullable: false, role: "regular" },
         ],
@@ -231,7 +231,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null primary key, "user_id" integer not null, "title" text not null)"`,
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null)"`,
       );
     });
   });
@@ -646,7 +646,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "bigint",
               isNullable: false,
-              role: "id",
+              role: "external-id",
             },
             updateDataType: true,
             updateNullable: false,
@@ -969,7 +969,7 @@ describe("execute() - PostgreSQL", () => {
           type: "create-table",
           name: "users",
           columns: [
-            { name: "id", type: "integer", isNullable: false, role: "id" },
+            { name: "id", type: "integer", isNullable: false, role: "external-id" },
             { name: "email", type: "string", isNullable: false, role: "regular" },
             { name: "name", type: "string", isNullable: false, role: "regular" },
           ],
@@ -983,7 +983,7 @@ describe("execute() - PostgreSQL", () => {
       assertSingleResult(createUsers);
 
       expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null primary key, "email" text not null, "name" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
       );
 
       // 2. Add unique index on email
@@ -1013,7 +1013,7 @@ describe("execute() - PostgreSQL", () => {
           type: "create-table",
           name: "posts",
           columns: [
-            { name: "id", type: "integer", isNullable: false, role: "id" },
+            { name: "id", type: "integer", isNullable: false, role: "external-id" },
             { name: "user_id", type: "integer", isNullable: false, role: "reference" },
             { name: "title", type: "string", isNullable: false, role: "regular" },
             { name: "content", type: "string", isNullable: false, role: "regular" },
@@ -1028,7 +1028,7 @@ describe("execute() - PostgreSQL", () => {
       assertSingleResult(createPosts);
 
       expect(createPosts.compile().sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null primary key, "user_id" integer not null, "title" text not null, "content" text not null)"`,
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
       );
 
       // 4. Add foreign key
@@ -1140,7 +1140,7 @@ describe("execute() - PostgreSQL", () => {
       const operation: MigrationOperation = {
         type: "create-table",
         name: "user-profiles",
-        columns: [{ name: "id", type: "integer", isNullable: false, role: "id" }],
+        columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
       };
 
       const result = execute(operation, config, () => {
@@ -1158,7 +1158,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           { name: "user-name", type: "string", isNullable: false, role: "regular" },
         ],
       };
@@ -1178,7 +1178,7 @@ describe("execute() - PostgreSQL", () => {
         type: "create-table",
         name: "test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "status",
             type: "string",
@@ -1197,7 +1197,7 @@ describe("execute() - PostgreSQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "test" ("id" integer not null primary key, "status" text default 'it''s pending' not null)"`,
+        `"create table "test" ("id" integer not null unique, "status" text default 'it''s pending' not null)"`,
       );
     });
   });
@@ -1214,7 +1214,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1233,7 +1233,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createUsers);
       expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null primary key, "name" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "name" text not null)"`,
       );
 
       // 2. Create posts table with auto-increment ID and reference
@@ -1246,7 +1246,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1277,7 +1277,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createPosts);
       expect(createPosts.compile().sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null primary key, "title" text not null, "content" text not null, "userId" integer not null)"`,
+        `"create table "posts" ("id" integer not null unique, "title" text not null, "content" text not null, "userId" integer not null)"`,
       );
 
       // 3. Add foreign key reference
@@ -1367,7 +1367,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1411,7 +1411,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createCustomers);
       expect(createCustomers.compile().sql).toMatchInlineSnapshot(
-        `"create table "customers" ("id" integer not null primary key, "email" text not null, "firstName" text not null, "lastName" text not null, "phone" text, "createdAt" timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table "customers" ("id" integer not null unique, "email" text not null, "firstName" text not null, "lastName" text not null, "phone" text, "createdAt" timestamp default CURRENT_TIMESTAMP not null)"`,
       );
 
       // 2. Create products table
@@ -1424,7 +1424,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1469,7 +1469,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createProducts);
       expect(createProducts.compile().sql).toMatchInlineSnapshot(
-        `"create table "products" ("id" integer not null primary key, "name" text not null, "description" text, "price" decimal not null, "stock" integer default 0 not null, "isActive" boolean default true not null)"`,
+        `"create table "products" ("id" integer not null unique, "name" text not null, "description" text, "price" decimal not null, "stock" integer default 0 not null, "isActive" boolean default true not null)"`,
       );
 
       // 3. Create orders table
@@ -1482,7 +1482,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1521,7 +1521,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createOrders);
       expect(createOrders.compile().sql).toMatchInlineSnapshot(
-        `"create table "orders" ("id" integer not null primary key, "customerId" integer not null, "status" text default 'pending' not null, "total" decimal not null, "orderDate" timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table "orders" ("id" integer not null unique, "customerId" integer not null, "status" text default 'pending' not null, "total" decimal not null, "orderDate" timestamp default CURRENT_TIMESTAMP not null)"`,
       );
 
       // 4. Create order_items table (junction table)
@@ -1534,7 +1534,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1571,7 +1571,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createOrderItems);
       expect(createOrderItems.compile().sql).toMatchInlineSnapshot(
-        `"create table "order_items" ("id" integer not null primary key, "orderId" integer not null, "productId" integer not null, "quantity" integer not null, "unitPrice" decimal not null)"`,
+        `"create table "order_items" ("id" integer not null unique, "orderId" integer not null, "productId" integer not null, "quantity" integer not null, "unitPrice" decimal not null)"`,
       );
 
       // 5. Add all foreign key constraints
@@ -1692,7 +1692,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1723,7 +1723,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createUsers);
       expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null primary key, "username" text not null, "email" text not null, "age" integer)"`,
+        `"create table "users" ("id" integer not null unique, "username" text not null, "email" text not null, "age" integer)"`,
       );
 
       // 2. Complex alter table with multiple operations
@@ -1877,7 +1877,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -1935,7 +1935,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createCategories);
       expect(createCategories.compile().sql).toMatchInlineSnapshot(
-        `"create table "categories" ("id" integer not null primary key, "name" text not null, "slug" text not null, "description" text, "parentId" integer, "isActive" boolean default true not null, "createdAt" timestamp default CURRENT_TIMESTAMP not null, "updatedAt" timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table "categories" ("id" integer not null unique, "name" text not null, "slug" text not null, "description" text, "parentId" integer, "isActive" boolean default true not null, "createdAt" timestamp default CURRENT_TIMESTAMP not null, "updatedAt" timestamp default CURRENT_TIMESTAMP not null)"`,
       );
 
       // 2. Create articles table
@@ -1948,7 +1948,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -2031,7 +2031,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createArticles);
       expect(createArticles.compile().sql).toMatchInlineSnapshot(
-        `"create table "articles" ("id" integer not null primary key, "title" text not null, "slug" text not null, "excerpt" text, "content" text not null, "categoryId" integer not null, "authorId" integer not null, "status" text default 'draft' not null, "publishedAt" timestamp, "viewCount" integer default 0 not null, "createdAt" timestamp default CURRENT_TIMESTAMP not null, "updatedAt" timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table "articles" ("id" integer not null unique, "title" text not null, "slug" text not null, "excerpt" text, "content" text not null, "categoryId" integer not null, "authorId" integer not null, "status" text default 'draft' not null, "publishedAt" timestamp, "viewCount" integer default 0 not null, "createdAt" timestamp default CURRENT_TIMESTAMP not null, "updatedAt" timestamp default CURRENT_TIMESTAMP not null)"`,
       );
 
       // 3. Create tags table
@@ -2044,7 +2044,7 @@ describe("execute() - PostgreSQL", () => {
               name: "id",
               type: "integer",
               isNullable: false,
-              role: "id",
+              role: "external-id",
               default: { runtime: "auto" },
             },
             {
@@ -2076,7 +2076,7 @@ describe("execute() - PostgreSQL", () => {
 
       assertSingleResult(createTags);
       expect(createTags.compile().sql).toMatchInlineSnapshot(
-        `"create table "tags" ("id" integer not null primary key, "name" text not null, "slug" text not null, "color" text default '#000000')"`,
+        `"create table "tags" ("id" integer not null unique, "name" text not null, "slug" text not null, "color" text default '#000000')"`,
       );
 
       // 4. Create article_tags junction table
@@ -2318,7 +2318,7 @@ describe("execute() - CockroachDB", () => {
             name: "id",
             type: "integer",
             isNullable: false,
-            role: "id",
+            role: "external-id",
           },
           {
             name: "name",
@@ -2343,7 +2343,7 @@ describe("execute() - CockroachDB", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null primary key, "name" text not null, "email" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "name" text not null, "email" text not null)"`,
       );
     });
 
@@ -2352,7 +2352,7 @@ describe("execute() - CockroachDB", () => {
         type: "create-table",
         name: "test_types",
         columns: [
-          { name: "col_int", type: "integer", isNullable: false, role: "id" },
+          { name: "col_int", type: "integer", isNullable: false, role: "external-id" },
           { name: "col_bigint", type: "bigint", isNullable: false, role: "regular" },
           { name: "col_decimal", type: "decimal", isNullable: false, role: "regular" },
           { name: "col_bool", type: "bool", isNullable: false, role: "regular" },
@@ -2372,7 +2372,7 @@ describe("execute() - CockroachDB", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "test_types" ("col_int" integer not null primary key, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamp not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
+        `"create table "test_types" ("col_int" integer not null unique, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamp not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
       );
     });
 
@@ -2381,7 +2381,7 @@ describe("execute() - CockroachDB", () => {
         type: "create-table",
         name: "defaults_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "status",
             type: "string",
@@ -2414,7 +2414,7 @@ describe("execute() - CockroachDB", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table "defaults_test" ("id" integer not null primary key, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
+        `"create table "defaults_test" ("id" integer not null unique, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
       );
     });
   });
@@ -2548,7 +2548,7 @@ describe("execute() - CockroachDB", () => {
           type: "create-table",
           name: "users",
           columns: [
-            { name: "id", type: "integer", isNullable: false, role: "id" },
+            { name: "id", type: "integer", isNullable: false, role: "external-id" },
             { name: "email", type: "string", isNullable: false, role: "regular" },
             { name: "name", type: "string", isNullable: false, role: "regular" },
           ],
@@ -2562,7 +2562,7 @@ describe("execute() - CockroachDB", () => {
       assertSingleResult(createUsers);
 
       expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null primary key, "email" text not null, "name" text not null)"`,
+        `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
       );
 
       // 2. Add unique index on email
@@ -2592,7 +2592,7 @@ describe("execute() - CockroachDB", () => {
           type: "create-table",
           name: "posts",
           columns: [
-            { name: "id", type: "integer", isNullable: false, role: "id" },
+            { name: "id", type: "integer", isNullable: false, role: "external-id" },
             { name: "user_id", type: "integer", isNullable: false, role: "reference" },
             { name: "title", type: "string", isNullable: false, role: "regular" },
             { name: "content", type: "string", isNullable: false, role: "regular" },
@@ -2607,7 +2607,7 @@ describe("execute() - CockroachDB", () => {
       assertSingleResult(createPosts);
 
       expect(createPosts.compile().sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null primary key, "user_id" integer not null, "title" text not null, "content" text not null)"`,
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
       );
 
       // 4. Add foreign key

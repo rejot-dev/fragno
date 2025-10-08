@@ -1,5 +1,6 @@
 import type { SQLProvider } from "../shared/providers";
 import type { AnyColumn } from "./create";
+import { FragnoId, FragnoReference } from "./create";
 
 export interface AdditionalColumnMetadata {
   length?: number;
@@ -139,6 +140,22 @@ export function schemaToDBType(
 ): string {
   const { type } = column;
 
+  // Handle internal ID columns with auto-increment
+  if ("role" in column && column.role === "internal-id") {
+    if (provider === "postgresql" || provider === "cockroachdb") {
+      return "bigserial";
+    }
+    if (provider === "mysql") {
+      return "bigint";
+    }
+    if (provider === "sqlite") {
+      return "integer"; // SQLite uses INTEGER for auto-increment
+    }
+    if (provider === "mssql") {
+      return "bigint";
+    }
+  }
+
   if (provider === "sqlite") {
     switch (type) {
       case "integer":
@@ -240,6 +257,10 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
     return value.readBigInt64BE(0);
   }
 
+  if (col.type === "bigint" && typeof value === "string") {
+    return BigInt(value);
+  }
+
   if (col.type === "binary" && value instanceof Buffer) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   }
@@ -251,7 +272,35 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
  * Encode to driver value
  */
 export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider) {
-  if (value === null) return null;
+  if (value === null) {
+    return null;
+  }
+
+  // Handle FragnoReference objects (for reference columns)
+  if (value instanceof FragnoReference) {
+    return value.internalId;
+  }
+
+  // Handle FragnoId objects
+  if (value instanceof FragnoId) {
+    // For external ID columns, use the external ID
+    if (col.role === "external-id") {
+      return value.externalId;
+    }
+    // For internal ID columns, use the internal ID (must be present)
+    if (col.role === "internal-id") {
+      if (!value.internalId) {
+        throw new Error(`FragnoId must have internalId for internal-id column ${col.name}`);
+      }
+      return value.internalId;
+    }
+    // For reference columns, prefer internal ID if available
+    if (col.role === "reference") {
+      return value.databaseId;
+    }
+    // Default to external ID for other columns
+    return value.externalId;
+  }
 
   if (!supportJson.includes(provider) && col.type === "json") {
     return JSON.stringify(value);

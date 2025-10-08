@@ -8,7 +8,9 @@ export type AnyTable = Table;
 
 export type AnyColumn =
   | Column<keyof TypeMap, unknown, unknown>
-  | IdColumn<IdColumnType, unknown, unknown>;
+  | IdColumn<IdColumnType, unknown, unknown>
+  | InternalIdColumn<unknown, unknown>
+  | VersionColumn<unknown, unknown>;
 /**
  * Sub-operations that can be performed within table operations.
  * These are stored in order within add-table and alter-table operations.
@@ -159,7 +161,18 @@ export interface Table<
    * Get column by name
    */
   getColumnByName: (name: string) => AnyColumn | undefined;
+  /**
+   * Get the external ID column (user-facing)
+   */
   getIdColumn: () => AnyColumn;
+  /**
+   * Get the internal ID column (database-native, used for joins)
+   */
+  getInternalIdColumn: () => AnyColumn;
+  /**
+   * Get the version column (for optimistic concurrency control)
+   */
+  getVersionColumn: () => AnyColumn;
 }
 
 type DefaultFunctionMap = {
@@ -194,7 +207,9 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
   name: string = "";
   ormName: string = "";
   isNullable: boolean = false;
-  role: "id" | "reference" | "regular" = "regular";
+  role: "external-id" | "internal-id" | "version" | "reference" | "regular" = "regular";
+  isHidden: boolean = false;
+
   default?:
     | { value: TypeMap[TType] }
     | {
@@ -215,6 +230,11 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
       TNullable extends true ? TIn | null : Exclude<TIn, null>,
       TNullable extends true ? TOut | null : Exclude<TOut, null>
     >;
+  }
+
+  hidden<THidden extends boolean = true>(hidden?: THidden) {
+    this.isHidden = hidden ?? true;
+    return this as Column<TType, null, null>;
   }
 
   /**
@@ -289,6 +309,32 @@ export class IdColumn<
   }
 }
 
+/**
+ * Internal ID column - used for database-native joins and foreign keys.
+ * Hidden from user API by default.
+ */
+export class InternalIdColumn<TIn = unknown, TOut = unknown> extends Column<"bigint", TIn, TOut> {
+  override role = "internal-id" as const;
+
+  constructor() {
+    super("bigint");
+    this.hidden();
+  }
+}
+
+/**
+ * Version column - used for optimistic concurrency control.
+ * Automatically incremented on each update.
+ */
+export class VersionColumn<TIn = unknown, TOut = unknown> extends Column<"integer", TIn, TOut> {
+  override role = "version" as const;
+
+  constructor() {
+    super("integer");
+    this.defaultTo(0).hidden();
+  }
+}
+
 export function column<TType extends keyof TypeMap>(
   type: TType,
 ): Column<TType, TypeMap[TType], TypeMap[TType]> {
@@ -296,23 +342,155 @@ export function column<TType extends keyof TypeMap>(
 }
 
 /**
- * Create a reference column that points to another table.
+ * Create a reference column that points to another table's internal ID.
  * This is used for foreign key relationships.
+ * Always uses bigint to match the internal ID type.
  */
-export function referenceColumn<TType extends keyof TypeMap = "varchar(30)">(
-  type?: TType,
-): Column<TType, TypeMap[TType], TypeMap[TType]> {
-  const actualType = (type ?? "varchar(30)") as TType;
-  const col = new Column<TType, TypeMap[TType], TypeMap[TType]>(actualType);
+export function referenceColumn(): Column<
+  "bigint",
+  string | bigint | FragnoId | FragnoReference,
+  FragnoReference
+> {
+  const col = new Column<"bigint", string | bigint | FragnoId | FragnoReference, FragnoReference>(
+    "bigint",
+  );
   col.role = "reference";
   return col;
 }
 
-export function idColumn(): IdColumn<"varchar(30)", string | null, string> {
-  const col = new IdColumn<"varchar(30)", string | null, string>("varchar(30)");
-  col.role = "id";
+/**
+ * Create an external ID column (user-facing).
+ * This is a CUID string that can be auto-generated or user-provided.
+ * Input accepts string | FragnoId | null, output returns FragnoId.
+ */
+export function idColumn(): IdColumn<"varchar(30)", string | FragnoId | null, FragnoId> {
+  const col = new IdColumn<"varchar(30)", string | FragnoId | null, FragnoId>("varchar(30)");
+  col.role = "external-id";
   col.defaultTo$("auto");
   return col;
+}
+
+/**
+ * Create an internal ID column (database-native, hidden from user API).
+ * Used for joins and foreign keys.
+ * @internal
+ */
+export function internalIdColumn(): InternalIdColumn<null, bigint> {
+  const col = new InternalIdColumn<null, bigint>();
+  col.role = "internal-id";
+  col.hidden();
+  return col;
+}
+
+/**
+ * Create a version column for optimistic concurrency control.
+ * @internal
+ */
+export function versionColumn(): VersionColumn<null, number> {
+  const col = new VersionColumn<null, number>();
+  col.role = "version";
+  col.hidden();
+  return col;
+}
+
+/**
+ * FragnoId represents a unified ID object that can contain external ID, internal ID, or both.
+ * @internal
+ *
+ * For query inputs: externalId is sufficient (internalId is optional)
+ * For query results: both externalId and internalId are provided
+ */
+export class FragnoId {
+  readonly #externalId: string;
+  readonly #internalId?: bigint;
+  readonly #version: number;
+
+  constructor({
+    externalId,
+    internalId,
+    version,
+  }: {
+    externalId: string;
+    internalId?: bigint;
+    version: number;
+  }) {
+    this.#externalId = externalId;
+    this.#internalId = internalId;
+    this.#version = version;
+  }
+
+  /**
+   * Create a FragnoId from just an external ID (for inputs)
+   */
+  static fromExternal(externalId: string, version: number): FragnoId {
+    return new FragnoId({ externalId, version });
+  }
+
+  get version(): number {
+    return this.#version;
+  }
+
+  get externalId(): string {
+    return this.#externalId;
+  }
+
+  get internalId(): bigint | undefined {
+    return this.#internalId;
+  }
+
+  /**
+   * Get the appropriate ID for database operations
+   * Prefers internal ID if available, falls back to external ID
+   */
+  get databaseId(): string | bigint {
+    return this.#internalId ?? this.#externalId;
+  }
+
+  /**
+   * Convert to a plain object for serialization
+   */
+  toJSON(): { externalId: string; internalId?: string } {
+    return {
+      externalId: this.#externalId,
+      internalId: this.#internalId?.toString(),
+    };
+  }
+
+  toString(): string {
+    return this.#externalId;
+  }
+
+  valueOf(): string {
+    return this.#externalId;
+  }
+}
+
+/**
+ * FragnoReference represents a foreign key reference to another table's internal ID.
+ * Unlike FragnoId, it only contains the internal ID (bigint) of the referenced record.
+ * This is used for reference columns in query results.
+ * @internal
+ */
+export class FragnoReference {
+  readonly #internalId: bigint;
+
+  constructor(internalId: bigint) {
+    this.#internalId = internalId;
+  }
+
+  /**
+   * Create a FragnoReference from an internal ID
+   */
+  static fromInternal(internalId: bigint): FragnoReference {
+    return new FragnoReference(internalId);
+  }
+
+  /**
+   * Get the internal ID for database operations
+   */
+  get internalId(): bigint {
+    return this.#internalId;
+  }
 }
 
 type RelationType = "one";
@@ -416,6 +594,25 @@ export class TableBuilder<
    */
   build(): Table<TColumns, TRelations> {
     let idCol: AnyColumn | undefined;
+    let internalIdCol: AnyColumn | undefined;
+    let versionCol: AnyColumn | undefined;
+
+    // Auto-add _internalId and _version columns if not already present
+    if (!this.#columns["_internalId"]) {
+      const col = internalIdColumn();
+      col.ormName = "_internalId";
+      col.name = "_internalId";
+      // Safe: we're adding system columns to the internal columns object
+      (this.#columns as Record<string, AnyColumn>)["_internalId"] = col;
+    }
+
+    if (!this.#columns["_version"]) {
+      const col = versionColumn();
+      col.ormName = "_version";
+      col.name = "_version";
+      // Safe: we're adding system columns to the internal columns object
+      (this.#columns as Record<string, AnyColumn>)["_version"] = col;
+    }
 
     // Use name as ormName if ormName is not set
     const ormName = this.#ormName || this.#name;
@@ -431,9 +628,15 @@ export class TableBuilder<
       getIdColumn: () => {
         return idCol!;
       },
+      getInternalIdColumn: () => {
+        return internalIdCol!;
+      },
+      getVersionColumn: () => {
+        return versionCol!;
+      },
     };
 
-    // Set table reference and find id column
+    // Set table reference and find special columns
     for (const k in this.#columns) {
       const column = this.#columns[k];
       if (!column) {
@@ -441,13 +644,25 @@ export class TableBuilder<
       }
 
       column.tableName = table.name;
-      if (column instanceof IdColumn) {
+      if (column instanceof IdColumn || column.role === "external-id") {
         idCol = column;
+      }
+      if (column instanceof InternalIdColumn || column.role === "internal-id") {
+        internalIdCol = column;
+      }
+      if (column instanceof VersionColumn || column.role === "version") {
+        versionCol = column;
       }
     }
 
     if (idCol === undefined) {
       throw new Error(`there's no id column in your table ${this.#name}`);
+    }
+    if (internalIdCol === undefined) {
+      throw new Error(`there's no internal id column in your table ${this.#name}`);
+    }
+    if (versionCol === undefined) {
+      throw new Error(`there's no version column in your table ${this.#name}`);
     }
 
     return table;
@@ -550,7 +765,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     // Collect sub-operations in order
     const subOperations: TableSubOperation[] = [];
 
-    // Add columns in order
+    // Add user-defined columns first
     const columnOrder = result.getColumnOrder();
     for (const colName of columnOrder) {
       const col = builtTable.columns[colName];
@@ -558,6 +773,22 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
         type: "add-column",
         columnName: colName,
         column: col,
+      });
+    }
+
+    // Add system columns (_internalId and _version) that were auto-added
+    if (builtTable.columns["_internalId"]) {
+      subOperations.push({
+        type: "add-column",
+        columnName: "_internalId",
+        column: builtTable.columns["_internalId"],
+      });
+    }
+    if (builtTable.columns["_version"]) {
+      subOperations.push({
+        type: "add-column",
+        columnName: "_version",
+        column: builtTable.columns["_version"],
       });
     }
 
@@ -674,17 +905,28 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     const columnName = columns[0] as string;
     const targetColumnName = targetColumns[0] as string;
 
+    // Foreign keys always reference internal IDs, not external IDs
+    // If user specifies "id", translate to "_internalId" for the actual FK
+    const actualTargetColumnName = targetColumnName === "id" ? "_internalId" : targetColumnName;
+
     const column = table.columns[columnName];
-    const referencedColumn = referencedTable.columns[targetColumnName];
+    const referencedColumn = referencedTable.columns[actualTargetColumnName];
 
     if (!column) {
       throw new Error(`Column ${columnName} not found in table ${tableName}`);
     }
     if (!referencedColumn) {
-      throw new Error(`Column ${targetColumnName} not found in table ${config.targetTable}`);
+      throw new Error(`Column ${actualTargetColumnName} not found in table ${config.targetTable}`);
     }
 
-    // Create the relation
+    // Verify that reference columns are bigint (matching internal ID type)
+    if (column.role === "reference" && column.type !== "bigint") {
+      throw new Error(
+        `Reference column ${columnName} must be of type bigint to match internal ID type`,
+      );
+    }
+
+    // Create the relation (use the user-facing column name for the relation)
     const init = new ExplicitRelationInit("one", referencedTable, table);
     init.on.push([columnName, targetColumnName]);
     const relation = init.init(referenceName);
@@ -692,16 +934,15 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     // Add relation to the table
     table.relations[referenceName] = relation;
 
-    // Record the operation
+    // Record the operation (store both user-facing and actual column names)
     this.#operations.push({
       type: "add-reference",
       tableName,
       referenceName,
       config: {
-        // TODO: Figure out why we need to cast to string[]
         columns: columns as string[],
         targetTable: config.targetTable,
-        targetColumns: targetColumns as string[],
+        targetColumns: [actualTargetColumnName],
       },
     });
 
@@ -832,12 +1073,23 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
           // Create a new table with cloned columns
           const clonedColumns: Record<string, AnyColumn> = {};
           for (const [colName, col] of Object.entries(v.columns)) {
-            // Create a new column with the same properties
-            const clonedCol = new Column(col.type);
+            // Create a new column with the same properties, preserving the column type
+            let clonedCol: AnyColumn;
+            if (col instanceof InternalIdColumn) {
+              clonedCol = new InternalIdColumn();
+            } else if (col instanceof VersionColumn) {
+              clonedCol = new VersionColumn();
+            } else if (col instanceof IdColumn) {
+              clonedCol = new IdColumn(col.type);
+            } else {
+              clonedCol = new Column(col.type);
+            }
+
             clonedCol.name = col.name;
             clonedCol.ormName = col.ormName;
             clonedCol.isNullable = col.isNullable;
             clonedCol.role = col.role;
+            clonedCol.isHidden = col.isHidden;
             clonedCol.default = col.default;
             clonedCol.tableName = col.tableName;
             clonedColumns[colName] = clonedCol;

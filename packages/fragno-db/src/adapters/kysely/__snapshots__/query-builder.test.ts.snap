@@ -4,17 +4,33 @@ exports[`query-builder > queryCompiler > count > should compile count query with
 
 exports[`query-builder > queryCompiler > count > should compile count query without where clause 1`] = `"select count(*) as "count" from "users""`;
 
-exports[`query-builder > queryCompiler > create > should compile insert query for mssql 1`] = `"insert into "users" ("id", "name", "email") output "inserted"."id" as "id", "inserted"."name" as "name", "inserted"."email" as "email", "inserted"."age" as "age", "inserted"."isActive" as "isActive", "inserted"."createdAt" as "createdAt" values ($1, $2, $3)"`;
+exports[`query-builder > queryCompiler > create > should compile insert query for mssql 1`] = `"insert into "users" ("id", "name", "email", "_version") output "inserted"."id" as "id", "inserted"."name" as "name", "inserted"."email" as "email", "inserted"."age" as "age", "inserted"."isActive" as "isActive", "inserted"."createdAt" as "createdAt", "inserted"."_internalId" as "_internalId", "inserted"."_version" as "_version" values ($1, $2, $3, $4)"`;
 
-exports[`query-builder > queryCompiler > create > should compile insert query for postgresql 1`] = `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt""`;
+exports[`query-builder > queryCompiler > create > should compile insert query for postgresql 1`] = `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`;
 
-exports[`query-builder > queryCompiler > create > should compile insert query for sqlite 1`] = `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt""`;
+exports[`query-builder > queryCompiler > create > should compile insert query for sqlite 1`] = `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`;
 
-exports[`query-builder > queryCompiler > createMany > should compile bulk insert query 1`] = `"insert into "users" ("id", "name", "email") values ($1, $2, $3), ($4, $5, $6)"`;
+exports[`query-builder > queryCompiler > create > should compile insert with string reference (external ID) 1`] = `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`;
 
-exports[`query-builder > queryCompiler > createMany > should handle many records 1`] = `"insert into "users" ("id", "name", "email") values ($1, $2, $3), ($4, $5, $6), ($7, $8, $9)"`;
+exports[`query-builder > queryCompiler > createMany > should compile bulk insert query 1`] = `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4), ($5, $6, $7, $8)"`;
 
-exports[`query-builder > queryCompiler > createMany > should handle single record in array 1`] = `"insert into "users" ("id", "name", "email") values ($1, $2, $3)"`;
+exports[`query-builder > queryCompiler > createMany > should handle many records 1`] = `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)"`;
+
+exports[`query-builder > queryCompiler > createMany > should handle single record in array 1`] = `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4)"`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should compile insert with custom id column 1`] = `"insert into "products" ("productId", "name", "price", "_version") values ($1, $2, $3, $4) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version""`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should compile select all with custom id column name 1`] = `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products""`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should compile select with custom id column name 1`] = `"select "products"."productId" as "productId", "products"."name" as "name", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products""`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should compile update with custom id column in where 1`] = `"update "products" set "price" = $1, "_version" = COALESCE(_version, 0) + 1 where "products"."productId" = $2"`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should handle custom id column in order by 1`] = `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" order by "products"."productId" desc"`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should handle custom id column in where clause 1`] = `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" where "products"."productId" = $1"`;
+
+exports[`query-builder > queryCompiler > custom-named id columns > should handle references to custom id columns 1`] = `"select "orders"."orderId" as "orderId", "orders"."productRef" as "productRef", "orders"."quantity" as "quantity", "orders"."_internalId" as "_internalId", "orders"."_version" as "_version" from "orders" where "orders"."orderId" = $1"`;
 
 exports[`query-builder > queryCompiler > deleteMany > should compile delete query with complex where 1`] = `"delete from "users" where ("users"."isActive" = $1 and "users"."age" < $2)"`;
 
@@ -22,31 +38,53 @@ exports[`query-builder > queryCompiler > deleteMany > should compile delete quer
 
 exports[`query-builder > queryCompiler > deleteMany > should compile delete query without where 1`] = `"delete from "users""`;
 
-exports[`query-builder > queryCompiler > findById > should compile find by id query 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users" where "id" = $1 limit $2"`;
+exports[`query-builder > queryCompiler > findById > should compile find by id query 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "id" = $1 limit $2"`;
 
-exports[`query-builder > queryCompiler > findById > should compile find by id query with numeric id 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users" where "id" = $1 limit $2"`;
+exports[`query-builder > queryCompiler > findById > should compile find by id query with numeric id 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "id" = $1 limit $2"`;
 
-exports[`query-builder > queryCompiler > findMany > should compile basic select query 1`] = `"select "users"."id" as "id", "users"."name" as "name" from "users""`;
+exports[`query-builder > queryCompiler > findMany > should compile basic select query 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
 
-exports[`query-builder > queryCompiler > findMany > should compile complete query with all options 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email" from "users" where ("users"."isActive" = $1 and "users"."age" >= $2) order by "users"."name" asc limit $3 offset $4"`;
+exports[`query-builder > queryCompiler > findMany > should compile complete query with all options 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = $1 and "users"."age" >= $2) order by "users"."name" asc limit $3 offset $4"`;
 
-exports[`query-builder > queryCompiler > findMany > should compile select all columns 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users""`;
+exports[`query-builder > queryCompiler > findMany > should compile select all columns 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
 
-exports[`query-builder > queryCompiler > findMany > should compile select with limit and offset 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users" limit $1 offset $2"`;
+exports[`query-builder > queryCompiler > findMany > should compile select with limit and offset 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit $1 offset $2"`;
 
-exports[`query-builder > queryCompiler > findMany > should compile select with multiple order by 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users" order by "users"."name" asc, "users"."age" desc"`;
+exports[`query-builder > queryCompiler > findMany > should compile select with multiple order by 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc, "users"."age" desc"`;
 
-exports[`query-builder > queryCompiler > findMany > should compile select with single order by 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users" order by "users"."name" asc"`;
+exports[`query-builder > queryCompiler > findMany > should compile select with single order by 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc"`;
 
-exports[`query-builder > queryCompiler > findMany > should compile select with where clause 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users" where "users"."age" > $1"`;
+exports[`query-builder > queryCompiler > findMany > should compile select with where clause 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > $1"`;
 
-exports[`query-builder > queryCompiler > findMany > should use TOP for mssql limit 1`] = `"select top(5) "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt" from "users""`;
+exports[`query-builder > queryCompiler > findMany > should use TOP for mssql limit 1`] = `"select top(5) "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
 
-exports[`query-builder > queryCompiler > updateMany > should compile update query with multiple fields 1`] = `"update "users" set "name" = $1, "email" = $2, "isActive" = $3 where "users"."isActive" = $4"`;
+exports[`query-builder > queryCompiler > id column selection > should handle id column in order by 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."id" asc"`;
 
-exports[`query-builder > queryCompiler > updateMany > should compile update query with where 1`] = `"update "users" set "name" = $1 where "users"."id" = $2"`;
+exports[`query-builder > queryCompiler > id column selection > should handle id column in where clause 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."id" = $1"`;
 
-exports[`query-builder > queryCompiler > updateMany > should compile update query without where 1`] = `"update "users" set "name" = $1"`;
+exports[`query-builder > queryCompiler > id column selection > should include _internalId when id is selected 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
+
+exports[`query-builder > queryCompiler > id column selection > should select id column explicitly 1`] = `"select "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
+
+exports[`query-builder > queryCompiler > reference column subquery handling > should generate subqueries for string references in createMany 1`] = `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7), ($8, $9, $10, (select "_internalId" from "users" where "id" = $11 limit $12), $13, $14)"`;
+
+exports[`query-builder > queryCompiler > reference column subquery handling > should generate subquery for string reference in create 1`] = `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`;
+
+exports[`query-builder > queryCompiler > reference column subquery handling > should generate subquery for string reference in updateMany 1`] = `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = $1 limit $2), "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = $3"`;
+
+exports[`query-builder > queryCompiler > reference column subquery handling > should handle bigint reference without subquery 1`] = `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, $4, $5, $6) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`;
+
+exports[`query-builder > queryCompiler > special column name conflicts > should handle table with both id and _internalId 1`] = `"select "logs"."id" as "id", "logs"."message" as "message", "logs"."_internalId" as "_internalId", "logs"."_version" as "_version" from "logs""`;
+
+exports[`query-builder > queryCompiler > special columns - _internalId and _version > should handle _version column if it exists in schema 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
+
+exports[`query-builder > queryCompiler > special columns - _internalId and _version > should handle selecting _internalId explicitly if column exists 1`] = `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`;
+
+exports[`query-builder > queryCompiler > updateMany > should compile update query with multiple fields 1`] = `"update "users" set "name" = $1, "email" = $2, "isActive" = $3, "_version" = COALESCE(_version, 0) + 1 where "users"."isActive" = $4"`;
+
+exports[`query-builder > queryCompiler > updateMany > should compile update query with where 1`] = `"update "users" set "name" = $1, "_version" = COALESCE(_version, 0) + 1 where "users"."id" = $2"`;
+
+exports[`query-builder > queryCompiler > updateMany > should compile update query without where 1`] = `"update "users" set "name" = $1, "_version" = COALESCE(_version, 0) + 1"`;
 
 exports[`query-builder > queryCompiler > upsertCheck > should compile upsert check query with where 1`] = `"select "id" as "id" from "users" where "users"."email" = $1 limit $2"`;
 

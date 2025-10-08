@@ -13,7 +13,7 @@ import type { SQLProvider } from "../../shared/providers";
 import type { Condition } from "../../query/condition-builder";
 import { serialize } from "../../schema/serialize";
 import type { CompiledJoin, SimplifyFindOptions } from "../../query/orm/orm";
-import { decodeResult, encodeValues } from "./result-transform";
+import { decodeResult, encodeValues, ReferenceSubquery } from "./result-transform";
 
 /**
  * Returns the fully qualified SQL name for a column (table.column).
@@ -157,9 +157,25 @@ export function mapSelect(
   const keys = Array.isArray(select) ? select : Object.keys(table.columns);
 
   for (const key of keys) {
-    const name = relation ? `${relation}:${key}` : key;
+    const col = table.columns[key];
 
-    out.push(`${tableName}.${table.columns[key].name} as ${name}`);
+    // Skip hidden columns when explicitly selecting
+    if (Array.isArray(select) && col.isHidden) {
+      continue;
+    }
+
+    // Add the column to the select list
+    const name = relation ? `${relation}:${key}` : key;
+    out.push(`${tableName}.${col.name} as ${name}`);
+  }
+
+  // Always include hidden columns (for FragnoId construction with internal ID and version)
+  for (const key in table.columns) {
+    const col = table.columns[key];
+    if (col.isHidden && !keys.includes(key)) {
+      const name = relation ? `${relation}:${key}` : key;
+      out.push(`${tableName}.${col.name} as ${name}`);
+    }
   }
 
   return out;
@@ -333,6 +349,39 @@ export async function findMany(
 }
 
 /**
+ * Processes encoded values and replaces ReferenceSubquery markers with actual SQL subqueries.
+ *
+ * @param values - The encoded values that may contain ReferenceSubquery objects
+ * @param kysely - The Kysely database instance for building subqueries
+ * @returns Processed values with subqueries in place of ReferenceSubquery markers
+ * @internal
+ */
+function processReferenceSubqueries(
+  values: Record<string, unknown>,
+  kysely: Kysely<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+): Record<string, unknown> {
+  const processed: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value instanceof ReferenceSubquery) {
+      const refTable = value.referencedTable;
+      const externalId = value.externalIdValue;
+
+      // Build a subquery: SELECT _internal_id FROM referenced_table WHERE id = external_id LIMIT 1
+      processed[key] = kysely
+        .selectFrom(refTable.name)
+        .select(refTable.getInternalIdColumn().name)
+        .where(refTable.getIdColumn().name, "=", externalId)
+        .limit(1);
+    } else {
+      processed[key] = value;
+    }
+  }
+
+  return processed;
+}
+
+/**
  * Creates a query compiler that builds and compiles Kysely queries without executing them.
  *
  * Each method takes table and query parameters and returns a CompiledQuery that can be
@@ -362,8 +411,9 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
     },
 
     create(table: AnyTable, values: Record<string, unknown>): CompiledQuery {
-      const insertValues = encodeValues(values, table, true, provider);
-      const insert = kysely.insertInto(table.name).values(insertValues);
+      const encodedValues = encodeValues(values, table, true, provider);
+      const processedValues = processReferenceSubqueries(encodedValues, kysely);
+      const insert = kysely.insertInto(table.name).values(processedValues);
 
       if (provider === "mssql") {
         return (
@@ -431,11 +481,16 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
           b.on((eb) => {
             const conditions = [];
             for (const [left, right] of relation.on) {
+              // Foreign keys always use internal IDs
+              // If the relation references an external ID column (any name), translate to "_internalId"
+              const rightCol = targetTable.columns[right];
+              const actualRight = rightCol?.role === "external-id" ? "_internalId" : right;
+
               conditions.push(
                 eb(
                   `${table.name}.${table.columns[left].name}`,
                   "=",
-                  eb.ref(`${joinName}.${targetTable.columns[right].name}`),
+                  eb.ref(`${joinName}.${targetTable.columns[actualRight].name}`),
                 ),
               );
             }
@@ -462,7 +517,15 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
         set: Record<string, unknown>;
       },
     ): CompiledQuery {
-      let query = kysely.updateTable(table.name).set(encodeValues(v.set, table, false, provider));
+      const encoded = encodeValues(v.set, table, false, provider);
+      const processed = processReferenceSubqueries(encoded, kysely);
+
+      // Automatically increment _version for optimistic concurrency control
+      const versionCol = table.getVersionColumn();
+      // Safe cast: we're building a SQL expression for incrementing the version
+      processed[versionCol.name] = sql.raw(`COALESCE(${versionCol.name}, 0) + 1`) as unknown;
+
+      let query = kysely.updateTable(table.name).set(processed);
       const { where } = v;
       if (where) {
         query = query.where((eb) => buildWhere(where, eb, provider));
@@ -485,7 +548,9 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       where: Condition | undefined,
       top?: boolean,
     ): CompiledQuery {
-      let query = kysely.updateTable(table.name).set(encodeValues(update, table, false, provider));
+      const encoded = encodeValues(update, table, false, provider);
+      const processed = processReferenceSubqueries(encoded, kysely);
+      let query = kysely.updateTable(table.name).set(processed);
       if (top) {
         query = query.top(1);
       }
@@ -497,16 +562,15 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
 
     upsertUpdateById(table: AnyTable, update: Record<string, unknown>, id: unknown): CompiledQuery {
       const idColumn = table.getIdColumn();
-      return kysely
-        .updateTable(table.name)
-        .set(encodeValues(update, table, false, provider))
-        .where(idColumn.name, "=", id)
-        .compile();
+      const encoded = encodeValues(update, table, false, provider);
+      const processed = processReferenceSubqueries(encoded, kysely);
+      return kysely.updateTable(table.name).set(processed).where(idColumn.name, "=", id).compile();
     },
 
     createMany(table: AnyTable, values: Record<string, unknown>[]): CompiledQuery {
       const encodedValues = values.map((v) => encodeValues(v, table, true, provider));
-      return kysely.insertInto(table.name).values(encodedValues).compile();
+      const processedValues = encodedValues.map((v) => processReferenceSubqueries(v, kysely));
+      return kysely.insertInto(table.name).values(processedValues).compile();
     },
 
     deleteMany(table: AnyTable, { where }: { where?: Condition }): CompiledQuery {

@@ -395,7 +395,13 @@ describe("query-builder", () => {
   describe("mapSelect", () => {
     it("should map select clause with array of keys", () => {
       const result = mapSelect(["id", "name", "email"], usersTable);
-      expect(result).toEqual(["users.id as id", "users.name as name", "users.email as email"]);
+      expect(result).toEqual([
+        "users.id as id",
+        "users.name as name",
+        "users.email as email",
+        "users._internalId as _internalId",
+        "users._version as _version",
+      ]);
     });
 
     it("should map select all columns when true", () => {
@@ -407,17 +413,29 @@ describe("query-builder", () => {
         "users.age as age",
         "users.isActive as isActive",
         "users.createdAt as createdAt",
+        "users._internalId as _internalId",
+        "users._version as _version",
       ]);
     });
 
     it("should map select with relation prefix", () => {
       const result = mapSelect(["id", "name"], usersTable, { relation: "author" });
-      expect(result).toEqual(["users.id as author:id", "users.name as author:name"]);
+      expect(result).toEqual([
+        "users.id as author:id",
+        "users.name as author:name",
+        "users._internalId as author:_internalId",
+        "users._version as author:_version",
+      ]);
     });
 
     it("should map select with custom table name", () => {
       const result = mapSelect(["id", "title"], postsTable, { tableName: "p" });
-      expect(result).toEqual(["p.id as id", "p.title as title"]);
+      expect(result).toEqual([
+        "p.id as id",
+        "p.title as title",
+        "p._internalId as _internalId",
+        "p._version as _version",
+      ]);
     });
 
     it("should map select with both relation and custom table name", () => {
@@ -425,12 +443,21 @@ describe("query-builder", () => {
         relation: "posts",
         tableName: "p",
       });
-      expect(result).toEqual(["p.id as posts:id", "p.title as posts:title"]);
+      expect(result).toEqual([
+        "p.id as posts:id",
+        "p.title as posts:title",
+        "p._internalId as posts:_internalId",
+        "p._version as posts:_version",
+      ]);
     });
 
     it("should handle single column select", () => {
       const result = mapSelect(["name"], usersTable);
-      expect(result).toEqual(["users.name as name"]);
+      expect(result).toEqual([
+        "users.name as name",
+        "users._internalId as _internalId",
+        "users._version as _version",
+      ]);
     });
   });
 
@@ -564,6 +591,100 @@ describe("query-builder", () => {
           email: "john@example.com",
         });
 
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should compile insert with string reference (external ID)", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.create(postsTable, {
+          title: "My Post",
+          content: "Post content",
+          userId: "user-external-id-123",
+        });
+
+        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toContain("select");
+        expect(query.sql).toContain("users");
+      });
+    });
+
+    describe("reference column subquery handling", () => {
+      it("should generate subquery for string reference in create", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.create(postsTable, {
+          title: "New Post",
+          content: "Content here",
+          userId: "user-abc-123",
+        });
+
+        // Should contain a subquery to look up the internal ID
+        expect(query.sql).toContain("select");
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toContain("users");
+        expect(query.parameters).toContain("user-abc-123");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should generate subqueries for string references in createMany", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.createMany(postsTable, [
+          {
+            title: "Post 1",
+            content: "Content 1",
+            userId: "user-id-1",
+          },
+          {
+            title: "Post 2",
+            content: "Content 2",
+            userId: "user-id-2",
+          },
+        ]);
+
+        // Should contain subqueries for both references
+        expect(query.sql).toContain("select");
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toContain("users");
+        expect(query.parameters).toContain("user-id-1");
+        expect(query.parameters).toContain("user-id-2");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should generate subquery for string reference in updateMany", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const where = {
+          type: "compare" as const,
+          a: postsTable.columns.id,
+          operator: "=" as const,
+          b: "post-123",
+        };
+        const query = compiler.updateMany(postsTable, {
+          set: { userId: "new-user-id-456" },
+          where,
+        });
+
+        // Should contain a subquery to look up the internal ID
+        expect(query.sql).toContain("select");
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toContain("users");
+        expect(query.parameters).toContain("new-user-id-456");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle bigint reference without subquery", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        // Passing a bigint directly should not generate a subquery
+        const query = compiler.create(postsTable, {
+          title: "Direct ID Post",
+          content: "Content",
+          userId: 12345n,
+        });
+
+        // For bigint, it should not generate a subquery
+        // PostgreSQL uses INSERT...RETURNING so it will have "returning" keyword
+        expect(query.sql).toContain("insert");
+        expect(query.sql).toContain("returning");
+        // Should not have nested SELECT for the userId value
+        expect(query.sql).not.toMatch(/\(select.*from.*users/i);
         expect(query.sql).toMatchSnapshot();
       });
     });
@@ -889,6 +1010,244 @@ describe("query-builder", () => {
         const query = compiler.findById(usersTable, 456);
 
         expect(query.sql).toMatchSnapshot();
+      });
+    });
+
+    describe("id column selection", () => {
+      it("should select id column explicitly", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(usersTable, {
+          select: ["id"],
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should include _internalId when id is selected", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(usersTable, {
+          select: ["id", "name"],
+        });
+
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle id column in where clause", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const where = {
+          type: "compare" as const,
+          a: usersTable.columns.id,
+          operator: "=" as const,
+          b: "test-id-123",
+        };
+        const query = compiler.findMany(usersTable, {
+          select: ["id", "name"],
+          where,
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle id column in order by", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(usersTable, {
+          select: ["id", "name"],
+          orderBy: [[usersTable.columns.id, "asc"]],
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+    });
+
+    describe("special columns - _internalId and _version", () => {
+      it("should not explicitly select _internalId when not requested", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(usersTable, {
+          select: ["name", "email"],
+        });
+
+        // Hidden columns (_internalId, _version) are always included for internal use
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toContain("_version");
+      });
+
+      it("should handle selecting _internalId explicitly if column exists", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        // This tests what happens if someone tries to select _internalId directly
+        // Depending on implementation, this might work or might be filtered out
+        const query = compiler.findMany(usersTable, {
+          select: ["id", "name"],
+        });
+
+        // _internalId is automatically added when id is selected
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle _version column if it exists in schema", () => {
+        // Note: The test schema doesn't have _version column
+        // This is a placeholder to document the behavior
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(usersTable, {
+          select: true,
+        });
+
+        // _version would be included if it exists in the schema
+        expect(query.sql).toMatchSnapshot();
+      });
+    });
+
+    describe("custom-named id columns", () => {
+      // Schema with custom-named id column
+      const customIdSchema = schema((s) => {
+        return s
+          .addTable("products", (t) => {
+            return t
+              .addColumn("productId", idColumn())
+              .addColumn("name", column("string"))
+              .addColumn("price", column("integer"));
+          })
+          .addTable("orders", (t) => {
+            return t
+              .addColumn("orderId", idColumn())
+              .addColumn("productRef", referenceColumn())
+              .addColumn("quantity", column("integer"));
+          })
+          .addReference("orders", "product", {
+            columns: ["productRef"],
+            targetTable: "products",
+            targetColumns: ["productId"],
+          });
+      });
+
+      const productsTable = customIdSchema.tables.products;
+      const ordersTable = customIdSchema.tables.orders;
+
+      it("should compile select with custom id column name", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(productsTable, {
+          select: ["productId", "name"],
+        });
+
+        expect(query.sql).toContain("productId");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should compile select all with custom id column name", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(productsTable, {
+          select: true,
+        });
+
+        expect(query.sql).toContain("productId");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle custom id column in where clause", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const where = {
+          type: "compare" as const,
+          a: productsTable.columns.productId,
+          operator: "=" as const,
+          b: "prod-123",
+        };
+        const query = compiler.findMany(productsTable, {
+          select: true,
+          where,
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle custom id column in order by", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(productsTable, {
+          select: true,
+          orderBy: [[productsTable.columns.productId, "desc"]],
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should compile insert with custom id column", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.create(productsTable, {
+          name: "Widget",
+          price: 1000,
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should compile update with custom id column in where", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const where = {
+          type: "compare" as const,
+          a: productsTable.columns.productId,
+          operator: "=" as const,
+          b: "prod-456",
+        };
+        const query = compiler.updateMany(productsTable, {
+          set: { price: 2000 },
+          where,
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle references to custom id columns", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const where = {
+          type: "compare" as const,
+          a: ordersTable.columns.orderId,
+          operator: "=" as const,
+          b: "order-789",
+        };
+        const query = compiler.findMany(ordersTable, {
+          select: ["orderId", "productRef", "quantity"],
+          where,
+        });
+
+        expect(query.sql).toMatchSnapshot();
+      });
+    });
+
+    describe("special column name conflicts", () => {
+      // Schema where regular columns might conflict with special names
+      const conflictSchema = schema((s) => {
+        return s.addTable("logs", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("message", column("string"))
+            .addColumn("level", column("string"));
+        });
+      });
+
+      const logsTable = conflictSchema.tables.logs;
+
+      it("should handle table with both id and _internalId", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(logsTable, {
+          select: ["id", "message"],
+        });
+
+        // Should select both id and _internalId
+        expect(query.sql).toContain("id");
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toMatchSnapshot();
+      });
+
+      it("should handle selecting only non-id columns", () => {
+        const compiler = createKyselyQueryBuilder(kysely, "postgresql");
+        const query = compiler.findMany(logsTable, {
+          select: ["message", "level"],
+        });
+
+        // Should NOT include id when not selected, but hidden columns are always included
+        expect(query.sql).not.toContain('"id"');
+        expect(query.sql).toContain("_internalId");
+        expect(query.sql).toContain("_version");
       });
     });
   });

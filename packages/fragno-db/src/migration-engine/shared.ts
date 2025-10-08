@@ -19,7 +19,7 @@ export interface ColumnInfo {
     | "binary"
     | `varchar(${number})`;
   isNullable: boolean;
-  role: "id" | "reference" | "regular";
+  role: "external-id" | "internal-id" | "version" | "reference" | "regular";
   default?: {
     value?: unknown;
     runtime?: "now" | "auto";

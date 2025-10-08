@@ -111,7 +111,7 @@ describe("generateMigrationFromSchema", () => {
         name: "posts_users_author_fk",
         referencedTable: "users",
         columns: ["authorId"],
-        referencedColumns: ["id"],
+        referencedColumns: ["_internalId"],
       });
     }
   });

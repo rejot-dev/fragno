@@ -34,7 +34,7 @@ describe("execute() - MySQL", () => {
             name: "id",
             type: "integer",
             isNullable: false,
-            role: "id",
+            role: "external-id",
           },
           {
             name: "name",
@@ -59,7 +59,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`id\` integer not null primary key, \`name\` text not null, \`email\` text not null)"`,
+        `"create table \`users\` (\`id\` integer not null unique, \`name\` text not null, \`email\` text not null)"`,
       );
     });
 
@@ -68,7 +68,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "test_types",
         columns: [
-          { name: "col_int", type: "integer", isNullable: false, role: "id" },
+          { name: "col_int", type: "integer", isNullable: false, role: "external-id" },
           { name: "col_bigint", type: "bigint", isNullable: false, role: "regular" },
           { name: "col_decimal", type: "decimal", isNullable: false, role: "regular" },
           { name: "col_bool", type: "bool", isNullable: false, role: "regular" },
@@ -88,7 +88,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`test_types\` (\`col_int\` integer not null primary key, \`col_bigint\` bigint not null, \`col_decimal\` decimal not null, \`col_bool\` boolean not null, \`col_date\` date not null, \`col_timestamp\` timestamp not null, \`col_json\` json not null, \`col_binary\` longblob not null, \`col_varchar\` varchar(255) not null)"`,
+        `"create table \`test_types\` (\`col_int\` integer not null unique, \`col_bigint\` bigint not null, \`col_decimal\` decimal not null, \`col_bool\` boolean not null, \`col_date\` date not null, \`col_timestamp\` timestamp not null, \`col_json\` json not null, \`col_binary\` longblob not null, \`col_varchar\` varchar(255) not null)"`,
       );
     });
 
@@ -97,7 +97,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "nullable_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           { name: "optional_name", type: "string", isNullable: true, role: "regular" },
           { name: "optional_age", type: "integer", isNullable: true, role: "regular" },
         ],
@@ -111,7 +111,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`nullable_test\` (\`id\` integer not null primary key, \`optional_name\` text, \`optional_age\` integer)"`,
+        `"create table \`nullable_test\` (\`id\` integer not null unique, \`optional_name\` text, \`optional_age\` integer)"`,
       );
     });
 
@@ -120,7 +120,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "defaults_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "status",
             type: "string",
@@ -153,7 +153,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`defaults_test\` (\`id\` integer not null primary key, \`status\` text not null, \`count\` integer default 0 not null, \`is_active\` boolean default true not null)"`,
+        `"create table \`defaults_test\` (\`id\` integer not null unique, \`status\` text not null, \`count\` integer default 0 not null, \`is_active\` boolean default true not null)"`,
       );
     });
 
@@ -162,7 +162,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "timestamps_test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "created_at",
             type: "timestamp",
@@ -181,7 +181,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`timestamps_test\` (\`id\` integer not null primary key, \`created_at\` timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table \`timestamps_test\` (\`id\` integer not null unique, \`created_at\` timestamp default CURRENT_TIMESTAMP not null)"`,
       );
     });
 
@@ -190,7 +190,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "posts",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           { name: "user_id", type: "integer", isNullable: false, role: "reference" },
           { name: "title", type: "string", isNullable: false, role: "regular" },
         ],
@@ -204,7 +204,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`posts\` (\`id\` integer not null primary key, \`user_id\` integer not null, \`title\` text not null)"`,
+        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null)"`,
       );
     });
   });
@@ -615,7 +615,7 @@ describe("execute() - MySQL", () => {
               name: "id",
               type: "bigint",
               isNullable: false,
-              role: "id",
+              role: "external-id",
             },
             updateDataType: true,
             updateNullable: false,
@@ -938,7 +938,7 @@ describe("execute() - MySQL", () => {
           type: "create-table",
           name: "users",
           columns: [
-            { name: "id", type: "integer", isNullable: false, role: "id" },
+            { name: "id", type: "integer", isNullable: false, role: "external-id" },
             { name: "email", type: "string", isNullable: false, role: "regular" },
             { name: "name", type: "string", isNullable: false, role: "regular" },
           ],
@@ -952,7 +952,7 @@ describe("execute() - MySQL", () => {
       assertSingleResult(createUsers);
 
       expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`id\` integer not null primary key, \`email\` text not null, \`name\` text not null)"`,
+        `"create table \`users\` (\`id\` integer not null unique, \`email\` text not null, \`name\` text not null)"`,
       );
 
       // 2. Add unique index on email
@@ -982,7 +982,7 @@ describe("execute() - MySQL", () => {
           type: "create-table",
           name: "posts",
           columns: [
-            { name: "id", type: "integer", isNullable: false, role: "id" },
+            { name: "id", type: "integer", isNullable: false, role: "external-id" },
             { name: "user_id", type: "integer", isNullable: false, role: "reference" },
             { name: "title", type: "string", isNullable: false, role: "regular" },
             { name: "content", type: "string", isNullable: false, role: "regular" },
@@ -997,7 +997,7 @@ describe("execute() - MySQL", () => {
       assertSingleResult(createPosts);
 
       expect(createPosts.compile().sql).toMatchInlineSnapshot(
-        `"create table \`posts\` (\`id\` integer not null primary key, \`user_id\` integer not null, \`title\` text not null, \`content\` text not null)"`,
+        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null, \`content\` text not null)"`,
       );
 
       // 4. Add foreign key
@@ -1109,7 +1109,7 @@ describe("execute() - MySQL", () => {
       const operation: MigrationOperation = {
         type: "create-table",
         name: "user-profiles",
-        columns: [{ name: "id", type: "integer", isNullable: false, role: "id" }],
+        columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
       };
 
       const result = execute(operation, config, () => {
@@ -1127,7 +1127,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           { name: "user-name", type: "string", isNullable: false, role: "regular" },
         ],
       };
@@ -1147,7 +1147,7 @@ describe("execute() - MySQL", () => {
         type: "create-table",
         name: "test",
         columns: [
-          { name: "id", type: "integer", isNullable: false, role: "id" },
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
           {
             name: "status",
             type: "string",
@@ -1166,7 +1166,7 @@ describe("execute() - MySQL", () => {
 
       const compiled = result.compile();
       expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`test\` (\`id\` integer not null primary key, \`status\` text not null)"`,
+        `"create table \`test\` (\`id\` integer not null unique, \`status\` text not null)"`,
       );
     });
   });
