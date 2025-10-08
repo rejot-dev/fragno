@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { create } from "@fragno-dev/create";
 import * as p from "@clack/prompts";
