@@ -5,6 +5,16 @@ import { Book, BookOpenText, Mail } from "lucide-react";
 import { GitHub } from "@/components/logos/github";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 
+import { defaultMetadata } from "@/lib/metadata";
+
+export const metadata = {
+  ...defaultMetadata,
+  title: {
+    template: "%s | Fragno Blog",
+    default: "Fragno",
+  },
+};
+
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <HomeLayout
