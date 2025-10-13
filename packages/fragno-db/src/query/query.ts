@@ -1,5 +1,6 @@
 import type { IdColumn, AnySchema, AnyTable, Relation } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
+import type { UnitOfWork } from "./unit-of-work";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type EmptyObject = {};
@@ -29,7 +30,7 @@ export type TableToInsertValues<T extends AnyTable> = Partial<
     [K in keyof T["columns"]]: T["columns"][K]["$in"];
   }>;
 
-type TableToUpdateValues<T extends AnyTable> = {
+export type TableToUpdateValues<T extends AnyTable> = {
   [K in keyof T["columns"]]?: T["columns"][K] extends IdColumn ? never : T["columns"][K]["$in"];
 };
 
@@ -39,11 +40,11 @@ type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends
     ? Pick<TableToColumnValues<T>, S[number]>
     : never;
 
-type SelectResult<T extends AnyTable, JoinOut, Select extends SelectClause<T>> = MainSelectResult<
-  Select,
-  T
-> &
-  JoinOut;
+export type SelectResult<
+  T extends AnyTable,
+  JoinOut,
+  Select extends SelectClause<T>,
+> = MainSelectResult<Select, T> & JoinOut;
 
 export type JoinBuilder<TTable extends AnyTable> = {
   [K in keyof TTable["relations"]]: TTable["relations"][K] extends Relation<
@@ -149,6 +150,11 @@ export interface AbstractQuery<S extends AnySchema> {
       where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
     },
   ) => Promise<void>;
+
+  /**
+   * Create a Unit of Work bound to this query engine
+   */
+  createUnitOfWork: (name?: string) => UnitOfWork<S, []>;
 }
 
 export interface AbstractQueryCompiler<S extends AnySchema, TOutput> {

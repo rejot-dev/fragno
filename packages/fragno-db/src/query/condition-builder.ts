@@ -167,3 +167,128 @@ export function buildCondition<T, Columns extends Record<string, AnyColumn>>(
 ): T {
   return input(createBuilder(columns));
 }
+
+/**
+ * Create a ConditionBuilder that only allows comparisons on indexed columns.
+ * Used in Unit of Work to ensure queries can leverage indexes for optimal performance.
+ *
+ * @param columns - The full set of columns from the table
+ * @param indexedColumnNames - Set of column names that are part of indexes
+ * @returns A ConditionBuilder restricted to indexed columns only
+ *
+ * @example
+ * ```ts
+ * const builder = createIndexedBuilder(
+ *   table.columns,
+ *   new Set(["id", "userId", "createdAt"])
+ * );
+ * const condition = builder("userId", "=", "123");
+ * ```
+ */
+export function createIndexedBuilder<Columns extends Record<string, AnyColumn>>(
+  columns: Columns,
+  indexedColumnNames: Set<string>,
+): ConditionBuilder<Columns> {
+  function col(name: keyof Columns) {
+    const columnName = String(name);
+
+    if (!indexedColumnNames.has(columnName)) {
+      throw new Error(
+        `Column "${columnName}" is not indexed. Only indexed columns can be used in Unit of Work queries. ` +
+          `Available indexed columns: ${Array.from(indexedColumnNames).join(", ")}`,
+      );
+    }
+
+    const out = columns[name];
+    if (!out) {
+      throw new Error(`Invalid column name ${columnName}`);
+    }
+
+    return out;
+  }
+
+  const builder: ConditionBuilder<Columns> = (...args: [string, Operator, unknown] | [string]) => {
+    if (args.length === 3) {
+      const [a, operator, b] = args;
+
+      if (!operators.includes(operator)) {
+        throw new Error(`Unsupported operator: ${operator}`);
+      }
+
+      return {
+        type: "compare",
+        a: col(a),
+        b,
+        operator,
+      };
+    }
+
+    return {
+      type: "compare",
+      a: col(args[0]),
+      operator: "=",
+      b: true,
+    };
+  };
+
+  builder.isNull = (a) => builder(a, "is", null);
+  builder.isNotNull = (a) => builder(a, "is not", null);
+  builder.not = (condition) => {
+    if (typeof condition === "boolean") {
+      return !condition;
+    }
+
+    return {
+      type: "not",
+      item: condition,
+    };
+  };
+
+  builder.or = (...conditions) => {
+    const out = {
+      type: "or",
+      items: [] as Condition[],
+    } as const;
+
+    for (const item of conditions) {
+      if (item === true) {
+        return true;
+      }
+      if (item === false) {
+        continue;
+      }
+
+      out.items.push(item);
+    }
+
+    if (out.items.length === 0) {
+      return false;
+    }
+    return out;
+  };
+
+  builder.and = (...conditions) => {
+    const out = {
+      type: "and",
+      items: [] as Condition[],
+    } as const;
+
+    for (const item of conditions) {
+      if (item === true) {
+        continue;
+      }
+      if (item === false) {
+        return false;
+      }
+
+      out.items.push(item);
+    }
+
+    if (out.items.length === 0) {
+      return true;
+    }
+    return out;
+  };
+
+  return builder;
+}

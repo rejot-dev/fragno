@@ -187,4 +187,81 @@ describe("KyselyAdapter PGLite", () => {
 
     expect(userEmails).toHaveLength(2);
   });
+
+  it("should execute Unit of Work with version checking", async () => {
+    // Use the same namespace as the first test (migrations already ran)
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create initial user
+    const initialUser = await queryEngine.create("users", {
+      name: "Alice",
+      age: 25,
+    });
+
+    expect(initialUser.id.version).toBe(0);
+
+    // Build a UOW to update the user with optimistic locking
+    const uow = queryEngine
+      .createUnitOfWork("update-user-age")
+      // Retrieval phase: find the user
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUser.id)));
+
+    // Execute retrieval and transition to mutation phase
+    const [users] = await uow.executeRetrieve();
+
+    // Mutation phase: update with version check
+    uow.update("users", initialUser.id, (b) => b.set({ age: 26 }).check());
+
+    // Execute mutations
+    const { success } = await uow.executeMutations();
+
+    // Should succeed
+    expect(success).toBe(true);
+    expect(users).toHaveLength(1);
+
+    // Verify the user was updated
+    const updatedUser = await queryEngine.findFirst("users", {
+      where: (b) => b("id", "=", initialUser.id),
+    });
+
+    expect(updatedUser).toMatchObject({
+      id: expect.objectContaining({
+        externalId: initialUser.id.externalId,
+        version: 1, // Version incremented
+      }),
+      name: "Alice",
+      age: 26,
+    });
+
+    // Try to update again with stale version (should fail)
+    const uow2 = queryEngine.createUnitOfWork("update-user-stale");
+
+    // Use the old version (0) which is now stale
+    uow2.update("users", initialUser.id, (b) => b.set({ age: 27 }).check());
+
+    const { success: success2 } = await uow2.executeMutations();
+
+    // Should fail due to version conflict
+    expect(success2).toBe(false);
+
+    // Verify the user was NOT updated
+    const [[unchangedUser]] = await queryEngine
+      .createUnitOfWork("verify-unchanged")
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUser.id)))
+      .executeRetrieve();
+
+    expect(unchangedUser).toMatchObject({
+      id: expect.objectContaining({
+        version: 1, // Still version 1
+      }),
+      age: 26, // Still 26, not 27
+    });
+
+    const uow3 = queryEngine
+      .createUnitOfWork("get-all-emails")
+      .find("emails", (b) => b.whereIndex("primary").orderByIndex("unique_email", "desc"));
+    const [allEmails] = await uow3.executeRetrieve();
+    const userNames = allEmails.map((email) => email.email);
+    expect(userNames).toEqual(["john.doe@example.com", "john.doe.work@company.com"]);
+  });
 });

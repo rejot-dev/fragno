@@ -26,6 +26,12 @@
       "development": "./src/adapters/kysely/kysely-adapter.ts",
       "types": "./dist/adapters/kysely/kysely-adapter.d.ts",
       "default": "./dist/adapters/kysely/kysely-adapter.js"
+    },
+    "./unit-of-work": {
+      "bun": "./src/query/unit-of-work.ts",
+      "development": "./src/query/unit-of-work.ts",
+      "types": "./dist/query/unit-of-work.d.ts",
+      "default": "./dist/query/unit-of-work.js"
     }
   },
   "scripts": {

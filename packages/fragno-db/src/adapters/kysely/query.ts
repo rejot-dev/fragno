@@ -1,8 +1,12 @@
 import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
 import type { KyselyConfig } from "./kysely-adapter";
+import type { UOWDecoder } from "../../query/unit-of-work";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
 import { decodeResult, encodeValues } from "./result-transform";
+import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
+import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
+import { UnitOfWork } from "../../query/unit-of-work";
 
 /**
  * Creates a Kysely-based query engine for the given schema.
@@ -30,7 +34,8 @@ import { decodeResult, encodeValues } from "./result-transform";
  */
 export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig): AbstractQuery<T> {
   const { db: kysely, provider } = config;
-  const compiler = createKyselyQueryCompiler(schema, config);
+  const queryCompiler = createKyselyQueryCompiler(schema, config);
+  const uowCompiler = createKyselyUOWCompiler(schema, config);
 
   function getTable(tableName: string) {
     const table = schema.tables[tableName];
@@ -42,7 +47,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
 
   return {
     async count(name, options) {
-      const compiled = compiler.count(name, options);
+      const compiled = queryCompiler.count(name, options);
       if (compiled === null) {
         return 0;
       }
@@ -57,7 +62,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     },
 
     async findFirst(name, options) {
-      const compiled = compiler.findFirst(name, options);
+      const compiled = queryCompiler.findFirst(name, options);
       if (compiled === null) {
         return null;
       }
@@ -73,7 +78,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     },
 
     async findMany(name, options) {
-      const compiled = compiler.findMany(name, options);
+      const compiled = queryCompiler.findMany(name, options);
       if (compiled === null) {
         return [];
       }
@@ -90,7 +95,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     async create(name, values) {
       // Safe cast: TableToInsertValues types are structurally equivalent between query.ts and query-compiler.ts
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const compiled = compiler.create(name, values as any);
+      const compiled = queryCompiler.create(name, values as any);
       const table = getTable(name as string);
 
       if (provider === "mssql" || provider === "postgresql" || provider === "sqlite") {
@@ -111,7 +116,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
       await kysely.executeQuery(compiled);
 
       // Do a follow-up SELECT to get the created record
-      const findCompiled = compiler.findFirst(name, {
+      const findCompiled = queryCompiler.findFirst(name, {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         where: (b) => b(idColumn.name as any, "=", idValue as any),
       });
@@ -128,7 +133,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     async createMany(name, values) {
       // Safe cast: TableToInsertValues types are structurally equivalent between query.ts and query-compiler.ts
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const compiled = compiler.createMany(name, values as any);
+      const compiled = queryCompiler.createMany(name, values as any);
       const table = getTable(name as string);
       const encodedValues = values.map((v) => encodeValues(v, table, true, provider));
 
@@ -142,7 +147,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     async updateMany(name, options) {
       // Safe cast: TableToUpdateValues types are structurally equivalent between query.ts and query-compiler.ts
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const compiled = compiler.updateMany(name, options as any);
+      const compiled = queryCompiler.updateMany(name, options as any);
       if (compiled === null) {
         return;
       }
@@ -151,12 +156,49 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     },
 
     async deleteMany(name, options) {
-      const compiled = compiler.deleteMany(name, options);
+      const compiled = queryCompiler.deleteMany(name, options);
       if (compiled === null) {
         return;
       }
 
       await kysely.executeQuery(compiled);
+    },
+
+    createUnitOfWork(name) {
+      const executor = {
+        executeRetrievalPhase: (retrievalBatch: unknown[]) =>
+          // Safe: retrievalBatch contains kysely queries compiled by uowCompiler
+          executeKyselyRetrievalPhase(
+            kysely,
+            retrievalBatch as Parameters<typeof executeKyselyRetrievalPhase>[1],
+          ),
+        executeMutationPhase: (mutationBatch: unknown[]) =>
+          // Safe: mutationBatch contains kysely queries compiled by uowCompiler
+          executeKyselyMutationPhase(
+            kysely,
+            mutationBatch as Parameters<typeof executeKyselyMutationPhase>[1],
+          ),
+      };
+
+      // Create a decoder function to transform raw results into application format
+      const decoder: UOWDecoder<typeof schema> = (rawResults, ops) => {
+        if (rawResults.length !== ops.length) {
+          throw new Error("rawResults and ops must have the same length");
+        }
+
+        return rawResults.map((rows, index) => {
+          const op = ops[index];
+          if (!op) {
+            throw new Error("op must be defined");
+          }
+
+          // Each result is an array of rows - decode each row
+          const rowArray = rows as Record<string, unknown>[];
+          return rowArray.map((row) => decodeResult(row, op.table, provider));
+        });
+      };
+
+      return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
     },
   } as AbstractQuery<T>;
 }
