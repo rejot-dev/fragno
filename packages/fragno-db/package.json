@@ -9,6 +9,12 @@
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
+    "./cuid": {
+      "bun": "./src/cuid.ts",
+      "development": "./src/cuid.ts",
+      "types": "./dist/cuid.d.ts",
+      "default": "./dist/cuid.js"
+    },
     "./schema": {
       "bun": "./src/schema/create.ts",
       "development": "./src/schema/create.ts",
@@ -48,6 +54,8 @@
     "@types/bun": "^1.2.23",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
+    "drizzle-kit": "^0.31.5",
+    "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4"
   },
