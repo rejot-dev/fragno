@@ -2,12 +2,14 @@ import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { baseOptions } from "@/lib/layout.shared";
 import { source } from "@/lib/source";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
-import type { Metadata } from "next";
 
-export const metadata: Metadata = {
+import { defaultMetadata } from "@/lib/metadata";
+
+export const metadata = {
+  ...defaultMetadata,
   title: {
     template: "%s | Fragno Docs",
-    default: "Fragno Docs",
+    default: "Fragno",
   },
 };
 
