@@ -78,9 +78,9 @@ class RelationInit<
   }
 }
 
-export interface Index {
+export interface Index<TColumns extends AnyColumn[] = AnyColumn[]> {
   name: string;
-  columns: AnyColumn[];
+  columns: TColumns;
   unique: boolean;
 }
 
@@ -150,12 +150,14 @@ export interface Relation<
 export interface Table<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
+  TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
   name: string;
   ormName: string;
 
   columns: TColumns;
   relations: TRelations;
+  indexes: TIndexes;
 
   /**
    * Get column by name
@@ -498,11 +500,12 @@ type RelationType = "one";
 export class TableBuilder<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
+  TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
   #name: string;
   #columns: TColumns;
   #relations: TRelations;
-  #indexes: Index[] = [];
+  #indexes: TIndexes;
   #ormName: string = "";
   #columnOrder: string[] = [];
 
@@ -510,6 +513,7 @@ export class TableBuilder<
     this.#name = name;
     this.#columns = {} as TColumns;
     this.#relations = {} as TRelations;
+    this.#indexes = {} as TIndexes;
   }
 
   // For alterTable to set existing state
@@ -523,7 +527,7 @@ export class TableBuilder<
 
   // For SchemaBuilder to read collected indexes
   getIndexes(): Index[] {
-    return this.#indexes;
+    return Object.values(this.#indexes) as Index[];
   }
 
   getColumnOrder(): string[] {
@@ -536,7 +540,7 @@ export class TableBuilder<
   addColumn<TColumnName extends string, TColumn extends AnyColumn>(
     ormName: TColumnName,
     col: TColumn,
-  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations>;
+  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations, TIndexes>;
 
   /**
    * Add a column to the table with simplified syntax.
@@ -546,13 +550,14 @@ export class TableBuilder<
     type: TType,
   ): TableBuilder<
     TColumns & Record<TColumnName, Column<TType, TypeMap[TType], TypeMap[TType]>>,
-    TRelations
+    TRelations,
+    TIndexes
   >;
 
   addColumn<TColumnName extends string, TColumn extends AnyColumn, TType extends keyof TypeMap>(
     ormName: TColumnName,
     colOrType: TColumn | TType,
-  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations> {
+  ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations, TIndexes> {
     // Create the column if a type string was provided
     const col = typeof colOrType === "string" ? column(colOrType) : colOrType;
 
@@ -564,17 +569,21 @@ export class TableBuilder<
     this.#columns[ormName] = col as unknown as TColumns[TColumnName];
     this.#columnOrder.push(ormName);
 
-    return this as unknown as TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations>;
+    return this as unknown as TableBuilder<
+      TColumns & Record<TColumnName, TColumn>,
+      TRelations,
+      TIndexes
+    >;
   }
 
   /**
    * Create an index on the specified columns.
    */
-  createIndex<TColumnName extends string & keyof TColumns>(
-    name: string,
+  createIndex<TIndexName extends string, TColumnName extends string & keyof TColumns>(
+    name: TIndexName,
     columns: TColumnName[],
     options?: { unique?: boolean },
-  ): TableBuilder<TColumns, TRelations> {
+  ): TableBuilder<TColumns, TRelations, TIndexes & Record<TIndexName, Index>> {
     const cols = columns.map((colName) => {
       const column = this.#columns[colName];
       if (!column) {
@@ -584,15 +593,20 @@ export class TableBuilder<
     });
 
     const unique = options?.unique ?? false;
-    this.#indexes.push({ name, columns: cols, unique });
+    // Safe: we're adding the index to the internal indexes object
+    this.#indexes[name] = { name, columns: cols, unique } as unknown as TIndexes[TIndexName];
 
-    return this;
+    return this as unknown as TableBuilder<
+      TColumns,
+      TRelations,
+      TIndexes & Record<TIndexName, Index>
+    >;
   }
 
   /**
    * Build the final table. This should be called after all columns are added.
    */
-  build(): Table<TColumns, TRelations> {
+  build(): Table<TColumns, TRelations, TIndexes> {
     let idCol: AnyColumn | undefined;
     let internalIdCol: AnyColumn | undefined;
     let versionCol: AnyColumn | undefined;
@@ -617,11 +631,12 @@ export class TableBuilder<
     // Use name as ormName if ormName is not set
     const ormName = this.#ormName || this.#name;
 
-    const table: Table<TColumns, TRelations> = {
+    const table: Table<TColumns, TRelations, TIndexes> = {
       name: this.#name,
       ormName,
       columns: this.#columns,
       relations: this.#relations,
+      indexes: this.#indexes,
       getColumnByName: (name) => {
         return Object.values(this.#columns).find((c) => c.name === name);
       },
@@ -669,23 +684,6 @@ export class TableBuilder<
   }
 }
 
-/**
- * Create a new table with callback pattern.
- */
-export function table<
-  TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
-  TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
->(
-  name: string,
-  callback: (
-    builder: TableBuilder<Record<string, AnyColumn>, Record<string, AnyRelation>>,
-  ) => TableBuilder<TColumns, TRelations>,
-): Table<TColumns, TRelations> {
-  const builder = new TableBuilder(name);
-  const result = callback(builder);
-  return result.build();
-}
-
 export interface Schema<TTables extends Record<string, AnyTable> = Record<string, AnyTable>> {
   /**
    * @description The version of the schema, automatically incremented on each change.
@@ -715,7 +713,8 @@ type UpdateTableRelations<
     ? Table<
         TTables[TTableName]["columns"],
         TTables[TTableName]["relations"] &
-          Record<TReferenceName, Relation<"one", TTables[TReferencedTableName]>>
+          Record<TReferenceName, Relation<"one", TTables[TReferencedTableName]>>,
+        TTables[TTableName]["indexes"]
       >
     : TTables[K];
 };
@@ -729,8 +728,11 @@ type UpdateTable<
   TTableName extends keyof TTables,
   TNewColumns extends Record<string, AnyColumn>,
   TNewRelations extends Record<string, AnyRelation>,
+  TNewIndexes extends Record<string, Index>,
 > = {
-  [K in keyof TTables]: K extends TTableName ? Table<TNewColumns, TNewRelations> : TTables[K];
+  [K in keyof TTables]: K extends TTableName
+    ? Table<TNewColumns, TNewRelations, TNewIndexes>
+    : TTables[K];
 };
 
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<string, never>> {
@@ -749,12 +751,17 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     TTableName extends string,
     TColumns extends Record<string, AnyColumn>,
     TRelations extends Record<string, AnyRelation>,
+    TIndexes extends Record<string, Index> = Record<string, Index>,
   >(
     ormName: TTableName,
     callback: (
-      builder: TableBuilder<Record<string, AnyColumn>, Record<string, AnyRelation>>,
-    ) => TableBuilder<TColumns, TRelations>,
-  ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations>>> {
+      builder: TableBuilder<
+        Record<string, AnyColumn>,
+        Record<string, AnyRelation>,
+        Record<string, Index>
+      >,
+    ) => TableBuilder<TColumns, TRelations, TIndexes>,
+  ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>> {
     this.#version++;
 
     const tableBuilder = new TableBuilder(ormName);
@@ -811,10 +818,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
 
     // Update tables map
     this.#tables = { ...this.#tables, [ormName]: builtTable } as TTables &
-      Record<TTableName, Table<TColumns, TRelations>>;
+      Record<TTableName, Table<TColumns, TRelations, TIndexes>>;
 
     return this as unknown as SchemaBuilder<
-      TTables & Record<TTableName, Table<TColumns, TRelations>>
+      TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>
     >;
   }
 
@@ -978,12 +985,17 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     TTableName extends string & keyof TTables,
     TNewColumns extends Record<string, AnyColumn>,
     TNewRelations extends Record<string, AnyRelation>,
+    TNewIndexes extends Record<string, Index> = Record<string, Index>,
   >(
     tableName: TTableName,
     callback: (
-      builder: TableBuilder<TTables[TTableName]["columns"], TTables[TTableName]["relations"]>,
-    ) => TableBuilder<TNewColumns, TNewRelations>,
-  ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewRelations>> {
+      builder: TableBuilder<
+        TTables[TTableName]["columns"],
+        TTables[TTableName]["relations"],
+        Record<string, Index>
+      >,
+    ) => TableBuilder<TNewColumns, TNewRelations, TNewIndexes>,
+  ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewRelations, TNewIndexes>> {
     const table = this.#tables[tableName];
 
     if (!table) {
@@ -1002,7 +1014,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     const resultBuilder = callback(
       tableBuilder as TableBuilder<
         TTables[TTableName]["columns"],
-        TTables[TTableName]["relations"]
+        TTables[TTableName]["relations"],
+        Record<string, Index>
       >,
     );
     const newTable = resultBuilder.build();
@@ -1050,7 +1063,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
     }
 
     return this as unknown as SchemaBuilder<
-      UpdateTable<TTables, TTableName, TNewColumns, TNewRelations>
+      UpdateTable<TTables, TTableName, TNewColumns, TNewRelations, TNewIndexes>
     >;
   }
 
