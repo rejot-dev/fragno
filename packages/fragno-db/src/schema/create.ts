@@ -1,4 +1,4 @@
-import { createId } from "../cuid";
+import { createId } from "../id";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
@@ -740,8 +740,36 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
   #version: number = 0;
   #operations: SchemaOperation[] = [];
 
-  constructor() {
-    this.#tables = {} as TTables;
+  constructor(existingSchema?: Schema<TTables>) {
+    if (existingSchema) {
+      this.#tables = existingSchema.tables;
+      this.#version = existingSchema.version;
+      this.#operations = [...existingSchema.operations];
+    } else {
+      this.#tables = {} as TTables;
+    }
+  }
+
+  /**
+   * Add an existing schema to this builder.
+   * Merges tables and operations from the provided schema.
+   *
+   * @example
+   * ```ts
+   * const builder = new SchemaBuilder()
+   *   .add(userSchema)
+   *   .add(postSchema)
+   *   .addTable("comments", ...);
+   * ```
+   */
+  mergeWithExistingSchema<TNewTables extends Record<string, AnyTable>>(
+    schema: Schema<TNewTables>,
+  ): SchemaBuilder<TTables & TNewTables> {
+    this.#tables = { ...this.#tables, ...schema.tables } as TTables & TNewTables;
+    this.#operations = [...this.#operations, ...schema.operations];
+    this.#version += schema.version;
+
+    return this as unknown as SchemaBuilder<TTables & TNewTables>;
   }
 
   /**
@@ -1114,12 +1142,14 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
           };
         }
 
-        const builder = new SchemaBuilder<TTables>();
-        builder.#tables = cloneTables as TTables;
-        builder.#version = version;
-        builder.#operations = [...operations];
-
-        return builder.build();
+        return new SchemaBuilder<TTables>({
+          version,
+          tables: cloneTables as TTables,
+          operations: [...operations],
+          clone: () => {
+            throw new Error("Cannot clone during clone");
+          },
+        }).build();
       },
     };
 

@@ -9,11 +9,11 @@
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
-    "./cuid": {
-      "bun": "./src/cuid.ts",
-      "development": "./src/cuid.ts",
-      "types": "./dist/cuid.d.ts",
-      "default": "./dist/cuid.js"
+    "./id": {
+      "bun": "./src/id.ts",
+      "development": "./src/id.ts",
+      "types": "./dist/id.d.ts",
+      "default": "./dist/id.js"
     },
     "./schema": {
       "bun": "./src/schema/create.ts",
@@ -32,6 +32,12 @@
       "development": "./src/adapters/kysely/kysely-adapter.ts",
       "types": "./dist/adapters/kysely/kysely-adapter.d.ts",
       "default": "./dist/adapters/kysely/kysely-adapter.js"
+    },
+    "./adapters/drizzle": {
+      "bun": "./src/adapters/drizzle/drizzle-adapter.ts",
+      "development": "./src/adapters/drizzle/drizzle-adapter.ts",
+      "types": "./dist/adapters/drizzle/drizzle-adapter.d.ts",
+      "default": "./dist/adapters/drizzle/drizzle-adapter.js"
     },
     "./unit-of-work": {
       "bun": "./src/query/unit-of-work.ts",

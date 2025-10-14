@@ -7,7 +7,7 @@ import {
   InternalIdColumn,
 } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
-import { schemaToDBType } from "../../schema/serialize";
+import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -120,51 +120,109 @@ interface ColumnTypeFunction {
   params?: string[];
 }
 
+/**
+ * Maps SQL database types to Drizzle function names and parameters.
+ * Uses schemaToDBType as the source of truth for type conversion.
+ */
 function getColumnTypeFunction(
   ctx: GeneratorContext,
   column: AnyColumn,
   customTypes: string[],
 ): ColumnTypeFunction {
-  // SQLite has special type mappings
-  if (ctx.provider === "sqlite") {
-    switch (column.type) {
-      case "bigint":
-        return { name: "blob", params: [`{ mode: "bigint" }`] };
-      case "bool":
-        return { name: "integer", params: [`{ mode: "boolean" }`] };
+  // Get the canonical database type from schemaToDBType
+  const dbType = schemaToDBType(column, ctx.provider);
+
+  // Map database types to Drizzle function names
+  return mapDBTypeToDrizzleFunction(ctx, dbType, column, customTypes);
+}
+
+/**
+ * Maps a database type string to a Drizzle function name and parameters.
+ */
+function mapDBTypeToDrizzleFunction(
+  ctx: GeneratorContext,
+  dbType: DBTypeLiteral,
+  column: AnyColumn,
+  customTypes: string[],
+): ColumnTypeFunction {
+  // Handle provider-specific types
+  if (ctx.provider === "postgresql") {
+    switch (dbType) {
+      case "bigserial":
+        // bigserial requires a mode parameter in Drizzle
+        return { name: "bigserial", params: [`{ mode: "number" }`] };
+      case "serial":
+        return { name: "serial" };
+      case "boolean":
+        return { name: "boolean" };
+      case "bytea":
+        return { name: generateBinaryCustomType(ctx, customTypes), isCustomType: true };
       case "json":
-        return { name: "blob", params: [`{ mode: "json" }`] };
-      case "timestamp":
-      case "date":
-        return { name: "integer", params: [`{ mode: "timestamp" }`] };
-      case "decimal":
-        return { name: "real" };
+        return { name: "json" };
+      case "text":
+        return { name: "text" };
+      case "bigint":
+        return { name: "bigint", params: [`{ mode: "number" }`] };
+      default:
+        if (dbType.startsWith("varchar(")) {
+          const length = parseVarchar(dbType);
+          return { name: "varchar", params: [`{ length: ${length} }`] };
+        }
+        return { name: dbType };
     }
   }
 
-  // Standard type mappings
-  switch (column.type) {
-    case "string":
-      return { name: "text" };
-    case "binary":
-      return { name: generateBinaryCustomType(ctx, customTypes), isCustomType: true };
-    case "bool":
-      return { name: "boolean" };
-    case "bigint":
-      // PostgreSQL requires mode parameter for bigint
-      if (ctx.provider === "postgresql") {
-        return { name: "bigint", params: [`{ mode: "number" }`] };
-      }
-      return { name: "bigint" };
-    default:
-      if (column.type.startsWith("varchar")) {
-        return {
-          name: ctx.provider === "sqlite" ? "text" : "varchar",
-          params: [`{ length: ${parseVarchar(column.type)} }`],
-        };
-      }
-      return { name: column.type };
+  if (ctx.provider === "mysql") {
+    switch (dbType) {
+      case "boolean":
+        return { name: "boolean" };
+      case "text":
+        return { name: "text" };
+      case "longblob":
+        return { name: generateBinaryCustomType(ctx, customTypes), isCustomType: true };
+      case "bigint":
+        return { name: "bigint" };
+      default:
+        if (dbType.startsWith("varchar(")) {
+          const length = parseVarchar(dbType);
+          return { name: "varchar", params: [`{ length: ${length} }`] };
+        }
+        return { name: dbType };
+    }
   }
+
+  if (ctx.provider === "sqlite") {
+    switch (dbType) {
+      case "integer":
+        // Need to determine the mode based on the original column type
+        if (column.type === "bool") {
+          return { name: "integer", params: [`{ mode: "boolean" }`] };
+        }
+        if (column.type === "timestamp" || column.type === "date") {
+          return { name: "integer", params: [`{ mode: "timestamp" }`] };
+        }
+        return { name: "integer" };
+      case "blob":
+        // Need to determine the mode based on the original column type
+        if (column.type === "bigint") {
+          return { name: "blob", params: [`{ mode: "bigint" }`] };
+        }
+        return { name: generateBinaryCustomType(ctx, customTypes), isCustomType: true };
+      case "text":
+        // Check if it's JSON
+        if (column.type === "json") {
+          return { name: "blob", params: [`{ mode: "json" }`] };
+        }
+        return { name: "text" };
+      case "real":
+        return { name: "real" };
+      default:
+        return { name: dbType };
+    }
+  }
+
+  // Fallback for other providers
+  return { name: dbType };
 }
 
 // ============================================================================
@@ -191,6 +249,7 @@ function generateColumnDefinition(
     parts.push("primaryKey()");
 
     // Auto-increment based on provider
+    // Note: PostgreSQL uses bigserial/serial which handle auto-increment automatically
     if (ctx.provider === "mysql" || ctx.provider === "sqlite") {
       parts.push("autoincrement()");
     }
@@ -213,7 +272,7 @@ function generateColumnDefinition(
       }
       parts.push(`default(${value})`);
     } else if (column.default.runtime === "auto") {
-      const idGen = ctx.idGeneratorImport ?? { name: "createId", from: "@fragno-dev/db/cuid2" };
+      const idGen = ctx.idGeneratorImport ?? { name: "createId", from: "@fragno-dev/db/id" };
       ctx.imports.addImport(idGen.name, idGen.from);
       parts.push(`$defaultFn(() => ${idGen.name}())`);
     } else if (column.default.runtime === "now") {
