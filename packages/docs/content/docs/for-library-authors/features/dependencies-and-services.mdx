@@ -30,7 +30,7 @@ In the following snippet:
    the user. Here, the callback function is called if it is provided.
 
 ```typescript title="src/index.ts"
-import { defineLibrary } from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core";
 import { MyOpenAIWrapper } from "./lib/my-openai-wrapper";
 
 export interface MyFragmentConfig {
@@ -39,7 +39,7 @@ export interface MyFragmentConfig {
   onTextSummarized?: (input: string, output: string, tokensUsed: number) => void;
 }
 
-const myFragmentDefinition = defineLibrary<MyFragmentConfig>("my-fragment")
+const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment")
   .withDependencies((config) => {
     return {
       aiWrapper: new MyOpenAIWrapper({
@@ -94,7 +94,7 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>
     const { summarizeText } = services;
 
     return [
-      /* Calls to `defineRoute` that use internal methods on `aiWrapper` or public methods such 
+      /* Calls to `defineRoute` that use internal methods on `aiWrapper` or public methods such
          as `summarizeText` from the services. */
     ];
   },
@@ -121,7 +121,7 @@ import type { FragnoPublicConfig } from "@fragno-dev/core";
 import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
-// ... defineLibrary call we've seen above ...
+// ... defineFragment call we've seen above ...
 
 const routes = [getTodosRoute, addTodoRoute] as const;
 

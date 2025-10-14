@@ -13,19 +13,19 @@ import { createClientBuilder } from "@fragno-dev/core/client";
 // https://github.com/standard-schema/standard-schema#what-schema-libraries-implement-the-spec
 import { z } from "zod";
 
-export interface ExampleFragmentServerConfig {
+export interface ExampleConfig {
   initialData?: string;
 }
 
-type ExampleRouteConfig = {
-  initialData: string;
+type ExampleServices = {
+  getData: () => string;
 };
 
-type ExampleRouteDeps = {
+type ExampleDeps = {
   serverSideData: { value: string };
 };
 
-const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>().create(
+const exampleRoutesFactory = defineRoutes<ExampleConfig, ExampleDeps, ExampleServices>().create(
   ({ deps }) => {
     const { serverSideData } = deps;
 
@@ -55,8 +55,8 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
   },
 );
 
-const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("example-fragment")
-  .withDependencies((config: ExampleFragmentServerConfig) => {
+const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
+  .withDependencies((config: ExampleConfig) => {
     return {
       serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
     };
@@ -68,19 +68,10 @@ const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("e
   });
 
 export function createExampleFragment(
-  serverConfig: ExampleFragmentServerConfig = {},
+  config: ExampleConfig = {},
   fragnoConfig: FragnoPublicConfig = {},
 ) {
-  const config: ExampleRouteConfig = {
-    initialData: serverConfig.initialData ?? "Hello World! This is a server-side data.",
-  };
-
-  return createFragment(
-    exampleFragmentDefinition,
-    { ...serverConfig, ...config },
-    [exampleRoutesFactory],
-    fragnoConfig,
-  );
+  return createFragment(exampleFragmentDefinition, config, [exampleRoutesFactory], fragnoConfig);
 }
 
 export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
