@@ -11,30 +11,6 @@ const { generateDrizzleJson, generateMigration } =
   require("drizzle-kit/api") as typeof import("drizzle-kit/api");
 
 describe("generateSchema and migrate", () => {
-  let schemaFilePath: string;
-  const tmpDir = join(import.meta.dirname, "tmp");
-
-  beforeAll(async () => {
-    // Create tmp directory in current package
-    await mkdir(tmpDir, { recursive: true });
-
-    // Generate schema file path in tmp directory
-    schemaFilePath = join(tmpDir, `test-schema-${Date.now()}.ts`);
-
-    // Generate and write the schema to file
-    const drizzleSchema = generateSchema(testSchema, "postgresql", {
-      idGeneratorImport: {
-        name: "createId",
-        from: "../../../cuid",
-      },
-    });
-    await writeFile(schemaFilePath, drizzleSchema, "utf-8");
-  });
-
-  afterAll(async () => {
-    // Clean up the temp directory
-    await rm(tmpDir, { recursive: true, force: true });
-  });
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -139,6 +115,26 @@ describe("generateSchema and migrate", () => {
       });
   });
 
+  let schemaFilePath: string;
+  const tmpDir = join(import.meta.dirname, "_generated");
+
+  beforeAll(async () => {
+    // Create tmp directory in current package
+    await mkdir(tmpDir, { recursive: true });
+
+    // Generate schema file path in tmp directory
+    schemaFilePath = join(tmpDir, `test-schema-${Date.now()}.ts`);
+
+    // Generate and write the schema to file
+    const drizzleSchemaTs = generateSchema(testSchema, "postgresql");
+    await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
+  });
+
+  afterAll(async () => {
+    // Clean up the temp directory
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
   it("should run migration using drizzle-kit", async () => {
     // Dynamically import the generated schema
     const schemaModule = await import(schemaFilePath);
@@ -158,7 +154,7 @@ describe("generateSchema and migrate", () => {
       	"bio" text,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"updatedAt" timestamp DEFAULT now() NOT NULL,
-      	"_internalId" bigint PRIMARY KEY NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
 
@@ -177,7 +173,7 @@ describe("generateSchema and migrate", () => {
       	"rating" numeric,
       	"thumbnail" "bytea",
       	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"_internalId" bigint PRIMARY KEY NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
 
@@ -190,7 +186,7 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"editedAt" timestamp,
       	"isDeleted" boolean DEFAULT false NOT NULL,
-      	"_internalId" bigint PRIMARY KEY NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
 
@@ -201,7 +197,7 @@ describe("generateSchema and migrate", () => {
       	"description" text,
       	"color" varchar(7),
       	"usageCount" bigint DEFAULT 0 NOT NULL,
-      	"_internalId" bigint PRIMARY KEY NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
 
@@ -211,7 +207,7 @@ describe("generateSchema and migrate", () => {
       	"tagId" bigint NOT NULL,
       	"order" integer DEFAULT 0 NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"_internalId" bigint PRIMARY KEY NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
 

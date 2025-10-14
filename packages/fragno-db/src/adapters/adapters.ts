@@ -1,5 +1,6 @@
 import type { Migrator } from "../migration-engine/create";
 import type { AbstractQuery } from "../query/query";
+import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
 
 export interface DatabaseAdapter {
@@ -8,7 +9,11 @@ export interface DatabaseAdapter {
    */
   getSchemaVersion(namespace: string): Promise<string | undefined>;
 
-  createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
-
   createQueryEngine: <const T extends AnySchema>(schema: T, namespace: string) => AbstractQuery<T>;
+
+  createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
+  createSchemaGenerator?: <const T extends AnySchema>(
+    schema: T,
+    namespace: string,
+  ) => SchemaGenerator;
 }

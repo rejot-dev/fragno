@@ -141,11 +141,11 @@ export interface UOWCompiler<TSchema extends AnySchema, TOutput> {
 /**
  * Executor interface for Unit of Work operations
  */
-export interface UOWExecutor<TOutput> {
+export interface UOWExecutor<TOutput, TRawResult = unknown> {
   /**
    * Execute the retrieval phase - all queries run in a single transaction for snapshot isolation
    */
-  executeRetrievalPhase(retrievalBatch: TOutput[]): Promise<unknown[]>;
+  executeRetrievalPhase(retrievalBatch: TOutput[]): Promise<TRawResult[]>;
 
   /**
    * Execute the mutation phase - all queries run in a transaction with version checks
@@ -159,7 +159,7 @@ export interface UOWExecutor<TOutput> {
  * Transforms raw database results into application format (e.g., converting raw columns
  * into FragnoId objects with external ID, internal ID, and version).
  */
-export interface UOWDecoder<TSchema extends AnySchema> {
+export interface UOWDecoder<TSchema extends AnySchema, TRawInput = unknown> {
   /**
    * Decode raw database results from the retrieval phase
    *
@@ -167,7 +167,7 @@ export interface UOWDecoder<TSchema extends AnySchema> {
    * @param operations - Array of retrieval operations that produced these results
    * @returns Decoded results in application format
    */
-  (rawResults: unknown[], operations: RetrievalOperation<TSchema>[]): unknown[];
+  (rawResults: TRawInput[], operations: RetrievalOperation<TSchema>[]): unknown[];
 }
 
 /**
@@ -414,22 +414,26 @@ export class DeleteBuilder {
  * }
  * ```
  */
-export class UnitOfWork<TSchema extends AnySchema, TRetrievalResults extends unknown[] = []> {
+export class UnitOfWork<
+  TSchema extends AnySchema,
+  TRetrievalResults extends unknown[] = [],
+  TRawInput = unknown,
+> {
   #schema: TSchema;
   #name?: string;
   #state: UOWState = "building-retrieval";
   #retrievalOps: RetrievalOperation<TSchema>[] = [];
   #mutationOps: MutationOperation<TSchema>[] = [];
   #compiler: UOWCompiler<TSchema, unknown>;
-  #executor: UOWExecutor<unknown>;
-  #decoder: UOWDecoder<TSchema>;
+  #executor: UOWExecutor<unknown, TRawInput>;
+  #decoder: UOWDecoder<TSchema, TRawInput>;
   #retrievalResults?: TRetrievalResults;
 
   constructor(
     schema: TSchema,
     compiler: UOWCompiler<TSchema, unknown>,
-    executor: UOWExecutor<unknown>,
-    decoder: UOWDecoder<TSchema>,
+    executor: UOWExecutor<unknown, TRawInput>,
+    decoder: UOWDecoder<TSchema, TRawInput>,
     name?: string,
   ) {
     this.#schema = schema;
@@ -497,7 +501,8 @@ export class UnitOfWork<TSchema extends AnySchema, TRetrievalResults extends unk
     ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect>, "build">,
   ): UnitOfWork<
     TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], EmptyObject, TSelect>[]]
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], EmptyObject, TSelect>[]],
+    TRawInput
   > {
     if (this.#state !== "building-retrieval") {
       throw new Error(
@@ -527,7 +532,8 @@ export class UnitOfWork<TSchema extends AnySchema, TRetrievalResults extends unk
 
     return this as unknown as UnitOfWork<
       TSchema,
-      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], EmptyObject, TSelect>[]]
+      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], EmptyObject, TSelect>[]],
+      TRawInput
     >;
   }
 

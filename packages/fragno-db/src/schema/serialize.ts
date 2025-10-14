@@ -134,10 +134,42 @@ export function dbToSchemaType(
   throw new Error(`unhandled database provider: ${provider}`);
 }
 
+/**
+ * Database type literals that can be returned by schemaToDBType
+ */
+export type DBTypeLiteral =
+  // PostgreSQL/CockroachDB types
+  | "bigserial"
+  | "serial"
+  | "boolean"
+  | "bool"
+  | "json"
+  | "text"
+  | "bytea"
+  | "timestamp"
+  | "timestamptz"
+  | "bigint"
+  | "integer"
+  | "decimal"
+  | "date"
+  // MySQL types
+  | "longblob"
+  | "datetime"
+  // SQLite types
+  | "blob"
+  | "real"
+  // MSSQL types
+  | "bit"
+  | "int"
+  | "varbinary(max)"
+  | "varchar(max)"
+  // varchar with length parameter
+  | `varchar(${number})`;
+
 export function schemaToDBType(
   column: AnyColumn | Pick<AnyColumn, "type">,
   provider: SQLProvider,
-): string {
+): DBTypeLiteral {
   const { type } = column;
 
   // Handle internal ID columns with auto-increment

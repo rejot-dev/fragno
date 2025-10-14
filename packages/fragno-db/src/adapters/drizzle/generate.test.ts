@@ -35,8 +35,8 @@ describe("generateSchema", () => {
     it("should generate PostgreSQL schema", () => {
       const generated = generateSchema(testSchema, "postgresql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, integer, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/pg-core"
-        import { createId } from "@fragno-dev/db/cuid2"
+        "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
         export const users = pgTable("users", {
@@ -44,7 +44,7 @@ describe("generateSchema", () => {
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("idx_email").on(table.email),
@@ -57,7 +57,7 @@ describe("generateSchema", () => {
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
@@ -85,7 +85,7 @@ describe("generateSchema", () => {
       const generated = generateSchema(testSchema, "mysql");
       expect(generated).toMatchInlineSnapshot(`
         "import { mysqlTable, varchar, text, integer, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
-        import { createId } from "@fragno-dev/db/cuid2"
+        import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
         export const users = mysqlTable("users", {
@@ -133,16 +133,16 @@ describe("generateSchema", () => {
     it("should generate SQLite schema", () => {
       const generated = generateSchema(testSchema, "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, blob, uniqueIndex, index, foreignKey } from "drizzle-orm/sqlite-core"
-        import { createId } from "@fragno-dev/db/cuid2"
+        "import { sqliteTable, text, integer, uniqueIndex, index, blob, foreignKey } from "drizzle-orm/sqlite-core"
+        import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
         export const users = sqliteTable("users", {
-          id: text("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
-          _internalId: blob("_internalId", { mode: "bigint" }).primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("idx_email").on(table.email),
@@ -150,12 +150,12 @@ describe("generateSchema", () => {
         ])
 
         export const posts = sqliteTable("posts", {
-          id: text("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: blob("userId", { mode: "bigint" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
-          _internalId: blob("_internalId", { mode: "bigint" }).primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
@@ -190,13 +190,13 @@ describe("generateSchema", () => {
 
       const generated = generateSchema(timestampSchema, "postgresql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, timestamp, bigint, integer } from "drizzle-orm/pg-core"
-        import { createId } from "@fragno-dev/db/cuid2"
+        "import { pgTable, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        import { createId } from "@fragno-dev/db/id"
 
         export const events = pgTable("events", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().defaultNow(),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })"
       `);
@@ -213,8 +213,8 @@ describe("generateSchema", () => {
 
       const generated = generateSchema(binarySchema, "postgresql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, customType, bigint, integer } from "drizzle-orm/pg-core"
-        import { createId } from "@fragno-dev/db/cuid2"
+        "import { pgTable, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
+        import { createId } from "@fragno-dev/db/id"
 
         const customBinary = customType<
           {
@@ -236,7 +236,7 @@ describe("generateSchema", () => {
         export const files = pgTable("files", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           data: customBinary("data").notNull(),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })"
       `);

@@ -1,5 +1,13 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { column, FragnoId, FragnoReference, idColumn, referenceColumn, schema } from "./create";
+import {
+  column,
+  FragnoId,
+  FragnoReference,
+  idColumn,
+  referenceColumn,
+  schema,
+  SchemaBuilder,
+} from "./create";
 import type { TableToColumnValues, TableToInsertValues } from "../query/query";
 
 describe("create", () => {
@@ -498,5 +506,207 @@ describe("referenceColumn", () => {
     type _Out = typeof _referenceCol.$out;
     expectTypeOf<_In>().toExtend<string | bigint | FragnoId | FragnoReference>();
     expectTypeOf<_Out>().toEqualTypeOf<FragnoReference>();
+  });
+});
+
+describe("SchemaBuilder with existing schema", () => {
+  it("should initialize with an existing schema", () => {
+    const existingSchema = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const extendedSchema = new SchemaBuilder(existingSchema)
+      .addTable("posts", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      })
+      .build();
+
+    expect(extendedSchema.tables.users).toBeDefined();
+    expect(extendedSchema.tables.posts).toBeDefined();
+    expect(extendedSchema.version).toBe(2); // 1 from original + 1 from new table
+    expect(extendedSchema.operations).toHaveLength(2);
+  });
+
+  it("should preserve operations from existing schema", () => {
+    const existingSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        })
+        .addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+        });
+    });
+
+    const extendedSchema = new SchemaBuilder(existingSchema)
+      .addTable("comments", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+      })
+      .build();
+
+    expect(extendedSchema.operations).toHaveLength(3);
+    expect(extendedSchema.operations[0].type).toBe("add-table");
+    expect(extendedSchema.operations[0].tableName).toBe("users");
+    expect(extendedSchema.operations[1].type).toBe("add-table");
+    expect(extendedSchema.operations[1].tableName).toBe("posts");
+    expect(extendedSchema.operations[2].type).toBe("add-table");
+    expect(extendedSchema.operations[2].tableName).toBe("comments");
+  });
+
+  it("should merge multiple schemas using mergeWithExistingSchema", () => {
+    const schema1 = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schema2 = schema((s) => {
+      return s.addTable("posts", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      });
+    });
+
+    const mergedSchema = new SchemaBuilder()
+      .mergeWithExistingSchema(schema1)
+      .mergeWithExistingSchema(schema2)
+      .build();
+
+    expect(mergedSchema.tables.users).toBeDefined();
+    expect(mergedSchema.tables.posts).toBeDefined();
+    expect(mergedSchema.version).toBe(2); // 1 from schema1 + 1 from schema2
+    expect(mergedSchema.operations).toHaveLength(2);
+  });
+
+  it("should extend merged schema with new tables", () => {
+    const schema1 = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schema2 = schema((s) => {
+      return s.addTable("posts", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      });
+    });
+
+    const extended = new SchemaBuilder()
+      .mergeWithExistingSchema(schema1)
+      .mergeWithExistingSchema(schema2)
+      .addTable("comments", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+      })
+      .build();
+
+    expect(extended.tables.users).toBeDefined();
+    expect(extended.tables.posts).toBeDefined();
+    expect(extended.tables.comments).toBeDefined();
+    expect(extended.version).toBe(3); // 2 from merged + 1 from new table
+    expect(extended.operations).toHaveLength(3);
+  });
+
+  it("should use mergeWithExistingSchema method to merge schemas", () => {
+    const schema1 = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schema2 = schema((s) => {
+      return s.addTable("posts", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      });
+    });
+
+    const combined = new SchemaBuilder()
+      .mergeWithExistingSchema(schema1)
+      .mergeWithExistingSchema(schema2)
+      .addTable("comments", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+      })
+      .build();
+
+    expect(combined.tables.users).toBeDefined();
+    expect(combined.tables.posts).toBeDefined();
+    expect(combined.tables.comments).toBeDefined();
+    expect(combined.version).toBe(3); // 1 + 1 + 1
+    expect(combined.operations).toHaveLength(3);
+  });
+
+  it("should merge operations from multiple schemas in order", () => {
+    const schema1 = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schema2 = schema((s) => {
+      return s
+        .addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+        })
+        .addTable("categories", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        });
+    });
+
+    const mergedSchema = new SchemaBuilder()
+      .mergeWithExistingSchema(schema1)
+      .mergeWithExistingSchema(schema2)
+      .build();
+
+    expect(mergedSchema.operations).toHaveLength(3);
+    expect(mergedSchema.operations[0].tableName).toBe("users");
+    expect(mergedSchema.operations[1].tableName).toBe("posts");
+    expect(mergedSchema.operations[2].tableName).toBe("categories");
+    expect(mergedSchema.version).toBe(3); // 1 from schema1 + 2 from schema2
+  });
+
+  it("should merge three or more schemas", () => {
+    const schema1 = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schema2 = schema((s) => {
+      return s.addTable("posts", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      });
+    });
+
+    const schema3 = schema((s) => {
+      return s.addTable("comments", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("text", column("string"));
+      });
+    });
+
+    const mergedSchema = new SchemaBuilder()
+      .mergeWithExistingSchema(schema1)
+      .mergeWithExistingSchema(schema2)
+      .mergeWithExistingSchema(schema3)
+      .build();
+
+    expect(mergedSchema.tables.users).toBeDefined();
+    expect(mergedSchema.tables.posts).toBeDefined();
+    expect(mergedSchema.tables.comments).toBeDefined();
+    expect(mergedSchema.version).toBe(3);
+    expect(mergedSchema.operations).toHaveLength(3);
+  });
+
+  it("should handle single schema merge", () => {
+    const schema1 = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const mergedSchema = new SchemaBuilder().mergeWithExistingSchema(schema1).build();
+
+    expect(mergedSchema.tables.users).toBeDefined();
+    expect(mergedSchema.version).toBe(1);
+    expect(mergedSchema.operations).toHaveLength(1);
   });
 });
