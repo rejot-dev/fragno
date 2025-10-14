@@ -12,7 +12,7 @@ split the code between client and server bundles on the Fragment level.
 The `@fragno-dev/unplugin-fragno` plugin must be used to split the Fragment's code between client
 and server bundles. This plugin is only required for Fragment authors, **not** for end-users.
 
-When creating the client bundle with the plugin, calls to `defineLibrary` and `defineRoute` will be
+When creating the client bundle with the plugin, calls to `defineFragment` and `defineRoute` will be
 transformed. The contents of the `withDependencies` and `withServices` methods are removed from the
 client bundle, as well as the contents of the `handler` functions in `defineRoute`. All code and
 imports that become unused after this transformation are removed from the client bundle
