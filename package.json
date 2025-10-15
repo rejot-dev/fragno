@@ -60,7 +60,7 @@
     "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text bun.lock"
   },
   "workspaces": [
-    "examples-apps/*",
+    "example-apps/*",
     "example-fragments/*",
     "apps/*",
     "packages/*",

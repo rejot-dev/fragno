@@ -2,10 +2,10 @@
   "files": [],
   "references": [
     {
-      "path": "packages/chatno"
+      "path": "example-fragments/chatno"
     },
     {
-      "path": "packages/example-fragment"
+      "path": "example-fragments/example-fragment"
     },
     {
       "path": "packages/fragno"
@@ -14,19 +14,19 @@
       "path": "packages/fragno-node"
     },
     {
-      "path": "examples/astro-example"
+      "path": "example-apps/astro-example"
     },
     {
-      "path": "examples/nextjs-example"
+      "path": "example-apps/nextjs-example"
     },
     {
-      "path": "examples/nuxt-example"
+      "path": "example-apps/nuxt-example"
     },
     {
-      "path": "examples/react-router-example"
+      "path": "example-apps/react-router-example"
     },
     {
-      "path": "examples/svelte-kit-example"
+      "path": "example-apps/svelte-kit-example"
     }
   ]
 }

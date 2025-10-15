@@ -203,14 +203,14 @@ frameworks.
 
 ## Examples
 
-The `examples/` directory contains complete examples of how to use Fragno with different frameworks
-(React Router, Next.js, Nuxt, Astro, etc.).
+The `example-apps` directory contains complete examples of how to use Fragno with different
+frameworks (React Router, Next.js, Nuxt, Astro, etc.).
 
 There are also two examples showing the implementation of a Fragment (Fragno Library):
 
-- `packages/example-fragment` - Minimal fragment example
-- `packages/chatno` - Example fragment with OpenAI integration. Shows usage of config, dependencies,
-  streaming, and advanced client-side state management.
+- `example-fragments/example-fragment` - Minimal fragment example
+- `example-fragments/chatno` - Example fragment with OpenAI integration. Shows usage of config,
+  dependencies, streaming, and advanced client-side state management.
 
 ## Contributing
 

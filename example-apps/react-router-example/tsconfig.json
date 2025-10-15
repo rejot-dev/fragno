@@ -21,7 +21,7 @@
   },
   "references": [
     {
-      "path": "../../packages/chatno"
+      "path": "../../example-fragments/chatno"
     },
     {
       "path": "../../packages/fragno"
