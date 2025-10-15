@@ -7,7 +7,7 @@ import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
 import { execute } from "./migration/execute";
 import type { AbstractQuery } from "../../query/query";
-import { fromKysely } from "./query";
+import { fromKysely } from "./kysely-query";
 
 const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 

@@ -7,7 +7,7 @@ import {
   mapSelect,
   extendSelect,
   createKyselyQueryBuilder,
-} from "./query-builder";
+} from "./kysely-query-builder";
 import type { Kysely as KyselyType } from "kysely";
 
 describe("query-builder", () => {
@@ -546,7 +546,7 @@ describe("query-builder", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.count(usersTable, {});
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(`"select count(*) as "count" from "users""`);
       });
 
       it("should compile count query with where clause", () => {
@@ -559,7 +559,9 @@ describe("query-builder", () => {
         };
         const query = compiler.count(usersTable, { where });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select count(*) as "count" from "users" where "users"."isActive" = $1"`,
+        );
       });
     });
 
@@ -571,7 +573,9 @@ describe("query-builder", () => {
           email: "john@example.com",
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        );
       });
 
       it("should compile insert query for sqlite", () => {
@@ -581,7 +585,9 @@ describe("query-builder", () => {
           email: "john@example.com",
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        );
       });
 
       it("should compile insert query for mssql", () => {
@@ -591,7 +597,9 @@ describe("query-builder", () => {
           email: "john@example.com",
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "users" ("id", "name", "email", "_version") output "inserted"."id" as "id", "inserted"."name" as "name", "inserted"."email" as "email", "inserted"."age" as "age", "inserted"."isActive" as "isActive", "inserted"."createdAt" as "createdAt", "inserted"."_internalId" as "_internalId", "inserted"."_version" as "_version" values ($1, $2, $3, $4)"`,
+        );
       });
 
       it("should compile insert with string reference (external ID)", () => {
@@ -602,7 +610,9 @@ describe("query-builder", () => {
           userId: "user-external-id-123",
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        );
         expect(query.sql).toContain("select");
         expect(query.sql).toContain("users");
       });
@@ -622,7 +632,9 @@ describe("query-builder", () => {
         expect(query.sql).toContain("_internalId");
         expect(query.sql).toContain("users");
         expect(query.parameters).toContain("user-abc-123");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        );
       });
 
       it("should generate subqueries for string references in createMany", () => {
@@ -646,7 +658,9 @@ describe("query-builder", () => {
         expect(query.sql).toContain("users");
         expect(query.parameters).toContain("user-id-1");
         expect(query.parameters).toContain("user-id-2");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7), ($8, $9, $10, (select "_internalId" from "users" where "id" = $11 limit $12), $13, $14)"`,
+        );
       });
 
       it("should generate subquery for string reference in updateMany", () => {
@@ -667,7 +681,9 @@ describe("query-builder", () => {
         expect(query.sql).toContain("_internalId");
         expect(query.sql).toContain("users");
         expect(query.parameters).toContain("new-user-id-456");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = $1 limit $2), "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = $3"`,
+        );
       });
 
       it("should handle bigint reference without subquery", () => {
@@ -685,7 +701,9 @@ describe("query-builder", () => {
         expect(query.sql).toContain("returning");
         // Should not have nested SELECT for the userId value
         expect(query.sql).not.toMatch(/\(select.*from.*users/i);
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, $4, $5, $6) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        );
       });
     });
 
@@ -696,7 +714,9 @@ describe("query-builder", () => {
           select: ["id", "name"],
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
 
       it("should compile select all columns", () => {
@@ -705,7 +725,9 @@ describe("query-builder", () => {
           select: true,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
 
       it("should compile select with where clause", () => {
@@ -721,7 +743,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > $1"`,
+        );
       });
 
       it("should compile select with limit and offset", () => {
@@ -732,7 +756,9 @@ describe("query-builder", () => {
           offset: 20,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit $1 offset $2"`,
+        );
       });
 
       it("should compile select with single order by", () => {
@@ -742,7 +768,9 @@ describe("query-builder", () => {
           orderBy: [[usersTable.columns.name, "asc"]],
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc"`,
+        );
       });
 
       it("should compile select with multiple order by", () => {
@@ -755,7 +783,9 @@ describe("query-builder", () => {
           ],
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc, "users"."age" desc"`,
+        );
       });
 
       it("should compile complete query with all options", () => {
@@ -785,7 +815,9 @@ describe("query-builder", () => {
           offset: 5,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = $1 and "users"."age" >= $2) order by "users"."name" asc limit $3 offset $4"`,
+        );
       });
 
       it("should use TOP for mssql limit", () => {
@@ -795,7 +827,9 @@ describe("query-builder", () => {
           limit: 5,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select top(5) "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
     });
 
@@ -806,7 +840,9 @@ describe("query-builder", () => {
           set: { name: "Updated Name" },
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "users" set "name" = $1, "_version" = COALESCE(_version, 0) + 1"`,
+        );
       });
 
       it("should compile update query with where", () => {
@@ -822,7 +858,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "users" set "name" = $1, "_version" = COALESCE(_version, 0) + 1 where "users"."id" = $2"`,
+        );
       });
 
       it("should compile update query with multiple fields", () => {
@@ -838,7 +876,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "users" set "name" = $1, "email" = $2, "isActive" = $3, "_version" = COALESCE(_version, 0) + 1 where "users"."isActive" = $4"`,
+        );
       });
     });
 
@@ -847,7 +887,7 @@ describe("query-builder", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.upsertCheck(usersTable, undefined);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(`"select "id" as "id" from "users" limit $1"`);
       });
 
       it("should compile upsert check query with where", () => {
@@ -860,7 +900,9 @@ describe("query-builder", () => {
         };
         const query = compiler.upsertCheck(usersTable, where);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "id" as "id" from "users" where "users"."email" = $1 limit $2"`,
+        );
       });
     });
 
@@ -875,14 +917,16 @@ describe("query-builder", () => {
         };
         const query = compiler.upsertUpdate(usersTable, { name: "Updated" }, where);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "users" set "name" = $1 where "users"."email" = $2"`,
+        );
       });
 
       it("should compile upsert update query without where", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.upsertUpdate(usersTable, { name: "Updated" }, undefined);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(`"update "users" set "name" = $1"`);
       });
 
       it("should compile upsert update query with top", () => {
@@ -895,7 +939,9 @@ describe("query-builder", () => {
         };
         const query = compiler.upsertUpdate(usersTable, { name: "Updated" }, where, true);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update top(1) "users" set "name" = $1 where "users"."email" = $2"`,
+        );
       });
     });
 
@@ -904,7 +950,7 @@ describe("query-builder", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.upsertUpdateById(usersTable, { name: "Updated" }, "123");
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(`"update "users" set "name" = $1 where "id" = $2"`);
       });
 
       it("should compile upsert update by id with multiple fields", () => {
@@ -915,7 +961,9 @@ describe("query-builder", () => {
           "456",
         );
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "users" set "name" = $1, "email" = $2 where "id" = $3"`,
+        );
       });
     });
 
@@ -927,7 +975,9 @@ describe("query-builder", () => {
           { name: "Jane", email: "jane@example.com" },
         ]);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4), ($5, $6, $7, $8)"`,
+        );
       });
 
       it("should handle single record in array", () => {
@@ -936,7 +986,9 @@ describe("query-builder", () => {
           { name: "John", email: "john@example.com" },
         ]);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4)"`,
+        );
       });
 
       it("should handle many records", () => {
@@ -947,7 +999,9 @@ describe("query-builder", () => {
           { name: "Bob", email: "bob@example.com" },
         ]);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)"`,
+        );
       });
     });
 
@@ -956,7 +1010,7 @@ describe("query-builder", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.deleteMany(usersTable, {});
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(`"delete from "users""`);
       });
 
       it("should compile delete query with where", () => {
@@ -969,7 +1023,9 @@ describe("query-builder", () => {
         };
         const query = compiler.deleteMany(usersTable, { where });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"delete from "users" where "users"."isActive" = $1"`,
+        );
       });
 
       it("should compile delete query with complex where", () => {
@@ -993,7 +1049,9 @@ describe("query-builder", () => {
         };
         const query = compiler.deleteMany(usersTable, { where });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"delete from "users" where ("users"."isActive" = $1 and "users"."age" < $2)"`,
+        );
       });
     });
 
@@ -1002,14 +1060,18 @@ describe("query-builder", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.findById(usersTable, "123");
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "id" = $1 limit $2"`,
+        );
       });
 
       it("should compile find by id query with numeric id", () => {
         const compiler = createKyselyQueryBuilder(kysely, "postgresql");
         const query = compiler.findById(usersTable, 456);
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "id" = $1 limit $2"`,
+        );
       });
     });
 
@@ -1020,7 +1082,9 @@ describe("query-builder", () => {
           select: ["id"],
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
 
       it("should include _internalId when id is selected", () => {
@@ -1030,7 +1094,9 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toContain("_internalId");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
 
       it("should handle id column in where clause", () => {
@@ -1046,7 +1112,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."id" = $1"`,
+        );
       });
 
       it("should handle id column in order by", () => {
@@ -1056,7 +1124,9 @@ describe("query-builder", () => {
           orderBy: [[usersTable.columns.id, "asc"]],
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."id" asc"`,
+        );
       });
     });
 
@@ -1082,7 +1152,9 @@ describe("query-builder", () => {
 
         // _internalId is automatically added when id is selected
         expect(query.sql).toContain("_internalId");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
 
       it("should handle _version column if it exists in schema", () => {
@@ -1094,7 +1166,9 @@ describe("query-builder", () => {
         });
 
         // _version would be included if it exists in the schema
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        );
       });
     });
 
@@ -1131,7 +1205,9 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toContain("productId");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "products"."productId" as "productId", "products"."name" as "name", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products""`,
+        );
       });
 
       it("should compile select all with custom id column name", () => {
@@ -1141,7 +1217,9 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toContain("productId");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products""`,
+        );
       });
 
       it("should handle custom id column in where clause", () => {
@@ -1157,7 +1235,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" where "products"."productId" = $1"`,
+        );
       });
 
       it("should handle custom id column in order by", () => {
@@ -1167,7 +1247,9 @@ describe("query-builder", () => {
           orderBy: [[productsTable.columns.productId, "desc"]],
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" order by "products"."productId" desc"`,
+        );
       });
 
       it("should compile insert with custom id column", () => {
@@ -1177,7 +1259,9 @@ describe("query-builder", () => {
           price: 1000,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"insert into "products" ("productId", "name", "price", "_version") values ($1, $2, $3, $4) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version""`,
+        );
       });
 
       it("should compile update with custom id column in where", () => {
@@ -1193,7 +1277,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "products" set "price" = $1, "_version" = COALESCE(_version, 0) + 1 where "products"."productId" = $2"`,
+        );
       });
 
       it("should handle references to custom id columns", () => {
@@ -1209,7 +1295,9 @@ describe("query-builder", () => {
           where,
         });
 
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "orders"."orderId" as "orderId", "orders"."productRef" as "productRef", "orders"."quantity" as "quantity", "orders"."_internalId" as "_internalId", "orders"."_version" as "_version" from "orders" where "orders"."orderId" = $1"`,
+        );
       });
     });
 
@@ -1235,7 +1323,9 @@ describe("query-builder", () => {
         // Should select both id and _internalId
         expect(query.sql).toContain("id");
         expect(query.sql).toContain("_internalId");
-        expect(query.sql).toMatchSnapshot();
+        expect(query.sql).toMatchInlineSnapshot(
+          `"select "logs"."id" as "id", "logs"."message" as "message", "logs"."_internalId" as "_internalId", "logs"."_version" as "_version" from "logs""`,
+        );
       });
 
       it("should handle selecting only non-id columns", () => {

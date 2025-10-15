@@ -3,7 +3,7 @@ import type { AnySchema } from "../../schema/create";
 import type { KyselyConfig } from "./kysely-adapter";
 import type { UOWDecoder } from "../../query/unit-of-work";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
-import { decodeResult, encodeValues } from "./result-transform";
+import { decodeResult, encodeValues } from "../../query/result-transform";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";

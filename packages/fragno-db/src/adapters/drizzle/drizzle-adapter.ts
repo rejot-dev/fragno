@@ -1,16 +1,15 @@
 import type { DatabaseAdapter } from "../adapters";
-import type { SQLProvider } from "../../shared/providers";
 import { column, idColumn, schema, SchemaBuilder, type AnySchema } from "../../schema/create";
 import type { AbstractQuery } from "../../query/query";
 import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { generateSchema } from "./generate";
-import { fromDrizzle } from "./query";
+import { fromDrizzle } from "./drizzle-query";
 
 const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 
 export interface DrizzleConfig {
   db: unknown;
-  provider: Exclude<SQLProvider, "cockroachdb" | "mongodb" | "mssql" | "convex">;
+  provider: "sqlite" | "mysql" | "postgresql";
 }
 
 export class DrizzleAdapter implements DatabaseAdapter {

@@ -3,8 +3,8 @@ import type { AnySchema, AnyTable } from "../../schema/create";
 import { buildCondition } from "../../query/condition-builder";
 import { buildFindOptions } from "../../query/orm/orm";
 import type { KyselyConfig } from "./kysely-adapter";
-import { createKyselyQueryBuilder } from "./query-builder";
-import { encodeValues } from "./result-transform";
+import { createKyselyQueryBuilder } from "./kysely-query-builder";
+import { encodeValues } from "../../query/result-transform";
 import type { AbstractQueryCompiler } from "../../query/query";
 
 export function createKyselyQueryCompiler<T extends AnySchema>(

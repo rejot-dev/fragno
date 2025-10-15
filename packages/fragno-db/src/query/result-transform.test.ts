@@ -1,5 +1,5 @@
 import { assert, describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema, FragnoId } from "../../schema/create";
+import { column, idColumn, referenceColumn, schema, FragnoId } from "../schema/create";
 import { decodeResult, encodeValues, ReferenceSubquery } from "./result-transform";
 
 describe("encodeValues", () => {

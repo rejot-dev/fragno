@@ -1,7 +1,7 @@
-import type { AnyTable } from "../../schema/create";
-import type { SQLProvider } from "../../shared/providers";
-import { deserialize, serialize } from "../../schema/serialize";
-import { FragnoId, FragnoReference } from "../../schema/create";
+import type { AnyTable } from "../schema/create";
+import type { SQLProvider } from "../shared/providers";
+import { deserialize, serialize } from "../schema/serialize";
+import { FragnoId, FragnoReference } from "../schema/create";
 
 /**
  * Marker class for reference column values that need subquery resolution.

@@ -1,11 +1,11 @@
 import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
 import type { DrizzleConfig } from "./drizzle-adapter";
-import type { UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
-import { createDrizzleUOWCompiler } from "./drizzle-uow-compiler";
+import type { CompiledMutation, UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
+import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import { decodeResult } from "../kysely/result-transform";
+import { decodeResult } from "../../query/result-transform";
 import { parseDrizzle } from "./shared";
 
 export interface DrizzleResult {
@@ -72,19 +72,11 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     createUnitOfWork(name) {
-      const executor: UOWExecutor<unknown, DrizzleResult> = {
-        executeRetrievalPhase: (retrievalBatch: unknown[]) =>
-          // Safe: retrievalBatch contains drizzle queries compiled by uowCompiler
-          executeDrizzleRetrievalPhase(
-            db,
-            retrievalBatch as Parameters<typeof executeDrizzleRetrievalPhase>[1],
-          ),
-        executeMutationPhase: (mutationBatch: unknown[]) =>
-          // Safe: mutationBatch contains drizzle queries compiled by uowCompiler
-          executeDrizzleMutationPhase(
-            db,
-            mutationBatch as Parameters<typeof executeDrizzleMutationPhase>[1],
-          ),
+      const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
+        executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
+          executeDrizzleRetrievalPhase(db, retrievalBatch),
+        executeMutationPhase: (mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) =>
+          executeDrizzleMutationPhase(db, mutationBatch),
       };
 
       // Create a decoder function to transform raw results into application format
