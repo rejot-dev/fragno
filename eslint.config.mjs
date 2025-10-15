@@ -43,6 +43,7 @@ export default defineConfig(
           allowShortCircuit: false,
         },
       ],
+      "@typescript-eslint/no-empty-object-type": "off",
     },
   },
 );
