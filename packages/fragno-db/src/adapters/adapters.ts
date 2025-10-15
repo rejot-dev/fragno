@@ -9,7 +9,11 @@ export interface DatabaseAdapter {
    */
   getSchemaVersion(namespace: string): Promise<string | undefined>;
 
-  createQueryEngine: <const T extends AnySchema>(schema: T, namespace: string) => AbstractQuery<T>;
+  createQueryEngine: <const T extends AnySchema>(
+    schema: T,
+    namespace: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) => AbstractQuery<T, any>;
 
   createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
   createSchemaGenerator?: <const T extends AnySchema>(

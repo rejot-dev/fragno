@@ -86,49 +86,53 @@ export type FindManyOptions<
     }
   : EmptyObject);
 
-export interface AbstractQuery<S extends AnySchema> {
+export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   /**
    * Count (all)
    */
-  count: <TableName extends keyof S["tables"]>(
+  count: <TableName extends keyof TSchema["tables"]>(
     table: TableName,
     v?: {
-      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+      where?: (
+        eb: ConditionBuilder<TSchema["tables"][TableName]["columns"]>,
+      ) => Condition | boolean;
     },
   ) => Promise<number>;
 
   findFirst: <
-    TableName extends keyof S["tables"],
+    TableName extends keyof TSchema["tables"],
     JoinOut = EmptyObject,
-    Select extends SelectClause<S["tables"][TableName]> = true,
+    Select extends SelectClause<TSchema["tables"][TableName]> = true,
   >(
     table: TableName,
-    v: FindFirstOptions<S["tables"][TableName], Select, JoinOut>,
-  ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select> | null>;
+    v: FindFirstOptions<TSchema["tables"][TableName], Select, JoinOut>,
+  ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select> | null>;
 
   findMany: <
-    TableName extends keyof S["tables"],
+    TableName extends keyof TSchema["tables"],
     JoinOut = EmptyObject,
-    Select extends SelectClause<S["tables"][TableName]> = true,
+    Select extends SelectClause<TSchema["tables"][TableName]> = true,
   >(
     table: TableName,
-    v?: FindManyOptions<S["tables"][TableName], Select, JoinOut>,
-  ) => Promise<SelectResult<S["tables"][TableName], JoinOut, Select>[]>;
+    v?: FindManyOptions<TSchema["tables"][TableName], Select, JoinOut>,
+  ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select>[]>;
 
   /**
    * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
    */
-  updateMany: <TableName extends keyof S["tables"]>(
+  updateMany: <TableName extends keyof TSchema["tables"]>(
     table: TableName,
     v: {
-      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
-      set: TableToUpdateValues<S["tables"][TableName]>;
+      where?: (
+        eb: ConditionBuilder<TSchema["tables"][TableName]["columns"]>,
+      ) => Condition | boolean;
+      set: TableToUpdateValues<TSchema["tables"][TableName]>;
     },
   ) => Promise<void>;
 
-  createMany: <TableName extends keyof S["tables"]>(
+  createMany: <TableName extends keyof TSchema["tables"]>(
     table: TableName,
-    values: TableToInsertValues<S["tables"][TableName]>[],
+    values: TableToInsertValues<TSchema["tables"][TableName]>[],
   ) => Promise<
     {
       _id: string;
@@ -138,22 +142,24 @@ export interface AbstractQuery<S extends AnySchema> {
   /**
    * Note: when you don't need to receive the result, always use `createMany` for better performance.
    */
-  create: <TableName extends keyof S["tables"]>(
+  create: <TableName extends keyof TSchema["tables"]>(
     table: TableName,
-    values: TableToInsertValues<S["tables"][TableName]>,
-  ) => Promise<TableToColumnValues<S["tables"][TableName]>>;
+    values: TableToInsertValues<TSchema["tables"][TableName]>,
+  ) => Promise<TableToColumnValues<TSchema["tables"][TableName]>>;
 
-  deleteMany: <TableName extends keyof S["tables"]>(
+  deleteMany: <TableName extends keyof TSchema["tables"]>(
     table: TableName,
     v: {
-      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
+      where?: (
+        eb: ConditionBuilder<TSchema["tables"][TableName]["columns"]>,
+      ) => Condition | boolean;
     },
   ) => Promise<void>;
 
   /**
    * Create a Unit of Work bound to this query engine
    */
-  createUnitOfWork: (name?: string) => UnitOfWork<S, []>;
+  createUnitOfWork: (name?: string, config?: TUOWConfig) => UnitOfWork<TSchema, []>;
 }
 
 export interface AbstractQueryCompiler<S extends AnySchema, TOutput> {

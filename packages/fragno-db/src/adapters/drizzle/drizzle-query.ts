@@ -1,16 +1,27 @@
 import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
 import type { DrizzleConfig } from "./drizzle-adapter";
-import type { CompiledMutation, UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
+import type { CompiledMutation, UOWExecutor } from "../../query/unit-of-work";
 import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import { decodeResult } from "../../query/result-transform";
 import { parseDrizzle } from "./shared";
+import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
 
 export interface DrizzleResult {
   rows: Record<string, unknown>[];
   affectedRows: number;
+}
+
+/**
+ * Configuration options for creating a Drizzle Unit of Work
+ */
+export interface DrizzleUOWConfig {
+  /**
+   * Optional callback to receive compiled SQL queries for logging/debugging
+   * This callback is invoked for each query as it's compiled
+   */
+  onQuery?: (query: DrizzleCompiledQuery) => void;
 }
 
 /**
@@ -37,10 +48,9 @@ export interface DrizzleResult {
 export function fromDrizzle<T extends AnySchema>(
   schema: T,
   config: DrizzleConfig,
-): AbstractQuery<T> {
-  const [db] = parseDrizzle(config.db);
+): AbstractQuery<T, DrizzleUOWConfig> {
+  const [db, drizzleTables] = parseDrizzle(config.db);
   const { provider } = config;
-  const uowCompiler = createDrizzleUOWCompiler(schema, config);
 
   return {
     async count() {
@@ -71,7 +81,10 @@ export function fromDrizzle<T extends AnySchema>(
       throw new Error("not implemented");
     },
 
-    createUnitOfWork(name) {
+    createUnitOfWork(name, uowConfig) {
+      // Create compiler with optional callback from config
+      const uowCompiler = createDrizzleUOWCompiler(schema, config, uowConfig?.onQuery);
+
       const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
         executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
           executeDrizzleRetrievalPhase(db, retrievalBatch),
@@ -80,32 +93,9 @@ export function fromDrizzle<T extends AnySchema>(
       };
 
       // Create a decoder function to transform raw results into application format
-      const decoder: UOWDecoder<typeof schema, DrizzleResult> = (rawResults, ops) => {
-        if (rawResults.length !== ops.length) {
-          throw new Error("rawResults and ops must have the same length");
-        }
-
-        return rawResults.map((result, index) => {
-          const op = ops[index];
-          if (!op) {
-            throw new Error("op must be defined");
-          }
-
-          // Handle count operations - return the count value directly
-          if (op.type === "count") {
-            if (result.rows.length > 0 && result.rows[0]) {
-              const row = result.rows[0];
-              return (row as Record<string, unknown>)["count"] as number;
-            }
-            return 0;
-          }
-
-          // Handle find operations - decode each row
-          return result.rows.map((row) => decodeResult(row, op.table, provider));
-        });
-      };
+      const decoder = createDrizzleUOWDecoder(schema, drizzleTables, provider);
 
       return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
     },
-  } as AbstractQuery<T>;
+  } as AbstractQuery<T, DrizzleUOWConfig>;
 }

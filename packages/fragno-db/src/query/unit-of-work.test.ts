@@ -288,8 +288,8 @@ describe("FindBuilder", () => {
     expect(ops).toHaveLength(1);
     const op = ops[0];
     assert(op.type === "find");
-    expect(op.options.join).toBeDefined();
-    expect(op.options.join).toHaveLength(1);
+    expect(op.options.joins).toBeDefined();
+    expect(op.options.joins).toHaveLength(1);
   });
 });
 

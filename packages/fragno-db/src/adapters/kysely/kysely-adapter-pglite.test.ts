@@ -162,7 +162,7 @@ describe("KyselyAdapter PGLite", () => {
 
     // Query emails with their users using join (since the relation is from emails to users)
     const emailsWithUsers = await queryEngine.findMany("emails", {
-      join: (b) => b.user({ select: ["id", "name", "age"] }),
+      join: (b) => b.user({ select: ["name", "age", "id"] }),
     });
 
     expect(emailsWithUsers).toHaveLength(2); // One row per email
