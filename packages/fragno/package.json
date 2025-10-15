@@ -80,7 +80,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "happy-dom": "^18.0.1",
+    "happy-dom": "^20.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "svelte": "^5.1.0",
