@@ -107,7 +107,7 @@ type FindOptions<
   /**
    * Join operations to include related data
    */
-  join?: CompiledJoin[];
+  joins?: CompiledJoin[];
 };
 
 /**
@@ -403,7 +403,7 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
       after: this.#afterCursor,
       before: this.#beforeCursor,
       pageSize: this.#pageSizeValue,
-      join: compiledJoins,
+      joins: compiledJoins,
     };
 
     return { type: "find", indexName: this.#indexName, options };

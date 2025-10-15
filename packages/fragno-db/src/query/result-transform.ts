@@ -134,7 +134,6 @@ export function decodeResult(
   provider: SQLProvider,
 ): Record<string, unknown> {
   const output: Record<string, unknown> = {};
-
   // First pass: collect all column values
   const columnValues: Record<string, unknown> = {};
 

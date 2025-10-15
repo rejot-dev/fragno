@@ -14,7 +14,10 @@ import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 
-export type DrizzleCompiledQuery = { sql: string; params: unknown[] };
+export type DrizzleCompiledQuery = {
+  sql: string;
+  params: unknown[];
+};
 
 /**
  * Create a Drizzle-specific Unit of Work compiler
@@ -24,11 +27,13 @@ export type DrizzleCompiledQuery = { sql: string; params: unknown[] };
  *
  * @param schema - The database schema
  * @param config - Drizzle configuration
+ * @param onQuery - Optional callback to receive compiled queries for logging/debugging
  * @returns A UOWCompiler instance for Drizzle
  */
 export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   schema: TSchema,
   config: DrizzleConfig,
+  onQuery?: (query: DrizzleCompiledQuery) => void,
 ): UOWCompiler<TSchema, DrizzleCompiledQuery> {
   const [db, drizzleTables] = parseDrizzle(config.db);
   const { provider } = config;
@@ -232,18 +237,16 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           const drizzleTable = toDrizzleTable(op.table);
           const query = db.select({ count: Drizzle.count() }).from(drizzleTable);
 
-          if (whereClause) {
-            return query.where(whereClause).toSQL();
-          }
-
-          return query.toSQL();
+          const compiledQuery = whereClause ? query.where(whereClause).toSQL() : query.toSQL();
+          onQuery?.(compiledQuery);
+          return compiledQuery;
         }
 
         case "find": {
           const {
             useIndex: _useIndex,
             orderByIndex,
-            join,
+            joins,
             after,
             before,
             pageSize,
@@ -357,22 +360,52 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
           const whereClause = whereClauses.length > 0 ? Drizzle.and(...whereClauses) : undefined;
 
-          // Handle joins (currently not fully supported by Drizzle's query builder API for UOW)
-          // For now, we'll skip join support in Drizzle UOW and just handle basic queries
-          // TODO: Implement join support when Drizzle provides better query builder API
-          if (join && join.length > 0) {
-            throw new Error("Joins are not yet supported in Drizzle Unit of Work implementation");
-          }
-
           const queryConfig: Drizzle.DBQueryConfig<"many", boolean> = {
             columns,
             limit: pageSize,
             where: whereClause,
             orderBy,
+            with: {},
           };
 
-          // Return the SQL representation directly
-          return db.query[op.table.ormName].findMany(queryConfig).toSQL();
+          // TODO: Very shitty implementation of joins.
+          if (joins) {
+            for (const join of joins) {
+              const { options, relation } = join;
+
+              if (!options) {
+                continue;
+              }
+
+              const targetTable = relation.table;
+              const joinName = relation.name;
+
+              const joinColumns: Record<string, boolean> = {};
+              if (options.select === true || options.select === undefined) {
+                for (const col of Object.values(targetTable.columns)) {
+                  joinColumns[col.ormName] = true;
+                }
+              } else {
+                for (const k of options.select) {
+                  joinColumns[targetTable.columns[k].ormName] = true;
+                }
+                // Always include hidden columns (for FragnoId construction with internal ID and version)
+                for (const col of Object.values(targetTable.columns)) {
+                  if (col.isHidden && !joinColumns[col.ormName]) {
+                    joinColumns[col.ormName] = true;
+                  }
+                }
+              }
+
+              queryConfig.with![joinName] = {
+                columns: joinColumns,
+              };
+            }
+          }
+
+          const compiledQuery = db.query[op.table.ormName].findMany(queryConfig).toSQL();
+          onQuery?.(compiledQuery);
+          return compiledQuery;
         }
       }
     },
@@ -387,8 +420,10 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           const encodedValues = encodeValues(op.values, table, true, provider);
           const values = processReferenceSubqueries(encodedValues);
 
+          const compiledQuery = db.insert(drizzleTable).values(values).toSQL();
+          onQuery?.(compiledQuery);
           return {
-            query: db.insert(drizzleTable).values(values).toSQL(),
+            query: compiledQuery,
             expectedAffectedRows: null, // creates don't need affected row checks
           };
         }
@@ -429,8 +464,10 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
             `COALESCE(${versionColumn.ormName}, 0) + 1`,
           ) as unknown;
 
+          const compiledQuery = db.update(drizzleTable).set(setValues).where(whereClause).toSQL();
+          onQuery?.(compiledQuery);
           return {
-            query: db.update(drizzleTable).set(setValues).where(whereClause).toSQL(),
+            query: compiledQuery,
             expectedAffectedRows: op.checkVersion ? 1 : null,
           };
         }
@@ -463,8 +500,10 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
           const whereClause = condition === true ? undefined : buildWhere(condition);
 
+          const compiledQuery = db.delete(drizzleTable).where(whereClause).toSQL();
+          onQuery?.(compiledQuery);
           return {
-            query: db.delete(drizzleTable).where(whereClause).toSQL(),
+            query: compiledQuery,
             expectedAffectedRows: op.checkVersion ? 1 : null,
           };
         }

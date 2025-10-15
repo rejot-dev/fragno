@@ -10,6 +10,7 @@ import type { DBType } from "./shared";
 import { rm } from "fs/promises";
 import { createRequire } from "node:module";
 import { encodeCursor } from "../../query/cursor";
+import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 
 // Import drizzle-kit for migrations
 const require = createRequire(import.meta.url);
@@ -240,34 +241,66 @@ describe("DrizzleAdapter PGLite", () => {
     }
   });
 
-  it("should throw error when both select and selectCount are called", async () => {
+  it("should support joins", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    const queries: DrizzleCompiledQuery[] = [];
 
-    expect(() => {
-      queryEngine.createUnitOfWork("test").find("users", (b) => {
-        b.whereIndex("primary").select(["name"]).selectCount();
-        return b;
-      });
-    }).toThrow(/cannot call selectCount/i);
+    const createUow = queryEngine
+      .createUnitOfWork("create-users")
+      .create("users", { name: "Email User", age: 20 });
 
-    expect(() => {
-      queryEngine.createUnitOfWork("test2").find("users", (b) => {
-        b.whereIndex("primary").selectCount().select(["name"]);
-        return b;
-      });
-    }).toThrow(/cannot call select/i);
-  });
+    await createUow.executeMutations();
 
-  it("should throw error when joins are used (not yet supported)", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    // Get an existing user to create an email for
+    const [[existingUser]] = await queryEngine
+      .createUnitOfWork("get-existing-user")
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Email User")))
+      .executeRetrieve();
 
-    // This should compile but throw an error at execution time
-    const uow = queryEngine.createUnitOfWork("test-joins").find("emails", (b) =>
-      b.whereIndex("user_emails").join((jb) => {
-        jb.user({ select: ["name"] });
-      }),
+    // Create an email for testing joins
+    const createEmailUow = queryEngine.createUnitOfWork("create-test-email").create("emails", {
+      user_id: existingUser.id,
+      email: "test@example.com",
+      is_primary: true,
+    });
+    await createEmailUow.executeMutations();
+
+    // Test join query
+    const uow = queryEngine
+      .createUnitOfWork("test-joins", { onQuery: (query) => queries.push(query) })
+      .find("emails", (b) =>
+        b.whereIndex("user_emails").join((jb) => {
+          jb.user({
+            select: ["name", "age", "id"],
+          });
+        }),
+      );
+
+    const [[email]] = await uow.executeRetrieve();
+
+    const [query] = queries;
+    expect(query.sql).toMatchInlineSnapshot(
+      `"select "emails"."id", "emails"."user_id", "emails"."email", "emails"."is_primary", "emails"."_internalId", "emails"."_version", "emails_user"."data" as "user" from "emails" "emails" left join lateral (select json_build_array("emails_user"."name", "emails_user"."age", "emails_user"."id", "emails_user"."_internalId", "emails_user"."_version") as "data" from (select * from "users" "emails_user" where "emails_user"."_internalId" = "emails"."user_id" limit $1) "emails_user") "emails_user" on true"`,
     );
 
-    await expect(uow.executeRetrieve()).rejects.toThrow(/joins are not yet supported/i);
+    expect(email).toMatchObject({
+      id: expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(Number),
+      }),
+      user_id: expect.objectContaining({
+        internalId: expect.any(Number),
+      }),
+      email: "test@example.com",
+      is_primary: true,
+      user: {
+        id: expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(Number),
+        }),
+        name: existingUser.name,
+        age: existingUser.age,
+      },
+    });
   });
 });

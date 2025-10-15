@@ -50,7 +50,7 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
           const {
             useIndex: _useIndex,
             orderByIndex,
-            join,
+            joins: join,
             after,
             before,
             pageSize,

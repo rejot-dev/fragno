@@ -275,6 +275,27 @@ describe("drizzle-uow-compiler", () => {
       );
       expect(compiled.retrievalBatch[0].params).toEqual(["John%", "Alice", 5]);
     });
+
+    it("should compile find operation with join", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("idx_title", (eb) => eb("title", "contains", "test"))
+          .join((jb) => {
+            jb.author();
+          }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      // This should generate SQL that joins posts with users and selects author name and email
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select "posts"."id", "posts"."title", "posts"."content", "posts"."userId", "posts"."viewCount", "posts"."_internalId", "posts"."_version", "posts_author"."data" as "author" from "posts" "posts" left join lateral (select json_build_array("posts_author"."id", "posts_author"."name", "posts_author"."email", "posts_author"."age", "posts_author"."_internalId", "posts_author"."_version") as "data" from (select * from "users" "posts_author" where "posts_author"."_internalId" = "posts"."userId" limit $1) "posts_author") "posts_author" on true where "posts"."title" like $2"`,
+      );
+      expect(compiled.retrievalBatch[0].params).toEqual([1, "%test%"]);
+    });
   });
 
   describe("compileMutationOperation", () => {

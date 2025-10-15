@@ -3,7 +3,7 @@ import { column, idColumn, schema, SchemaBuilder, type AnySchema } from "../../s
 import type { AbstractQuery } from "../../query/query";
 import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { generateSchema } from "./generate";
-import { fromDrizzle } from "./drizzle-query";
+import { fromDrizzle, type DrizzleUOWConfig } from "./drizzle-query";
 
 const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 
@@ -31,7 +31,10 @@ export class DrizzleAdapter implements DatabaseAdapter {
     return createSettingsManager(queryEngine, namespace).get(`schema_version`);
   }
 
-  createQueryEngine<T extends AnySchema>(schema: T, _namespace: string): AbstractQuery<T> {
+  createQueryEngine<TSchema extends AnySchema>(
+    schema: TSchema,
+    _namespace: string,
+  ): AbstractQuery<TSchema, DrizzleUOWConfig> {
     return fromDrizzle(schema, this.#drizzleConfig);
   }
 
@@ -64,7 +67,7 @@ function createSettingsSchema(version: number) {
 }
 
 function createSettingsManager(
-  queryEngine: AbstractQuery<ReturnType<typeof createSettingsSchema>>,
+  queryEngine: AbstractQuery<ReturnType<typeof createSettingsSchema>, DrizzleUOWConfig>,
   namespace: string,
 ) {
   return {
