@@ -7,7 +7,6 @@ import { RequestInputContext } from "./request-input-context";
 import type { ExtractPathParams } from "./internal/path";
 import { RequestOutputContext } from "./request-output-context";
 import {
-  type EmptyObject,
   type AnyFragnoRouteConfig,
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
@@ -58,7 +57,7 @@ type FullstackFrameworks = keyof HandlersByFramework;
 
 export interface FragnoInstantiatedFragment<
   TRoutes extends readonly AnyFragnoRouteConfig[] = [],
-  TDeps = EmptyObject,
+  TDeps = {},
   TServices extends Record<string, unknown> = Record<string, unknown>,
 > {
   config: FragnoFragmentSharedConfig<TRoutes>;
@@ -90,21 +89,13 @@ export type AnyFragnoFragmentSharedConfig = FragnoFragmentSharedConfig<
   readonly AnyFragnoRouteConfig[]
 >;
 
-interface FragmentDefinition<
-  TConfig,
-  TDeps = EmptyObject,
-  TServices extends Record<string, unknown> = EmptyObject,
-> {
+interface FragmentDefinition<TConfig, TDeps = {}, TServices extends Record<string, unknown> = {}> {
   name: string;
   dependencies?: (config: TConfig) => TDeps;
   services?: (config: TConfig, deps: TDeps) => TServices;
 }
 
-export class FragmentBuilder<
-  TConfig,
-  TDeps = EmptyObject,
-  TServices extends Record<string, unknown> = EmptyObject,
-> {
+export class FragmentBuilder<TConfig, TDeps = {}, TServices extends Record<string, unknown> = {}> {
   #definition: FragmentDefinition<TConfig, TDeps, TServices>;
 
   constructor(definition: FragmentDefinition<TConfig, TDeps, TServices>) {
@@ -134,7 +125,6 @@ export class FragmentBuilder<
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export function defineFragment<TConfig = {}>(name: string): FragmentBuilder<TConfig> {
   return new FragmentBuilder({
     name,

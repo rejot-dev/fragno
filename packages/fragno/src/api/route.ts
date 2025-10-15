@@ -125,14 +125,7 @@ export function defineRoute<
   return config;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type EmptyObject = {}; //Record<string, never>;
-
-export function defineRoutes<
-  TConfig = EmptyObject,
-  TDeps = EmptyObject,
-  TServices = EmptyObject,
->() {
+export function defineRoutes<TConfig = {}, TDeps = {}, TServices = {}>() {
   return {
     create: <
       const TRoutes extends readonly FragnoRouteConfig<
