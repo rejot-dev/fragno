@@ -1,41 +1,45 @@
-# Contributing
+# Contribution Guidelines
 
-## Technologies
+We welcome all contributions!
 
-We use Bun for development, combined with Turborepo to manage the monorepo. Vitest for testing and
-tsdown for individual package builds.
+The project overview, architecture, command commands, tools, and development practices can all be
+found in the [CLAUDE.md](CLAUDE.md) file.
 
-- Bun
-- TypeScript
-- Turborepo
-- TSDown
-- Vitest
-- Lefthook (pre-commit hooks)
+## Rules
 
-## Common Commands
+- Use common sense and be nice ;)
 
-### Root-level commands
+## How can I contribute?
 
-- `bun run build` - Build all packages
-- `bun run types:check` - TypeScript type checking across all packages
-- `bunx vitest` - Run all tests
-- `bunx vitest packages/fragno` - Run tests for a specific package
+- **Spreading the word**:
+  - Tell your friends, co-workers, family, neighbors, followers, etc
+  - Speak about it in meetups and conference
 
-### Package-specific commands
+- **Creating issues**:
+  - Please check if an existing issue or thread doesn't exist before submitting.
+  - If an existing issue is only somewhat relevant, please submit a new issue and reference the old
+    one instead of commenting on the existing one.
+  - Be very _precise_ in the problem you're describing: reproduction steps, expected behavior,
+    actual behavior, error messages, etc.
 
-In each package directory (`packages/fragno/`, `packages/chatno/`, etc.):
+- **Updating documentation**:
+  - Documentation is located in the `packages/docs/content/docs` directory as Markdown files.
 
-- `bun run types:check` - TypeScript type checking
+- **Opening PRs**:
+  - Opening an issue beforehand is always a good idea
+  - Submitting a PR directly is also fine, but that has a higher chance of being rejected
 
-Note that filtering for a specific file to type check DOES NOT work. You can pipe to `grep` / `rg`
-to filter.
+## Contacting the maintainers
 
-## Package Structure
+If you want to contact us in a more casual manner than creating an issue, you can reach us on X:
 
-- `packages/fragno/` - Core framework (@fragno-dev/core), also contains client adapter
-  implementations for React, Vue, and vanilla JavaScript.
-- `packages/fragno-node/` - Node.js adapter
-- `packages/unplugin-fragno/` - Build-time code splitting plugin
-- `packages/chatno/` - Example fragment with OpenAI integration
-- `packages/example-fragment/` - Minimal fragment example
-- `examples/` - Framework integration examples (React Router, Next.js, Nuxt, Astro, etc.)
+- [Wilco Kruijer](https://x.com/wilcokr)
+- [Jan Schutte](https://x.com/jan_schutte)
+
+## Getting Started
+
+1. Clone the repository
+1. Run `bun install`
+1. Run `bun run build:watch` (or just `build`)
+1. `cd packages/<package-name>` & `bunx vitest` to run tests, or if in an app directory run
+   `bun run dev` to start the app
