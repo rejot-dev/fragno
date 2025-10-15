@@ -60,3 +60,6 @@ yarn-error.log*
 .source
 .output
 .svelte-kit
+
+# LLMs
+CLAUDE.local.md
