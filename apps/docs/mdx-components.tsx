@@ -12,7 +12,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ...TabsComponents,
     ...components,
     AutoTypeTable: (props) => (
-      <AutoTypeTable {...props} generator={generator} options={{ basePath: "../" }} />
+      <AutoTypeTable {...props} generator={generator} options={{ basePath: "../../" }} />
     ),
   };
 }

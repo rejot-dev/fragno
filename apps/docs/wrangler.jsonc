@@ -13,6 +13,7 @@
       "enabled": true,
     },
   },
+  "preview_urls": true,
   "r2_buckets": [
     // Use R2 incremental cache
     // See https://opennext.js.org/cloudflare/caching

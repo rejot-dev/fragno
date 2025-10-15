@@ -90,28 +90,26 @@ as a monorepo manager.
   builders
 - `packages/fragno-node/` - Node.js adapter for Express/HTTP servers (@fragno-dev/node)
 - `packages/unplugin-fragno/` - Build-time code splitting plugin (@fragno-dev/unplugin-fragno)
-
-### Database (Optional)
-
 - `packages/fragno-db/` - Type-safe ORM for fragments (@fragno-dev/db)
   - Schema definition with versioning and migrations
   - Kysely and Drizzle adapters
   - Goal is to let Fragment authors define a (simple) data model to store data in the user's db
+- `packages/create/` - Library to create Fragno fragments
 
 ### Tooling
 
-- `packages/cli/` - Fragno CLI tools
-- `packages/create/` - Fragment scaffolding (`npm create fragno`)
+- `packages/create-cli/` - CLI to create Fragno fragments (`npm create fragno`), uses
+  `packages/create`
 
 ### Example Fragments
 
-- `packages/chatno/` - OpenAI integration fragment example
-- `packages/example-fragment/` - Minimal fragment template
+- `example-fragments/chatno/` - OpenAI integration fragment example
+- `example-fragments/example-fragment/` - Minimal fragment template
 
 ### Documentation & Examples
 
-- `packages/docs/` - Documentation site (Next.js + Fumadocs)
+- `apps/docs/` - Documentation site (Next.js + Fumadocs)
   - `content/docs/for-library-authors/` - Building fragments
   - `content/docs/for-users/` - Integrating fragments
-- `examples/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit, Vue
-  SPA)
+- `examples-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
+  Vue SPA)
