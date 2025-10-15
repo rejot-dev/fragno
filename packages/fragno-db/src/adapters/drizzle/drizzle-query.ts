@@ -91,6 +91,16 @@ export function fromDrizzle<T extends AnySchema>(
             throw new Error("op must be defined");
           }
 
+          // Handle count operations - return the count value directly
+          if (op.type === "count") {
+            if (result.rows.length > 0 && result.rows[0]) {
+              const row = result.rows[0];
+              return (row as Record<string, unknown>)["count"] as number;
+            }
+            return 0;
+          }
+
+          // Handle find operations - decode each row
           return result.rows.map((row) => decodeResult(row, op.table, provider));
         });
       };

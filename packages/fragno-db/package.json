@@ -44,6 +44,12 @@
       "development": "./src/query/unit-of-work.ts",
       "types": "./dist/query/unit-of-work.d.ts",
       "default": "./dist/query/unit-of-work.js"
+    },
+    "./cursor": {
+      "bun": "./src/query/cursor.ts",
+      "development": "./src/query/cursor.ts",
+      "types": "./dist/query/cursor.d.ts",
+      "default": "./dist/query/cursor.js"
     }
   },
   "scripts": {

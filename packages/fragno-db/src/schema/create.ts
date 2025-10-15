@@ -78,9 +78,13 @@ class RelationInit<
   }
 }
 
-export interface Index<TColumns extends AnyColumn[] = AnyColumn[]> {
+export interface Index<
+  TColumns extends AnyColumn[] = AnyColumn[],
+  TColumnNames extends readonly string[] = readonly string[],
+> {
   name: string;
   columns: TColumns;
+  columnNames: TColumnNames;
   unique: boolean;
 }
 
@@ -579,11 +583,18 @@ export class TableBuilder<
   /**
    * Create an index on the specified columns.
    */
-  createIndex<TIndexName extends string, TColumnName extends string & keyof TColumns>(
+  createIndex<
+    TIndexName extends string,
+    const TColumnNames extends readonly (string & keyof TColumns)[],
+  >(
     name: TIndexName,
-    columns: TColumnName[],
+    columns: TColumnNames,
     options?: { unique?: boolean },
-  ): TableBuilder<TColumns, TRelations, TIndexes & Record<TIndexName, Index>> {
+  ): TableBuilder<
+    TColumns,
+    TRelations,
+    TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
+  > {
     const cols = columns.map((colName) => {
       const column = this.#columns[colName];
       if (!column) {
@@ -594,12 +605,17 @@ export class TableBuilder<
 
     const unique = options?.unique ?? false;
     // Safe: we're adding the index to the internal indexes object
-    this.#indexes[name] = { name, columns: cols, unique } as unknown as TIndexes[TIndexName];
+    this.#indexes[name] = {
+      name,
+      columns: cols,
+      columnNames: columns,
+      unique,
+    } as unknown as TIndexes[TIndexName];
 
     return this as unknown as TableBuilder<
       TColumns,
       TRelations,
-      TIndexes & Record<TIndexName, Index>
+      TIndexes & Record<TIndexName, Index<ColumnsToTuple<TColumns, TColumnNames>, TColumnNames>>
     >;
   }
 
@@ -610,6 +626,8 @@ export class TableBuilder<
     let idCol: AnyColumn | undefined;
     let internalIdCol: AnyColumn | undefined;
     let versionCol: AnyColumn | undefined;
+
+    // TODO: Throw if user manually added version/internalId columns
 
     // Auto-add _internalId and _version columns if not already present
     if (!this.#columns["_internalId"]) {
@@ -735,7 +753,19 @@ type UpdateTable<
     : TTables[K];
 };
 
-export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<string, never>> {
+/**
+ * Map an array of column names to a tuple of their actual column types
+ */
+type ColumnsToTuple<
+  TColumns extends Record<string, AnyColumn>,
+  TColumnNames extends readonly (keyof TColumns)[],
+> = {
+  [K in keyof TColumnNames]: TColumnNames[K] extends keyof TColumns
+    ? TColumns[TColumnNames[K]]
+    : never;
+} & AnyColumn[];
+
+export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   #tables: TTables;
   #version: number = 0;
   #operations: SchemaOperation[] = [];
@@ -1167,8 +1197,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = Record<str
 /**
  * Create a new schema with callback pattern.
  */
-export function schema<const TTables extends Record<string, AnyTable> = Record<string, never>>(
-  callback: (builder: SchemaBuilder<Record<string, never>>) => SchemaBuilder<TTables>,
+export function schema<const TTables extends Record<string, AnyTable> = {}>(
+  callback: (builder: SchemaBuilder<{}>) => SchemaBuilder<TTables>,
 ): Schema<TTables> {
   return callback(new SchemaBuilder()).build();
 }

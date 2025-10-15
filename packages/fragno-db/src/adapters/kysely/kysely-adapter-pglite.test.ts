@@ -3,6 +3,7 @@ import { KyselyPGlite } from "kysely-pglite";
 import { assert, beforeAll, describe, expect, it } from "vitest";
 import { KyselyAdapter } from "./kysely-adapter";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+import { encodeCursor } from "../../query/cursor";
 
 describe("KyselyAdapter PGLite", () => {
   const testSchema = schema((s) => {
@@ -11,7 +12,9 @@ describe("KyselyAdapter PGLite", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("name", column("string"))
-          .addColumn("age", column("integer").nullable());
+          .addColumn("age", column("integer").nullable())
+          .createIndex("name_idx", ["name"])
+          .createIndex("age_idx", ["age"]);
       })
       .addTable("emails", (t) => {
         return t
@@ -55,6 +58,10 @@ describe("KyselyAdapter PGLite", () => {
 
     expect(preparedMigration.getSQL()).toMatchInlineSnapshot(`
       "create table "users" ("id" varchar(30) not null unique, "name" text not null, "age" integer, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      create index "name_idx" on "users" ("name");
+
+      create index "age_idx" on "users" ("age");
 
       create table "emails" ("id" varchar(30) not null unique, "user_id" bigint not null, "email" text not null, "is_primary" boolean default false not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
@@ -263,5 +270,77 @@ describe("KyselyAdapter PGLite", () => {
     const [allEmails] = await uow3.executeRetrieve();
     const userNames = allEmails.map((email) => email.email);
     expect(userNames).toEqual(["john.doe@example.com", "john.doe.work@company.com"]);
+  });
+
+  it("should support selectCount in UOW", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Count all users
+    const uow = queryEngine
+      .createUnitOfWork("count-users")
+      .find("users", (b) => b.whereIndex("primary").selectCount());
+
+    const [count] = await uow.executeRetrieve();
+
+    // We created 2 users in previous tests (John Doe and Alice)
+    expect(count).toBeGreaterThanOrEqual(2);
+    expect(typeof count).toBe("number");
+
+    // Count with where clause
+    const uow2 = queryEngine
+      .createUnitOfWork("count-young-users")
+      .find("users", (b) => b.whereIndex("age_idx", (eb) => eb("age", "<", 28)).selectCount());
+
+    const [youngCount] = await uow2.executeRetrieve();
+    expect(youngCount).toBeGreaterThanOrEqual(1); // At least Alice (25)
+  });
+
+  it("should support cursor-based pagination in UOW", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create some test users for pagination
+    const users = [
+      { name: "User A", age: 20 },
+      { name: "User B", age: 21 },
+      { name: "User C", age: 22 },
+      { name: "User D", age: 23 },
+      { name: "User E", age: 24 },
+    ];
+
+    for (const user of users) {
+      await queryEngine.create("users", user);
+    }
+
+    // Test forward pagination with after cursor, ordered by name
+    const page1 = queryEngine
+      .createUnitOfWork("page-1")
+      .find("users", (b) => b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(2));
+
+    const [page1Results] = await page1.executeRetrieve();
+    // Note: Previous tests created "Alice" and "Jane Doe"
+    expect(page1Results.map((u) => u.name)).toEqual(["Alice", "Jane Doe"]);
+
+    // Get cursor for pagination (using the last item from page 1)
+    const lastItem = page1Results[page1Results.length - 1]!;
+    const cursor = encodeCursor({
+      indexValues: { name: lastItem.name },
+      direction: "forward",
+    });
+
+    // Get page 2 using the cursor
+    const page2 = queryEngine
+      .createUnitOfWork("page-2")
+      .find("users", (b) =>
+        b.whereIndex("name_idx").orderByIndex("name_idx", "asc").after(cursor).pageSize(2),
+      );
+
+    const [page2Results] = await page2.executeRetrieve();
+    expect(page2Results.map((u) => u.name)).toEqual(["User A", "User B"]);
+
+    // Ensure no overlap between pages
+    const page1Names = new Set(page1Results.map((u) => u.name));
+    for (const user of page2Results) {
+      expect(page1Names.has(user.name)).toBe(false);
+    }
   });
 });

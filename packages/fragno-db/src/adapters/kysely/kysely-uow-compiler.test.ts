@@ -15,7 +15,8 @@ describe("kysely-uow-compiler", () => {
           .addColumn("email", column("string"))
           .addColumn("age", column("integer").nullable())
           .createIndex("idx_email", ["email"], { unique: true })
-          .createIndex("idx_name", ["name"]);
+          .createIndex("idx_name", ["name"])
+          .createIndex("idx_age", ["age"]);
       })
       .addTable("posts", (t) => {
         return t
@@ -111,18 +112,18 @@ describe("kysely-uow-compiler", () => {
       expect(compiled.retrievalBatch[0].parameters).toEqual(["Alice"]);
     });
 
-    it("should compile find operation with limit and offset", () => {
+    it("should compile find operation with pageSize", () => {
       const uow = createTestUOW();
-      uow.find("users", (b) => b.whereIndex("primary").limit(10).offset(5));
+      uow.find("users", (b) => b.whereIndex("primary").pageSize(10));
 
       const compiler = createKyselyUOWCompiler(testSchema, config);
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit $1 offset $2"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit $1"`,
       );
-      expect(compiled.retrievalBatch[0].parameters).toEqual([10, 5]);
+      expect(compiled.retrievalBatch[0].parameters).toEqual([10]);
     });
 
     it("should compile find operation with orderByIndex on primary index", () => {
@@ -168,6 +169,91 @@ describe("kysely-uow-compiler", () => {
       expect(compiled.retrievalBatch[1].sql).toMatchInlineSnapshot(
         `"select "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" where "posts"."title" like $1"`,
       );
+    });
+
+    it("should compile find operation with selectCount", () => {
+      const uow = createTestUOW();
+      uow.find("users", (b) => {
+        b.whereIndex("primary").selectCount();
+        return b;
+      });
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select count(*) as "count" from "users""`,
+      );
+    });
+
+    it("should compile find operation with selectCount and where clause", () => {
+      const uow = createTestUOW();
+      uow.find("users", (b) => b.whereIndex("idx_age", (eb) => eb("age", ">", 25)).selectCount());
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select count(*) as "count" from "users" where "users"."age" > $1"`,
+      );
+      expect(compiled.retrievalBatch[0].parameters).toEqual([25]);
+    });
+
+    it("should compile find operation with cursor pagination using after", () => {
+      const uow = createTestUOW();
+      const cursor = "eyJpbmRleFZhbHVlcyI6eyJuYW1lIjoiQWxpY2UifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9"; // {"indexValues":{"name":"Alice"},"direction":"forward"}
+      uow.find("users", (b) =>
+        b.whereIndex("idx_name").orderByIndex("idx_name", "asc").after(cursor).pageSize(10),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > $1 order by "users"."name" asc limit $2"`,
+      );
+      expect(compiled.retrievalBatch[0].parameters).toEqual(["Alice", 10]);
+    });
+
+    it("should compile find operation with cursor pagination using before", () => {
+      const uow = createTestUOW();
+      const cursor = "eyJpbmRleFZhbHVlcyI6eyJuYW1lIjoiQm9iIn0sImRpcmVjdGlvbiI6ImJhY2t3YXJkIn0="; // {"indexValues":{"name":"Bob"},"direction":"backward"}
+      uow.find("users", (b) =>
+        b.whereIndex("idx_name").orderByIndex("idx_name", "desc").before(cursor).pageSize(10),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > $1 order by "users"."name" desc limit $2"`,
+      );
+      expect(compiled.retrievalBatch[0].parameters).toEqual(["Bob", 10]);
+    });
+
+    it("should compile find operation with cursor pagination and additional where conditions", () => {
+      const uow = createTestUOW();
+      const cursor = "eyJpbmRleFZhbHVlcyI6eyJuYW1lIjoiQWxpY2UifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9";
+      uow.find("users", (b) =>
+        b
+          .whereIndex("idx_name", (eb) => eb("name", "starts with", "John"))
+          .orderByIndex("idx_name", "asc")
+          .after(cursor)
+          .pageSize(5),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" like $1 and "users"."name" > $2) order by "users"."name" asc limit $3"`,
+      );
+      expect(compiled.retrievalBatch[0].parameters).toEqual(["John%", "Alice", 5]);
     });
   });
 
@@ -397,6 +483,7 @@ describe("kysely-uow-compiler", () => {
         b.whereIndex("idx_email", (eb) =>
           eb.and(
             eb("email", "contains", "@example.com"),
+            // @ts-expect-error - name is not indexed
             eb.or(eb("name", "=", "Alice"), eb("name", "=", "Bob")),
           ),
         ),

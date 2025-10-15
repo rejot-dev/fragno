@@ -1,5 +1,5 @@
 import type { CompiledQuery } from "kysely";
-import type { AnySchema, FragnoId } from "../../schema/create";
+import type { AnyColumn, AnySchema, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
   MutationOperation,
@@ -8,7 +8,8 @@ import type {
 } from "../../query/unit-of-work";
 import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
-import { buildCondition } from "../../query/condition-builder";
+import { buildCondition, type Condition } from "../../query/condition-builder";
+import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 
 /**
  * Create a Kysely-specific Unit of Work compiler
@@ -25,6 +26,7 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   config: KyselyConfig,
 ): UOWCompiler<TSchema, CompiledQuery> {
   const queryCompiler = createKyselyQueryCompiler(schema, config);
+  const { provider } = config;
 
   function toTable(name: unknown) {
     const table = schema.tables[name as string];
@@ -37,21 +39,37 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   return {
     compileRetrievalOperation(op: RetrievalOperation<TSchema>): CompiledQuery | null {
       switch (op.type) {
+        case "count": {
+          return queryCompiler.count(op.table.name, {
+            where: op.options.where,
+          });
+        }
+
         case "find": {
           // Map UOW FindOptions to query compiler's FindManyOptions
-          // The useIndex field is metadata for optimization and not needed for compilation
-          const { useIndex: _useIndex, orderByIndex, ...findManyOptions } = op.options;
+          const {
+            useIndex: _useIndex,
+            orderByIndex,
+            join,
+            after,
+            before,
+            pageSize,
+            ...findManyOptions
+          } = op.options;
 
-          // Convert orderByIndex to orderBy format
-          let orderBy: [string, "asc" | "desc"][] | undefined;
+          // Get index columns for ordering and cursor pagination
+          let indexColumns: AnyColumn[] = [];
+          let orderDirection: "asc" | "desc" = "asc";
+
           if (orderByIndex) {
             const index = op.table.indexes[orderByIndex.indexName];
+            orderDirection = orderByIndex.direction;
 
             if (!index) {
               // If _primary index doesn't exist, fall back to internal ID column
               // (which is the actual primary key and maintains insertion order)
               if (orderByIndex.indexName === "_primary") {
-                orderBy = [[op.table.getIdColumn().ormName, orderByIndex.direction]];
+                indexColumns = [op.table.getIdColumn()];
               } else {
                 throw new Error(
                   `Index "${orderByIndex.indexName}" not found on table "${op.table.name}"`,
@@ -59,16 +77,73 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
               }
             } else {
               // Order by all columns in the index with the specified direction
-              orderBy = index.columns.map((col: { ormName: string }) => [
-                col.ormName,
-                orderByIndex.direction,
-              ]);
+              indexColumns = index.columns;
             }
+          }
+
+          // Convert orderByIndex to orderBy format
+          let orderBy: [string, "asc" | "desc"][] | undefined;
+          if (indexColumns.length > 0) {
+            orderBy = indexColumns.map((col) => [col.ormName, orderDirection]);
+          }
+
+          // Handle cursor pagination - build a cursor condition
+          let cursorCondition: Condition | undefined;
+
+          if ((after || before) && indexColumns.length > 0) {
+            const cursor = after || before;
+            const cursorData = decodeCursor(cursor!);
+            const serializedValues = serializeCursorValues(cursorData, indexColumns, provider);
+
+            // Build tuple comparison for cursor pagination
+            // For "after" with "asc": (col1, col2, ...) > (val1, val2, ...)
+            // For "before" with "desc": reverse the comparison
+            const isAfter = !!after;
+            const useGreaterThan =
+              (isAfter && orderDirection === "asc") || (!isAfter && orderDirection === "desc");
+
+            if (indexColumns.length === 1) {
+              // Simple single-column case
+              const col = indexColumns[0]!;
+              const val = serializedValues[col.ormName];
+              const operator = useGreaterThan ? ">" : "<";
+              cursorCondition = {
+                type: "compare",
+                a: col,
+                operator,
+                b: val,
+              };
+            } else {
+              // Multi-column tuple comparison - not yet supported for Kysely
+              throw new Error(
+                "Multi-column cursor pagination is not yet supported in Kysely Unit of Work implementation",
+              );
+            }
+          }
+
+          // Combine user where clause with cursor condition
+          let combinedWhere = findManyOptions.where;
+          if (cursorCondition) {
+            const cursorCond = cursorCondition;
+            if (combinedWhere) {
+              const userWhere = combinedWhere;
+              combinedWhere = (eb) =>
+                eb.and(buildCondition(op.table.columns, userWhere), cursorCond);
+            } else {
+              combinedWhere = () => cursorCond;
+            }
+          }
+
+          // Handle joins (currently not fully supported in UOW)
+          if (join && join.length > 0) {
+            throw new Error("Joins are not yet supported in Kysely Unit of Work implementation");
           }
 
           return queryCompiler.findMany(op.table.name, {
             ...findManyOptions,
+            where: combinedWhere,
             orderBy,
+            limit: pageSize,
           });
         }
       }

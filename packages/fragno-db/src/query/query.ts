@@ -2,7 +2,6 @@ import type { IdColumn, AnySchema, AnyTable, Relation } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { UnitOfWork } from "./unit-of-work";
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type EmptyObject = {};
 
 export type AnySelectClause = SelectClause<AnyTable>;
