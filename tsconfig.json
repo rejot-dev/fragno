@@ -27,6 +27,9 @@
     },
     {
       "path": "example-apps/svelte-kit-example"
+    },
+    {
+      "path": "packages/airweave-fragment"
     }
   ]
 }
