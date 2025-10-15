@@ -192,6 +192,20 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
             throw new Error("op must be defined");
           }
 
+          // Handle count operations differently - return the count number directly
+          if (op.type === "count") {
+            const rowArray = rows as Record<string, unknown>[];
+            const firstRow = rowArray[0];
+            if (!firstRow) {
+              return 0;
+            }
+            const count = Number(firstRow["count"]);
+            if (Number.isNaN(count)) {
+              throw new Error(`Unexpected result for count, received: ${count}`);
+            }
+            return count;
+          }
+
           // Each result is an array of rows - decode each row
           const rowArray = rows as Record<string, unknown>[];
           return rowArray.map((row) => decodeResult(row, op.table, provider));

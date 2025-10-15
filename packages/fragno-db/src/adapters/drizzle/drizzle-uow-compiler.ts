@@ -12,6 +12,7 @@ import type { DrizzleConfig } from "./drizzle-adapter";
 import { type ColumnType, type TableType, parseDrizzle } from "./shared";
 import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
+import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 
 export type DrizzleCompiledQuery = { sql: string; params: unknown[] };
 
@@ -214,35 +215,70 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   return {
     compileRetrievalOperation(op: RetrievalOperation<TSchema>): DrizzleCompiledQuery | null {
       switch (op.type) {
-        case "find": {
-          const { useIndex: _useIndex, orderByIndex, ...findOptions } = op.options;
+        case "count": {
+          // Build WHERE clause
+          let whereClause: Drizzle.SQL | undefined;
+          if (op.options.where) {
+            const condition = buildCondition(op.table.columns, op.options.where);
+            if (condition === false) {
+              // Never matches - return null
+              return null;
+            }
+            if (condition !== true) {
+              whereClause = buildWhere(condition);
+            }
+          }
 
-          // Convert orderByIndex to orderBy format
-          let orderBy: Drizzle.SQL[] | undefined;
+          const drizzleTable = toDrizzleTable(op.table);
+          const query = db.select({ count: Drizzle.count() }).from(drizzleTable);
+
+          if (whereClause) {
+            return query.where(whereClause).toSQL();
+          }
+
+          return query.toSQL();
+        }
+
+        case "find": {
+          const {
+            useIndex: _useIndex,
+            orderByIndex,
+            join,
+            after,
+            before,
+            pageSize,
+            ...findOptions
+          } = op.options;
+
+          // Get index columns for ordering and cursor pagination
+          let indexColumns: AnyColumn[] = [];
+          let orderDirection: "asc" | "desc" = "asc";
+
           if (orderByIndex) {
             const index = op.table.indexes[orderByIndex.indexName];
+            orderDirection = orderByIndex.direction;
 
             if (!index) {
-              // If _primary index doesn't exist, fall back to internal ID column
+              // If _primary index doesn't exist, fall back to ID column
               if (orderByIndex.indexName === "_primary") {
-                const idColumn = toDrizzleColumn(op.table.getIdColumn());
-                orderBy = [
-                  orderByIndex.direction === "asc" ? Drizzle.asc(idColumn) : Drizzle.desc(idColumn),
-                ];
+                indexColumns = [op.table.getIdColumn()];
               } else {
                 throw new Error(
                   `Index "${orderByIndex.indexName}" not found on table "${op.table.name}"`,
                 );
               }
             } else {
-              // Order by all columns in the index with the specified direction
-              orderBy = index.columns.map((col) => {
-                const drizzleCol = toDrizzleColumn(col);
-                return orderByIndex.direction === "asc"
-                  ? Drizzle.asc(drizzleCol)
-                  : Drizzle.desc(drizzleCol);
-              });
+              indexColumns = index.columns;
             }
+          }
+
+          // Convert orderByIndex to orderBy format
+          let orderBy: Drizzle.SQL[] | undefined;
+          if (indexColumns.length > 0) {
+            orderBy = indexColumns.map((col) => {
+              const drizzleCol = toDrizzleColumn(col);
+              return orderDirection === "asc" ? Drizzle.asc(drizzleCol) : Drizzle.desc(drizzleCol);
+            });
           }
 
           // Build query configuration
@@ -265,8 +301,10 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
             }
           }
 
-          // Build WHERE clause, handling boolean cases
-          let whereClause: Drizzle.SQL | undefined;
+          // Build WHERE clause with cursor conditions
+          const whereClauses: Drizzle.SQL[] = [];
+
+          // Add user-defined where clause
           if (findOptions.where) {
             const condition = buildCondition(op.table.columns, findOptions.where);
             if (condition === false) {
@@ -274,14 +312,61 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
               return null;
             }
             if (condition !== true) {
-              whereClause = buildWhere(condition);
+              const clause = buildWhere(condition);
+              if (clause) {
+                whereClauses.push(clause);
+              }
             }
+          }
+
+          // Add cursor-based pagination conditions
+          if ((after || before) && indexColumns.length > 0) {
+            const cursor = after || before;
+            const cursorData = decodeCursor(cursor!);
+            const serializedValues = serializeCursorValues(cursorData, indexColumns, provider);
+
+            // Build tuple comparison for cursor pagination
+            // For "after" with "asc": (col1, col2, ...) > (val1, val2, ...)
+            // For "before" with "desc": reverse the comparison
+            const isAfter = !!after;
+            const useGreaterThan =
+              (isAfter && orderDirection === "asc") || (!isAfter && orderDirection === "desc");
+
+            if (indexColumns.length === 1) {
+              // Simple single-column case
+              const col = toDrizzleColumn(indexColumns[0]!);
+              const val = serializedValues[indexColumns[0]!.ormName];
+              whereClauses.push(useGreaterThan ? Drizzle.gt(col, val) : Drizzle.lt(col, val));
+            } else {
+              // Multi-column tuple comparison using SQL
+              const drizzleCols = indexColumns.map((c) => toDrizzleColumn(c));
+              const vals = indexColumns.map((c) => serializedValues[c.ormName]);
+              const operator = useGreaterThan ? ">" : "<";
+              // Safe cast: building a SQL comparison expression for cursor pagination
+              // Build the tuple comparison: (col1, col2) > (val1, val2)
+              const colsSQL = Drizzle.sql.join(drizzleCols, Drizzle.sql.raw(", "));
+              const valsSQL = Drizzle.sql.join(
+                vals.map((v) => Drizzle.sql`${v}`),
+                Drizzle.sql.raw(", "),
+              );
+              whereClauses.push(
+                Drizzle.sql`(${colsSQL}) ${Drizzle.sql.raw(operator)} (${valsSQL})`,
+              );
+            }
+          }
+
+          const whereClause = whereClauses.length > 0 ? Drizzle.and(...whereClauses) : undefined;
+
+          // Handle joins (currently not fully supported by Drizzle's query builder API for UOW)
+          // For now, we'll skip join support in Drizzle UOW and just handle basic queries
+          // TODO: Implement join support when Drizzle provides better query builder API
+          if (join && join.length > 0) {
+            throw new Error("Joins are not yet supported in Drizzle Unit of Work implementation");
           }
 
           const queryConfig: Drizzle.DBQueryConfig<"many", boolean> = {
             columns,
-            limit: findOptions.limit,
-            offset: findOptions.offset,
+            limit: pageSize,
             where: whereClause,
             orderBy,
           };

@@ -1,14 +1,12 @@
-import type { AnySchema, AnyTable, FragnoId, Index } from "../schema/create";
+import type { AnySchema, AnyTable, FragnoId, Index, IdColumn } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "./query";
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type EmptyObject = {};
+import { buildJoinIndexed, type CompiledJoin, type IndexedJoinBuilder } from "./orm/orm";
 
 /**
  * Extract column names from a single index
  */
-type IndexColumns<TIndex extends Index> = TIndex["columns"][number]["ormName"];
+export type IndexColumns<TIndex extends Index> = TIndex["columnNames"][number];
 
 /**
  * Extract all indexed column names from a table's indexes
@@ -17,6 +15,36 @@ type IndexedColumns<TIndexes extends Record<string, Index>> = TIndexes[keyof TIn
   ? IndexColumns<TIndexes[keyof TIndexes]>
   : never;
 
+type OmitNever<T> = { [K in keyof T as T[K] extends never ? never : K]: T[K] };
+
+/**
+ * Extract the name of the ID column from a table
+ * Checks if column has 'id' property set to true (which IdColumn class has)
+ */
+export type InferIdColumnName<TTable extends AnyTable> = keyof OmitNever<{
+  [K in keyof TTable["columns"]]: TTable["columns"][K] extends IdColumn<
+    infer _,
+    infer __,
+    infer ___
+  >
+    ? K
+    : never;
+}>;
+
+/**
+ * Get the columns for a specific index name.
+ * For "primary", returns only the ID column.
+ * For named indexes, returns the columns defined in that index.
+ */
+type ColumnsForIndex<
+  TTable extends AnyTable,
+  TIndexName extends ValidIndexName<TTable>,
+> = TIndexName extends "primary"
+  ? Pick<TTable["columns"], InferIdColumnName<TTable>>
+  : TIndexName extends keyof TTable["indexes"]
+    ? Pick<TTable["columns"], IndexColumns<TTable["indexes"][TIndexName]>>
+    : never;
+
 /**
  * ConditionBuilder restricted to indexed columns only.
  * Used throughout Unit of Work to ensure all queries can leverage indexes for optimal performance.
@@ -24,6 +52,14 @@ type IndexedColumns<TIndexes extends Record<string, Index>> = TIndexes[keyof TIn
 export type IndexedConditionBuilder<TTable extends AnyTable> = ConditionBuilder<
   Pick<TTable["columns"], IndexedColumns<TTable["indexes"]>>
 >;
+
+/**
+ * ConditionBuilder restricted to columns in a specific index.
+ */
+type IndexSpecificConditionBuilder<
+  TTable extends AnyTable,
+  TIndexName extends ValidIndexName<TTable>,
+> = ConditionBuilder<ColumnsForIndex<TTable, TIndexName>>;
 
 /**
  * Valid index names for a table, including the static "primary" index
@@ -57,13 +93,21 @@ type FindOptions<
     direction: "asc" | "desc";
   };
   /**
-   * Limit the number of results
+   * Cursor for pagination - continue after this cursor
    */
-  limit?: number;
+  after?: string;
   /**
-   * Offset for pagination
+   * Cursor for pagination - continue before this cursor
    */
-  offset?: number;
+  before?: string;
+  /**
+   * Number of results per page
+   */
+  pageSize?: number;
+  /**
+   * Join operations to include related data
+   */
+  join?: CompiledJoin[];
 };
 
 /**
@@ -77,12 +121,19 @@ export type UOWState = "building-retrieval" | "building-mutation" | "executed";
 export type RetrievalOperation<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
-> = {
-  type: "find";
-  table: TTable;
-  indexName: string;
-  options: FindOptions<TTable, SelectClause<TTable>>;
-};
+> =
+  | {
+      type: "find";
+      table: TTable;
+      indexName: string;
+      options: FindOptions<TTable, SelectClause<TTable>>;
+    }
+  | {
+      type: "count";
+      table: TTable;
+      indexName: string;
+      options: Pick<FindOptions<TTable>, "where" | "useIndex">;
+    };
 
 /**
  * Mutation operations - write operations in the second phase
@@ -149,6 +200,7 @@ export interface UOWExecutor<TOutput, TRawResult = unknown> {
 
   /**
    * Execute the mutation phase - all queries run in a transaction with version checks
+   * Returns success status indicating if mutations completed without conflicts
    */
   executeMutationPhase(mutationBatch: CompiledMutation<TOutput>[]): Promise<{ success: boolean }>;
 }
@@ -183,9 +235,12 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
     indexName: string;
     direction: "asc" | "desc";
   };
-  #limitValue?: number;
-  #offsetValue?: number;
+  #afterCursor?: string;
+  #beforeCursor?: string;
+  #pageSizeValue?: number;
   #selectClause?: TSelect;
+  #joinClause?: (jb: IndexedJoinBuilder<TTable>) => void;
+  #countMode = false;
 
   constructor(tableName: string, table: TTable) {
     this.#tableName = tableName;
@@ -197,7 +252,7 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
    */
   whereIndex<TIndexName extends ValidIndexName<TTable>>(
     indexName: TIndexName,
-    condition?: (eb: IndexedConditionBuilder<TTable>) => Condition | boolean,
+    condition?: (eb: IndexSpecificConditionBuilder<TTable, TIndexName>) => Condition | boolean,
   ): this {
     // Validate index exists (primary is always valid)
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
@@ -209,20 +264,46 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
 
     this.#indexName = indexName === "primary" ? "_primary" : indexName;
     if (condition) {
-      this.#whereClause = condition;
+      // Safe: IndexSpecificConditionBuilder is a subset of IndexedConditionBuilder.
+      // The condition will only reference columns in the specific index, which are also indexed columns.
+      this.#whereClause = condition as unknown as (
+        eb: IndexedConditionBuilder<TTable>,
+      ) => Condition | boolean;
     }
     return this;
   }
 
   /**
    * Specify columns to select
+   * @throws Error if selectCount() has already been called
    */
   select<TNewSelect extends SelectClause<TTable>>(
     columns: TNewSelect,
   ): FindBuilder<TTable, TNewSelect> {
+    if (this.#countMode) {
+      throw new Error(
+        `Cannot call select() after selectCount() on table "${this.#tableName}". ` +
+          `Use either select() or selectCount(), not both.`,
+      );
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).#selectClause = columns;
     return this as unknown as FindBuilder<TTable, TNewSelect>;
+  }
+
+  /**
+   * Select count instead of records
+   * @throws Error if select() has already been called
+   */
+  selectCount(): this {
+    if (this.#selectClause !== undefined) {
+      throw new Error(
+        `Cannot call selectCount() after select() on table "${this.#tableName}". ` +
+          `Use either select() or selectCount(), not both.`,
+      );
+    }
+    this.#countMode = true;
+    return this;
   }
 
   /**
@@ -248,29 +329,70 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
   }
 
   /**
-   * Limit the number of results
+   * Set cursor to continue pagination after this point (forward pagination)
    */
-  limit(limit: number): this {
-    this.#limitValue = limit;
+  after(cursor: string): this {
+    this.#afterCursor = cursor;
     return this;
   }
 
   /**
-   * Set offset for pagination
+   * Set cursor to continue pagination before this point (backward pagination)
    */
-  offset(offset: number): this {
-    this.#offsetValue = offset;
+  before(cursor: string): this {
+    this.#beforeCursor = cursor;
+    return this;
+  }
+
+  /**
+   * Set the number of results per page
+   */
+  pageSize(size: number): this {
+    this.#pageSizeValue = size;
+    return this;
+  }
+
+  /**
+   * Add joins to include related data
+   * Join where clauses are restricted to indexed columns only
+   */
+  join(joinFn: (jb: IndexedJoinBuilder<TTable>) => void): this {
+    this.#joinClause = joinFn;
     return this;
   }
 
   /**
    * @internal
    */
-  build(): { indexName: string; options: FindOptions<TTable, TSelect> } {
+  build():
+    | { type: "find"; indexName: string; options: FindOptions<TTable, TSelect> }
+    | {
+        type: "count";
+        indexName: string;
+        options: Pick<FindOptions<TTable>, "where" | "useIndex">;
+      } {
     if (!this.#indexName) {
       throw new Error(
-        `Must specify an index using .where() before finalizing find operation on table "${this.#tableName}"`,
+        `Must specify an index using .whereIndex() before finalizing find operation on table "${this.#tableName}"`,
       );
+    }
+
+    // If in count mode, return count operation
+    if (this.#countMode) {
+      return {
+        type: "count",
+        indexName: this.#indexName,
+        options: {
+          useIndex: this.#indexName,
+          where: this.#whereClause,
+        },
+      };
+    }
+
+    // Compile joins if provided
+    let compiledJoins: CompiledJoin[] | undefined;
+    if (this.#joinClause) {
+      compiledJoins = buildJoinIndexed(this.#table, this.#joinClause);
     }
 
     const options: FindOptions<TTable, TSelect> = {
@@ -278,11 +400,13 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
       select: this.#selectClause,
       where: this.#whereClause,
       orderByIndex: this.#orderByIndexClause,
-      limit: this.#limitValue,
-      offset: this.#offsetValue,
+      after: this.#afterCursor,
+      before: this.#beforeCursor,
+      pageSize: this.#pageSizeValue,
+      join: compiledJoins,
     };
 
-    return { indexName: this.#indexName, options };
+    return { type: "find", indexName: this.#indexName, options };
   }
 }
 
@@ -386,6 +510,24 @@ export class DeleteBuilder {
   }
 }
 
+export function createUnitOfWork<
+  const TSchema extends AnySchema,
+  const TRetrievalResults extends unknown[] = [],
+  const TRawInput = unknown,
+>(
+  schema: TSchema,
+  compiler: UOWCompiler<TSchema, unknown>,
+  executor: UOWExecutor<unknown, TRawInput>,
+  decoder: UOWDecoder<TSchema, TRawInput>,
+  name?: string,
+): UnitOfWork<TSchema, TRetrievalResults, TRawInput> {
+  return new UnitOfWork(schema, compiler, executor, decoder, name) as UnitOfWork<
+    TSchema,
+    TRetrievalResults,
+    TRawInput
+  >;
+}
+
 /**
  * Unit of Work implementation with optimistic concurrency control
  *
@@ -415,9 +557,9 @@ export class DeleteBuilder {
  * ```
  */
 export class UnitOfWork<
-  TSchema extends AnySchema,
-  TRetrievalResults extends unknown[] = [],
-  TRawInput = unknown,
+  const TSchema extends AnySchema,
+  const TRetrievalResults extends unknown[] = [],
+  const TRawInput = unknown,
 > {
   #schema: TSchema;
   #name?: string;
@@ -501,7 +643,7 @@ export class UnitOfWork<
     ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect>, "build">,
   ): UnitOfWork<
     TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], EmptyObject, TSelect>[]],
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, TSelect>[]],
     TRawInput
   > {
     if (this.#state !== "building-retrieval") {
@@ -518,10 +660,10 @@ export class UnitOfWork<
     // Create builder, pass to callback, then extract configuration
     const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
     builderFn(builder);
-    const { indexName, options } = builder.build();
+    const { indexName, options, type } = builder.build();
 
     this.#retrievalOps.push({
-      type: "find",
+      type,
       // Safe: we know the table is part of the schema from the find() method
       table: table as TSchema["tables"][TTableName],
       indexName,
@@ -532,7 +674,7 @@ export class UnitOfWork<
 
     return this as unknown as UnitOfWork<
       TSchema,
-      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], EmptyObject, TSelect>[]],
+      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, TSelect>[]],
       TRawInput
     >;
   }
