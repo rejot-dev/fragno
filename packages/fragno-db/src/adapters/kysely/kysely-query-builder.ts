@@ -13,7 +13,7 @@ import type { SQLProvider } from "../../shared/providers";
 import type { Condition } from "../../query/condition-builder";
 import { serialize } from "../../schema/serialize";
 import type { CompiledJoin, SimplifyFindOptions } from "../../query/orm/orm";
-import { decodeResult, encodeValues, ReferenceSubquery } from "./result-transform";
+import { decodeResult, encodeValues, ReferenceSubquery } from "../../query/result-transform";
 
 /**
  * Returns the fully qualified SQL name for a column (table.column).

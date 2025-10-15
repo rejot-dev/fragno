@@ -10,7 +10,7 @@ import type {
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import type { DrizzleConfig } from "./drizzle-adapter";
 import { type ColumnType, type TableType, parseDrizzle } from "./shared";
-import { encodeValues, ReferenceSubquery } from "../kysely/result-transform";
+import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
 
 export type DrizzleCompiledQuery = { sql: string; params: unknown[] };

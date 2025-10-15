@@ -2,7 +2,7 @@ import { SQL, StringChunk, sql, type SQLChunk } from "drizzle-orm";
 import type { CompiledMutation } from "../../query/unit-of-work";
 import type { DBType } from "./shared";
 import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
-import type { DrizzleResult } from "./query";
+import type { DrizzleResult } from "./drizzle-query";
 
 /**
  * Convert a DrizzleCompiledQuery (SQL string + params) to a Drizzle SQL object
