@@ -3,17 +3,34 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copy, merge } from "./utils.ts";
 import { buildToolPkg } from "./package-json.ts";
+import { z } from "zod";
 
-type TemplateTypes = "fragment";
-// TODO: the others
-export type BuildTools = "esbuild" | "tsdown" | "vite" | "rollup" | "webpack" | "rspack" | "none";
+const templateTypesSchema = z.literal("fragment");
+export type TemplateTypes = z.infer<typeof templateTypesSchema>;
 
-interface CreateOptions {
-  path: string;
-  buildTool: BuildTools;
-  name: string;
-  template: TemplateTypes;
-}
+const buildToolsSchema = z.enum([
+  "esbuild",
+  "tsdown",
+  "vite",
+  "rollup",
+  "webpack",
+  "rspack",
+  "none",
+]);
+export type BuildTools = z.infer<typeof buildToolsSchema>;
+
+const agentDocsSchema = z.enum(["AGENTS.md", "CLAUDE.md", "none"]);
+export type AgentDocs = z.infer<typeof agentDocsSchema>;
+
+export const createOptionsSchema = z.object({
+  path: z.string(),
+  buildTool: buildToolsSchema,
+  name: z.string(),
+  template: templateTypesSchema,
+  agentDocs: agentDocsSchema,
+});
+
+type CreateOptions = z.infer<typeof createOptionsSchema>;
 
 export function create(options: CreateOptions) {
   let pkgOverride: Record<string, unknown> = { name: options.name };
@@ -49,6 +66,17 @@ export function create(options: CreateOptions) {
     case "none":
       break;
   }
+
+  switch (options.agentDocs) {
+    case "AGENTS.md":
+      writeOptionalTemplate(options.path, "agent/AGENTS.md");
+      break;
+    case "CLAUDE.md":
+      writeOptionalTemplate(options.path, "agent/AGENTS.md", "CLAUDE.md");
+      break;
+    case "none":
+      break;
+  }
 }
 
 function getTemplateDir(): string {
@@ -56,9 +84,10 @@ function getTemplateDir(): string {
   return path.join(__dirname, "..", "templates");
 }
 
-function writeOptionalTemplate(targetPath: string, template: string) {
+function writeOptionalTemplate(targetPath: string, template: string, rename?: string) {
   const templatePath = path.join(getTemplateDir(), "optional", template);
-  const targetFile = path.join(targetPath, path.basename(template));
+  const targetFileName = rename ? rename : path.basename(template);
+  const targetFile = path.join(targetPath, targetFileName);
 
   copy(templatePath, targetFile);
 }

@@ -27,6 +27,7 @@ describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rsp
       name: "@myorg/test",
       template: "fragment" as const,
       buildTool,
+      agentDocs: "AGENTS.md" as const,
     };
 
     beforeAll(async () => {
@@ -44,6 +45,11 @@ describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rsp
         const pkg = path.join(tempDir, "package.json");
         const pkgContent = await fs.readFile(pkg, "utf8");
         expect(pkgContent).toContain(testConfig.name);
+      });
+
+      test("agent file copied", async () => {
+        const agentFile = path.join(tempDir, "AGENTS.md");
+        await expect(fs.access(agentFile)).resolves.toBeUndefined();
       });
 
       test("installs", { timeout: 10000 }, async () => {
