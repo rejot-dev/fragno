@@ -104,3 +104,4 @@ export function addRoute<
 }
 
 export { FragnoApiError, FragnoApiValidationError } from "./error";
+export type { StatusCode } from "../http/http-status";
