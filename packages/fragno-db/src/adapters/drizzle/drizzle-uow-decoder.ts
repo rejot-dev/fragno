@@ -3,14 +3,84 @@ import type { SQLProvider } from "../../shared/providers";
 import type { RetrievalOperation, UOWDecoder } from "../../query/unit-of-work";
 import { decodeResult } from "../../query/result-transform";
 import type { DrizzleResult } from "./drizzle-query";
+import { getOrderedJoinColumns } from "./join-column-utils";
+
+/**
+ * Join information with nested join support
+ */
+interface JoinInfo {
+  relation: { name: string; table: AnyTable };
+  options:
+    | {
+        select: true | string[];
+        join?: JoinInfo[];
+      }
+    | false;
+}
+
+/**
+ * Recursively transform join arrays to objects, handling nested joins.
+ *
+ * Drizzle joins use `json_build_array` where nested join data is appended after the parent's columns.
+ * For example, if post has columns [id, title, content, _internalId, _version] and a nested author join,
+ * the array will be: [id, title, content, _internalId, _version, authorArray]
+ *
+ * @param value - The join array from Drizzle
+ * @param joinInfo - Join metadata including nested joins
+ * @param relationName - Name of the current relation (for prefixing column names)
+ * @returns Object with flattened keys (relationName:columnName) for all levels
+ */
+function transformJoinArray(
+  value: unknown[],
+  joinInfo: JoinInfo,
+  relationName: string,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  if (joinInfo.options === false) {
+    return result;
+  }
+
+  const targetTable = joinInfo.relation.table;
+
+  // Get ordered columns using shared utility (must match compiler's column order)
+  const orderedSelectedColumns = getOrderedJoinColumns(targetTable, joinInfo.options.select);
+
+  // Map column values to flattened format: relationName:columnName
+  for (let i = 0; i < orderedSelectedColumns.length && i < value.length; i++) {
+    const columnName = orderedSelectedColumns[i];
+    if (columnName) {
+      result[`${relationName}:${columnName}`] = value[i];
+    }
+  }
+
+  // Handle nested joins - they appear after all columns in the array
+  if (joinInfo.options.join && joinInfo.options.join.length > 0) {
+    let nestedArrayIndex = orderedSelectedColumns.length;
+
+    for (const nestedJoin of joinInfo.options.join) {
+      const nestedRelationName = `${relationName}:${nestedJoin.relation.name}`;
+      const nestedValue = value[nestedArrayIndex];
+
+      if (Array.isArray(nestedValue)) {
+        // Recursively transform nested join
+        const nestedResult = transformJoinArray(nestedValue, nestedJoin, nestedRelationName);
+        Object.assign(result, nestedResult);
+      }
+
+      nestedArrayIndex++;
+    }
+  }
+
+  return result;
+}
 
 /**
  * Drizzle joins using `json_build_array` so the result is a tuple of values that we need to map to
- * the correct columns.
+ * the correct columns. This function handles nested joins recursively.
  *
  * @param row - Raw database result row that may contain join arrays
  * @param op - The retrieval operation containing join information
- * @param drizzleTables - Map of table names to Drizzle table objects
  * @returns Transformed row with join arrays converted to objects
  */
 function transformJoinArraysToObjects(
@@ -19,10 +89,9 @@ function transformJoinArraysToObjects(
     type: string;
     table: AnyTable;
     options?: {
-      joins?: { relation: { name: string }; options: { select: true | string[] } | false }[];
+      joins?: JoinInfo[];
     };
   },
-  drizzleTables: Record<string, unknown>,
 ): Record<string, unknown> {
   // Only process find operations with joins
   if (op.type !== "find" || !op.options?.joins) {
@@ -51,46 +120,9 @@ function transformJoinArraysToObjects(
       continue;
     }
 
-    const targetTable = relation.table;
-    const drizzleTable = drizzleTables[targetTable.ormName] as Record<string, unknown>;
-
-    if (!drizzleTable) {
-      continue;
-    }
-
-    // Determine which columns were selected using the EXACT same logic as in drizzle-uow-compiler.ts
-    // This ensures the column order matches the SQL array order
-    const orderedSelectedColumns: string[] = [];
-
-    if (join.options.select === true) {
-      // All columns selected - iterate in the order they appear in targetTable.columns
-      for (const col of Object.values(targetTable.columns)) {
-        orderedSelectedColumns.push(col.ormName);
-      }
-    } else {
-      // Specific columns selected
-      for (const colKey of join.options.select) {
-        const col = targetTable.columns[colKey];
-        if (col) {
-          orderedSelectedColumns.push(col.ormName);
-        }
-      }
-      // Add hidden columns at the end
-      for (const col of Object.values(targetTable.columns)) {
-        if (col && col.isHidden && !orderedSelectedColumns.includes(col.ormName)) {
-          orderedSelectedColumns.push(col.ormName);
-        }
-      }
-    }
-
-    // Map array values to flattened format: relationName:columnName
-    // This matches the format expected by decodeResult
-    for (let i = 0; i < orderedSelectedColumns.length && i < value.length; i++) {
-      const columnName = orderedSelectedColumns[i];
-      if (columnName) {
-        transformedRow[`${relationName}:${columnName}`] = value[i];
-      }
-    }
+    // Recursively transform this join and its nested joins
+    const joinResult = transformJoinArray(value, join, relationName);
+    Object.assign(transformedRow, joinResult);
 
     // Remove the original array property
     delete transformedRow[relationName];
@@ -101,7 +133,6 @@ function transformJoinArraysToObjects(
 
 export function createDrizzleUOWDecoder<TSchema extends AnySchema>(
   _schema: TSchema,
-  drizzleTables: Record<string, unknown>,
   provider: SQLProvider,
 ): UOWDecoder<TSchema, DrizzleResult> {
   return (rawResults, ops) => {
@@ -126,7 +157,7 @@ export function createDrizzleUOWDecoder<TSchema extends AnySchema>(
 
       // Handle find operations - decode each row
       return result.rows.map((row) => {
-        const transformedRow = transformJoinArraysToObjects(row, op, drizzleTables);
+        const transformedRow = transformJoinArraysToObjects(row, op);
         return decodeResult(transformedRow, op.table, provider);
       });
     });

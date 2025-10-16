@@ -1,7 +1,16 @@
-import type { AnySchema, AnyTable, FragnoId, Index, IdColumn } from "../schema/create";
+import type {
+  AnySchema,
+  AnyTable,
+  FragnoId,
+  Index,
+  IdColumn,
+  AnyRelation,
+  AnyColumn,
+} from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "./query";
-import { buildJoinIndexed, type CompiledJoin, type IndexedJoinBuilder } from "./orm/orm";
+import { buildCondition } from "./condition-builder";
+import type { CompiledJoin } from "./orm/orm";
 
 /**
  * Extract column names from a single index
@@ -508,6 +517,225 @@ export class DeleteBuilder {
       checkVersion: this.#checkVersion,
     };
   }
+}
+
+/**
+ * Builder for join operations in Unit of Work
+ * Similar to FindBuilder but tailored for joins (no cursor pagination, no count mode)
+ */
+export class JoinFindBuilder<TTable extends AnyTable, TSelect extends SelectClause<TTable> = true> {
+  readonly #table: TTable;
+  readonly #tableName: string;
+
+  #indexName?: string;
+  #whereClause?: (eb: IndexedConditionBuilder<TTable>) => Condition | boolean;
+  #orderByIndexClause?: {
+    indexName: string;
+    direction: "asc" | "desc";
+  };
+  #pageSizeValue?: number;
+  #selectClause?: TSelect;
+  #joinClause?: (jb: IndexedJoinBuilder<TTable>) => void;
+
+  constructor(tableName: string, table: TTable) {
+    this.#tableName = tableName;
+    this.#table = table;
+  }
+
+  /**
+   * Specify which index to use and optionally filter the results
+   */
+  whereIndex<TIndexName extends ValidIndexName<TTable>>(
+    indexName: TIndexName,
+    condition?: (eb: IndexSpecificConditionBuilder<TTable, TIndexName>) => Condition | boolean,
+  ): this {
+    // Validate index exists (primary is always valid)
+    if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
+      throw new Error(
+        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+          `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
+      );
+    }
+
+    this.#indexName = indexName === "primary" ? "_primary" : indexName;
+    if (condition) {
+      // Safe: IndexSpecificConditionBuilder is a subset of IndexedConditionBuilder.
+      // The condition will only reference columns in the specific index, which are also indexed columns.
+      this.#whereClause = condition as unknown as (
+        eb: IndexedConditionBuilder<TTable>,
+      ) => Condition | boolean;
+    }
+    return this;
+  }
+
+  /**
+   * Specify columns to select
+   */
+  select<TNewSelect extends SelectClause<TTable>>(
+    columns: TNewSelect,
+  ): JoinFindBuilder<TTable, TNewSelect> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this as any).#selectClause = columns;
+    return this as unknown as JoinFindBuilder<TTable, TNewSelect>;
+  }
+
+  /**
+   * Order results by index in ascending or descending order
+   */
+  orderByIndex<TIndexName extends ValidIndexName<TTable>>(
+    indexName: TIndexName,
+    direction: "asc" | "desc",
+  ): this {
+    // Validate index exists (primary is always valid)
+    if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
+      throw new Error(
+        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+          `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
+      );
+    }
+
+    this.#orderByIndexClause = {
+      indexName: indexName === "primary" ? "_primary" : indexName,
+      direction,
+    };
+    return this;
+  }
+
+  /**
+   * Set the number of results to return
+   */
+  pageSize(size: number): this {
+    this.#pageSizeValue = size;
+    return this;
+  }
+
+  /**
+   * Add joins to include related data
+   * Join where clauses are restricted to indexed columns only
+   */
+  join(joinFn: (jb: IndexedJoinBuilder<TTable>) => void): this {
+    this.#joinClause = joinFn;
+    return this;
+  }
+
+  /**
+   * @internal
+   */
+  build(): {
+    indexName: string | undefined;
+    select: TSelect | undefined;
+    where: ((eb: IndexedConditionBuilder<TTable>) => Condition | boolean) | undefined;
+    orderByIndex:
+      | {
+          indexName: string;
+          direction: "asc" | "desc";
+        }
+      | undefined;
+    pageSize: number | undefined;
+    joins: CompiledJoin[] | undefined;
+  } {
+    // Compile joins if provided
+    let compiledJoins: CompiledJoin[] | undefined;
+    if (this.#joinClause) {
+      compiledJoins = buildJoinIndexed(this.#table, this.#joinClause);
+    }
+
+    return {
+      indexName: this.#indexName,
+      select: this.#selectClause,
+      where: this.#whereClause,
+      orderByIndex: this.#orderByIndexClause,
+      pageSize: this.#pageSizeValue,
+      joins: compiledJoins,
+    };
+  }
+}
+
+/**
+ * Join builder with indexed-only where clauses for Unit of Work
+ */
+export type IndexedJoinBuilder<TTable extends AnyTable> = {
+  [K in keyof TTable["relations"]]: TTable["relations"][K] extends AnyRelation
+    ? (
+        builderFn?: (builder: JoinFindBuilder<TTable["relations"][K]["table"]>) => void,
+      ) => IndexedJoinBuilder<TTable>
+    : never;
+};
+
+/**
+ * Build join operations with indexed-only where clauses for Unit of Work
+ * This ensures all join conditions can leverage indexes for optimal performance
+ */
+export function buildJoinIndexed<TTable extends AnyTable>(
+  table: TTable,
+  fn: (builder: IndexedJoinBuilder<TTable>) => void,
+): CompiledJoin[] {
+  const compiled: CompiledJoin[] = [];
+  const builder: Record<string, unknown> = {};
+
+  for (const name in table.relations) {
+    const relation = table.relations[name]!;
+
+    builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => void) => {
+      // Create join builder for this relation's table
+      const joinBuilder = new JoinFindBuilder(relation.table.ormName, relation.table);
+      if (builderFn) {
+        builderFn(joinBuilder);
+      }
+      const config = joinBuilder.build();
+
+      // Build condition with indexed columns only
+      let conditions: Condition | undefined;
+      if (config.where) {
+        const cond = buildCondition(relation.table.columns, config.where);
+        if (cond === true) {
+          conditions = undefined;
+        } else if (cond === false) {
+          // If condition evaluates to false, skip this join
+          compiled.push({
+            relation,
+            options: false,
+          });
+          delete builder[name];
+          return builder;
+        } else {
+          conditions = cond;
+        }
+      }
+
+      // Build orderBy from orderByIndex if provided
+      let orderBy: [AnyColumn, "asc" | "desc"][] | undefined;
+      if (config.orderByIndex) {
+        const index = relation.table.indexes[config.orderByIndex.indexName];
+        if (index) {
+          // Use all columns from the index for ordering
+          orderBy = index.columns.map(
+            (col) => [col, config.orderByIndex!.direction] as [AnyColumn, "asc" | "desc"],
+          );
+        } else {
+          // Fallback to ID column if index not found
+          orderBy = [[relation.table.getIdColumn(), config.orderByIndex.direction]];
+        }
+      }
+
+      compiled.push({
+        relation,
+        options: {
+          select: config.select ?? true,
+          where: conditions,
+          orderBy,
+          join: config.joins,
+          limit: config.pageSize,
+        },
+      });
+
+      delete builder[name];
+      return builder;
+    };
+  }
+
+  fn(builder as IndexedJoinBuilder<TTable>);
+  return compiled;
 }
 
 export function createUnitOfWork<

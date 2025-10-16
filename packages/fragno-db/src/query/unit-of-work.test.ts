@@ -280,7 +280,7 @@ describe("FindBuilder", () => {
 
     uow.find("posts", (b) =>
       b.whereIndex("primary").join((jb) => {
-        jb["user"]({ select: ["name"] });
+        jb["user"]((builder) => builder.select(["name"]));
       }),
     );
 
@@ -290,6 +290,252 @@ describe("FindBuilder", () => {
     assert(op.type === "find");
     expect(op.options.joins).toBeDefined();
     expect(op.options.joins).toHaveLength(1);
+  });
+
+  it("should support join operations without builder function", () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", column("string"))
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"]),
+        )
+        .addReference("posts", "user", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        }),
+    );
+
+    const uow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+    );
+
+    // Join without builder function should use default options
+    uow.find("posts", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb.user();
+      }),
+    );
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "find");
+    expect(op.options.joins).toBeDefined();
+    expect(op.options.joins).toHaveLength(1);
+    const joinOptions = op.options.joins![0]!.options;
+    assert(joinOptions !== false);
+    expect(joinOptions.select).toBe(true); // Should default to selecting all columns
+  });
+
+  it("should support join with whereIndex", () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("name", "string")
+            .createIndex("idx_name", ["name"]),
+        )
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", column("string"))
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"]),
+        )
+        .addReference("posts", "user", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        }),
+    );
+
+    const uow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+    );
+
+    uow.find("posts", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb["user"]((builder) =>
+          builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
+        );
+      }),
+    );
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "find");
+    expect(op.options.joins).toBeDefined();
+    expect(op.options.joins).toHaveLength(1);
+    const joinOptions = op.options.joins![0]!.options;
+    assert(joinOptions !== false);
+    expect(joinOptions.where).toBeDefined();
+  });
+
+  it("should support join with orderByIndex", () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("name", "string")
+            .addColumn("createdAt", "integer")
+            .createIndex("idx_created", ["createdAt"]),
+        )
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", column("string"))
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"]),
+        )
+        .addReference("posts", "user", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        }),
+    );
+
+    const uow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+    );
+
+    uow.find("posts", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb["user"]((builder) => builder.orderByIndex("idx_created", "desc"));
+      }),
+    );
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "find");
+    expect(op.options.joins).toBeDefined();
+    const joinOptions = op.options.joins![0]!.options;
+    assert(joinOptions !== false);
+    expect(joinOptions.orderBy).toBeDefined();
+    expect(joinOptions.orderBy).toHaveLength(1);
+  });
+
+  it("should support join with pageSize", () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", column("string"))
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"]),
+        )
+        .addReference("posts", "user", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        }),
+    );
+
+    const uow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+    );
+
+    uow.find("posts", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb["user"]((builder) => builder.pageSize(5));
+      }),
+    );
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "find");
+    const joinOptions = op.options.joins![0]!.options;
+    assert(joinOptions !== false);
+    expect(joinOptions.limit).toBe(5);
+  });
+
+  it("should support nested joins", () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", column("string"))
+            .addColumn("authorId", column("string"))
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"])
+            .createIndex("idx_author", ["authorId"]),
+        )
+        .addTable("comments", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("postId", column("string"))
+            .addColumn("text", "string")
+            .createIndex("idx_post", ["postId"]),
+        )
+        .addReference("posts", "user", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        })
+        .addReference("comments", "post", {
+          columns: ["postId"],
+          targetTable: "posts",
+          targetColumns: ["id"],
+        }),
+    );
+
+    const uow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+    );
+
+    uow.find("comments", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb["post"]((postBuilder) =>
+          postBuilder.select(["title"]).join((jb2) => {
+            jb2["user"]((userBuilder) => userBuilder.select(["name"]));
+          }),
+        );
+      }),
+    );
+
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    const op = ops[0];
+    assert(op.type === "find");
+    expect(op.options.joins).toBeDefined();
+    expect(op.options.joins).toHaveLength(1);
+
+    const postJoin = op.options.joins![0]!;
+    assert(postJoin.options !== false);
+    expect(postJoin.options.join).toBeDefined();
+    expect(postJoin.options.join).toHaveLength(1);
+
+    const userJoin = postJoin.options.join![0]!;
+    assert(userJoin.options !== false);
+    expect(userJoin.relation.name).toBe("user");
   });
 });
 

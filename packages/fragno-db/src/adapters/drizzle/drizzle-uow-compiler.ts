@@ -13,6 +13,8 @@ import { type ColumnType, type TableType, parseDrizzle } from "./shared";
 import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
+import type { CompiledJoin } from "../../query/orm/orm";
+import { getOrderedJoinColumns } from "./join-column-utils";
 
 export type DrizzleCompiledQuery = {
   sql: string;
@@ -217,6 +219,66 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
     return id.version;
   }
 
+  /**
+   * Process joins recursively to support nested joins with orderBy and limit
+   */
+  function processJoins(
+    joins: CompiledJoin[],
+  ): Record<string, Drizzle.DBQueryConfig<"many", boolean>> {
+    const result: Record<string, Drizzle.DBQueryConfig<"many", boolean>> = {};
+
+    for (const join of joins) {
+      const { options, relation } = join;
+
+      if (!options) {
+        continue;
+      }
+
+      const targetTable = relation.table;
+      const joinName = relation.name;
+
+      // Build columns for this join using shared utility
+      const selectOption = options.select === undefined ? true : options.select;
+      const orderedColumns = getOrderedJoinColumns(targetTable, selectOption);
+      const joinColumns: Record<string, boolean> = {};
+      for (const colName of orderedColumns) {
+        joinColumns[colName] = true;
+      }
+
+      // Build orderBy for this join
+      let joinOrderBy: Drizzle.SQL[] | undefined;
+      if (options.orderBy && options.orderBy.length > 0) {
+        joinOrderBy = options.orderBy.map(([col, direction]) => {
+          const drizzleCol = toDrizzleColumn(col);
+          return direction === "asc" ? Drizzle.asc(drizzleCol) : Drizzle.desc(drizzleCol);
+        });
+      }
+
+      // Build WHERE clause for this join if provided
+      let joinWhere: Drizzle.SQL | undefined;
+      if (options.where) {
+        joinWhere = buildWhere(options.where);
+      }
+
+      // Build the join config
+      const joinConfig: Drizzle.DBQueryConfig<"many", boolean> = {
+        columns: joinColumns,
+        orderBy: joinOrderBy,
+        limit: options.limit,
+        where: joinWhere,
+      };
+
+      // Recursively process nested joins
+      if (options.join && options.join.length > 0) {
+        joinConfig.with = processJoins(options.join);
+      }
+
+      result[joinName] = joinConfig;
+    }
+
+    return result;
+  }
+
   return {
     compileRetrievalOperation(op: RetrievalOperation<TSchema>): DrizzleCompiledQuery | null {
       switch (op.type) {
@@ -368,39 +430,9 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
             with: {},
           };
 
-          // TODO: Very shitty implementation of joins.
+          // Process joins recursively to support nested joins
           if (joins) {
-            for (const join of joins) {
-              const { options, relation } = join;
-
-              if (!options) {
-                continue;
-              }
-
-              const targetTable = relation.table;
-              const joinName = relation.name;
-
-              const joinColumns: Record<string, boolean> = {};
-              if (options.select === true || options.select === undefined) {
-                for (const col of Object.values(targetTable.columns)) {
-                  joinColumns[col.ormName] = true;
-                }
-              } else {
-                for (const k of options.select) {
-                  joinColumns[targetTable.columns[k].ormName] = true;
-                }
-                // Always include hidden columns (for FragnoId construction with internal ID and version)
-                for (const col of Object.values(targetTable.columns)) {
-                  if (col.isHidden && !joinColumns[col.ormName]) {
-                    joinColumns[col.ormName] = true;
-                  }
-                }
-              }
-
-              queryConfig.with![joinName] = {
-                columns: joinColumns,
-              };
-            }
+            queryConfig.with = processJoins(joins);
           }
 
           const compiledQuery = db.query[op.table.ormName].findMany(queryConfig).toSQL();

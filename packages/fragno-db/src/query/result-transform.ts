@@ -137,14 +137,15 @@ export function decodeResult(
   // First pass: collect all column values
   const columnValues: Record<string, unknown> = {};
 
-  // Collect hidden columns for each relation (for FragnoId creation)
-  const relationHiddenColumns: Record<string, Record<string, unknown>> = {};
+  // Collect all relation data (including nested) keyed by relation name
+  const relationData: Record<string, Record<string, unknown>> = {};
 
   for (const k in result) {
-    const segments = k.split(":", 2);
+    const colonIndex = k.indexOf(":");
     const value = result[k];
 
-    if (segments.length === 1) {
+    // Direct column (no colon)
+    if (colonIndex === -1) {
       const col = table.columns[k];
       if (!col) {
         continue;
@@ -152,33 +153,32 @@ export function decodeResult(
 
       // Store all column values (including hidden ones for FragnoId creation)
       columnValues[k] = deserialize(value, col, provider);
+      continue;
     }
 
-    if (segments.length === 2) {
-      const [relationName, colName] = segments;
-      const relation = table.relations[relationName];
-      if (relation === undefined) {
-        continue;
-      }
+    // Relation column (has colon)
+    const relationName = k.slice(0, colonIndex);
+    const remainder = k.slice(colonIndex + 1);
 
-      const col = relation.table.columns[colName];
-      if (col === undefined) {
-        continue;
-      }
-
-      const deserializedValue = deserialize(value, col, provider);
-
-      // Store hidden columns for later FragnoId creation
-      if (col.isHidden) {
-        relationHiddenColumns[relationName] ??= {};
-        relationHiddenColumns[relationName][colName] = deserializedValue;
-        continue;
-      }
-
-      output[relationName] ??= {};
-      const obj = output[relationName] as Record<string, unknown>;
-      obj[colName] = deserializedValue;
+    const relation = table.relations[relationName];
+    if (relation === undefined) {
+      continue;
     }
+
+    // Collect relation data with the remaining key path
+    relationData[relationName] ??= {};
+    relationData[relationName][remainder] = value;
+  }
+
+  // Process each relation's data recursively
+  for (const relationName in relationData) {
+    const relation = table.relations[relationName];
+    if (!relation) {
+      continue;
+    }
+
+    // Recursively decode the relation data
+    output[relationName] = decodeResult(relationData[relationName], relation.table, provider);
   }
 
   // Second pass: create output with FragnoId objects where appropriate
@@ -206,42 +206,6 @@ export function decodeResult(
       output[k] = FragnoReference.fromInternal(columnValues[k] as bigint);
     } else {
       output[k] = columnValues[k];
-    }
-  }
-
-  // Third pass: transform external-id columns in relations to FragnoId
-  for (const relationName in output) {
-    const relation = table.relations[relationName];
-    if (!relation) {
-      continue;
-    }
-
-    const relationData = output[relationName] as Record<string, unknown>;
-    const hiddenCols = relationHiddenColumns[relationName];
-
-    if (!hiddenCols) {
-      continue;
-    }
-
-    // Check each column in the relation data
-    for (const colName in relationData) {
-      const col = relation.table.columns[colName];
-      if (!col) {
-        continue;
-      }
-
-      // Transform external-id columns to FragnoId if we have _internalId and _version
-      if (
-        col.role === "external-id" &&
-        hiddenCols["_internalId"] !== undefined &&
-        hiddenCols["_version"] !== undefined
-      ) {
-        relationData[colName] = new FragnoId({
-          externalId: relationData[colName] as string,
-          internalId: hiddenCols["_internalId"] as bigint,
-          version: hiddenCols["_version"] as number,
-        });
-      }
     }
   }
 

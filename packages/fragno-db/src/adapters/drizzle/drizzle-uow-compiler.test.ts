@@ -1,13 +1,11 @@
-import { afterAll, assert, beforeAll, describe, expect, it } from "vitest";
+import { assert, beforeAll, describe, expect, it } from "vitest";
 import { column, FragnoId, idColumn, referenceColumn, schema } from "../../schema/create";
 import { createDrizzleUOWCompiler } from "./drizzle-uow-compiler";
 import type { DrizzleConfig } from "./drizzle-adapter";
-import { generateSchema } from "./generate";
-import { join } from "node:path";
-import { writeFile, rm, mkdir } from "node:fs/promises";
 import { drizzle } from "drizzle-orm/pglite";
 import type { DBType } from "./shared";
 import { UnitOfWork, type UOWDecoder } from "../../query/unit-of-work";
+import { writeAndLoadSchema } from "./test-utils";
 
 /**
  * Integration tests for Drizzle UOW compiler and executor.
@@ -42,24 +40,16 @@ describe("drizzle-uow-compiler", () => {
       });
   });
 
-  let schemaFilePath: string;
   let db: DBType;
   let config: DrizzleConfig;
-  const tmpDir = join(import.meta.dirname, "_generated");
 
   beforeAll(async () => {
-    // Create tmp directory
-    await mkdir(tmpDir, { recursive: true });
-
-    // Generate schema file path
-    schemaFilePath = join(tmpDir, `test-uow-schema-${Date.now()}.ts`);
-
-    // Generate and write the Drizzle schema to file (using PostgreSQL)
-    const drizzleSchemaTs = generateSchema(testSchema, "postgresql");
-    await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
-
-    // Dynamically import the generated schema
-    const schemaModule = await import(schemaFilePath);
+    // Write schema to file and dynamically import it
+    const { schemaModule, cleanup } = await writeAndLoadSchema(
+      "drizzle-uow-compiler",
+      testSchema,
+      "postgresql",
+    );
 
     // Create Drizzle instance with PGLite (in-memory Postgres)
     db = drizzle({
@@ -70,11 +60,10 @@ describe("drizzle-uow-compiler", () => {
       db,
       provider: "postgresql",
     };
-  });
 
-  afterAll(async () => {
-    // Clean up the temp directory
-    await rm(tmpDir, { recursive: true, force: true });
+    return async () => {
+      await cleanup();
+    };
   });
 
   function createTestUOW(name?: string) {
@@ -295,6 +284,63 @@ describe("drizzle-uow-compiler", () => {
         `"select "posts"."id", "posts"."title", "posts"."content", "posts"."userId", "posts"."viewCount", "posts"."_internalId", "posts"."_version", "posts_author"."data" as "author" from "posts" "posts" left join lateral (select json_build_array("posts_author"."id", "posts_author"."name", "posts_author"."email", "posts_author"."age", "posts_author"."_internalId", "posts_author"."_version") as "data" from (select * from "users" "posts_author" where "posts_author"."_internalId" = "posts"."userId" limit $1) "posts_author") "posts_author" on true where "posts"."title" like $2"`,
       );
       expect(compiled.retrievalBatch[0].params).toEqual([1, "%test%"]);
+    });
+
+    it("should compile find operation with join filtering", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.author((builder) =>
+            builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
+          );
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+      expect(sql).toMatchInlineSnapshot(
+        `"select "posts"."id", "posts"."title", "posts"."content", "posts"."userId", "posts"."viewCount", "posts"."_internalId", "posts"."_version", "posts_author"."data" as "author" from "posts" "posts" left join lateral (select json_build_array("posts_author"."name", "posts_author"."_internalId", "posts_author"."_version") as "data" from (select * from "users" "posts_author" where ("posts_author"."_internalId" = "posts"."userId" and "posts_author"."name" = $1) limit $2) "posts_author") "posts_author" on true"`,
+      );
+    });
+
+    it("should compile find operation with join ordering", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.author((builder) => builder.orderByIndex("idx_name", "desc"));
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+      expect(sql).toMatchInlineSnapshot(
+        `"select "posts"."id", "posts"."title", "posts"."content", "posts"."userId", "posts"."viewCount", "posts"."_internalId", "posts"."_version", "posts_author"."data" as "author" from "posts" "posts" left join lateral (select json_build_array("posts_author"."id", "posts_author"."name", "posts_author"."email", "posts_author"."age", "posts_author"."_internalId", "posts_author"."_version") as "data" from (select * from "users" "posts_author" where "posts_author"."_internalId" = "posts"."userId" order by "posts_author"."name" desc limit $1) "posts_author") "posts_author" on true"`,
+      );
+    });
+
+    it("should compile find operation with join pageSize", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.author((builder) => builder.pageSize(5));
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+      // Should have limit in the joined query
+      expect(sql).toMatchInlineSnapshot(
+        `"select "posts"."id", "posts"."title", "posts"."content", "posts"."userId", "posts"."viewCount", "posts"."_internalId", "posts"."_version", "posts_author"."data" as "author" from "posts" "posts" left join lateral (select json_build_array("posts_author"."id", "posts_author"."name", "posts_author"."email", "posts_author"."age", "posts_author"."_internalId", "posts_author"."_version") as "data" from (select * from "users" "posts_author" where "posts_author"."_internalId" = "posts"."userId" limit $1) "posts_author") "posts_author" on true"`,
+      );
     });
   });
 
@@ -682,6 +728,196 @@ describe("drizzle-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(0);
       expect(compiled.mutationBatch).toHaveLength(1);
+    });
+  });
+
+  describe("nested joins", () => {
+    // Create a schema that supports nested joins
+    const nestedSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("email", column("string"))
+            .createIndex("idx_name", ["name"]);
+        })
+        .addTable("posts", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("title", column("string"))
+            .addColumn("userId", referenceColumn())
+            .createIndex("idx_user", ["userId"]);
+        })
+        .addTable("comments", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("text", column("string"))
+            .addColumn("postId", referenceColumn())
+            .createIndex("idx_post", ["postId"]);
+        })
+        .addReference("posts", "author", {
+          columns: ["userId"],
+          targetTable: "users",
+          targetColumns: ["id"],
+        })
+        .addReference("comments", "post", {
+          columns: ["postId"],
+          targetTable: "posts",
+          targetColumns: ["id"],
+        });
+    });
+
+    let nestedDb: DBType;
+    let nestedConfig: DrizzleConfig;
+
+    beforeAll(async () => {
+      // Write schema to file and dynamically import it
+      const { schemaModule, cleanup } = await writeAndLoadSchema(
+        "drizzle-uow-compiler-nested",
+        nestedSchema,
+        "postgresql",
+      );
+
+      // Create Drizzle instance with PGLite (in-memory Postgres)
+      nestedDb = drizzle({
+        schema: schemaModule,
+      }) as unknown as DBType;
+
+      nestedConfig = {
+        db: nestedDb,
+        provider: "postgresql",
+      };
+
+      return async () => {
+        await cleanup();
+      };
+    });
+
+    function createNestedUOW(name?: string) {
+      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
+      const mockExecutor = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({ success: true }),
+      };
+      const mockDecoder: UOWDecoder<typeof nestedSchema> = (rawResults, operations) => {
+        if (rawResults.length !== operations.length) {
+          throw new Error("rawResults and ops must have the same length");
+        }
+        return rawResults;
+      };
+      return new UnitOfWork(nestedSchema, compiler, mockExecutor, mockDecoder, name);
+    }
+
+    it("should compile nested joins (comments -> post -> author)", () => {
+      const uow = createNestedUOW();
+      uow.find("comments", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.post((postBuilder) =>
+            postBuilder.select(["title"]).join((jb2) => {
+              jb2.author((authorBuilder) => authorBuilder.select(["name"]));
+            }),
+          );
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+
+      // Should contain nested lateral joins
+      expect(sql).toContain("left join lateral");
+      // Should join comments -> post
+      expect(sql).toContain('"comments_post"');
+      // Should join post -> author within the first join
+      expect(sql).toContain('"comments_post_author"');
+      // Should have the nested structure with proper lateral joins
+      expect(sql).toMatchInlineSnapshot(
+        `"select "comments"."id", "comments"."text", "comments"."postId", "comments"."_internalId", "comments"."_version", "comments_post"."data" as "post" from "comments" "comments" left join lateral (select json_build_array("comments_post"."title", "comments_post"."_internalId", "comments_post"."_version", "comments_post_author"."data") as "data" from (select * from "posts" "comments_post" where "comments_post"."_internalId" = "comments"."postId" limit $1) "comments_post" left join lateral (select json_build_array("comments_post_author"."name", "comments_post_author"."_internalId", "comments_post_author"."_version") as "data" from (select * from "users" "comments_post_author" where "comments_post_author"."_internalId" = "comments_post"."userId" limit $2) "comments_post_author") "comments_post_author" on true) "comments_post" on true"`,
+      );
+    });
+
+    it("should compile nested joins with filtering at each level", () => {
+      const uow = createNestedUOW();
+      uow.find("comments", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.post((postBuilder) =>
+            postBuilder.select(["title"]).join((jb2) => {
+              jb2.author((authorBuilder) =>
+                authorBuilder
+                  .whereIndex("idx_name", (eb) => eb("name", "=", "Alice"))
+                  .select(["name"]),
+              );
+            }),
+          );
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+
+      // Should have WHERE clause in the nested author join
+      expect(sql).toContain('"comments_post_author"."name" = $');
+      expect(sql).toMatchInlineSnapshot(
+        `"select "comments"."id", "comments"."text", "comments"."postId", "comments"."_internalId", "comments"."_version", "comments_post"."data" as "post" from "comments" "comments" left join lateral (select json_build_array("comments_post"."title", "comments_post"."_internalId", "comments_post"."_version", "comments_post_author"."data") as "data" from (select * from "posts" "comments_post" where "comments_post"."_internalId" = "comments"."postId" limit $1) "comments_post" left join lateral (select json_build_array("comments_post_author"."name", "comments_post_author"."_internalId", "comments_post_author"."_version") as "data" from (select * from "users" "comments_post_author" where ("comments_post_author"."_internalId" = "comments_post"."userId" and "comments_post_author"."name" = $2) limit $3) "comments_post_author") "comments_post_author" on true) "comments_post" on true"`,
+      );
+    });
+
+    it("should compile nested joins with ordering and limits at each level", () => {
+      const uow = createNestedUOW();
+      uow.find("comments", (b) =>
+        b
+          .whereIndex("primary")
+          .pageSize(10)
+          .join((jb) => {
+            jb.post((postBuilder) =>
+              postBuilder
+                .select(["title"])
+                .pageSize(1)
+                .join((jb2) => {
+                  jb2.author((authorBuilder) =>
+                    authorBuilder.orderByIndex("idx_name", "asc").pageSize(1),
+                  );
+                }),
+            );
+          }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+
+      // Should have limits at all levels and ordering in nested author join
+      expect(sql).toContain('order by "comments_post_author"."name" asc');
+      expect(sql).toMatchInlineSnapshot(
+        `"select "comments"."id", "comments"."text", "comments"."postId", "comments"."_internalId", "comments"."_version", "comments_post"."data" as "post" from "comments" "comments" left join lateral (select json_build_array("comments_post"."title", "comments_post"."_internalId", "comments_post"."_version", "comments_post_author"."data") as "data" from (select * from "posts" "comments_post" where "comments_post"."_internalId" = "comments"."postId" limit $1) "comments_post" left join lateral (select json_build_array("comments_post_author"."id", "comments_post_author"."name", "comments_post_author"."email", "comments_post_author"."_internalId", "comments_post_author"."_version") as "data" from (select * from "users" "comments_post_author" where "comments_post_author"."_internalId" = "comments_post"."userId" order by "comments_post_author"."name" asc limit $2) "comments_post_author") "comments_post_author" on true) "comments_post" on true limit $3"`,
+      );
+    });
+
+    it("should compile multiple nested joins from same table", () => {
+      const uow = createNestedUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          // Join to author with nested structure
+          jb.author((authorBuilder) => authorBuilder.select(["name", "email"]));
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const sql = compiled.retrievalBatch[0].sql;
+      expect(sql).toMatchInlineSnapshot(
+        `"select "posts"."id", "posts"."title", "posts"."userId", "posts"."_internalId", "posts"."_version", "posts_author"."data" as "author" from "posts" "posts" left join lateral (select json_build_array("posts_author"."name", "posts_author"."email", "posts_author"."_internalId", "posts_author"."_version") as "data" from (select * from "users" "posts_author" where "posts_author"."_internalId" = "posts"."userId" limit $1) "posts_author") "posts_author" on true"`,
+      );
     });
   });
 });

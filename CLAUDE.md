@@ -29,6 +29,7 @@ as a monorepo manager.
 
 ## Tools
 
+- Bun
 - Turbo(repo) for monorepo management
 - TSDown for building packages
 - Vitest

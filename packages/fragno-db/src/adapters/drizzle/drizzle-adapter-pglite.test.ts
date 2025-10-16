@@ -1,16 +1,12 @@
 import { drizzle } from "drizzle-orm/pglite";
 import { DrizzleAdapter } from "./drizzle-adapter";
-import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { join } from "path";
-import { writeFile } from "fs/promises";
-import { mkdir } from "fs/promises";
-import { generateSchema } from "./generate";
 import type { DBType } from "./shared";
-import { rm } from "fs/promises";
 import { createRequire } from "node:module";
 import { encodeCursor } from "../../query/cursor";
 import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
+import { writeAndLoadSchema } from "./test-utils";
 
 // Import drizzle-kit for migrations
 const require = createRequire(import.meta.url);
@@ -36,30 +32,55 @@ describe("DrizzleAdapter PGLite", () => {
           .createIndex("unique_email", ["email"], { unique: true })
           .createIndex("user_emails", ["user_id"]);
       })
+      .addTable("posts", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("user_id", referenceColumn())
+          .addColumn("title", column("string"))
+          .addColumn("content", column("string"))
+          .createIndex("posts_user_idx", ["user_id"]);
+      })
+      .addTable("comments", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("post_id", referenceColumn())
+          .addColumn("user_id", referenceColumn())
+          .addColumn("text", column("string"))
+          .createIndex("comments_post_idx", ["post_id"])
+          .createIndex("comments_user_idx", ["user_id"]);
+      })
       .addReference("emails", "user", {
+        columns: ["user_id"],
+        targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("posts", "author", {
+        columns: ["user_id"],
+        targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("comments", "post", {
+        columns: ["post_id"],
+        targetTable: "posts",
+        targetColumns: ["id"],
+      })
+      .addReference("comments", "commenter", {
         columns: ["user_id"],
         targetTable: "users",
         targetColumns: ["id"],
       });
   });
 
-  const tmpDir = join(import.meta.dirname, "_generated");
   let adapter: DrizzleAdapter;
-  let schemaFilePath: string;
   let db: DBType;
 
   beforeAll(async () => {
-    await mkdir(tmpDir, { recursive: true });
-
-    // Generate schema file path
-    schemaFilePath = join(tmpDir, `test-uow-schema-${Date.now()}.ts`);
-
-    // Generate and write the Drizzle schema to file (using PostgreSQL)
-    const drizzleSchemaTs = generateSchema(testSchema, "postgresql");
-    await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
-
-    // Dynamically import the generated schema
-    const schemaModule = await import(schemaFilePath);
+    // Write schema to file and dynamically import it
+    const { schemaModule, cleanup } = await writeAndLoadSchema(
+      "drizzle-adapter-pglite",
+      testSchema,
+      "postgresql",
+    );
 
     // Create Drizzle instance with PGLite (in-memory Postgres)
     db = drizzle({
@@ -81,12 +102,11 @@ describe("DrizzleAdapter PGLite", () => {
       db,
       provider: "postgresql",
     });
-  }, 12000);
 
-  afterAll(async () => {
-    // Clean up the temp directory
-    await rm(tmpDir, { recursive: true, force: true });
-  });
+    return async () => {
+      await cleanup();
+    };
+  }, 12000);
 
   it("should execute Unit of Work with version checking", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
@@ -270,9 +290,7 @@ describe("DrizzleAdapter PGLite", () => {
       .createUnitOfWork("test-joins", { onQuery: (query) => queries.push(query) })
       .find("emails", (b) =>
         b.whereIndex("user_emails").join((jb) => {
-          jb.user({
-            select: ["name", "age", "id"],
-          });
+          jb.user((builder) => builder.select(["name", "id", "age"]));
         }),
       );
 
@@ -280,7 +298,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "emails"."id", "emails"."user_id", "emails"."email", "emails"."is_primary", "emails"."_internalId", "emails"."_version", "emails_user"."data" as "user" from "emails" "emails" left join lateral (select json_build_array("emails_user"."name", "emails_user"."age", "emails_user"."id", "emails_user"."_internalId", "emails_user"."_version") as "data" from (select * from "users" "emails_user" where "emails_user"."_internalId" = "emails"."user_id" limit $1) "emails_user") "emails_user" on true"`,
+      `"select "emails"."id", "emails"."user_id", "emails"."email", "emails"."is_primary", "emails"."_internalId", "emails"."_version", "emails_user"."data" as "user" from "emails" "emails" left join lateral (select json_build_array("emails_user"."name", "emails_user"."id", "emails_user"."age", "emails_user"."_internalId", "emails_user"."_version") as "data" from (select * from "users" "emails_user" where "emails_user"."_internalId" = "emails"."user_id" limit $1) "emails_user") "emails_user" on true"`,
     );
 
     expect(email).toMatchObject({
@@ -302,5 +320,115 @@ describe("DrizzleAdapter PGLite", () => {
         age: existingUser.age,
       },
     });
+  });
+
+  it("should support complex nested joins (comments -> post -> author)", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    const queries: DrizzleCompiledQuery[] = [];
+
+    // Create a user (author)
+    const createAuthorUow = queryEngine
+      .createUnitOfWork("create-author")
+      .create("users", { name: "Blog Author", age: 30 });
+    await createAuthorUow.executeMutations();
+
+    // Get the author
+    const [[author]] = await queryEngine
+      .createUnitOfWork("get-author")
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Blog Author")))
+      .executeRetrieve();
+
+    // Create a post by the author
+    const createPostUow = queryEngine.createUnitOfWork("create-post").create("posts", {
+      user_id: author.id,
+      title: "My First Post",
+      content: "This is the content of my first post",
+    });
+    await createPostUow.executeMutations();
+
+    // Get the post
+    const [[post]] = await queryEngine
+      .createUnitOfWork("get-post")
+      .find("posts", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+
+    // Create a commenter
+    const createCommenterUow = queryEngine
+      .createUnitOfWork("create-commenter")
+      .create("users", { name: "Commenter User", age: 25 });
+    await createCommenterUow.executeMutations();
+
+    // Get the commenter
+    const [[commenter]] = await queryEngine
+      .createUnitOfWork("get-commenter")
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Commenter User")))
+      .executeRetrieve();
+
+    // Create a comment on the post
+    const createCommentUow = queryEngine.createUnitOfWork("create-comment").create("comments", {
+      post_id: post.id,
+      user_id: commenter.id,
+      text: "Great post!",
+    });
+    await createCommentUow.executeMutations();
+
+    // Now perform a complex nested join: comments -> post -> author, and comments -> commenter
+    const uow = queryEngine
+      .createUnitOfWork("test-complex-joins", { onQuery: (query) => queries.push(query) })
+      .find("comments", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.post((postBuilder) =>
+            postBuilder
+              .select(["id", "title", "content"])
+              .orderByIndex("primary", "desc")
+              .pageSize(1)
+              .join((jb2) => {
+                // Nested join to the post's author
+                jb2.author((authorBuilder) =>
+                  authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
+                );
+              }),
+          ).commenter((commenterBuilder) => commenterBuilder.select(["id", "name"]));
+        }),
+      );
+
+    const [[comment]] = await uow.executeRetrieve();
+
+    // Verify the result structure with nested joins
+    expect(comment).toMatchObject({
+      id: expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(Number),
+      }),
+      text: "Great post!",
+      // Post join (first level)
+      post: {
+        id: expect.objectContaining({
+          externalId: post.id.externalId,
+        }),
+        title: "My First Post",
+        content: "This is the content of my first post",
+        // Nested author join (second level) - now decoded!
+        author: {
+          id: expect.objectContaining({
+            externalId: author.id.externalId,
+          }),
+          name: "Blog Author",
+          age: 30,
+        },
+      },
+      // Commenter join (first level)
+      commenter: {
+        id: expect.objectContaining({
+          externalId: commenter.id.externalId,
+        }),
+        name: "Commenter User",
+      },
+    });
+
+    const [query] = queries;
+    expect(query.sql).toMatchInlineSnapshot(
+      `"select "comments"."id", "comments"."post_id", "comments"."user_id", "comments"."text", "comments"."_internalId", "comments"."_version", "comments_post"."data" as "post", "comments_commenter"."data" as "commenter" from "comments" "comments" left join lateral (select json_build_array("comments_post"."id", "comments_post"."title", "comments_post"."content", "comments_post"."_internalId", "comments_post"."_version", "comments_post_author"."data") as "data" from (select * from "posts" "comments_post" where "comments_post"."_internalId" = "comments"."post_id" order by "comments_post"."id" desc limit $1) "comments_post" left join lateral (select json_build_array("comments_post_author"."id", "comments_post_author"."name", "comments_post_author"."age", "comments_post_author"."_internalId", "comments_post_author"."_version") as "data" from (select * from "users" "comments_post_author" where "comments_post_author"."_internalId" = "comments_post"."user_id" order by "comments_post_author"."name" asc limit $2) "comments_post_author") "comments_post_author" on true) "comments_post" on true left join lateral (select json_build_array("comments_commenter"."id", "comments_commenter"."name", "comments_commenter"."_internalId", "comments_commenter"."_version") as "data" from (select * from "users" "comments_commenter" where "comments_commenter"."_internalId" = "comments"."user_id" limit $3) "comments_commenter") "comments_commenter" on true"`,
+    );
   });
 });
