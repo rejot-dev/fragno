@@ -707,6 +707,7 @@ describe("decodeResult", () => {
           title: "My Post",
           "author:id": "user123",
           "author:_internalId": 456,
+          "author:_version": 0,
           "author:name": "Alice",
         },
         postsTable,
@@ -715,10 +716,11 @@ describe("decodeResult", () => {
 
       expect(result["id"]).toBe("post1");
       expect(result["title"]).toBe("My Post");
-      // Note: Relations may not create FragnoId objects if the relation table doesn't have both IDs
-      // This test verifies the relation data is decoded correctly regardless
+      // Relations now correctly create FragnoId objects when both IDs are present (thanks to recursive decoding)
       const author: Record<string, unknown> = result["author"] as Record<string, unknown>;
-      expect(author["id"]).toBe("user123");
+      assert(author["id"] instanceof FragnoId);
+      expect(author["id"].externalId).toBe("user123");
+      expect(author["id"].internalId).toBe(456);
       expect(author["name"]).toBe("Alice");
     });
 

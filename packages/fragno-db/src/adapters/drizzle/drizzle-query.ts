@@ -49,7 +49,7 @@ export function fromDrizzle<T extends AnySchema>(
   schema: T,
   config: DrizzleConfig,
 ): AbstractQuery<T, DrizzleUOWConfig> {
-  const [db, drizzleTables] = parseDrizzle(config.db);
+  const [db] = parseDrizzle(config.db);
   const { provider } = config;
 
   return {
@@ -93,7 +93,7 @@ export function fromDrizzle<T extends AnySchema>(
       };
 
       // Create a decoder function to transform raw results into application format
-      const decoder = createDrizzleUOWDecoder(schema, drizzleTables, provider);
+      const decoder = createDrizzleUOWDecoder(schema, provider);
 
       return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
     },

@@ -1,9 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { generateSchema } from "./generate";
-import { join } from "node:path";
-import { writeFile, rm, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { writeAndLoadSchema } from "./test-utils";
 
 // I dunno
 const require = createRequire(import.meta.url);
@@ -116,28 +114,20 @@ describe("generateSchema and migrate", () => {
   });
 
   let schemaFilePath: string;
-  const tmpDir = join(import.meta.dirname, "_generated");
 
   beforeAll(async () => {
-    // Create tmp directory in current package
-    await mkdir(tmpDir, { recursive: true });
+    // Write schema to file and dynamically import it
+    const result = await writeAndLoadSchema("migrate-drizzle", testSchema, "postgresql");
+    schemaFilePath = result.schemaFilePath;
 
-    // Generate schema file path in tmp directory
-    schemaFilePath = join(tmpDir, `test-schema-${Date.now()}.ts`);
-
-    // Generate and write the schema to file
-    const drizzleSchemaTs = generateSchema(testSchema, "postgresql");
-    await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
-  });
-
-  afterAll(async () => {
-    // Clean up the temp directory
-    await rm(tmpDir, { recursive: true, force: true });
+    return async () => {
+      await result.cleanup();
+    };
   });
 
   it("should run migration using drizzle-kit", async () => {
-    // Dynamically import the generated schema
-    const schemaModule = await import(schemaFilePath);
+    // Dynamically import the generated schema (with cache busting)
+    const schemaModule = await import(`${schemaFilePath}?t=${Date.now()}`);
 
     const migrationStatements = await generateMigration(
       generateDrizzleJson({}), // Empty schema

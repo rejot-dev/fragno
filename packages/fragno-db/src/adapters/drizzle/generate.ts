@@ -25,7 +25,7 @@ const PROVIDER_TABLE_FUNCTIONS = {
   sqlite: "sqliteTable",
 } as const;
 
-type SupportedProvider = Exclude<SQLProvider, "cockroachdb" | "mssql">;
+export type SupportedProvider = Exclude<SQLProvider, "cockroachdb" | "mssql">;
 
 // ============================================================================
 // CONTEXT
