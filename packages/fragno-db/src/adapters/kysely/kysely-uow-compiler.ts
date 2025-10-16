@@ -8,8 +8,10 @@ import type {
 } from "../../query/unit-of-work";
 import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
+import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
+import type { AnySelectClause } from "../../query/query";
 
 /**
  * Create a Kysely-specific Unit of Work compiler
@@ -26,6 +28,7 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   config: KyselyConfig,
 ): UOWCompiler<TSchema, CompiledQuery> {
   const queryCompiler = createKyselyQueryCompiler(schema, config);
+  const queryBuilder = createKyselyQueryBuilder(config.db, config.provider);
   const { provider } = config;
 
   function toTable(name: unknown) {
@@ -82,9 +85,9 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
           }
 
           // Convert orderByIndex to orderBy format
-          let orderBy: [string, "asc" | "desc"][] | undefined;
+          let orderBy: [AnyColumn, "asc" | "desc"][] | undefined;
           if (indexColumns.length > 0) {
-            orderBy = indexColumns.map((col) => [col.ormName, orderDirection]);
+            orderBy = indexColumns.map((col) => [col, orderDirection]);
           }
 
           // Handle cursor pagination - build a cursor condition
@@ -122,27 +125,45 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
           }
 
           // Combine user where clause with cursor condition
-          let combinedWhere = findManyOptions.where;
-          if (cursorCondition) {
-            const cursorCond = cursorCondition;
-            if (combinedWhere) {
-              const userWhere = combinedWhere;
-              combinedWhere = (eb) =>
-                eb.and(buildCondition(op.table.columns, userWhere), cursorCond);
+          let combinedWhere: Condition | undefined;
+          if (findManyOptions.where) {
+            const whereResult = buildCondition(op.table.columns, findManyOptions.where);
+            if (whereResult === true) {
+              combinedWhere = undefined;
+            } else if (whereResult === false) {
+              return null;
             } else {
-              combinedWhere = () => cursorCond;
+              combinedWhere = whereResult;
             }
           }
 
-          // Handle joins (currently not fully supported in UOW)
+          if (cursorCondition) {
+            if (combinedWhere) {
+              combinedWhere = {
+                type: "and",
+                items: [combinedWhere, cursorCondition],
+              };
+            } else {
+              combinedWhere = cursorCondition;
+            }
+          }
+
+          // When we have joins or need to bypass buildFindOptions, use queryBuilder directly
           if (join && join.length > 0) {
-            throw new Error("Joins are not yet supported in Kysely Unit of Work implementation");
+            return queryBuilder.findMany(op.table, {
+              // Safe cast: select from UOW matches SimplifyFindOptions requirement
+              select: (findManyOptions.select ?? true) as AnySelectClause,
+              where: combinedWhere,
+              orderBy,
+              limit: pageSize,
+              join,
+            });
           }
 
           return queryCompiler.findMany(op.table.name, {
             ...findManyOptions,
-            where: combinedWhere,
-            orderBy,
+            where: combinedWhere ? () => combinedWhere! : undefined,
+            orderBy: orderBy?.map(([col, dir]) => [col.ormName, dir]),
             limit: pageSize,
           });
         }

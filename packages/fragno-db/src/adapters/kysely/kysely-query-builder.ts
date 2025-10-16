@@ -460,48 +460,70 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       const selectBuilder = extendSelect(v.select);
       const mappedSelect: string[] = [];
 
-      for (const join of v.join ?? []) {
-        const { options: joinOptions, relation } = join;
+      // Helper function to process joins recursively
+      const processJoins = (
+        joins: CompiledJoin[],
+        parentTable: AnyTable,
+        parentTableName: string,
+        relationPrefix: string = "",
+      ) => {
+        for (const join of joins) {
+          const { options: joinOptions, relation } = join;
 
-        if (joinOptions === false) {
-          continue;
+          if (joinOptions === false) {
+            continue;
+          }
+
+          const targetTable = relation.table;
+          const joinName = relationPrefix ? `${relationPrefix}_${relation.name}` : relation.name;
+          const fullRelationName = relationPrefix
+            ? `${relationPrefix}:${relation.name}`
+            : relation.name;
+
+          // update select
+          mappedSelect.push(
+            ...mapSelect(joinOptions.select, targetTable, {
+              relation: fullRelationName,
+              tableName: joinName,
+            }),
+          );
+
+          query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
+            b.on((eb) => {
+              const conditions = [];
+              for (const [left, right] of relation.on) {
+                // Foreign keys always use internal IDs
+                // If the relation references an external ID column (any name), translate to "_internalId"
+                const rightCol = targetTable.columns[right];
+                const actualRight = rightCol?.role === "external-id" ? "_internalId" : right;
+
+                conditions.push(
+                  eb(
+                    `${parentTableName}.${parentTable.columns[left].name}`,
+                    "=",
+                    eb.ref(`${joinName}.${targetTable.columns[actualRight].name}`),
+                  ),
+                );
+              }
+
+              if (joinOptions.where) {
+                conditions.push(buildWhere(joinOptions.where, eb, provider));
+              }
+
+              return eb.and(conditions);
+            }),
+          );
+
+          // Process nested joins recursively
+          if (joinOptions.join && joinOptions.join.length > 0) {
+            processJoins(joinOptions.join, targetTable, joinName, fullRelationName);
+          }
         }
+      };
 
-        const targetTable = relation.table;
-        const joinName = relation.name;
-        // update select
-        mappedSelect.push(
-          ...mapSelect(joinOptions.select, targetTable, {
-            relation: relation.name,
-            tableName: joinName,
-          }),
-        );
-
-        query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
-          b.on((eb) => {
-            const conditions = [];
-            for (const [left, right] of relation.on) {
-              // Foreign keys always use internal IDs
-              // If the relation references an external ID column (any name), translate to "_internalId"
-              const rightCol = targetTable.columns[right];
-              const actualRight = rightCol?.role === "external-id" ? "_internalId" : right;
-
-              conditions.push(
-                eb(
-                  `${table.name}.${table.columns[left].name}`,
-                  "=",
-                  eb.ref(`${joinName}.${targetTable.columns[actualRight].name}`),
-                ),
-              );
-            }
-
-            if (joinOptions.where) {
-              conditions.push(buildWhere(joinOptions.where, eb, provider));
-            }
-
-            return eb.and(conditions);
-          }),
-        );
+      // Process top-level joins
+      if (v.join) {
+        processJoins(v.join, table, table.name);
       }
 
       const compiledSelect = selectBuilder.compile();
