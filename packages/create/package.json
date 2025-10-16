@@ -21,7 +21,7 @@
   },
   "type": "module",
   "dependencies": {
-    "zod": "^4.0.5"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
