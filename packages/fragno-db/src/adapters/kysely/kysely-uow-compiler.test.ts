@@ -14,6 +14,7 @@ describe("kysely-uow-compiler", () => {
           .addColumn("name", column("string"))
           .addColumn("email", column("string"))
           .addColumn("age", column("integer").nullable())
+          .addColumn("invitedBy", referenceColumn().nullable())
           .createIndex("idx_email", ["email"], { unique: true })
           .createIndex("idx_name", ["name"])
           .createIndex("idx_age", ["age"]);
@@ -28,9 +29,57 @@ describe("kysely-uow-compiler", () => {
           .createIndex("idx_user", ["userId"])
           .createIndex("idx_title", ["title"]);
       })
+      .addTable("comments", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("content", column("string"))
+          .addColumn("postId", referenceColumn())
+          .addColumn("authorId", referenceColumn())
+          .createIndex("idx_post", ["postId"])
+          .createIndex("idx_author", ["authorId"]);
+      })
+      .addTable("tags", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .createIndex("idx_name", ["name"]);
+      })
+      .addTable("post_tags", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("postId", referenceColumn())
+          .addColumn("tagId", referenceColumn())
+          .createIndex("idx_post", ["postId"])
+          .createIndex("idx_tag", ["tagId"]);
+      })
       .addReference("posts", "author", {
         columns: ["userId"],
         targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("users", "inviter", {
+        columns: ["invitedBy"],
+        targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("comments", "post", {
+        columns: ["postId"],
+        targetTable: "posts",
+        targetColumns: ["id"],
+      })
+      .addReference("comments", "author", {
+        columns: ["authorId"],
+        targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("post_tags", "post", {
+        columns: ["postId"],
+        targetTable: "posts",
+        targetColumns: ["id"],
+      })
+      .addReference("post_tags", "tag", {
+        columns: ["tagId"],
+        targetTable: "tags",
         targetColumns: ["id"],
       });
   });
@@ -91,7 +140,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."email" = $1"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."email" = $1"`,
       );
       expect(compiled.retrievalBatch[0].parameters).toEqual(["test@example.com"]);
     });
@@ -121,7 +170,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit $1"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit $1"`,
       );
       expect(compiled.retrievalBatch[0].parameters).toEqual([10]);
     });
@@ -135,7 +184,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."id" desc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."id" desc"`,
       );
     });
 
@@ -148,7 +197,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" desc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" desc"`,
       );
     });
 
@@ -164,7 +213,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(2);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."email" = $1"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."email" = $1"`,
       );
       expect(compiled.retrievalBatch[1].sql).toMatchInlineSnapshot(
         `"select "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" where "posts"."title" like $1"`,
@@ -213,7 +262,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > $1 order by "users"."name" asc limit $2"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > $1 order by "users"."name" asc limit $2"`,
       );
       expect(compiled.retrievalBatch[0].parameters).toEqual(["Alice", 10]);
     });
@@ -230,7 +279,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > $1 order by "users"."name" desc limit $2"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > $1 order by "users"."name" desc limit $2"`,
       );
       expect(compiled.retrievalBatch[0].parameters).toEqual(["Bob", 10]);
     });
@@ -251,7 +300,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" like $1 and "users"."name" > $2) order by "users"."name" asc limit $3"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" like $1 and "users"."name" > $2) order by "users"."name" asc limit $3"`,
       );
       expect(compiled.retrievalBatch[0].parameters).toEqual(["John%", "Alice", 5]);
     });
@@ -272,7 +321,7 @@ describe("kysely-uow-compiler", () => {
       assert(batch);
       expect(batch.expectedAffectedRows).toBeNull();
       expect(batch.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "age", "_version") values ($1, $2, $3, $4, $5) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email", "age", "_version") values ($1, $2, $3, $4, $5) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
       );
       // Parameters include auto-generated ID (first param), then the provided values, then version
       expect(batch.query.parameters).toMatchObject([
@@ -425,7 +474,7 @@ describe("kysely-uow-compiler", () => {
 
       assert(createBatch);
       expect(createBatch.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
       );
       expect(createBatch.query.parameters).toMatchObject([
         expect.any(String),
@@ -465,7 +514,7 @@ describe("kysely-uow-compiler", () => {
       expect(compiled.mutationBatch).toHaveLength(1);
 
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."id" = $1"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."id" = $1"`,
       );
 
       // Update should include version check in WHERE clause
@@ -494,7 +543,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."email" like $1 and ("users"."name" = $2 or "users"."name" = $3))"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."email" like $1 and ("users"."name" = $2 or "users"."name" = $3))"`,
       );
       expect(compiled.retrievalBatch[0].parameters).toEqual(["%@example.com%", "Alice", "Bob"]);
     });
@@ -519,7 +568,7 @@ describe("kysely-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(1);
       expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users""`,
       );
     });
   });
@@ -603,6 +652,221 @@ describe("kysely-uow-compiler", () => {
       // Should be normal update without version check
       expect(batch.query.sql).toMatchInlineSnapshot(
         `"update "users" set "age" = $1, "_version" = COALESCE(_version, 0) + 1 where "users"."id" = $2"`,
+      );
+    });
+  });
+
+  describe("join operations", () => {
+    it("should compile find operation with basic join", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => jb.author((ab) => ab.select(["name", "email"]))),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toContain("left join");
+      expect(query.sql).toContain('"users" as "author"');
+      expect(query.sql).toContain('"author"."name"');
+      expect(query.sql).toContain('"author"."email"');
+    });
+
+    it("should compile join with whereIndex filtering", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb.author((ab) =>
+              ab.select(["name"]).whereIndex("idx_name", (eb) => eb("name", "=", "Alice")),
+            ),
+          ),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toContain("left join");
+      expect(query.sql).toContain('"users"."name" = $1');
+      expect(query.parameters).toContain("Alice");
+    });
+
+    it("should compile join with orderByIndex", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) => jb.author((ab) => ab.select(["name"]).orderByIndex("idx_name", "desc"))),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toContain("left join");
+      expect(query.sql).toContain('"users" as "author"');
+    });
+
+    it("should compile join with pageSize", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => jb.author((ab) => ab.select(["name"]).pageSize(5))),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toContain("left join");
+    });
+
+    it("should compile nested joins", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b.whereIndex("primary").join((jb) =>
+          jb.author((ab) =>
+            // FIXME: inviter should be strongly typed
+            ab.select(["name"]).join((jb2) => jb2["inviter"]((ib) => ib.select(["name"]))),
+          ),
+        ),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author_inviter"."name" as "author:inviter:name", "author_inviter"."_internalId" as "author:inviter:_internalId", "author_inviter"."_version" as "author:inviter:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId" left join "users" as "author_inviter" on "author"."invitedBy" = "author_inviter"."_internalId""`,
+      );
+    });
+
+    it("should compile multiple joins", () => {
+      const uow = createTestUOW();
+      uow.find("comments", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.post((pb) => pb.select(["title"]));
+          jb.author((ab) => ab.select(["name"]));
+        }),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toContain('"posts" as "post"');
+      expect(query.sql).toContain('"users" as "author"');
+      expect(query.sql).toContain('"post"."title"');
+      expect(query.sql).toContain('"author"."name"');
+    });
+
+    it("should compile self-referencing join", () => {
+      const uow = createTestUOW();
+      uow.find("users", (b) =>
+        b.whereIndex("primary").join((jb) => jb.inviter((ib) => ib.select(["name", "email"]))),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toContain('"users" as "inviter"');
+      expect(query.sql).toContain('"inviter"."name"');
+      expect(query.sql).toContain('"inviter"."email"');
+    });
+
+    it("should compile join with all builder features combined", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("idx_title", (eb) => eb("title", "contains", "test"))
+          .select(["id", "title"])
+          .orderByIndex("idx_title", "asc")
+          .pageSize(10)
+          .join((jb) =>
+            jb.author((ab) =>
+              ab
+                .select(["name", "email"])
+                .whereIndex("idx_name", (eb) => eb("name", "starts with", "A"))
+                .orderByIndex("idx_name", "desc")
+                .pageSize(5),
+            ),
+          ),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      // Main query features
+      expect(query.sql).toContain('"posts"."title" like');
+      expect(query.sql).toContain("order by");
+      expect(query.sql).toContain("limit");
+      // Join features
+      expect(query.sql).toContain('"users" as "author"');
+      expect(query.sql).toContain('"users"."name" like');
+    });
+
+    it("should compile many-to-many join through junction table", () => {
+      const uow = createTestUOW();
+      uow.find("post_tags", (b) =>
+        b.whereIndex("primary").join((jb) => {
+          jb.post((pb) => pb.select(["title"]));
+          jb.tag((tb) => tb.select(["name"]));
+        }),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "tag"."name" as "tag:name", "tag"."_internalId" as "tag:_internalId", "tag"."_version" as "tag:_version", "post_tags"."id" as "id", "post_tags"."postId" as "postId", "post_tags"."tagId" as "tagId", "post_tags"."_internalId" as "_internalId", "post_tags"."_version" as "_version" from "post_tags" left join "posts" as "post" on "post_tags"."postId" = "post"."_internalId" left join "tags" as "tag" on "post_tags"."tagId" = "tag"."_internalId""`,
+      );
+    });
+
+    it("should compile nested many-to-many join (post_tags -> post -> author)", () => {
+      const uow = createTestUOW();
+      uow.find("post_tags", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb.post((pb) =>
+              pb
+                .select(["title"])
+                .join((jb2) => jb2["author"]((ab) => ab.select(["name", "email"]))),
+            ),
+          ),
+      );
+
+      const compiler = createKyselyUOWCompiler(testSchema, config);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
+      assert(query);
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."name" as "post:author:name", "post_author"."email" as "post:author:email", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "post_tags"."id" as "id", "post_tags"."postId" as "postId", "post_tags"."tagId" as "tagId", "post_tags"."_internalId" as "_internalId", "post_tags"."_version" as "_version" from "post_tags" left join "posts" as "post" on "post_tags"."postId" = "post"."_internalId" left join "users" as "post_author" on "post"."userId" = "post_author"."_internalId""`,
       );
     });
   });

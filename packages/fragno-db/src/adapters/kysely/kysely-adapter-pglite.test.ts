@@ -1,3 +1,5 @@
+// FIXME: There should be no `any` in this file, but we need to fix join types.
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
 import { assert, beforeAll, describe, expect, it } from "vitest";
@@ -25,14 +27,69 @@ describe("KyselyAdapter PGLite", () => {
           .createIndex("unique_email", ["email"], { unique: true })
           .createIndex("user_emails", ["user_id"]);
       })
+      .addTable("posts", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("user_id", referenceColumn())
+          .addColumn("title", column("string"))
+          .addColumn("content", column("string"))
+          .createIndex("posts_user_idx", ["user_id"]);
+      })
+      .addTable("tags", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .createIndex("tag_name", ["name"]);
+      })
+      .addTable("post_tags", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("post_id", referenceColumn())
+          .addColumn("tag_id", referenceColumn())
+          .createIndex("pt_post", ["post_id"])
+          .createIndex("pt_tag", ["tag_id"]);
+      })
+      .addTable("comments", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("post_id", referenceColumn())
+          .addColumn("user_id", referenceColumn())
+          .addColumn("text", column("string"))
+          .createIndex("comments_post_idx", ["post_id"])
+          .createIndex("comments_user_idx", ["user_id"]);
+      })
       .addReference("emails", "user", {
+        columns: ["user_id"],
+        targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("posts", "author", {
+        columns: ["user_id"],
+        targetTable: "users",
+        targetColumns: ["id"],
+      })
+      .addReference("post_tags", "post", {
+        columns: ["post_id"],
+        targetTable: "posts",
+        targetColumns: ["id"],
+      })
+      .addReference("post_tags", "tag", {
+        columns: ["tag_id"],
+        targetTable: "tags",
+        targetColumns: ["id"],
+      })
+      .addReference("comments", "post", {
+        columns: ["post_id"],
+        targetTable: "posts",
+        targetColumns: ["id"],
+      })
+      .addReference("comments", "commenter", {
         columns: ["user_id"],
         targetTable: "users",
         targetColumns: ["id"],
       });
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let kysely: Kysely<any>;
   let adapter: KyselyAdapter;
 
@@ -69,11 +126,41 @@ describe("KyselyAdapter PGLite", () => {
 
       create index "user_emails" on "emails" ("user_id");
 
+      create table "posts" ("id" varchar(30) not null unique, "user_id" bigint not null, "title" text not null, "content" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      create index "posts_user_idx" on "posts" ("user_id");
+
+      create table "tags" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      create index "tag_name" on "tags" ("name");
+
+      create table "post_tags" ("id" varchar(30) not null unique, "post_id" bigint not null, "tag_id" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      create index "pt_post" on "post_tags" ("post_id");
+
+      create index "pt_tag" on "post_tags" ("tag_id");
+
+      create table "comments" ("id" varchar(30) not null unique, "post_id" bigint not null, "user_id" bigint not null, "text" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      create index "comments_post_idx" on "comments" ("post_id");
+
+      create index "comments_user_idx" on "comments" ("user_id");
+
       alter table "emails" add constraint "emails_users_user_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;
+
+      alter table "posts" add constraint "posts_users_author_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;
+
+      alter table "post_tags" add constraint "post_tags_posts_post_fk" foreign key ("post_id") references "posts" ("_internalId") on delete restrict on update restrict;
+
+      alter table "post_tags" add constraint "post_tags_tags_tag_fk" foreign key ("tag_id") references "tags" ("_internalId") on delete restrict on update restrict;
+
+      alter table "comments" add constraint "comments_posts_post_fk" foreign key ("post_id") references "posts" ("_internalId") on delete restrict on update restrict;
+
+      alter table "comments" add constraint "comments_users_commenter_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;
 
       create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
 
-      insert into "fragno_db_settings" ("key", "value") values ('test.schema_version', '3');"
+      insert into "fragno_db_settings" ("key", "value") values ('test.schema_version', '12');"
     `);
 
     await preparedMigration.execute();
@@ -342,5 +429,223 @@ describe("KyselyAdapter PGLite", () => {
     for (const user of page2Results) {
       expect(page1Names.has(user.name)).toBe(false);
     }
+  });
+
+  it("should support many-to-many queries through junction table", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create a user
+    const user = await queryEngine.create("users", {
+      name: "Blog Author",
+      age: 28,
+    });
+
+    // Create posts
+    const post1 = await queryEngine.create("posts", {
+      title: "TypeScript Tips",
+      content: "Learn TypeScript",
+      user_id: user.id,
+    });
+
+    const post2 = await queryEngine.create("posts", {
+      title: "Database Design",
+      content: "Learn databases",
+      user_id: user.id,
+    });
+
+    // Create tags
+    const tagTypeScript = await queryEngine.create("tags", {
+      name: "TypeScript",
+    });
+
+    const tagDatabase = await queryEngine.create("tags", {
+      name: "Database",
+    });
+
+    const tagTutorial = await queryEngine.create("tags", {
+      name: "Tutorial",
+    });
+
+    // Link posts to tags via junction table
+    // Post 1 has tags: TypeScript, Tutorial
+    await queryEngine.create("post_tags", {
+      post_id: post1.id,
+      tag_id: tagTypeScript.id,
+    });
+
+    await queryEngine.create("post_tags", {
+      post_id: post1.id,
+      tag_id: tagTutorial.id,
+    });
+
+    // Post 2 has tags: Database, Tutorial
+    await queryEngine.create("post_tags", {
+      post_id: post2.id,
+      tag_id: tagDatabase.id,
+    });
+
+    await queryEngine.create("post_tags", {
+      post_id: post2.id,
+      tag_id: tagTutorial.id,
+    });
+
+    // Query post_tags with joined post and tag data using UOW
+    const uow = queryEngine.createUnitOfWork("get-post-tags").find("post_tags", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb.post((pb) => pb.select(["title"]));
+        jb.tag((tb) => tb.select(["name"]));
+      }),
+    );
+
+    const [postTags] = await uow.executeRetrieve();
+
+    // Should have 4 post_tag entries
+    expect(postTags).toHaveLength(4);
+
+    // Verify the structure includes both post and tag data
+    expect(postTags[0]).toMatchObject({
+      id: expect.objectContaining({
+        externalId: expect.any(String),
+      }),
+      post_id: expect.objectContaining({
+        internalId: expect.any(Number),
+      }),
+      tag_id: expect.objectContaining({
+        internalId: expect.any(Number),
+      }),
+      post: {
+        title: expect.any(String),
+      },
+      tag: {
+        name: expect.any(String),
+      },
+    });
+
+    // Verify we can find specific combinations
+    const typeScriptPosts = postTags.filter((pt: any) => pt["tag"].name === "TypeScript");
+    expect(typeScriptPosts).toHaveLength(1);
+    expect((typeScriptPosts[0] as any)["post"].title).toBe("TypeScript Tips");
+
+    const tutorialPosts = postTags.filter((pt: any) => pt["tag"].name === "Tutorial");
+    expect(tutorialPosts).toHaveLength(2);
+    expect(tutorialPosts.map((pt: any) => pt["post"].title).sort()).toEqual([
+      "Database Design",
+      "TypeScript Tips",
+    ]);
+
+    // Test nested many-to-many join: post_tags -> post -> author
+    const uow2 = queryEngine
+      .createUnitOfWork("get-post-tags-with-authors")
+      .find("post_tags", (b) =>
+        b
+          .whereIndex("pt_post", (eb) => eb("post_id", "=", post1.id))
+          .join((jb) =>
+            jb.post((pb) =>
+              pb.select(["title"]).join((jb2) => jb2["author"]((ab) => ab.select(["name"]))),
+            ),
+          ),
+      );
+
+    const [postTagsWithAuthors] = await uow2.executeRetrieve();
+
+    // Should have 2 entries (TypeScript and Tutorial tags for post1)
+    expect(postTagsWithAuthors).toHaveLength(2);
+
+    // Verify nested structure
+    expect(postTagsWithAuthors[0]).toMatchObject({
+      post: {
+        title: "TypeScript Tips",
+        author: {
+          name: "Blog Author",
+        },
+      },
+    });
+
+    // Both should have the same author
+    for (const pt of postTagsWithAuthors) {
+      expect((pt as any)["post"].author.name).toBe("Blog Author");
+    }
+  });
+
+  it("should support complex nested joins (comments -> post -> author)", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create a user (author)
+    const author = await queryEngine.create("users", {
+      name: "Blog Author",
+      age: 30,
+    });
+
+    // Create a post by the author
+    const post = await queryEngine.create("posts", {
+      user_id: author.id,
+      title: "My First Post",
+      content: "This is the content of my first post",
+    });
+
+    // Create a commenter
+    const commenter = await queryEngine.create("users", {
+      name: "Commenter User",
+      age: 25,
+    });
+
+    // Create a comment on the post
+    await queryEngine.create("comments", {
+      post_id: post.id,
+      user_id: commenter.id,
+      text: "Great post!",
+    });
+
+    // Now perform a complex nested join: comments -> post -> author, and comments -> commenter
+    const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
+      b.whereIndex("primary").join((jb) => {
+        jb.post((postBuilder) =>
+          postBuilder
+            .select(["id", "title", "content"])
+            .orderByIndex("primary", "desc")
+            .pageSize(1)
+            .join((jb2) => {
+              // Nested join to the post's author
+              jb2.author((authorBuilder) =>
+                authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
+              );
+            }),
+        ).commenter((commenterBuilder) => commenterBuilder.select(["id", "name"]));
+      }),
+    );
+
+    const [[comment]] = await uow.executeRetrieve();
+
+    // Verify the result structure with nested joins
+    expect(comment).toMatchObject({
+      id: expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(Number),
+      }),
+      text: "Great post!",
+      // Post join (first level)
+      post: {
+        id: expect.objectContaining({
+          externalId: post.id.externalId,
+        }),
+        title: "My First Post",
+        content: "This is the content of my first post",
+        // Nested author join (second level)
+        author: {
+          id: expect.objectContaining({
+            externalId: author.id.externalId,
+          }),
+          name: "Blog Author",
+          age: 30,
+        },
+      },
+      // Commenter join (first level)
+      commenter: {
+        id: expect.objectContaining({
+          externalId: commenter.id.externalId,
+        }),
+        name: "Commenter User",
+      },
+    });
   });
 });
