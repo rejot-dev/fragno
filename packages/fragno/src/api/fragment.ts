@@ -36,6 +36,16 @@ type ReactRouterHandlers = {
   action: (args: { request: Request }) => Promise<Response>;
 };
 
+type SolidStartHandlers = {
+  GET: (args: { request: Request }) => Promise<Response>;
+  POST: (args: { request: Request }) => Promise<Response>;
+  PUT: (args: { request: Request }) => Promise<Response>;
+  DELETE: (args: { request: Request }) => Promise<Response>;
+  PATCH: (args: { request: Request }) => Promise<Response>;
+  HEAD: (args: { request: Request }) => Promise<Response>;
+  OPTIONS: (args: { request: Request }) => Promise<Response>;
+};
+
 type StandardHandlers = {
   GET: (req: Request) => Promise<Response>;
   POST: (req: Request) => Promise<Response>;
@@ -51,6 +61,7 @@ type HandlersByFramework = {
   "react-router": ReactRouterHandlers;
   "next-js": StandardHandlers;
   "svelte-kit": StandardHandlers;
+  "solid-start": SolidStartHandlers;
 };
 
 type FullstackFrameworks = keyof HandlersByFramework;
@@ -231,6 +242,15 @@ export function createFragment<
           PATCH: handler,
           HEAD: handler,
           OPTIONS: handler,
+        },
+        "solid-start": {
+          GET: ({ request }: { request: Request }) => handler(request),
+          POST: ({ request }: { request: Request }) => handler(request),
+          PUT: ({ request }: { request: Request }) => handler(request),
+          DELETE: ({ request }: { request: Request }) => handler(request),
+          PATCH: ({ request }: { request: Request }) => handler(request),
+          HEAD: ({ request }: { request: Request }) => handler(request),
+          OPTIONS: ({ request }: { request: Request }) => handler(request),
         },
       } satisfies HandlersByFramework;
 
