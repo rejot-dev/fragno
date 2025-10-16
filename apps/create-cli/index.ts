@@ -3,6 +3,15 @@ import { defineCommand, runMain } from "citty";
 import { create, createOptionsSchema } from "@fragno-dev/create";
 import * as p from "@clack/prompts";
 
+function isInteractive() {
+  return Boolean(
+    process.stdin.isTTY &&
+      process.stdout.isTTY &&
+      !process.env["CI"] &&
+      process.env["TERM"] !== "dumb",
+  );
+}
+
 const main = defineCommand({
   meta: {
     name: "create",
@@ -13,6 +22,12 @@ const main = defineCommand({
     p.intro(`░█▀▀░█▀▄░█▀█░█▀▀░█▀█░█▀█
 │  ░█▀▀░█▀▄░█▀█░█░█░█░█░█░█
 │  ░▀░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀▀▀`);
+
+    // TODO: allow to pass all options through args
+    if (!isInteractive()) {
+      p.cancel("Cannot run CLI in non-interactive mode.");
+      process.exit(1);
+    }
 
     const template = await p.select({
       message: "Pick a template",
