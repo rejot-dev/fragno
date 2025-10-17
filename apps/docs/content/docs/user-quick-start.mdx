@@ -95,6 +95,13 @@ export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("sv
 export const prerender = false;
 ```
 
+```ts title="routes/api/[...example-fragment].ts" tab="SolidStart"
+import { exampleFragmentInstance } from "@/lib/example-fragment-server";
+
+// Make sure to initialize the fragment outside of route files
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragmentInstance.handlersFor("solid-start");
+```
+
 ```ts title="index.ts" tab="Hono"
 import { Hono } from "hono";
 import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
@@ -196,6 +203,26 @@ import { exampleFragment } from "@/lib/example-fragment-client";
 
 const { data, loading } = exampleFragment.useData();
 </script>
+```
+
+```ts title="components/ExampleComponent.tsx" tab="SolidJS"
+import { exampleFragment } from "@/lib/example-fragment-client";
+import { Show } from "solid-js";
+
+export default function ExampleComponent() {
+  const { data, loading } = exampleFragment.useData();
+  return (
+    <div>
+      <Show when={loading()}>
+        <div>Loading...</div>
+      </Show>
+
+      <Show when={data()}>
+        <div>{data()}</div>
+      </Show>
+    </div>
+  );
+}
 ```
 
 ```ts title="main.ts" tab="Vanilla JavaScript"
