@@ -24,7 +24,7 @@ export interface DynamicCodeblockProps {
    * @defaultValue true
    */
   wrapInSuspense?: boolean;
-  options?: Omit<HighlightOptionsCommon, "lang"> & HighlightOptionsThemes;
+  options?: Partial<Omit<HighlightOptionsCommon, "lang"> & HighlightOptionsThemes>;
 }
 
 const PropsContext = createContext<CodeBlockProps | undefined>(undefined);
@@ -64,12 +64,13 @@ export function FragnoCodeBlock({
   } satisfies HighlightOptions;
   let children = <Internal code={code} options={shikiOptions} />;
 
-  if (wrapInSuspense)
+  if (wrapInSuspense) {
     children = (
       <Suspense fallback={<Placeholder code={code} components={shikiOptions.components} />}>
         {children}
       </Suspense>
     );
+  }
 
   return <PropsContext value={codeblock}>{children}</PropsContext>;
 }
