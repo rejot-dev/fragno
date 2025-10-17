@@ -9,6 +9,7 @@ export default defineConfig([
       "./src/index.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
+      "./src/client/solid.ts",
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
     ],
