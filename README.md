@@ -194,8 +194,9 @@ export function createTodosClient(fragnoConfig = {}) {
 | Vue                    | ✅      |     | React Router v7 / Remix | ✅         |
 | Vanilla JavaScript     | ✅      |     | Astro                   | ✅         |
 | Svelte                 | ✅      |     | Next.js                 | ✅         |
-|                        |         |     | Nuxt                    | ✅         |
+| SolidJS                | ✅      |     | Nuxt                    | ✅         |
 |                        |         |     | SvelteKit               | ✅         |
+|                        |         |     | SolidStart              | ✅         |
 |                        |         |     | Tanstack Start          | 🔄 Planned |
 
 See the [Framework Support](https://fragno.dev/docs/frameworks) page for the full list of supported

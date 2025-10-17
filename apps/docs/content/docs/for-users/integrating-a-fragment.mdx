@@ -106,6 +106,15 @@ import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 export default fromWebHandler(createExampleFragmentInstance().handler);
 ```
 
+#### SolidStart
+
+```typescript title="routes/api/[...example-fragment].ts"
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+const exampleFragment = createExampleFragmentInstance();
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("solid-start");
+```
+
 ### Server-side Frameworks
 
 #### Hono

@@ -1,4 +1,4 @@
 {
-  "pages": ["react", "vue", "svelte", "vanilla-js"],
+  "pages": ["react", "vue", "svelte", "solid-js", "vanilla-js"],
   "defaultOpen": true
 }
