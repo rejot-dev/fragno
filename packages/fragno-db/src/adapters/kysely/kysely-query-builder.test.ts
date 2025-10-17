@@ -31,10 +31,10 @@ describe("query-builder", () => {
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("publishedAt", column("timestamp").nullable());
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       });
   });
 
@@ -1188,10 +1188,10 @@ describe("query-builder", () => {
               .addColumn("productRef", referenceColumn())
               .addColumn("quantity", column("integer"));
           })
-          .addReference("orders", "product", {
-            columns: ["productRef"],
-            targetTable: "products",
-            targetColumns: ["productId"],
+          .addReference("product", {
+            type: "one",
+            from: { table: "orders", column: "productRef" },
+            to: { table: "products", column: "productId" },
           });
       });
 

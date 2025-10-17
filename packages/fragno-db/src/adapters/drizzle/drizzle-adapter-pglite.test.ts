@@ -49,25 +49,25 @@ describe("DrizzleAdapter PGLite", () => {
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
       })
-      .addReference("emails", "user", {
-        columns: ["user_id"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("user", {
+        type: "one",
+        from: { table: "emails", column: "user_id" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("posts", "author", {
-        columns: ["user_id"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "user_id" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("comments", "post", {
-        columns: ["post_id"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "comments", column: "post_id" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("comments", "commenter", {
-        columns: ["user_id"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("commenter", {
+        type: "one",
+        from: { table: "comments", column: "user_id" },
+        to: { table: "users", column: "id" },
       });
   });
 

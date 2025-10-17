@@ -43,12 +43,12 @@ export type SchemaOperation =
     }
   | {
       type: "add-reference";
-      tableName: string;
+      tableName: string; // The table that has the foreign key
       referenceName: string;
       config: {
-        columns: string[];
-        targetTable: string;
-        targetColumns: string[];
+        type: "one" | "many";
+        from: { table: string; column: string };
+        to: { table: string; column: string };
       };
     };
 
@@ -499,7 +499,7 @@ export class FragnoReference {
   }
 }
 
-type RelationType = "one";
+type RelationType = "one" | "many";
 
 export class TableBuilder<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
@@ -726,12 +726,13 @@ type UpdateTableRelations<
   TTableName extends keyof TTables,
   TReferenceName extends string,
   TReferencedTableName extends keyof TTables,
+  TRelationType extends RelationType = RelationType,
 > = {
   [K in keyof TTables]: K extends TTableName
     ? Table<
         TTables[TTableName]["columns"],
         TTables[TTableName]["relations"] &
-          Record<TReferenceName, Relation<"one", TTables[TReferencedTableName]>>,
+          Record<TReferenceName, Relation<TRelationType, TTables[TReferencedTableName]>>,
         TTables[TTableName]["indexes"]
       >
     : TTables[K];
@@ -884,91 +885,76 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   }
 
   /**
-   * Add a foreign key reference from this table to another table.
+   * Add a relation between two tables.
    *
-   * @param tableName - The table that has the foreign key column
-   * @param referenceName - A name for this reference (e.g., "author", "category")
-   * @param config - Configuration specifying the foreign key mapping
+   * @param referenceName - A name for this relation (e.g., "author", "posts")
+   * @param config - Configuration specifying the relation type and foreign key mapping
    *
    * @example
    * ```ts
-   * // Basic foreign key: post -> user
+   * // One-to-one or many-to-one: post -> user
    * schema(s => s
    *   .addTable("users", t => t.addColumn("id", idColumn()))
    *   .addTable("posts", t => t
    *     .addColumn("id", idColumn())
-   *     .addColumn("authorId", referenceColumn()))
-   *   .addReference("posts", "author", {
-   *     columns: ["authorId"],
-   *     targetTable: "users",
-   *     targetColumns: ["id"],
+   *     .addColumn("userId", referenceColumn()))
+   *   .addReference("author", {
+   *     type: "one",
+   *     from: { table: "posts", column: "userId" },
+   *     to: { table: "users", column: "id" },
    *   })
    * )
    *
-   * // Self-referencing foreign key
-   * .addReference("users", "inviter", {
-   *   columns: ["invitedBy"],
-   *   targetTable: "users",
-   *   targetColumns: ["id"],
+   * // One-to-many (inverse relation): user -> posts
+   * .addReference("posts", {
+   *   type: "many",
+   *   from: { table: "users", column: "id" },
+   *   to: { table: "posts", column: "userId" },
    * })
    *
-   * // Multiple foreign keys - call addReference multiple times
-   * .addReference("posts", "author", {
-   *   columns: ["authorId"],
-   *   targetTable: "users",
-   *   targetColumns: ["id"],
-   * })
-   * .addReference("posts", "category", {
-   *   columns: ["categoryId"],
-   *   targetTable: "categories",
-   *   targetColumns: ["id"],
+   * // Self-referencing foreign key
+   * .addReference("inviter", {
+   *   type: "one",
+   *   from: { table: "users", column: "invitedBy" },
+   *   to: { table: "users", column: "id" },
    * })
    * ```
    */
   addReference<
-    TTableName extends string & keyof TTables,
-    TReferencedTableName extends string & keyof TTables,
+    TFromTableName extends string & keyof TTables,
+    TToTableName extends string & keyof TTables,
     TReferenceName extends string,
+    TRelationType extends RelationType,
   >(
-    tableName: TTableName,
     referenceName: TReferenceName,
     config: {
-      columns: (keyof TTables[TTableName]["columns"])[];
-      targetTable: TReferencedTableName;
-      targetColumns: (keyof TTables[TReferencedTableName]["columns"])[];
+      type: TRelationType;
+      from: {
+        table: TFromTableName;
+        column: keyof TTables[TFromTableName]["columns"];
+      };
+      to: {
+        table: TToTableName;
+        column: keyof TTables[TToTableName]["columns"];
+      };
     },
   ): SchemaBuilder<
-    UpdateTableRelations<TTables, TTableName, TReferenceName, TReferencedTableName>
+    UpdateTableRelations<TTables, TFromTableName, TReferenceName, TToTableName, TRelationType>
   > {
     this.#version++;
 
-    const table = this.#tables[tableName];
-    const referencedTable = this.#tables[config.targetTable];
+    const table = this.#tables[config.from.table];
+    const referencedTable = this.#tables[config.to.table];
 
     if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
+      throw new Error(`Table ${config.from.table} not found in schema`);
     }
     if (!referencedTable) {
-      throw new Error(`Referenced table ${config.targetTable} not found in schema`);
+      throw new Error(`Referenced table ${config.to.table} not found in schema`);
     }
 
-    const { columns, targetColumns } = config;
-
-    if (columns.length !== targetColumns.length) {
-      throw new Error(
-        `Reference ${referenceName}: columns and targetColumns must have the same length`,
-      );
-    }
-
-    // For now, only support single column foreign keys
-    if (columns.length !== 1) {
-      throw new Error(
-        `Reference ${referenceName}: currently only single column foreign keys are supported`,
-      );
-    }
-
-    const columnName = columns[0] as string;
-    const targetColumnName = targetColumns[0] as string;
+    const columnName = config.from.column as string;
+    const targetColumnName = config.to.column as string;
 
     // Foreign keys always reference internal IDs, not external IDs
     // If user specifies "id", translate to "_internalId" for the actual FK
@@ -978,10 +964,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const referencedColumn = referencedTable.columns[actualTargetColumnName];
 
     if (!column) {
-      throw new Error(`Column ${columnName} not found in table ${tableName}`);
+      throw new Error(`Column ${columnName} not found in table ${config.from.table}`);
     }
     if (!referencedColumn) {
-      throw new Error(`Column ${actualTargetColumnName} not found in table ${config.targetTable}`);
+      throw new Error(`Column ${actualTargetColumnName} not found in table ${config.to.table}`);
     }
 
     // Verify that reference columns are bigint (matching internal ID type)
@@ -992,29 +978,29 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
 
     // Create the relation (use the user-facing column name for the relation)
-    const init = new ExplicitRelationInit("one", referencedTable, table);
+    const init = new ExplicitRelationInit(config.type, referencedTable, table);
     init.on.push([columnName, targetColumnName]);
     const relation = init.init(referenceName);
 
     // Add relation to the table
     table.relations[referenceName] = relation;
 
-    // Record the operation (store both user-facing and actual column names)
+    // Record the operation
     this.#operations.push({
       type: "add-reference",
-      tableName,
+      tableName: config.from.table,
       referenceName,
       config: {
-        columns: columns as string[],
-        targetTable: config.targetTable,
-        targetColumns: [actualTargetColumnName],
+        type: config.type,
+        from: { table: config.from.table, column: columnName },
+        to: { table: config.to.table, column: actualTargetColumnName },
       },
     });
 
     // Return this with updated type
     // Safe: The relation was added to the table in place and now has the updated relations
     return this as unknown as SchemaBuilder<
-      UpdateTableRelations<TTables, TTableName, TReferenceName, TReferencedTableName>
+      UpdateTableRelations<TTables, TFromTableName, TReferenceName, TToTableName, TRelationType>
     >;
   }
 

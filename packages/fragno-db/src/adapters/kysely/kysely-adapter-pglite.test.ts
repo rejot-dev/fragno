@@ -1,5 +1,3 @@
-// FIXME: There should be no `any` in this file, but we need to fix join types.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
 import { assert, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
@@ -65,38 +63,39 @@ describe("KyselyAdapter PGLite", () => {
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
       })
-      .addReference("emails", "user", {
-        columns: ["user_id"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("user", {
+        type: "one",
+        from: { table: "emails", column: "user_id" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("posts", "author", {
-        columns: ["user_id"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "user_id" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("post_tags", "post", {
-        columns: ["post_id"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "post_tags", column: "post_id" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("post_tags", "tag", {
-        columns: ["tag_id"],
-        targetTable: "tags",
-        targetColumns: ["id"],
+      .addReference("tag", {
+        type: "one",
+        from: { table: "post_tags", column: "tag_id" },
+        to: { table: "tags", column: "id" },
       })
-      .addReference("comments", "post", {
-        columns: ["post_id"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "comments", column: "post_id" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("comments", "commenter", {
-        columns: ["user_id"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("commenter", {
+        type: "one",
+        from: { table: "comments", column: "user_id" },
+        to: { table: "users", column: "id" },
       });
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let kysely: Kysely<any>;
   let adapter: KyselyAdapter;
 
@@ -545,32 +544,26 @@ describe("KyselyAdapter PGLite", () => {
 
     type PostTag = Prettify<InferArrayElement<typeof postTags>>;
     type Tag = Prettify<RemoveIndex<PostTag["tag"]>>;
-    expectTypeOf<Tag>().toEqualTypeOf<
-      | {
-          id: FragnoId;
-          name: string;
-        }
-      | {}
-    >();
+    expectTypeOf<Tag>().toEqualTypeOf<{
+      id: FragnoId;
+      name: string;
+    } | null>();
 
     // Verify we can find specific combinations
-    const typeScriptPosts = postTags.filter((pt: any) => pt["tag"]?.name === "TypeScript");
+    const typeScriptPosts = postTags.filter((pt) => pt.tag?.name === "TypeScript");
     expect(typeScriptPosts).toHaveLength(1);
     type Post = Prettify<(typeof typeScriptPosts)[number]["post"]>;
-    expectTypeOf<Post>().toEqualTypeOf<
-      | {
-          id: FragnoId;
-          user_id: FragnoReference;
-          title: string;
-          content: string;
-        }
-      | {}
-    >();
-    expect((typeScriptPosts[0] as any).post.title).toBe("TypeScript Tips");
+    expectTypeOf<Post>().toEqualTypeOf<{
+      id: FragnoId;
+      user_id: FragnoReference;
+      title: string;
+      content: string;
+    } | null>();
+    expect(typeScriptPosts[0]!.post!.title).toBe("TypeScript Tips");
 
-    const tutorialPosts = postTags.filter((pt: any) => pt["tag"].name === "Tutorial");
+    const tutorialPosts = postTags.filter((pt) => pt.tag!.name === "Tutorial");
     expect(tutorialPosts).toHaveLength(2);
-    expect(tutorialPosts.map((pt: any) => pt["post"].title).sort()).toEqual([
+    expect(tutorialPosts.map((pt) => pt.post!.title).sort()).toEqual([
       "Database Design",
       "TypeScript Tips",
     ]);
@@ -605,7 +598,7 @@ describe("KyselyAdapter PGLite", () => {
 
     // Both should have the same author
     for (const pt of postTagsWithAuthors) {
-      expect((pt as any)["post"].author.name).toBe("Blog Author");
+      expect(pt.post!.author!.name).toBe("Blog Author");
     }
   });
 

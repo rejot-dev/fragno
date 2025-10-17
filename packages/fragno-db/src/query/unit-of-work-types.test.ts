@@ -17,9 +17,10 @@ type RecursivePrettify<T> = {
         : T[K];
 } & {};
 
-type InferJoinOut<T> = RecursivePrettify<
-  T extends JoinFindBuilder<infer _Table, infer _Select, infer JoinOut> ? JoinOut : never
->;
+type InferJoinOut<T> =
+  T extends JoinFindBuilder<infer _Table, infer _Select, infer JoinOut> ? JoinOut : never;
+
+type InferJoinOutPrettify<T> = RecursivePrettify<InferJoinOut<T>>;
 
 describe("UnitOfWork type tests", () => {
   const testSchema = schema((s) => {
@@ -52,25 +53,35 @@ describe("UnitOfWork type tests", () => {
           .createIndex("idx_post", ["postId"])
           .createIndex("idx_author", ["authorId"]);
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("users", "inviter", {
-        columns: ["invitedBy"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("inviter", {
+        type: "one",
+        from: { table: "users", column: "invitedBy" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("comments", "post", {
-        columns: ["postId"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "comments", column: "postId" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("comments", "author", {
-        columns: ["authorId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "comments", column: "authorId" },
+        to: { table: "users", column: "id" },
+      })
+      .addReference("posts", {
+        type: "many",
+        from: { table: "users", column: "id" },
+        to: { table: "posts", column: "userId" },
+      })
+      .addReference("comments", {
+        type: "many",
+        from: { table: "posts", column: "id" },
+        to: { table: "comments", column: "postId" },
       });
   });
 
@@ -127,7 +138,7 @@ describe("UnitOfWork type tests", () => {
 
   it("join builder without join given", () => {
     const _builder = new JoinFindBuilder("users", testSchema.tables.users);
-    type JoinOut = InferJoinOut<typeof _builder>;
+    type JoinOut = InferJoinOutPrettify<typeof _builder>;
     expectTypeOf<JoinOut>().toEqualTypeOf<{}>();
   });
 
@@ -142,21 +153,40 @@ describe("UnitOfWork type tests", () => {
     */
 
     const _builderOut = builder.join((jb) => jb.inviter((ib) => ib.select(["name"])));
-    type _JoinOut = InferJoinOut<typeof _builderOut>;
+    type _JoinOut = InferJoinOutPrettify<typeof _builderOut>;
     //    ^?
 
     type _JoinOutInviter = Prettify<_JoinOut["inviter"]>;
     //     ^?
 
-    expectTypeOf<_JoinOutInviter>().toEqualTypeOf<
-      | {
-          id: FragnoId;
-          name: string;
-          email: string;
-          age: number | null;
-          invitedBy: FragnoReference | null;
-        }
-      | {}
+    // FIXME: There should not be a `{}` in the type
+    expectTypeOf<_JoinOutInviter>().toEqualTypeOf<{
+      id: FragnoId;
+      name: string;
+      email: string;
+      age: number | null;
+      invitedBy: FragnoReference | null;
+    } | null>();
+  });
+
+  it("join builder with 'many' relationship returns array", () => {
+    const builder = new JoinFindBuilder("users", testSchema.tables.users);
+
+    const _builderOut = builder.join((jb) => jb.posts((ib) => ib.select(["title"])));
+    type _JoinOut = InferJoinOut<typeof _builderOut>;
+    //    ^?
+
+    type _JoinOutPosts = Prettify<_JoinOut["posts"]>;
+    //     ^?
+
+    // FIXME: There should not be a `{}` in the array
+    expectTypeOf<_JoinOutPosts>().toEqualTypeOf<
+      {
+        id: FragnoId;
+        title: string;
+        content: string;
+        userId: FragnoReference;
+      }[]
     >();
   });
 });

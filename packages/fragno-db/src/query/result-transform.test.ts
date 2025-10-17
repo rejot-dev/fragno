@@ -22,10 +22,10 @@ describe("encodeValues", () => {
           .addColumn("viewCount", column("integer").defaultTo(0))
           .addColumn("publishedAt", column("timestamp").nullable());
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       });
   });
 
@@ -284,10 +284,10 @@ describe("decodeResult", () => {
           .addColumn("viewCount", column("integer"))
           .addColumn("publishedAt", column("timestamp").nullable());
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       });
   });
 
@@ -473,15 +473,15 @@ describe("decodeResult", () => {
               .addColumn("userId", referenceColumn())
               .addColumn("categoryId", referenceColumn());
           })
-          .addReference("posts", "author", {
-            columns: ["userId"],
-            targetTable: "users",
-            targetColumns: ["id"],
+          .addReference("author", {
+            type: "one",
+            from: { table: "posts", column: "userId" },
+            to: { table: "users", column: "id" },
           })
-          .addReference("posts", "category", {
-            columns: ["categoryId"],
-            targetTable: "categories",
-            targetColumns: ["id"],
+          .addReference("category", {
+            type: "one",
+            from: { table: "posts", column: "categoryId" },
+            to: { table: "categories", column: "id" },
           });
       });
 

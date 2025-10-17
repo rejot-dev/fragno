@@ -33,10 +33,10 @@ describe("drizzle-uow-compiler", () => {
           .createIndex("idx_user", ["userId"])
           .createIndex("idx_title", ["title"]);
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       });
   });
 
@@ -754,15 +754,15 @@ describe("drizzle-uow-compiler", () => {
             .addColumn("postId", referenceColumn())
             .createIndex("idx_post", ["postId"]);
         })
-        .addReference("posts", "author", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         })
-        .addReference("comments", "post", {
-          columns: ["postId"],
-          targetTable: "posts",
-          targetColumns: ["id"],
+        .addReference("post", {
+          type: "one",
+          from: { table: "comments", column: "postId" },
+          to: { table: "posts", column: "id" },
         });
     });
 

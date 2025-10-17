@@ -52,35 +52,35 @@ describe("kysely-uow-compiler", () => {
           .createIndex("idx_post", ["postId"])
           .createIndex("idx_tag", ["tagId"]);
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("users", "inviter", {
-        columns: ["invitedBy"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("inviter", {
+        type: "one",
+        from: { table: "users", column: "invitedBy" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("comments", "post", {
-        columns: ["postId"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "comments", column: "postId" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("comments", "author", {
-        columns: ["authorId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "comments", column: "authorId" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("post_tags", "post", {
-        columns: ["postId"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "post_tags", column: "postId" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("post_tags", "tag", {
-        columns: ["tagId"],
-        targetTable: "tags",
-        targetColumns: ["id"],
+      .addReference("tag", {
+        type: "one",
+        from: { table: "post_tags", column: "tagId" },
+        to: { table: "tags", column: "id" },
       });
   });
 

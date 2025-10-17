@@ -81,35 +81,35 @@ describe("generateSchema and migrate", () => {
           .createIndex("idx_postTags_post_tag", ["postId", "tagId"], { unique: true })
           .createIndex("idx_postTags_tag", ["tagId"]);
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("comments", "post", {
-        columns: ["postId"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "comments", column: "postId" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("comments", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "comments", column: "userId" },
+        to: { table: "users", column: "id" },
       })
-      .addReference("comments", "parent", {
-        columns: ["parentId"],
-        targetTable: "comments",
-        targetColumns: ["id"],
+      .addReference("parent", {
+        type: "one",
+        from: { table: "comments", column: "parentId" },
+        to: { table: "comments", column: "id" },
       })
-      .addReference("postTags", "post", {
-        columns: ["postId"],
-        targetTable: "posts",
-        targetColumns: ["id"],
+      .addReference("post", {
+        type: "one",
+        from: { table: "postTags", column: "postId" },
+        to: { table: "posts", column: "id" },
       })
-      .addReference("postTags", "tag", {
-        columns: ["tagId"],
-        targetTable: "tags",
-        targetColumns: ["id"],
+      .addReference("tag", {
+        type: "one",
+        from: { table: "postTags", column: "tagId" },
+        to: { table: "tags", column: "id" },
       });
   });
 

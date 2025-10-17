@@ -164,10 +164,10 @@ export function generateMigrationFromSchema(
         type: "add-foreign-key",
         table: op.tableName,
         value: {
-          name: `${op.tableName}_${op.config.targetTable}_${op.referenceName}_fk`,
-          columns: op.config.columns,
-          referencedTable: op.config.targetTable,
-          referencedColumns: op.config.targetColumns,
+          name: `${op.tableName}_${op.config.to.table}_${op.referenceName}_fk`,
+          columns: [op.config.from.column],
+          referencedTable: op.config.to.table,
+          referencedColumns: [op.config.to.column],
         },
       });
     }
