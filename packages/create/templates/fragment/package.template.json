@@ -2,7 +2,7 @@
   "description": "A Fragno fragment",
   "version": "0.0.1",
   "files": ["dist"],
-  "keywords": ["fragno", "typescript", "react", "vue", "svelte"],
+  "keywords": ["fragno", "typescript", "react", "vue", "svelte", "solidjs"],
   "exports": {
     ".": {
       "types": "./dist/node/index.d.ts",
@@ -32,6 +32,14 @@
       "types": "./dist/browser/client/svelte.d.ts",
       "default": "./dist/browser/client/svelte.js"
     },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/client/solid.js",
+        "default": "./src/client/solid.ts"
+      },
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
     "./vanilla": {
       "development": {
         "browser": "./dist/browser/client/vanilla.js",
@@ -49,7 +57,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@fragno-dev/core": "^0.0.6",
+    "@fragno-dev/core": "^0.0.7",
     "zod": "^4.0.5"
   },
   "devDependencies": {
@@ -60,6 +68,7 @@
     "typescript": "^5",
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
+    "solid-js": ">=1.0.0",
     "vue": ">=3.0.0"
   }
 }
