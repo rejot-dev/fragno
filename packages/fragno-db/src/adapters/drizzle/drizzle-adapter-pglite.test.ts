@@ -289,9 +289,9 @@ describe("DrizzleAdapter PGLite", () => {
     const uow = queryEngine
       .createUnitOfWork("test-joins", { onQuery: (query) => queries.push(query) })
       .find("emails", (b) =>
-        b.whereIndex("user_emails").join((jb) => {
-          jb.user((builder) => builder.select(["name", "id", "age"]));
-        }),
+        b
+          .whereIndex("user_emails")
+          .join((jb) => jb.user((builder) => builder.select(["name", "id", "age"]))),
       );
 
     const [[email]] = await uow.executeRetrieve();
@@ -376,20 +376,22 @@ describe("DrizzleAdapter PGLite", () => {
     const uow = queryEngine
       .createUnitOfWork("test-complex-joins", { onQuery: (query) => queries.push(query) })
       .find("comments", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.post((postBuilder) =>
-            postBuilder
-              .select(["id", "title", "content"])
-              .orderByIndex("primary", "desc")
-              .pageSize(1)
-              .join((jb2) => {
-                // Nested join to the post's author
-                jb2.author((authorBuilder) =>
-                  authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
-                );
-              }),
-          ).commenter((commenterBuilder) => commenterBuilder.select(["id", "name"]));
-        }),
+        b.whereIndex("primary").join((jb) =>
+          jb
+            .post((postBuilder) =>
+              postBuilder
+                .select(["id", "title", "content"])
+                .orderByIndex("primary", "desc")
+                .pageSize(1)
+                .join((jb2) =>
+                  // Nested join to the post's author
+                  jb2.author((authorBuilder) =>
+                    authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
+                  ),
+                ),
+            )
+            .commenter((commenterBuilder) => commenterBuilder.select(["id", "name"])),
+        ),
       );
 
     const [[comment]] = await uow.executeRetrieve();

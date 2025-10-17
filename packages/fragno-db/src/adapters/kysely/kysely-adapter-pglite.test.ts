@@ -2,9 +2,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
-import { assert, beforeAll, describe, expect, it } from "vitest";
+import { assert, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { KyselyAdapter } from "./kysely-adapter";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+import {
+  column,
+  idColumn,
+  referenceColumn,
+  schema,
+  type FragnoId,
+  type FragnoReference,
+} from "../../schema/create";
 import { encodeCursor } from "../../query/cursor";
 
 describe("KyselyAdapter PGLite", () => {
@@ -490,12 +497,13 @@ describe("KyselyAdapter PGLite", () => {
     });
 
     // Query post_tags with joined post and tag data using UOW
-    const uow = queryEngine.createUnitOfWork("get-post-tags").find("post_tags", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb.post((pb) => pb.select(["title"]));
-        jb.tag((tb) => tb.select(["name"]));
-      }),
-    );
+    const uow = queryEngine
+      .createUnitOfWork("get-post-tags")
+      .find("post_tags", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) => jb.post((pb) => pb.select(["title"])).tag((tb) => tb.select(["name"]))),
+      );
 
     const [postTags] = await uow.executeRetrieve();
 
@@ -521,10 +529,44 @@ describe("KyselyAdapter PGLite", () => {
       },
     });
 
+    type InferArrayElement<T> = T extends (infer U)[] ? U : never;
+    type Prettify<T> = {
+      [K in keyof T]: T[K];
+    } & {};
+    type RemoveIndex<T> = {
+      [K in keyof T as string extends K
+        ? never
+        : number extends K
+          ? never
+          : symbol extends K
+            ? never
+            : K]: T[K];
+    };
+
+    type PostTag = Prettify<InferArrayElement<typeof postTags>>;
+    type Tag = Prettify<RemoveIndex<PostTag["tag"]>>;
+    expectTypeOf<Tag>().toEqualTypeOf<
+      | {
+          id: FragnoId;
+          name: string;
+        }
+      | {}
+    >();
+
     // Verify we can find specific combinations
-    const typeScriptPosts = postTags.filter((pt: any) => pt["tag"].name === "TypeScript");
+    const typeScriptPosts = postTags.filter((pt: any) => pt["tag"]?.name === "TypeScript");
     expect(typeScriptPosts).toHaveLength(1);
-    expect((typeScriptPosts[0] as any)["post"].title).toBe("TypeScript Tips");
+    type Post = Prettify<(typeof typeScriptPosts)[number]["post"]>;
+    expectTypeOf<Post>().toEqualTypeOf<
+      | {
+          id: FragnoId;
+          user_id: FragnoReference;
+          title: string;
+          content: string;
+        }
+      | {}
+    >();
+    expect((typeScriptPosts[0] as any).post.title).toBe("TypeScript Tips");
 
     const tutorialPosts = postTags.filter((pt: any) => pt["tag"].name === "Tutorial");
     expect(tutorialPosts).toHaveLength(2);
@@ -598,20 +640,22 @@ describe("KyselyAdapter PGLite", () => {
 
     // Now perform a complex nested join: comments -> post -> author, and comments -> commenter
     const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb.post((postBuilder) =>
-          postBuilder
-            .select(["id", "title", "content"])
-            .orderByIndex("primary", "desc")
-            .pageSize(1)
-            .join((jb2) => {
-              // Nested join to the post's author
-              jb2.author((authorBuilder) =>
-                authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
-              );
-            }),
-        ).commenter((commenterBuilder) => commenterBuilder.select(["id", "name"]));
-      }),
+      b.whereIndex("primary").join((jb) =>
+        jb
+          .post((postBuilder) =>
+            postBuilder
+              .select(["id", "title", "content"])
+              .orderByIndex("primary", "desc")
+              .pageSize(1)
+              .join((jb2) =>
+                // Nested join to the post's author
+                jb2.author((authorBuilder) =>
+                  authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
+                ),
+              ),
+          )
+          .commenter((commenterBuilder) => commenterBuilder.select(["id", "name"])),
+      ),
     );
 
     const [[comment]] = await uow.executeRetrieve();
