@@ -45,7 +45,7 @@ describe("Request Middleware", () => {
     expect(unauthorizedRes.status).toBe(401);
     const unauthorizedBody = await unauthorizedRes.json();
     expect(unauthorizedBody).toEqual({
-      error: "Unauthorized",
+      message: "Unauthorized",
       code: "UNAUTHORIZED",
     });
 
@@ -134,7 +134,7 @@ describe("Request Middleware", () => {
     expect(res.status).toBe(403);
 
     expect(await res.json()).toEqual({
-      error: "Creating users has been disabled.",
+      message: "Creating users has been disabled.",
       code: "CREATE_USERS_DISABLED",
     });
 
@@ -439,7 +439,7 @@ describe("Request Middleware", () => {
 
     const body = await res.json();
     expect(body).toEqual({
-      error: "Request validation failed in middleware",
+      message: "Request validation failed in middleware",
       code: "MIDDLEWARE_VALIDATION_ERROR",
     });
   });
