@@ -36,6 +36,14 @@
       "types": "./dist/browser/client/svelte.d.ts",
       "default": "./dist/browser/client/svelte.js"
     },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/client/solid.js",
+        "default": "./src/client/solid.ts"
+      },
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
     "./vanilla": {
       "development": {
         "browser": "./dist/browser/client/vanilla.js",
@@ -57,6 +65,13 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "zod": "^4.0.5"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3",
+    "react": ">=18.0.0",
+    "svelte": ">=4.0.0",
+    "vue": ">=3.0.0",
+    "solid-js": ">=1.0.0"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

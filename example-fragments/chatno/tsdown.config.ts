@@ -10,6 +10,7 @@ export default defineConfig([
       "./src/client/svelte.ts",
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
+      "./src/client/solid.ts",
     ],
     dts: {
       sourcemap: true,

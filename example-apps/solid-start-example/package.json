@@ -1,0 +1,24 @@
+{
+  "name": "solid-start-example",
+  "type": "module",
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "start": "vinxi start",
+    "version": "vinxi version"
+  },
+  "dependencies": {
+    "@fragno-dev/chatno": "workspace:*",
+    "@fragno-dev/example-fragment": "workspace:*",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.0",
+    "@solidjs/start": "^1.1.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "solid-js": "^1.9.5",
+    "tailwindcss": "^4.1.14",
+    "vinxi": "^0.5.7"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

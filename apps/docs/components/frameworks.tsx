@@ -8,6 +8,7 @@ import { Nuxt } from "@/components/logos/frameworks/nuxt";
 import { React as ReactLogo } from "@/components/logos/frameworks/react";
 import { Svelte } from "@/components/logos/frameworks/svelte";
 import { Vue } from "@/components/logos/frameworks/vue";
+import { Solid } from "@/components/logos/frameworks/solid";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
@@ -49,6 +50,7 @@ export default function Frameworks({ className }: { className?: string }) {
       { name: "React", element: <ReactLogo className="size-12 text-blue-500" /> },
       { name: "Vue", element: <Vue className="size-12 text-green-500" /> },
       { name: "Svelte", element: <Svelte className="size-12 text-red-500" /> },
+      { name: "SolidJS", element: <Solid className="size-12 text-blue-500" /> },
       { name: "Astro", element: <Astro className="size-12" /> },
       { name: "Next.js", element: <Nextjs className="size-12 text-gray-900 dark:text-white" /> },
       { name: "Nuxt", element: <Nuxt className="size-12 text-green-400 dark:text-white" /> },
@@ -134,7 +136,7 @@ export default function Frameworks({ className }: { className?: string }) {
       </div>
       <div
         ref={gridRef}
-        className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8"
+        className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-6 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9"
       >
         {items.map((item, index) => {
           const intensity = getIntensityForIndex(index);
