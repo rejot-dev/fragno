@@ -51,8 +51,8 @@ export type SelectResult<
   Select extends SelectClause<T>,
 > = MainSelectResult<Select, T> & JoinOut;
 
-interface MapRelationType<Type, Implied extends boolean> {
-  one: Implied extends true ? Type | null : Type;
+interface MapRelationType<Type> {
+  one: Type | null;
   many: Type[];
 }
 
@@ -63,7 +63,7 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
       ) => JoinBuilder<
         T,
         Out & {
-          [$K in K]: MapRelationType<SelectResult<Target, JoinOut, Select>, true>[Type];
+          [$K in K]: MapRelationType<SelectResult<Target, JoinOut, Select>>[Type];
         }
       >
     : never;

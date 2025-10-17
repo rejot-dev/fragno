@@ -313,10 +313,10 @@ describe("createMigrator", () => {
           .addTable("posts", (t) => {
             return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
           })
-          .addReference("posts", "author", {
-            columns: ["authorId"],
-            targetTable: "users",
-            targetColumns: ["id"],
+          .addReference("author", {
+            type: "one",
+            from: { table: "posts", column: "authorId" },
+            to: { table: "users", column: "id" },
           });
       });
 

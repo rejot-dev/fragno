@@ -64,36 +64,36 @@ describe("query-builder-joins", () => {
             .addColumn("authorId", referenceColumn());
         })
         // Basic one-to-many relationships
-        .addReference("posts", "author", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         })
-        .addReference("users", "inviter", {
-          columns: ["invitedBy"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("inviter", {
+          type: "one",
+          from: { table: "users", column: "invitedBy" },
+          to: { table: "users", column: "id" },
         })
-        .addReference("comments", "post", {
-          columns: ["postId"],
-          targetTable: "posts",
-          targetColumns: ["id"],
+        .addReference("post", {
+          type: "one",
+          from: { table: "comments", column: "postId" },
+          to: { table: "posts", column: "id" },
         })
-        .addReference("comments", "author", {
-          columns: ["authorId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "comments", column: "authorId" },
+          to: { table: "users", column: "id" },
         })
         // Many-to-many relationships
-        .addReference("post_tags", "post", {
-          columns: ["postId"],
-          targetTable: "posts",
-          targetColumns: ["id"],
+        .addReference("post", {
+          type: "one",
+          from: { table: "post_tags", column: "postId" },
+          to: { table: "posts", column: "id" },
         })
-        .addReference("post_tags", "tag", {
-          columns: ["tagId"],
-          targetTable: "tags",
-          targetColumns: ["id"],
+        .addReference("tag", {
+          type: "one",
+          from: { table: "post_tags", column: "tagId" },
+          to: { table: "tags", column: "id" },
         })
     );
   });
@@ -557,15 +557,15 @@ describe("query-builder-joins", () => {
             .addColumn("prodRef", referenceColumn())
             .addColumn("catRef", referenceColumn());
         })
-        .addReference("product_categories", "product", {
-          columns: ["prodRef"],
-          targetTable: "products",
-          targetColumns: ["productId"],
+        .addReference("product", {
+          type: "one",
+          from: { table: "product_categories", column: "prodRef" },
+          to: { table: "products", column: "productId" },
         })
-        .addReference("product_categories", "category", {
-          columns: ["catRef"],
-          targetTable: "categories",
-          targetColumns: ["categoryId"],
+        .addReference("category", {
+          type: "one",
+          from: { table: "product_categories", column: "catRef" },
+          to: { table: "categories", column: "categoryId" },
         });
     });
 

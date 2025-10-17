@@ -166,15 +166,15 @@ describe("create", () => {
             .addColumn("userId", referenceColumn())
             .addColumn("tagId", referenceColumn());
         })
-        .addReference("user_tags", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "user_tags", column: "userId" },
+          to: { table: "users", column: "id" },
         })
-        .addReference("user_tags", "tag", {
-          columns: ["tagId"],
-          targetTable: "tags",
-          targetColumns: ["id"],
+        .addReference("tag", {
+          type: "one",
+          from: { table: "user_tags", column: "tagId" },
+          to: { table: "tags", column: "id" },
         });
     });
 
@@ -191,16 +191,16 @@ describe("create", () => {
     const userRef = addReferenceOps.find((op) => op.referenceName === "user");
     expect(userRef).toBeDefined();
     expect(userRef!.tableName).toBe("user_tags");
-    expect(userRef!.config.columns).toEqual(["userId"]);
-    expect(userRef!.config.targetTable).toBe("users");
-    expect(userRef!.config.targetColumns).toEqual(["_internalId"]);
+    expect(userRef!.config.type).toBe("one");
+    expect(userRef!.config.from).toEqual({ table: "user_tags", column: "userId" });
+    expect(userRef!.config.to).toEqual({ table: "users", column: "_internalId" });
 
     const tagRef = addReferenceOps.find((op) => op.referenceName === "tag");
     expect(tagRef).toBeDefined();
     expect(tagRef!.tableName).toBe("user_tags");
-    expect(tagRef!.config.columns).toEqual(["tagId"]);
-    expect(tagRef!.config.targetTable).toBe("tags");
-    expect(tagRef!.config.targetColumns).toEqual(["_internalId"]);
+    expect(tagRef!.config.type).toBe("one");
+    expect(tagRef!.config.from).toEqual({ table: "user_tags", column: "tagId" });
+    expect(tagRef!.config.to).toEqual({ table: "tags", column: "_internalId" });
   });
 
   it("should create a foreign key reference using addReference", () => {
@@ -215,10 +215,10 @@ describe("create", () => {
             .addColumn("title", column("string"))
             .addColumn("authorId", referenceColumn());
         })
-        .addReference("posts", "author", {
-          columns: ["authorId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
         });
     });
 
@@ -239,9 +239,9 @@ describe("create", () => {
     expect(addReferenceOps).toHaveLength(1);
     expect(addReferenceOps[0].tableName).toBe("posts");
     expect(addReferenceOps[0].referenceName).toBe("author");
-    expect(addReferenceOps[0].config.columns).toEqual(["authorId"]);
-    expect(addReferenceOps[0].config.targetTable).toBe("users");
-    expect(addReferenceOps[0].config.targetColumns).toEqual(["_internalId"]);
+    expect(addReferenceOps[0].config.type).toBe("one");
+    expect(addReferenceOps[0].config.from).toEqual({ table: "posts", column: "authorId" });
+    expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "_internalId" });
   });
 
   it("should support multiple references by calling addReference multiple times", () => {
@@ -260,15 +260,15 @@ describe("create", () => {
             .addColumn("authorId", referenceColumn())
             .addColumn("categoryId", referenceColumn());
         })
-        .addReference("posts", "author", {
-          columns: ["authorId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
         })
-        .addReference("posts", "category", {
-          columns: ["categoryId"],
-          targetTable: "categories",
-          targetColumns: ["id"],
+        .addReference("category", {
+          type: "one",
+          from: { table: "posts", column: "categoryId" },
+          to: { table: "categories", column: "id" },
         });
     });
 
@@ -285,16 +285,16 @@ describe("create", () => {
     const authorRef = addReferenceOps.find((op) => op.referenceName === "author");
     expect(authorRef).toBeDefined();
     expect(authorRef!.tableName).toBe("posts");
-    expect(authorRef!.config.columns).toEqual(["authorId"]);
-    expect(authorRef!.config.targetTable).toBe("users");
-    expect(authorRef!.config.targetColumns).toEqual(["_internalId"]);
+    expect(authorRef!.config.type).toBe("one");
+    expect(authorRef!.config.from).toEqual({ table: "posts", column: "authorId" });
+    expect(authorRef!.config.to).toEqual({ table: "users", column: "_internalId" });
 
     const categoryRef = addReferenceOps.find((op) => op.referenceName === "category");
     expect(categoryRef).toBeDefined();
     expect(categoryRef!.tableName).toBe("posts");
-    expect(categoryRef!.config.columns).toEqual(["categoryId"]);
-    expect(categoryRef!.config.targetTable).toBe("categories");
-    expect(categoryRef!.config.targetColumns).toEqual(["_internalId"]);
+    expect(categoryRef!.config.type).toBe("one");
+    expect(categoryRef!.config.from).toEqual({ table: "posts", column: "categoryId" });
+    expect(categoryRef!.config.to).toEqual({ table: "categories", column: "_internalId" });
   });
 
   it("should support self-referencing foreign keys", () => {
@@ -306,10 +306,10 @@ describe("create", () => {
             .addColumn("name", column("string"))
             .addColumn("invitedBy", referenceColumn().nullable());
         })
-        .addReference("users", "inviter", {
-          columns: ["invitedBy"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("inviter", {
+          type: "one",
+          from: { table: "users", column: "invitedBy" },
+          to: { table: "users", column: "id" },
         });
     });
 
@@ -327,9 +327,9 @@ describe("create", () => {
     expect(addReferenceOps).toHaveLength(1);
     expect(addReferenceOps[0].tableName).toBe("users");
     expect(addReferenceOps[0].referenceName).toBe("inviter");
-    expect(addReferenceOps[0].config.columns).toEqual(["invitedBy"]);
-    expect(addReferenceOps[0].config.targetTable).toBe("users");
-    expect(addReferenceOps[0].config.targetColumns).toEqual(["_internalId"]);
+    expect(addReferenceOps[0].config.type).toBe("one");
+    expect(addReferenceOps[0].config.from).toEqual({ table: "users", column: "invitedBy" });
+    expect(addReferenceOps[0].config.to).toEqual({ table: "users", column: "_internalId" });
   });
 
   it("should allow altering an existing table to add columns", () => {

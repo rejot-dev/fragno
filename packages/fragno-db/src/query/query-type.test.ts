@@ -396,10 +396,10 @@ describe("query type tests", () => {
         .addTable("tags", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
         })
-        .addReference("posts", "author", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         });
     });
 

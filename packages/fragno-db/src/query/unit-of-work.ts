@@ -17,6 +17,8 @@ import type { CompiledJoin } from "./orm/orm";
  */
 export type IndexColumns<TIndex extends Index> = TIndex["columnNames"][number];
 
+type RemoveEmptyObject<T> = T extends object ? (keyof T extends never ? never : T) : never;
+
 /**
  * Extract all indexed column names from a table's indexes
  */
@@ -663,13 +665,19 @@ export class JoinFindBuilder<
   }
 }
 
+interface MapRelationType<T> {
+  // FIXME: Not sure why we need the RemoveEmptyObject, we should somehow fix at the source where it's added to the union
+  one: RemoveEmptyObject<T> | null;
+  many: RemoveEmptyObject<T>[];
+}
+
 /**
  * Join builder with indexed-only where clauses for Unit of Work
  * TJoinOut accumulates the types of all joined relations
  */
 export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
   [K in keyof TTable["relations"]]: TTable["relations"][K] extends Relation<
-    infer _Type,
+    infer TRelationType,
     infer TTargetTable
   >
     ? <TSelect extends SelectClause<TTable["relations"][K]["table"]> = true, TNestedJoinOut = {}>(
@@ -679,7 +687,9 @@ export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
       ) => IndexedJoinBuilder<
         TTable,
         TJoinOut & {
-          [P in K]: SelectResult<TTargetTable, TNestedJoinOut, TSelect>;
+          [P in K]: MapRelationType<
+            SelectResult<TTargetTable, TNestedJoinOut, TSelect>
+          >[TRelationType];
         }
       >
     : never;

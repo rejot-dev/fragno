@@ -87,10 +87,10 @@ describe("generateMigrationFromSchema", () => {
         .addTable("posts", (t) => {
           return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
         })
-        .addReference("posts", "author", {
-          columns: ["authorId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
         });
     });
 
@@ -149,10 +149,10 @@ describe("generateMigrationFromSchema", () => {
         .addTable("posts", (t) => {
           return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
         })
-        .addReference("posts", "author", {
-          columns: ["authorId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
         });
     });
 
@@ -177,10 +177,10 @@ describe("generateMigrationFromSchema", () => {
         .addTable("posts", (t) => {
           return t.addColumn("id", idColumn()).addColumn("authorId", referenceColumn());
         })
-        .addReference("posts", "author", {
-          columns: ["authorId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
         });
     });
 
@@ -253,10 +253,10 @@ describe("generateMigrationFromSchema", () => {
             .addColumn("id", idColumn().defaultTo("auto"))
             .addColumn("name", column("string"));
         })
-        .addReference("posts", "author", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         })
         .alterTable("posts", (t) => {
           return t
@@ -282,10 +282,10 @@ describe("generateMigrationFromSchema", () => {
         .addTable("posts", (t) =>
           t.addColumn("id", idColumn()).addColumn("userId", referenceColumn()),
         )
-        .addReference("posts", "author", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         });
     });
 

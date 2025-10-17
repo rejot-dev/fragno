@@ -24,10 +24,10 @@ describe("generateSchema", () => {
           .createIndex("idx_user", ["userId"])
           .createIndex("idx_title", ["title"]);
       })
-      .addReference("posts", "author", {
-        columns: ["userId"],
-        targetTable: "users",
-        targetColumns: ["id"],
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "userId" },
+        to: { table: "users", column: "id" },
       });
   });
 

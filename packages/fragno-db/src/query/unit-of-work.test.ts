@@ -264,10 +264,10 @@ describe("FindBuilder", () => {
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
         )
-        .addReference("posts", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         }),
     );
 
@@ -301,10 +301,10 @@ describe("FindBuilder", () => {
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
         )
-        .addReference("posts", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         }),
     );
 
@@ -345,10 +345,10 @@ describe("FindBuilder", () => {
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
         )
-        .addReference("posts", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         }),
     );
 
@@ -397,10 +397,10 @@ describe("FindBuilder", () => {
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
         )
-        .addReference("posts", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         }),
     );
 
@@ -439,10 +439,10 @@ describe("FindBuilder", () => {
             .addColumn("title", "string")
             .createIndex("idx_user", ["userId"]),
         )
-        .addReference("posts", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         }),
     );
 
@@ -486,15 +486,15 @@ describe("FindBuilder", () => {
             .addColumn("text", "string")
             .createIndex("idx_post", ["postId"]),
         )
-        .addReference("posts", "user", {
-          columns: ["userId"],
-          targetTable: "users",
-          targetColumns: ["id"],
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
         })
-        .addReference("comments", "post", {
-          columns: ["postId"],
-          targetTable: "posts",
-          targetColumns: ["id"],
+        .addReference("post", {
+          type: "one",
+          from: { table: "comments", column: "postId" },
+          to: { table: "posts", column: "id" },
         }),
     );
 
