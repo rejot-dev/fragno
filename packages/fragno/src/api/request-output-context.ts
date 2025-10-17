@@ -51,16 +51,16 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
     headers?: HeadersInit,
   ): Response {
     if (typeof initOrStatus === "undefined") {
-      return Response.json({ error: message, code }, { status: 500, headers });
+      return Response.json({ message: message, code }, { status: 500, headers });
     }
 
     if (typeof initOrStatus === "number") {
-      return Response.json({ error: message, code }, { status: initOrStatus, headers });
+      return Response.json({ message: message, code }, { status: initOrStatus, headers });
     }
 
     const mergedHeaders = mergeHeaders(initOrStatus.headers, headers);
     return Response.json(
-      { error: message, code },
+      { message: message, code },
       { status: initOrStatus.status, headers: mergedHeaders },
     );
   }
