@@ -270,9 +270,7 @@ describe("drizzle-uow-compiler", () => {
       uow.find("posts", (b) =>
         b
           .whereIndex("idx_title", (eb) => eb("title", "contains", "test"))
-          .join((jb) => {
-            jb.author();
-          }),
+          .join((jb) => jb.author()),
       );
 
       const compiler = createDrizzleUOWCompiler(testSchema, config);
@@ -289,11 +287,13 @@ describe("drizzle-uow-compiler", () => {
     it("should compile find operation with join filtering", () => {
       const uow = createTestUOW();
       uow.find("posts", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.author((builder) =>
-            builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
-          );
-        }),
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb.author((builder) =>
+              builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
+            ),
+          ),
       );
 
       const compiler = createDrizzleUOWCompiler(testSchema, config);
@@ -309,9 +309,9 @@ describe("drizzle-uow-compiler", () => {
     it("should compile find operation with join ordering", () => {
       const uow = createTestUOW();
       uow.find("posts", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.author((builder) => builder.orderByIndex("idx_name", "desc"));
-        }),
+        b
+          .whereIndex("primary")
+          .join((jb) => jb.author((builder) => builder.orderByIndex("idx_name", "desc"))),
       );
 
       const compiler = createDrizzleUOWCompiler(testSchema, config);
@@ -327,9 +327,7 @@ describe("drizzle-uow-compiler", () => {
     it("should compile find operation with join pageSize", () => {
       const uow = createTestUOW();
       uow.find("posts", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.author((builder) => builder.pageSize(5));
-        }),
+        b.whereIndex("primary").join((jb) => jb.author((builder) => builder.pageSize(5))),
       );
 
       const compiler = createDrizzleUOWCompiler(testSchema, config);
@@ -812,13 +810,15 @@ describe("drizzle-uow-compiler", () => {
     it("should compile nested joins (comments -> post -> author)", () => {
       const uow = createNestedUOW();
       uow.find("comments", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.post((postBuilder) =>
-            postBuilder.select(["title"]).join((jb2) => {
-              jb2.author((authorBuilder) => authorBuilder.select(["name"]));
-            }),
-          );
-        }),
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb.post((postBuilder) =>
+              postBuilder
+                .select(["title"])
+                .join((jb2) => jb2.author((authorBuilder) => authorBuilder.select(["name"]))),
+            ),
+          ),
       );
 
       const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
@@ -842,17 +842,21 @@ describe("drizzle-uow-compiler", () => {
     it("should compile nested joins with filtering at each level", () => {
       const uow = createNestedUOW();
       uow.find("comments", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.post((postBuilder) =>
-            postBuilder.select(["title"]).join((jb2) => {
-              jb2.author((authorBuilder) =>
-                authorBuilder
-                  .whereIndex("idx_name", (eb) => eb("name", "=", "Alice"))
-                  .select(["name"]),
-              );
-            }),
-          );
-        }),
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb.post((postBuilder) =>
+              postBuilder
+                .select(["title"])
+                .join((jb2) =>
+                  jb2.author((authorBuilder) =>
+                    authorBuilder
+                      .whereIndex("idx_name", (eb) => eb("name", "=", "Alice"))
+                      .select(["name"]),
+                  ),
+                ),
+            ),
+          ),
       );
 
       const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
@@ -874,18 +878,18 @@ describe("drizzle-uow-compiler", () => {
         b
           .whereIndex("primary")
           .pageSize(10)
-          .join((jb) => {
+          .join((jb) =>
             jb.post((postBuilder) =>
               postBuilder
                 .select(["title"])
                 .pageSize(1)
-                .join((jb2) => {
+                .join((jb2) =>
                   jb2.author((authorBuilder) =>
                     authorBuilder.orderByIndex("idx_name", "asc").pageSize(1),
-                  );
-                }),
-            );
-          }),
+                  ),
+                ),
+            ),
+          ),
       );
 
       const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
@@ -904,10 +908,10 @@ describe("drizzle-uow-compiler", () => {
     it("should compile multiple nested joins from same table", () => {
       const uow = createNestedUOW();
       uow.find("posts", (b) =>
-        b.whereIndex("primary").join((jb) => {
+        b.whereIndex("primary").join((jb) =>
           // Join to author with nested structure
-          jb.author((authorBuilder) => authorBuilder.select(["name", "email"]));
-        }),
+          jb.author((authorBuilder) => authorBuilder.select(["name", "email"])),
+        ),
       );
 
       const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);

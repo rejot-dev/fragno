@@ -279,9 +279,7 @@ describe("FindBuilder", () => {
     );
 
     uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb["user"]((builder) => builder.select(["name"]));
-      }),
+      b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.select(["name"]))),
     );
 
     const ops = uow.getRetrievalOperations();
@@ -318,11 +316,7 @@ describe("FindBuilder", () => {
     );
 
     // Join without builder function should use default options
-    uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb.user();
-      }),
-    );
+    uow.find("posts", (b) => b.whereIndex("primary").join((jb) => jb.user()));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -366,11 +360,13 @@ describe("FindBuilder", () => {
     );
 
     uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb["user"]((builder) =>
-          builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
-        );
-      }),
+      b
+        .whereIndex("primary")
+        .join((jb) =>
+          jb["user"]((builder) =>
+            builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
+          ),
+        ),
     );
 
     const ops = uow.getRetrievalOperations();
@@ -416,9 +412,9 @@ describe("FindBuilder", () => {
     );
 
     uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb["user"]((builder) => builder.orderByIndex("idx_created", "desc"));
-      }),
+      b
+        .whereIndex("primary")
+        .join((jb) => jb["user"]((builder) => builder.orderByIndex("idx_created", "desc"))),
     );
 
     const ops = uow.getRetrievalOperations();
@@ -458,9 +454,7 @@ describe("FindBuilder", () => {
     );
 
     uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb["user"]((builder) => builder.pageSize(5));
-      }),
+      b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.pageSize(5))),
     );
 
     const ops = uow.getRetrievalOperations();
@@ -512,13 +506,15 @@ describe("FindBuilder", () => {
     );
 
     uow.find("comments", (b) =>
-      b.whereIndex("primary").join((jb) => {
-        jb["post"]((postBuilder) =>
-          postBuilder.select(["title"]).join((jb2) => {
-            jb2["user"]((userBuilder) => userBuilder.select(["name"]));
-          }),
-        );
-      }),
+      b
+        .whereIndex("primary")
+        .join((jb) =>
+          jb["post"]((postBuilder) =>
+            postBuilder
+              .select(["title"])
+              .join((jb2) => jb2["user"]((userBuilder) => userBuilder.select(["name"]))),
+          ),
+        ),
     );
 
     const ops = uow.getRetrievalOperations();

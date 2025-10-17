@@ -8,7 +8,7 @@ import {
   schema,
   SchemaBuilder,
 } from "./create";
-import type { TableToColumnValues, TableToInsertValues } from "../query/query";
+import type { RawColumnValues, TableToColumnValues, TableToInsertValues } from "../query/query";
 
 describe("create", () => {
   it("should create a table with columns using callback pattern", () => {
@@ -456,6 +456,12 @@ describe("create", () => {
       id: FragnoId;
       name: string;
     }>();
+
+    type _RawUser = RawColumnValues<typeof _userSchema.tables.users>;
+    expectTypeOf<_RawUser>().toEqualTypeOf<{
+      id: FragnoId;
+      name: string;
+    }>();
   });
 
   it("Simple user table types after alter table statements", () => {
@@ -473,14 +479,13 @@ describe("create", () => {
     });
 
     type _UserInsert = TableToInsertValues<typeof _userSchema.tables.users>;
-    expectTypeOf<_UserInsert>().toExtend<{
-      [x: string]: unknown;
-      id?: string | FragnoId | null;
+    expectTypeOf<_UserInsert>().toEqualTypeOf<{
+      id?: string | FragnoId | null | undefined;
       name: string;
     }>();
 
     type _UserResult = TableToColumnValues<typeof _userSchema.tables.users>;
-    expectTypeOf<_UserResult>().toExtend<{
+    expectTypeOf<_UserResult>().toEqualTypeOf<{
       id: FragnoId;
       name: string;
     }>();
@@ -492,7 +497,7 @@ describe("idColumn", () => {
     const idCol = idColumn();
     type _In = typeof idCol.$in;
     type _Out = typeof idCol.$out;
-    expectTypeOf<_In>().toExtend<string | FragnoId | null>();
+    expectTypeOf<_In>().toEqualTypeOf<string | FragnoId | null>();
     expectTypeOf<_Out>().toEqualTypeOf<FragnoId>();
 
     expect(idCol.generateDefaultValue()).toBeDefined();
@@ -504,7 +509,7 @@ describe("referenceColumn", () => {
     const _referenceCol = referenceColumn();
     type _In = typeof _referenceCol.$in;
     type _Out = typeof _referenceCol.$out;
-    expectTypeOf<_In>().toExtend<string | bigint | FragnoId | FragnoReference>();
+    expectTypeOf<_In>().toEqualTypeOf<string | bigint | FragnoId | FragnoReference>();
     expectTypeOf<_Out>().toEqualTypeOf<FragnoReference>();
   });
 });

@@ -4,8 +4,8 @@ import type {
   FragnoId,
   Index,
   IdColumn,
-  AnyRelation,
   AnyColumn,
+  Relation,
 } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "./query";
@@ -234,7 +234,11 @@ export interface UOWDecoder<TSchema extends AnySchema, TRawInput = unknown> {
 /**
  * Builder for find operations in Unit of Work
  */
-export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<TTable> = true> {
+export class FindBuilder<
+  TTable extends AnyTable,
+  TSelect extends SelectClause<TTable> = true,
+  TJoinOut = {},
+> {
   readonly #table: TTable;
   readonly #tableName: string;
 
@@ -248,7 +252,7 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
   #beforeCursor?: string;
   #pageSizeValue?: number;
   #selectClause?: TSelect;
-  #joinClause?: (jb: IndexedJoinBuilder<TTable>) => void;
+  #joinClause?: (jb: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TJoinOut>;
   #countMode = false;
 
   constructor(tableName: string, table: TTable) {
@@ -286,9 +290,9 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
    * Specify columns to select
    * @throws Error if selectCount() has already been called
    */
-  select<TNewSelect extends SelectClause<TTable>>(
+  select<const TNewSelect extends SelectClause<TTable>>(
     columns: TNewSelect,
-  ): FindBuilder<TTable, TNewSelect> {
+  ): FindBuilder<TTable, TNewSelect, TJoinOut> {
     if (this.#countMode) {
       throw new Error(
         `Cannot call select() after selectCount() on table "${this.#tableName}". ` +
@@ -297,7 +301,7 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).#selectClause = columns;
-    return this as unknown as FindBuilder<TTable, TNewSelect>;
+    return this as unknown as FindBuilder<TTable, TNewSelect, TJoinOut>;
   }
 
   /**
@@ -365,9 +369,11 @@ export class FindBuilder<TTable extends AnyTable, TSelect extends SelectClause<T
    * Add joins to include related data
    * Join where clauses are restricted to indexed columns only
    */
-  join(joinFn: (jb: IndexedJoinBuilder<TTable>) => void): this {
+  join<TNewJoinOut>(
+    joinFn: (jb: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TNewJoinOut>,
+  ): FindBuilder<TTable, TSelect, TNewJoinOut> {
     this.#joinClause = joinFn;
-    return this;
+    return this as unknown as FindBuilder<TTable, TSelect, TNewJoinOut>;
   }
 
   /**
@@ -523,7 +529,11 @@ export class DeleteBuilder {
  * Builder for join operations in Unit of Work
  * Similar to FindBuilder but tailored for joins (no cursor pagination, no count mode)
  */
-export class JoinFindBuilder<TTable extends AnyTable, TSelect extends SelectClause<TTable> = true> {
+export class JoinFindBuilder<
+  TTable extends AnyTable,
+  TSelect extends SelectClause<TTable> = true,
+  TJoinOut = {},
+> {
   readonly #table: TTable;
   readonly #tableName: string;
 
@@ -535,7 +545,7 @@ export class JoinFindBuilder<TTable extends AnyTable, TSelect extends SelectClau
   };
   #pageSizeValue?: number;
   #selectClause?: TSelect;
-  #joinClause?: (jb: IndexedJoinBuilder<TTable>) => void;
+  #joinClause?: (jb: IndexedJoinBuilder<TTable, TJoinOut>) => IndexedJoinBuilder<TTable, TJoinOut>;
 
   constructor(tableName: string, table: TTable) {
     this.#tableName = tableName;
@@ -571,12 +581,12 @@ export class JoinFindBuilder<TTable extends AnyTable, TSelect extends SelectClau
   /**
    * Specify columns to select
    */
-  select<TNewSelect extends SelectClause<TTable>>(
+  select<const TNewSelect extends SelectClause<TTable>>(
     columns: TNewSelect,
-  ): JoinFindBuilder<TTable, TNewSelect> {
+  ): JoinFindBuilder<TTable, TNewSelect, TJoinOut> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this as any).#selectClause = columns;
-    return this as unknown as JoinFindBuilder<TTable, TNewSelect>;
+    return this as unknown as JoinFindBuilder<TTable, TNewSelect, TJoinOut>;
   }
 
   /**
@@ -613,9 +623,11 @@ export class JoinFindBuilder<TTable extends AnyTable, TSelect extends SelectClau
    * Add joins to include related data
    * Join where clauses are restricted to indexed columns only
    */
-  join(joinFn: (jb: IndexedJoinBuilder<TTable>) => void): this {
+  join<TNewJoinOut>(
+    joinFn: (jb: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TNewJoinOut>,
+  ): JoinFindBuilder<TTable, TSelect, TJoinOut & TNewJoinOut> {
     this.#joinClause = joinFn;
-    return this;
+    return this as unknown as JoinFindBuilder<TTable, TSelect, TJoinOut & TNewJoinOut>;
   }
 
   /**
@@ -653,12 +665,23 @@ export class JoinFindBuilder<TTable extends AnyTable, TSelect extends SelectClau
 
 /**
  * Join builder with indexed-only where clauses for Unit of Work
+ * TJoinOut accumulates the types of all joined relations
  */
-export type IndexedJoinBuilder<TTable extends AnyTable> = {
-  [K in keyof TTable["relations"]]: TTable["relations"][K] extends AnyRelation
-    ? (
-        builderFn?: (builder: JoinFindBuilder<TTable["relations"][K]["table"]>) => void,
-      ) => IndexedJoinBuilder<TTable>
+export type IndexedJoinBuilder<TTable extends AnyTable, TJoinOut> = {
+  [K in keyof TTable["relations"]]: TTable["relations"][K] extends Relation<
+    infer _Type,
+    infer TTargetTable
+  >
+    ? <TSelect extends SelectClause<TTable["relations"][K]["table"]> = true, TNestedJoinOut = {}>(
+        builderFn?: (
+          builder: JoinFindBuilder<TTable["relations"][K]["table"]>,
+        ) => JoinFindBuilder<TTable["relations"][K]["table"], TSelect, TNestedJoinOut>,
+      ) => IndexedJoinBuilder<
+        TTable,
+        TJoinOut & {
+          [P in K]: SelectResult<TTargetTable, TNestedJoinOut, TSelect>;
+        }
+      >
     : never;
 };
 
@@ -666,9 +689,9 @@ export type IndexedJoinBuilder<TTable extends AnyTable> = {
  * Build join operations with indexed-only where clauses for Unit of Work
  * This ensures all join conditions can leverage indexes for optimal performance
  */
-export function buildJoinIndexed<TTable extends AnyTable>(
+export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
   table: TTable,
-  fn: (builder: IndexedJoinBuilder<TTable>) => void,
+  fn: (builder: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TJoinOut>,
 ): CompiledJoin[] {
   const compiled: CompiledJoin[] = [];
   const builder: Record<string, unknown> = {};
@@ -676,7 +699,7 @@ export function buildJoinIndexed<TTable extends AnyTable>(
   for (const name in table.relations) {
     const relation = table.relations[name]!;
 
-    builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => void) => {
+    builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => JoinFindBuilder<AnyTable>) => {
       // Create join builder for this relation's table
       const joinBuilder = new JoinFindBuilder(relation.table.ormName, relation.table);
       if (builderFn) {
@@ -734,7 +757,7 @@ export function buildJoinIndexed<TTable extends AnyTable>(
     };
   }
 
-  fn(builder as IndexedJoinBuilder<TTable>);
+  fn(builder as IndexedJoinBuilder<TTable, {}>);
   return compiled;
 }
 
@@ -830,6 +853,10 @@ export class UnitOfWork<
    * Returns all results from find operations
    */
   async executeRetrieve(): Promise<TRetrievalResults> {
+    if (this.#retrievalOps.length === 0) {
+      return [] as unknown as TRetrievalResults;
+    }
+
     if (this.#state !== "building-retrieval") {
       throw new Error(
         `Cannot execute retrieval from state ${this.#state}. Must be in building-retrieval state.`,
@@ -863,15 +890,16 @@ export class UnitOfWork<
   find<
     TTableName extends keyof TSchema["tables"] & string,
     TSelect extends SelectClause<TSchema["tables"][TTableName]> = true,
+    TJoinOut = {},
   >(
     tableName: TTableName,
     builderFn: (
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect>, "build">,
+    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build">,
   ): UnitOfWork<
     TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, TSelect>[]],
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>[]],
     TRawInput
   > {
     if (this.#state !== "building-retrieval") {
@@ -902,7 +930,7 @@ export class UnitOfWork<
 
     return this as unknown as UnitOfWork<
       TSchema,
-      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, TSelect>[]],
+      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>[]],
       TRawInput
     >;
   }

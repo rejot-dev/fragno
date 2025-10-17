@@ -737,7 +737,18 @@ describe("kysely-uow-compiler", () => {
         b.whereIndex("primary").join((jb) =>
           jb.author((ab) =>
             // FIXME: inviter should be strongly typed
-            ab.select(["name"]).join((jb2) => jb2["inviter"]((ib) => ib.select(["name"]))),
+            ab.select(["name"]).join((jb2) => {
+              // type Prettify<T> = {
+              //   [K in keyof T]: T[K];
+              // } & {};
+
+              // type InviterFn = Prettify<(typeof jb2)["inviter"]>;
+              // expectTypeOf<InviterFn>().toEqualTypeOf<{ [x: string]: any }>();
+              // type BuilderKeys = Prettify<keyof typeof jb2>;
+              // expectTypeOf<BuilderKeys>().toEqualTypeOf<string | symbol | number>();
+
+              return jb2["inviter"]((ib) => ib.select(["name"]));
+            }),
           ),
         ),
       );
@@ -756,10 +767,9 @@ describe("kysely-uow-compiler", () => {
     it("should compile multiple joins", () => {
       const uow = createTestUOW();
       uow.find("comments", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.post((pb) => pb.select(["title"]));
-          jb.author((ab) => ab.select(["name"]));
-        }),
+        b
+          .whereIndex("primary")
+          .join((jb) => jb.post((pb) => pb.select(["title"])).author((ab) => ab.select(["name"]))),
       );
 
       const compiler = createKyselyUOWCompiler(testSchema, config);
@@ -828,10 +838,9 @@ describe("kysely-uow-compiler", () => {
     it("should compile many-to-many join through junction table", () => {
       const uow = createTestUOW();
       uow.find("post_tags", (b) =>
-        b.whereIndex("primary").join((jb) => {
-          jb.post((pb) => pb.select(["title"]));
-          jb.tag((tb) => tb.select(["name"]));
-        }),
+        b
+          .whereIndex("primary")
+          .join((jb) => jb.post((pb) => pb.select(["title"])).tag((tb) => tb.select(["name"]))),
       );
 
       const compiler = createKyselyUOWCompiler(testSchema, config);
