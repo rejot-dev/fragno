@@ -6,6 +6,17 @@ import { buildCondition } from "./condition-builder";
 import type { CompiledJoin } from "./orm/orm";
 
 /**
+ * Builder for updateMany operations that supports both whereIndex and set chaining
+ */
+export interface UpdateManyBuilder<TTable extends AnyTable> {
+  whereIndex<TIndexName extends ValidIndexName<TTable>>(
+    indexName: TIndexName,
+    condition?: (eb: IndexSpecificConditionBuilder<TTable, TIndexName>) => Condition | boolean,
+  ): this;
+  set(values: TableToUpdateValues<TTable>): this;
+}
+
+/**
  * Extract column names from a single index
  */
 export type IndexColumns<TIndex extends Index> = TIndex["columnNames"][number];

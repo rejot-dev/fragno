@@ -52,50 +52,180 @@ export function fromDrizzle<T extends AnySchema>(
   const [db] = parseDrizzle(config.db);
   const { provider } = config;
 
+  function createUOW(name?: string, uowConfig?: DrizzleUOWConfig) {
+    const uowCompiler = createDrizzleUOWCompiler(schema, config, uowConfig?.onQuery);
+
+    const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
+      executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
+        executeDrizzleRetrievalPhase(db, retrievalBatch),
+      executeMutationPhase: (mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) =>
+        executeDrizzleMutationPhase(db, mutationBatch),
+    };
+
+    const decoder = createDrizzleUOWDecoder(schema, provider);
+
+    return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
+  }
+
   return {
-    async count() {
-      throw new Error("not implemented");
+    find(tableName, builderFn) {
+      const uow = createUOW();
+      uow.find(tableName, builderFn);
+      return uow.executeRetrieve();
     },
 
-    async findFirst() {
-      throw new Error("not implemented");
+    async findFirst(tableName, builderFn) {
+      const uow = createUOW();
+      uow.find(tableName, (b) => builderFn(b).pageSize(1));
+      uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+      // executeRetrieve runs an array of `find` operation results, which each return an array of rows
+      const [result]: unknown[][] = await uow.executeRetrieve();
+      return result?.[0] ?? null;
     },
 
-    async findMany() {
-      throw new Error("not implemented");
+    async create(tableName, values) {
+      const uow = createUOW();
+      uow.create(tableName as string, values as never);
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create record");
+      }
+
+      const createdIds = uow.getCreatedIds();
+      const createdId = createdIds[0];
+      if (!createdId) {
+        throw new Error("Failed to get created ID");
+      }
+      return createdId;
     },
 
-    async create() {
-      throw new Error("not implemented");
+    async createMany(tableName, valuesArray) {
+      const uow = createUOW();
+      for (const values of valuesArray) {
+        uow.create(tableName as string, values as never);
+      }
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create records");
+      }
+
+      return uow.getCreatedIds();
     },
 
-    async createMany() {
-      throw new Error("not implemented");
+    async update(tableName, id, builderFn) {
+      const uow = createUOW();
+      uow.update(tableName as string, id, builderFn as never);
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update record (version conflict or record not found)");
+      }
     },
 
-    async updateMany() {
-      throw new Error("not implemented");
+    async updateMany(tableName, builderFn) {
+      // FIXME: This is not correct
+
+      let whereConfig: { indexName?: string; condition?: unknown } = {};
+      let setValues: unknown;
+
+      const specialBuilder = {
+        whereIndex(indexName: string, condition?: unknown) {
+          whereConfig = { indexName, condition };
+          return this;
+        },
+        set(values: unknown) {
+          setValues = values;
+          return this;
+        },
+      };
+
+      builderFn(specialBuilder as never);
+
+      if (!whereConfig.indexName) {
+        throw new Error("whereIndex() must be called in updateMany");
+      }
+      if (!setValues) {
+        throw new Error("set() must be called in updateMany");
+      }
+
+      const findUow = createUOW();
+      findUow.find(tableName as string, (b) => {
+        if (whereConfig.condition) {
+          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
+        }
+        return b.whereIndex(whereConfig.indexName as never);
+      });
+      const findResults = await findUow.executeRetrieve();
+      const records = (findResults as unknown as [unknown])[0];
+
+      // @ts-expect-error - Type narrowing doesn't work through unknown cast
+      if (!records || records.length === 0) {
+        return;
+      }
+
+      const updateUow = createUOW();
+      for (const record of records as never as Array<{ id: unknown }>) {
+        updateUow.update(tableName as string, record.id as string, (b) =>
+          b.set(setValues as never),
+        );
+      }
+      const { success } = await updateUow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update records (version conflict)");
+      }
     },
 
-    async deleteMany() {
-      throw new Error("not implemented");
+    async delete(tableName, id, builderFn) {
+      const uow = createUOW();
+      uow.delete(tableName as string, id, builderFn as never);
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to delete record (version conflict or record not found)");
+      }
+    },
+
+    async deleteMany(tableName, builderFn) {
+      let whereConfig: { indexName?: string; condition?: unknown } = {};
+
+      const specialBuilder = {
+        whereIndex(indexName: string, condition?: unknown) {
+          whereConfig = { indexName, condition };
+          return this;
+        },
+      };
+
+      builderFn(specialBuilder as never);
+
+      if (!whereConfig.indexName) {
+        throw new Error("whereIndex() must be called in deleteMany");
+      }
+
+      const findUow = createUOW();
+      findUow.find(tableName as string, (b) => {
+        if (whereConfig.condition) {
+          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
+        }
+        return b.whereIndex(whereConfig.indexName as never);
+      });
+      const findResults2 = await findUow.executeRetrieve();
+      const records = (findResults2 as unknown as [unknown])[0];
+
+      // @ts-expect-error - Type narrowing doesn't work through unknown cast
+      if (!records || records.length === 0) {
+        return;
+      }
+
+      const deleteUow = createUOW();
+      for (const record of records as never as Array<{ id: unknown }>) {
+        deleteUow.delete(tableName as string, record.id as string);
+      }
+      const { success } = await deleteUow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to delete records (version conflict)");
+      }
     },
 
     createUnitOfWork(name, uowConfig) {
-      // Create compiler with optional callback from config
-      const uowCompiler = createDrizzleUOWCompiler(schema, config, uowConfig?.onQuery);
-
-      const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
-        executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
-          executeDrizzleRetrievalPhase(db, retrievalBatch),
-        executeMutationPhase: (mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) =>
-          executeDrizzleMutationPhase(db, mutationBatch),
-      };
-
-      // Create a decoder function to transform raw results into application format
-      const decoder = createDrizzleUOWDecoder(schema, provider);
-
-      return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
+      return createUOW(name, uowConfig);
     },
   } as AbstractQuery<T, DrizzleUOWConfig>;
 }

@@ -1,34 +1,12 @@
 import { Kysely, PostgresDialect } from "kysely";
 import { describe, it, beforeAll, assert, expect } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import type { Kysely as KyselyType } from "kysely";
-import { createKyselyQueryCompiler } from "./kysely-query-compiler";
+import type { Kysely as KyselyType, PostgresDialectConfig } from "kysely";
+import { UnitOfWork, type UOWDecoder } from "../../query/unit-of-work";
+import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
+import type { KyselyConfig } from "./kysely-adapter";
 
-// SUMMARY OF JOIN FUNCTIONALITY AND LIMITATIONS:
-//
-// ✅ WORKING FEATURES:
-// - Basic one-to-many joins (posts -> users)
-// - Join with specific column selection
-// - Join with WHERE conditions on joined table (using function call syntax: eb("column", "operator", value))
-// - Self-referencing joins (users -> inviter)
-// - Multiple joins in single query
-// - Many-to-many joins through junction tables
-// - Complex WHERE conditions with AND/OR logic
-//
-// ❌ LIMITATIONS:
-// - Nested joins (join on joined table) are not supported - nested join options are ignored
-// - orderBy and limit on join options are not applied to the joined table
-// - Cross-table WHERE conditions are not supported (main table WHERE cannot reference joined columns)
-// - Direct many-to-many relationships (without junction tables) are not supported
-// - Condition builder uses function call syntax, not method chaining (eb("name", "contains", "john") not eb.name.contains("john"))
-//
-// 🔧 IMPLEMENTATION NOTES:
-// - All joins are LEFT JOINs
-// - Join conditions are automatically generated from schema references
-// - Column aliases follow the pattern "relation:column" for joined data
-// - String operators like "contains", "starts with", "ends with" are converted to SQL LIKE patterns
-
-describe("query-builder-joins", () => {
+describe("kysely-uow-joins", () => {
   const userSchema = schema((s) => {
     return (
       s
@@ -37,7 +15,9 @@ describe("query-builder-joins", () => {
             .addColumn("id", idColumn())
             .addColumn("name", column("string"))
             .addColumn("email", column("string"))
-            .addColumn("invitedBy", referenceColumn());
+            .addColumn("invitedBy", referenceColumn())
+            .createIndex("idx_name", ["name"])
+            .createIndex("idx_id", ["id"]);
         })
         .addTable("posts", (t) => {
           return t
@@ -45,23 +25,32 @@ describe("query-builder-joins", () => {
             .addColumn("title", column("string"))
             .addColumn("content", column("string"))
             .addColumn("userId", referenceColumn())
-            .addColumn("publishedAt", column("timestamp"));
+            .addColumn("publishedAt", column("timestamp"))
+            .createIndex("idx_title", ["title"])
+            .createIndex("idx_id", ["id"]);
         })
         .addTable("tags", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .createIndex("idx_id", ["id"]);
         })
         .addTable("post_tags", (t) => {
           return t
             .addColumn("id", idColumn())
             .addColumn("postId", referenceColumn())
-            .addColumn("tagId", referenceColumn());
+            .addColumn("tagId", referenceColumn())
+            .createIndex("idx_post", ["postId"])
+            .createIndex("idx_tag", ["tagId"]);
         })
         .addTable("comments", (t) => {
           return t
             .addColumn("id", idColumn())
             .addColumn("content", column("string"))
             .addColumn("postId", referenceColumn())
-            .addColumn("authorId", referenceColumn());
+            .addColumn("authorId", referenceColumn())
+            .createIndex("idx_post", ["postId"])
+            .createIndex("idx_author", ["authorId"]);
         })
         // Basic one-to-many relationships
         .addReference("author", {
@@ -99,24 +88,50 @@ describe("query-builder-joins", () => {
   });
 
   let kysely: KyselyType<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  let config: KyselyConfig;
 
   beforeAll(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Fake Postgres connection information
-    kysely = new Kysely({ dialect: new PostgresDialect({} as any) });
+    kysely = new Kysely({
+      dialect: new PostgresDialect({} as PostgresDialectConfig),
+    });
+
+    config = {
+      db: kysely,
+      provider: "postgresql",
+    };
   });
+
+  // Helper to create UnitOfWork for testing
+  function createTestUOW(name?: string) {
+    const mockCompiler = createKyselyUOWCompiler(userSchema, config);
+    const mockExecutor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+    const mockDecoder: UOWDecoder<typeof userSchema> = (rawResults, operations) => {
+      if (rawResults.length !== operations.length) {
+        throw new Error("rawResults and ops must have the same length");
+      }
+      return rawResults;
+    };
+    return new UnitOfWork(userSchema, mockCompiler, mockExecutor, mockDecoder, name);
+  }
 
   describe("postgresql", () => {
     it("should compile select with join condition comparing columns", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "userId"])
+          .join((jb) => jb.author()),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "userId"],
-        join: (b) => b.author(),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."email" as "author:email", "author"."invitedBy" as "author:invitedBy", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."userId" as "userId", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
@@ -124,16 +139,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should compile join with specific column selection", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["name", "email"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => b.author({ select: ["name", "email"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "author"."name" as "author:name", "author"."email" as "author:email", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
@@ -141,20 +159,23 @@ describe("query-builder-joins", () => {
     });
 
     it("should compile join with WHERE conditions on joined table", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) =>
+            jb.author((ab) =>
+              ab.select(["name"]).whereIndex("idx_name", (eb) => eb("name", "contains", "john")),
+            ),
+          ),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) =>
-          b.author({
-            select: ["name"],
-            where: (eb) => eb("name", "contains", "john"),
-          }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and "users"."name" like $1)"`,
@@ -162,16 +183,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should compile self-referencing join", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("users", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "name"])
+          .join((jb) => jb.inviter((ib) => ib.select(["name"]))),
+      );
 
-      const query = compiler.findMany("users", {
-        select: ["id", "name"],
-        join: (b) => b.inviter({ select: ["name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "inviter"."name" as "inviter:name", "inviter"."_internalId" as "inviter:_internalId", "inviter"."_version" as "inviter:_version", "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" left join "users" as "inviter" on "users"."invitedBy" = "inviter"."_internalId""`,
@@ -179,19 +203,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should compile multiple joins in single query", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("comments", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "content"])
+          .join((jb) => jb.post((pb) => pb.select(["title"])).author((ab) => ab.select(["name"]))),
+      );
 
-      const query = compiler.findMany("comments", {
-        select: ["id", "content"],
-        join: (b) => {
-          b.post({ select: ["title"] });
-          b.author({ select: ["name"] });
-        },
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "comments"."id" as "id", "comments"."content" as "content", "comments"."_internalId" as "_internalId", "comments"."_version" as "_version" from "comments" left join "posts" as "post" on "comments"."postId" = "post"."_internalId" left join "users" as "author" on "comments"."authorId" = "author"."_internalId""`,
@@ -199,19 +223,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should compile many-to-many join through junction table", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("post_tags", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) => jb.post((pb) => pb.select(["title"])).tag((tb) => tb.select(["name"]))),
+      );
 
-      const query = compiler.findMany("post_tags", {
-        select: ["id"],
-        join: (b) => {
-          b.post({ select: ["title"] });
-          b.tag({ select: ["name"] });
-        },
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "tag"."name" as "tag:name", "tag"."_internalId" as "tag:_internalId", "tag"."_version" as "tag:_version", "post_tags"."id" as "id", "post_tags"."_internalId" as "_internalId", "post_tags"."_version" as "_version" from "post_tags" left join "posts" as "post" on "post_tags"."postId" = "post"."_internalId" left join "tags" as "tag" on "post_tags"."tagId" = "tag"."_internalId""`,
@@ -219,187 +243,144 @@ describe("query-builder-joins", () => {
     });
 
     it("should compile complex join with multiple WHERE conditions", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) =>
+            jb.author((ab) =>
+              ab.select(["name"]).whereIndex("idx_name", (eb) =>
+                eb.and(
+                  eb("name", "contains", "john"),
+                  // @ts-expect-error - email is not indexed
+                  eb("email", "ends with", "@example.com"),
+                ),
+              ),
+            ),
+          ),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) =>
-          b.author({
-            select: ["name"],
-            where: (eb) =>
-              eb.and(eb("name", "contains", "john"), eb("email", "ends with", "@example.com")),
-          }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toMatchInlineSnapshot(
         `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on ("posts"."userId" = "author"."_internalId" and ("users"."name" like $1 and "users"."email" like $2))"`,
       );
     });
 
-    it("should compile join with ordering on joined table - LIMITATION: orderBy not applied to joins", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+    it("should compile join with ordering on joined table - LIMITATION: orderBy applied but may have limited effect", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["name"]).orderByIndex("idx_name", "asc"))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) =>
-          b.author({
-            select: ["name"],
-            orderBy: [["name", "asc"]],
-          }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
-      // LIMITATION: orderBy on join options is not applied to the joined table
+      // LIMITATION: orderBy on join options is applied but has limited effect in SQL JOINs
       expect(query.sql).toMatchInlineSnapshot(
         `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
       );
     });
 
-    it("should compile join with limit on joined table - LIMITATION: limit not applied to joins", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+    it("should compile join with pageSize on joined table - LIMITATION: pageSize applied but may have limited effect", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["name"]).pageSize(1))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) =>
-          b.author({
-            select: ["name"],
-            limit: 1,
-          }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
-      // LIMITATION: limit on join options is not applied to the joined table
+      // LIMITATION: pageSize on join options is applied but has limited effect in SQL JOINs
       expect(query.sql).toMatchInlineSnapshot(
         `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
       );
     });
 
-    // Tests for complex scenarios that might not work as expected
-    it.skip("should support nested joins (join on joined table) - NOT IMPLEMENTED", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+    // Tests for nested joins - SUPPORTED in UOW API
+    it("should support nested joins (join on joined table) - IMPLEMENTED in UOW API", () => {
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) =>
+            jb.author((ab) =>
+              ab
+                .select(["name"])
+                .join((authorJoin) => authorJoin["inviter"]((ib) => ib.select(["name"]))),
+            ),
+          ),
+      );
 
-      // EXPECTED BEHAVIOR: We want to join posts -> author, then join author -> inviter
-      // This should create two separate joins, not just ignore the nested join
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => {
-          b.author({
-            select: ["name"],
-            join: (authorJoin) => authorJoin["inviter"]({ select: ["name"] }),
-          });
-        },
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // EXPECTED SQL: Should include both the author join AND the inviter join
       expect(query.sql).toMatchInlineSnapshot(
-        `"select "inviter"."name" as "author:inviter:name", "author"."name" as "author:name", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId" left join "users" as "inviter" on "author"."invitedBy" = "inviter"."_internalId""`,
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "author_inviter"."name" as "author:inviter:name", "author_inviter"."_internalId" as "author:inviter:_internalId", "author_inviter"."_version" as "author:inviter:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId" left join "users" as "author_inviter" on "author"."invitedBy" = "author_inviter"."_internalId""`,
       );
-
-      // CURRENT BEHAVIOR: Nested join is ignored, only the first level join is applied
-      // Actual SQL: select "author"."name" as "author:name", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId"
-    });
-
-    it.skip("should support WHERE conditions referencing joined columns - NOT IMPLEMENTED", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
-
-      // EXPECTED BEHAVIOR: WHERE conditions should be able to reference joined table columns
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => b.author({ select: ["name"] }),
-        // We want to filter by the author's name from the joined table
-        where: (eb) =>
-          eb.and(
-            eb("title", "contains", "test"),
-            // This should work but doesn't:
-            eb("author.name", "=", "John"),
-          ),
-      });
-
-      assert(query);
-      // EXPECTED SQL: Should include author.name in WHERE clause
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId" where ("posts"."title" like $1 and "author"."name" = $2)"`,
-      );
-
-      // CURRENT LIMITATION: WHERE conditions on the main table cannot reference joined columns
-      // The condition builder doesn't have access to joined table columns
-    });
-
-    it.skip("should support many-to-many joins through junction tables - NOT IMPLEMENTED", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
-
-      // EXPECTED BEHAVIOR: Should be able to join through a junction table to get related entities
-      // posts -> post_tags (junction) -> tags
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => {
-          b.author({ select: ["name"] });
-          // We want to join posts to tags through the post_tags junction table
-          b["tags"]({ select: ["name"] }); // This should work via the junction table
-        },
-      });
-
-      assert(query);
-      // EXPECTED SQL: Should include joins through the junction table
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "author"."name" as "author:name", "tags"."name" as "tags:name", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId" left join "post_tags" on "posts"."_internalId" = "post_tags"."postId" left join "tags" on "post_tags"."tagId" = "tags"."_internalId""`,
-      );
-
-      // CURRENT LIMITATION: Direct many-to-many relationships are not supported
-      // There's no direct relation from posts to tags, it requires going through post_tags
-      // The join builder doesn't have a 'tags' method on posts
     });
   });
 
   describe("id column selection in joins", () => {
     it("should properly transform id columns in joined tables to FragnoId objects", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => b.author({ select: ["id", "name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"author"."id"');
       expect(query.sql).toContain('"author"."_internalId" as "author:_internalId"');
       expect(query.sql).toContain('"author"."_version" as "author:_version"');
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "author"."id" as "author:id", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."id" as "id", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
+      );
     });
 
     it("should select id columns from main table and joined table", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => b.author({ select: ["id", "name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // Both main table id and joined table id should be in the query
       expect(query.sql).toContain('"posts"."id"');
@@ -412,16 +393,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle id-only selection in join", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) => jb.author((ab) => ab.select(["id"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id"],
-        join: (b) => b.author({ select: ["id"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // When only id is selected, _internalId is still included for joined table
       expect(query.sql).toContain('"author"."_internalId" as "author:_internalId"');
@@ -431,16 +415,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should include _internalId for both main and joined table when id is selected", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => b.author({ select: ["id", "name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // Both tables should have their _internalId included when id is selected
       expect(query.sql).toContain('"posts"."_internalId"');
@@ -451,35 +438,39 @@ describe("query-builder-joins", () => {
     });
 
     it("should not include _internalId when id is not selected", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["title"])
+          .join((jb) => jb.author((ab) => ab.select(["name"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["title"],
-        join: (b) => b.author({ select: ["name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // Hidden columns (_internalId, _version) are always included for internal use
       expect(query.sql).toContain('"posts"."_internalId" as "_internalId"');
       expect(query.sql).toContain('"author"."_internalId" as "author:_internalId"');
       expect(query.sql).toContain('"posts"."_version" as "_version"');
       expect(query.sql).toContain('"author"."_version" as "author:_version"');
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "posts"."title" as "title", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version" from "posts" left join "users" as "author" on "posts"."userId" = "author"."_internalId""`,
+      );
     });
 
     it("should handle select true with joins - includes all columns including id", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) => b.whereIndex("primary").join((jb) => jb.author()));
 
-      const query = compiler.findMany("posts", {
-        select: true,
-        join: (b) => b.author({ select: true }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"posts"."id"');
       expect(query.sql).toContain('"author"."id"');
@@ -491,20 +482,23 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle id column in where clause on joined table", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) =>
+            jb.author((ab) =>
+              ab.select(["id", "name"]).whereIndex("idx_id", (eb) => eb("id", "=", "user-123")),
+            ),
+          ),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) =>
-          b.author({
-            select: ["id", "name"],
-            where: (eb) => eb("id", "=", "user-123"),
-          }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"author"."_internalId" as "author:_internalId"');
       expect(query.sql).toMatchInlineSnapshot(
@@ -513,19 +507,21 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle multiple joins with different id selections", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("comments", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "content"])
+          .join((jb) =>
+            jb.post((pb) => pb.select(["id", "title"])).author((ab) => ab.select(["name"])),
+          ),
+      );
 
-      const query = compiler.findMany("comments", {
-        select: ["id", "content"],
-        join: (b) => {
-          b.post({ select: ["id", "title"] });
-          b.author({ select: ["name"] }); // No id for author
-        },
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"comments"."id"');
       expect(query.sql).toContain('"post"."id"');
@@ -535,6 +531,9 @@ describe("query-builder-joins", () => {
       expect(query.sql).toContain('"author"."_internalId" as "author:_internalId"');
       expect(query.sql).toContain('"post"."_version" as "post:_version"');
       expect(query.sql).toContain('"author"."_version" as "author:_version"');
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "author"."name" as "author:name", "author"."_internalId" as "author:_internalId", "author"."_version" as "author:_version", "comments"."id" as "id", "comments"."content" as "content", "comments"."_internalId" as "_internalId", "comments"."_version" as "_version" from "comments" left join "posts" as "post" on "comments"."postId" = "post"."_internalId" left join "users" as "author" on "comments"."authorId" = "author"."_internalId""`,
+      );
     });
   });
 
@@ -546,16 +545,22 @@ describe("query-builder-joins", () => {
           return t
             .addColumn("productId", idColumn())
             .addColumn("name", column("string"))
-            .addColumn("price", column("integer"));
+            .addColumn("price", column("integer"))
+            .createIndex("idx_product_id", ["productId"]);
         })
         .addTable("categories", (t) => {
-          return t.addColumn("categoryId", idColumn()).addColumn("categoryName", column("string"));
+          return t
+            .addColumn("categoryId", idColumn())
+            .addColumn("categoryName", column("string"))
+            .createIndex("idx_category_id", ["categoryId"]);
         })
         .addTable("product_categories", (t) => {
           return t
             .addColumn("id", idColumn())
             .addColumn("prodRef", referenceColumn())
-            .addColumn("catRef", referenceColumn());
+            .addColumn("catRef", referenceColumn())
+            .createIndex("idx_prod", ["prodRef"])
+            .createIndex("idx_cat", ["catRef"]);
         })
         .addReference("product", {
           type: "one",
@@ -569,20 +574,39 @@ describe("query-builder-joins", () => {
         });
     });
 
+    function createCustomIdTestUOW() {
+      const mockCompiler = createKyselyUOWCompiler(customIdSchema, config);
+      const mockExecutor = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const mockDecoder: UOWDecoder<typeof customIdSchema> = (rawResults, operations) => {
+        if (rawResults.length !== operations.length) {
+          throw new Error("rawResults and ops must have the same length");
+        }
+        return rawResults;
+      };
+      return new UnitOfWork(customIdSchema, mockCompiler, mockExecutor, mockDecoder);
+    }
+
     it("should compile join with custom id column names", () => {
-      const compiler = createKyselyQueryCompiler(customIdSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createCustomIdTestUOW();
+      uow.find("product_categories", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) =>
+            jb
+              .product((pb) => pb.select(["productId", "name"]))
+              .category((cb) => cb.select(["categoryId", "categoryName"])),
+          ),
+      );
 
-      const query = compiler.findMany("product_categories", {
-        select: ["id"],
-        join: (b) => {
-          b.product({ select: ["productId", "name"] });
-          b.category({ select: ["categoryId", "categoryName"] });
-        },
-      });
+      const compiler = createKyselyUOWCompiler(customIdSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"product"."productId"');
       expect(query.sql).toContain('"category"."categoryId"');
@@ -598,20 +622,25 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle custom id in join where clause", () => {
-      const compiler = createKyselyQueryCompiler(customIdSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createCustomIdTestUOW();
+      uow.find("product_categories", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) =>
+            jb.product((pb) =>
+              pb
+                .select(["productId", "name"])
+                .whereIndex("idx_product_id", (eb) => eb("productId", "=", "prod-456")),
+            ),
+          ),
+      );
 
-      const query = compiler.findMany("product_categories", {
-        select: ["id"],
-        join: (b) =>
-          b.product({
-            select: ["productId", "name"],
-            where: (eb) => eb("productId", "=", "prod-456"),
-          }),
-      });
+      const compiler = createKyselyUOWCompiler(customIdSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"products"."productId" = $1');
       expect(query.sql).toContain('"product"."_internalId" as "product:_internalId"');
@@ -623,20 +652,18 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle select true with custom id columns", () => {
-      const compiler = createKyselyQueryCompiler(customIdSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createCustomIdTestUOW();
+      uow.find("product_categories", (b) => b.whereIndex("primary").join((jb) => jb.product()));
 
-      const query = compiler.findMany("product_categories", {
-        select: true,
-        join: (b) => b.product({ select: true }),
-      });
+      const compiler = createKyselyUOWCompiler(customIdSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"product"."productId"');
       expect(query.sql).toContain('"product_categories"."id"');
-      // With select true, _internalId IS now included when table has an id column (fixed bug #3)
+      // With select true, _internalId IS now included when table has an id column
       expect(query.sql).toContain('"product"."_internalId" as "product:_internalId"');
       // Join condition ALWAYS uses _internalId for performance
       expect(query.sql).toContain('"product_categories"."prodRef" = "product"."_internalId"');
@@ -646,19 +673,23 @@ describe("query-builder-joins", () => {
     });
 
     it("should join tables with different custom id names", () => {
-      const compiler = createKyselyQueryCompiler(customIdSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createCustomIdTestUOW();
+      uow.find("product_categories", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) =>
+            jb
+              .product((pb) => pb.select(["productId"]))
+              .category((cb) => cb.select(["categoryId"])),
+          ),
+      );
 
-      const query = compiler.findMany("product_categories", {
-        select: ["id"],
-        join: (b) => {
-          b.product({ select: ["productId"] });
-          b.category({ select: ["categoryId"] });
-        },
-      });
+      const compiler = createKyselyUOWCompiler(customIdSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"product"."productId"');
       expect(query.sql).toContain('"category"."categoryId"');
@@ -678,16 +709,19 @@ describe("query-builder-joins", () => {
 
   describe("special columns in joins - _internalId aliasing", () => {
     it("should properly alias _internalId for joined tables", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) => jb.author((ab) => ab.select(["id"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id"],
-        join: (b) => b.author({ select: ["id"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // Main table _internalId should be aliased as "_internalId"
       expect(query.sql).toContain('"posts"."_internalId" as "_internalId"');
@@ -699,16 +733,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle _internalId in join conditions", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title"])
+          .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
+      );
 
-      const query = compiler.findMany("posts", {
-        select: ["id", "title"],
-        join: (b) => b.author({ select: ["id", "name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // Join condition should use _internalId
       expect(query.sql).toContain('"posts"."userId" = "author"."_internalId"');
@@ -720,19 +757,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle multiple joins with _internalId tracking", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("comments", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id"])
+          .join((jb) => jb.post((pb) => pb.select(["id"])).author((ab) => ab.select(["id"]))),
+      );
 
-      const query = compiler.findMany("comments", {
-        select: ["id"],
-        join: (b) => {
-          b.post({ select: ["id"] });
-          b.author({ select: ["id"] });
-        },
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       // All _internalId should be properly aliased
       expect(query.sql).toContain('"comments"."_internalId" as "_internalId"');
@@ -748,16 +785,19 @@ describe("query-builder-joins", () => {
     });
 
     it("should handle self-referencing join with _internalId", () => {
-      const compiler = createKyselyQueryCompiler(userSchema, {
-        db: kysely,
-        provider: "postgresql",
-      });
+      const uow = createTestUOW();
+      uow.find("users", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "name"])
+          .join((jb) => jb.inviter((ib) => ib.select(["id", "name"]))),
+      );
 
-      const query = compiler.findMany("users", {
-        select: ["id", "name"],
-        join: (b) => b.inviter({ select: ["id", "name"] }),
-      });
+      const compiler = createKyselyUOWCompiler(userSchema, config);
+      const compiled = uow.compile(compiler);
 
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      const query = compiled.retrievalBatch[0];
       assert(query);
       expect(query.sql).toContain('"users"."invitedBy" = "inviter"."_internalId"');
       expect(query.sql).toContain('"users"."_internalId" as "_internalId"');

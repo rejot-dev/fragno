@@ -676,14 +676,14 @@ describe("query-builder", () => {
           where,
         });
 
+        expect(query.sql).toMatchInlineSnapshot(
+          `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = $1 limit $2), "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = $3"`,
+        );
         // Should contain a subquery to look up the internal ID
         expect(query.sql).toContain("select");
         expect(query.sql).toContain("_internalId");
         expect(query.sql).toContain("users");
         expect(query.parameters).toContain("new-user-id-456");
-        expect(query.sql).toMatchInlineSnapshot(
-          `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = $1 limit $2), "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = $3"`,
-        );
       });
 
       it("should handle bigint reference without subquery", () => {

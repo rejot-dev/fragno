@@ -1,6 +1,12 @@
-import type { IdColumn, AnySchema, AnyTable, Relation } from "../schema/create";
+import type { IdColumn, AnySchema, AnyTable, Relation, FragnoId } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
-import type { UnitOfWork } from "./unit-of-work";
+import type {
+  UnitOfWork,
+  FindBuilder,
+  UpdateBuilder,
+  DeleteBuilder,
+  UpdateManyBuilder,
+} from "./unit-of-work";
 import type { Prettify } from "../util/types";
 
 export type AnySelectClause = SelectClause<AnyTable>;
@@ -101,152 +107,92 @@ export type FindManyOptions<
 
 export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   /**
-   * Count (all)
+   * Find multiple records using a builder pattern
    */
-  count: <TableName extends keyof TSchema["tables"]>(
-    table: TableName,
-    v?: {
-      where?: (
-        eb: ConditionBuilder<TSchema["tables"][TableName]["columns"]>,
-      ) => Condition | boolean;
-    },
-  ) => Promise<number>;
-
-  findFirst: <
-    TableName extends keyof TSchema["tables"],
-    JoinOut = {},
+  find: <
+    TableName extends keyof TSchema["tables"] & string,
     Select extends SelectClause<TSchema["tables"][TableName]> = true,
+    JoinOut = {},
   >(
     table: TableName,
-    v: FindFirstOptions<TSchema["tables"][TableName], Select, JoinOut>,
-  ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select> | null>;
-
-  findMany: <
-    TableName extends keyof TSchema["tables"],
-    JoinOut = {},
-    Select extends SelectClause<TSchema["tables"][TableName]> = true,
-  >(
-    table: TableName,
-    v?: FindManyOptions<TSchema["tables"][TableName], Select, JoinOut>,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<FindBuilder<TSchema["tables"][TableName], Select, JoinOut>, "build">,
   ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select>[]>;
 
   /**
-   * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
+   * Find the first record matching the criteria
+   * Implemented as a wrapper around find() with pageSize(1)
    */
-  updateMany: <TableName extends keyof TSchema["tables"]>(
+  findFirst: <
+    TableName extends keyof TSchema["tables"] & string,
+    Select extends SelectClause<TSchema["tables"][TableName]> = true,
+    JoinOut = {},
+  >(
     table: TableName,
-    v: {
-      where?: (
-        eb: ConditionBuilder<TSchema["tables"][TableName]["columns"]>,
-      ) => Condition | boolean;
-      set: TableToUpdateValues<TSchema["tables"][TableName]>;
-    },
-  ) => Promise<void>;
-
-  createMany: <TableName extends keyof TSchema["tables"]>(
-    table: TableName,
-    values: TableToInsertValues<TSchema["tables"][TableName]>[],
-  ) => Promise<
-    {
-      _id: string;
-    }[]
-  >;
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<FindBuilder<TSchema["tables"][TableName], Select, JoinOut>, "build">,
+  ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select> | null>;
 
   /**
-   * Note: when you don't need to receive the result, always use `createMany` for better performance.
+   * Create a single record
+   * @returns The ID of the created record
    */
-  create: <TableName extends keyof TSchema["tables"]>(
+  create: <TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
     values: TableToInsertValues<TSchema["tables"][TableName]>,
-  ) => Promise<TableToColumnValues<TSchema["tables"][TableName]>>;
+  ) => Promise<FragnoId>;
 
-  deleteMany: <TableName extends keyof TSchema["tables"]>(
+  /**
+   * Create multiple records
+   * @returns Array of IDs of the created records
+   */
+  createMany: <TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
-    v: {
-      where?: (
-        eb: ConditionBuilder<TSchema["tables"][TableName]["columns"]>,
-      ) => Condition | boolean;
-    },
+    values: TableToInsertValues<TSchema["tables"][TableName]>[],
+  ) => Promise<FragnoId[]>;
+
+  /**
+   * Update a single record by ID
+   * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
+   */
+  update: <TableName extends keyof TSchema["tables"] & string>(
+    table: TableName,
+    id: FragnoId | string,
+    builderFn: (
+      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+  ) => Promise<void>;
+
+  /**
+   * Update multiple records matching a where clause
+   * Note: you cannot update the id of a row, some databases don't support that (including MongoDB).
+   */
+  updateMany: <TableName extends keyof TSchema["tables"] & string>(
+    table: TableName,
+    builderFn: (builder: UpdateManyBuilder<TSchema["tables"][TableName]>) => void,
+  ) => Promise<void>;
+
+  /**
+   * Delete a single record by ID
+   */
+  delete: <TableName extends keyof TSchema["tables"] & string>(
+    table: TableName,
+    id: FragnoId | string,
+    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build">,
+  ) => Promise<void>;
+
+  /**
+   * Delete multiple records matching a where clause
+   */
+  deleteMany: <TableName extends keyof TSchema["tables"] & string>(
+    table: TableName,
+    builderFn: (builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">) => void,
   ) => Promise<void>;
 
   /**
    * Create a Unit of Work bound to this query engine
    */
   createUnitOfWork: (name?: string, config?: TUOWConfig) => UnitOfWork<TSchema, []>;
-}
-
-export interface AbstractQueryCompiler<S extends AnySchema, TOutput> {
-  /**
-   * Compile a count query
-   * Returns null if the where condition is always false
-   */
-  count: <TableName extends keyof S["tables"]>(
-    table: TableName,
-    v?: {
-      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
-    },
-  ) => TOutput | null;
-
-  /**
-   * Compile a findFirst query
-   * Returns null if the where condition is always false
-   */
-  findFirst: <
-    TableName extends keyof S["tables"],
-    Select extends SelectClause<S["tables"][TableName]> = true,
-  >(
-    table: TableName,
-    v: FindFirstOptions<S["tables"][TableName], Select>,
-  ) => TOutput | null;
-
-  /**
-   * Compile a findMany query
-   * Returns null if the where condition is always false
-   */
-  findMany: <
-    TableName extends keyof S["tables"],
-    Select extends SelectClause<S["tables"][TableName]> = true,
-  >(
-    table: TableName,
-    v?: FindManyOptions<S["tables"][TableName], Select>,
-  ) => TOutput | null;
-
-  /**
-   * Compile an updateMany query
-   * Returns null if the where condition is always false
-   */
-  updateMany: <TableName extends keyof S["tables"]>(
-    table: TableName,
-    v: {
-      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
-      set: TableToUpdateValues<S["tables"][TableName]>;
-    },
-  ) => TOutput | null;
-
-  /**
-   * Compile a createMany query
-   */
-  createMany: <TableName extends keyof S["tables"]>(
-    table: TableName,
-    values: TableToInsertValues<S["tables"][TableName]>[],
-  ) => TOutput;
-
-  /**
-   * Compile a create query
-   */
-  create: <TableName extends keyof S["tables"]>(
-    table: TableName,
-    values: TableToInsertValues<S["tables"][TableName]>,
-  ) => TOutput;
-
-  /**
-   * Compile a deleteMany query
-   * Returns null if the where condition is always false
-   */
-  deleteMany: <TableName extends keyof S["tables"]>(
-    table: TableName,
-    v: {
-      where?: (eb: ConditionBuilder<S["tables"][TableName]["columns"]>) => Condition | boolean;
-    },
-  ) => TOutput | null;
 }

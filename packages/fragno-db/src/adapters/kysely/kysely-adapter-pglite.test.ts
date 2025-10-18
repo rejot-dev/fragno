@@ -174,89 +174,73 @@ describe("KyselyAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user
-    const userResult = await queryEngine.create("users", {
+    const userId = await queryEngine.create("users", {
       name: "John Doe",
       age: 30,
     });
 
-    expect(userResult).toMatchObject({
-      id: expect.objectContaining({
-        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
-      }),
-      name: "John Doe",
-      age: 30,
+    // create() now returns just the ID
+    expect(userId).toMatchObject({
+      externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+      internalId: expect.any(Number),
     });
 
-    expect(userResult.id.version).toBe(0);
+    expect(userId.version).toBe(0);
 
-    const getUser = await queryEngine.findFirst("users", {
-      select: ["id"],
-      where: (b) => b("id", "=", userResult.id),
-    });
+    const getUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", userId)).select(["id", "name"]),
+    );
     expect(getUser).toMatchObject({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
         internalId: expect.any(Number),
       }),
+      name: "John Doe",
     });
 
     // Create 2 emails for the user
-    const email1Result = await queryEngine.create("emails", {
-      user_id: userResult.id,
+    const email1Id = await queryEngine.create("emails", {
+      user_id: userId,
       email: "john.doe@example.com",
       is_primary: true,
     });
 
-    const email2Result = await queryEngine.create("emails", {
+    const email2Id = await queryEngine.create("emails", {
       // Pass only the string (external ID) here, to make sure we generate the right sub-query.
-      user_id: userResult.id.toString(),
+      user_id: userId.toString(),
       email: "john.doe.work@company.com",
       is_primary: false,
     });
 
-    expect(email1Result).toEqual({
-      id: expect.objectContaining({
-        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
-      }),
-      user_id: expect.objectContaining({
-        internalId: expect.any(Number),
-      }),
-      email: "john.doe@example.com",
-      is_primary: true,
+    expect(email1Id).toMatchObject({
+      externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+      internalId: expect.any(Number),
     });
 
-    expect(email2Result).toEqual({
-      id: expect.objectContaining({
-        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
-      }),
-      user_id: expect.objectContaining({
-        internalId: expect.any(Number),
-      }),
-      email: "john.doe.work@company.com",
-      is_primary: false,
+    expect(email2Id).toMatchObject({
+      externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+      internalId: expect.any(Number),
     });
 
     // Update user name
-    await queryEngine.updateMany("users", {
-      where: (b) => b("id", "=", userResult.id),
-      set: {
-        name: "Jane Doe",
-      },
-    });
+    await queryEngine.updateMany("users", (b) =>
+      b
+        .whereIndex("primary", (eb) => eb("id", "=", userId))
+        .set({
+          name: "Jane Doe",
+        }),
+    );
 
-    const updatedUser = await queryEngine.findFirst("users", {
-      where: (b) => b("id", "=", userResult.id),
-    });
+    const updatedUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+    );
     // Version has been incremented
     expect(updatedUser!.id.version).toBe(1);
 
     // Query emails with their users using join (since the relation is from emails to users)
-    const emailsWithUsers = await queryEngine.findMany("emails", {
-      join: (b) => b.user({ select: ["name", "age", "id"] }),
-    });
+    const emailsWithUsers = await queryEngine.find("emails", (b) =>
+      b.whereIndex("primary").join((jb) => jb.user()),
+    );
 
     expect(emailsWithUsers).toHaveLength(2); // One row per email
     expect(emailsWithUsers[0]).toEqual({
@@ -280,10 +264,9 @@ describe("KyselyAdapter PGLite", () => {
     });
 
     // Also test a more specific join query to get emails for a specific user
-    const userEmails = await queryEngine.findMany("emails", {
-      where: (b) => b("user_id", "=", userResult.id),
-      join: (b) => b.user({ select: ["name", "age"] }),
-    });
+    const userEmails = await queryEngine.find("emails", (b) =>
+      b.whereIndex("user_emails", (eb) => eb("user_id", "=", userId)).join((jb) => jb.user()),
+    );
 
     expect(userEmails).toHaveLength(2);
   });
@@ -293,24 +276,24 @@ describe("KyselyAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create initial user
-    const initialUser = await queryEngine.create("users", {
+    const initialUserId = await queryEngine.create("users", {
       name: "Alice",
       age: 25,
     });
 
-    expect(initialUser.id.version).toBe(0);
+    expect(initialUserId.version).toBe(0);
 
     // Build a UOW to update the user with optimistic locking
     const uow = queryEngine
       .createUnitOfWork("update-user-age")
       // Retrieval phase: find the user
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUser.id)));
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
 
     // Execute retrieval and transition to mutation phase
     const [users] = await uow.executeRetrieve();
 
     // Mutation phase: update with version check
-    uow.update("users", initialUser.id, (b) => b.set({ age: 26 }).check());
+    uow.update("users", initialUserId, (b) => b.set({ age: 26 }).check());
 
     // Execute mutations
     const { success } = await uow.executeMutations();
@@ -320,13 +303,13 @@ describe("KyselyAdapter PGLite", () => {
     expect(users).toHaveLength(1);
 
     // Verify the user was updated
-    const updatedUser = await queryEngine.findFirst("users", {
-      where: (b) => b("id", "=", initialUser.id),
-    });
+    const updatedUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)),
+    );
 
     expect(updatedUser).toMatchObject({
       id: expect.objectContaining({
-        externalId: initialUser.id.externalId,
+        externalId: initialUserId.externalId,
         version: 1, // Version incremented
       }),
       name: "Alice",
@@ -337,7 +320,7 @@ describe("KyselyAdapter PGLite", () => {
     const uow2 = queryEngine.createUnitOfWork("update-user-stale");
 
     // Use the old version (0) which is now stale
-    uow2.update("users", initialUser.id, (b) => b.set({ age: 27 }).check());
+    uow2.update("users", initialUserId, (b) => b.set({ age: 27 }).check());
 
     const { success: success2 } = await uow2.executeMutations();
 
@@ -347,7 +330,7 @@ describe("KyselyAdapter PGLite", () => {
     // Verify the user was NOT updated
     const [[unchangedUser]] = await queryEngine
       .createUnitOfWork("verify-unchanged")
-      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUser.id)))
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
       .executeRetrieve();
 
     expect(unchangedUser).toMatchObject({
@@ -441,58 +424,58 @@ describe("KyselyAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user
-    const user = await queryEngine.create("users", {
+    const userId = await queryEngine.create("users", {
       name: "Blog Author",
       age: 28,
     });
 
     // Create posts
-    const post1 = await queryEngine.create("posts", {
+    const post1Id = await queryEngine.create("posts", {
       title: "TypeScript Tips",
       content: "Learn TypeScript",
-      user_id: user.id,
+      user_id: userId,
     });
 
-    const post2 = await queryEngine.create("posts", {
+    const post2Id = await queryEngine.create("posts", {
       title: "Database Design",
       content: "Learn databases",
-      user_id: user.id,
+      user_id: userId,
     });
 
     // Create tags
-    const tagTypeScript = await queryEngine.create("tags", {
+    const tagTypeScriptId = await queryEngine.create("tags", {
       name: "TypeScript",
     });
 
-    const tagDatabase = await queryEngine.create("tags", {
+    const tagDatabaseId = await queryEngine.create("tags", {
       name: "Database",
     });
 
-    const tagTutorial = await queryEngine.create("tags", {
+    const tagTutorialId = await queryEngine.create("tags", {
       name: "Tutorial",
     });
 
     // Link posts to tags via junction table
     // Post 1 has tags: TypeScript, Tutorial
     await queryEngine.create("post_tags", {
-      post_id: post1.id,
-      tag_id: tagTypeScript.id,
+      post_id: post1Id,
+      tag_id: tagTypeScriptId,
     });
 
     await queryEngine.create("post_tags", {
-      post_id: post1.id,
-      tag_id: tagTutorial.id,
+      post_id: post1Id,
+      tag_id: tagTutorialId,
     });
 
     // Post 2 has tags: Database, Tutorial
     await queryEngine.create("post_tags", {
-      post_id: post2.id,
-      tag_id: tagDatabase.id,
+      post_id: post2Id,
+      tag_id: tagDatabaseId,
     });
 
     await queryEngine.create("post_tags", {
-      post_id: post2.id,
-      tag_id: tagTutorial.id,
+      post_id: post2Id,
+      tag_id: tagTutorialId,
     });
 
     // Query post_tags with joined post and tag data using UOW
@@ -573,7 +556,7 @@ describe("KyselyAdapter PGLite", () => {
       .createUnitOfWork("get-post-tags-with-authors")
       .find("post_tags", (b) =>
         b
-          .whereIndex("pt_post", (eb) => eb("post_id", "=", post1.id))
+          .whereIndex("pt_post", (eb) => eb("post_id", "=", post1Id))
           .join((jb) =>
             jb.post((pb) =>
               pb.select(["title"]).join((jb2) => jb2["author"]((ab) => ab.select(["name"]))),
@@ -606,28 +589,28 @@ describe("KyselyAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user (author)
-    const author = await queryEngine.create("users", {
+    const authorId = await queryEngine.create("users", {
       name: "Blog Author",
       age: 30,
     });
 
     // Create a post by the author
-    const post = await queryEngine.create("posts", {
-      user_id: author.id,
+    const postId = await queryEngine.create("posts", {
+      user_id: authorId,
       title: "My First Post",
       content: "This is the content of my first post",
     });
 
     // Create a commenter
-    const commenter = await queryEngine.create("users", {
+    const commenterId = await queryEngine.create("users", {
       name: "Commenter User",
       age: 25,
     });
 
     // Create a comment on the post
     await queryEngine.create("comments", {
-      post_id: post.id,
-      user_id: commenter.id,
+      post_id: postId,
+      user_id: commenterId,
       text: "Great post!",
     });
 
@@ -663,14 +646,14 @@ describe("KyselyAdapter PGLite", () => {
       // Post join (first level)
       post: {
         id: expect.objectContaining({
-          externalId: post.id.externalId,
+          externalId: postId.externalId,
         }),
         title: "My First Post",
         content: "This is the content of my first post",
         // Nested author join (second level)
         author: {
           id: expect.objectContaining({
-            externalId: author.id.externalId,
+            externalId: authorId.externalId,
           }),
           name: "Blog Author",
           age: 30,
@@ -679,7 +662,7 @@ describe("KyselyAdapter PGLite", () => {
       // Commenter join (first level)
       commenter: {
         id: expect.objectContaining({
-          externalId: commenter.id.externalId,
+          externalId: commenterId.externalId,
         }),
         name: "Commenter User",
       },
@@ -721,17 +704,17 @@ describe("KyselyAdapter PGLite", () => {
     expect(new Set(externalIds).size).toBe(3);
 
     // Verify we can use these IDs to query the created users
-    const user1 = await queryEngine.findFirst("users", {
-      where: (b) => b("id", "=", createdIds1[0].externalId),
-    });
+    const user1 = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
+    );
 
-    const user2 = await queryEngine.findFirst("users", {
-      where: (b) => b("id", "=", createdIds1[1].externalId),
-    });
+    const user2 = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
+    );
 
-    const user3 = await queryEngine.findFirst("users", {
-      where: (b) => b("id", "=", createdIds1[2].externalId),
-    });
+    const user3 = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
+    );
 
     expect(user1).toMatchObject({
       id: expect.objectContaining({
@@ -791,9 +774,9 @@ describe("KyselyAdapter PGLite", () => {
     expect(createdIds3[0].internalId).toBeDefined();
 
     // Verify the user was created with the custom ID
-    const customIdUser = await queryEngine.findFirst("users", {
-      where: (b) => b("id", "=", customId),
-    });
+    const customIdUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", customId)),
+    );
 
     expect(customIdUser).toMatchObject({
       id: expect.objectContaining({

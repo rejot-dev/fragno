@@ -2,8 +2,7 @@ import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
 import type { KyselyConfig } from "./kysely-adapter";
 import type { CompiledMutation, UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
-import { createKyselyQueryCompiler } from "./kysely-query-compiler";
-import { decodeResult, encodeValues } from "../../query/result-transform";
+import { decodeResult } from "../../query/result-transform";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
@@ -35,177 +34,217 @@ import type { CompiledQuery } from "kysely";
  */
 export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig): AbstractQuery<T> {
   const { db: kysely, provider } = config;
-  const queryCompiler = createKyselyQueryCompiler(schema, config);
   const uowCompiler = createKyselyUOWCompiler(schema, config);
 
-  function getTable(tableName: string) {
-    const table = schema.tables[tableName];
-    if (!table) {
-      throw new Error(`Invalid table name ${tableName}.`);
-    }
-    return table;
+  function createUOW(name?: string): UnitOfWork<T, []> {
+    const executor: UOWExecutor<CompiledQuery, unknown> = {
+      executeRetrievalPhase: (retrievalBatch: CompiledQuery[]) =>
+        executeKyselyRetrievalPhase(kysely, retrievalBatch),
+      executeMutationPhase: (mutationBatch: CompiledMutation<CompiledQuery>[]) =>
+        executeKyselyMutationPhase(kysely, mutationBatch),
+    };
+
+    // Create a decoder function to transform raw results into application format
+    const decoder: UOWDecoder<T> = (rawResults, ops) => {
+      if (rawResults.length !== ops.length) {
+        throw new Error("rawResults and ops must have the same length");
+      }
+
+      return rawResults.map((rows, index) => {
+        const op = ops[index];
+        if (!op) {
+          throw new Error("op must be defined");
+        }
+
+        // Handle count operations differently - return the count number directly
+        if (op.type === "count") {
+          const rowArray = rows as Record<string, unknown>[];
+          const firstRow = rowArray[0];
+          if (!firstRow) {
+            return 0;
+          }
+          const count = Number(firstRow["count"]);
+          if (Number.isNaN(count)) {
+            throw new Error(`Unexpected result for count, received: ${count}`);
+          }
+          return count;
+        }
+
+        // Each result is an array of rows - decode each row
+        const rowArray = rows as Record<string, unknown>[];
+        return rowArray.map((row) => decodeResult(row, op.table, provider));
+      });
+    };
+
+    return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
   }
 
   return {
-    async count(name, options) {
-      const compiled = queryCompiler.count(name, options);
-      if (compiled === null) {
-        return 0;
-      }
-
-      const result = await kysely.executeQuery(compiled);
-      const firstRow = result.rows[0] as Record<string, unknown> | undefined;
-      const count = Number(firstRow?.["count"]);
-      if (Number.isNaN(count)) {
-        throw new Error(`Unexpected result for count, received: ${count}`);
-      }
-      return count;
+    async find(tableName, builderFn) {
+      const uow = createUOW();
+      uow.find(tableName, builderFn);
+      // executeRetrieve returns an array of results (one per find operation)
+      // Since we only have one find, unwrap the first result
+      const [result]: unknown[][] = await uow.executeRetrieve();
+      return result ?? [];
     },
 
-    async findFirst(name, options) {
-      const compiled = queryCompiler.findFirst(name, options);
-      if (compiled === null) {
-        return null;
-      }
-
-      const result = await kysely.executeQuery(compiled);
-      if (result.rows.length === 0) {
-        return null;
-      }
-
-      const table = getTable(name as string);
-      // Safe cast: we know the query returns a record matching our table structure
-      return decodeResult(result.rows[0] as Record<string, unknown>, table, provider);
+    async findFirst(tableName, builderFn) {
+      const uow = createUOW();
+      uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+      // executeRetrieve runs an array of `find` operation results, which each return an array of rows
+      const [result]: unknown[][] = await uow.executeRetrieve();
+      return result?.[0] ?? null;
     },
 
-    async findMany(name, options) {
-      const compiled = queryCompiler.findMany(name, options);
-      if (compiled === null) {
-        return [];
+    async create(tableName, values) {
+      const uow = createUOW();
+      uow.create(tableName, values);
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        // This should not happen because we don't `.check()` this call.
+        // TODO: Verify what happens when there are unique constraints
+        throw new Error("Failed to create record");
       }
 
-      const result = await kysely.executeQuery(compiled);
-      const table = getTable(name as string);
-
-      return result.rows.map((row) =>
-        // Safe cast: we know the query returns records matching our table structure
-        decodeResult(row as Record<string, unknown>, table, provider),
-      );
+      const [createdId] = uow.getCreatedIds();
+      if (!createdId) {
+        throw new Error("Failed to get created ID");
+      }
+      return createdId;
     },
 
-    async create(name, values) {
-      // Safe cast: TableToInsertValues types are structurally equivalent between query.ts and query-compiler.ts
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const compiled = queryCompiler.create(name, values as any);
-      const table = getTable(name as string);
-
-      if (provider === "mssql" || provider === "postgresql" || provider === "sqlite") {
-        const result = await kysely.executeQuery(compiled);
-        // Safe cast: we know the query returns a record matching our table structure
-        return decodeResult(result.rows[0] as Record<string, unknown>, table, provider);
+    async createMany(tableName, valuesArray) {
+      const uow = createUOW();
+      for (const values of valuesArray) {
+        uow.create(tableName, values);
+      }
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create records");
       }
 
-      // For MySQL and other providers that don't support RETURNING, we need to do a follow-up query
-      const encodedValues = encodeValues(values, table, true, provider);
-      const idColumn = table.getIdColumn();
-      const idValue = encodedValues[idColumn.name];
+      return uow.getCreatedIds();
+    },
 
-      if (idValue == null) {
-        throw new Error("cannot find value of id column, which is required for `create()`.");
+    async update(tableName, id, builderFn) {
+      const uow = createUOW();
+      uow.update(tableName, id, builderFn);
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update record (version conflict or record not found)");
+      }
+    },
+
+    async updateMany(tableName, builderFn) {
+      // Create a special builder that captures both where and set operations
+      let whereConfig: { indexName?: string; condition?: unknown } = {};
+      let setValues: unknown;
+
+      const specialBuilder = {
+        whereIndex(indexName: string, condition?: unknown) {
+          whereConfig = { indexName, condition };
+          return this;
+        },
+        set(values: unknown) {
+          setValues = values;
+          return this;
+        },
+      };
+
+      builderFn(specialBuilder);
+
+      if (!whereConfig.indexName) {
+        throw new Error("whereIndex() must be called in updateMany");
+      }
+      if (!setValues) {
+        throw new Error("set() must be called in updateMany");
       }
 
-      await kysely.executeQuery(compiled);
-
-      // Do a follow-up SELECT to get the created record
-      const findCompiled = queryCompiler.findFirst(name, {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        where: (b) => b(idColumn.name as any, "=", idValue as any),
+      // First, find all matching records
+      const findUow = createUOW();
+      findUow.find(tableName, (b) => {
+        if (whereConfig.condition) {
+          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
+        }
+        return b.whereIndex(whereConfig.indexName as never);
       });
+      const findResults: unknown[][] = await findUow.executeRetrieve();
+      const records = findResults[0];
 
-      if (findCompiled === null) {
-        throw new Error("Failed to compile follow-up query for MySQL create");
-      }
-
-      const result = await kysely.executeQuery(findCompiled);
-      // Safe cast: we know the query returns a record matching our table structure
-      return decodeResult(result.rows[0] as Record<string, unknown>, table, provider);
-    },
-
-    async createMany(name, values) {
-      // Safe cast: TableToInsertValues types are structurally equivalent between query.ts and query-compiler.ts
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const compiled = queryCompiler.createMany(name, values as any);
-      const table = getTable(name as string);
-      const encodedValues = values.map((v) => encodeValues(v, table, true, provider));
-
-      await kysely.executeQuery(compiled);
-
-      return encodedValues.map((value) => ({
-        _id: value[table.getIdColumn().name],
-      }));
-    },
-
-    async updateMany(name, options) {
-      // Safe cast: TableToUpdateValues types are structurally equivalent between query.ts and query-compiler.ts
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const compiled = queryCompiler.updateMany(name, options as any);
-      if (compiled === null) {
+      if (!records || records.length === 0) {
         return;
       }
 
-      await kysely.executeQuery(compiled);
+      // Now update all found records
+      const updateUow = createUOW();
+      for (const record of records as never as Array<{ id: unknown }>) {
+        updateUow.update(tableName as string, record.id as string, (b) =>
+          b.set(setValues as never),
+        );
+      }
+      const { success } = await updateUow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to update records (version conflict)");
+      }
     },
 
-    async deleteMany(name, options) {
-      const compiled = queryCompiler.deleteMany(name, options);
-      if (compiled === null) {
+    async delete(tableName, id, builderFn) {
+      const uow = createUOW();
+      uow.delete(tableName, id, builderFn);
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to delete record (version conflict or record not found)");
+      }
+    },
+
+    async deleteMany(tableName, builderFn) {
+      // Create a special builder that captures where configuration
+      let whereConfig: { indexName?: string; condition?: unknown } = {};
+
+      const specialBuilder = {
+        whereIndex(indexName: string, condition?: unknown) {
+          whereConfig = { indexName, condition };
+          return this;
+        },
+      };
+
+      // Safe: Call builderFn to capture the configuration
+      builderFn(specialBuilder as never);
+
+      if (!whereConfig.indexName) {
+        throw new Error("whereIndex() must be called in deleteMany");
+      }
+
+      // First, find all matching records
+      const findUow = createUOW();
+      findUow.find(tableName as string, (b) => {
+        if (whereConfig.condition) {
+          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
+        }
+        return b.whereIndex(whereConfig.indexName as never);
+      });
+      const findResults2 = await findUow.executeRetrieve();
+      const records = (findResults2 as unknown as [unknown])[0];
+
+      // @ts-expect-error - Type narrowing doesn't work through unknown cast
+      if (!records || records.length === 0) {
         return;
       }
 
-      await kysely.executeQuery(compiled);
+      // Now delete all found records
+      const deleteUow = createUOW();
+      for (const record of records as never as Array<{ id: unknown }>) {
+        deleteUow.delete(tableName as string, record.id as string);
+      }
+      const { success } = await deleteUow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to delete records (version conflict)");
+      }
     },
 
     createUnitOfWork(name) {
-      const executor: UOWExecutor<CompiledQuery, unknown> = {
-        executeRetrievalPhase: (retrievalBatch: CompiledQuery[]) =>
-          executeKyselyRetrievalPhase(kysely, retrievalBatch),
-        executeMutationPhase: (mutationBatch: CompiledMutation<CompiledQuery>[]) =>
-          executeKyselyMutationPhase(kysely, mutationBatch),
-      };
-
-      // Create a decoder function to transform raw results into application format
-      const decoder: UOWDecoder<typeof schema> = (rawResults, ops) => {
-        if (rawResults.length !== ops.length) {
-          throw new Error("rawResults and ops must have the same length");
-        }
-
-        return rawResults.map((rows, index) => {
-          const op = ops[index];
-          if (!op) {
-            throw new Error("op must be defined");
-          }
-
-          // Handle count operations differently - return the count number directly
-          if (op.type === "count") {
-            const rowArray = rows as Record<string, unknown>[];
-            const firstRow = rowArray[0];
-            if (!firstRow) {
-              return 0;
-            }
-            const count = Number(firstRow["count"]);
-            if (Number.isNaN(count)) {
-              throw new Error(`Unexpected result for count, received: ${count}`);
-            }
-            return count;
-          }
-
-          // Each result is an array of rows - decode each row
-          const rowArray = rows as Record<string, unknown>[];
-          return rowArray.map((row) => decodeResult(row, op.table, provider));
-        });
-      };
-
-      return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
+      return createUOW(name);
     },
   } as AbstractQuery<T>;
 }

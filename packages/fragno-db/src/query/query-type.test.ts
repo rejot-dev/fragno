@@ -111,9 +111,7 @@ describe("query type tests", () => {
       it("should return selected columns only", () => {
         const _query = {} as Query;
 
-        type Result = Awaited<
-          ReturnType<typeof _query.findFirst<"users", object, ["name", "email"]>>
-        >;
+        type Result = Awaited<ReturnType<typeof _query.findFirst<"users", ["name", "email"]>>>;
 
         expectTypeOf<Result>().toExtend<{
           name: string;
@@ -124,17 +122,17 @@ describe("query type tests", () => {
       it("should handle nullable columns correctly", () => {
         const _query = {} as Query;
 
-        type Result = Awaited<ReturnType<typeof _query.findFirst<"users", object, ["age"]>>>;
+        type Result = Awaited<ReturnType<typeof _query.findFirst<"users", ["age"]>>>;
         type NonNullResult = Exclude<Result, null>;
 
         expectTypeOf<NonNullResult>().toMatchTypeOf<{ age: number | null }>();
       });
     });
 
-    describe("findMany", () => {
+    describe("find", () => {
       it("should return array of all columns when select is true or undefined", () => {
         const _query = {} as Query;
-        type Result = Awaited<ReturnType<typeof _query.findMany<"users">>>;
+        type Result = Awaited<ReturnType<typeof _query.find<"users">>>;
 
         expectTypeOf<Result>().toExtend<
           {
@@ -150,9 +148,7 @@ describe("query type tests", () => {
       it("should return array of selected columns only", () => {
         const _query = {} as Query;
 
-        type Result = Awaited<
-          ReturnType<typeof _query.findMany<"users", object, ["name", "email"]>>
-        >;
+        type Result = Awaited<ReturnType<typeof _query.find<"users", ["name", "email"], object>>>;
 
         expectTypeOf<Result>().toExtend<
           {
@@ -160,15 +156,6 @@ describe("query type tests", () => {
             email: string;
           }[]
         >();
-      });
-    });
-
-    describe("count", () => {
-      it("should return number", () => {
-        const _query = {} as Query;
-        type Result = Awaited<ReturnType<typeof _query.count<"users">>>;
-
-        expectTypeOf<Result>().toEqualTypeOf<number>();
       });
     });
 
@@ -189,17 +176,11 @@ describe("query type tests", () => {
         }>().toExtend<Params>();
       });
 
-      it("should return all columns including id", () => {
+      it("should return the created ID", () => {
         const _query = {} as Query;
         type Result = Awaited<ReturnType<typeof _query.create<"users">>>;
 
-        expectTypeOf<Result>().toExtend<{
-          _id: FragnoId;
-          name: string;
-          email: string;
-          age: number | null;
-          isActive: boolean;
-        }>();
+        expectTypeOf<Result>().toEqualTypeOf<FragnoId>();
       });
 
       it("should handle posts table correctly", () => {
@@ -236,55 +217,21 @@ describe("query type tests", () => {
         >().toExtend<Params>();
 
         type Result = Awaited<ReturnType<typeof _query.createMany<"users">>>;
-        expectTypeOf<Result>().toExtend<{ _id: string }[]>();
+        // createMany returns array of IDs
+        expectTypeOf<Result>().toEqualTypeOf<FragnoId[]>();
       });
     });
 
     describe("updateMany", () => {
-      it("should not require any columns", () => {
+      it("should accept a builder function", () => {
         const _query = {} as Query;
 
-        type SetParam = Parameters<typeof _query.updateMany<"users">>[1]["set"];
+        // updateMany accepts a builder function, not an options object
+        type Params = Parameters<typeof _query.updateMany<"users">>;
 
-        expectTypeOf<{
-          age?: number;
-        }>().toExtend<SetParam>();
-
-        expectTypeOf<{
-          name?: string;
-          age?: number;
-        }>().toExtend<SetParam>();
-      });
-
-      it("should not allow updating id column", () => {
-        const _query = {} as Query;
-
-        type SetParam = Parameters<typeof _query.updateMany<"users">>[1]["set"];
-
-        expectTypeOf<{
-          _id: FragnoId;
-          name: string;
-        }>().not.toExtend<SetParam>();
-      });
-
-      it("should allow updating nullable columns to null", () => {
-        const _query = {} as Query;
-
-        type SetParam = Parameters<typeof _query.updateMany<"users">>[1]["set"];
-
-        expectTypeOf<{
-          age: null;
-        }>().toExtend<SetParam>();
-      });
-
-      it("should allow partial updates", () => {
-        const _query = {} as Query;
-
-        type SetParam = Parameters<typeof _query.updateMany<"users">>[1]["set"];
-
-        expectTypeOf<{
-          isActive: boolean;
-        }>().toExtend<SetParam>();
+        // Check that updateMany takes correct parameters
+        expectTypeOf<Params[0]>().toEqualTypeOf<"users">();
+        expectTypeOf<Params[1]>().toBeFunction();
       });
     });
   });
@@ -294,9 +241,9 @@ describe("query type tests", () => {
       const _query = {} as AbstractQuery<TestSchema>;
 
       // Valid table names
-      type UsersParam = Parameters<typeof _query.findMany<"users">>;
-      type PostsParam = Parameters<typeof _query.findMany<"posts">>;
-      type CommentsParam = Parameters<typeof _query.findMany<"comments">>;
+      type UsersParam = Parameters<typeof _query.find<"users">>;
+      type PostsParam = Parameters<typeof _query.find<"posts">>;
+      type CommentsParam = Parameters<typeof _query.find<"comments">>;
 
       expectTypeOf<UsersParam>().not.toEqualTypeOf<never>();
       expectTypeOf<PostsParam>().not.toEqualTypeOf<never>();
@@ -349,15 +296,15 @@ describe("query type tests", () => {
 
       // Create user return type
       type UserResult = Awaited<ReturnType<typeof _query.create<"users">>>;
-      expectTypeOf<UserResult["_id"]>().toEqualTypeOf<FragnoId>();
+      expectTypeOf<UserResult>().toEqualTypeOf<FragnoId>();
 
       // Create post return type
       type PostResult = Awaited<ReturnType<typeof _query.create<"posts">>>;
-      expectTypeOf<PostResult["_id"]>().toEqualTypeOf<FragnoId>();
+      expectTypeOf<PostResult>().toEqualTypeOf<FragnoId>();
 
       // Find posts by user return type
       type UserPostsResult = Awaited<
-        ReturnType<typeof _query.findMany<"posts", object, ["title", "viewCount"]>>
+        ReturnType<typeof _query.find<"posts", ["title", "viewCount"], object>>
       >;
 
       expectTypeOf<UserPostsResult>().toExtend<
@@ -366,18 +313,6 @@ describe("query type tests", () => {
           viewCount: number;
         }[]
       >();
-    });
-
-    it("should handle updates with type safety", () => {
-      const _query = {} as AbstractQuery<TestSchema>;
-
-      type SetParam = Parameters<typeof _query.updateMany<"posts">>[1]["set"];
-
-      // Valid updates
-      expectTypeOf<{
-        viewCount: number;
-        publishedAt: Date;
-      }>().toExtend<SetParam>();
     });
   });
 

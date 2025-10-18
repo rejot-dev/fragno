@@ -35,10 +35,12 @@ export function createFragnoDatabaseLibrary(orm: AbstractQuery<typeof userSchema
       return orm.create("posts", post);
     },
     getPosts: () => {
-      return orm.findMany("posts", {
-        select: ["id", "title", "content"],
-        join: (b) => b.author(),
-      });
+      return orm.find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .select(["id", "title", "content"])
+          .join((jb) => jb.author()),
+      );
     },
   };
 
@@ -46,7 +48,7 @@ export function createFragnoDatabaseLibrary(orm: AbstractQuery<typeof userSchema
     createUserAndPost: async (u: { name: string }, p: { title: string; content: string }) => {
       const user = await internal.createUser(u);
       console.log(user);
-      const post = await internal.createPost({ ...p, userId: user.id.toString() });
+      const post = await internal.createPost({ ...p, userId: user.toString() });
       return { user, post };
     },
     getPosts: internal.getPosts,
