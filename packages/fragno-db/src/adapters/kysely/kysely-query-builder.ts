@@ -460,14 +460,14 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       const selectBuilder = extendSelect(v.select);
       const mappedSelect: string[] = [];
 
-      // Helper function to process joins recursively
+      // Process joins recursively to support nested joins
       const processJoins = (
-        joins: CompiledJoin[],
+        joins: CompiledJoin[] | undefined,
         parentTable: AnyTable,
         parentTableName: string,
-        relationPrefix: string = "",
+        parentPath: string = "",
       ) => {
-        for (const join of joins) {
+        for (const join of joins ?? []) {
           const { options: joinOptions, relation } = join;
 
           if (joinOptions === false) {
@@ -475,16 +475,16 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
           }
 
           const targetTable = relation.table;
-          const joinName = relationPrefix ? `${relationPrefix}_${relation.name}` : relation.name;
-          const fullRelationName = relationPrefix
-            ? `${relationPrefix}:${relation.name}`
-            : relation.name;
+          // Build the full path for this join (e.g., "author:inviter")
+          const fullPath = parentPath ? `${parentPath}:${relation.name}` : relation.name;
+          // SQL table alias uses underscores (e.g., "author_inviter")
+          const joinName = fullPath.replace(/:/g, "_");
 
           // update select
           mappedSelect.push(
             ...mapSelect(joinOptions.select, targetTable, {
-              relation: fullRelationName,
-              tableName: joinName,
+              relation: fullPath, // Use full path with colons for column aliases
+              tableName: joinName, // Use underscore version for table name
             }),
           );
 
@@ -514,17 +514,12 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
             }),
           );
 
-          // Process nested joins recursively
-          if (joinOptions.join && joinOptions.join.length > 0) {
-            processJoins(joinOptions.join, targetTable, joinName, fullRelationName);
-          }
+          // Recursively process nested joins with the full path
+          processJoins(joinOptions.join, targetTable, joinName, fullPath);
         }
       };
 
-      // Process top-level joins
-      if (v.join) {
-        processJoins(v.join, table, table.name);
-      }
+      processJoins(v.join, table, table.name);
 
       const compiledSelect = selectBuilder.compile();
       mappedSelect.push(...mapSelect(compiledSelect.result, table));

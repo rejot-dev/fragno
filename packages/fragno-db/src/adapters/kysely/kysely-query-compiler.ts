@@ -4,13 +4,30 @@ import { buildCondition } from "../../query/condition-builder";
 import { buildFindOptions } from "../../query/orm/orm";
 import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryBuilder } from "./kysely-query-builder";
-import { encodeValues } from "../../query/result-transform";
-import type { AbstractQueryCompiler } from "../../query/query";
+import type { ConditionBuilder, Condition } from "../../query/condition-builder";
+
+/**
+ * Internal query compiler interface for Kysely
+ * Used by the UOW compiler to generate compiled queries
+ */
+export interface KyselyQueryCompiler {
+  count: (
+    name: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    options?: { where?: (eb: ConditionBuilder<any>) => any },
+  ) => CompiledQuery | null;
+  findFirst: (name: string, options: any) => CompiledQuery | null; // eslint-disable-line @typescript-eslint/no-explicit-any
+  findMany: (name: string, options?: any) => CompiledQuery | null; // eslint-disable-line @typescript-eslint/no-explicit-any
+  create: (name: string, values: any) => CompiledQuery; // eslint-disable-line @typescript-eslint/no-explicit-any
+  createMany: (name: string, values: any[]) => CompiledQuery; // eslint-disable-line @typescript-eslint/no-explicit-any
+  updateMany: (name: string, options: { set: any; where?: any }) => CompiledQuery | null; // eslint-disable-line @typescript-eslint/no-explicit-any
+  deleteMany: (name: string, options: { where?: any }) => CompiledQuery | null; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
 
 export function createKyselyQueryCompiler<T extends AnySchema>(
   schema: T,
   config: KyselyConfig,
-): AbstractQueryCompiler<T, CompiledQuery> {
+): KyselyQueryCompiler {
   const { db: kysely, provider } = config;
   const queryBuilder = createKyselyQueryBuilder(kysely, provider);
 
@@ -65,18 +82,12 @@ export function createKyselyQueryCompiler<T extends AnySchema>(
 
     create(name, values) {
       const table = toTable(name);
-      // Encode values before passing to query builder
-      const encodedValues = encodeValues(values, table, true, provider);
-
-      return queryBuilder.create(table, encodedValues);
+      return queryBuilder.create(table, values);
     },
 
     createMany(name, values) {
       const table = toTable(name);
-      // Encode all values before passing to query builder
-      const encodedValues = values.map((v) => encodeValues(v, table, true, provider));
-
-      return queryBuilder.createMany(table, encodedValues);
+      return queryBuilder.createMany(table, values);
     },
 
     updateMany(name, { set, where }) {
@@ -89,10 +100,11 @@ export function createKyselyQueryCompiler<T extends AnySchema>(
         return null;
       }
 
-      // Encode the set values
-      const encodedSet = encodeValues(set, table, false, provider);
-
-      return queryBuilder.updateMany(table, { set: encodedSet, where: conditions });
+      // Safe: conditions is Condition | undefined after filtering out true/false
+      return queryBuilder.updateMany(table, {
+        set,
+        where: conditions as Condition | undefined,
+      });
     },
 
     deleteMany(name, { where }) {
@@ -105,7 +117,8 @@ export function createKyselyQueryCompiler<T extends AnySchema>(
         return null;
       }
 
-      return queryBuilder.deleteMany(table, { where: conditions });
+      // Safe: conditions is Condition | undefined after filtering out true/false
+      return queryBuilder.deleteMany(table, { where: conditions as Condition | undefined });
     },
-  } satisfies AbstractQueryCompiler<T, CompiledQuery>;
+  };
 }
