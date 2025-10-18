@@ -1,5 +1,5 @@
 import type { Kysely, QueryResult } from "kysely";
-import type { CompiledMutation } from "../../query/unit-of-work";
+import type { CompiledMutation, MutationResult } from "../../query/unit-of-work";
 
 function getAffectedRows(result: QueryResult<unknown>): number {
   const affectedRows =
@@ -74,11 +74,11 @@ export async function executeKyselyRetrievalPhase(
  *
  * @param kysely - The Kysely database instance
  * @param mutationBatch - Array of compiled mutation queries with expected affected rows
- * @returns Object with success flag indicating if mutations completed without conflicts
+ * @returns Object with success flag and internal IDs from create operations
  *
  * @example
  * ```ts
- * const { success } = await executeKyselyMutationPhase(kysely, compiled.mutationBatch);
+ * const { success, createdInternalIds } = await executeKyselyMutationPhase(kysely, compiled.mutationBatch);
  * if (!success) {
  *   console.log("Version conflict detected, retrying...");
  * }
@@ -90,11 +90,13 @@ export async function executeKyselyMutationPhase(
   mutationBatch: CompiledMutation<
     Kysely<unknown>["executeQuery"] extends (query: infer Q) => unknown ? Q : never
   >[],
-): Promise<{ success: boolean }> {
+): Promise<MutationResult> {
   // If there are no mutations, return success immediately
   if (mutationBatch.length === 0) {
-    return { success: true };
+    return { success: true, createdInternalIds: [] };
   }
+
+  const createdInternalIds: (bigint | null)[] = [];
 
   // Execute mutation batch in a transaction
   try {
@@ -102,8 +104,24 @@ export async function executeKyselyMutationPhase(
       for (const compiledMutation of mutationBatch) {
         const result = await tx.executeQuery(compiledMutation.query);
 
-        // Check affected rows if expectedAffectedRows is set
-        if (compiledMutation.expectedAffectedRows !== null) {
+        // For creates (expectedAffectedRows === null), try to extract internal ID
+        if (compiledMutation.expectedAffectedRows === null) {
+          // Check if result has rows (RETURNING clause supported)
+          if (Array.isArray(result.rows) && result.rows.length > 0) {
+            const row = result.rows[0] as Record<string, unknown>;
+            if ("_internalId" in row || "_internal_id" in row) {
+              const internalId = (row["_internalId"] ?? row["_internal_id"]) as bigint;
+              createdInternalIds.push(internalId);
+            } else {
+              // RETURNING supported but _internalId not found
+              createdInternalIds.push(null);
+            }
+          } else {
+            // No RETURNING support (e.g., MySQL)
+            createdInternalIds.push(null);
+          }
+        } else {
+          // Check affected rows for updates/deletes
           const affectedRows = getAffectedRows(result);
 
           if (affectedRows !== compiledMutation.expectedAffectedRows) {
@@ -117,7 +135,7 @@ export async function executeKyselyMutationPhase(
       }
     });
 
-    return { success: true };
+    return { success: true, createdInternalIds };
   } catch (error) {
     // Transaction failed - could be version conflict or other constraint violation
     // Return success=false to indicate the UOW should be retried

@@ -1,12 +1,13 @@
 import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
 import type { KyselyConfig } from "./kysely-adapter";
-import type { UOWDecoder } from "../../query/unit-of-work";
+import type { CompiledMutation, UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
 import { decodeResult, encodeValues } from "../../query/result-transform";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
+import type { CompiledQuery } from "kysely";
 
 /**
  * Creates a Kysely-based query engine for the given schema.
@@ -165,19 +166,11 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
     },
 
     createUnitOfWork(name) {
-      const executor = {
-        executeRetrievalPhase: (retrievalBatch: unknown[]) =>
-          // Safe: retrievalBatch contains kysely queries compiled by uowCompiler
-          executeKyselyRetrievalPhase(
-            kysely,
-            retrievalBatch as Parameters<typeof executeKyselyRetrievalPhase>[1],
-          ),
-        executeMutationPhase: (mutationBatch: unknown[]) =>
-          // Safe: mutationBatch contains kysely queries compiled by uowCompiler
-          executeKyselyMutationPhase(
-            kysely,
-            mutationBatch as Parameters<typeof executeKyselyMutationPhase>[1],
-          ),
+      const executor: UOWExecutor<CompiledQuery, unknown> = {
+        executeRetrievalPhase: (retrievalBatch: CompiledQuery[]) =>
+          executeKyselyRetrievalPhase(kysely, retrievalBatch),
+        executeMutationPhase: (mutationBatch: CompiledMutation<CompiledQuery>[]) =>
+          executeKyselyMutationPhase(kysely, mutationBatch),
       };
 
       // Create a decoder function to transform raw results into application format

@@ -685,4 +685,122 @@ describe("KyselyAdapter PGLite", () => {
       },
     });
   });
+
+  it("should return created IDs from UOW create operations", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Test 1: Create operations return IDs with both external and internal IDs
+    const uow1 = queryEngine.createUnitOfWork("create-multiple-users");
+
+    uow1.create("users", { name: "Test User 1", age: 30 });
+    uow1.create("users", { name: "Test User 2", age: 35 });
+    uow1.create("users", { name: "Test User 3", age: 40 });
+
+    const { success: success1 } = await uow1.executeMutations();
+    expect(success1).toBe(true);
+
+    const createdIds1 = uow1.getCreatedIds();
+
+    expect(createdIds1).toMatchObject([
+      expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(Number),
+      }),
+      expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(Number),
+      }),
+      expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(Number),
+      }),
+    ]);
+
+    // All external IDs should be unique
+    const externalIds = createdIds1.map((id) => id.externalId);
+    expect(new Set(externalIds).size).toBe(3);
+
+    // Verify we can use these IDs to query the created users
+    const user1 = await queryEngine.findFirst("users", {
+      where: (b) => b("id", "=", createdIds1[0].externalId),
+    });
+
+    const user2 = await queryEngine.findFirst("users", {
+      where: (b) => b("id", "=", createdIds1[1].externalId),
+    });
+
+    const user3 = await queryEngine.findFirst("users", {
+      where: (b) => b("id", "=", createdIds1[2].externalId),
+    });
+
+    expect(user1).toMatchObject({
+      id: expect.objectContaining({
+        externalId: createdIds1[0].externalId,
+      }),
+      name: "Test User 1",
+      age: 30,
+    });
+
+    expect(user2).toMatchObject({
+      id: expect.objectContaining({
+        externalId: createdIds1[1].externalId,
+      }),
+      name: "Test User 2",
+      age: 35,
+    });
+
+    expect(user3).toMatchObject({
+      id: expect.objectContaining({
+        externalId: createdIds1[2].externalId,
+      }),
+      name: "Test User 3",
+      age: 40,
+    });
+
+    // Test 2: Mixed operations (creates, updates, deletes) - only creates return IDs
+    const uow2 = queryEngine.createUnitOfWork("mixed-operations");
+
+    uow2.create("users", { name: "New User", age: 50 });
+    uow2.update("users", createdIds1[0], (b) => b.set({ age: 31 }));
+    uow2.create("users", { name: "Another New User", age: 55 });
+    uow2.delete("users", createdIds1[2]);
+
+    const { success: success2 } = await uow2.executeMutations();
+    expect(success2).toBe(true);
+
+    const createdIds2 = uow2.getCreatedIds();
+
+    // Only 2 creates, so only 2 IDs
+    expect(createdIds2).toHaveLength(2);
+    expect(createdIds2[0].externalId).toBeDefined();
+    expect(createdIds2[1].externalId).toBeDefined();
+
+    // Test 3: User-provided IDs are preserved
+    const customId = "my-custom-user-id-12345";
+    const uow3 = queryEngine.createUnitOfWork("create-with-custom-id");
+
+    uow3.create("users", { id: customId, name: "Custom ID User", age: 60 });
+
+    const { success: success3 } = await uow3.executeMutations();
+    expect(success3).toBe(true);
+
+    const createdIds3 = uow3.getCreatedIds();
+
+    expect(createdIds3).toHaveLength(1);
+    expect(createdIds3[0].externalId).toBe(customId);
+    expect(createdIds3[0].internalId).toBeDefined();
+
+    // Verify the user was created with the custom ID
+    const customIdUser = await queryEngine.findFirst("users", {
+      where: (b) => b("id", "=", customId),
+    });
+
+    expect(customIdUser).toMatchObject({
+      id: expect.objectContaining({
+        externalId: customId,
+      }),
+      name: "Custom ID User",
+      age: 60,
+    });
+  });
 });

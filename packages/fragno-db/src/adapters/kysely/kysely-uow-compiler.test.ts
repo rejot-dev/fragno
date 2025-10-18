@@ -116,7 +116,7 @@ describe("kysely-uow-compiler", () => {
     const mockCompiler = createKyselyUOWCompiler(testSchema, config);
     const mockExecutor = {
       executeRetrievalPhase: async () => [],
-      executeMutationPhase: async () => ({ success: true }),
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
     const mockDecoder: UOWDecoder<typeof testSchema> = (rawResults, operations) => {
       if (rawResults.length !== operations.length) {

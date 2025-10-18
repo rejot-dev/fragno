@@ -70,7 +70,7 @@ describe("drizzle-uow-compiler", () => {
     const compiler = createDrizzleUOWCompiler(testSchema, config);
     const mockExecutor = {
       executeRetrievalPhase: async () => [],
-      executeMutationPhase: async () => ({ success: true }),
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
     const mockDecoder: UOWDecoder<typeof testSchema> = (rawResults, operations) => {
       if (rawResults.length !== operations.length) {
@@ -796,7 +796,7 @@ describe("drizzle-uow-compiler", () => {
       const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);
       const mockExecutor = {
         executeRetrievalPhase: async () => [],
-        executeMutationPhase: async () => ({ success: true }),
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
       const mockDecoder: UOWDecoder<typeof nestedSchema> = (rawResults, operations) => {
         if (rawResults.length !== operations.length) {
