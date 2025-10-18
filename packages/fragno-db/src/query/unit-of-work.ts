@@ -1,12 +1,5 @@
-import type {
-  AnySchema,
-  AnyTable,
-  FragnoId,
-  Index,
-  IdColumn,
-  AnyColumn,
-  Relation,
-} from "../schema/create";
+import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn, Relation } from "../schema/create";
+import { FragnoId } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "./query";
 import { buildCondition } from "./condition-builder";
@@ -164,6 +157,7 @@ export type MutationOperation<
       type: "create";
       table: TTable["name"];
       values: TableToInsertValues<TTable>;
+      generatedExternalId: string;
     }
   | {
       type: "delete";
@@ -200,6 +194,10 @@ export interface UOWCompiler<TSchema extends AnySchema, TOutput> {
   compileMutationOperation(op: MutationOperation<TSchema>): CompiledMutation<TOutput> | null;
 }
 
+export type MutationResult =
+  | { success: true; createdInternalIds: (bigint | null)[] }
+  | { success: false };
+
 /**
  * Executor interface for Unit of Work operations
  */
@@ -211,9 +209,10 @@ export interface UOWExecutor<TOutput, TRawResult = unknown> {
 
   /**
    * Execute the mutation phase - all queries run in a transaction with version checks
-   * Returns success status indicating if mutations completed without conflicts
+   * Returns success status indicating if mutations completed without conflicts,
+   * and internal IDs for create operations (null if database doesn't support RETURNING)
    */
-  executeMutationPhase(mutationBatch: CompiledMutation<TOutput>[]): Promise<{ success: boolean }>;
+  executeMutationPhase(mutationBatch: CompiledMutation<TOutput>[]): Promise<MutationResult>;
 }
 
 /**
@@ -831,6 +830,7 @@ export class UnitOfWork<
   #executor: UOWExecutor<unknown, TRawInput>;
   #decoder: UOWDecoder<TSchema, TRawInput>;
   #retrievalResults?: TRetrievalResults;
+  #createdInternalIds: (bigint | null)[] = [];
 
   constructor(
     schema: TSchema,
@@ -956,10 +956,51 @@ export class UnitOfWork<
       throw new Error(`create() can only be called during mutation phase.`);
     }
 
+    const tableSchema = this.#schema.tables[table];
+    if (!tableSchema) {
+      throw new Error(`Table ${table} not found in schema`);
+    }
+
+    const idColumn = tableSchema.getIdColumn();
+    let externalId: string;
+    let updatedValues = values;
+
+    // Check if ID value is provided in values
+    const providedIdValue = (values as Record<string, unknown>)[idColumn.ormName];
+
+    if (providedIdValue !== undefined) {
+      // Extract string from FragnoId or use string directly
+      if (
+        typeof providedIdValue === "object" &&
+        providedIdValue !== null &&
+        "externalId" in providedIdValue
+      ) {
+        externalId = (providedIdValue as FragnoId).externalId;
+      } else {
+        externalId = providedIdValue as string;
+      }
+    } else {
+      // Generate using the column's default configuration
+      const generated = idColumn.generateDefaultValue();
+      if (generated === undefined) {
+        throw new Error(
+          `No ID value provided and ID column ${idColumn.ormName} has no default generator`,
+        );
+      }
+      externalId = generated as string;
+
+      // Add the generated ID to values so it's used in the insert
+      updatedValues = {
+        ...values,
+        [idColumn.ormName]: externalId,
+      } as TableToInsertValues<TSchema["tables"][TableName]>;
+    }
+
     this.#mutationOps.push({
       type: "create",
       table,
-      values,
+      values: updatedValues,
+      generatedExternalId: externalId,
     });
 
     return this;
@@ -1046,11 +1087,15 @@ export class UnitOfWork<
 
     // Execute mutation phase
     const result = await this.#executor.executeMutationPhase(mutationBatch);
-
-    // Transition to executed state
     this.#state = "executed";
 
-    return result;
+    if (result.success) {
+      this.#createdInternalIds = result.createdInternalIds;
+    }
+
+    return {
+      success: result.success,
+    };
   }
 
   /**
@@ -1065,6 +1110,41 @@ export class UnitOfWork<
    */
   getMutationOperations(): ReadonlyArray<MutationOperation<TSchema>> {
     return this.#mutationOps;
+  }
+
+  /**
+   * Get the IDs of created entities after executeMutations() has been called.
+   * Returns FragnoId objects with external IDs (always available) and internal IDs
+   * (available when database supports RETURNING).
+   *
+   * @throws Error if called before executeMutations()
+   * @returns Array of FragnoIds in the same order as create() calls
+   */
+  getCreatedIds(): FragnoId[] {
+    if (this.#state !== "executed") {
+      throw new Error(
+        `getCreatedIds() can only be called after executeMutations(). Current state: ${this.#state}`,
+      );
+    }
+
+    const createdIds: FragnoId[] = [];
+    let createIndex = 0;
+
+    for (const op of this.#mutationOps) {
+      if (op.type === "create") {
+        const internalId = this.#createdInternalIds[createIndex] ?? undefined;
+        createdIds.push(
+          new FragnoId({
+            externalId: op.generatedExternalId,
+            internalId,
+            version: 0, // New records always start at version 0
+          }),
+        );
+        createIndex++;
+      }
+    }
+
+    return createdIds;
   }
 
   /**

@@ -18,13 +18,5 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true
-  },
-  "references": [
-    {
-      "path": "../../example-fragments/chatno"
-    },
-    {
-      "path": "../../packages/fragno"
-    }
-  ]
+  }
 }

@@ -93,28 +93,6 @@ export class ExplicitRelationInit<
   TTables extends Record<string, AnyTable>,
   TTableName extends keyof TTables,
 > extends RelationInit<TRelationType, TTables, TTableName> {
-  private foreignKeyName?: string;
-
-  private initForeignKey(ormName: string): ForeignKey {
-    const columns: AnyColumn[] = [];
-    const referencedColumns: AnyColumn[] = [];
-
-    for (const [left, right] of this.on) {
-      columns.push(this.referencer.columns[left]);
-      referencedColumns.push(this.referencedTable.columns[right]);
-    }
-
-    return {
-      columns,
-      referencedColumns,
-      referencedTable: this.referencedTable,
-      table: this.referencer,
-      name:
-        this.foreignKeyName ??
-        `${this.referencer.ormName}_${this.referencedTable.ormName}_${ormName}_fk`,
-    };
-  }
-
   init(ormName: string): Relation<TRelationType, TTables[TTableName]> {
     const id = `${this.referencer.ormName}_${this.referencedTable.ormName}`;
 
@@ -126,14 +104,6 @@ export class ExplicitRelationInit<
       table: this.referencedTable,
       type: this.type,
     };
-  }
-
-  /**
-   * Define custom foreign key name.
-   */
-  foreignKey(name: string) {
-    this.foreignKeyName = name;
-    return this;
   }
 }
 

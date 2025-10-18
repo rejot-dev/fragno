@@ -26,7 +26,7 @@ function createMockCompiler<TSchema extends AnySchema = AnySchema>(): UOWCompile
 function createMockExecutor() {
   return {
     executeRetrievalPhase: async () => [],
-    executeMutationPhase: async () => ({ success: true }),
+    executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
   };
 }
 
@@ -825,6 +825,123 @@ describe("DeleteBuilder with string ID", () => {
       uow.delete("users", "user-123", (b) => b.check());
     }).toThrow(
       'Cannot use check() with a string ID on table "users". Version checking requires a FragnoId with version information.',
+    );
+  });
+});
+
+describe("getCreatedIds", () => {
+  const testSchema = schema((s) =>
+    s.addTable("users", (t) =>
+      t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
+    ),
+  );
+
+  it("should return created IDs after executeMutations with internal IDs", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [1n, 2n],
+      }),
+    };
+
+    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+
+    uow.create("users", { email: "user1@example.com", name: "User 1" });
+    uow.create("users", { email: "user2@example.com", name: "User 2" });
+
+    await uow.executeMutations();
+    const createdIds = uow.getCreatedIds();
+
+    expect(createdIds).toHaveLength(2);
+    expect(createdIds[0].externalId).toBeDefined();
+    expect(createdIds[0].internalId).toBe(1n);
+    expect(createdIds[0].version).toBe(0);
+    expect(createdIds[1].externalId).toBeDefined();
+    expect(createdIds[1].internalId).toBe(2n);
+    expect(createdIds[1].version).toBe(0);
+  });
+
+  it("should return created IDs without internal IDs when not supported", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [null, null],
+      }),
+    };
+
+    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+
+    uow.create("users", { email: "user1@example.com", name: "User 1" });
+    uow.create("users", { email: "user2@example.com", name: "User 2" });
+
+    await uow.executeMutations();
+    const createdIds = uow.getCreatedIds();
+
+    expect(createdIds).toHaveLength(2);
+    expect(createdIds[0].externalId).toBeDefined();
+    expect(createdIds[0].internalId).toBeUndefined();
+    expect(createdIds[1].externalId).toBeDefined();
+    expect(createdIds[1].internalId).toBeUndefined();
+  });
+
+  it("should preserve user-provided external IDs", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [1n],
+      }),
+    };
+
+    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+
+    uow.create("users", { id: "my-custom-id", email: "user@example.com", name: "User" });
+
+    await uow.executeMutations();
+    const createdIds = uow.getCreatedIds();
+
+    expect(createdIds).toHaveLength(1);
+    expect(createdIds[0].externalId).toBe("my-custom-id");
+    expect(createdIds[0].internalId).toBe(1n);
+  });
+
+  it("should only return IDs for create operations, not updates or deletes", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [1n],
+      }),
+    };
+
+    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+
+    uow.create("users", { email: "user@example.com", name: "User" });
+    uow.update("users", "existing-id", (b) => b.set({ name: "Updated" }));
+    uow.delete("users", "other-id");
+
+    await uow.executeMutations();
+    const createdIds = uow.getCreatedIds();
+
+    // Only one create operation, so only one ID returned
+    expect(createdIds).toHaveLength(1);
+    expect(createdIds[0].internalId).toBe(1n);
+  });
+
+  it("should throw when called before executeMutations", () => {
+    const uow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+    );
+
+    uow.create("users", { email: "user@example.com", name: "User" });
+
+    expect(() => uow.getCreatedIds()).toThrow(
+      "getCreatedIds() can only be called after executeMutations()",
     );
   });
 });
