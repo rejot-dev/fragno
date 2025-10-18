@@ -13,7 +13,7 @@ export async function GET(
     notFound();
   }
 
-  const markdownText = await page.data.getText("raw");
+  const markdownText = await page.data.getText("processed");
 
   return new NextResponse(markdownText, {
     headers: {
