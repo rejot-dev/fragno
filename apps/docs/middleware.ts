@@ -13,10 +13,15 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  if (request.nextUrl.pathname.endsWith(".md")) {
-    const pathWithoutMd = request.nextUrl.pathname.replace(/\.md$/, "");
+  if (request.nextUrl.pathname.endsWith(".md") || request.nextUrl.pathname.endsWith(".mdx")) {
+    const pathWithoutExtension = request.nextUrl.pathname.replace(/\.mdx?$/, "");
 
-    const result = rewrite(pathWithoutMd);
+    // Special case: /docs.md or /docs.mdx should map to /api/markdown (the index)
+    if (pathWithoutExtension === "/docs") {
+      return NextResponse.rewrite(new URL("/api/markdown", request.nextUrl));
+    }
+
+    const result = rewrite(pathWithoutExtension);
 
     if (result) {
       return NextResponse.rewrite(new URL(result, request.nextUrl));
