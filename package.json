@@ -38,6 +38,7 @@
   "private": true,
   "scripts": {
     "dev": "turbo watch --ui tui dev",
+    "cli:dev": "bun run apps/fragno-cli/src/cli.ts --",
     "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

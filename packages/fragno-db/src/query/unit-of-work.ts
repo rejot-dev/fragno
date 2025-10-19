@@ -79,7 +79,9 @@ type IndexSpecificConditionBuilder<
 /**
  * Valid index names for a table, including the static "primary" index
  */
-type ValidIndexName<TTable extends AnyTable> = "primary" | (string & keyof TTable["indexes"]);
+export type ValidIndexName<TTable extends AnyTable> =
+  | "primary"
+  | (string & keyof TTable["indexes"]);
 
 /**
  * Find options for Unit of Work (internal, used after builder finalization)

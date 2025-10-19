@@ -1,29 +1,18 @@
-import { createFragnoDatabaseLibrary, fragnoDatabaseLibrary } from "@fragno-dev/fragno-db-library";
-import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-import { KyselyPGlite } from "kysely-pglite";
-import { Kysely } from "kysely";
+import { createFragnoDatabaseLibrary } from "@fragno-dev/fragno-db-library";
 import { rmSync } from "node:fs";
+import { pgFolder } from "./kysely/dialect";
 
-const pgFolder = "./fragno-db-usage.pglite";
+// Re-export boundCommentLib so this file can be targeted by CLI
+export { boundCommentLib } from "./databases";
+
+import { boundCommentLib } from "./databases";
 
 if (process.argv.includes("--clean")) {
   rmSync(pgFolder, { recursive: true, force: true });
 }
 
-const inMemory = !process.argv.includes("--file");
-
-const { dialect } = await KyselyPGlite.create(inMemory ? undefined : pgFolder);
-const kysely = new Kysely({
-  dialect,
-});
-
-const adapter = new KyselyAdapter({
-  db: kysely,
-  provider: "postgresql",
-});
-
 if (import.meta.main && process.argv.includes("--migrate")) {
-  const didMigrate = await fragnoDatabaseLibrary.runMigrations(adapter);
+  const didMigrate = await boundCommentLib.runMigrations();
   if (didMigrate) {
     console.log("Migrations applied.");
   } else {
@@ -31,18 +20,29 @@ if (import.meta.main && process.argv.includes("--migrate")) {
   }
 }
 
-export const client = await fragnoDatabaseLibrary.createClient(adapter);
+/**
+ * Lazy client creation - only happens when called.
+ * This prevents version check errors during CLI schema generation.
+ */
+export async function getClient() {
+  const client = await boundCommentLib.createClient();
+  return createFragnoDatabaseLibrary(client);
+}
 
-export const libraryClient = createFragnoDatabaseLibrary(client);
+// For immediate usage in this script
+if (import.meta.main) {
+  const libraryClient = await getClient();
+  console.log("Client created successfully!");
 
-const post = await libraryClient.createUserAndPost(
-  {
-    name: "John Doe",
-  },
-  {
-    title: "Hello, world!",
-    content: "This is a test post",
-  },
-);
+  // Example usage
+  const comment = await libraryClient.createComment({
+    title: "Test Comment",
+    content: "This is a test comment",
+    postReference: "post-123",
+    userReference: "user-456",
+  });
+  console.log("Created comment:", comment);
 
-console.log(post);
+  const comments = await libraryClient.getComments("post-123");
+  console.log("Comments for post-123:", comments);
+}
