@@ -138,7 +138,7 @@ export function fromDrizzle<T extends AnySchema>(
         },
       };
 
-      builderFn(specialBuilder as never);
+      builderFn(specialBuilder);
 
       if (!whereConfig.indexName) {
         throw new Error("whereIndex() must be called in updateMany");
@@ -148,7 +148,7 @@ export function fromDrizzle<T extends AnySchema>(
       }
 
       const findUow = createUOW();
-      findUow.find(tableName as string, (b) => {
+      findUow.find(tableName, (b) => {
         if (whereConfig.condition) {
           return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
         }

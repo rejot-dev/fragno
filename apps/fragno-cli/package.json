@@ -1,0 +1,39 @@
+{
+  "name": "@fragno-dev/cli",
+  "private": true,
+  "version": "0.0.1",
+  "exports": {
+    ".": {
+      "bun": "./src/cli.ts",
+      "development": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
+  "type": "module",
+  "bin": {
+    "@fragno-dev/cli": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": "^20.0.0 || >=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "gunshi": "^0.26.3",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*"
+  },
+  "main": "./dist/cli.js",
+  "module": "./dist/cli.js",
+  "types": "./dist/cli.d.ts"
+}

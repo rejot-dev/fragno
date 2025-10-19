@@ -63,3 +63,8 @@ yarn-error.log*
 
 # LLMs
 CLAUDE.local.md
+
+# Pglite
+
+**/*.pglite
+**/*.pglite/**

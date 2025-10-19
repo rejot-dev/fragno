@@ -19,16 +19,17 @@
   },
   "type": "module",
   "dependencies": {
-    "@fragno-dev/fragno-db-library": "workspace:*",
-    "@fragno-dev/db": "workspace:*",
     "@electric-sql/pglite": "^0.3.10",
-    "kysely": "^0.28.7",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/fragno-db-library": "workspace:*",
+    "kysely": "^0.28.8",
     "kysely-pglite": "^0.6.1",
     "zod": "^4.0.5"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@types/bun": "^1.2.23",
-    "@types/node": "^20"
+    "@types/node": "^20",
+    "kysely-ctl": "^0.19.0"
   }
 }
