@@ -301,18 +301,26 @@ function generateForeignKeys(ctx: GeneratorContext, table: AnyTable): string[] {
   const keys: string[] = [];
 
   for (const relation of Object.values(table.relations)) {
-    if (relation.type !== "one") {
-      throw new Error(`Only one-to-one relations are supported, got ${relation.type}`);
+    // Only "one" relations generate foreign keys
+    // "many" relations don't have foreign keys (they're on the other side)
+    if (relation.type === "many") {
+      continue;
     }
 
     const columns: string[] = [];
     const foreignColumns: string[] = [];
+    const isSelfReference = relation.table.ormName === table.ormName;
 
     for (const [localCol, refCol] of relation.on) {
       columns.push(`table.${localCol}`);
       // Foreign keys always reference internal IDs
       const actualRefCol = refCol === "id" ? "_internalId" : refCol;
-      foreignColumns.push(`${relation.table.ormName}.${actualRefCol}`);
+      // For self-referencing foreign keys, use table parameter instead of table constant
+      if (isSelfReference) {
+        foreignColumns.push(`table.${actualRefCol}`);
+      } else {
+        foreignColumns.push(`${relation.table.ormName}.${actualRefCol}`);
+      }
     }
 
     ctx.imports.addImport("foreignKey", ctx.importSource);
@@ -376,9 +384,18 @@ function generateTable(ctx: GeneratorContext, table: AnyTable, customTypes: stri
 
 function generateRelation(ctx: GeneratorContext, table: AnyTable): string | undefined {
   const relations: string[] = [];
+  let hasOne = false;
+  let hasMany = false;
 
   for (const relation of Object.values(table.relations)) {
     const options: string[] = [`relationName: "${relation.id}"`];
+
+    // Track which relation types are used
+    if (relation.type === "one") {
+      hasOne = true;
+    } else if (relation.type === "many") {
+      hasMany = true;
+    }
 
     // For "one" relations, specify fields and references
     if (relation.type === "one") {
@@ -407,8 +424,18 @@ function generateRelation(ctx: GeneratorContext, table: AnyTable): string | unde
     return undefined;
   }
 
+  // Only include the relation types that are actually used
+  const params: string[] = [];
+  if (hasOne) {
+    params.push("one");
+  }
+  if (hasMany) {
+    params.push("many");
+  }
+  const relationParams = params.length > 0 ? `{ ${params.join(", ")} }` : "{}";
+
   ctx.imports.addImport("relations", "drizzle-orm");
-  return `export const ${table.ormName}Relations = relations(${table.ormName}, ({ one, many }) => ({
+  return `export const ${table.ormName}Relations = relations(${table.ormName}, (${relationParams}) => ({
 ${relations.join(",\n")}
 }));`;
 }

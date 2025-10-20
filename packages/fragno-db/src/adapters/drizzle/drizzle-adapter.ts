@@ -40,7 +40,6 @@ export class DrizzleAdapter implements DatabaseAdapter {
     const randomId = createId();
 
     const result = await manager.createKeyWithDefault(randomId);
-    console.dir(result, { depth: 5 });
     if (result) {
       await manager.delete(result.id);
     }
@@ -90,11 +89,7 @@ function createSettingsManager(
   return {
     async createKeyWithDefault(key: string) {
       const writeUow = queryEngine
-        .createUnitOfWork("createKeyWithDefault", {
-          onQuery(query) {
-            console.dir(query, { depth: 5 });
-          },
-        })
+        .createUnitOfWork("createKeyWithDefault")
         .create(SETTINGS_TABLE_NAME, {
           key: `${namespace}.${key}`,
         });
