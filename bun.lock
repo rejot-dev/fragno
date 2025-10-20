@@ -110,7 +110,24 @@
         "@astrojs/node": "^9.4.2",
       },
     },
-    "example-apps/fragno-db-usage": {
+    "example-apps/fragno-db-usage-drizzle": {
+      "name": "@fragno-dev/fragno-db-usage-drizze",
+      "dependencies": {
+        "@electric-sql/pglite": "^0.3.10",
+        "@fragno-dev/db": "workspace:*",
+        "@fragno-dev/fragno-db-library": "workspace:*",
+        "drizzle-orm": "^0.44.6",
+        "gunshi": "^0.26.3",
+        "zod": "^4.0.5",
+      },
+      "devDependencies": {
+        "@fragno-private/typescript-config": "workspace:*",
+        "@types/bun": "^1.2.23",
+        "@types/node": "^20",
+        "drizzle-kit": "^0.31.5",
+      },
+    },
+    "example-apps/fragno-db-usage-kysely": {
       "name": "@fragno-dev/fragno-db-usage",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.10",
@@ -892,7 +909,9 @@
 
     "@fragno-dev/fragno-db-library": ["@fragno-dev/fragno-db-library@workspace:example-fragments/fragno-db-library"],
 
-    "@fragno-dev/fragno-db-usage": ["@fragno-dev/fragno-db-usage@workspace:example-apps/fragno-db-usage"],
+    "@fragno-dev/fragno-db-usage": ["@fragno-dev/fragno-db-usage@workspace:example-apps/fragno-db-usage-kysely"],
+
+    "@fragno-dev/fragno-db-usage-drizze": ["@fragno-dev/fragno-db-usage-drizze@workspace:example-apps/fragno-db-usage-drizzle"],
 
     "@fragno-dev/node": ["@fragno-dev/node@workspace:packages/fragno-node"],
 
