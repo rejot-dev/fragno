@@ -1,5 +1,11 @@
 # @fragno-dev/create
 
+## 0.0.4
+
+### Patch Changes
+
+- 495c344: Add SolidJS to fragment template
+
 ## 0.0.3
 
 ### Patch Changes
