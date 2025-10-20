@@ -1,5 +1,13 @@
 # @fragno-dev/core
 
+## 0.0.7
+
+### Patch Changes
+
+- 1fa71f3: fixed issue where error() in route handlers always result in unknown api error
+  client-side
+- c1483c6: Support for SolidJS and SolidStart
+
 ## 0.0.6
 
 ### Patch Changes
