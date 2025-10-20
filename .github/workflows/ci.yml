@@ -12,22 +12,25 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
-
-      - name: See Lockfile changes
-        run: git -c core.attributesfile=/dev/null --no-pager diff --text
-
       - name: Cache dependencies
-        uses: actions/cache/save@v4
+        uses: actions/cache@v4
         with:
           path: |
             **/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+          key:
+            ${{ runner.os }}-bun-${{ steps.bun.outputs.bun-version }}-modules-${{
+            hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-${{ steps.bun.outputs.bun-version }}-modules-
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun ci
 
   check-prettier:
     needs: install
@@ -36,6 +39,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -45,10 +49,12 @@ jobs:
         with:
           path: |
             **/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+          key:
+            ${{ runner.os }}-bun-${{ steps.bun.outputs.bun-version }}-modules-${{
+            hashFiles('**/bun.lock') }}
 
       - name: Check formatting
-        run: bunx prettier --ignore-unknown --check
+        run: bunx prettier --ignore-unknown --check .
 
   check-eslint:
     needs: install
@@ -57,6 +63,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -66,7 +73,9 @@ jobs:
         with:
           path: |
             **/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+          key:
+            ${{ runner.os }}-bun-${{ steps.bun.outputs.bun-version }}-modules-${{
+            hashFiles('**/bun.lock') }}
 
       - name: Run linter
         run: bunx eslint --no-warn-ignored
@@ -81,6 +90,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -90,9 +100,9 @@ jobs:
         with:
           path: |
             **/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-modules-
+          key:
+            ${{ runner.os }}-bun-${{ steps.bun.outputs.bun-version }}-modules-${{
+            hashFiles('**/bun.lock') }}
 
       - name: Cache turbo build setup
         uses: actions/cache@v4
@@ -117,6 +127,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -126,7 +137,9 @@ jobs:
         with:
           path: |
             **/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
+          key:
+            ${{ runner.os }}-bun-${{ steps.bun.outputs.bun-version }}-modules-${{
+            hashFiles('**/bun.lock') }}
 
       - name: Cache turbo test step
         uses: actions/cache@v4
