@@ -574,7 +574,7 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+          `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
         );
       });
 
@@ -586,7 +586,7 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+          `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
         );
       });
 
@@ -598,7 +598,7 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "users" ("id", "name", "email", "_version") output "inserted"."id" as "id", "inserted"."name" as "name", "inserted"."email" as "email", "inserted"."age" as "age", "inserted"."isActive" as "isActive", "inserted"."createdAt" as "createdAt", "inserted"."_internalId" as "_internalId", "inserted"."_version" as "_version" values ($1, $2, $3, $4)"`,
+          `"insert into "users" ("id", "name", "email") output "inserted"."id" as "id", "inserted"."name" as "name", "inserted"."email" as "email", "inserted"."age" as "age", "inserted"."isActive" as "isActive", "inserted"."createdAt" as "createdAt", "inserted"."_internalId" as "_internalId", "inserted"."_version" as "_version" values ($1, $2, $3)"`,
         );
       });
 
@@ -611,7 +611,7 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+          `"insert into "posts" ("id", "title", "content", "userId") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5)) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
         );
         expect(query.sql).toContain("select");
         expect(query.sql).toContain("users");
@@ -633,7 +633,7 @@ describe("query-builder", () => {
         expect(query.sql).toContain("users");
         expect(query.parameters).toContain("user-abc-123");
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+          `"insert into "posts" ("id", "title", "content", "userId") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5)) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
         );
       });
 
@@ -659,7 +659,7 @@ describe("query-builder", () => {
         expect(query.parameters).toContain("user-id-1");
         expect(query.parameters).toContain("user-id-2");
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5), $6, $7), ($8, $9, $10, (select "_internalId" from "users" where "id" = $11 limit $12), $13, $14)"`,
+          `"insert into "posts" ("id", "title", "content", "userId") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5)), ($6, $7, $8, (select "_internalId" from "users" where "id" = $9 limit $10))"`,
         );
       });
 
@@ -702,7 +702,7 @@ describe("query-builder", () => {
         // Should not have nested SELECT for the userId value
         expect(query.sql).not.toMatch(/\(select.*from.*users/i);
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_version") values ($1, $2, $3, $4, $5, $6) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+          `"insert into "posts" ("id", "title", "content", "userId") values ($1, $2, $3, $4) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
         );
       });
     });
@@ -976,7 +976,7 @@ describe("query-builder", () => {
         ]);
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4), ($5, $6, $7, $8)"`,
+          `"insert into "users" ("id", "name", "email") values ($1, $2, $3), ($4, $5, $6)"`,
         );
       });
 
@@ -987,7 +987,7 @@ describe("query-builder", () => {
         ]);
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4)"`,
+          `"insert into "users" ("id", "name", "email") values ($1, $2, $3)"`,
         );
       });
 
@@ -1000,7 +1000,7 @@ describe("query-builder", () => {
         ]);
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)"`,
+          `"insert into "users" ("id", "name", "email") values ($1, $2, $3), ($4, $5, $6), ($7, $8, $9)"`,
         );
       });
     });
@@ -1260,7 +1260,7 @@ describe("query-builder", () => {
         });
 
         expect(query.sql).toMatchInlineSnapshot(
-          `"insert into "products" ("productId", "name", "price", "_version") values ($1, $2, $3, $4) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version""`,
+          `"insert into "products" ("productId", "name", "price") values ($1, $2, $3) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version""`,
         );
       });
 

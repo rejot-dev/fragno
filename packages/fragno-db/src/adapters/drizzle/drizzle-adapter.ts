@@ -1,9 +1,17 @@
 import type { DatabaseAdapter } from "../adapters";
-import { column, idColumn, schema, SchemaBuilder, type AnySchema } from "../../schema/create";
+import {
+  column,
+  idColumn,
+  schema,
+  SchemaBuilder,
+  type AnySchema,
+  type FragnoId,
+} from "../../schema/create";
 import type { AbstractQuery } from "../../query/query";
 import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { generateSchema } from "./generate";
 import { fromDrizzle, type DrizzleUOWConfig } from "./drizzle-query";
+import { createId } from "../../id";
 
 const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 
@@ -28,7 +36,16 @@ export class DrizzleAdapter implements DatabaseAdapter {
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {
     const queryEngine = this.createQueryEngine(createSettingsSchema(0), namespace);
-    return createSettingsManager(queryEngine, namespace).get(`schema_version`);
+    const manager = createSettingsManager(queryEngine, namespace);
+    const randomId = createId();
+
+    const result = await manager.createKeyWithDefault(randomId);
+    console.dir(result, { depth: 5 });
+    if (result) {
+      await manager.delete(result.id);
+    }
+
+    return result?.value;
   }
 
   createQueryEngine<TSchema extends AnySchema>(
@@ -73,7 +90,11 @@ function createSettingsManager(
   return {
     async createKeyWithDefault(key: string) {
       const writeUow = queryEngine
-        .createUnitOfWork("createKeyWithDefault")
+        .createUnitOfWork("createKeyWithDefault", {
+          onQuery(query) {
+            console.dir(query, { depth: 5 });
+          },
+        })
         .create(SETTINGS_TABLE_NAME, {
           key: `${namespace}.${key}`,
         });
@@ -85,14 +106,18 @@ function createSettingsManager(
       return this.get(key);
     },
 
-    get: async (key: string): Promise<string | undefined> => {
+    async get(key: string): Promise<{ id: FragnoId; key: string; value: string } | undefined> {
       const uow = queryEngine
-        .createUnitOfWork("getSettings")
+        .createUnitOfWork()
         .find(SETTINGS_TABLE_NAME, (b) =>
           b.whereIndex("unique_key", (eb) => eb("key", "=", `${namespace}.${key}`)),
         );
       const [[result]] = await uow.executeRetrieve();
-      return result.value; // FIXME: result should be maybe undefined
+      return result; // FIXME: result should be maybe undefined
+    },
+
+    async delete(id: FragnoId) {
+      await queryEngine.delete(SETTINGS_TABLE_NAME, id);
     },
   };
 }

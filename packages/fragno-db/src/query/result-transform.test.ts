@@ -111,7 +111,7 @@ describe("encodeValues", () => {
   });
 
   describe("default value generation", () => {
-    it("should generate default values when generateDefault is true", () => {
+    it("should generate runtime defaults when generateDefault is true", () => {
       const result = encodeValues(
         { title: "Test Post", userId: "user1" },
         postsTable,
@@ -121,7 +121,8 @@ describe("encodeValues", () => {
 
       expect(result["title"]).toBe("Test Post");
       expect(result["userId"]).instanceOf(ReferenceSubquery);
-      expect(result["viewCount"]).toBe(0);
+      // viewCount has static default (defaultTo), so it's omitted to let DB handle it
+      expect(result["viewCount"]).toBeUndefined();
       expect(result["id"]).toBeDefined();
       expect(typeof result["id"]).toBe("string");
     });
