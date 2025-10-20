@@ -30,7 +30,7 @@
     },
     "apps/create-cli": {
       "name": "create-fragno",
-      "version": "0.0.4",
+      "version": "0.0.5",
       "bin": {
         "create-fragno": "./dist/index.js",
       },
@@ -330,7 +330,7 @@
     },
     "packages/create": {
       "name": "@fragno-dev/create",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "zod": "^4.1.12",
       },
