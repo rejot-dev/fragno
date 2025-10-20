@@ -1,5 +1,12 @@
 import { assert, beforeAll, describe, expect, it } from "vitest";
-import { column, FragnoId, idColumn, referenceColumn, schema } from "../../schema/create";
+import {
+  column,
+  FragnoId,
+  idColumn,
+  referenceColumn,
+  schema,
+  type AnySchema,
+} from "../../schema/create";
 import { createDrizzleUOWCompiler } from "./drizzle-uow-compiler";
 import type { DrizzleConfig } from "./drizzle-adapter";
 import { drizzle } from "drizzle-orm/pglite";
@@ -65,6 +72,21 @@ describe("drizzle-uow-compiler", () => {
       await cleanup();
     };
   });
+
+  function createTestUOWWithSchema<const T extends AnySchema>(schema: T) {
+    const compiler = createDrizzleUOWCompiler(schema, config);
+    const mockExecutor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+    const mockDecoder: UOWDecoder<T> = (rawResults, operations) => {
+      if (rawResults.length !== operations.length) {
+        throw new Error("rawResults and ops must have the same length");
+      }
+      return rawResults;
+    };
+    return new UnitOfWork(schema, compiler, mockExecutor, mockDecoder);
+  }
 
   function createTestUOW(name?: string) {
     const compiler = createDrizzleUOWCompiler(testSchema, config);
@@ -357,15 +379,13 @@ describe("drizzle-uow-compiler", () => {
       assert(batch);
       expect(batch.expectedAffectedRows).toBeNull();
       expect(batch.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "age", "_internalId", "_version") values ($1, $2, $3, $4, default, $5)"`,
+        `"insert into "users" ("id", "name", "email", "age", "_internalId", "_version") values ($1, $2, $3, $4, default, default)"`,
       );
-      // params include auto-generated ID (first param), then the provided values, then version (0)
       expect(batch.query.params).toMatchObject([
         expect.any(String),
         "John Doe",
         "john@example.com",
         30,
-        0, // version
       ]);
     });
 
@@ -510,13 +530,12 @@ describe("drizzle-uow-compiler", () => {
 
       assert(createBatch);
       expect(createBatch.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "age", "_internalId", "_version") values ($1, $2, $3, default, default, $4)"`,
+        `"insert into "users" ("id", "name", "email", "age", "_internalId", "_version") values ($1, $2, $3, default, default, default)"`,
       );
       expect(createBatch.query.params).toMatchObject([
-        expect.any(String),
+        expect.any(String), // auto-generated ID
         "Alice",
         "alice@example.com",
-        0, // version
       ]);
 
       assert(updateBatch);
@@ -726,6 +745,144 @@ describe("drizzle-uow-compiler", () => {
 
       expect(compiled.retrievalBatch).toHaveLength(0);
       expect(compiled.mutationBatch).toHaveLength(1);
+    });
+  });
+
+  describe("default value generation", () => {
+    // Create a schema with columns that have different types of defaults
+    const defaultsSchema = schema((s) => {
+      return s.addTable("logs", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("message", column("string"))
+          .addColumn("sessionId", column("string").defaultTo$("auto")) // runtime auto
+          .addColumn("timestamp", column("timestamp").defaultTo$("now")) // runtime now
+          .addColumn("counter", column("integer").defaultTo$((() => 42) as () => number)) // runtime function
+          .addColumn("status", column("string").defaultTo("pending")) // static default
+          .createIndex("idx_session", ["sessionId"]);
+      });
+    });
+
+    let defaultsDb: DBType;
+    let defaultsConfig: DrizzleConfig;
+
+    beforeAll(async () => {
+      // Write schema to file and dynamically import it
+      const { schemaModule, cleanup } = await writeAndLoadSchema(
+        "drizzle-uow-compiler-defaults",
+        defaultsSchema,
+        "postgresql",
+      );
+
+      // Create Drizzle instance with PGLite (in-memory Postgres)
+      defaultsDb = drizzle({
+        schema: schemaModule,
+      }) as unknown as DBType;
+
+      defaultsConfig = {
+        db: defaultsDb,
+        provider: "postgresql",
+      };
+
+      return async () => {
+        await cleanup();
+      };
+    });
+
+    it("should generate runtime defaults for missing columns", () => {
+      const uow = createTestUOWWithSchema(defaultsSchema);
+      // Only provide message, all other columns should get defaults
+      uow.create("logs", {
+        message: "Test log",
+      });
+
+      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsConfig);
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"insert into "logs" ("id", "message", "sessionId", "timestamp", "counter", "status", "_internalId", "_version") values ($1, $2, $3, $4, $5, default, default, default)"`,
+      );
+
+      expect(batch.query.params).toMatchObject([
+        expect.any(String), // auto-generated ID
+        "Test log",
+        expect.any(String), // auto-generated sessionId
+        expect.any(String), // auto-generated timestamp (serialized)
+        42, // function-generated counter
+      ]);
+    });
+
+    it("should not override user-provided values with defaults", () => {
+      const uow = createTestUOWWithSchema(defaultsSchema);
+      const customTimestamp = new Date("2024-01-01");
+      // Provide all values explicitly
+      uow.create("logs", {
+        message: "Test log",
+        sessionId: "custom-session-id",
+        timestamp: customTimestamp,
+        counter: 100,
+        status: "active",
+      });
+
+      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsConfig);
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+
+      // All user-provided values should be used, not defaults
+      const params = batch.query.params;
+      expect(params[1]).toBe("Test log");
+      expect(params[2]).toBe("custom-session-id");
+      expect(params[3]).toEqual(customTimestamp.toISOString()); // serialized to ISO string
+      expect(params[4]).toBe(100);
+      expect(params[5]).toBe("active");
+    });
+
+    it("should handle mix of provided and default values", () => {
+      const uow = createTestUOWWithSchema(defaultsSchema);
+      // Provide some values, let others use defaults
+      uow.create("logs", {
+        message: "Partial log",
+        counter: 999, // override the function default
+      });
+
+      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsConfig);
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+
+      expect(batch.query.params).toMatchObject([
+        expect.any(String), // auto-generated ID
+        "Partial log",
+        expect.any(String), // auto-generated sessionId
+        expect.any(String), // auto-generated timestamp (serialized)
+        999, // user-provided counter
+      ]);
+      // status should use DB default (omitted from INSERT)
+    });
+
+    it("should generate unique values for auto defaults across multiple creates", () => {
+      const uow = createTestUOWWithSchema(defaultsSchema);
+      uow.create("logs", { message: "Log 1" });
+      uow.create("logs", { message: "Log 2" });
+      uow.create("logs", { message: "Log 3" });
+
+      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsConfig);
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.mutationBatch).toHaveLength(3);
+
+      // Extract sessionId from each create
+      const sessionIds = compiled.mutationBatch.map((batch) => {
+        assert(batch);
+        return batch.query.params[2]; // sessionId is 3rd param (after id, message)
+      });
+
+      // All sessionIds should be unique
+      const uniqueSessionIds = new Set(sessionIds);
+      expect(uniqueSessionIds.size).toBe(3);
     });
   });
 

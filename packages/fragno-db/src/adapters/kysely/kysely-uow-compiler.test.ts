@@ -321,15 +321,13 @@ describe("kysely-uow-compiler", () => {
       assert(batch);
       expect(batch.expectedAffectedRows).toBeNull();
       expect(batch.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "age", "_version") values ($1, $2, $3, $4, $5) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email", "age") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
       );
-      // Parameters include auto-generated ID (first param), then the provided values, then version
       expect(batch.query.parameters).toMatchObject([
         expect.any(String),
         "John Doe",
         "john@example.com",
         30,
-        0,
       ]);
     });
 
@@ -474,13 +472,12 @@ describe("kysely-uow-compiler", () => {
 
       assert(createBatch);
       expect(createBatch.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "_version") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
       );
       expect(createBatch.query.parameters).toMatchObject([
         expect.any(String),
         "Alice",
         "alice@example.com",
-        0,
       ]);
 
       assert(updateBatch);

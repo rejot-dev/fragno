@@ -449,6 +449,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
         case "create": {
           const table = getTable(op.table);
           const drizzleTable = toDrizzleTable(table);
+          // encodeValues now handles runtime defaults automatically
           const encodedValues = encodeValues(op.values, table, true, provider);
           const values = processReferenceSubqueries(encodedValues);
 

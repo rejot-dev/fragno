@@ -175,6 +175,7 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
     ): CompiledMutation<CompiledQuery> | null {
       switch (op.type) {
         case "create":
+          // queryCompiler.create() calls encodeValues() which handles runtime defaults
           return {
             query: queryCompiler.create(op.table, op.values),
             expectedAffectedRows: null, // creates don't need affected row checks

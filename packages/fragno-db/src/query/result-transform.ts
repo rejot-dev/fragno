@@ -1,7 +1,8 @@
-import type { AnyTable } from "../schema/create";
+import type { AnyColumn, AnyTable } from "../schema/create";
 import type { SQLProvider } from "../shared/providers";
 import { deserialize, serialize } from "../schema/serialize";
 import { FragnoId, FragnoReference } from "../schema/create";
+import { createId } from "../id";
 
 /**
  * Marker class for reference column values that need subquery resolution.
@@ -25,6 +26,47 @@ export class ReferenceSubquery {
   get externalIdValue() {
     return this.#externalIdValue;
   }
+}
+
+/**
+ * Generate a runtime default value for a column that has defaultTo$()
+ *
+ * Only generates values for runtime defaults (defaultTo$), NOT static defaults (defaultTo).
+ * Static defaults should be handled by the database via DEFAULT constraints.
+ *
+ * @param column - The column with a default value configuration
+ * @returns The generated default value, or undefined if the column has no runtime default
+ *
+ * @internal
+ */
+export function generateRuntimeDefault(column: AnyColumn): unknown {
+  // Check if column has a default value configuration
+  if (!column.default) {
+    return undefined;
+  }
+
+  // If it's a static default value (defaultTo), return undefined
+  // as the database should handle this via DEFAULT constraint
+  if ("value" in column.default) {
+    return undefined;
+  }
+
+  // Handle runtime defaults (defaultTo$)
+  const runtime = column.default.runtime;
+
+  if (runtime === "auto") {
+    return createId();
+  }
+
+  if (runtime === "now") {
+    return new Date();
+  }
+
+  if (typeof runtime === "function") {
+    return runtime();
+  }
+
+  return undefined;
 }
 
 /**
@@ -66,20 +108,12 @@ export function encodeValues(
     if (col.role === "internal-id") {
       continue;
     }
-
-    // Set version to 0 for inserts (system-managed)
-    if (col.role === "version") {
-      if (generateDefault) {
-        result[col.name] = 0;
-      }
-      continue;
-    }
-
     let value = values[k];
 
     if (generateDefault && value === undefined) {
-      // prefer generating them on runtime to avoid SQLite's problem with column default value being ignored when insert
-      value = col.generateDefaultValue();
+      // Only generate runtime defaults (defaultTo$), not static defaults (defaultTo).
+      // Static defaults should be handled by the database via DEFAULT constraints.
+      value = generateRuntimeDefault(col);
     }
 
     if (value !== undefined) {
