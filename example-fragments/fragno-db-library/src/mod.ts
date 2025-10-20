@@ -23,6 +23,9 @@ export const commentSchema = schema((s) => {
       type: "one",
       from: { table: "comment", column: "parentId" },
       to: { table: "comment", column: "id" },
+    })
+    .alterTable("comment", (t) => {
+      return t.addColumn("rating", column("integer").defaultTo(0));
     });
 });
 

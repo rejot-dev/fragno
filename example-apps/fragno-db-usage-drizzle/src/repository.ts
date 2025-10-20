@@ -1,6 +1,7 @@
-import { eq, like, desc, and } from "drizzle-orm";
+import { eq, like, desc, and, sql } from "drizzle-orm";
 import { db } from "./database";
 import { user, blogPost } from "./schema/drizzle-schema";
+import { comment } from "./schema/comment-fragment-schema";
 
 type User = typeof user.$inferSelect;
 type NewUser = typeof user.$inferInsert;
@@ -89,10 +90,13 @@ export async function findBlogPostsWithAuthor() {
       authorId: user.id,
       authorName: user.name,
       authorEmail: user.email,
+      comments: sql<Array<typeof comment.$inferSelect>>`json_agg(comment)`.as("comments"),
     })
     .from(blogPost)
     .innerJoin(user, eq(user.id, blogPost.authorId))
-    .orderBy(desc(blogPost.createdAt));
+    .innerJoin(comment, eq(comment.postReference, sql`${blogPost.id}::text`))
+    .orderBy(desc(blogPost.createdAt))
+    .groupBy(blogPost.id, user.id);
 }
 
 export async function createBlogPost(post: NewBlogPost) {

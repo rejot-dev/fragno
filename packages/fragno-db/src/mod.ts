@@ -173,9 +173,17 @@ export class FragnoDatabase<const T extends AnySchema> {
     const adapter = this.#adapter;
 
     if (adapter.createSchemaGenerator) {
+      if (options?.toVersion !== undefined || options?.fromVersion !== undefined) {
+        console.warn("⚠️ toVersion and fromVersion are not supported for schema generation.");
+      }
+
       const generator = adapter.createSchemaGenerator(this.#schema, this.#namespace);
       const defaultPath = options?.path ?? "schema.ts";
-      return generator.generateSchema({ path: defaultPath });
+      return generator.generateSchema({
+        path: defaultPath,
+        toVersion: options?.toVersion,
+        fromVersion: options?.fromVersion,
+      });
     }
 
     if (adapter.createMigrationEngine) {
