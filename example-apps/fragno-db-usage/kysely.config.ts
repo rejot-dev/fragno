@@ -1,7 +1,5 @@
 import { defineConfig } from "kysely-ctl";
-import { getDialect } from "./src/kysely/dialect";
-
-const dialect = await getDialect();
+import { dialect } from "./src/database";
 
 export default defineConfig({
   dialect,

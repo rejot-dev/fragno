@@ -15,13 +15,17 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "db:migrate": "bun run db:migrate:kysely & bun run db:migrate:comment-fragment",
+    "db:migrate:kysely": "kysely migrate up",
+    "db:migrate:comment-fragment": "bun run ../../apps/fragno-cli/src/cli.ts db migrate --target ./src/fragno/comment-fragment.ts"
   },
   "type": "module",
   "dependencies": {
     "@electric-sql/pglite": "^0.3.10",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragno-db-library": "workspace:*",
+    "gunshi": "^0.26.3",
     "kysely": "^0.28.8",
     "kysely-pglite": "^0.6.1",
     "zod": "^4.0.5"

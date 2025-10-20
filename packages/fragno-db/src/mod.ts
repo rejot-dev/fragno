@@ -11,14 +11,34 @@ export interface FragnoDatabaseIdentifier {
   identifier: typeof isFragnoDatabaseIdentifier;
 }
 
-export interface CreateFragnoDatabaseOptions<T extends AnySchema> {
+export interface CreateFragnoDatabaseDefinitionOptions<T extends AnySchema> {
   namespace: string;
   schema: T;
-  /**
-   * Optional lazy adapter factory. If provided, the adapter will be created
-   * on-demand when needed (useful for CLI tools that import without executing).
-   */
-  getAdapter?: () => Promise<DatabaseAdapter> | DatabaseAdapter;
+}
+
+export function isFragnoDatabaseDefinition(
+  value: unknown,
+): value is FragnoDatabaseDefinition<AnySchema> {
+  if (value instanceof FragnoDatabaseDefinition) {
+    return true;
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  if (
+    !("isFragnoDatabaseDefinition" in value) ||
+    typeof value.isFragnoDatabaseDefinition !== "object" ||
+    value.isFragnoDatabaseDefinition === null
+  ) {
+    return false;
+  }
+
+  return (
+    "identifier" in value.isFragnoDatabaseDefinition &&
+    value.isFragnoDatabaseDefinition.identifier === isFragnoDatabaseIdentifier
+  );
 }
 
 export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySchema> {
@@ -44,16 +64,61 @@ export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySch
   );
 }
 
+/**
+ * Definition of a Fragno database schema and namespace.
+ * Created by library authors using defineFragnoDatabase().
+ * Apps instantiate it by calling .create(adapter).
+ */
+export class FragnoDatabaseDefinition<const T extends AnySchema> {
+  #namespace: string;
+  #schema: T;
+
+  constructor(options: CreateFragnoDatabaseDefinitionOptions<T>) {
+    this.#namespace = options.namespace;
+    this.#schema = options.schema;
+  }
+
+  get isFragnoDatabaseDefinition(): FragnoDatabaseIdentifier {
+    return {
+      namespace: this.#namespace,
+      version: fragnoDatabaseLibraryVersion,
+      identifier: isFragnoDatabaseIdentifier,
+    };
+  }
+
+  get namespace() {
+    return this.#namespace;
+  }
+
+  get schema() {
+    return this.#schema;
+  }
+
+  /**
+   * Creates a FragnoDatabase instance by binding an adapter to this definition.
+   */
+  create(adapter: DatabaseAdapter): FragnoDatabase<T> {
+    return new FragnoDatabase({
+      namespace: this.#namespace,
+      schema: this.#schema,
+      adapter,
+    });
+  }
+}
+
+/**
+ * A Fragno database instance with a bound adapter.
+ * Created from a FragnoDatabaseDefinition by calling .create(adapter).
+ */
 export class FragnoDatabase<const T extends AnySchema> {
   #namespace: string;
   #schema: T;
-  #adapter?: DatabaseAdapter;
-  #getAdapter?: () => Promise<DatabaseAdapter> | DatabaseAdapter;
+  #adapter: DatabaseAdapter;
 
-  constructor(options: CreateFragnoDatabaseOptions<T>) {
+  constructor(options: { namespace: string; schema: T; adapter: DatabaseAdapter }) {
     this.#namespace = options.namespace;
     this.#schema = options.schema;
-    this.#getAdapter = options.getAdapter;
+    this.#adapter = options.adapter;
   }
 
   get isFragnoDatabase(): FragnoDatabaseIdentifier {
@@ -64,26 +129,8 @@ export class FragnoDatabase<const T extends AnySchema> {
     };
   }
 
-  async #ensureAdapter(providedAdapter?: DatabaseAdapter): Promise<DatabaseAdapter> {
-    if (providedAdapter) {
-      return providedAdapter;
-    }
-    if (this.#adapter) {
-      return this.#adapter;
-    }
-    if (this.#getAdapter) {
-      this.#adapter = await this.#getAdapter();
-      return this.#adapter;
-    }
-    throw new Error(
-      "No adapter available. Either pass an adapter to createClient(), bind one with withAdapter(), or provide getAdapter in constructor.",
-    );
-  }
-
-  async createClient(adapter?: DatabaseAdapter): Promise<AbstractQuery<T>> {
-    const resolvedAdapter = await this.#ensureAdapter(adapter);
-
-    const dbVersion = await resolvedAdapter.getSchemaVersion(this.#namespace);
+  async createClient(): Promise<AbstractQuery<T>> {
+    const dbVersion = await this.#adapter.getSchemaVersion(this.#namespace);
     if (dbVersion !== this.#schema.version.toString()) {
       throw new Error(
         `Database is not at expected version. Did you forget to run migrations?` +
@@ -91,16 +138,15 @@ export class FragnoDatabase<const T extends AnySchema> {
       );
     }
 
-    return resolvedAdapter.createQueryEngine(this.#schema, this.#namespace);
+    return this.#adapter.createQueryEngine(this.#schema, this.#namespace);
   }
 
-  async runMigrations(adapter?: DatabaseAdapter): Promise<boolean> {
-    const resolvedAdapter = await this.#ensureAdapter(adapter);
-    if (!resolvedAdapter.createMigrationEngine) {
+  async runMigrations(): Promise<boolean> {
+    if (!this.#adapter.createMigrationEngine) {
       throw new Error("Migration engine not supported for this adapter.");
     }
 
-    const migrator = resolvedAdapter.createMigrationEngine(this.#schema, this.#namespace);
+    const migrator = this.#adapter.createMigrationEngine(this.#schema, this.#namespace);
     const preparedMigration = await migrator.prepareMigration();
     await preparedMigration.execute();
 
@@ -119,77 +165,38 @@ export class FragnoDatabase<const T extends AnySchema> {
     return this.#adapter;
   }
 
-  /**
-   * Binds an adapter to this FragnoDatabase instance.
-   * This is useful for CLI tools that need to access the adapter.
-   */
-  withAdapter(adapter: DatabaseAdapter): this {
-    this.#adapter = adapter;
-    return this;
-  }
-
-  /**
-   * Generates schema files based on the adapter type.
-   * For Kysely: generates SQL migration file
-   * For Drizzle: generates TypeScript schema file
-   */
-  generateSchema(options?: { path?: string }): { schema: string; path: string } {
-    if (!this.#adapter) {
-      throw new Error(
-        "No adapter bound to this FragnoDatabase instance. Call withAdapter() first.",
-      );
-    }
-
-    // Try Drizzle schema generator first
-    if (this.#adapter.createSchemaGenerator) {
-      const generator = this.#adapter.createSchemaGenerator(this.#schema, this.#namespace);
-      const defaultPath = options?.path ?? "schema.ts";
-      return generator.generateSchema({ path: defaultPath });
-    }
-
-    // Try Kysely migration engine with SQL generation
-    if (this.#adapter.createMigrationEngine) {
-      throw new Error(
-        "Kysely adapter migration engine requires async operation. Use generateSchemaAsync() instead.",
-      );
-    }
-
-    throw new Error(
-      "Adapter does not support schema generation. Ensure your adapter implements either createSchemaGenerator or createMigrationEngine.",
-    );
-  }
-
-  /**
-   * Async version of generateSchema for adapters that require async operations.
-   *
-   * For migration-based adapters (Kysely), this will:
-   * 1. Check the current database version
-   * 2. Generate migrations only for the difference between current and target version
-   *
-   * For schema generation adapters (Drizzle), this generates the full schema.
-   */
-  async generateSchemaAsync(options?: {
+  async generateSchema(options?: {
     path?: string;
+    toVersion?: number;
+    fromVersion?: number;
   }): Promise<{ schema: string; path: string }> {
-    const adapter = await this.#ensureAdapter();
+    const adapter = this.#adapter;
 
-    // Try Drizzle schema generator first
     if (adapter.createSchemaGenerator) {
       const generator = adapter.createSchemaGenerator(this.#schema, this.#namespace);
       const defaultPath = options?.path ?? "schema.ts";
       return generator.generateSchema({ path: defaultPath });
     }
 
-    // Try Kysely migration engine with SQL generation
     if (adapter.createMigrationEngine) {
       const migrator = adapter.createMigrationEngine(this.#schema, this.#namespace);
-      const defaultPath = options?.path ?? "schema.sql";
+      const targetVersion = options?.toVersion ?? this.#schema.version;
+      const sourceVersion = options?.fromVersion;
 
-      const targetVersion = this.#schema.version;
+      // Get current version for file naming if not provided
+      const currentVersion = sourceVersion ?? (await migrator.getVersion());
 
-      // Generate migration from current to target version
+      // Determine the default path using the migrator's getDefaultFileName if available
+      const defaultPath =
+        options?.path ??
+        (migrator.getDefaultFileName
+          ? migrator.getDefaultFileName(this.#namespace, currentVersion, targetVersion)
+          : "schema.sql");
+
+      // Generate migration from source to target version
       const preparedMigration = await migrator.prepareMigrationTo(targetVersion, {
         updateSettings: true,
+        fromVersion: sourceVersion,
       });
 
       if (!preparedMigration.getSQL) {
@@ -202,10 +209,7 @@ export class FragnoDatabase<const T extends AnySchema> {
 
       // If no migrations needed, return informative message
       if (!sql.trim()) {
-        return {
-          schema: "-- Database is already at the target version. No migrations needed.",
-          path: defaultPath,
-        };
+        throw new Error("No migrations needed. Database is already at the target version.");
       }
 
       return {
@@ -220,8 +224,8 @@ export class FragnoDatabase<const T extends AnySchema> {
   }
 }
 
-export function createFragnoDatabase<T extends AnySchema>(
-  options: CreateFragnoDatabaseOptions<T>,
-): FragnoDatabase<T> {
-  return new FragnoDatabase(options);
+export function defineFragnoDatabase<T extends AnySchema>(
+  options: CreateFragnoDatabaseDefinitionOptions<T>,
+): FragnoDatabaseDefinition<T> {
+  return new FragnoDatabaseDefinition(options);
 }
