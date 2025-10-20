@@ -1,0 +1,38 @@
+{
+  "name": "@fragno-dev/fragno-db-usage-drizze",
+  "private": true,
+  "exports": {
+    ".": {
+      "bun": "./src/mod.ts",
+      "development": "./src/mod.ts",
+      "types": "./dist/mod.d.ts",
+      "default": "./dist/mod.js"
+    }
+  },
+  "main": "./dist/node/mod.js",
+  "module": "./dist/node/mod.js",
+  "types": "./dist/node/mod.d.ts",
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "db:migrate": "bun run db:migrate:kysely & bun run db:migrate:comment-fragment",
+    "db:migrate:kysely": "kysely migrate up",
+    "db:migrate:comment-fragment": "bun run ../../apps/fragno-cli/src/cli.ts db migrate --target ./src/fragno/comment-fragment.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.10",
+    "@fragno-dev/fragno-db-library": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "drizzle-orm": "^0.44.6",
+    "gunshi": "^0.26.3",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/bun": "^1.2.23",
+    "@types/node": "^20",
+    "drizzle-kit": "^0.31.5"
+  }
+}
