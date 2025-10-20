@@ -1,5 +1,14 @@
 # @fragno-dev/example-fragment
 
+## 0.0.7
+
+### Patch Changes
+
+- c1483c6: Support for SolidJS and SolidStart
+- Updated dependencies [1fa71f3]
+- Updated dependencies [c1483c6]
+  - @fragno-dev/core@0.0.7
+
 ## 0.0.6
 
 ### Patch Changes
