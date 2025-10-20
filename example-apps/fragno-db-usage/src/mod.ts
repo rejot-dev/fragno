@@ -1,48 +1,65 @@
-import { createFragnoDatabaseLibrary } from "@fragno-dev/fragno-db-library";
+#!/usr/bin/env node
+
+import { cli, type Command } from "gunshi";
 import { rmSync } from "node:fs";
-import { pgFolder } from "./kysely/dialect";
+import { pgFolder } from "./database";
+import { userCommand, userSubCommands } from "./commands/user";
+import { postCommand, postSubCommands } from "./commands/post";
+import { commentCommand, commentSubCommands } from "./commands/comment";
 
-// Re-export boundCommentLib so this file can be targeted by CLI
-export { boundCommentLib } from "./databases";
+// Clean command
+const cleanCommand: Command = {
+  name: "clean",
+  description: "Clean the database folder",
+  run: async () => {
+    rmSync(pgFolder, { recursive: true, force: true });
+    console.log("Database cleaned successfully.");
+  },
+};
 
-import { boundCommentLib } from "./databases";
+// Root commands
+const rootSubCommands = new Map();
+rootSubCommands.set("clean", cleanCommand);
+rootSubCommands.set("user", userCommand);
+rootSubCommands.set("post", postCommand);
+rootSubCommands.set("comment", commentCommand);
 
-if (process.argv.includes("--clean")) {
-  rmSync(pgFolder, { recursive: true, force: true });
-}
+const mainCommand: Command = {
+  name: "fragno-db-usage",
+  description: "CLI for CRUD operations on users, blog posts, and comments",
+  run: () => {
+    console.log("Fragno DB Usage CLI");
+    console.log("");
+    console.log("Usage: bun run src/mod.ts <command> [options]");
+    console.log("");
+    console.log("Commands:");
+    console.log("  clean      Clean the database folder");
+    console.log("  user       User management commands");
+    console.log("  post       Blog post management commands");
+    console.log("  comment    Comment management commands");
+    console.log("");
+    console.log("Run 'bun run src/mod.ts <command> --help' for more information.");
+  },
+};
 
-if (import.meta.main && process.argv.includes("--migrate")) {
-  const didMigrate = await boundCommentLib.runMigrations();
-  if (didMigrate) {
-    console.log("Migrations applied.");
-  } else {
-    console.log("No migrations needed.");
-  }
-}
+// Parse arguments to handle nested subcommands
+const args = process.argv.slice(2);
 
-/**
- * Lazy client creation - only happens when called.
- * This prevents version check errors during CLI schema generation.
- */
-export async function getClient() {
-  const client = await boundCommentLib.createClient();
-  return createFragnoDatabaseLibrary(client);
-}
-
-// For immediate usage in this script
-if (import.meta.main) {
-  const libraryClient = await getClient();
-  console.log("Client created successfully!");
-
-  // Example usage
-  const comment = await libraryClient.createComment({
-    title: "Test Comment",
-    content: "This is a test comment",
-    postReference: "post-123",
-    userReference: "user-456",
+// Check if we're calling subcommands
+if (args[0] === "comment" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+  await cli(args.slice(1), commentCommand, {
+    subCommands: commentSubCommands,
   });
-  console.log("Created comment:", comment);
-
-  const comments = await libraryClient.getComments("post-123");
-  console.log("Comments for post-123:", comments);
+} else if (args[0] === "user" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+  await cli(args.slice(1), userCommand, {
+    subCommands: userSubCommands,
+  });
+} else if (args[0] === "post" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+  await cli(args.slice(1), postCommand, {
+    subCommands: postSubCommands,
+  });
+} else {
+  await cli(args, mainCommand, {
+    subCommands: rootSubCommands,
+  });
 }

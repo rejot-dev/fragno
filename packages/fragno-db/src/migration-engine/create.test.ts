@@ -23,20 +23,17 @@ describe("createMigrator", () => {
 
     const options: MigrationEngineOptions = {
       schema: testSchema,
-      userConfig: {
-        provider: "postgresql",
-      },
       executor: async (operations) => {
         executedOperations.push(operations);
       },
       settings: {
         getVersion: async () => version,
-        updateSettingsInMigration: async (newVersion) => {
-          version = newVersion;
+        updateSettingsInMigration: async (_fromVersion, toVersion) => {
+          version = toVersion;
           return [
             {
               type: "custom",
-              sql: `UPDATE _settings SET version = ${newVersion}`,
+              sql: `UPDATE _settings SET version = ${toVersion}`,
             },
           ];
         },
@@ -210,16 +207,13 @@ describe("createMigrator", () => {
 
       const options: MigrationEngineOptions = {
         schema: testSchema,
-        userConfig: {
-          provider: "postgresql",
-        },
         executor: async (operations) => {
           executedOperations.push(operations);
         },
         settings: {
           getVersion: async () => version,
-          updateSettingsInMigration: async (newVersion) => {
-            version = newVersion;
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            version = toVersion;
             return [];
           },
         },
@@ -253,16 +247,13 @@ describe("createMigrator", () => {
 
       const options: MigrationEngineOptions = {
         schema: testSchema,
-        userConfig: {
-          provider: "postgresql",
-        },
         executor: async (operations) => {
           executedOperations.push(operations);
         },
         settings: {
           getVersion: async () => version,
-          updateSettingsInMigration: async (newVersion) => {
-            version = newVersion;
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            version = toVersion;
             return [];
           },
         },
@@ -323,14 +314,11 @@ describe("createMigrator", () => {
       let version = 0;
       const options: MigrationEngineOptions = {
         schema: fkSchema,
-        userConfig: {
-          provider: "postgresql",
-        },
         executor: async () => {},
         settings: {
           getVersion: async () => version,
-          updateSettingsInMigration: async (newVersion) => {
-            version = newVersion;
+          updateSettingsInMigration: async (_fromVersion, toVersion) => {
+            version = toVersion;
             return [];
           },
         },

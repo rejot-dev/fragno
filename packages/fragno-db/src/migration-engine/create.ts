@@ -1,5 +1,4 @@
 import { type MigrationOperation } from "./shared";
-import type { Provider } from "../shared/providers";
 import type { AnySchema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
 
@@ -38,8 +37,18 @@ export interface Migrator {
 
   /**
    * Migrate to a specific version (only forward migrations allowed)
+   * @param toVersion - Target version to migrate to
+   * @param options - Migration options including optional fromVersion
    */
-  prepareMigrationTo: (version: number, options?: MigrateOptions) => Promise<PreparedMigration>;
+  prepareMigrationTo: (
+    toVersion: number,
+    options?: MigrateOptions & { fromVersion?: number },
+  ) => Promise<PreparedMigration>;
+
+  /**
+   * Get default file name for migration SQL
+   */
+  getDefaultFileName?: (namespace: string, fromVersion: number, toVersion: number) => string;
 }
 
 export interface MigrationEngineOptions {
@@ -47,10 +56,6 @@ export interface MigrationEngineOptions {
    * The target schema to migrate to
    */
   schema: AnySchema;
-
-  userConfig: {
-    provider: Provider;
-  };
 
   executor: (operations: MigrationOperation[]) => Promise<void>;
 
@@ -62,7 +67,10 @@ export interface MigrationEngineOptions {
      */
     getVersion: () => Promise<number>;
 
-    updateSettingsInMigration: (version: number) => Awaitable<MigrationOperation[]>;
+    updateSettingsInMigration: (
+      fromVersion: number,
+      toVersion: number,
+    ) => Awaitable<MigrationOperation[]>;
   };
 
   sql?: {
@@ -115,11 +123,17 @@ export function createMigrator({
       return this.prepareMigrationTo(targetSchema.version, options);
     },
     async prepareMigrationTo(toVersion, options = {}) {
-      const { updateSettings: updateVersion = true } = options;
-      const fromVersion = await settings.getVersion();
+      const { updateSettings: updateVersion = true, fromVersion: providedFromVersion } = options;
+
+      // Use provided fromVersion if available, otherwise query the database
+      const fromVersion = providedFromVersion ?? (await settings.getVersion());
 
       if (toVersion < 0) {
         throw new Error(`Cannot migrate to negative version: ${toVersion}`);
+      }
+
+      if (fromVersion < 0) {
+        throw new Error(`Cannot migrate from negative version: ${fromVersion}`);
       }
 
       if (toVersion < fromVersion) {
@@ -131,6 +145,12 @@ export function createMigrator({
       if (toVersion > targetSchema.version) {
         throw new Error(
           `Cannot migrate to version ${toVersion}: schema only has version ${targetSchema.version}`,
+        );
+      }
+
+      if (fromVersion > targetSchema.version) {
+        throw new Error(
+          `Cannot migrate from version ${fromVersion}: schema only has version ${targetSchema.version}`,
         );
       }
 
@@ -164,11 +184,12 @@ export function createMigrator({
         },
       };
 
-      let operations = await context.auto();
-
-      if (updateVersion) {
-        operations.push(...(await settings.updateSettingsInMigration(toVersion)));
-      }
+      let operations = updateVersion
+        ? [
+            ...(await settings.updateSettingsInMigration(fromVersion, toVersion)),
+            ...(await context.auto()),
+          ]
+        : await context.auto();
 
       for (const transformer of transformers) {
         if (!transformer.afterAll) {

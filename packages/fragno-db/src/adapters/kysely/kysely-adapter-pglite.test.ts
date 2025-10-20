@@ -120,7 +120,11 @@ describe("KyselyAdapter PGLite", () => {
     assert(preparedMigration.getSQL);
 
     expect(preparedMigration.getSQL()).toMatchInlineSnapshot(`
-      "create table "users" ("id" varchar(30) not null unique, "name" text not null, "age" integer, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
+
+      insert into "fragno_db_settings" ("key", "value") values ('test.schema_version', '12');
+
+      create table "users" ("id" varchar(30) not null unique, "name" text not null, "age" integer, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       create index "name_idx" on "users" ("name");
 
@@ -162,11 +166,7 @@ describe("KyselyAdapter PGLite", () => {
 
       alter table "comments" add constraint "comments_posts_post_fk" foreign key ("post_id") references "posts" ("_internalId") on delete restrict on update restrict;
 
-      alter table "comments" add constraint "comments_users_commenter_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;
-
-      create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
-
-      insert into "fragno_db_settings" ("key", "value") values ('test.schema_version', '12');"
+      alter table "comments" add constraint "comments_users_commenter_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;"
     `);
 
     await preparedMigration.execute();

@@ -1,15 +1,13 @@
 import { Kysely } from "kysely";
+import type { Dialect } from "kysely";
+import { KyselyPGlite } from "kysely-pglite";
 import type { KyselyDatabase } from "./kysely-types";
-import { getDialect } from "./kysely/dialect";
 
-let dbInstance: Kysely<KyselyDatabase> | null = null;
+export const pgFolder = "./fragno-db-usage.pglite" as const;
 
-export async function getDb(): Promise<Kysely<KyselyDatabase>> {
-  if (!dbInstance) {
-    const dialect = await getDialect();
-    dbInstance = new Kysely<KyselyDatabase>({
-      dialect: dialect,
-    });
-  }
-  return dbInstance;
-}
+const created = await KyselyPGlite.create(pgFolder);
+export const dialect: Dialect = created.dialect;
+
+export const db = new Kysely<KyselyDatabase>({
+  dialect: dialect,
+});

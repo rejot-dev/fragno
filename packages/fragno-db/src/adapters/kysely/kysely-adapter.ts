@@ -67,11 +67,8 @@ export class KyselyAdapter implements DatabaseAdapter {
       );
     };
 
-    return createMigrator({
+    const migrator = createMigrator({
       schema,
-      userConfig: {
-        provider: this.#kyselyConfig.provider,
-      },
       executor: async (operations) => {
         await this.#kyselyConfig.db.transaction().execute(async (tx) => {
           for (const node of preprocess(operations, tx)) {
@@ -99,15 +96,14 @@ export class KyselyAdapter implements DatabaseAdapter {
           const v = await manager.get(`schema_version`);
           return v ? parseInt(v) : 0;
         },
-        updateSettingsInMigration: async (version) => {
-          const init = await manager.initIfNeeded();
-
-          if (init) {
+        updateSettingsInMigration: async (fromVersion, toVersion) => {
+          // Only create the settings table if we're migrating from version 0
+          if (fromVersion === 0) {
             return [
-              { type: "custom", sql: init },
+              { type: "custom", sql: manager.initTable() },
               {
                 type: "custom",
-                sql: manager.insert(`schema_version`, version.toString()),
+                sql: manager.insert(`schema_version`, toVersion.toString()),
               },
             ];
           }
@@ -115,12 +111,21 @@ export class KyselyAdapter implements DatabaseAdapter {
           return [
             {
               type: "custom",
-              sql: manager.update(`schema_version`, version.toString()),
+              sql: manager.update(`schema_version`, toVersion.toString()),
             },
           ];
         },
       },
     });
+
+    // Add getDefaultFileName implementation
+    migrator.getDefaultFileName = (namespace: string, fromVersion: number, toVersion: number) => {
+      const date = new Date().toISOString().split("T")[0].replace(/-/g, "");
+      const safeName = namespace.replace(/[^a-z0-9-]/gi, "_");
+      return `${date}_${safeName}_migration_${fromVersion}_to_${toVersion}.sql`;
+    };
+
+    return migrator;
   }
 
   getSchemaVersion(namespace: string) {
@@ -164,12 +169,7 @@ function createSettingsManager(
       }
     },
 
-    async initIfNeeded() {
-      const tables = await db.introspection.getTables();
-      if (tables.some((table) => table.name === settingsTableName)) {
-        return;
-      }
-
+    initTable() {
       return initTable().compile().sql;
     },
 

@@ -1,4 +1,4 @@
-import { createFragnoDatabase } from "@fragno-dev/db";
+import { defineFragnoDatabase } from "@fragno-dev/db";
 import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
@@ -26,7 +26,7 @@ export const commentSchema = schema((s) => {
     });
 });
 
-export const fragnoDatabaseLibrary = createFragnoDatabase({
+export const commentFragment = defineFragnoDatabase({
   namespace: "fragno-db-comment-library",
   schema: commentSchema,
 });
