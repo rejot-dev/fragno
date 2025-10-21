@@ -1,15 +1,5 @@
 import type { Command } from "gunshi";
-import { createFragnoDatabaseLibrary } from "@fragno-dev/fragno-db-library";
-import { createAdapter } from "../fragno/comment-fragment";
-
-export async function getCommentClient() {
-  const adapter = createAdapter();
-  const orm = adapter.createQueryEngine(
-    (await import("@fragno-dev/fragno-db-library")).commentSchema,
-    "fragno-db-comment-db",
-  );
-  return createFragnoDatabaseLibrary(orm);
-}
+import { createCommentFragmentServer } from "../fragno/comment-fragment";
 
 const commentCreateCommand: Command = {
   name: "create",
@@ -41,13 +31,15 @@ const commentCreateCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const libraryClient = await getCommentClient();
-    const comment = await libraryClient.createComment({
+    const services = createCommentFragmentServer().services;
+
+    const comment = await services.createComment({
       title: ctx.values["title"] as string,
       content: ctx.values["content"] as string,
       postReference: ctx.values["postReference"] as string,
       userReference: ctx.values["userReference"] as string,
     });
+
     console.log("Created comment:");
     console.log(JSON.stringify(comment, null, 2));
   },
@@ -64,9 +56,9 @@ const commentListCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const libraryClient = await getCommentClient();
+    const services = createCommentFragmentServer().services;
     const postReference = ctx.values["postReference"] as string;
-    const comments = await libraryClient.getComments(postReference);
+    const comments = await services.getComments(postReference);
     console.log(`Comments for post ${postReference}:`);
     console.log(JSON.stringify(comments, null, 2));
   },
