@@ -6,7 +6,7 @@ import { migrate } from "./commands/db/migrate.js";
 import { info } from "./commands/db/info.js";
 
 // Define the db generate command
-const generateCommand: Command = {
+export const generateCommand: Command = {
   name: "generate",
   description: "Generate schema files from FragnoDatabase definitions",
   args: {
@@ -31,12 +31,17 @@ const generateCommand: Command = {
       short: "t",
       description: "Target version to generate migration to (default: latest schema version)",
     },
+    prefix: {
+      type: "string" as const,
+      short: "p",
+      description: "String to prepend to the generated file (e.g., '/* eslint-disable */')",
+    },
   },
   run: generate,
 };
 
 // Define the db migrate command
-const migrateCommand: Command = {
+export const migrateCommand: Command = {
   name: "migrate",
   description: "Run database migrations",
   args: {
@@ -60,7 +65,7 @@ const migrateCommand: Command = {
 };
 
 // Define the db info command
-const infoCommand: Command = {
+export const infoCommand: Command = {
   name: "info",
   description: "Display database information and migration status",
   args: {
@@ -80,7 +85,7 @@ dbSubCommands.set("migrate", migrateCommand);
 dbSubCommands.set("info", infoCommand);
 
 // Define the db command
-const dbCommand: Command = {
+export const dbCommand: Command = {
   name: "db",
   description: "Database management commands",
   run: () => {
@@ -102,7 +107,7 @@ const rootSubCommands = new Map();
 rootSubCommands.set("db", dbCommand);
 
 // Define the main command
-const mainCommand: Command = {
+export const mainCommand: Command = {
   name: "@fragno-dev/cli",
   description: "Fragno CLI - Tools for working with Fragno fragments",
   run: () => {
@@ -117,18 +122,20 @@ const mainCommand: Command = {
   },
 };
 
-// Parse arguments to handle nested subcommands
-const args = process.argv.slice(2);
+if (import.meta.main) {
+  // Parse arguments to handle nested subcommands
+  const args = process.argv.slice(2);
 
-// Check if we're calling a db subcommand
-if (args[0] === "db" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
-  // Handle db subcommands
-  await cli(args.slice(1), dbCommand, {
-    subCommands: dbSubCommands,
-  });
-} else {
-  // Run the main CLI
-  await cli(args, mainCommand, {
-    subCommands: rootSubCommands,
-  });
+  // Check if we're calling a db subcommand
+  if (args[0] === "db" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+    // Handle db subcommands
+    await cli(args.slice(1), dbCommand, {
+      subCommands: dbSubCommands,
+    });
+  } else {
+    // Run the main CLI
+    await cli(args, mainCommand, {
+      subCommands: rootSubCommands,
+    });
+  }
 }

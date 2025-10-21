@@ -1,2 +1,3 @@
 bun.lock
 *.pglite
+example-apps/fragno-db-usage-drizzle/src/schema/comment-fragment-schema.ts
