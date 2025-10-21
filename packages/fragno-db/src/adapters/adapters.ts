@@ -3,7 +3,7 @@ import type { AbstractQuery } from "../query/query";
 import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
 
-export interface DatabaseAdapter {
+export interface DatabaseAdapter<TUOWConfig = void> {
   /**
    * Get current schema version, undefined if not initialized.
    */
@@ -12,8 +12,7 @@ export interface DatabaseAdapter {
   createQueryEngine: <const T extends AnySchema>(
     schema: T,
     namespace: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) => AbstractQuery<T, any>;
+  ) => AbstractQuery<T, TUOWConfig>;
 
   createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
   createSchemaGenerator?: <const T extends AnySchema>(

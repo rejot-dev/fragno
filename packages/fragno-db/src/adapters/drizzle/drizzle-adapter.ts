@@ -20,7 +20,7 @@ export interface DrizzleConfig {
   provider: "sqlite" | "mysql" | "postgresql";
 }
 
-export class DrizzleAdapter implements DatabaseAdapter {
+export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   #drizzleConfig: DrizzleConfig;
 
   constructor(config: DrizzleConfig) {

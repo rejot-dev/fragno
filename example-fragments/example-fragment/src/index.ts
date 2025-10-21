@@ -99,12 +99,12 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
 );
 
 const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("example-fragment")
-  .withDependencies((config: ExampleFragmentServerConfig) => {
+  .withDependencies(({ config }) => {
     return {
       serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
     };
   })
-  .withServices((_cfg, deps) => {
+  .withServices(({ deps }) => {
     return {
       getData: () => deps.serverSideData.value,
       getHashFromHostsFileData,
@@ -113,7 +113,7 @@ const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("e
 
 export function createExampleFragment(
   serverConfig: ExampleFragmentServerConfig = {},
-  fragnoConfig: FragnoPublicConfig = {},
+  options: FragnoPublicConfig = {},
 ) {
   const config: ExampleRouteConfig = {
     initialData: serverConfig.initialData ?? "Hello World! This is a server-side data.",
@@ -123,7 +123,7 @@ export function createExampleFragment(
     exampleFragmentDefinition,
     { ...serverConfig, ...config },
     [exampleRoutesFactory],
-    fragnoConfig,
+    options,
   );
 }
 

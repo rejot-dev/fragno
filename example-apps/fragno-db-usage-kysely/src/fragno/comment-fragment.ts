@@ -1,6 +1,6 @@
 import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
 import { db } from "../database";
-import { commentFragment } from "@fragno-dev/fragno-db-library";
+import { createCommentFragment } from "@fragno-dev/fragno-db-library";
 
 /**
  * Creates a Kysely adapter for the comment fragment
@@ -13,11 +13,11 @@ export function createAdapter() {
 }
 
 /**
- * Creates a bound FragnoDatabase instance for the comment fragment
+ * Creates an instantiated comment fragment with database
  */
-export function createCommentFragment() {
+export function createCommentFragmentServer() {
   const adapter = createAdapter();
-  return commentFragment.create(adapter);
+  return createCommentFragment({}, { databaseAdapter: adapter });
 }
 
-export const fragment = createCommentFragment();
+export const fragment = createCommentFragmentServer();

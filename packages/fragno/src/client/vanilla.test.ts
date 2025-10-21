@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno } from "./vanilla";
 import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment";
+import { defineFragment } from "../api/fragment-builder";
 import type { FragnoPublicClientConfig } from "../mod";
 import { FragnoClientFetchNetworkError } from "./client-error";
 import { waitForAsyncIterator } from "../util/async";

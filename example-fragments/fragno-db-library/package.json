@@ -19,6 +19,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "zod": "^4.0.5"
   },

@@ -437,6 +437,37 @@ describe("create", () => {
     expect(userSchema.version).toBe(3);
   });
 
+  it("should preserve indexes when altering a table", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("email", column("string"))
+            .createIndex("idx_email", ["email"])
+            .createIndex("idx_name_unique", ["name"], { unique: true });
+        })
+        .alterTable("users", (t) => {
+          return t.addColumn("age", column("integer").nullable());
+        });
+    });
+
+    const usersTable = userSchema.tables.users;
+
+    // Verify the new column was added
+    expect(usersTable.columns.age).toBeDefined();
+
+    // Verify the original indexes are still present in the table
+    expect(usersTable.indexes["idx_email"]).toBeDefined();
+    expect(usersTable.indexes["idx_email"].columnNames).toEqual(["email"]);
+    expect(usersTable.indexes["idx_email"].unique).toBe(false);
+
+    expect(usersTable.indexes["idx_name_unique"]).toBeDefined();
+    expect(usersTable.indexes["idx_name_unique"].columnNames).toEqual(["name"]);
+    expect(usersTable.indexes["idx_name_unique"].unique).toBe(true);
+  });
+
   it("Simple user table types", () => {
     const _userSchema = schema((s) => {
       return s.addTable("users", (t) => {

@@ -50,6 +50,12 @@
       "development": "./src/query/cursor.ts",
       "types": "./dist/query/cursor.d.ts",
       "default": "./dist/query/cursor.js"
+    },
+    "./fragment": {
+      "bun": "./src/fragment.ts",
+      "development": "./src/fragment.ts",
+      "types": "./dist/fragment.d.ts",
+      "default": "./dist/fragment.js"
     }
   },
   "scripts": {
@@ -70,6 +76,9 @@
     "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "@fragno-dev/core": "workspace:*"
   },
   "repository": {
     "type": "git",

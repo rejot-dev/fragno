@@ -301,6 +301,7 @@
     "example-fragments/fragno-db-library": {
       "name": "@fragno-dev/fragno-db-library",
       "dependencies": {
+        "@fragno-dev/core": "workspace:*",
         "@fragno-dev/db": "workspace:*",
         "zod": "^4.0.5",
       },
@@ -407,6 +408,9 @@
         "drizzle-orm": "^0.44.6",
         "kysely-pglite": "^0.6.1",
         "vitest": "^3.2.4",
+      },
+      "peerDependencies": {
+        "@fragno-dev/core": "workspace:*",
       },
     },
     "packages/fragno-node": {

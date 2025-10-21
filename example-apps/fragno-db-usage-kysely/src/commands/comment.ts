@@ -1,11 +1,14 @@
 import type { Command } from "gunshi";
 import { createFragnoDatabaseLibrary } from "@fragno-dev/fragno-db-library";
-import { createCommentFragment } from "../fragno/comment-fragment";
+import { createAdapter } from "../fragno/comment-fragment";
 
 export async function getCommentClient() {
-  const fragment = createCommentFragment();
-  const client = await fragment.createClient();
-  return createFragnoDatabaseLibrary(client);
+  const adapter = createAdapter();
+  const orm = adapter.createQueryEngine(
+    (await import("@fragno-dev/fragno-db-library")).commentSchema,
+    "fragno-db-comment-db",
+  );
+  return createFragnoDatabaseLibrary(orm);
 }
 
 const commentCreateCommand: Command = {

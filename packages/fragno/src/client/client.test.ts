@@ -6,7 +6,7 @@ import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
 import { atom, computed, effect } from "nanostores";
-import { defineFragment } from "../api/fragment";
+import { defineFragment } from "../api/fragment-builder";
 import { RequestOutputContext } from "../api/request-output-context";
 import { FragnoClientUnknownApiError } from "./client-error";
 

@@ -1,5 +1,6 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
-import { defineFragment, createFragment, type FragmentBuilder } from "./fragment";
+import { defineFragment, type FragmentBuilder } from "./fragment-builder";
+import { createFragment } from "./fragment-instantiation";
 import { defineRoute, defineRoutes, type RouteFactory, resolveRouteFactories } from "./route";
 import { z } from "zod";
 import type { InferOr } from "../util/types-util";
@@ -25,6 +26,7 @@ describe("new-fragment API", () => {
             debug: boolean;
           },
           Empty,
+          Empty,
           Empty
         >
       >();
@@ -35,8 +37,8 @@ describe("new-fragment API", () => {
         apiKey: "test-key",
       };
 
-      const _fragment = defineFragment<typeof _config>("test").withDependencies((cfg) => {
-        expectTypeOf(cfg).toEqualTypeOf<typeof _config>();
+      const _fragment = defineFragment<typeof _config>("test").withDependencies(({ config }) => {
+        expectTypeOf(config).toEqualTypeOf<typeof _config>();
         return {
           httpClient: { fetch: () => Promise.resolve(new Response()) },
           logger: { log: (msg: string) => console.log(msg) },
@@ -50,6 +52,7 @@ describe("new-fragment API", () => {
             httpClient: { fetch: () => Promise<Response> };
             logger: { log: (msg: string) => void };
           },
+          Empty,
           Empty
         >
       >();
@@ -62,16 +65,16 @@ describe("new-fragment API", () => {
       };
 
       const _fragment = defineFragment<typeof _config>("test")
-        .withDependencies((cfg) => {
-          expectTypeOf(cfg).toEqualTypeOf<{
+        .withDependencies(({ config }) => {
+          expectTypeOf(config).toEqualTypeOf<{
             apiKey: string;
             baseUrl: string;
           }>();
 
-          return { httpClient: { baseUrl: cfg.baseUrl } };
+          return { httpClient: { baseUrl: config.baseUrl } };
         })
-        .withServices((cfg, deps) => {
-          expectTypeOf(cfg).toEqualTypeOf<typeof _config>();
+        .withServices(({ config, deps }) => {
+          expectTypeOf(config).toEqualTypeOf<typeof _config>();
           expectTypeOf(deps).toEqualTypeOf<{ httpClient: { baseUrl: string } }>();
 
           return {
@@ -97,7 +100,8 @@ describe("new-fragment API", () => {
               get: (key: string) => string;
               set: (key: string, value: string) => void;
             };
-          }
+          },
+          Empty
         >
       >();
     });
@@ -155,13 +159,15 @@ describe("new-fragment API", () => {
       const _config = { test: true };
 
       const lib1 = defineFragment<typeof _config>("test");
-      expectTypeOf(lib1).toEqualTypeOf<FragmentBuilder<typeof _config, Empty, Empty>>();
+      expectTypeOf(lib1).toEqualTypeOf<FragmentBuilder<typeof _config, Empty, Empty, Empty>>();
 
       const lib2 = lib1.withDependencies(() => ({ dep1: "value1" }));
-      expectTypeOf(lib2).toEqualTypeOf<FragmentBuilder<typeof _config, { dep1: string }, Empty>>();
+      expectTypeOf(lib2).toEqualTypeOf<
+        FragmentBuilder<typeof _config, { dep1: string }, Empty, Empty>
+      >();
       const lib3 = lib2.withServices(() => ({ service1: "value1" }));
       expectTypeOf(lib3).toEqualTypeOf<
-        FragmentBuilder<typeof _config, { dep1: string }, { service1: string }>
+        FragmentBuilder<typeof _config, { dep1: string }, { service1: string }, Empty>
       >();
 
       expect(lib1).not.toBe(lib2);
@@ -173,10 +179,10 @@ describe("new-fragment API", () => {
       const _config = { apiKey: "test" };
 
       const fragment = defineFragment<typeof _config>("my-lib")
-        .withDependencies((_cfg) => ({
-          client: `Client for ${_cfg.apiKey}`,
+        .withDependencies(({ config }) => ({
+          client: `Client for ${config.apiKey}`,
         }))
-        .withServices((_cfg, deps) => ({
+        .withServices(({ deps }) => ({
           service: `Service using ${deps.client}`,
         }));
 
@@ -211,7 +217,7 @@ describe("new-fragment API", () => {
       ]);
 
       const fragmentDef = defineFragment("greeting")
-        .withDependencies((_config) => ({
+        .withDependencies(() => ({
           formatter: (s: string) => s.toUpperCase(),
         }))
         .withServices(() => ({
@@ -504,6 +510,28 @@ describe("new-fragment API", () => {
 
       expectTypeOf(routes[0].path).toEqualTypeOf<"/complete">();
       expectTypeOf(routes[1].path).toEqualTypeOf<"/status">();
+    });
+  });
+
+  describe("Database Integration", () => {
+    test("createFragment without database works without adapter", () => {
+      const fragmentDef = defineFragment("test").withDependencies(() => ({
+        service: { data: "test" },
+      }));
+
+      const fragment = createFragment(fragmentDef, {}, [], {});
+
+      expect(fragment.deps.service.data).toBe("test");
+    });
+
+    test("createFragment accepts options parameter", () => {
+      const fragmentDef = defineFragment("test").withDependencies(() => ({
+        service: { data: "test" },
+      }));
+
+      const fragment = createFragment(fragmentDef, {}, [], { mountRoute: "/custom" });
+
+      expect(fragment.mountRoute).toBe("/custom");
     });
   });
 });

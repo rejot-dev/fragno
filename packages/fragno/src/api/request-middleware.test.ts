@@ -1,5 +1,6 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
-import { defineFragment, createFragment } from "./fragment";
+import { defineFragment } from "./fragment-builder";
+import { createFragment } from "./fragment-instantiation";
 import { defineRoute } from "./route";
 import { z } from "zod";
 import { FragnoApiValidationError } from "./error";
@@ -273,7 +274,7 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes);
+    const instance = createFragment(fragment, config, routes, {});
 
     const withMiddleware = instance.withMiddleware(async () => {
       return undefined;
