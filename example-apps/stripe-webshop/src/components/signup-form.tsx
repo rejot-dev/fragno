@@ -37,8 +37,8 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
         password,
         name,
       });
-      // Redirect to home or dashboard on success
-      navigate({ to: "/" });
+      // Redirect to profile on success
+      navigate({ to: "/profile" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
@@ -113,7 +113,7 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
                 </Button>
                 <FieldDescription className="px-6 text-center">
                   Already have an account?{" "}
-                  <Link to="/" className="underline">
+                  <Link to="/login" className="underline">
                     Sign in
                   </Link>
                 </FieldDescription>

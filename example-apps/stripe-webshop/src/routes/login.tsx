@@ -1,13 +1,13 @@
-import { SignupForm } from "@/components/signup-form";
+import { LoginForm } from "@/components/login-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useSession } from "@/lib/auth/client";
 import { useEffect } from "react";
 
-export const Route = createFileRoute("/signup")({
-  component: SignupPage,
+export const Route = createFileRoute("/login")({
+  component: LoginPage,
 });
 
-function SignupPage() {
+function LoginPage() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
 
@@ -18,7 +18,7 @@ function SignupPage() {
     }
   }, [session, isPending, navigate]);
 
-  // Don't show signup form if already authenticated
+  // Don't show login form if already authenticated
   if (session?.user) {
     return null;
   }
@@ -26,7 +26,7 @@ function SignupPage() {
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        <SignupForm />
+        <LoginForm />
       </div>
     </div>
   );

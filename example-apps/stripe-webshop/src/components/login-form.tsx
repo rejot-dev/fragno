@@ -5,13 +5,15 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/auth/client";
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +25,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         email,
         password,
       });
-      // Redirect will happen automatically on success
+      // Redirect to the redirect param or profile page
+      const redirectTo = (search as { redirect?: string }).redirect || "/profile";
+      navigate({ to: redirectTo });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
