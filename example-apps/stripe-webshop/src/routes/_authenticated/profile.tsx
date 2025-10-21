@@ -2,6 +2,19 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { signOut, useSession } from "@/lib/auth/client";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+interface Product {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  priceMonthly: number;
+  priceYearly: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
@@ -10,6 +23,20 @@ export const Route = createFileRoute("/_authenticated/profile")({
 function ProfilePage() {
   const { data: session } = useSession();
   const navigate = useNavigate();
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
+
+  const {
+    data: products,
+    isLoading: loading,
+    error,
+  } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await fetch("/api/products");
+      if (!res.ok) throw new Error("Failed to fetch products");
+      return res.json() as Promise<Product[]>;
+    },
+  });
 
   const handleSignOut = async () => {
     await signOut();
@@ -25,14 +52,20 @@ function ProfilePage() {
     });
   };
 
+  const formatPrice = (cents: number) => {
+    if (cents === 0) return "Free";
+    return `$${(cents / 100).toFixed(0)}`;
+  };
+
   // Safety check - should be protected by _authenticated layout
   if (!session?.user) {
     return null;
   }
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-2xl">
+    <div className="flex min-h-svh w-full flex-col items-center p-6 md:p-10">
+      <div className="w-full max-w-4xl space-y-8">
+        {/* User Profile Section */}
         <Card>
           <CardHeader>
             <CardTitle>User Profile</CardTitle>
@@ -72,6 +105,78 @@ function ProfilePage() {
                 Sign Out
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Subscription Plans Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Subscription Plans</CardTitle>
+            <CardDescription>Choose the plan that works best for you</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Billing Cycle Toggle */}
+            <div className="flex items-center justify-center gap-4">
+              <Button
+                variant={billingCycle === "monthly" ? "default" : "outline"}
+                onClick={() => setBillingCycle("monthly")}
+              >
+                Monthly
+              </Button>
+              <Button
+                variant={billingCycle === "yearly" ? "default" : "outline"}
+                onClick={() => setBillingCycle("yearly")}
+              >
+                Yearly
+                <span className="ml-2 rounded bg-green-600 px-2 py-0.5 text-xs text-white">
+                  Special Price!
+                </span>
+              </Button>
+            </div>
+
+            {/* Products Grid */}
+            {loading ? (
+              <div className="text-muted-foreground text-center">Loading plans...</div>
+            ) : error ? (
+              <div className="text-center text-red-600">
+                Failed to load plans. Please try again later.
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-3">
+                {products?.map((product) => {
+                  const price =
+                    billingCycle === "monthly" ? product.priceMonthly : product.priceYearly;
+                  const isPopular = product.name === "plus";
+
+                  return (
+                    <Card
+                      key={product.id}
+                      className={`relative ${isPopular ? "border-2 border-blue-500" : ""}`}
+                    >
+                      {isPopular && (
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold text-white">
+                          Popular
+                        </div>
+                      )}
+                      <CardHeader>
+                        <CardTitle className="text-2xl">{product.displayName}</CardTitle>
+                        <CardDescription>{product.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div>
+                          <div className="text-4xl font-bold">{formatPrice(price)}</div>
+                          {price > 0 && (
+                            <div className="text-muted-foreground text-sm">
+                              per {billingCycle === "monthly" ? "month" : "year"}
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit push",
     "db:pull": "drizzle-kit pull",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/db/seed-products.ts",
     "auth:generate": "bunx @better-auth/cli generate --config src/lib/auth/auth.ts --output src/db/auth.schema.ts"
   },
   "dependencies": {
