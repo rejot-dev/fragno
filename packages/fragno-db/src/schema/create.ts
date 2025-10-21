@@ -1026,8 +1026,9 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     tableBuilder.setRelations(table.relations);
     tableBuilder.setIndexes(table.indexes);
 
-    // Track existing columns
+    // Track existing columns and indexes
     const existingColumns = new Set(Object.keys(table.columns));
+    const existingIndexes = new Set(Object.keys(table.indexes));
 
     // Apply modifications
     const resultBuilder = callback(
@@ -1054,14 +1055,16 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       }
     }
 
-    // Add indexes
+    // Add only new indexes
     for (const idx of resultBuilder.getIndexes()) {
-      subOperations.push({
-        type: "add-index",
-        name: idx.name,
-        columns: idx.columns.map((c) => c.ormName),
-        unique: idx.unique,
-      });
+      if (!existingIndexes.has(idx.name)) {
+        subOperations.push({
+          type: "add-index",
+          name: idx.name,
+          columns: idx.columns.map((c) => c.ormName),
+          unique: idx.unique,
+        });
+      }
     }
 
     if (subOperations.length > 0) {

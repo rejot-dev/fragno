@@ -468,6 +468,88 @@ describe("create", () => {
     expect(usersTable.indexes["idx_name_unique"].unique).toBe(true);
   });
 
+  it("should not duplicate existing indexes when altering a table", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("email", column("string"))
+            .createIndex("idx_email", ["email"])
+            .createIndex("idx_name_unique", ["name"], { unique: true });
+        })
+        .alterTable("users", (t) => {
+          return t.addColumn("age", column("integer").nullable());
+        });
+    });
+
+    // Verify the add-table operation contains both indexes
+    const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
+    expect(addTableOps).toHaveLength(1);
+    const addTableIndexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
+    expect(addTableIndexOps).toHaveLength(2);
+
+    // Verify the alter-table operation does NOT contain the existing indexes
+    const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");
+    expect(alterTableOps).toHaveLength(1);
+    const alterTableIndexOps = alterTableOps[0].operations.filter((op) => op.type === "add-index");
+    expect(alterTableIndexOps).toHaveLength(0); // Should be 0, not 2
+
+    // The alter-table should only have the new column
+    const alterTableColumnOps = alterTableOps[0].operations.filter(
+      (op) => op.type === "add-column",
+    );
+    expect(alterTableColumnOps).toHaveLength(1);
+    if (alterTableColumnOps[0].type === "add-column") {
+      expect(alterTableColumnOps[0].columnName).toBe("age");
+    }
+  });
+
+  it("should only add new indexes when altering a table with additional indexes", () => {
+    const userSchema = schema((s) => {
+      return s
+        .addTable("users", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("email", column("string"))
+            .createIndex("idx_email", ["email"]);
+        })
+        .alterTable("users", (t) => {
+          return t
+            .addColumn("age", column("integer").nullable())
+            .createIndex("idx_name", ["name"]) // New index
+            .createIndex("idx_age", ["age"]); // New index on new column
+        });
+    });
+
+    // Verify the add-table operation contains only the original index
+    const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
+    expect(addTableOps).toHaveLength(1);
+    const addTableIndexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
+    expect(addTableIndexOps).toHaveLength(1);
+    expect(addTableIndexOps[0].name).toBe("idx_email");
+
+    // Verify the alter-table operation contains only the NEW indexes
+    const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");
+    expect(alterTableOps).toHaveLength(1);
+    const alterTableIndexOps = alterTableOps[0].operations.filter((op) => op.type === "add-index");
+    expect(alterTableIndexOps).toHaveLength(2); // Only the two new indexes
+
+    const indexNames = alterTableIndexOps.map((op) => op.name);
+    expect(indexNames).toContain("idx_name");
+    expect(indexNames).toContain("idx_age");
+    expect(indexNames).not.toContain("idx_email"); // Should not duplicate the original index
+
+    // Verify all three indexes are present in the final table structure
+    const usersTable = userSchema.tables.users;
+    expect(Object.keys(usersTable.indexes)).toHaveLength(3);
+    expect(usersTable.indexes["idx_email"]).toBeDefined();
+    expect(usersTable.indexes["idx_name"]).toBeDefined();
+    expect(usersTable.indexes["idx_age"]).toBeDefined();
+  });
+
   it("Simple user table types", () => {
     const _userSchema = schema((s) => {
       return s.addTable("users", (t) => {
