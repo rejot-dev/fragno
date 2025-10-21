@@ -1,3 +1,5 @@
 bun.lock
 *.pglite
 example-apps/fragno-db-usage-drizzle/src/schema/comment-fragment-schema.ts
+example-apps/stripe-webshop/drizzle
+example-apps/stripe-webshop/src/db/auth.schema.ts
