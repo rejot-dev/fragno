@@ -103,6 +103,12 @@ const todosDefinition = defineFragment<TodosConfig>("todos-fragment").withDepend
 We'll skip over services for now, but you can read more about them in the
 [Dependencies and Services](./features/dependencies-and-services) page.
 
+<Callout title="Need Persistent Storage?" type="info">
+  If your Fragment needs to store data in a database, check out the [Database
+  Integration](./features/database-integration) feature. It provides a type-safe ORM and lets users
+  integrate with their existing database.
+</Callout>
+
 ### Step 3: Define Routes
 
 A basic route can be defined using the `defineRoute` function. Options are: `method`, `path`,
