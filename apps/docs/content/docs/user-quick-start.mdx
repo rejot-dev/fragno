@@ -45,6 +45,62 @@ export function createExampleFragmentInstance() {
 </Step>
 
 <Step>
+### Setup Database (if required)
+
+<Callout title="Optional Step" type="info">
+  Only required if the Fragment uses a database layer. Check the Fragment's documentation to see if
+  it requires `databaseAdapter`.
+</Callout>
+
+If the Fragment requires database integration:
+
+1. Install the database package:
+
+   ```bash
+   npm install @fragno-dev/db
+   ```
+
+2. Create a database adapter:
+
+   ```ts title="lib/database-adapter.ts"
+   import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+   import { db } from "./database"; // Your existing Kysely/Drizzle instance
+
+   export const fragmentDbAdapter = new KyselyAdapter({
+     db,
+     provider: "postgresql", // or "mysql", "sqlite"
+   });
+   ```
+
+3. Pass the adapter when creating the Fragment:
+
+   ```ts title="lib/example-fragment-server.ts"
+   import { createExampleFragment } from "@fragno-dev/example-fragment";
+   import { fragmentDbAdapter } from "./database-adapter";
+
+   export function createExampleFragmentInstance() {
+     return createExampleFragment(
+       {
+         someApiKey: process.env.EXAMPLE_API_KEY!,
+       },
+       {
+         databaseAdapter: fragmentDbAdapter,
+       },
+     );
+   }
+   ```
+
+4. Run migrations:
+   ```bash
+   npx fragno-cli db generate lib/example-fragment-server.ts
+   npx fragno-cli db migrate lib/example-fragment-server.ts
+   ```
+
+For complete instructions, see [Database Fragments](/docs/for-users/database-fragments).
+
+</Step>
+
+<Step>
 ### Mount the API routes
 The API routes defined in the Fragment should be accessible from your frontend. We do this by
 creating a "catch-all" API route that will (in this case) forward all requests starting with

@@ -1,0 +1,436 @@
+---
+title: Database Integration
+description: Add an optional database layer to your Fragment
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The `@fragno-dev/db` package provides an **optional** database layer for Fragments that need
+persistent storage. This allows Fragment authors to define a type-safe schema while users provide
+their existing database connection.
+
+## Key Features
+
+- **Schema Definition**: Define tables, columns, indexes, and relations
+- **Type-Safe ORM**: Full TypeScript type inference for queries
+- **User-Owned Database**: Fragment users provide their database adapter
+- **ORM Agnostic**: Works with Kysely or Drizzle
+- **Automatic Migrations**: Schema versioning and migration generation
+- **Namespaced Tables**: Prevents conflicts with user tables
+
+<Callout title="Optional Feature" type="info">
+  Database integration is completely optional. Only add it if your Fragment needs persistent
+  storage. Simple Fragments can use in-memory storage or rely on external APIs instead.
+</Callout>
+
+## Installation
+
+```bash
+npm install @fragno-dev/db
+```
+
+## Defining a Schema
+
+Use the `schema()` function to define your database schema. Schemas are built using a fluent API
+with `addTable()`, `addColumn()`, and other methods.
+
+### Basic Example
+
+```typescript title="src/schema.ts"
+import { schema, idColumn, column } from "@fragno-dev/db/schema";
+
+export const commentSchema = schema((s) => {
+  return s.addTable("comment", (t) => {
+    return t
+      .addColumn("id", idColumn())
+      .addColumn("title", column("string"))
+      .addColumn("content", column("string"))
+      .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+      .addColumn("userId", column("string"))
+      .createIndex("idx_comment_user", ["userId"]);
+  });
+});
+```
+
+### Column Types
+
+The `column()` function supports these types:
+
+- `column("string")` - Text/VARCHAR
+- `column("integer")` - Integer numbers
+- `column("boolean")` - Boolean values
+- `column("timestamp")` - Date/time values
+- `column("json")` - JSON data
+
+Special column types:
+
+- `idColumn()` - Primary key (auto-generated FragnoId)
+- `referenceColumn()` - Foreign key reference to another table
+
+### Column Modifiers
+
+```typescript
+column("string")
+  .nullable() // Allow NULL values
+  .defaultTo("value") // Set default value
+  .defaultTo$("now"); // Database function (e.g., NOW())
+```
+
+### Indexes
+
+Create indexes for better query performance:
+
+```typescript
+.addTable("comment", (t) => {
+  return t
+    .addColumn("postId", column("string"))
+    .addColumn("userId", column("string"))
+    .createIndex("idx_comment_post", ["postId"])
+    .createIndex("idx_comment_user_post", ["userId", "postId"]);
+})
+```
+
+### Relations
+
+Define relationships between tables:
+
+```typescript
+export const commentSchema = schema((s) => {
+  return s
+    .addTable("comment", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("content", column("string"))
+        .addColumn("parentId", referenceColumn().nullable());
+    })
+    .addReference("parent", {
+      type: "one",
+      from: { table: "comment", column: "parentId" },
+      to: { table: "comment", column: "id" },
+    });
+});
+```
+
+Relation types:
+
+- `type: "one"` - One-to-one or many-to-one
+- `type: "many"` - One-to-many
+
+### Schema Evolution
+
+Use `alterTable()` to evolve your schema over time. This enables automatic migration generation:
+
+```typescript
+export const commentSchema = schema((s) => {
+  return (
+    s
+      .addTable("comment", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("content", column("string"));
+      })
+      // Add new column in a later version
+      .alterTable("comment", (t) => {
+        return t.addColumn("rating", column("integer").defaultTo(0));
+      })
+  );
+});
+```
+
+<Callout title="Migration Best Practices" type="warn">
+  Always use `alterTable()` to add new columns or indexes. Never modify the original `addTable()`
+  definition after users have deployed your Fragment.
+</Callout>
+
+## Creating a Database Fragment
+
+Use `defineFragmentWithDatabase()` instead of `defineFragment()` to create a Fragment with database
+support.
+
+```typescript title="src/index.ts"
+import { createFragment } from "@fragno-dev/core";
+import {
+  defineFragmentWithDatabase,
+  type FragnoPublicConfigWithDatabase,
+} from "@fragno-dev/db/fragment";
+import { commentSchema } from "./schema";
+
+export interface CommentFragmentConfig {
+  maxCommentsPerPost?: number;
+}
+
+const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>("comment-fragment")
+  .withDatabase(commentSchema)
+  .withServices(({ orm }) => {
+    return {
+      createComment: async (data: { postId: string; content: string; userId: string }) => {
+        const id = await orm.create("comment", {
+          ...data,
+          title: data.content.substring(0, 50),
+        });
+        return { id: id.toJSON(), ...data };
+      },
+
+      getComments: async (postId: string) => {
+        return orm.find("comment", (b) =>
+          b.where((eb) => eb("postId", "=", postId)).orderBy("createdAt", "desc"),
+        );
+      },
+    };
+  });
+
+export function createCommentFragment(
+  config: CommentFragmentConfig = {},
+  options: FragnoPublicConfigWithDatabase,
+) {
+  return createFragment(commentFragmentDef, config, [], options);
+}
+```
+
+### Key Points
+
+1. **Use `defineFragmentWithDatabase()`**: This is the database-aware version of `defineFragment()`
+2. **Chain `.withDatabase(schema)`**: Attach your schema to the fragment definition
+3. **Access `orm` in context**: The ORM is available in both `withDependencies()` and
+   `withServices()`
+4. **Require `FragnoPublicConfigWithDatabase`**: This type enforces that users must provide a
+   database adapter
+
+## ORM Query API
+
+The `orm` object provides a type-safe query interface. All methods are fully typed based on your
+schema.
+
+### Finding Records
+
+```typescript
+// Find all records matching criteria
+const comments = await orm.find("comment", (b) =>
+  b
+    .where((eb) => eb("postId", "=", postId))
+    .orderBy("createdAt", "desc")
+    .limit(10)
+    .offset(0),
+);
+
+// Find first matching record (or null)
+const comment = await orm.findFirst("comment", (b) => b.where((eb) => eb("id", "=", commentId)));
+
+// Select specific columns
+const titles = await orm.find("comment", (b) =>
+  b.select(["id", "title"]).where((eb) => eb("userId", "=", userId)),
+);
+```
+
+### Where Conditions
+
+```typescript
+// Simple equality
+b.where((eb) => eb("userId", "=", userId));
+
+// Multiple conditions (AND)
+b.where((eb) => eb("userId", "=", userId)("status", "=", "active"));
+
+// OR conditions
+b.where((eb) => eb.or(eb("status", "=", "active"), eb("status", "=", "pending")));
+
+// Comparisons
+b.where((eb) => eb("rating", ">", 3));
+
+// Using indexes
+b.whereIndex("idx_comment_user", (eb) => eb("userId", "=", userId));
+```
+
+### Joins
+
+```typescript
+const commentsWithParent = await orm.find(
+  "comment",
+  (b) => b.join((j) => j.parent()), // Load parent comment
+);
+
+// Access joined data
+commentsWithParent.forEach((comment) => {
+  console.log(comment.content);
+  console.log(comment.parent?.content); // Typed as Comment | null
+});
+```
+
+### Creating Records
+
+```typescript
+// Create single record
+const id = await orm.create("comment", {
+  title: "New Comment",
+  content: "Comment content",
+  userId: "user123",
+});
+
+// Create multiple records
+const ids = await orm.createMany("comment", [
+  { title: "Comment 1", content: "Content 1", userId: "user123" },
+  { title: "Comment 2", content: "Content 2", userId: "user456" },
+]);
+```
+
+### Updating Records
+
+```typescript
+// Update by ID
+await orm.update("comment", commentId, (b) => b.set({ content: "Updated content" }));
+
+// Update many matching criteria
+await orm.updateMany("comment", (b) =>
+  b.where((eb) => eb("userId", "=", userId)).set({ status: "archived" }),
+);
+```
+
+### Deleting Records
+
+```typescript
+// Delete by ID
+await orm.delete("comment", commentId);
+
+// Delete with cascade
+await orm.delete(
+  "comment",
+  commentId,
+  (b) => b.cascade(["child"]), // Delete related records via 'child' relation
+);
+
+// Delete many matching criteria
+await orm.deleteMany("comment", (b) => b.where((eb) => eb("createdAt", "<", cutoffDate)));
+```
+
+### Transactions (Unit of Work)
+
+```typescript
+const uow = orm.createUnitOfWork();
+
+const commentId = await uow.create("comment", {
+  title: "New Comment",
+  content: "Content",
+  userId: "user123",
+});
+
+await uow.create("notification", {
+  userId: "user123",
+  message: "You created a comment",
+  relatedId: commentId.toJSON(),
+});
+
+// Execute all operations atomically
+await uow.commit();
+```
+
+## Type Inference
+
+The ORM provides full TypeScript type inference:
+
+```typescript
+// Insert values are typed
+type CommentInsert = TableToInsertValues<typeof commentSchema.tables.comment>;
+// { title: string; content: string; userId: string; createdAt?: Date; parentId?: string | null }
+
+// Select results are typed
+const comments = await orm.find("comment", (b) => b);
+// comments: { id: FragnoId; title: string; content: string; ... }[]
+
+// Partial selects are typed
+const titles = await orm.find("comment", (b) => b.select(["id", "title"]));
+// titles: { id: FragnoId; title: string }[]
+```
+
+## Best Practices
+
+### 1. Wrap ORM in Service Methods
+
+Don't expose raw ORM methods to users. Instead, create service methods:
+
+```typescript
+.withServices(({ orm }) => {
+  return {
+    // Good: Wrapped with business logic
+    createComment: async (data) => {
+      // Validate, transform, add defaults
+      const id = await orm.create("comment", {
+        ...data,
+        title: data.content.substring(0, 50),
+      });
+      return { id: id.toJSON(), ...data };
+    },
+
+    // Avoid: Raw ORM exposure
+    // getOrm: () => orm,
+  };
+})
+```
+
+### 2. Use Indexes for Common Queries
+
+Create indexes for columns frequently used in `where()` clauses:
+
+```typescript
+.addColumn("userId", column("string"))
+.addColumn("postId", column("string"))
+.createIndex("idx_user_post", ["userId", "postId"])
+
+// Then use whereIndex() for better performance
+orm.find("comment", (b) =>
+  b.whereIndex("idx_user_post", (eb) => eb("userId", "=", userId)("postId", "=", postId))
+)
+```
+
+### 3. Handle External References
+
+For references to user data (e.g., user IDs, post IDs), use string columns:
+
+```typescript
+.addColumn("userId", column("string"))  // Reference to user's database
+.addColumn("postId", column("string"))   // Reference to user's posts table
+```
+
+### 4. Namespace Consideration
+
+Fragment tables are automatically namespaced (e.g., `fragno_comment_fragment_comment`). Users never
+need to worry about table name conflicts.
+
+## User Integration
+
+When users integrate your Fragment, they must provide a database adapter. Make this clear in your
+documentation:
+
+```typescript
+// In your Fragment's README
+
+// Users must install and configure a database adapter:
+import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+import { db } from "./database";
+
+const adapter = new KyselyAdapter({ db, provider: "postgresql" });
+
+const fragment = createCommentFragment({}, { databaseAdapter: adapter });
+```
+
+## CLI Commands
+
+Users can generate and run migrations using the Fragno CLI:
+
+```bash
+# Generate migration files for your Fragment
+npx fragno-cli db generate path/to/fragment-instance.ts
+
+# View migration status
+npx fragno-cli db info path/to/fragment-instance.ts
+
+# Run pending migrations
+npx fragno-cli db migrate path/to/fragment-instance.ts
+```
+
+The CLI automatically detects schema changes and generates the necessary SQL migrations.
+
+## Next Steps
+
+- Learn about [Dependencies and Services](./dependencies-and-services) to understand how to use
+  `orm` effectively
+- Check out the
+  [example-fragments/fragno-db-library](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)
+  for a complete example

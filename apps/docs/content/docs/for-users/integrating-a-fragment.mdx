@@ -48,6 +48,50 @@ the backend route in a non-standard location.
 Most Fragments will also require some configuration specific to them. Check the documentation for
 the specific Fragment you are integrating to figure out what configuration is required.
 
+## Fragments with Databases
+
+Some Fragments include a database layer for persistent storage. These Fragments require you to
+provide a **database adapter** that connects the Fragment to your existing database.
+
+<Callout title="Database Integration Required" type="warn">
+  If a Fragment requires `FragnoPublicConfigWithDatabase` or mentions `databaseAdapter` in its
+  documentation, you must set up database integration before using it.
+</Callout>
+
+### Quick Setup
+
+1. **Install the database package:**
+
+   ```bash
+   npm install @fragno-dev/db
+   ```
+
+2. **Create an adapter for your ORM:**
+
+   ```typescript
+   import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+   import { db } from "./database"; // Your existing Kysely instance
+
+   export const adapter = new KyselyAdapter({
+     db,
+     provider: "postgresql",
+   });
+   ```
+
+3. **Pass adapter when creating Fragment:**
+
+   ```typescript
+   const fragment = createCommentFragment({}, { databaseAdapter: adapter });
+   ```
+
+4. **Run migrations:**
+   ```bash
+   npx fragno-cli db generate lib/fragment-instance.ts
+   npx fragno-cli db migrate lib/fragment-instance.ts
+   ```
+
+For complete database integration instructions, see [Database Fragments](./database-fragments).
+
 ## Reference
 
 ### Full-stack Frameworks

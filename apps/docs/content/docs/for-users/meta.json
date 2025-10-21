@@ -1,3 +1,9 @@
 {
-  "pages": ["integrating-a-fragment", "client-frameworks", "services", "middleware"]
+  "pages": [
+    "integrating-a-fragment",
+    "database-fragments",
+    "client-frameworks",
+    "services",
+    "middleware"
+  ]
 }
