@@ -17,6 +17,7 @@ import {
   RequestMiddlewareOutputContext,
   type FragnoMiddlewareCallback,
 } from "./request-middleware";
+import type { FragmentDefinition } from "./fragment-builder";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -64,22 +65,29 @@ type HandlersByFramework = {
   "solid-start": SolidStartHandlers;
 };
 
+// Not actually a symbol, since we might be dealing with multiple instances of this code.
+export const instantiatedFragmentFakeSymbol = "$fragno-instantiated-fragment" as const;
+
 type FullstackFrameworks = keyof HandlersByFramework;
 
 export interface FragnoInstantiatedFragment<
   TRoutes extends readonly AnyFragnoRouteConfig[] = [],
   TDeps = {},
   TServices extends Record<string, unknown> = Record<string, unknown>,
+  TAdditionalContext extends Record<string, unknown> = {},
 > {
+  [instantiatedFragmentFakeSymbol]: typeof instantiatedFragmentFakeSymbol;
+
   config: FragnoFragmentSharedConfig<TRoutes>;
   deps: TDeps;
   services: TServices;
+  additionalContext?: TAdditionalContext;
   handlersFor: <T extends FullstackFrameworks>(framework: T) => HandlersByFramework[T];
   handler: (req: Request) => Promise<Response>;
   mountRoute: string;
   withMiddleware: (
     handler: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>,
-  ) => FragnoInstantiatedFragment<TRoutes, TDeps, TServices>;
+  ) => FragnoInstantiatedFragment<TRoutes, TDeps, TServices, TAdditionalContext>;
 }
 
 export interface FragnoFragmentSharedConfig<
@@ -100,72 +108,38 @@ export type AnyFragnoFragmentSharedConfig = FragnoFragmentSharedConfig<
   readonly AnyFragnoRouteConfig[]
 >;
 
-interface FragmentDefinition<TConfig, TDeps = {}, TServices extends Record<string, unknown> = {}> {
-  name: string;
-  dependencies?: (config: TConfig) => TDeps;
-  services?: (config: TConfig, deps: TDeps) => TServices;
-}
-
-export class FragmentBuilder<TConfig, TDeps = {}, TServices extends Record<string, unknown> = {}> {
-  #definition: FragmentDefinition<TConfig, TDeps, TServices>;
-
-  constructor(definition: FragmentDefinition<TConfig, TDeps, TServices>) {
-    this.#definition = definition;
-  }
-
-  get definition() {
-    return this.#definition;
-  }
-
-  withDependencies<TNewDeps>(
-    fn: (config: TConfig) => TNewDeps,
-  ): FragmentBuilder<TConfig, TNewDeps, TServices> {
-    return new FragmentBuilder<TConfig, TNewDeps, TServices>({
-      ...this.#definition,
-      dependencies: fn,
-    } as FragmentDefinition<TConfig, TNewDeps, TServices>);
-  }
-
-  withServices<TNewServices extends Record<string, unknown>>(
-    fn: (config: TConfig, deps: TDeps) => TNewServices,
-  ): FragmentBuilder<TConfig, TDeps, TNewServices> {
-    return new FragmentBuilder<TConfig, TDeps, TNewServices>({
-      ...this.#definition,
-      services: fn,
-    } as FragmentDefinition<TConfig, TDeps, TNewServices>);
-  }
-}
-
-export function defineFragment<TConfig = {}>(name: string): FragmentBuilder<TConfig> {
-  return new FragmentBuilder({
-    name,
-  });
-}
-
 export function createFragment<
-  TConfig,
-  TDeps,
-  TServices extends Record<string, unknown>,
+  const TConfig,
+  const TDeps,
+  const TServices extends Record<string, unknown>,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  const TAdditionalContext extends Record<string, unknown>,
+  const TOptions extends FragnoPublicConfig,
 >(
-  fragmentDefinition: FragmentBuilder<TConfig, TDeps, TServices>,
+  fragmentBuilder: {
+    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
+    $requiredOptions: TOptions;
+  },
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
-  fragnoConfig: FragnoPublicConfig = {},
-): FragnoInstantiatedFragment<FlattenRouteFactories<TRoutesOrFactories>, TDeps, TServices> {
-  const definition = fragmentDefinition.definition;
+  options: TOptions,
+): FragnoInstantiatedFragment<
+  FlattenRouteFactories<TRoutesOrFactories>,
+  TDeps,
+  TServices,
+  TAdditionalContext
+> {
+  const definition = fragmentBuilder.definition;
 
-  const dependencies = definition.dependencies ? definition.dependencies(config) : ({} as TDeps);
-  const services = definition.services
-    ? definition.services(config, dependencies)
-    : ({} as TServices);
+  const dependencies = definition.dependencies?.(config, options) ?? ({} as TDeps);
+  const services = definition.services?.(config, options, dependencies) ?? ({} as TServices);
 
   const context = { config, deps: dependencies, services };
   const routes = resolveRouteFactories(context, routesOrFactories);
 
   const mountRoute = getMountRoute({
     name: definition.name,
-    mountRoute: fragnoConfig.mountRoute,
+    mountRoute: options.mountRoute,
   });
 
   const router =
@@ -191,8 +165,10 @@ export function createFragment<
   const fragment: FragnoInstantiatedFragment<
     FlattenRouteFactories<TRoutesOrFactories>,
     TDeps,
-    TServices
+    TServices,
+    TAdditionalContext & TOptions
   > = {
+    [instantiatedFragmentFakeSymbol]: instantiatedFragmentFakeSymbol,
     mountRoute,
     config: {
       name: definition.name,
@@ -200,6 +176,10 @@ export function createFragment<
     },
     services,
     deps: dependencies,
+    additionalContext: {
+      ...definition.additionalContext,
+      ...options,
+    } as TAdditionalContext & TOptions,
     withMiddleware: (handler) => {
       if (middlewareHandler) {
         throw new Error("Middleware already set");

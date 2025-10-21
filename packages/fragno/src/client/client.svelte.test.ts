@@ -3,7 +3,7 @@ import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
 import { render } from "@testing-library/svelte";
 import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment";
+import { defineFragment } from "../api/fragment-builder";
 import { z } from "zod";
 import { readableToAtom, useFragno } from "./client.svelte";
 import { writable, readable, get, derived } from "svelte/store";

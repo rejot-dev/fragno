@@ -12,7 +12,10 @@ import {
 import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
-import type { FragnoFragmentSharedConfig, FragnoPublicClientConfig } from "../api/fragment";
+import type {
+  FragnoFragmentSharedConfig,
+  FragnoPublicClientConfig,
+} from "../api/fragment-instantiation";
 import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
 import type { InferOr } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
@@ -22,7 +25,7 @@ import {
 } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
-import type { FragmentBuilder } from "../api/fragment";
+import type { FragmentBuilder } from "../api/fragment-builder";
 import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,

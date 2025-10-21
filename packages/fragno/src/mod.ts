@@ -1,12 +1,12 @@
+export { defineFragment, FragmentBuilder, type FragmentDefinition } from "./api/fragment-builder";
+
 export {
-  defineFragment,
   createFragment,
-  FragmentBuilder,
   type FragnoFragmentSharedConfig,
   type FragnoPublicConfig,
   type FragnoPublicClientConfig,
   type FragnoInstantiatedFragment,
-} from "./api/fragment";
+} from "./api/fragment-instantiation";
 
 export { type FragnoRouteConfig } from "./api/api";
 

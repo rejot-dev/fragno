@@ -2,43 +2,14 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 
-export const isFragnoDatabaseIdentifier = "$fragno-db" as const;
-export const fragnoDatabaseLibraryVersion = "0.1" as const;
+export type { DatabaseAdapter };
 
-export interface FragnoDatabaseIdentifier {
-  namespace: string;
-  version: typeof fragnoDatabaseLibraryVersion;
-  identifier: typeof isFragnoDatabaseIdentifier;
-}
+export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
+export const fragnoDatabaseLibraryVersion = "0.1" as const;
 
 export interface CreateFragnoDatabaseDefinitionOptions<T extends AnySchema> {
   namespace: string;
   schema: T;
-}
-
-export function isFragnoDatabaseDefinition(
-  value: unknown,
-): value is FragnoDatabaseDefinition<AnySchema> {
-  if (value instanceof FragnoDatabaseDefinition) {
-    return true;
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  if (
-    !("isFragnoDatabaseDefinition" in value) ||
-    typeof value.isFragnoDatabaseDefinition !== "object" ||
-    value.isFragnoDatabaseDefinition === null
-  ) {
-    return false;
-  }
-
-  return (
-    "identifier" in value.isFragnoDatabaseDefinition &&
-    value.isFragnoDatabaseDefinition.identifier === isFragnoDatabaseIdentifier
-  );
 }
 
 export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySchema> {
@@ -50,17 +21,9 @@ export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySch
     return false;
   }
 
-  if (
-    !("isFragnoDatabase" in value) ||
-    typeof value.isFragnoDatabase !== "object" ||
-    value.isFragnoDatabase === null
-  ) {
-    return false;
-  }
-
   return (
-    "identifier" in value.isFragnoDatabase &&
-    value.isFragnoDatabase.identifier === isFragnoDatabaseIdentifier
+    fragnoDatabaseFakeSymbol in value &&
+    value[fragnoDatabaseFakeSymbol] === fragnoDatabaseFakeSymbol
   );
 }
 
@@ -76,14 +39,6 @@ export class FragnoDatabaseDefinition<const T extends AnySchema> {
   constructor(options: CreateFragnoDatabaseDefinitionOptions<T>) {
     this.#namespace = options.namespace;
     this.#schema = options.schema;
-  }
-
-  get isFragnoDatabaseDefinition(): FragnoDatabaseIdentifier {
-    return {
-      namespace: this.#namespace,
-      version: fragnoDatabaseLibraryVersion,
-      identifier: isFragnoDatabaseIdentifier,
-    };
   }
 
   get namespace() {
@@ -121,12 +76,8 @@ export class FragnoDatabase<const T extends AnySchema> {
     this.#adapter = options.adapter;
   }
 
-  get isFragnoDatabase(): FragnoDatabaseIdentifier {
-    return {
-      namespace: this.#namespace,
-      version: fragnoDatabaseLibraryVersion,
-      identifier: isFragnoDatabaseIdentifier,
-    };
+  get [fragnoDatabaseFakeSymbol](): typeof fragnoDatabaseFakeSymbol {
+    return fragnoDatabaseFakeSymbol;
   }
 
   async createClient(): Promise<AbstractQuery<T>> {
@@ -232,8 +183,8 @@ export class FragnoDatabase<const T extends AnySchema> {
   }
 }
 
-export function defineFragnoDatabase<T extends AnySchema>(
-  options: CreateFragnoDatabaseDefinitionOptions<T>,
-): FragnoDatabaseDefinition<T> {
+export function defineFragnoDatabase<const TSchema extends AnySchema>(
+  options: CreateFragnoDatabaseDefinitionOptions<TSchema>,
+): FragnoDatabaseDefinition<TSchema> {
   return new FragnoDatabaseDefinition(options);
 }

@@ -499,6 +499,10 @@ export class TableBuilder<
     this.#relations = { ...relations };
   }
 
+  setIndexes(indexes: TIndexes): void {
+    this.#indexes = { ...indexes };
+  }
+
   // For SchemaBuilder to read collected indexes
   getIndexes(): Index[] {
     return Object.values(this.#indexes) as Index[];
@@ -1020,6 +1024,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const tableBuilder = new TableBuilder(tableName);
     tableBuilder.setColumns(table.columns);
     tableBuilder.setRelations(table.relations);
+    tableBuilder.setIndexes(table.indexes);
 
     // Track existing columns
     const existingColumns = new Set(Object.keys(table.columns));

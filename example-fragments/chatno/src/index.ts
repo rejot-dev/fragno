@@ -49,14 +49,14 @@ const simpleStreamRoute = defineRoute({
 const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
 const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
-  .withDependencies((config: ChatnoServerConfig) => {
+  .withDependencies(({ config }) => {
     return {
       openaiClient: new OpenAI({
         apiKey: config.openaiApiKey,
       }),
     };
   })
-  .withServices((_cfg, deps) => {
+  .withServices(({ deps }) => {
     return {
       getOpenAIURL: () => deps.openaiClient.baseURL,
     };

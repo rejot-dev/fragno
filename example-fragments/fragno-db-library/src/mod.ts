@@ -1,6 +1,10 @@
-import { defineFragnoDatabase } from "@fragno-dev/db";
+import { createFragment } from "@fragno-dev/core";
 import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+import {
+  defineFragmentWithDatabase,
+  type FragnoPublicConfigWithDatabase,
+} from "@fragno-dev/db/fragment";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -29,10 +33,24 @@ export const commentSchema = schema((s) => {
     });
 });
 
-export const commentFragment = defineFragnoDatabase({
-  namespace: "fragno-db-comment-library",
-  schema: commentSchema,
-});
+export interface CommentFragmentConfig {
+  // Add any server-side configuration here if needed
+}
+
+const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>("fragno-db-comment")
+  .withDatabase(commentSchema)
+  .withServices(({ orm }) => {
+    return {
+      ...createFragnoDatabaseLibrary(orm),
+    };
+  });
+
+export function createCommentFragment(
+  config: CommentFragmentConfig = {},
+  options: FragnoPublicConfigWithDatabase,
+) {
+  return createFragment(commentFragmentDef, config, [], options);
+}
 
 export function createFragnoDatabaseLibrary(orm: AbstractQuery<typeof commentSchema>) {
   const internal = {
