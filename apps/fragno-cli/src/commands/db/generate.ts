@@ -38,6 +38,7 @@ export async function generate(ctx: CommandContext) {
   const output = ctx.values["output"];
   const toVersion = ctx.values["to"];
   const fromVersion = ctx.values["from"];
+  const prefix = ctx.values["prefix"];
 
   if (!target || typeof target !== "string") {
     throw new Error("Target file path is required and must be a string");
@@ -57,6 +58,10 @@ export async function generate(ctx: CommandContext) {
     typeof fromVersion !== "number"
   ) {
     throw new Error("Version must be a number or string");
+  }
+
+  if (prefix !== undefined && typeof prefix !== "string") {
+    throw new Error("Prefix must be a string");
   }
 
   // Resolve the target file path relative to current working directory
@@ -205,7 +210,8 @@ export async function generate(ctx: CommandContext) {
 
   // Write schema to file
   try {
-    await writeFile(finalOutputPath, result.schema, { encoding: "utf-8" });
+    const content = prefix ? `${prefix}\n${result.schema}` : result.schema;
+    await writeFile(finalOutputPath, content, { encoding: "utf-8" });
   } catch (error) {
     throw new Error(
       `Failed to write schema file: ${error instanceof Error ? error.message : String(error)}`,

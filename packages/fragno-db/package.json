@@ -69,6 +69,7 @@
     "@electric-sql/pglite": "^0.3.10",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
     "@types/bun": "^1.2.23",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",

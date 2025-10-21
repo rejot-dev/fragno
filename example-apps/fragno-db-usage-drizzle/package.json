@@ -16,9 +16,7 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
-    "db:migrate": "bun run db:migrate:kysely & bun run db:migrate:comment-fragment",
-    "db:migrate:kysely": "kysely migrate up",
-    "db:migrate:comment-fragment": "bun run ../../apps/fragno-cli/src/cli.ts db migrate --target ./src/fragno/comment-fragment.ts"
+    "test": "vitest run"
   },
   "type": "module",
   "dependencies": {
@@ -30,9 +28,14 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {
+    "@fragno-dev/cli": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
     "@types/bun": "^1.2.23",
     "@types/node": "^20",
-    "drizzle-kit": "^0.31.5"
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "drizzle-kit": "^0.31.5",
+    "gunshi": "^0.26.3",
+    "vitest": "^3.2.4"
   }
 }
