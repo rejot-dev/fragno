@@ -40,7 +40,7 @@ export interface MyFragmentConfig {
 }
 
 const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment")
-  .withDependencies((config) => {
+  .withDependencies(({ config }) => {
     return {
       aiWrapper: new MyOpenAIWrapper({
         apiKey: config.openaiApiKey,
@@ -48,7 +48,7 @@ const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment")
       }),
     };
   })
-  .withServices((config, deps) => {
+  .withServices(({ config, deps }) => {
     return {
       summarizeText: (text: string) => {
         const result = deps.aiWrapper.summarizeText(text);
@@ -104,18 +104,18 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>
 The `create` callback should return one or more routes. The config, dependencies, and services are
 available in the callback.
 
-The `addTodoRoute` object is a route factory that will be instantiated by a call to `createLibrary`.
-At that point, the dependencies and services are passed to the route object.
+The `addTodoRoute` object is a route factory that will be instantiated by a call to
+`createFragment`. At that point, the dependencies and services are passed to the route object.
 
-## The `createLibrary` function
+## The `createFragment` function
 
-The `createLibrary` function is used to create the library instance. It takes the library
+The `createFragment` function is used to create the library instance. It takes the library
 definition, the config, and the routes. The `createMyFragment` function is exported to the Fragment
 user. This is the final, server-side, object that the user can interact with. It's also the object
 that contains the `services` field.
 
 ```typescript title="src/index.ts"
-import { createLibrary } from "@fragno-dev/core";
+import { createFragment } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
 import { getTodosRoute } from "./routes/get-todos";
@@ -125,7 +125,7 @@ import { addTodoRoute } from "./routes/post-todos";
 
 const routes = [getTodosRoute, addTodoRoute] as const;
 
-export function createMyFragment(config: MyFragmentConfig, fragnoConfig: FragnoPublicConfig = {}) {
-  return createLibrary(myFragmentDefinition, config, routes, fragnoConfig);
+export function createMyFragment(config: MyFragmentConfig, options: FragnoPublicConfig = {}) {
+  return createFragment(myFragmentDefinition, config, routes, options);
 }
 ```
