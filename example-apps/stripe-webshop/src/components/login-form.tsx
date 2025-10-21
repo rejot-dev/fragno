@@ -8,8 +8,9 @@ import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // using seeded credentials (bun run db:seed)
+  const [email, setEmail] = useState("user@example.com");
+  const [password, setPassword] = useState("password123");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();

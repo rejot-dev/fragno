@@ -24,7 +24,7 @@ export default function Header() {
               to="/profile"
               className="text-sm hover:underline"
               activeProps={{
-                className: "text-cyan-400 font-semibold",
+                className: "underline font-semibold",
               }}
             >
               {session.user.name}
