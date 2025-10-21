@@ -90,7 +90,7 @@ import { defineFragment } from "@fragno-dev/core";
 import { MyOpenAIWrapper } from "./lib/my-openai-wrapper";
 
 const todosDefinition = defineFragment<TodosConfig>("todos-fragment").withDependencies(
-  (config: TodosConfig) => {
+  ({ config }) => {
     return {
       aiWrapper: new MyOpenAIWrapper({
         apiKey: config.openaiApiKey,
@@ -206,8 +206,8 @@ import { addTodoRoute } from "./routes/post-todos";
 import { createFragment } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
-export function createTodos(config: TodosConfig, fragnoConfig: FragnoPublicConfig = {}) {
-  return createFragment(todosDefinition, config, [getTodosRoute, addTodoRoute], fragnoConfig);
+export function createTodos(config: TodosConfig, options: FragnoPublicConfig = {}) {
+  return createFragment(todosDefinition, config, [getTodosRoute, addTodoRoute], options);
 }
 ```
 
