@@ -18,13 +18,13 @@ const cleanCommand: Command = {
 };
 
 // Root commands
-const rootSubCommands = new Map();
+export const rootSubCommands = new Map();
 rootSubCommands.set("clean", cleanCommand);
 rootSubCommands.set("user", userCommand);
 rootSubCommands.set("post", postCommand);
 rootSubCommands.set("comment", commentCommand);
 
-const mainCommand: Command = {
+export const mainCommand: Command = {
   name: "fragno-db-usage",
   description: "CLI for CRUD operations on users, blog posts, and comments",
   run: () => {
@@ -42,24 +42,26 @@ const mainCommand: Command = {
   },
 };
 
-// Parse arguments to handle nested subcommands
-const args = process.argv.slice(2);
+if (import.meta.main) {
+  // Parse arguments to handle nested subcommands
+  const args = process.argv.slice(2);
 
-// Check if we're calling subcommands
-if (args[0] === "comment" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
-  await cli(args.slice(1), commentCommand, {
-    subCommands: commentSubCommands,
-  });
-} else if (args[0] === "user" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
-  await cli(args.slice(1), userCommand, {
-    subCommands: userSubCommands,
-  });
-} else if (args[0] === "post" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
-  await cli(args.slice(1), postCommand, {
-    subCommands: postSubCommands,
-  });
-} else {
-  await cli(args, mainCommand, {
-    subCommands: rootSubCommands,
-  });
+  // Check if we're calling subcommands
+  if (args[0] === "comment" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+    await cli(args.slice(1), commentCommand, {
+      subCommands: commentSubCommands,
+    });
+  } else if (args[0] === "user" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+    await cli(args.slice(1), userCommand, {
+      subCommands: userSubCommands,
+    });
+  } else if (args[0] === "post" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+    await cli(args.slice(1), postCommand, {
+      subCommands: postSubCommands,
+    });
+  } else {
+    await cli(args, mainCommand, {
+      subCommands: rootSubCommands,
+    });
+  }
 }
