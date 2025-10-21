@@ -1,7 +1,6 @@
-import { isFragnoDatabase, type FragnoDatabase } from "@fragno-dev/db";
-import type { AnySchema } from "@fragno-dev/db/schema";
 import { resolve } from "node:path";
 import type { CommandContext } from "gunshi";
+import { findFragnoDatabases } from "../../utils/find-fragno-databases";
 
 export async function migrate(ctx: CommandContext) {
   const target = ctx.values["target"];
@@ -39,18 +38,16 @@ export async function migrate(ctx: CommandContext) {
     );
   }
 
-  // Find all FragnoDatabase instances in the exported values
-  const fragnoDatabases: FragnoDatabase<AnySchema>[] = [];
-
-  for (const [key, value] of Object.entries(targetModule)) {
-    if (isFragnoDatabase(value)) {
-      fragnoDatabases.push(value);
-      console.log(`Found FragnoDatabase instance: ${key}`);
-    }
-  }
+  // Find all FragnoDatabase instances or instantiated fragments with databases
+  const fragnoDatabases = findFragnoDatabases(targetModule);
 
   if (fragnoDatabases.length === 0) {
-    throw new Error(`No FragnoDatabase instances found in ${target}.\n`);
+    throw new Error(
+      `No FragnoDatabase instances found in ${target}.\n` +
+        `Make sure you export either:\n` +
+        `  - A FragnoDatabase instance created with .create(adapter)\n` +
+        `  - An instantiated fragment with embedded database definition\n`,
+    );
   }
 
   if (fragnoDatabases.length > 1) {
