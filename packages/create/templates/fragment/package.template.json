@@ -56,19 +56,5 @@
     "types:check": "tsc --noEmit"
   },
   "type": "module",
-  "dependencies": {
-    "@fragno-dev/core": "^0.0.7",
-    "zod": "^4.0.5"
-  },
-  "devDependencies": {
-    "@types/node": "^20"
-  },
-  "private": true,
-  "peerDependencies": {
-    "typescript": "^5",
-    "react": ">=18.0.0",
-    "svelte": ">=4.0.0",
-    "solid-js": ">=1.0.0",
-    "vue": ">=3.0.0"
-  }
+  "private": true
 }

@@ -1,6 +1,33 @@
 import type { BuildTools } from "./index";
 
-const unpluginFragnoVersion = "^0.0.1";
+const fragnoCoreVersion = "^0.1.1";
+const fragnoDbVersion = "^0.1.1";
+const unpluginFragnoVersion = "^0.0.2";
+const fragnoCliVersion = "^0.1.2";
+
+export const basePkg: Record<string, unknown> = {
+  dependencies: {
+    "@fragno-dev/core": fragnoCoreVersion,
+    zod: "^4.0.5",
+  },
+  devDependencies: {
+    "@fragno-dev/cli": fragnoCliVersion,
+    "@types/node": "^22",
+  },
+  peerDependencies: {
+    typescript: "^5",
+    react: ">=18.0.0",
+    svelte: ">=4.0.0",
+    "solid-js": ">=1.0.0",
+    vue: ">=3.0.0",
+  },
+};
+
+export const databasePkg: Record<string, unknown> = {
+  dependencies: {
+    "@fragno-dev/db": fragnoDbVersion,
+  },
+};
 
 export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   none: {},
