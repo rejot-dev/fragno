@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copy, merge } from "./utils.ts";
-import { buildToolPkg } from "./package-json.ts";
+import { basePkg, buildToolPkg, databasePkg } from "./package-json.ts";
 import { z } from "zod";
 
 const templateTypesSchema = z.literal("fragment");
@@ -28,15 +28,21 @@ export const createOptionsSchema = z.object({
   name: z.string(),
   template: templateTypesSchema,
   agentDocs: agentDocsSchema,
+  withDatabase: z.boolean(),
 });
 
 type CreateOptions = z.infer<typeof createOptionsSchema>;
 
 export function create(options: CreateOptions) {
-  let pkgOverride: Record<string, unknown> = { name: options.name };
+  let pkgOverride: Record<string, unknown> = merge(basePkg, { name: options.name });
 
   // Build tool pkg overrides
   pkgOverride = merge(pkgOverride, buildToolPkg[options.buildTool]);
+
+  // Database pkg overrides
+  if (options.withDatabase) {
+    pkgOverride = merge(pkgOverride, databasePkg);
+  }
 
   if (options.template == "fragment") {
     writeFragmentTemplate(options.path, pkgOverride);
@@ -76,6 +82,11 @@ export function create(options: CreateOptions) {
       break;
     case "none":
       break;
+  }
+
+  if (options.withDatabase) {
+    writeOptionalTemplate(options.path, "database/index.ts", "src/index.ts");
+    writeOptionalTemplate(options.path, "database/schema.ts", "src/schema.ts");
   }
 }
 

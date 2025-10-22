@@ -19,9 +19,10 @@ async function createTempDir(name: string): Promise<string> {
   return dir;
 }
 
-describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rspack"] as const)(
-  "fragment with %s",
-  (buildTool) => {
+type BuildTool = "tsdown" | "esbuild" | "vite" | "rollup" | "webpack" | "rspack";
+
+function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
+  return () => {
     let tempDir: string;
     const testConfig = {
       name: "@myorg/test",
@@ -31,16 +32,17 @@ describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rsp
     };
 
     beforeAll(async () => {
-      tempDir = await createTempDir(`fragment-test-${buildTool}`);
+      const suffix = withDatabase ? "db" : "no-db";
+      tempDir = await createTempDir(`fragment-test-${buildTool}-${suffix}`);
       console.log("temp", tempDir);
-      create({ ...testConfig, path: tempDir });
+      create({ ...testConfig, path: tempDir, withDatabase });
     });
 
     afterAll(async () => {
       await fs.rm(tempDir, { recursive: true });
     });
 
-    describe.sequential("", () => {
+    describe.sequential(buildTool, () => {
       test("package.json correctly templated", async () => {
         const pkg = path.join(tempDir, "package.json");
         const pkgContent = await fs.readFile(pkg, "utf8");
@@ -74,7 +76,7 @@ describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rsp
         but somehow when running through vitest the module resolution mechanism changes causing
         the build to fail.
       */
-      test.skipIf(buildTool == "rollup")("builds", { timeout: 40000 }, async () => {
+      test.skipIf(buildTool === "rollup")("builds", { timeout: 40000 }, async () => {
         const result = await execAsync("bun run build", {
           cwd: tempDir,
           encoding: "utf8",
@@ -99,5 +101,12 @@ describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rsp
         }
       });
     });
-  },
+  };
+}
+
+describe.concurrent.each(["tsdown", "esbuild", "vite", "rollup", "webpack", "rspack"] as const)(
+  "fragment with %s (with database)",
+  (buildTool) => createFragmentTestSuite(buildTool, true)(),
 );
+
+describe("fragment with tsdown (without database)", createFragmentTestSuite("tsdown", false));

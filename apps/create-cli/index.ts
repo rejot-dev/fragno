@@ -98,12 +98,27 @@ const main = defineCommand({
       process.exit(0);
     }
 
+    const withDatabase = await p.select({
+      message: "Include database layer?",
+      options: [
+        { value: true, label: "Yes" },
+        { value: false, label: "No (skip)" },
+      ],
+      initialValue: false,
+    });
+
+    if (p.isCancel(withDatabase)) {
+      p.cancel("Operation cancelled.");
+      process.exit(0);
+    }
+
     const options = createOptionsSchema.safeParse({
       name: name,
       path: projectPath,
       template: template,
       buildTool: buildTool,
       agentDocs: agent,
+      withDatabase: withDatabase,
     });
 
     if (!options.success) {

@@ -56,12 +56,12 @@ const exampleRoutesFactory = defineRoutes<ExampleConfig, ExampleDeps, ExampleSer
 );
 
 const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
-  .withDependencies((config: ExampleConfig) => {
+  .withDependencies(({ config }) => {
     return {
       serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
     };
   })
-  .withServices((_cfg, deps) => {
+  .withServices(({ deps }) => {
     return {
       getData: () => deps.serverSideData.value,
     };
