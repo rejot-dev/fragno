@@ -43,7 +43,9 @@ const TabsContext = createContext<{
 
 function useTabContext() {
   const ctx = useContext(TabsContext);
-  if (!ctx) throw new Error("You must wrap your component in <Tabs>");
+  if (!ctx) {
+    throw new Error("You must wrap your component in <Tabs>");
+  }
   return ctx;
 }
 
@@ -98,7 +100,9 @@ export function Tabs({
       )}
       value={value}
       onValueChange={(v: string) => {
-        if (items && !items.some((item) => escapeValue(item) === v)) return;
+        if (items && !items.some((item) => escapeValue(item) === v)) {
+          return;
+        }
         setValue(v);
       }}
       {...props}
@@ -130,10 +134,11 @@ export interface TabProps extends Omit<ComponentProps<typeof Unstyled.TabsConten
 export function Tab({ value, ...props }: TabProps) {
   const { items } = useTabContext();
   const resolved = value ?? items?.at(useCollectionIndex());
-  if (!resolved)
+  if (!resolved) {
     throw new Error(
       "Failed to resolve tab `value`, please pass a `value` prop to the Tab component.",
     );
+  }
 
   return (
     <TabsContent value={escapeValue(resolved)} {...props}>
@@ -175,11 +180,15 @@ function useCollectionIndex() {
   useEffect(() => {
     return () => {
       const idx = collection.indexOf(key);
-      if (idx !== -1) collection.splice(idx, 1);
+      if (idx !== -1) {
+        collection.splice(idx, 1);
+      }
     };
   }, [key, collection]);
 
-  if (!collection.includes(key)) collection.push(key);
+  if (!collection.includes(key)) {
+    collection.push(key);
+  }
   return collection.indexOf(key);
 }
 

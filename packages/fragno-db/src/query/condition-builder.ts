@@ -95,7 +95,9 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     if (args.length === 3) {
       const [a, operator, b] = args;
 
-      if (!operators.includes(operator)) throw new Error(`Unsupported operator: ${operator}`);
+      if (!operators.includes(operator)) {
+        throw new Error(`Unsupported operator: ${operator}`);
+      }
 
       return {
         type: "compare",
@@ -116,7 +118,9 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
   builder.isNull = (a) => builder(a, "is", null);
   builder.isNotNull = (a) => builder(a, "is not", null);
   builder.not = (condition) => {
-    if (typeof condition === "boolean") return !condition;
+    if (typeof condition === "boolean") {
+      return !condition;
+    }
 
     return {
       type: "not",
@@ -131,13 +135,19 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     } as const;
 
     for (const item of conditions) {
-      if (item === true) return true;
-      if (item === false) continue;
+      if (item === true) {
+        return true;
+      }
+      if (item === false) {
+        continue;
+      }
 
       out.items.push(item);
     }
 
-    if (out.items.length === 0) return false;
+    if (out.items.length === 0) {
+      return false;
+    }
     return out;
   };
 
@@ -148,13 +158,19 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     } as const;
 
     for (const item of conditions) {
-      if (item === true) continue;
-      if (item === false) return false;
+      if (item === true) {
+        continue;
+      }
+      if (item === false) {
+        return false;
+      }
 
       out.items.push(item);
     }
 
-    if (out.items.length === 0) return true;
+    if (out.items.length === 0) {
+      return true;
+    }
     return out;
   };
 

@@ -8,8 +8,8 @@ pre-commit:
       run:
         sh -c 'bunx prettier --ignore-unknown --check "{staged_files}"; code=$?; bunx prettier
         --ignore-unknown --write "{staged_files}"; exit $code'
-    - name: eslint
-      run: bunx eslint --fix --no-warn-ignored "{staged_files}"
+    - name: lint
+      run: bunx oxlint --fix "{staged_files}"
     - name: "turbo: build + test + type-check"
       run: bunx turbo run --no-daemon build types:check test
       glob: "{*.ts,*.tsx,tsconfig.json}"

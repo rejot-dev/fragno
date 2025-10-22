@@ -20,7 +20,9 @@ describe("createAsyncIteratorFromCallback", () => {
       const values: string[] = [];
       for await (const value of iterator) {
         values.push(value);
-        if (values.length === 3) break;
+        if (values.length === 3) {
+          break;
+        }
       }
       return values;
     })();
@@ -53,7 +55,9 @@ describe("createAsyncIteratorFromCallback", () => {
       const values: string[] = [];
       for await (const value of iterator) {
         values.push(value);
-        if (values.length === 2) break; // Break after 2 values
+        if (values.length === 2) {
+          break;
+        } // Break after 2 values
       }
       return values;
     })();

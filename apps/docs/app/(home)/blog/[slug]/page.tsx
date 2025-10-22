@@ -87,7 +87,9 @@ export default async function Page(props: PageProps<"/blog/[slug]">) {
   const params = await props.params;
   const page = blogSource.getPage([params.slug]);
 
-  if (!page) notFound();
+  if (!page) {
+    notFound();
+  }
   const { body: Mdx, toc } = page.data;
 
   const publishDateSource = page.data.date;

@@ -9,7 +9,9 @@ export function Chat() {
   const { response, responseLoading, sendMessage } = useSendMessage();
 
   const handleSubmitMessage = async () => {
-    if (!message().trim()) return;
+    if (!message().trim()) {
+      return;
+    }
 
     try {
       sendMessage(message());

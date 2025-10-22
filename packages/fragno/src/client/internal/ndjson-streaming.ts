@@ -191,7 +191,9 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
         if (buffer.trim()) {
           const lines = buffer.split("\n");
           for (const line of lines) {
-            if (!line.trim()) continue;
+            if (!line.trim()) {
+              continue;
+            }
 
             try {
               const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;
@@ -215,7 +217,9 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
       buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
       for (const line of lines) {
-        if (!line.trim()) continue;
+        if (!line.trim()) {
+          continue;
+        }
 
         try {
           const jsonObject = JSON.parse(line) as StandardSchemaV1.InferOutput<TOutputSchema>;

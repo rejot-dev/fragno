@@ -5,7 +5,9 @@ export function mkdirp(dir: string): void {
   try {
     fs.mkdirSync(dir, { recursive: true });
   } catch (e: unknown) {
-    if (e instanceof Error && "code" in e && e.code === "EEXIST") return;
+    if (e instanceof Error && "code" in e && e.code === "EEXIST") {
+      return;
+    }
     throw e;
   }
 }
@@ -54,7 +56,9 @@ export function copy(
   to: string,
   rename: (basename: string) => string = identity,
 ): void {
-  if (!fs.existsSync(from)) return;
+  if (!fs.existsSync(from)) {
+    return;
+  }
 
   const stats = fs.statSync(from);
 

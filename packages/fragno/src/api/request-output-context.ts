@@ -19,7 +19,9 @@ function mergeHeaders(...headerSources: (HeadersInit | undefined)[]): HeadersIni
   const mergedHeaders = new Headers();
 
   for (const headerSource of headerSources) {
-    if (!headerSource) continue;
+    if (!headerSource) {
+      continue;
+    }
 
     if (headerSource instanceof Headers) {
       for (const [key, value] of headerSource.entries()) {
@@ -45,11 +47,11 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
    *
    * Shortcut for `throw new FragnoApiError(...)`
    */
-  error(
+  error = (
     { message, code }: { message: string; code: TErrorCode },
     initOrStatus?: ResponseInit | StatusCode,
     headers?: HeadersInit,
-  ): Response {
+  ): Response => {
     if (typeof initOrStatus === "undefined") {
       return Response.json({ message: message, code }, { status: 500, headers });
     }
@@ -63,12 +65,12 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
       { message: message, code },
       { status: initOrStatus.status, headers: mergedHeaders },
     );
-  }
+  };
 
-  empty(
+  empty = (
     initOrStatus?: ResponseInit<ContentlessStatusCode> | ContentlessStatusCode,
     headers?: HeadersInit,
-  ): Response {
+  ): Response => {
     const defaultHeaders = {};
 
     if (typeof initOrStatus === "undefined") {
@@ -92,9 +94,13 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
       status: initOrStatus.status,
       headers: mergedHeaders,
     });
-  }
+  };
 
-  json(object: TOutput, initOrStatus?: ResponseInit | StatusCode, headers?: HeadersInit): Response {
+  json = (
+    object: TOutput,
+    initOrStatus?: ResponseInit | StatusCode,
+    headers?: HeadersInit,
+  ): Response => {
     if (typeof initOrStatus === "undefined") {
       return Response.json(object, {
         status: 200,
@@ -114,7 +120,7 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
       status: initOrStatus.status,
       headers: mergedHeaders,
     });
-  }
+  };
 
   jsonStream = (
     cb: (stream: ResponseStream<TOutput>) => void | Promise<void>,

@@ -17,7 +17,9 @@ export function importGenerator() {
     format(): string {
       const v: string[] = [];
       for (const [specifier, names] of map) {
-        if (names.length === 0) continue;
+        if (names.length === 0) {
+          continue;
+        }
 
         v.push(`import { ${names.join(", ")} } from "${specifier}"`);
       }

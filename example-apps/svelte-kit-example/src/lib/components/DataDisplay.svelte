@@ -3,7 +3,9 @@
   import { onMount, onDestroy } from "svelte";
   import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
 
+  // oxlint-disable-next-line no-unassigned-vars
   export let refreshKey: Writable<string>;
+  // oxlint-disable-next-line no-unassigned-vars
   export let shouldTriggerError: Writable<boolean>;
 
   const { useData } = createExampleFragmentClient();

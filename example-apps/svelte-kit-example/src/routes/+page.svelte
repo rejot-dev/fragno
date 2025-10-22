@@ -23,7 +23,9 @@
 
   async function sendMessage() {
     const message = $messageInput;
-    if (!message.trim()) return;
+    if (!message.trim()) {
+      return;
+    }
     await sampleMutate({
       body: { message },
     });

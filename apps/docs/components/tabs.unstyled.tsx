@@ -53,7 +53,9 @@ const TabsContext = createContext<{
 
 function useTabContext() {
   const ctx = useContext(TabsContext);
-  if (!ctx) throw new Error("You must wrap your component in <Tabs>");
+  if (!ctx) {
+    throw new Error("You must wrap your component in <Tabs>");
+  }
   return ctx;
 }
 
@@ -85,10 +87,14 @@ export function Tabs({
   const valueToIdMap = useMemo(() => new Map<string, string>(), []);
 
   useLayoutEffect(() => {
-    if (!groupId) return;
+    if (!groupId) {
+      return;
+    }
     const previous = persist ? localStorage.getItem(groupId) : sessionStorage.getItem(groupId);
 
-    if (previous) onChange(previous);
+    if (previous) {
+      onChange(previous);
+    }
     addChangeListener(groupId, onChange);
     return () => {
       removeChangeListener(groupId, onChange);
@@ -97,7 +103,9 @@ export function Tabs({
 
   useLayoutEffect(() => {
     const hash = window.location.hash.slice(1);
-    if (!hash) return;
+    if (!hash) {
+      return;
+    }
 
     for (const [value, id] of valueToIdMap.entries()) {
       if (id === hash) {
@@ -126,8 +134,11 @@ export function Tabs({
             item(v);
           });
 
-          if (persist) localStorage.setItem(groupId, v);
-          else sessionStorage.setItem(groupId, v);
+          if (persist) {
+            localStorage.setItem(groupId, v);
+          } else {
+            sessionStorage.setItem(groupId, v);
+          }
         } else {
           setValue(v);
         }

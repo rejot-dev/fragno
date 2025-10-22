@@ -2,7 +2,9 @@ const RegexVarchar = /^varchar\((\d+)\)$/;
 
 export function parseVarchar(template: string): number {
   const match = RegexVarchar.exec(template);
-  if (!match) throw new Error("Failed to match varchar(n)");
+  if (!match) {
+    throw new Error("Failed to match varchar(n)");
+  }
   return Number(match[1]);
 }
 
