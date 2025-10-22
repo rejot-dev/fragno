@@ -82,7 +82,7 @@
     },
     "apps/fragno-cli": {
       "name": "@fragno-dev/cli",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "bin": {
         "@fragno-dev/cli": "./dist/cli.js",
       },
@@ -267,7 +267,7 @@
     },
     "example-fragments/chatno": {
       "name": "@fragno-dev/chatno",
-      "version": "0.0.8",
+      "version": "0.0.9",
       "dependencies": {
         "@fragno-dev/core": "workspace:*",
         "nanostores": "^1.0.1",
@@ -289,7 +289,7 @@
     },
     "example-fragments/example-fragment": {
       "name": "@fragno-dev/example-fragment",
-      "version": "0.0.8",
+      "version": "0.0.9",
       "dependencies": {
         "@fragno-dev/core": "workspace:*",
         "zod": "^4.0.5",
@@ -358,7 +358,7 @@
     },
     "packages/fragno": {
       "name": "@fragno-dev/core",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@nanostores/query": "^0.3.4",
         "@nanostores/solid": "^1.1.1",
@@ -401,7 +401,7 @@
     },
     "packages/fragno-db": {
       "name": "@fragno-dev/db",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@paralleldrive/cuid2": "^2.2.2",
         "kysely": "^0.28.7",
@@ -441,7 +441,7 @@
     },
     "packages/unplugin-fragno": {
       "name": "@fragno-dev/unplugin-fragno",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@babel/core": "^7.23.7",
         "@babel/generator": "^7.23.6",
