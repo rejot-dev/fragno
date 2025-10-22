@@ -1,5 +1,13 @@
 # @fragno-dev/cli
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [74a615c]
+  - @fragno-dev/core@0.1.0
+  - @fragno-dev/db@0.1.0
+
 ## 0.1.0
 
 ### Minor Changes
