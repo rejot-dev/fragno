@@ -724,7 +724,7 @@ describe("drizzle-uow-compiler", () => {
 
     it("should handle UOW with only retrieval operations", () => {
       const uow = createTestUOW();
-      uow.find("users", (b) => b.whereIndex("primary"));
+      uow.find("users");
 
       const compiler = createDrizzleUOWCompiler(testSchema, config);
       const compiled = uow.compile(compiler);

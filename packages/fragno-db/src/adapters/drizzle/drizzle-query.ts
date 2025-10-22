@@ -76,8 +76,11 @@ export function fromDrizzle<T extends AnySchema>(
 
     async findFirst(tableName, builderFn) {
       const uow = createUOW();
-      uow.find(tableName, (b) => builderFn(b).pageSize(1));
-      uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+      if (builderFn) {
+        uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+      } else {
+        uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
+      }
       // executeRetrieve runs an array of `find` operation results, which each return an array of rows
       const [result]: unknown[][] = await uow.executeRetrieve();
       return result?.[0] ?? null;

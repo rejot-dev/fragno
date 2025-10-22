@@ -188,3 +188,10 @@ export function defineFragnoDatabase<const TSchema extends AnySchema>(
 ): FragnoDatabaseDefinition<TSchema> {
   return new FragnoDatabaseDefinition(options);
 }
+
+export {
+  defineFragmentWithDatabase,
+  DatabaseFragmentBuilder,
+  type FragnoPublicConfigWithDatabase,
+  type DatabaseFragmentContext,
+} from "./fragment";

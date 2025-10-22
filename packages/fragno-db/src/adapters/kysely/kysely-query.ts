@@ -91,7 +91,11 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
 
     async findFirst(tableName, builderFn) {
       const uow = createUOW();
-      uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+      if (builderFn) {
+        uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+      } else {
+        uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
+      }
       // executeRetrieve runs an array of `find` operation results, which each return an array of rows
       const [result]: unknown[][] = await uow.executeRetrieve();
       return result?.[0] ?? null;
@@ -191,7 +195,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
 
     async delete(tableName, id, builderFn) {
       const uow = createUOW();
-      uow.delete(tableName, id, builderFn);
+      uow.delete(tableName, id, builderFn as never);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to delete record (version conflict or record not found)");
