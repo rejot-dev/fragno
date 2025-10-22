@@ -31,32 +31,11 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Restore dependencies
-        id: restore-deps
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            **/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-modules-
-
       - name: Install dependencies
-        if: steps.restore-deps.outputs.cache-hit != 'true'
-        run: bun install
+        run: bun ci
 
-      - name: Cache turbo build setup
-        uses: actions/cache@v4
-        with:
-          path: |
-            .turbo
-            **/.turbo
-          key: ${{ runner.os }}-turbo-${{ github.event.workflow_run.head_sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
-      - name: Build
-        run: bunx turbo run build
+      - name: Build Publishable Packages
+        run: bunx turbo run build --filter='./packages/*' --filter='./apps/*' --filter='!./apps/docs/*'
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
