@@ -43,7 +43,9 @@ const main = defineCommand({
       message: "What is your project name?",
       placeholder: "my-fragment",
       validate(value) {
-        if (value.length === 0) return "Project name is required!";
+        if (value.length === 0) {
+          return "Project name is required!";
+        }
         return undefined;
       },
     });

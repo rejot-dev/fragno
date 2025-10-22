@@ -150,7 +150,9 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
     if (condition.type === "not") {
       const result = buildWhere(condition.item);
-      if (!result) return;
+      if (!result) {
+        return;
+      }
 
       return Drizzle.not(result);
     }

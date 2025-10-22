@@ -2,7 +2,9 @@
   import type { Readable } from "svelte/store";
   import { useFragno } from "./client.svelte";
 
+  // oxlint-disable-next-line no-unassigned-vars
   export let clientObj: Record<string, unknown>;
+  // oxlint-disable-next-line no-unassigned-vars
   export let hookName: string;
   export let args: Record<string, unknown> = {};
 

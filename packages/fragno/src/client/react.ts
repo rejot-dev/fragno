@@ -210,7 +210,9 @@ export function useStore<SomeStore extends Store>(
 
   const subscribe = useCallback((onChange: () => void) => {
     const emitChange = (value: StoreValue<SomeStore>) => {
-      if (snapshotRef.current === value) return;
+      if (snapshotRef.current === value) {
+        return;
+      }
       snapshotRef.current = value;
       onChange();
     };

@@ -205,7 +205,9 @@ export function schemaToDBType(
         return "real";
       default:
         // sqlite doesn't support varchar
-        if (type.startsWith("varchar")) return "text";
+        if (type.startsWith("varchar")) {
+          return "text";
+        }
     }
   }
 
@@ -225,7 +227,9 @@ export function schemaToDBType(
       case "json":
         return "varchar(max)";
       default:
-        if (type.startsWith("varchar")) return type as `varchar(${number})`;
+        if (type.startsWith("varchar")) {
+          return type as `varchar(${number})`;
+        }
         return type;
     }
   }
@@ -241,7 +245,9 @@ export function schemaToDBType(
       case "binary":
         return "bytea";
       default:
-        if (type.startsWith("varchar")) return type as `varchar(${number})`;
+        if (type.startsWith("varchar")) {
+          return type as `varchar(${number})`;
+        }
         return type;
     }
   }
@@ -255,7 +261,9 @@ export function schemaToDBType(
       case "binary":
         return "longblob";
       default:
-        if (type.startsWith("varchar")) return type as `varchar(${number})`;
+        if (type.startsWith("varchar")) {
+          return type as `varchar(${number})`;
+        }
         return type;
     }
   }
@@ -269,7 +277,9 @@ const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
  * Parse from driver value
  */
 export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvider) {
-  if (value === null) return null;
+  if (value === null) {
+    return null;
+  }
 
   if (!supportJson.includes(provider) && col.type === "json" && typeof value === "string") {
     return JSON.parse(value);
@@ -283,7 +293,9 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
     return new Date(value);
   }
 
-  if (col.type === "bool" && typeof value === "number") return value === 1;
+  if (col.type === "bool" && typeof value === "number") {
+    return value === 1;
+  }
 
   if (col.type === "bigint" && value instanceof Buffer) {
     return value.readBigInt64BE(0);
@@ -342,7 +354,9 @@ export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider)
     return value.getTime();
   }
 
-  if (provider === "sqlite" && typeof value === "boolean") return value ? 1 : 0;
+  if (provider === "sqlite" && typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
 
   if (provider === "sqlite" && typeof value === "bigint") {
     const buf = Buffer.alloc(8);

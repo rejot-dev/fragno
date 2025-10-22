@@ -156,13 +156,17 @@ class SVGColorSimplifier {
     for (const [colorStr, frequency] of colorMap.entries()) {
       try {
         const rgbColor = rgb(colorStr);
-        if (!rgbColor) continue;
+        if (!rgbColor) {
+          continue;
+        }
 
         const hexColor = formatHex(rgbColor);
         const oklchColor = oklch(rgbColor) as Oklch | undefined;
         const labColor = lab(rgbColor) as Lab | undefined;
 
-        if (!hexColor || !oklchColor || !labColor) continue;
+        if (!hexColor || !oklchColor || !labColor) {
+          continue;
+        }
 
         colors.push({
           hex: hexColor,
@@ -184,14 +188,18 @@ class SVGColorSimplifier {
     const used = new Set<number>();
 
     for (let i = 0; i < colors.length; i++) {
-      if (used.has(i)) continue;
+      if (used.has(i)) {
+        continue;
+      }
 
       const baseColor = colors[i];
       const similar = [baseColor];
       used.add(i);
 
       for (let j = i + 1; j < colors.length; j++) {
-        if (used.has(j)) continue;
+        if (used.has(j)) {
+          continue;
+        }
 
         const distance = differenceEuclidean("oklch")(baseColor.oklch, colors[j].oklch);
         if (distance < threshold) {
@@ -228,19 +236,25 @@ class SVGColorSimplifier {
       totalWeight = 0;
 
     for (const { h, weight } of hues) {
-      if (isNaN(h)) continue;
+      if (isNaN(h)) {
+        continue;
+      }
       const rad = (h * Math.PI) / 180;
       x += Math.cos(rad) * weight;
       y += Math.sin(rad) * weight;
       totalWeight += weight;
     }
 
-    if (totalWeight === 0) return 0;
+    if (totalWeight === 0) {
+      return 0;
+    }
 
     const avgRad = Math.atan2(y / totalWeight, x / totalWeight);
     let avgHue = (avgRad * 180) / Math.PI;
 
-    if (avgHue < 0) avgHue += 360;
+    if (avgHue < 0) {
+      avgHue += 360;
+    }
     return avgHue;
   }
 
@@ -249,7 +263,9 @@ class SVGColorSimplifier {
     numBuckets: number,
     strategy: BucketingStrategy,
   ): ColorBucket[] {
-    if (colors.length === 0) return [];
+    if (colors.length === 0) {
+      return [];
+    }
     if (numBuckets >= colors.length) {
       return colors.map((color) => ({
         colors: [color],
@@ -275,7 +291,9 @@ class SVGColorSimplifier {
 
     for (let i = 0; i < numBuckets && i * colorsPerBucket < sortedColors.length; i++) {
       const bucketColors = sortedColors.slice(i * colorsPerBucket, (i + 1) * colorsPerBucket);
-      if (bucketColors.length === 0) break;
+      if (bucketColors.length === 0) {
+        break;
+      }
 
       buckets.push({
         colors: bucketColors,
@@ -297,7 +315,9 @@ class SVGColorSimplifier {
       let maxScore = -1;
 
       for (let j = 0; j < colors.length; j++) {
-        if (usedColors.has(j)) continue;
+        if (usedColors.has(j)) {
+          continue;
+        }
 
         // Score based on frequency and distance from existing centroids
         let minDistance = Infinity;
@@ -345,7 +365,9 @@ class SVGColorSimplifier {
       // Update centroids
       let changed = false;
       for (let i = 0; i < centroids.length; i++) {
-        if (clusters[i].length === 0) continue;
+        if (clusters[i].length === 0) {
+          continue;
+        }
 
         const totalWeight = clusters[i].reduce((sum, c) => sum + c.frequency, 0);
         const newCentroid: Oklch = {
@@ -363,7 +385,9 @@ class SVGColorSimplifier {
         }
       }
 
-      if (!changed) break; // Converged
+      if (!changed) {
+        break;
+      } // Converged
     }
 
     // Create final buckets
@@ -420,7 +444,9 @@ class SVGColorSimplifier {
         Math.min((i + 1) * colorsPerLightness, sortedByLightness.length),
       );
 
-      if (groupColors.length === 0) continue;
+      if (groupColors.length === 0) {
+        continue;
+      }
 
       const bucketsForGroup = Math.ceil(numBuckets / lightnessGroups);
 
@@ -469,8 +495,12 @@ class SVGColorSimplifier {
 
   private selectPrimaryColor(bucket: ColorBucket, method: PrimaryColorMethod): ColorInfo {
     const { colors } = bucket;
-    if (colors.length === 0) throw new Error("Empty bucket");
-    if (colors.length === 1) return colors[0];
+    if (colors.length === 0) {
+      throw new Error("Empty bucket");
+    }
+    if (colors.length === 1) {
+      return colors[0];
+    }
 
     switch (method) {
       case "most-frequent":
@@ -530,10 +560,14 @@ class SVGColorSimplifier {
     preset?: TailwindPreset,
     randomCount?: number,
   ): TailwindColor | undefined {
-    if (this.tailwindColors.length === 0) return undefined;
+    if (this.tailwindColors.length === 0) {
+      return undefined;
+    }
 
     const familyColors = this.filterTailwindColorsByFamily(family, preset, randomCount);
-    if (familyColors.length === 0) return undefined;
+    if (familyColors.length === 0) {
+      return undefined;
+    }
 
     let nearest: TailwindColor | undefined;
     let minDistance = Infinity;

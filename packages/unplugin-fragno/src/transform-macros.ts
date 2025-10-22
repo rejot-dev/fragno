@@ -15,22 +15,38 @@ import { name as pkgName } from "../package.json";
 const macrosSpecifier = `${pkgName}/macros`;
 
 export const isMacroBinding = (binding: Binding, macro: string): boolean => {
-  if (!t.isImportDeclaration(binding?.path.parent)) return false;
-  if (binding.path.parent.source.value !== macrosSpecifier) return false;
+  if (!t.isImportDeclaration(binding?.path.parent)) {
+    return false;
+  }
+  if (binding.path.parent.source.value !== macrosSpecifier) {
+    return false;
+  }
 
-  if (!t.isImportSpecifier(binding?.path.node)) return false;
+  if (!t.isImportSpecifier(binding?.path.node)) {
+    return false;
+  }
   const { imported } = binding.path.node;
-  if (!t.isIdentifier(imported)) return false;
-  if (imported.name !== macro) return false;
+  if (!t.isIdentifier(imported)) {
+    return false;
+  }
+  if (imported.name !== macro) {
+    return false;
+  }
   return true;
 };
 
 const isMacro = (path: NodePath<t.CallExpression>, macro: string) => {
-  if (!t.isIdentifier(path.node.callee)) return false;
+  if (!t.isIdentifier(path.node.callee)) {
+    return false;
+  }
   const binding = path.scope.getBinding(path.node.callee.name);
 
-  if (!binding) return false;
-  if (!isMacroBinding(binding, macro)) return false;
+  if (!binding) {
+    return false;
+  }
+  if (!isMacroBinding(binding, macro)) {
+    return false;
+  }
 
   if (path.node.arguments.length !== 1) {
     throw path.buildCodeFrameError(`'${macro}' must take exactly one argument`);
@@ -53,25 +69,35 @@ export function transformMacros(ast: Node, options: { ssr: boolean }) {
     },
 
     Identifier(path) {
-      if (t.isImportSpecifier(path.parent)) return;
+      if (t.isImportSpecifier(path.parent)) {
+        return;
+      }
 
       const binding = path.scope.getBinding(path.node.name);
-      if (!binding) return;
+      if (!binding) {
+        return;
+      }
       if (!isMacroBinding(binding, "serverOnly$") && !isMacroBinding(binding, "clientOnly$")) {
         return;
       }
-      if (t.isCallExpression(path.parent)) return;
+      if (t.isCallExpression(path.parent)) {
+        return;
+      }
       throw path.buildCodeFrameError(
         `'${path.node.name}' macro cannot be manipulated at runtime as it must be statically analysable`,
       );
     },
 
     ImportDeclaration(path) {
-      if (path.node.source.value !== macrosSpecifier) return;
+      if (path.node.source.value !== macrosSpecifier) {
+        return;
+      }
       path.node.specifiers.forEach((specifier, i) => {
         if (t.isImportNamespaceSpecifier(specifier)) {
           const subpath = path.get(`specifiers.${i}`);
-          if (Array.isArray(subpath)) throw new Error("unreachable");
+          if (Array.isArray(subpath)) {
+            throw new Error("unreachable");
+          }
           throw subpath.buildCodeFrameError(
             `Namespace import is not supported by '${macrosSpecifier}'`,
           );

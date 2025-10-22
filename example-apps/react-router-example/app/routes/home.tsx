@@ -27,7 +27,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const [message, setMessage] = useState("");
 
   const handleSubmitMessage = async () => {
-    if (!message.trim()) return;
+    if (!message.trim()) {
+      return;
+    }
 
     try {
       await sendMessage(message);
