@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cli, type Command } from "gunshi";
+import { cli, type Command, parseArgs, resolveArgs } from "gunshi";
 import { generate } from "./commands/db/generate.js";
 import { migrate } from "./commands/db/migrate.js";
 import { info } from "./commands/db/info.js";
@@ -11,9 +11,8 @@ export const generateCommand: Command = {
   description: "Generate schema files from FragnoDatabase definitions",
   args: {
     target: {
-      type: "string" as const,
+      type: "positional" as const,
       description: "Path to the file that exports a FragnoDatabase instance",
-      required: true as const,
     },
     output: {
       type: "string" as const,
@@ -46,9 +45,8 @@ export const migrateCommand: Command = {
   description: "Run database migrations",
   args: {
     target: {
-      type: "string" as const,
+      type: "positional" as const,
       description: "Path to the file that exports a FragnoDatabase instance",
-      required: true as const,
     },
     from: {
       type: "string" as const,
@@ -70,9 +68,8 @@ export const infoCommand: Command = {
   description: "Display database information and migration status",
   args: {
     target: {
-      type: "string" as const,
+      type: "positional" as const,
       description: "Path to the file that exports a FragnoDatabase instance",
-      required: true as const,
     },
   },
   run: info,
@@ -84,22 +81,25 @@ dbSubCommands.set("generate", generateCommand);
 dbSubCommands.set("migrate", migrateCommand);
 dbSubCommands.set("info", infoCommand);
 
+// Helper function to print db command help
+function printDbHelp() {
+  console.log("Database management commands for Fragno");
+  console.log("");
+  console.log("Usage: @fragno-dev/cli db <command> [options]");
+  console.log("");
+  console.log("Commands:");
+  console.log("  generate    Generate schema files from FragnoDatabase definitions");
+  console.log("  migrate     Run database migrations");
+  console.log("  info        Display database information and migration status");
+  console.log("");
+  console.log("Run '@fragno-dev/cli db <command> --help' for more information.");
+}
+
 // Define the db command
 export const dbCommand: Command = {
   name: "db",
   description: "Database management commands",
-  run: () => {
-    console.log("Database management commands for Fragno");
-    console.log("");
-    console.log("Usage: @fragno-dev/cli db <command> [options]");
-    console.log("");
-    console.log("Commands:");
-    console.log("  generate    Generate schema files from FragnoDatabase definitions");
-    console.log("  migrate     Run database migrations");
-    console.log("  info        Display database information and migration status");
-    console.log("");
-    console.log("Run '@fragno-dev/cli db <command> --help' for more information.");
-  },
+  run: printDbHelp,
 };
 
 // Create a Map of root sub-commands
@@ -123,19 +123,59 @@ export const mainCommand: Command = {
 };
 
 if (import.meta.main) {
-  // Parse arguments to handle nested subcommands
-  const args = process.argv.slice(2);
+  try {
+    // Parse arguments to handle nested subcommands
+    const args = process.argv.slice(2);
 
-  // Check if we're calling a db subcommand
-  if (args[0] === "db" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
-    // Handle db subcommands
-    await cli(args.slice(1), dbCommand, {
-      subCommands: dbSubCommands,
-    });
-  } else {
-    // Run the main CLI
-    await cli(args, mainCommand, {
-      subCommands: rootSubCommands,
-    });
+    // Check if we're calling a db subcommand directly
+    if (args[0] === "db" && args.length > 1) {
+      const subCommandName = args[1];
+
+      // Check if it's a help request
+      if (subCommandName === "--help" || subCommandName === "-h") {
+        printDbHelp();
+        process.exit(0);
+      }
+
+      const subCommand = dbSubCommands.get(subCommandName);
+
+      if (!subCommand) {
+        console.error(`Unknown command: ${subCommandName}`);
+        console.log("");
+        printDbHelp();
+        process.exit(1);
+      }
+
+      // Run the specific subcommand with its args
+      const subArgs = args.slice(2);
+      const isSubCommandHelp = subArgs.includes("--help") || subArgs.includes("-h");
+
+      // Check for validation errors before running
+      let hasValidationError = false;
+      if (!isSubCommandHelp && subCommand.args) {
+        const tokens = parseArgs(subArgs);
+        const resolved = resolveArgs(subCommand.args, tokens);
+        hasValidationError = !!resolved.error;
+      }
+
+      // Run the command (let gunshi handle printing errors/help)
+      await cli(subArgs, subCommand);
+
+      // Exit with error code if there was a validation error
+      if (hasValidationError) {
+        process.exit(1);
+      }
+    } else if (args[0] === "db") {
+      // "db" command with no subcommand - show db help
+      printDbHelp();
+    } else {
+      // Run the main CLI
+      await cli(args, mainCommand, {
+        subCommands: rootSubCommands,
+      });
+    }
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+    process.exit(1);
   }
 }

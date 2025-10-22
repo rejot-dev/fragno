@@ -1,4 +1,4 @@
-import { cli } from "gunshi";
+import { cli, parseArgs, resolveArgs } from "gunshi";
 import { migrateCommand } from "@fragno-dev/cli";
 import { rm } from "node:fs/promises";
 import { execSync } from "node:child_process";
@@ -18,7 +18,19 @@ export default async function setup() {
   });
 
   // Run Fragno migrations for the comment fragment
-  await cli(["--target", "src/fragno/comment-fragment.ts"], migrateCommand);
+  const args = ["src/fragno/comment-fragment.ts"];
+
+  // Validate arguments before running
+  if (migrateCommand.args) {
+    const tokens = parseArgs(args);
+    const resolved = resolveArgs(migrateCommand.args, tokens);
+
+    if (resolved.error) {
+      throw new Error(`Invalid arguments for migrate command: ${resolved.error}`);
+    }
+  }
+
+  await cli(args, migrateCommand);
 
   console.log("Test environment setup complete!");
 }
