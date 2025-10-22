@@ -916,7 +916,7 @@ export class UnitOfWork<
     TJoinOut = {},
   >(
     tableName: TTableName,
-    builderFn: (
+    builderFn?: (
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
     ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build">,
@@ -936,9 +936,14 @@ export class UnitOfWork<
       throw new Error(`Table ${tableName} not found in schema`);
     }
 
-    // Create builder, pass to callback, then extract configuration
+    // Create builder, pass to callback (or use default), then extract configuration
     const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
-    builderFn(builder);
+    if (builderFn) {
+      builderFn(builder);
+    } else {
+      // Default to primary index with no filter
+      builder.whereIndex("primary");
+    }
     const { indexName, options, type } = builder.build();
 
     this.#retrievalOps.push({

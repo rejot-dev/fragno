@@ -125,7 +125,7 @@ describe("DrizzleAdapter PGLite", () => {
     // Fetch the created user to get its ID
     const [[initialUser]] = await queryEngine
       .createUnitOfWork("get-created-user")
-      .find("users", (b) => b.whereIndex("primary"))
+      .find("users")
       .executeRetrieve();
 
     expect(initialUser).toBeDefined();
@@ -347,10 +347,7 @@ describe("DrizzleAdapter PGLite", () => {
     await createPostUow.executeMutations();
 
     // Get the post
-    const [[post]] = await queryEngine
-      .createUnitOfWork("get-post")
-      .find("posts", (b) => b.whereIndex("primary"))
-      .executeRetrieve();
+    const [[post]] = await queryEngine.createUnitOfWork("get-post").find("posts").executeRetrieve();
 
     // Create a commenter
     const createCommenterUow = queryEngine

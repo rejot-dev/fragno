@@ -115,7 +115,7 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
     JoinOut = {},
   >(
     table: TableName,
-    builderFn: (
+    builderFn?: (
       builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
     ) => Omit<FindBuilder<TSchema["tables"][TableName], Select, JoinOut>, "build">,
   ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select>[]>;
@@ -130,7 +130,7 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
     JoinOut = {},
   >(
     table: TableName,
-    builderFn: (
+    builderFn?: (
       builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
     ) => Omit<FindBuilder<TSchema["tables"][TableName], Select, JoinOut>, "build">,
   ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select> | null>;
@@ -161,7 +161,7 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
     table: TableName,
     id: FragnoId | string,
     builderFn: (
-      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build" | "check">,
     ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
   ) => Promise<void>;
 
@@ -180,7 +180,7 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   delete: <TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
     id: FragnoId | string,
-    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build">,
+    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build" | "check">,
   ) => Promise<void>;
 
   /**
@@ -188,7 +188,9 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
    */
   deleteMany: <TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
-    builderFn: (builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">) => void,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build" | "check">,
+    ) => void,
   ) => Promise<void>;
 
   /**
