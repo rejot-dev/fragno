@@ -67,16 +67,17 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.10",
+    "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@fragno-dev/core": "workspace:*",
     "@types/bun": "^1.2.23",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
     "drizzle-kit": "^0.31.5",
     "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "^4.1.12"
   },
   "repository": {
     "type": "git",
