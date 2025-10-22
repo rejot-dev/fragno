@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.0
+
+### Minor Changes
+
+- 4e260ed: Added support for creating Fragments with data layer using @fragno-dev/db
+
 ## 0.0.7
 
 ### Patch Changes
