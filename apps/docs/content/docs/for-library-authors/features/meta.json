@@ -2,7 +2,6 @@
   "pages": [
     "route-definition",
     "dependencies-and-services",
-    "database-integration",
     "client-state-management",
     "code-splitting"
   ],
