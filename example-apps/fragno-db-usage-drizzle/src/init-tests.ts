@@ -1,4 +1,4 @@
-import { cli } from "gunshi";
+import { cli, parseArgs, resolveArgs } from "gunshi";
 import { generateCommand } from "@fragno-dev/cli";
 import { rm } from "node:fs/promises";
 import { execSync } from "node:child_process";
@@ -13,17 +13,25 @@ export default async function setup() {
   await rm(pgFolder, { recursive: true, force: true });
 
   // Generate schema from fragment
-  await cli(
-    [
-      "--target",
-      "src/fragno/comment-fragment.ts",
-      "-o",
-      "src/schema/comment-fragment-schema.ts",
-      "--prefix",
-      "// @prettier-ignore",
-    ],
-    generateCommand,
-  );
+  const args = [
+    "src/fragno/comment-fragment.ts",
+    "-o",
+    "src/schema/comment-fragment-schema.ts",
+    "--prefix",
+    "// @prettier-ignore",
+  ];
+
+  // Validate arguments before running
+  if (generateCommand.args) {
+    const tokens = parseArgs(args);
+    const resolved = resolveArgs(generateCommand.args, tokens);
+
+    if (resolved.error) {
+      throw new Error(`Invalid arguments for generate command: ${resolved.error}`);
+    }
+  }
+
+  await cli(args, generateCommand);
 
   // Run drizzle-kit push to apply migrations
   const migrateOutput = execSync("bunx drizzle-kit push --config ./drizzle.config.ts", {
