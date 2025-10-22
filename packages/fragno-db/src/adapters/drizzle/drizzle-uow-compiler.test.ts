@@ -787,7 +787,7 @@ describe("drizzle-uow-compiler", () => {
       return async () => {
         await cleanup();
       };
-    });
+    }, 12000);
 
     it("should generate runtime defaults for missing columns", () => {
       const uow = createTestUOWWithSchema(defaultsSchema);

@@ -133,7 +133,7 @@ export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig)
 
     async update(tableName, id, builderFn) {
       const uow = createUOW();
-      uow.update(tableName, id, builderFn);
+      uow.update(tableName, id, builderFn as never);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to update record (version conflict or record not found)");

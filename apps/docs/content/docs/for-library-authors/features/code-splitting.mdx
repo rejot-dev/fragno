@@ -65,6 +65,7 @@ export default defineConfig([
       "./src/index.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
+      "./src/client/solid.ts",
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
     ],
@@ -121,6 +122,11 @@ As we have now created two builds, we need to set the `exports` field in the `pa
       "browser": "./dist/browser/client/vanilla.js",
       "default": "./dist/browser/client/vanilla.js"
     },
+    "./solid": {
+      "types": "./dist/browser/client/solid.d.ts",
+      "browser": "./dist/browser/client/solid.js",
+      "default": "./dist/browser/client/solid.js"
+    },
     "./vue": {
       "types": "./dist/browser/client/vue.d.ts",
       "browser": "./dist/browser/client/vue.js",
@@ -153,7 +159,8 @@ Make sure to add the following to your `package.json` file:
   "peerDependencies": {
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
-    "vue": ">=3.0.0"
+    "vue": ">=3.0.0",
+    "solid-js": ">=1.0.0"
   }
 }
 ```

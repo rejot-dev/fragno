@@ -25,7 +25,7 @@ import {
 } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
-import type { FragmentBuilder } from "../api/fragment-builder";
+import type { FragmentDefinition } from "../api/fragment-builder";
 import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
@@ -1001,15 +1001,18 @@ export function createClientBuilder<
   TDeps,
   TServices extends Record<string, unknown>,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  const TAdditionalContext extends Record<string, unknown>,
 >(
-  fragmentDefinition: FragmentBuilder<TConfig, TDeps, TServices>,
+  fragmentBuilder: {
+    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
+  },
   publicConfig: FragnoPublicClientConfig,
   routesOrFactories: TRoutesOrFactories,
 ): ClientBuilder<
   FlattenRouteFactories<TRoutesOrFactories>,
   FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
 > {
-  const definition = fragmentDefinition.definition;
+  const definition = fragmentBuilder.definition;
 
   // For client-side, we resolve route factories with dummy context
   // This will be removed by the bundle plugin anyway

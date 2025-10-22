@@ -1,9 +1,11 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
 import { defineFragmentWithDatabase, type FragnoPublicConfigWithDatabase } from "./fragment";
-import { createFragment } from "@fragno-dev/core";
+import { createFragment, defineRoute, type FragnoPublicClientConfig } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
 import { schema, idColumn, column } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./mod";
+import { z } from "zod";
 
 type Empty = Record<never, never>;
 
@@ -282,6 +284,50 @@ describe("DatabaseFragmentBuilder", () => {
 
       expect(depsOrm).toBeDefined();
       expect(servicesOrm).toBeDefined();
+    });
+  });
+
+  describe("Client builder integration", () => {
+    test("createClientBuilder works with database fragment", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-db")
+        .withDatabase(testSchema)
+        .withServices(({ orm }) => ({
+          getUserById: (id: string) =>
+            orm.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+        }));
+
+      const routes = [
+        defineRoute({
+          method: "GET",
+          path: "/users",
+          outputSchema: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+            }),
+          ),
+          handler: async (_ctx, { json }) => json([]),
+        }),
+      ] as const;
+
+      const clientConfig: FragnoPublicClientConfig = {
+        baseUrl: "http://localhost:3000",
+      };
+
+      const builder = createClientBuilder(fragmentDef, clientConfig, routes);
+
+      expect(builder).toBeDefined();
+      expectTypeOf(builder.createHook).toBeFunction();
+
+      const useUsers = builder.createHook("/users");
+      expect(useUsers).toHaveProperty("route");
+      expect(useUsers.route.path).toBe("/users");
     });
   });
 });

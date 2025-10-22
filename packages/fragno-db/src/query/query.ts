@@ -162,7 +162,7 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
     id: FragnoId | string,
     builderFn: (
       builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build" | "check">,
-    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build" | "check">,
   ) => Promise<void>;
 
   /**
@@ -180,7 +180,9 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   delete: <TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
     id: FragnoId | string,
-    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build" | "check">,
+    builderFn?: (
+      builder: Omit<DeleteBuilder, "build" | "check">,
+    ) => Omit<DeleteBuilder, "build" | "check">,
   ) => Promise<void>;
 
   /**
