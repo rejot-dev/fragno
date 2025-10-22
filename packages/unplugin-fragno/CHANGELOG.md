@@ -1,13 +1,7 @@
-# @fragno-dev/db
+# @fragno-dev/unplugin-fragno
 
-## 0.1.1
+## 0.0.2
 
 ### Patch Changes
 
 - 4c1c806: Support tree shaking Fragno database dependencies from frontend bundle
-
-## 0.1.0
-
-### Minor Changes
-
-- 2c583a9: Initial release of @fragno-dev/db

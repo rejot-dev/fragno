@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.1
+
+### Patch Changes
+
+- 4c1c806: Support tree shaking Fragno database dependencies from frontend bundle
+
 ## 0.1.0
 
 ### Minor Changes
