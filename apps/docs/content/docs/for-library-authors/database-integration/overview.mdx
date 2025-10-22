@@ -1,0 +1,84 @@
+---
+title: Overview
+description: Add a database layer to your Fragment
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The `@fragno-dev/db` package provides an **optional** database layer for Fragments that need
+persistent storage. This allows Fragment authors to define a type-safe schema while users provide
+their existing database connection.
+
+## Key Features
+
+- **Schema Definition**: Define tables, columns, indexes, and relations
+- **Type-Safe ORM**: Full TypeScript type inference for queries
+- **User-Owned Database**: Fragment users provide their database adapter
+- **ORM Agnostic**: Works with Kysely or Drizzle
+- **Automatic Migrations**: Schema versioning and migration generation
+- **Namespaced Tables**: Prevents conflicts with user tables
+
+<Callout title="Optional Feature" type="info">
+  Database integration is completely optional. Only add it if your Fragment needs persistent
+  storage. Simple Fragments can use in-memory storage or rely on external APIs instead.
+</Callout>
+
+## Installation
+
+```npm
+npm install @fragno-dev/db
+```
+
+## Creating a Database Fragment
+
+Use `defineFragmentWithDatabase()` from the `@fragno-dev/db` package instead of `defineFragment()`
+from the `@fragno-dev/core` package.
+
+You can then use the `.withDatabase(schema)` method to attach your schema to the Fragment.
+
+```typescript title="src/index.ts"
+import { createFragment } from "@fragno-dev/core";
+import { defineFragmentWithDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { commentSchema } from "./schema";
+
+export interface CommentFragmentConfig {
+  maxCommentsPerPost?: number;
+}
+
+const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>("comment-fragment")
+  .withDatabase(commentSchema)
+  .withServices(({ orm }) => {
+    return {
+      createComment: async (data) => {
+        const id = await orm.create("comment", data);
+        return { id: id.toJSON(), ...data };
+      },
+      getComments: async (postId: string) => {
+        return orm.find("comment", (b) => b.where((eb) => eb("postId", "=", postId)));
+      },
+    };
+  });
+
+// Make sure to allow your users to provide their database adapter
+export function createCommentFragment(
+  config: CommentFragmentConfig = {},
+  options: FragnoPublicConfigWithDatabase,
+) {
+  return createFragment(commentFragmentDef, config, [], options);
+}
+```
+
+<Callout title="Make sure to allow your users to provide their database adapter" type="info">
+  Your Fragment's creation function must accept `FragnoPublicConfigWithDatabase`, or
+  `DatabaseAdapter` in the options.
+</Callout>
+
+## Next Steps
+
+- Learn about [Defining Schemas](/docs/for-library-authors/database-integration/defining-schemas)
+  with the append-only log approach
+- Explore the [Querying](/docs/for-library-authors/database-integration/querying) API for CRUD
+  operations
+- See the
+  [example-fragments/fragno-db-library](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)
+  for a complete example
