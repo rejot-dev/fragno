@@ -9,7 +9,7 @@ import type {
 } from "../../query/unit-of-work";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import type { DrizzleConfig } from "./drizzle-adapter";
-import { type ColumnType, type TableType, parseDrizzle } from "./shared";
+import { type ColumnType, type TableType, type TableNameMapper, parseDrizzle } from "./shared";
 import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
@@ -29,12 +29,14 @@ export type DrizzleCompiledQuery = {
  *
  * @param schema - The database schema
  * @param config - Drizzle configuration
+ * @param mapper - Optional table name mapper for namespace prefixing
  * @param onQuery - Optional callback to receive compiled queries for logging/debugging
  * @returns A UOWCompiler instance for Drizzle
  */
 export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   schema: TSchema,
   config: DrizzleConfig,
+  mapper?: TableNameMapper,
   onQuery?: (query: DrizzleCompiledQuery) => void,
 ): UOWCompiler<TSchema, DrizzleCompiledQuery> {
   const [db, drizzleTables] = parseDrizzle(config.db);
@@ -45,14 +47,15 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
    * @throws Error if table is not found in Drizzle schema
    */
   function toDrizzleTable(table: AnyTable): TableType {
-    const tableName = table.ormName;
-    const out = drizzleTables[tableName];
+    // Map logical table name to physical table name using the mapper
+    const physicalTableName = mapper ? mapper.toPhysical(table.ormName) : table.ormName;
+    const out = drizzleTables[physicalTableName];
     if (out) {
       return out;
     }
 
     throw new Error(
-      `[Drizzle] Unknown table name ${tableName}, is it included in your Drizzle schema?`,
+      `[Drizzle] Unknown table name ${physicalTableName} (logical: ${table.ormName}), is it included in your Drizzle schema?`,
     );
   }
 
@@ -437,7 +440,8 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
             queryConfig.with = processJoins(joins);
           }
 
-          const compiledQuery = db.query[op.table.ormName].findMany(queryConfig).toSQL();
+          const physicalTableName = mapper ? mapper.toPhysical(op.table.ormName) : op.table.ormName;
+          const compiledQuery = db.query[physicalTableName].findMany(queryConfig).toSQL();
           onQuery?.(compiledQuery);
           return compiledQuery;
         }

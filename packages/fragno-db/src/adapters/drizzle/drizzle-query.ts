@@ -5,7 +5,7 @@ import type { CompiledMutation, UOWExecutor } from "../../query/unit-of-work";
 import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import { parseDrizzle } from "./shared";
+import { parseDrizzle, type TableNameMapper } from "./shared";
 import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
 
 export interface DrizzleResult {
@@ -33,6 +33,7 @@ export interface DrizzleUOWConfig {
  *
  * @param schema - The database schema definition
  * @param config - Drizzle configuration containing the database instance and provider
+ * @param mapper - Optional table name mapper for namespace prefixing
  * @returns An AbstractQuery instance for performing database operations
  *
  * @example
@@ -48,12 +49,13 @@ export interface DrizzleUOWConfig {
 export function fromDrizzle<T extends AnySchema>(
   schema: T,
   config: DrizzleConfig,
+  mapper?: TableNameMapper,
 ): AbstractQuery<T, DrizzleUOWConfig> {
   const [db] = parseDrizzle(config.db);
   const { provider } = config;
 
   function createUOW(name?: string, uowConfig?: DrizzleUOWConfig) {
-    const uowCompiler = createDrizzleUOWCompiler(schema, config, uowConfig?.onQuery);
+    const uowCompiler = createDrizzleUOWCompiler(schema, config, mapper, uowConfig?.onQuery);
 
     const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
       executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
