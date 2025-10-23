@@ -1,79 +1,9 @@
 #!/usr/bin/env node
 
-import { cli, type Command, parseArgs, resolveArgs } from "gunshi";
-import { generate } from "./commands/db/generate.js";
-import { migrate } from "./commands/db/migrate.js";
-import { info } from "./commands/db/info.js";
-
-// Define the db generate command
-export const generateCommand: Command = {
-  name: "generate",
-  description: "Generate schema files from FragnoDatabase definitions",
-  args: {
-    target: {
-      type: "positional" as const,
-      description: "Path to the file that exports a FragnoDatabase instance",
-    },
-    output: {
-      type: "string" as const,
-      short: "o",
-      description:
-        "Output path for the generated schema file (default: schema.sql for Kysely, schema.ts for Drizzle)",
-    },
-    from: {
-      type: "string" as const,
-      short: "f",
-      description: "Source version to generate migration from (default: current database version)",
-    },
-    to: {
-      type: "string" as const,
-      short: "t",
-      description: "Target version to generate migration to (default: latest schema version)",
-    },
-    prefix: {
-      type: "string" as const,
-      short: "p",
-      description: "String to prepend to the generated file (e.g., '/* eslint-disable */')",
-    },
-  },
-  run: generate,
-};
-
-// Define the db migrate command
-export const migrateCommand: Command = {
-  name: "migrate",
-  description: "Run database migrations",
-  args: {
-    target: {
-      type: "positional" as const,
-      description: "Path to the file that exports a FragnoDatabase instance",
-    },
-    from: {
-      type: "string" as const,
-      short: "f",
-      description: "Expected current database version (validates before migrating)",
-    },
-    to: {
-      type: "string" as const,
-      short: "t",
-      description: "Target version to migrate to (default: latest schema version)",
-    },
-  },
-  run: migrate,
-};
-
-// Define the db info command
-export const infoCommand: Command = {
-  name: "info",
-  description: "Display database information and migration status",
-  args: {
-    target: {
-      type: "positional" as const,
-      description: "Path to the file that exports a FragnoDatabase instance",
-    },
-  },
-  run: info,
-};
+import { cli, define, parseArgs, resolveArgs } from "gunshi";
+import { generateCommand } from "./commands/db/generate.js";
+import { migrateCommand } from "./commands/db/migrate.js";
+import { infoCommand } from "./commands/db/info.js";
 
 // Create a Map of db sub-commands
 const dbSubCommands = new Map();
@@ -95,19 +25,19 @@ function printDbHelp() {
   console.log("Run '@fragno-dev/cli db <command> --help' for more information.");
 }
 
-// Define the db command
-export const dbCommand: Command = {
+// Define the db command with type safety
+export const dbCommand = define({
   name: "db",
   description: "Database management commands",
   run: printDbHelp,
-};
+});
 
 // Create a Map of root sub-commands
 const rootSubCommands = new Map();
 rootSubCommands.set("db", dbCommand);
 
-// Define the main command
-export const mainCommand: Command = {
+// Define the main command with type safety
+export const mainCommand = define({
   name: "@fragno-dev/cli",
   description: "Fragno CLI - Tools for working with Fragno fragments",
   run: () => {
@@ -120,7 +50,7 @@ export const mainCommand: Command = {
     console.log("");
     console.log("Run '@fragno-dev/cli <command> --help' for more information.");
   },
-};
+});
 
 if (import.meta.main) {
   try {
@@ -179,3 +109,5 @@ if (import.meta.main) {
     process.exit(1);
   }
 }
+
+export { generateCommand, migrateCommand, infoCommand };
