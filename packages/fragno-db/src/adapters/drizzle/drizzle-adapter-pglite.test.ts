@@ -80,6 +80,7 @@ describe("DrizzleAdapter PGLite", () => {
       "drizzle-adapter-pglite",
       testSchema,
       "postgresql",
+      "namespace",
     );
 
     // Create Drizzle instance with PGLite (in-memory Postgres)
@@ -109,7 +110,8 @@ describe("DrizzleAdapter PGLite", () => {
   }, 12000);
 
   it("should execute Unit of Work with version checking", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    // Pass namespace to ensure mapper translates logical table names to physical (prefixed) names
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create initial user using UOW
     const createUow = queryEngine.createUnitOfWork("create-user").create("users", {
@@ -194,7 +196,7 @@ describe("DrizzleAdapter PGLite", () => {
   });
 
   it("should support count operations", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create some users
     await queryEngine
@@ -215,7 +217,7 @@ describe("DrizzleAdapter PGLite", () => {
   });
 
   it("should support cursor-based pagination", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     const createUow = queryEngine
       .createUnitOfWork("create-users")
@@ -262,7 +264,7 @@ describe("DrizzleAdapter PGLite", () => {
   });
 
   it("should support joins", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const queries: DrizzleCompiledQuery[] = [];
 
     const createUow = queryEngine
@@ -298,7 +300,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "emails"."id", "emails"."user_id", "emails"."email", "emails"."is_primary", "emails"."_internalId", "emails"."_version", "emails_user"."data" as "user" from "emails" "emails" left join lateral (select json_build_array("emails_user"."name", "emails_user"."id", "emails_user"."age", "emails_user"."_internalId", "emails_user"."_version") as "data" from (select * from "users" "emails_user" where "emails_user"."_internalId" = "emails"."user_id" limit $1) "emails_user") "emails_user" on true"`,
+      `"select "emails_namespace"."id", "emails_namespace"."user_id", "emails_namespace"."email", "emails_namespace"."is_primary", "emails_namespace"."_internalId", "emails_namespace"."_version", "emails_namespace_user"."data" as "user" from "emails_namespace" "emails_namespace" left join lateral (select json_build_array("emails_namespace_user"."name", "emails_namespace_user"."id", "emails_namespace_user"."age", "emails_namespace_user"."_internalId", "emails_namespace_user"."_version") as "data" from (select * from "users_namespace" "emails_namespace_user" where "emails_namespace_user"."_internalId" = "emails_namespace"."user_id" limit $1) "emails_namespace_user") "emails_namespace_user" on true"`,
     );
 
     expect(email).toMatchObject({
@@ -323,7 +325,7 @@ describe("DrizzleAdapter PGLite", () => {
   });
 
   it("should support complex nested joins (comments -> post -> author)", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const queries: DrizzleCompiledQuery[] = [];
 
     // Create a user (author)
@@ -427,7 +429,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "comments"."id", "comments"."post_id", "comments"."user_id", "comments"."text", "comments"."_internalId", "comments"."_version", "comments_post"."data" as "post", "comments_commenter"."data" as "commenter" from "comments" "comments" left join lateral (select json_build_array("comments_post"."id", "comments_post"."title", "comments_post"."content", "comments_post"."_internalId", "comments_post"."_version", "comments_post_author"."data") as "data" from (select * from "posts" "comments_post" where "comments_post"."_internalId" = "comments"."post_id" order by "comments_post"."id" desc limit $1) "comments_post" left join lateral (select json_build_array("comments_post_author"."id", "comments_post_author"."name", "comments_post_author"."age", "comments_post_author"."_internalId", "comments_post_author"."_version") as "data" from (select * from "users" "comments_post_author" where "comments_post_author"."_internalId" = "comments_post"."user_id" order by "comments_post_author"."name" asc limit $2) "comments_post_author") "comments_post_author" on true) "comments_post" on true left join lateral (select json_build_array("comments_commenter"."id", "comments_commenter"."name", "comments_commenter"."_internalId", "comments_commenter"."_version") as "data" from (select * from "users" "comments_commenter" where "comments_commenter"."_internalId" = "comments"."user_id" limit $3) "comments_commenter") "comments_commenter" on true"`,
+      `"select "comments_namespace"."id", "comments_namespace"."post_id", "comments_namespace"."user_id", "comments_namespace"."text", "comments_namespace"."_internalId", "comments_namespace"."_version", "comments_namespace_post"."data" as "post", "comments_namespace_commenter"."data" as "commenter" from "comments_namespace" "comments_namespace" left join lateral (select json_build_array("comments_namespace_post"."id", "comments_namespace_post"."title", "comments_namespace_post"."content", "comments_namespace_post"."_internalId", "comments_namespace_post"."_version", "comments_namespace_post_author"."data") as "data" from (select * from "posts_namespace" "comments_namespace_post" where "comments_namespace_post"."_internalId" = "comments_namespace"."post_id" order by "comments_namespace_post"."id" desc limit $1) "comments_namespace_post" left join lateral (select json_build_array("comments_namespace_post_author"."id", "comments_namespace_post_author"."name", "comments_namespace_post_author"."age", "comments_namespace_post_author"."_internalId", "comments_namespace_post_author"."_version") as "data" from (select * from "users_namespace" "comments_namespace_post_author" where "comments_namespace_post_author"."_internalId" = "comments_namespace_post"."user_id" order by "comments_namespace_post_author"."name" asc limit $2) "comments_namespace_post_author") "comments_namespace_post_author" on true) "comments_namespace_post" on true left join lateral (select json_build_array("comments_namespace_commenter"."id", "comments_namespace_commenter"."name", "comments_namespace_commenter"."_internalId", "comments_namespace_commenter"."_version") as "data" from (select * from "users_namespace" "comments_namespace_commenter" where "comments_namespace_commenter"."_internalId" = "comments_namespace"."user_id" limit $3) "comments_namespace_commenter") "comments_namespace_commenter" on true"`,
     );
   });
 });

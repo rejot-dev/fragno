@@ -135,7 +135,15 @@ describe("generateSchema and migrate", () => {
     );
 
     expect(migrationStatements.join("\n")).toMatchInlineSnapshot(`
-      "CREATE TABLE "users" (
+      "CREATE TABLE "fragno_db_settings" (
+      	"id" varchar(30) NOT NULL,
+      	"key" text NOT NULL,
+      	"value" text NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
+      	"_version" integer DEFAULT 0 NOT NULL
+      );
+
+      CREATE TABLE "users" (
       	"id" varchar(30) NOT NULL,
       	"name" text NOT NULL,
       	"email" text NOT NULL,
@@ -207,6 +215,7 @@ describe("generateSchema and migrate", () => {
       ALTER TABLE "comments" ADD CONSTRAINT "comments_comments_parent_fk" FOREIGN KEY ("parentId") REFERENCES "public"."comments"("_internalId") ON DELETE no action ON UPDATE no action;
       ALTER TABLE "postTags" ADD CONSTRAINT "postTags_posts_post_fk" FOREIGN KEY ("postId") REFERENCES "public"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
       ALTER TABLE "postTags" ADD CONSTRAINT "postTags_tags_tag_fk" FOREIGN KEY ("tagId") REFERENCES "public"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
+      CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
       CREATE UNIQUE INDEX "idx_users_email" ON "users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "users" USING btree ("name");
       CREATE INDEX "idx_users_active" ON "users" USING btree ("isActive");
