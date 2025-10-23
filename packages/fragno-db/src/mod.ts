@@ -128,7 +128,10 @@ export class FragnoDatabase<const T extends AnySchema> {
         console.warn("⚠️ toVersion and fromVersion are not supported for schema generation.");
       }
 
-      const generator = adapter.createSchemaGenerator(this.#schema, this.#namespace);
+      const generator = adapter.createSchemaGenerator(
+        [{ schema: this.#schema, namespace: this.#namespace }],
+        { path: options?.path },
+      );
       const defaultPath = options?.path ?? "schema.ts";
       return generator.generateSchema({
         path: defaultPath,

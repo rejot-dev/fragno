@@ -5,9 +5,13 @@ import {
   type AnySchema,
   type AnyTable,
   InternalIdColumn,
+  schema,
+  idColumn,
+  column,
 } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
+import { createTableNameMapper } from "./shared";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -297,7 +301,8 @@ function generateAllColumns(
 // CONSTRAINT GENERATION
 // ============================================================================
 
-function generateForeignKeys(ctx: GeneratorContext, table: AnyTable): string[] {
+function generateForeignKeys(ctx: GeneratorContext, table: AnyTable, namespace?: string): string[] {
+  const mapper = namespace ? createTableNameMapper(namespace) : undefined;
   const keys: string[] = [];
 
   for (const relation of Object.values(table.relations)) {
@@ -319,12 +324,19 @@ function generateForeignKeys(ctx: GeneratorContext, table: AnyTable): string[] {
       if (isSelfReference) {
         foreignColumns.push(`table.${actualRefCol}`);
       } else {
-        foreignColumns.push(`${relation.table.ormName}.${actualRefCol}`);
+        // Suffix the foreign table reference with namespace if provided
+        const foreignTableRef =
+          mapper && namespace ? mapper.toPhysical(relation.table.ormName) : relation.table.ormName;
+        foreignColumns.push(`${foreignTableRef}.${actualRefCol}`);
       }
     }
 
     ctx.imports.addImport("foreignKey", ctx.importSource);
-    const fkName = `${table.ormName}_${relation.table.ormName}_${relation.name}_fk`;
+    // Include namespace in FK name to avoid collisions
+    const fkName =
+      namespace && mapper
+        ? "fk_" + mapper.toPhysical(`${table.ormName}_${relation.table.ormName}_${relation.name}`)
+        : `${table.ormName}_${relation.table.ormName}_${relation.name}_fk`;
 
     keys.push(`foreignKey({
   columns: [${columns.join(", ")}],
@@ -336,53 +348,74 @@ function generateForeignKeys(ctx: GeneratorContext, table: AnyTable): string[] {
   return keys;
 }
 
-function generateIndexes(ctx: GeneratorContext, table: AnyTable): string[] {
+function generateIndexes(ctx: GeneratorContext, table: AnyTable, namespace?: string): string[] {
   const indexes: string[] = [];
 
   for (const idx of Object.values(table.indexes)) {
     const columns = idx.columns.map((col) => `table.${col.ormName}`).join(", ");
 
+    // Include namespace in index name to avoid collisions
+    const indexName = namespace ? `${idx.name}_${namespace}` : idx.name;
+
     if (idx.unique) {
       ctx.imports.addImport("uniqueIndex", ctx.importSource);
-      indexes.push(`uniqueIndex("${idx.name}").on(${columns})`);
+      indexes.push(`uniqueIndex("${indexName}").on(${columns})`);
     } else {
       ctx.imports.addImport("index", ctx.importSource);
-      indexes.push(`index("${idx.name}").on(${columns})`);
+      indexes.push(`index("${indexName}").on(${columns})`);
     }
   }
 
   return indexes;
 }
 
-function generateTableConstraints(ctx: GeneratorContext, table: AnyTable): string[] {
-  return [...generateForeignKeys(ctx, table), ...generateIndexes(ctx, table)];
+function generateTableConstraints(
+  ctx: GeneratorContext,
+  table: AnyTable,
+  namespace?: string,
+): string[] {
+  return [...generateForeignKeys(ctx, table, namespace), ...generateIndexes(ctx, table, namespace)];
 }
 
 // ============================================================================
 // TABLE GENERATION
 // ============================================================================
 
-function generateTable(ctx: GeneratorContext, table: AnyTable, customTypes: string[]): string {
+function generateTable(
+  ctx: GeneratorContext,
+  table: AnyTable,
+  customTypes: string[],
+  namespace?: string,
+): string {
   const tableFn = PROVIDER_TABLE_FUNCTIONS[ctx.provider];
   ctx.imports.addImport(tableFn, ctx.importSource);
 
   const columns = generateAllColumns(ctx, table, customTypes);
-  const constraints = generateTableConstraints(ctx, table);
+  const constraints = generateTableConstraints(ctx, table, namespace);
 
-  const args: string[] = [`"${table.ormName}"`, `{\n${columns.join(",\n")}\n}`];
+  // Suffix table name with namespace if provided
+  const physicalTableName = namespace ? `${table.ormName}_${namespace}` : table.ormName;
+  // Sanitize namespace for use in export name (valid JS identifier)
+  const exportName = namespace ? `${table.ormName}_${sanitizeNamespace(namespace)}` : table.ormName;
+
+  const args: string[] = [`"${physicalTableName}"`, `{\n${columns.join(",\n")}\n}`];
 
   if (constraints.length > 0) {
     args.push(`(table) => [\n${ident(constraints.join(",\n"))}\n]`);
   }
 
-  return `export const ${table.ormName} = ${tableFn}(${args.join(", ")})`;
+  return `export const ${exportName} = ${tableFn}(${args.join(", ")})`;
 }
 
 // ============================================================================
 // RELATION GENERATION
 // ============================================================================
 
-function generateRelation(ctx: GeneratorContext, table: AnyTable): string | undefined {
+function generateRelation(
+  ctx: GeneratorContext,
+  table: AnyTable,
+  namespace?: string,
+): string | undefined {
   const relations: string[] = [];
   let hasOne = false;
   let hasMany = false;
@@ -402,17 +435,29 @@ function generateRelation(ctx: GeneratorContext, table: AnyTable): string | unde
       const fields: string[] = [];
       const references: string[] = [];
 
+      // Use sanitized namespace for identifier references
+      const tableRef = namespace
+        ? `${table.ormName}_${sanitizeNamespace(namespace)}`
+        : table.ormName;
+      const relatedTableRef = namespace
+        ? `${relation.table.ormName}_${sanitizeNamespace(namespace)}`
+        : relation.table.ormName;
+
       for (const [left, right] of relation.on) {
-        fields.push(`${table.ormName}.${left}`);
+        fields.push(`${tableRef}.${left}`);
         // Relations reference internal IDs
         const actualRight = right === "id" ? "_internalId" : right;
-        references.push(`${relation.table.ormName}.${actualRight}`);
+        references.push(`${relatedTableRef}.${actualRight}`);
       }
 
       options.push(`fields: [${fields.join(", ")}]`, `references: [${references.join(", ")}]`);
     }
 
-    const args: string[] = [relation.table.ormName];
+    const relatedTableRef = namespace
+      ? `${relation.table.ormName}_${sanitizeNamespace(namespace)}`
+      : relation.table.ormName;
+
+    const args: string[] = [relatedTableRef];
     if (options.length > 0) {
       args.push(`{\n${ident(options.join(",\n"))}\n}`);
     }
@@ -434,10 +479,54 @@ function generateRelation(ctx: GeneratorContext, table: AnyTable): string | unde
   }
   const relationParams = params.length > 0 ? `{ ${params.join(", ")} }` : "{}";
 
+  const tableRef = namespace ? `${table.ormName}_${sanitizeNamespace(namespace)}` : table.ormName;
+  const relationsName = namespace
+    ? `${table.ormName}_${sanitizeNamespace(namespace)}Relations`
+    : `${table.ormName}Relations`;
+
   ctx.imports.addImport("relations", "drizzle-orm");
-  return `export const ${table.ormName}Relations = relations(${table.ormName}, (${relationParams}) => ({
+  return `export const ${relationsName} = relations(${tableRef}, (${relationParams}) => ({
 ${relations.join(",\n")}
 }));`;
+}
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+/**
+ * Sanitize a namespace to be a valid JavaScript identifier
+ * Replaces hyphens and other invalid characters with underscores
+ */
+function sanitizeNamespace(namespace: string): string {
+  return namespace.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+/**
+ * Generate a schema export object for a fragment
+ * This groups all tables by their logical names for easier access
+ */
+function generateFragmentSchemaExport(schema: AnySchema, namespace: string): string {
+  const entries: string[] = [];
+
+  for (const table of Object.values(schema.tables)) {
+    const physicalExportName = namespace
+      ? `${table.ormName}_${sanitizeNamespace(namespace)}`
+      : table.ormName;
+
+    if (namespace) {
+      const physicalTableName = namespace ? `${table.ormName}_${namespace}` : table.ormName;
+      // Use physical table name as key for Drizzle schema lookups
+      entries.push(`  "${physicalTableName}": ${physicalExportName}`);
+    }
+
+    // Also provide logical name for convenience
+    entries.push(`  ${table.ormName}: ${physicalExportName}`);
+  }
+
+  const exportName = namespace ? `${sanitizeNamespace(namespace)}_schema` : "_schema";
+
+  return `export const ${exportName} = {\n${entries.join(",\n")}\n}`;
 }
 
 // ============================================================================
@@ -454,28 +543,83 @@ export interface GenerateSchemaOptions {
   };
 }
 
+/**
+ * Generate a settings table for storing fragment versions
+ */
+function generateSettingsTable(ctx: GeneratorContext): string {
+  // Create a Fragno schema for the settings table
+  const settingsSchema = schema((s) => {
+    return s.addTable("fragno_db_settings", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("key", column("string"))
+        .addColumn("value", column("string"))
+        .createIndex("unique_key", ["key"], { unique: true });
+    });
+  });
+
+  // Extract the table from the schema
+  const settingsTable = settingsSchema.tables.fragno_db_settings;
+
+  // Generate the table using the existing generateTable function
+  const customTypes: string[] = [];
+  return generateTable(ctx, settingsTable, customTypes);
+}
+
+/**
+ * Generate a schema file from one or more fragments with a shared settings table
+ */
 export function generateSchema(
-  schema: AnySchema,
+  fragments: { namespace: string; schema: AnySchema }[],
   provider: SupportedProvider,
   options?: GenerateSchemaOptions,
 ): string {
   const ctx = createContext(provider, options?.idGeneratorImport);
   const customTypes: string[] = [];
-  const tables: string[] = [];
+  const sections: string[] = [];
 
-  // Generate tables and collect custom types
-  for (const table of Object.values(schema.tables)) {
-    // Custom types might be generated during column processing
-    const tableCode = generateTable(ctx, table, customTypes);
-    tables.push(tableCode);
+  // Generate settings table first
+  sections.push("// ============================================================================");
+  sections.push("// Settings Table (shared across all fragments)");
+  sections.push("// ============================================================================");
+  sections.push("");
+  sections.push(generateSettingsTable(ctx));
 
-    const relationCode = generateRelation(ctx, table);
-    if (relationCode) {
-      tables.push(relationCode);
+  // Generate each fragment's tables
+  for (const { namespace, schema } of fragments) {
+    const fragmentTables: string[] = [];
+
+    // Add section header
+    fragmentTables.push("");
+    fragmentTables.push(
+      "// ============================================================================",
+    );
+    fragmentTables.push(`// Fragment: ${namespace}`);
+    fragmentTables.push(
+      "// ============================================================================",
+    );
+
+    // Generate tables for this fragment
+    for (const table of Object.values(schema.tables)) {
+      const tableCode = generateTable(ctx, table, customTypes, namespace);
+      fragmentTables.push("");
+      fragmentTables.push(tableCode);
+
+      const relationCode = generateRelation(ctx, table, namespace);
+      if (relationCode) {
+        fragmentTables.push("");
+        fragmentTables.push(relationCode);
+      }
     }
+
+    // Generate schema export object
+    fragmentTables.push("");
+    fragmentTables.push(generateFragmentSchemaExport(schema, namespace));
+
+    sections.push(...fragmentTables);
   }
 
   // Assemble final output
-  const lines: string[] = [ctx.imports.format(), ...customTypes, ...tables];
-  return lines.join("\n\n");
+  const lines: string[] = [ctx.imports.format(), ...customTypes, ...sections];
+  return lines.join("\n");
 }
