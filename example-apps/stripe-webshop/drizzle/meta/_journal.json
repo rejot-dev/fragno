@@ -1,26 +1,19 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1761051333587,
-      "tag": "0000_black_xavin",
+      "version": "7",
+      "when": 1761309914334,
+      "tag": "0000_bouncy_prima",
       "breakpoints": true
     },
     {
       "idx": 1,
-      "version": "6",
-      "when": 1761055167877,
-      "tag": "0001_cultured_mephisto",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1761059143455,
-      "tag": "0002_medical_toro",
+      "version": "7",
+      "when": 1761310891143,
+      "tag": "0001_normal_black_bolt",
       "breakpoints": true
     }
   ]

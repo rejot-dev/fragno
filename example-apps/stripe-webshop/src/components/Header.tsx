@@ -29,6 +29,15 @@ export default function Header() {
             >
               {session.user.name}
             </Link>
+            <Link
+              to="/admin"
+              className="text-sm hover:underline"
+              activeProps={{
+                className: "underline font-semibold",
+              }}
+            >
+              Admin
+            </Link>
             <Button variant="outline" size="sm" onClick={handleSignOut} className="text-gray-900">
               Sign Out
             </Button>

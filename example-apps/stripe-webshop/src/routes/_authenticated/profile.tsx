@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { signOut, useSession } from "@/lib/auth/client";
 import { useState } from "react";
+
 import { useQuery } from "@tanstack/react-query";
+import { stripeClient } from "@/lib/stripe.client";
 
 interface Product {
   id: string;
@@ -14,6 +16,9 @@ interface Product {
   priceYearly: number;
   createdAt: Date;
   updatedAt: Date;
+  stripeProductId: string;
+  stripeMonthlyPriceId: string;
+  stripeYearlyPriceId: string;
 }
 
 export const Route = createFileRoute("/_authenticated/profile")({
@@ -24,6 +29,30 @@ function ProfilePage() {
   const { data: session } = useSession();
   const navigate = useNavigate();
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
+  const {
+    mutate: upgrade,
+    error: upgradeError,
+    loading: isUpgrading,
+  } = stripeClient.upgradeSubscription();
+
+  const handleUpgradeSubscription = async (priceId: string) => {
+    const result = await upgrade({
+      body: {
+        priceId,
+        customerEmail: session?.user.email as string,
+        customerName: session?.user.name as string,
+        userId: session?.user.id as string,
+        successUrl: window.location.href + "?status=success",
+        cancelUrl: window.location.href + "?status=cancel",
+        quantity: 1,
+        disableRedirect: false,
+      },
+    });
+
+    if (result?.redirect) {
+      window.location.href = result.url;
+    }
+  };
 
   const {
     data: products,
@@ -33,7 +62,9 @@ function ProfilePage() {
     queryKey: ["products"],
     queryFn: async () => {
       const res = await fetch("/api/products");
-      if (!res.ok) throw new Error("Failed to fetch products");
+      if (!res.ok) {
+        throw new Error("Failed to fetch products");
+      }
       return res.json() as Promise<Product[]>;
     },
   });
@@ -53,7 +84,9 @@ function ProfilePage() {
   };
 
   const formatPrice = (cents: number) => {
-    if (cents === 0) return "Free";
+    if (cents === 0) {
+      return "Free";
+    }
     return `$${(cents / 100).toFixed(0)}`;
   };
 
@@ -133,6 +166,11 @@ function ProfilePage() {
                 </span>
               </Button>
             </div>
+            {upgradeError && (
+              <div className="text-center text-red-600">
+                <span className="font-bold">{upgradeError.code}</span>:{upgradeError.message}
+              </div>
+            )}
 
             {/* Products Grid */}
             {loading ? (
@@ -171,6 +209,19 @@ function ProfilePage() {
                             </div>
                           )}
                         </div>
+                        <Button
+                          className="w-full"
+                          disabled={isUpgrading}
+                          onClick={() =>
+                            handleUpgradeSubscription(
+                              billingCycle === "monthly"
+                                ? product.stripeMonthlyPriceId
+                                : product.stripeYearlyPriceId,
+                            )
+                          }
+                        >
+                          Switch
+                        </Button>
                       </CardContent>
                     </Card>
                   );

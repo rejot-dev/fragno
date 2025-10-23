@@ -1,5 +1,11 @@
-import { db } from "./index";
+import { config } from "dotenv";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { products } from "./schema";
+import * as schema from "./schema";
+
+// Load environment variables
+config({ quiet: true });
 
 const productsData = [
   {
@@ -31,11 +37,20 @@ const productsData = [
 async function seed() {
   console.log("Seeding products...");
 
-  for (const product of productsData) {
-    await db.insert(products).values(product).onConflictDoNothing({ target: products.name });
-  }
+  // Create PGlite instance for this script
+  const pg = new PGlite(process.env["DATABASE_URL"]!);
+  const db = drizzle({ client: pg, schema });
 
-  console.log("✓ Products seeded successfully!");
+  try {
+    for (const product of productsData) {
+      await db.insert(products).values(product).onConflictDoNothing({ target: products.name });
+    }
+
+    console.log("✓ Products seeded successfully!");
+  } finally {
+    // Close PGlite connection
+    await pg.close();
+  }
 }
 
 seed()

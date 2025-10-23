@@ -6,7 +6,8 @@ config({ debug: true });
 export default defineConfig({
   out: "./drizzle",
   schema: "./src/db/schema.ts",
-  dialect: "sqlite",
+  dialect: "postgresql",
+  driver: "pglite",
   dbCredentials: {
     url: process.env["DATABASE_URL"]!,
   },

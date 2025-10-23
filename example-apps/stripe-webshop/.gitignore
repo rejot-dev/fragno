@@ -11,5 +11,5 @@ count.txt
 .output
 .vinxi
 todos.json
-dev.db
+dev.pglite
 src/routeTree.gen.ts
