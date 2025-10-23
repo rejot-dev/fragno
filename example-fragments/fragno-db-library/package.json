@@ -7,6 +7,12 @@
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
+    },
+    "./upvote": {
+      "bun": "./src/upvote.ts",
+      "development": "./src/upvote.ts",
+      "types": "./dist/upvote.d.ts",
+      "default": "./dist/upvote.js"
     }
   },
   "main": "./dist/node/mod.js",
