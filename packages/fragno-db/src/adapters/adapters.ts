@@ -15,8 +15,13 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   ) => AbstractQuery<T, TUOWConfig>;
 
   createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
-  createSchemaGenerator?: <const T extends AnySchema>(
-    schema: T,
-    namespace: string,
+
+  /**
+   * Generate a combined schema file from one or more fragments.
+   * If not implemented, schema generation is not supported for this adapter.
+   */
+  createSchemaGenerator?: (
+    fragments: { schema: AnySchema; namespace: string }[],
+    options?: { path?: string },
   ) => SchemaGenerator;
 }
