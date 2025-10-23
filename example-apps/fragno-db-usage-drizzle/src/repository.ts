@@ -1,7 +1,9 @@
 import { eq, like, desc, and, sql } from "drizzle-orm";
 import { db } from "./database";
 import { user, blogPost } from "./schema/drizzle-schema";
-import { comment } from "./schema/comment-fragment-schema";
+import { fragno_db_comment_db_schema } from "./schema/fragno-schema";
+
+const { comment } = fragno_db_comment_db_schema;
 
 type User = typeof user.$inferSelect;
 type NewUser = typeof user.$inferInsert;
@@ -90,7 +92,7 @@ export async function findBlogPostsWithAuthor() {
       authorId: user.id,
       authorName: user.name,
       authorEmail: user.email,
-      comments: sql<Array<typeof comment.$inferSelect>>`json_agg(comment)`.as("comments"),
+      comments: sql<Array<typeof comment.$inferSelect>>`json_agg(${comment})`.as("comments"),
     })
     .from(blogPost)
     .innerJoin(user, eq(user.id, blogPost.authorId))
