@@ -18,6 +18,7 @@ export async function writeAndLoadSchema(
   testFileName: string,
   schema: Schema,
   dialect: SupportedProvider,
+  namespace?: string,
 ) {
   // Create test-specific directory inside _generated
   const baseDir = join(import.meta.dirname, "_generated");
@@ -37,7 +38,8 @@ export async function writeAndLoadSchema(
   );
 
   // Generate and write the Drizzle schema to file
-  const drizzleSchemaTs = generateSchema(schema, dialect);
+  // Use empty namespace for tests to avoid table name prefixing
+  const drizzleSchemaTs = generateSchema([{ namespace: namespace ?? "", schema }], dialect);
   await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
 
   // Dynamically import the generated schema (with cache busting)
