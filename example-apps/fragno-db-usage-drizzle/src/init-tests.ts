@@ -15,8 +15,9 @@ export default async function setup() {
   // Generate schema from fragment
   const args = [
     "src/fragno/comment-fragment.ts",
+    "src/fragno/rating-fragment.ts",
     "-o",
-    "src/schema/comment-fragment-schema.ts",
+    "src/schema/fragno-schema.ts",
     "--prefix",
     "// @prettier-ignore",
   ];
@@ -43,4 +44,8 @@ export default async function setup() {
   }
 
   console.log("Test environment setup complete!");
+}
+
+if (import.meta.main) {
+  await setup();
 }

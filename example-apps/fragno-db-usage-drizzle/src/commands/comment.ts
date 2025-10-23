@@ -1,5 +1,6 @@
 import type { Command } from "gunshi";
 import { createCommentFragmentServer } from "../fragno/comment-fragment";
+import { adapter } from "../fragno/adapter";
 
 const commentCreateCommand: Command = {
   name: "create",
@@ -31,7 +32,7 @@ const commentCreateCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createCommentFragmentServer().services;
+    const services = createCommentFragmentServer(adapter).services;
 
     const comment = await services.createComment({
       title: ctx.values["title"] as string,
@@ -56,7 +57,7 @@ const commentListCommand: Command = {
     },
   },
   run: async (ctx) => {
-    const services = createCommentFragmentServer().services;
+    const services = createCommentFragmentServer(adapter).services;
     const postReference = ctx.values["postReference"] as string;
     const comments = await services.getComments(postReference);
     console.log(`Comments for post ${postReference}:`);
