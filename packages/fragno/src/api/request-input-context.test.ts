@@ -41,6 +41,8 @@ describe("RequestContext", () => {
       pathParams: {},
       searchParams: new URLSearchParams(),
       body: undefined,
+      rawBodyText: "",
+      headers: new Headers(),
     });
 
     const { path, pathParams, query: searchParams, input, rawBody: body } = ctx;
@@ -60,6 +62,8 @@ describe("RequestContext", () => {
       pathParams: {},
       searchParams: new URLSearchParams(),
       body: jsonBody,
+      headers: new Headers(),
+      rawBodyText: "",
     });
 
     expect(ctx.rawBody).toEqual(jsonBody);
@@ -74,7 +78,9 @@ describe("RequestContext", () => {
       pathParams: {},
       searchParams: new URLSearchParams(),
       body: formData,
+      headers: new Headers(),
       method: "POST",
+      rawBodyText: "",
     });
 
     expect(ctx.rawBody).toBe(formData);
@@ -88,7 +94,9 @@ describe("RequestContext", () => {
       pathParams: {},
       searchParams: new URLSearchParams(),
       body: blob,
+      headers: new Headers(),
       method: "POST",
+      rawBodyText: "",
     });
 
     expect(ctx.rawBody).toBe(blob);
@@ -132,7 +140,9 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: { test: "data" },
+        headers: new Headers(),
         method: "POST",
+        rawBodyText: "",
       });
 
       expect(ctx.input).toBeUndefined();
@@ -144,8 +154,10 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: { test: "data" },
+        headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
+        rawBodyText: "",
       });
 
       expect(ctx.input).toBeDefined();
@@ -159,8 +171,10 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: "test string",
+        headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
+        rawBodyText: "",
       });
 
       const result = await ctx.input?.valid();
@@ -173,8 +187,10 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: 123, // Invalid for string schema
+        headers: new Headers(),
         inputSchema: invalidSchema,
         method: "POST",
+        rawBodyText: "",
       });
 
       await expect(ctx.input.valid()).rejects.toThrow(FragnoApiValidationError);
@@ -185,9 +201,11 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: 123,
         inputSchema: invalidSchema,
         method: "POST",
+        rawBodyText: "",
       });
 
       try {
@@ -214,9 +232,11 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: 123,
+        headers: new Headers(),
         inputSchema: invalidSchema,
         shouldValidateInput: false,
         method: "POST",
+        rawBodyText: "",
       });
 
       // Should return the raw body without validation when validation is disabled
@@ -233,8 +253,10 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: formData,
+        headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
+        rawBodyText: "",
       });
 
       await expect(ctx.input.valid()).rejects.toThrow(
@@ -250,8 +272,10 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: blob,
+        headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
+        rawBodyText: "",
       });
 
       await expect(ctx.input.valid()).rejects.toThrow(
@@ -267,6 +291,8 @@ describe("RequestContext", () => {
         body: null,
         inputSchema: validStringSchema,
         method: "POST",
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       const result = await ctx.input.valid();
@@ -279,6 +305,8 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -297,6 +325,8 @@ describe("RequestContext", () => {
         inputSchema: validStringSchema,
         method: "POST",
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       // We can't directly access the private field, but we can test the behavior
@@ -312,6 +342,8 @@ describe("RequestContext", () => {
         shouldValidateInput: true,
         method: "POST",
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       expect(ctx.input).toBeDefined();
@@ -326,6 +358,8 @@ describe("RequestContext", () => {
         shouldValidateInput: false,
         method: "POST",
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       expect(ctx.input).toBeDefined();
@@ -367,6 +401,8 @@ describe("RequestContext", () => {
         searchParams: new URLSearchParams(),
         method: "POST",
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       expect(ctx.pathParams).toEqual({});
@@ -379,6 +415,8 @@ describe("RequestContext", () => {
         searchParams: new URLSearchParams(),
         method: "POST",
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       expect(ctx.query.toString()).toBe("");
@@ -392,6 +430,8 @@ describe("RequestContext", () => {
         searchParams,
         method: "POST",
         body: undefined,
+        rawBodyText: "",
+        headers: new Headers(),
       });
 
       expect(ctx.query.get("key")).toBe("value");

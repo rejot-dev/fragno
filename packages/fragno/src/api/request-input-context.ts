@@ -20,6 +20,8 @@ export class RequestInputContext<
   readonly #body: RequestBodyType;
   readonly #inputSchema: TInputSchema | undefined;
   readonly #shouldValidateInput: boolean;
+  readonly #headers: Headers;
+  readonly #rawBodyText: string;
 
   constructor(config: {
     path: TPath;
@@ -27,7 +29,8 @@ export class RequestInputContext<
     pathParams: ExtractPathParams<TPath>;
     searchParams: URLSearchParams;
     body: RequestBodyType;
-
+    rawBodyText: string;
+    headers: Headers;
     request?: Request;
     inputSchema?: TInputSchema;
     shouldValidateInput?: boolean;
@@ -37,8 +40,10 @@ export class RequestInputContext<
     this.#pathParams = config.pathParams;
     this.#searchParams = config.searchParams;
     this.#body = config.body;
+    this.#rawBodyText = config.rawBodyText;
     this.#inputSchema = config.inputSchema;
     this.#shouldValidateInput = config.shouldValidateInput ?? true;
+    this.#headers = config.headers;
   }
 
   /**
@@ -62,6 +67,7 @@ export class RequestInputContext<
     const request = config.request.clone();
 
     // TODO: Support other body types other than json
+    const rawBodyText = await request.clone().text();
     const json = request.body instanceof ReadableStream ? await request.json() : undefined;
 
     return new RequestInputContext({
@@ -70,6 +76,8 @@ export class RequestInputContext<
       pathParams: config.pathParams,
       searchParams: url.searchParams,
       body: json,
+      rawBodyText: rawBodyText,
+      headers: request.headers,
       inputSchema: config.inputSchema,
       shouldValidateInput: config.shouldValidateInput,
     });
@@ -104,6 +112,8 @@ export class RequestInputContext<
       pathParams: config.pathParams,
       searchParams: config.searchParams ?? new URLSearchParams(),
       body: "body" in config ? config.body : undefined,
+      rawBodyText: "",
+      headers: new Headers(),
       inputSchema: "inputSchema" in config ? config.inputSchema : undefined,
       shouldValidateInput: false, // No input validation in SSR context
     });
@@ -143,6 +153,16 @@ export class RequestInputContext<
    */
   get rawBody(): RequestBodyType {
     return this.#body;
+  }
+  /**
+   * For passing requests down to other request handlers
+   */
+  get rawBodyText(): string {
+    return this.#rawBodyText;
+  }
+
+  get headers(): Headers {
+    return this.#headers;
   }
   /**
    * Input validation context (only if inputSchema is defined)
