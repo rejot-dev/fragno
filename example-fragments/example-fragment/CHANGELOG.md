@@ -1,5 +1,12 @@
 # @fragno-dev/example-fragment
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [c70de59]
+  - @fragno-dev/core@0.1.2
+
 ## 0.0.9
 
 ### Patch Changes

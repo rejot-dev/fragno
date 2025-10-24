@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.2
+
+### Patch Changes
+
+- c70de59: Support modifying request body, headers, and parameters in middlewar
+
 ## 0.1.1
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @fragno-dev/db
 
+## 0.1.2
+
+### Patch Changes
+
+- e7122f2: DrizzleAdapter: now export Fragment schema version from generate schema file
+- 921ef11: Schema definition: redesign the default value API to more clearly distinguish between
+  database-level and runtime defaults
+- be17727: Added support for generating migrations in multi-Fragment applications
+- 8362d9a: Added support for using multiple database Fragments in a single application
+- 8362d9a: DrizzleAdapter: support collecting schemas of multiple Fragments into a single Drizzle
+  schema
+
 ## 0.1.1
 
 ### Patch Changes
