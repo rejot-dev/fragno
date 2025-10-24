@@ -1,5 +1,11 @@
 # @fragno-dev/create
 
+## 0.1.1
+
+### Patch Changes
+
+- 1032f44: Use new defaults API in schema
+
 ## 0.1.0
 
 ### Minor Changes

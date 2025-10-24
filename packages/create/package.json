@@ -1,7 +1,7 @@
 {
   "name": "@fragno-dev/create",
   "description": "A library for creating Fragno fragments",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "exports": {
     ".": {
       "bun": "./src/index.ts",

@@ -1,5 +1,12 @@
 # create-fragno
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [1032f44]
+  - @fragno-dev/create@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
