@@ -7,6 +7,7 @@ import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
 import type { CompiledQuery } from "kysely";
+import type { TableNameMapper } from "./kysely-shared";
 
 /**
  * Creates a Kysely-based query engine for the given schema.
@@ -17,6 +18,7 @@ import type { CompiledQuery } from "kysely";
  *
  * @param schema - The database schema definition
  * @param config - Kysely configuration containing the database instance and provider
+ * @param mapper - Optional table name mapper for namespace prefixing
  * @returns An AbstractQuery instance for performing database operations
  *
  * @example
@@ -32,9 +34,13 @@ import type { CompiledQuery } from "kysely";
  * });
  * ```
  */
-export function fromKysely<T extends AnySchema>(schema: T, config: KyselyConfig): AbstractQuery<T> {
+export function fromKysely<T extends AnySchema>(
+  schema: T,
+  config: KyselyConfig,
+  mapper?: TableNameMapper,
+): AbstractQuery<T> {
   const { db: kysely, provider } = config;
-  const uowCompiler = createKyselyUOWCompiler(schema, config);
+  const uowCompiler = createKyselyUOWCompiler(schema, config, mapper);
 
   function createUOW(name?: string): UnitOfWork<T, []> {
     const executor: UOWExecutor<CompiledQuery, unknown> = {
