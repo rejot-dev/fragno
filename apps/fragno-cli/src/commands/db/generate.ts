@@ -4,6 +4,7 @@ import { define } from "gunshi";
 import { findFragnoDatabases } from "../../utils/find-fragno-databases";
 import type { FragnoDatabase } from "@fragno-dev/db";
 import type { AnySchema } from "@fragno-dev/db/schema";
+import { generateMigrationsOrSchema } from "@fragno-dev/db/generation-engine";
 
 // Define the db generate command with type safety
 export const generateCommand = define({
@@ -14,7 +15,7 @@ export const generateCommand = define({
       type: "string",
       short: "o",
       description:
-        "Output path for the generated schema file (default: schema.sql for Kysely, fragno-schema.ts for Drizzle)",
+        "Output path: for single file, exact file path; for multiple files, output directory (default: current directory)",
     },
     from: {
       type: "number",
@@ -106,69 +107,66 @@ export const generateCommand = define({
       );
     }
 
-    // Check if adapter supports schema generation
-    if (!firstDb.adapter.createSchemaGenerator) {
+    // Check if adapter supports any form of schema generation
+    if (!firstDb.adapter.createSchemaGenerator && !firstDb.adapter.createMigrationEngine) {
       throw new Error(
         `The adapter does not support schema generation. ` +
-          `Please use an adapter that implements the createSchemaGenerator method.`,
+          `Please use an adapter that implements either createSchemaGenerator or createMigrationEngine.`,
       );
     }
 
-    // Validate versions are not used when generating schemas for multiple fragments
-    if ((toVersion !== undefined || fromVersion !== undefined) && allFragnoDatabases.length > 1) {
-      console.warn(
-        "⚠️ Warning: --from and --to version options are not supported when generating schemas for multiple fragments and will be ignored.",
-      );
-    }
-
-    // Generate schema for all fragments using the adapter
+    // Generate schema for all fragments
     console.log("Generating schema...");
 
-    // Prepare fragments for generation
-    const fragments = allFragnoDatabases.map((db) => ({
-      namespace: db.namespace,
-      schema: db.schema,
-    }));
-
-    // Generate the combined schema through the adapter
-    let result: { schema: string; path: string };
+    let results: { schema: string; path: string; namespace: string }[];
     try {
-      const schemaGenerator = firstDb.adapter.createSchemaGenerator(fragments, {
+      results = await generateMigrationsOrSchema(allFragnoDatabases, {
         path: output,
+        toVersion,
+        fromVersion,
       });
-      result = schemaGenerator.generateSchema();
     } catch (error) {
       throw new Error(
         `Failed to generate schema: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
-    // Determine output path
-    const finalOutputPath = output
-      ? resolve(process.cwd(), output)
-      : resolve(process.cwd(), result.path);
+    // Write all generated files
+    for (const result of results) {
+      // For single file: use output as exact file path
+      // For multiple files: use output as base directory
+      const finalOutputPath =
+        output && results.length === 1
+          ? resolve(process.cwd(), output)
+          : output
+            ? resolve(process.cwd(), output, result.path)
+            : resolve(process.cwd(), result.path);
 
-    // Ensure parent directory exists
-    const parentDir = dirname(finalOutputPath);
-    try {
-      await mkdir(parentDir, { recursive: true });
-    } catch (error) {
-      throw new Error(
-        `Failed to create directory: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      // Ensure parent directory exists
+      const parentDir = dirname(finalOutputPath);
+      try {
+        await mkdir(parentDir, { recursive: true });
+      } catch (error) {
+        throw new Error(
+          `Failed to create directory: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      // Write schema to file
+      try {
+        const content = prefix ? `${prefix}\n${result.schema}` : result.schema;
+        await writeFile(finalOutputPath, content, { encoding: "utf-8" });
+      } catch (error) {
+        throw new Error(
+          `Failed to write schema file: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      console.log(`✓ Generated: ${finalOutputPath}`);
     }
 
-    // Write schema to file
-    try {
-      const content = prefix ? `${prefix}\n${result.schema}` : result.schema;
-      await writeFile(finalOutputPath, content, { encoding: "utf-8" });
-    } catch (error) {
-      throw new Error(
-        `Failed to write schema file: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    console.log(`✓ Schema generated successfully: ${finalOutputPath}`);
+    console.log(`\n✓ Schema generated successfully!`);
+    console.log(`  Files generated: ${results.length}`);
     console.log(`  Fragments:`);
     for (const db of allFragnoDatabases) {
       console.log(`    - ${db.namespace} (version ${db.schema.version})`);

@@ -56,6 +56,12 @@
       "development": "./src/fragment.ts",
       "types": "./dist/fragment.d.ts",
       "default": "./dist/fragment.js"
+    },
+    "./generation-engine": {
+      "bun": "./src/migration-engine/generation-engine.ts",
+      "development": "./src/migration-engine/generation-engine.ts",
+      "types": "./dist/migration-engine/generation-engine.d.ts",
+      "default": "./dist/migration-engine/generation-engine.js"
     }
   },
   "scripts": {
