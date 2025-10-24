@@ -188,6 +188,13 @@ export function schemaToDBType(
     }
   }
 
+  if ("role" in column && column.role === "reference") {
+    if (provider === "sqlite") {
+      return "integer";
+    }
+    // Other providers use bigint for references
+  }
+
   if (provider === "sqlite") {
     switch (type) {
       case "integer":

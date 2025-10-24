@@ -248,8 +248,6 @@ function generateColumnDefinition(
 
   // Primary key for internal ID
   if (column instanceof InternalIdColumn || column.role === "internal-id") {
-    // Auto-increment based on provider
-    // Note: PostgreSQL uses bigserial/serial which handle auto-increment automatically
     if (ctx.provider === "sqlite") {
       // SQLite uses primaryKey({ autoIncrement: true })
       parts.push("primaryKey({ autoIncrement: true })");

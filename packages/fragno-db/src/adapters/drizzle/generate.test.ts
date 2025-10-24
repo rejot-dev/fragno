@@ -189,7 +189,7 @@ describe("generateSchema", () => {
     it("should generate SQLite schema", () => {
       const generated = generateSchema([{ namespace: "test", schema: testSchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, uniqueIndex, index, blob, foreignKey } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -229,7 +229,7 @@ describe("generateSchema", () => {
           id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
-          userId: blob("userId", { mode: "bigint" }).notNull(),
+          userId: integer("userId").notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
@@ -612,7 +612,7 @@ describe("generateSchema", () => {
     it("should generate SQLite schema with many relations", () => {
       const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, uniqueIndex, blob, foreignKey, index } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -652,7 +652,7 @@ describe("generateSchema", () => {
         export const posts_test = sqliteTable("posts_test", {
           id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
-          userId: blob("userId", { mode: "bigint" }).notNull(),
+          userId: integer("userId").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
@@ -1008,7 +1008,7 @@ describe("generateSchema", () => {
     it("should generate SQLite self-referencing foreign key using table parameter", () => {
       const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, uniqueIndex, blob, foreignKey, index } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -1035,7 +1035,7 @@ describe("generateSchema", () => {
         export const comment_test = sqliteTable("comment_test", {
           id: text("id").notNull().$defaultFn(() => createId()),
           content: text("content").notNull(),
-          parentId: blob("parentId", { mode: "bigint" }),
+          parentId: integer("parentId"),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [

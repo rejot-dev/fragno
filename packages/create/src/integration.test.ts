@@ -54,7 +54,7 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
         await expect(fs.access(agentFile)).resolves.toBeUndefined();
       });
 
-      test("installs", { timeout: 20000 }, async () => {
+      test("installs", { timeout: 30000 }, async () => {
         const { stdout } = await execAsync("pnpm install", {
           cwd: tempDir,
           encoding: "utf8",

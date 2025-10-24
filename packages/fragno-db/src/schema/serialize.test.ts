@@ -514,6 +514,7 @@ describe("serialize", () => {
 
         expect(serialize(fragnoId, referenceCol, "postgresql")).toBe(BigInt(456));
         expect(serialize(fragnoId, referenceCol, "sqlite")).toBe(BigInt(456));
+        expect(serialize(fragnoId, referenceCol, "mysql")).toBe(BigInt(456));
       });
 
       it("should fallback to external ID for reference column when internal ID unavailable", () => {

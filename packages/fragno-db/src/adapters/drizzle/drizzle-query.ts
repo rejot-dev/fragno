@@ -54,9 +54,9 @@ export function fromDrizzle<T extends AnySchema>(
 
     const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
       executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
-        executeDrizzleRetrievalPhase(db, retrievalBatch),
+        executeDrizzleRetrievalPhase(db, retrievalBatch, provider),
       executeMutationPhase: (mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) =>
-        executeDrizzleMutationPhase(db, mutationBatch),
+        executeDrizzleMutationPhase(db, mutationBatch, provider),
     };
 
     const decoder = createDrizzleUOWDecoder(schema, provider);

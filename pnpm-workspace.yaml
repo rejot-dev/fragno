@@ -5,3 +5,5 @@ packages:
   - "packages/*"
   - "packages-private/*"
   - "scripts"
+onlyBuiltDependencies:
+  - "better-sqlite3"

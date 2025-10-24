@@ -3,88 +3,105 @@ import type { CompiledMutation, MutationResult } from "../../query/unit-of-work"
 import type { DBType } from "./shared";
 import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import type { DrizzleResult } from "./shared";
+import { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 
-/**
- * Convert a DrizzleCompiledQuery (SQL string + params) to a Drizzle SQL object
- *
- * This reconstructs the SQL object with proper parameter chunks by parsing
- * the SQL string and replacing placeholders ($1, $2, etc.) with Param objects.
- * Uses Drizzle's exported classes (StringChunk, Param, SQL) to build the queryChunks.
- */
-function toSQL(query: DrizzleCompiledQuery): SQL {
-  const { sql: sqlString, params } = query;
+type SyncSQLiteDB = BaseSQLiteDatabase<
+  "sync",
+  unknown,
+  Record<string, never>,
+  Record<string, never>
+>;
 
-  // Match parameter placeholders like $1, $2, etc.
+function isSyncSQLite(db: unknown): boolean {
+  return (
+    db instanceof BaseSQLiteDatabase &&
+    "dialect" in db &&
+    (db as { dialect?: unknown }).dialect instanceof SQLiteSyncDialect
+  );
+}
+
+function assertSyncSQLite(db: unknown): asserts db is SyncSQLiteDB {
+  if (!isSyncSQLite(db)) {
+    throw new Error("Expected synchronous SQLite database (better-sqlite3)");
+  }
+}
+
+function postgresToSQL(sqlString: string, params: unknown[]): SQLChunk[] {
   const placeholderRegex = /\$(\d+)/g;
   const queryChunks: SQLChunk[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = placeholderRegex.exec(sqlString)) !== null) {
-    // Add the string chunk before the placeholder
     const textBefore = sqlString.substring(lastIndex, match.index);
     if (textBefore) {
       queryChunks.push(new StringChunk(textBefore));
     }
 
-    // Add the parameter value as a Param
-    const paramIndex = parseInt(match[1]!, 10) - 1; // $1 is index 0
+    const paramIndex = parseInt(match[1]!, 10) - 1;
     queryChunks.push(sql.param(params[paramIndex]));
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Add any remaining string after the last placeholder
   const textAfter = sqlString.substring(lastIndex);
   if (textAfter) {
     queryChunks.push(new StringChunk(textAfter));
   }
 
-  // Construct SQL object directly with queryChunks (same pattern as sql`` tagged template)
-  // Safe: We're reusing Drizzle's SQL constructor the same way the sql`` function does
+  return queryChunks;
+}
+
+function sqliteToSQL(sqlString: string, params: unknown[]): SQLChunk[] {
+  const chunks: SQLChunk[] = [];
+  let currentIndex = 0;
+
+  const parts = sqlString.split("?");
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i]) {
+      chunks.push(new StringChunk(parts[i]));
+    }
+    if (i < parts.length - 1 && currentIndex < params.length) {
+      chunks.push(sql.param(params[currentIndex++]));
+    }
+  }
+
+  return chunks;
+}
+
+function toSQL(query: DrizzleCompiledQuery, provider: "sqlite" | "mysql" | "postgresql"): SQL {
+  const { sql: sqlString, params } = query;
+
+  const queryChunks =
+    provider === "sqlite" ? sqliteToSQL(sqlString, params) : postgresToSQL(sqlString, params);
+
   return new SQL(queryChunks);
 }
 
-/**
- * Get the number of affected rows from a Drizzle query result
- */
 function getAffectedRows(result: unknown): number {
-  // Drizzle returns different formats depending on the database
-  // For MySQL: array with affectedRows property
-  // For PostgreSQL/SQLite: array with rowCount or similar
   if (Array.isArray(result)) {
-    // This is likely a select/returning result
     return result.length;
   }
 
-  // Check for MySQL-style result
-  if (
-    result &&
-    typeof result === "object" &&
-    "affectedRows" in result &&
-    typeof result["affectedRows"] === "number"
-  ) {
-    return result["affectedRows"];
-  }
-
-  // Check for PostgreSQL-style result with rowCount
-  if (
-    result &&
-    typeof result === "object" &&
-    "rowCount" in result &&
-    (typeof result["rowCount"] === "number" || typeof result["rowCount"] === "bigint")
-  ) {
-    const rowCount = result["rowCount"];
-    if (rowCount > Number.MAX_SAFE_INTEGER) {
-      throw new Error(`rowCount BigInt value ${rowCount.toString()} exceeds JS safe integer range`);
-    }
-    return Number(rowCount);
-  }
-
-  // For update/delete operations, Drizzle might return an object with affected rows info
-  // Try to extract it from common patterns
   if (result && typeof result === "object") {
-    // Check for changes/changes count
+    if ("affectedRows" in result && typeof result["affectedRows"] === "number") {
+      return result["affectedRows"];
+    }
+
+    if (
+      "rowCount" in result &&
+      (typeof result["rowCount"] === "number" || typeof result["rowCount"] === "bigint")
+    ) {
+      const rowCount = result["rowCount"];
+      if (rowCount > Number.MAX_SAFE_INTEGER) {
+        throw new Error(
+          `rowCount BigInt value ${rowCount.toString()} exceeds JS safe integer range`,
+        );
+      }
+      return Number(rowCount);
+    }
+
     if ("changes" in result && typeof result["changes"] === "number") {
       return result["changes"];
     }
@@ -93,40 +110,87 @@ function getAffectedRows(result: unknown): number {
   throw new Error(`Unable to determine affected rows from result: ${JSON.stringify(result)}`);
 }
 
+async function executeInTransaction(
+  db: DBType,
+  provider: "sqlite" | "mysql" | "postgresql",
+  syncExecutor: (db: SyncSQLiteDB) => void,
+  asyncExecutor: (tx: { execute: (sql: SQL) => Promise<unknown> }) => Promise<void>,
+): Promise<void> {
+  if (provider === "sqlite" && isSyncSQLite(db)) {
+    assertSyncSQLite(db);
+    db.transaction(() => syncExecutor(db));
+  } else {
+    await db.transaction(
+      async (tx) => await asyncExecutor(tx as { execute: (sql: SQL) => Promise<unknown> }),
+    );
+  }
+}
+
+function extractCreatedInternalId(result: unknown): bigint | null {
+  if (result && typeof result === "object" && "lastInsertRowid" in result) {
+    if (typeof result.lastInsertRowid === "bigint") {
+      return result.lastInsertRowid;
+    }
+
+    if (typeof result.lastInsertRowid === "number") {
+      return BigInt(result.lastInsertRowid);
+    }
+
+    throw new Error(`Unexpected lastInsertRowid type: ${typeof result.lastInsertRowid}`);
+  }
+
+  if (Array.isArray(result) && result.length > 0) {
+    const row = result[0] as Record<string, unknown>;
+    if ("_internalId" in row || "_internal_id" in row) {
+      return (row["_internalId"] ?? row["_internal_id"]) as bigint;
+    }
+  }
+
+  return null;
+}
+
+function validateAffectedRows(result: unknown, expected: number): void {
+  const actual = getAffectedRows(result);
+  if (actual !== expected) {
+    throw new Error(`Version conflict: expected ${expected} rows affected, but got ${actual}`);
+  }
+}
+
 /**
  * Execute the retrieval phase of a Unit of Work using Drizzle
  *
  * All retrieval queries are executed inside a single transaction to ensure
  * snapshot isolation - all reads see a consistent view of the database.
- *
- * @param db - The Drizzle database instance
- * @param retrievalBatch - Array of Drizzle SQL queries
- * @returns Array of query results matching the retrieval operations order
- *
- * @example
- * ```ts
- * const retrievalResults = await executeDrizzleRetrievalPhase(db, compiled.retrievalBatch);
- * const [users, posts] = retrievalResults;
- * ```
  */
 export async function executeDrizzleRetrievalPhase(
   db: DBType,
   retrievalBatch: DrizzleCompiledQuery[],
+  provider: "sqlite" | "mysql" | "postgresql",
 ): Promise<DrizzleResult[]> {
-  // If no retrieval operations, return empty array immediately
   if (retrievalBatch.length === 0) {
     return [];
   }
 
   const retrievalResults: DrizzleResult[] = [];
 
-  // Execute all retrieval queries inside a transaction for snapshot isolation
-  await db.transaction(async (tx) => {
-    for (const query of retrievalBatch) {
-      const result = (await tx.execute(toSQL(query))) as DrizzleResult;
-      retrievalResults.push(result);
-    }
-  });
+  await executeInTransaction(
+    db,
+    provider,
+    (syncDb) => {
+      for (const query of retrievalBatch) {
+        const sqlObj = toSQL(query, provider);
+        const rows = syncDb.all(sqlObj as never) as Record<string, unknown>[];
+        const result: DrizzleResult = { rows, affectedRows: 0 };
+        retrievalResults.push(result);
+      }
+    },
+    async (tx) => {
+      for (const query of retrievalBatch) {
+        const result = (await tx.execute(toSQL(query, provider))) as DrizzleResult;
+        retrievalResults.push(result);
+      }
+    },
+  );
 
   return retrievalResults;
 }
@@ -137,77 +201,53 @@ export async function executeDrizzleRetrievalPhase(
  * All mutation queries are executed in a transaction with optimistic locking.
  * If any version check fails, the entire transaction is rolled back and
  * success=false is returned.
- *
- * @param db - The Drizzle database instance
- * @param mutationBatch - Array of compiled mutation SQL queries with expected affected rows
- * @returns Object with success flag and internal IDs from create operations
- *
- * @example
- * ```ts
- * const { success } = await executeDrizzleMutationPhase(db, compiled.mutationBatch);
- * if (!success) {
- *   console.log("Version conflict detected, retrying...");
- * }
- * ```
  */
 export async function executeDrizzleMutationPhase(
   db: DBType,
   mutationBatch: CompiledMutation<DrizzleCompiledQuery>[],
+  provider: "sqlite" | "mysql" | "postgresql",
 ): Promise<MutationResult> {
-  // If there are no mutations, return success immediately
   if (mutationBatch.length === 0) {
     return { success: true, createdInternalIds: [] };
   }
 
   const createdInternalIds: (bigint | null)[] = [];
 
-  // Execute mutation batch in a transaction
   try {
-    await db.transaction(async (tx) => {
-      for (const compiledMutation of mutationBatch) {
-        const result = await tx.execute(toSQL(compiledMutation.query));
+    await executeInTransaction(
+      db,
+      provider,
+      (syncDb) => {
+        for (const { query, expectedAffectedRows } of mutationBatch) {
+          const sqlObj = toSQL(query, provider);
+          // Type assertion needed due to drizzle-orm version mismatch in dependencies
+          const result = syncDb.run(sqlObj as never);
 
-        // For creates (expectedAffectedRows === null), try to extract internal ID
-        if (compiledMutation.expectedAffectedRows === null) {
-          // Check if result is an array with rows (RETURNING clause supported)
-          if (Array.isArray(result) && result.length > 0) {
-            const row = result[0] as Record<string, unknown>;
-            // Look for _internalId column in the returned row
-            if ("_internalId" in row || "_internal_id" in row) {
-              const internalId = (row["_internalId"] ?? row["_internal_id"]) as bigint;
-              createdInternalIds.push(internalId);
-            } else {
-              // RETURNING supported but _internalId not found
-              createdInternalIds.push(null);
-            }
+          if (expectedAffectedRows === null) {
+            createdInternalIds.push(extractCreatedInternalId(result));
           } else {
-            // No RETURNING support (e.g., MySQL)
-            createdInternalIds.push(null);
-          }
-        } else {
-          // Check affected rows for updates/deletes
-          const affectedRows = getAffectedRows(result);
-
-          if (affectedRows !== compiledMutation.expectedAffectedRows) {
-            // Version conflict detected - the UPDATE/DELETE didn't affect the expected number of rows
-            // This means either the row doesn't exist or the version has changed
-            throw new Error(
-              `Version conflict: expected ${compiledMutation.expectedAffectedRows} rows affected, but got ${affectedRows}`,
-            );
+            validateAffectedRows(result, expectedAffectedRows);
           }
         }
-      }
-    });
+      },
+      async (tx) => {
+        for (const { query, expectedAffectedRows } of mutationBatch) {
+          const result = await tx.execute(toSQL(query, provider));
+
+          if (expectedAffectedRows === null) {
+            createdInternalIds.push(extractCreatedInternalId(result));
+          } else {
+            validateAffectedRows(result, expectedAffectedRows);
+          }
+        }
+      },
+    );
 
     return { success: true, createdInternalIds };
   } catch (error) {
-    // Transaction failed - could be version conflict or other constraint violation
-    // Return success=false to indicate the UOW should be retried
     if (error instanceof Error && error.message.includes("Version conflict")) {
       return { success: false };
     }
-
-    // Other database errors should be thrown
     throw error;
   }
 }
