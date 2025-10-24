@@ -44,11 +44,6 @@ export interface Migrator {
     toVersion: number,
     options?: MigrateOptions & { fromVersion?: number },
   ) => Promise<PreparedMigration>;
-
-  /**
-   * Get default file name for migration SQL
-   */
-  getDefaultFileName?: (namespace: string, fromVersion: number, toVersion: number) => string;
 }
 
 export interface MigrationEngineOptions {
@@ -186,8 +181,8 @@ export function createMigrator({
 
       let operations = updateVersion
         ? [
-            ...(await settings.updateSettingsInMigration(fromVersion, toVersion)),
             ...(await context.auto()),
+            ...(await settings.updateSettingsInMigration(fromVersion, toVersion)),
           ]
         : await context.auto();
 
