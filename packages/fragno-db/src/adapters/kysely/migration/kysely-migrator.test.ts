@@ -50,11 +50,9 @@ describe("KyselyMigrator", () => {
     const sql = preparedMigration.getSQL?.();
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
-      "create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
+      "create table "users_test_namespace" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      insert into "fragno_db_settings" ("key", "value") values ('test_namespace.schema_version', '1');
-
-      create table "users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"
+      insert into "fragno_db_settings" ("id", "key", "value") values ('jprP_43K5uMwxAFiepbbrQ', 'test_namespace.schema_version', '1');"
     `);
   });
 
@@ -69,17 +67,15 @@ describe("KyselyMigrator", () => {
     const sql = preparedMigration.getSQL?.();
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
-      "create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
+      "create table "users_test_namespace" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      insert into "fragno_db_settings" ("key", "value") values ('test_namespace.schema_version', '2');
+      alter table "users_test_namespace" add column "age" integer;
 
-      create table "users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create index "name_idx" on "users_test_namespace" ("name");
 
-      alter table "users" add column "age" integer;
+      create index "age_idx" on "users_test_namespace" ("age");
 
-      create index "name_idx" on "users" ("name");
-
-      create index "age_idx" on "users" ("age");"
+      insert into "fragno_db_settings" ("id", "key", "value") values ('jprP_43K5uMwxAFiepbbrQ', 'test_namespace.schema_version', '2');"
     `);
   });
 
@@ -94,13 +90,13 @@ describe("KyselyMigrator", () => {
     const sql = preparedMigration.getSQL?.();
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
-      "update "fragno_db_settings" set "value" = '2' where "key" = 'test_namespace.schema_version';
+      "alter table "users_test_namespace" add column "age" integer;
 
-      alter table "users" add column "age" integer;
+      create index "name_idx" on "users_test_namespace" ("name");
 
-      create index "name_idx" on "users" ("name");
+      create index "age_idx" on "users_test_namespace" ("age");
 
-      create index "age_idx" on "users" ("age");"
+      update "fragno_db_settings" set "value" = '2' where "key" = 'test_namespace.schema_version';"
     `);
   });
 
@@ -115,19 +111,17 @@ describe("KyselyMigrator", () => {
     const sql = preparedMigration.getSQL?.();
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
-      "create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
+      "create table "users_test_namespace" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      insert into "fragno_db_settings" ("key", "value") values ('test_namespace.schema_version', '3');
+      alter table "users_test_namespace" add column "age" integer;
 
-      create table "users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create index "name_idx" on "users_test_namespace" ("name");
 
-      alter table "users" add column "age" integer;
+      create index "age_idx" on "users_test_namespace" ("age");
 
-      create index "name_idx" on "users" ("name");
+      create table "posts_test_namespace" ("id" varchar(30) not null unique, "title" text not null, "user_id" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create index "age_idx" on "users" ("age");
-
-      create table "posts" ("id" varchar(30) not null unique, "title" text not null, "user_id" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"
+      insert into "fragno_db_settings" ("id", "key", "value") values ('jprP_43K5uMwxAFiepbbrQ', 'test_namespace.schema_version', '3');"
     `);
   });
 
@@ -142,9 +136,9 @@ describe("KyselyMigrator", () => {
     const sql = preparedMigration.getSQL?.();
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
-      "update "fragno_db_settings" set "value" = '3' where "key" = 'test_namespace.schema_version';
+      "create table "posts_test_namespace" ("id" varchar(30) not null unique, "title" text not null, "user_id" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create table "posts" ("id" varchar(30) not null unique, "title" text not null, "user_id" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"
+      update "fragno_db_settings" set "value" = '3' where "key" = 'test_namespace.schema_version';"
     `);
   });
 
@@ -181,17 +175,5 @@ describe("KyselyMigrator", () => {
         fromVersion: 0,
       }),
     ).rejects.toThrow("schema only has version 4");
-  });
-
-  test("getDefaultFileName returns correct format", () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-
-    expect(migrator.getDefaultFileName).toBeDefined();
-
-    if (migrator.getDefaultFileName) {
-      const filename = migrator.getDefaultFileName("my-fragment", 0, 1);
-      // Should match format: YYYYMMDD_namespace_migration_0_to_1.sql
-      expect(filename).toMatch(/^\d{8}_my-fragment_migration_0_to_1\.sql$/);
-    }
   });
 });
