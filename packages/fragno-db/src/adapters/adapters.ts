@@ -24,4 +24,6 @@ export interface DatabaseAdapter<TUOWConfig = void> {
     fragments: { schema: AnySchema; namespace: string }[],
     options?: { path?: string },
   ) => SchemaGenerator;
+
+  isConnectionHealthy: () => Promise<boolean>;
 }
