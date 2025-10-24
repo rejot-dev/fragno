@@ -500,8 +500,7 @@ describe("Request Middleware", () => {
     });
   });
 
-  // TODO: This is not currently supported
-  test.todo("middleware can modify query parameters", async () => {
+  test("middleware can modify query parameters", async () => {
     const fragment = defineFragment("test-lib");
 
     const routes = [
@@ -540,6 +539,93 @@ describe("Request Middleware", () => {
       id: 123,
       name: "John Doe",
       role: "some-other-role-defined-in-middleware",
+    });
+  });
+
+  test("middleware can modify request body", async () => {
+    const fragment = defineFragment("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string(), role: z.string().optional() }),
+        outputSchema: z.object({ name: z.string(), role: z.string() }),
+        handler: async ({ input }, { json }) => {
+          const body = await input.valid();
+          return json({
+            name: body.name,
+            role: body.role ?? "user",
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createFragment(fragment, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute, requestState }) => {
+      // Middleware modifies the request body
+      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+        const body = await input.valid();
+        // Modify the body by adding a role field
+        requestState.setBody({
+          ...body,
+          role: "admin-from-middleware",
+        });
+      });
+
+      return result;
+    });
+
+    const req = new Request("http://localhost/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "John Doe" }),
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      name: "John Doe",
+      role: "admin-from-middleware",
+    });
+  });
+
+  test("middleware can modify request headers", async () => {
+    const fragment = defineFragment("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/data",
+        outputSchema: z.object({ auth: z.string(), custom: z.string() }),
+        handler: async ({ headers }, { json }) => {
+          return json({
+            auth: headers.get("Authorization") ?? "none",
+            custom: headers.get("X-Custom-Header") ?? "none",
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createFragment(fragment, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ headers }) => {
+      // Middleware modifies headers
+      headers.set("Authorization", "Bearer middleware-token");
+      headers.set("X-Custom-Header", "middleware-value");
+      return undefined;
+    });
+
+    const req = new Request("http://localhost/api/data", {
+      method: "GET",
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      auth: "Bearer middleware-token",
+      custom: "middleware-value",
     });
   });
 });

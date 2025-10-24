@@ -2,10 +2,10 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 import type { HTTPMethod } from "./api";
 import type { ExtractPathParams } from "./internal/path";
-import type { RequestBodyType } from "./request-input-context";
 import type { AnyFragnoRouteConfig } from "./route";
 import { RequestInputContext } from "./request-input-context";
 import { OutputContext, RequestOutputContext } from "./request-output-context";
+import { MutableRequestState } from "./mutable-request-state";
 
 export type FragnoMiddlewareCallback<
   TRoutes extends readonly AnyFragnoRouteConfig[],
@@ -19,10 +19,8 @@ export type FragnoMiddlewareCallback<
 export interface RequestMiddlewareOptions {
   path: string;
   method: HTTPMethod;
-  pathParams?: Record<string, string>;
-  searchParams: URLSearchParams;
-  body: RequestBodyType;
   request: Request;
+  state: MutableRequestState;
 }
 
 export class RequestMiddlewareOutputContext<
@@ -50,9 +48,11 @@ export class RequestMiddlewareOutputContext<
 export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFragnoRouteConfig[]> {
   readonly #options: RequestMiddlewareOptions;
   readonly #route: TRoutes[number];
+  readonly #state: MutableRequestState;
 
   constructor(routes: TRoutes, options: RequestMiddlewareOptions) {
     this.#options = options;
+    this.#state = options.state;
 
     const route = routes.find(
       (route) => route.path === options.path && route.method === options.method,
@@ -74,11 +74,15 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
   }
 
   get pathParams(): Record<string, string> {
-    return this.#options.pathParams ?? {};
+    return this.#state.pathParams;
   }
 
   get queryParams(): URLSearchParams {
-    return this.#options.searchParams;
+    return this.#state.searchParams;
+  }
+
+  get headers(): Headers {
+    return this.#state.headers;
   }
 
   get inputSchema(): StandardSchemaV1 | undefined {
@@ -87,6 +91,23 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
 
   get outputSchema(): StandardSchemaV1 | undefined {
     return this.#route.outputSchema;
+  }
+
+  /**
+   * Access to the mutable request state.
+   * Use this to modify query parameters, path parameters, or request body.
+   *
+   * @example
+   * ```typescript
+   * // Modify body
+   * requestState.setBody({ modified: true });
+   *
+   * // Query params are already accessible via queryParams getter
+   * // Path params are already accessible via pathParams getter
+   * ```
+   */
+  get requestState(): MutableRequestState {
+    return this.#state;
   }
 
   // Defined as a field so that `this` reference stays in tact when destructuring
@@ -116,6 +137,7 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
       path: path,
       pathParams: this.pathParams as ExtractPathParams<TPath>,
       inputSchema: this.#route.inputSchema,
+      state: this.#state,
     });
 
     const outputContext = new RequestOutputContext(this.#route.outputSchema);
