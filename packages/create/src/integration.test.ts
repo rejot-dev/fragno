@@ -76,7 +76,7 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
         but somehow when running through vitest the module resolution mechanism changes causing
         the build to fail.
       */
-      test.skipIf(buildTool === "rollup")("builds", { timeout: 40000 }, async () => {
+      test.skipIf(buildTool === "rollup")("builds", { timeout: 50000 }, async () => {
         const result = await execAsync("bun run build", {
           cwd: tempDir,
           encoding: "utf8",

@@ -14,7 +14,9 @@ provide:
 - Built-in state management with reactive stores (TanStack Query-style:
   `const {data, loading, error} = useData()`)
 
-**Documentation**: Full documentation is available at https://fragno.dev/docs
+**Documentation**: https://fragno.dev/docs
+
+All docs are also available with a `.md` extension: https://fragno.dev/docs.md
 
 ## Architecture
 
@@ -23,79 +25,6 @@ Fragments follow a core pattern:
 1. **Server-side**: Define routes with input/output schemas, handlers, and dependencies
 2. **Client-side**: Auto-generated type-safe hooks for each route
 3. **Code splitting**: Server-only code (handlers, dependencies) is stripped from client bundles
-
-## Database Integration (Optional)
-
-Some Fragments require persistent storage. Fragno provides an optional database layer via
-`@fragno-dev/db` that integrates with your users' existing databases.
-
-### When to Use Database Integration
-
-Use `defineFragmentWithDatabase()` when your Fragment needs to:
-
-- Store persistent data (comments, likes, user preferences, etc.)
-- Query structured data efficiently
-- Maintain data integrity with indexes and constraints
-- Provide users with full control over their data
-
-### Schema Definition
-
-Database schemas are defined in a separate `schema.ts` file using the Fragno schema builder:
-
-```typescript
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
-
-export const noteSchema = schema((s) => {
-  return s.addTable("note", (t) => {
-    return t
-      .addColumn("id", idColumn()) // Auto-generated ID
-      .addColumn("content", column("string"))
-      .addColumn("userId", column("string"))
-      .addColumn("createdAt", column("timestamp").defaultTo$("now"))
-      .createIndex("idx_note_user", ["userId"]); // Index for efficient queries
-  });
-});
-```
-
-**Key concepts**:
-
-- **Append-only**: Schemas use an append-only log approach. Never modify existing operations -
-  always add new ones
-- **Versioning**: Each schema operation increments the version number
-- **Indexes**: Create indexes on columns you'll frequently query (e.g., foreign keys, user IDs)
-- **Defaults**: Use `.defaultTo(value)` or `.defaultTo$("now")` for timestamps
-
-### Using the ORM
-
-The ORM is available in both `withDependencies()` and `withServices()` via the `orm` parameter:
-
-```typescript
-const fragmentDef = defineFragmentWithDatabase<Config>("my-fragment")
-  .withDatabase(mySchema)
-  .withServices(({ orm }) => {
-    return {
-      createNote: async (note) => {
-        const id = await orm.create("note", note);
-        return { id: id.toJSON(), ...note };
-      },
-      getNotesByUser: (userId: string) => {
-        // Use whereIndex for efficient indexed queries
-        return orm.find("note", (b) =>
-          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
-        );
-      },
-    };
-  });
-```
-
-**ORM methods**:
-
-- `orm.create(table, data)` - Insert a row, returns FragnoId
-- `orm.find(table, builder)` - Query rows with filtering
-- `orm.findOne(table, builder)` - Query a single row
-- `orm.update(table, id, data)` - Update a row by ID
-- `orm.delete(table, id)` - Delete a row by ID
-- `.whereIndex(indexName, condition)` - Use indexes for efficient queries
 
 ### Fragment Configuration
 
@@ -182,6 +111,107 @@ points:
 - Development mode uses source files for better debugging
 - Production uses built files from `dist/`
 - When adding new framework exports, add corresponding client files in `src/client/`
+
+## Database Integration (Optional)
+
+Some Fragments require persistent storage. Fragno provides an optional database layer via
+`@fragno-dev/db` that integrates with your users' existing databases.
+
+### When to Use Database Integration
+
+Use `defineFragmentWithDatabase()` when your Fragment needs to:
+
+- Store persistent data (comments, likes, user preferences, etc.)
+- Query structured data efficiently
+- Maintain data integrity with indexes and constraints
+- Provide users with full control over their data
+
+### Schema Definition
+
+Database schemas are defined in a separate `schema.ts` file using the Fragno schema builder:
+
+```typescript
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
+
+export const noteSchema = schema((s) => {
+  return s.addTable("note", (t) => {
+    return t
+      .addColumn("id", idColumn()) // Auto-generated ID
+      .addColumn("content", column("string"))
+      .addColumn("userId", column("string"))
+      .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+      .createIndex("idx_note_user", ["userId"]); // Index for efficient queries
+  });
+});
+```
+
+**Key concepts**:
+
+- **Append-only**: Schemas use an append-only log approach. Never modify existing operations -
+  always add new ones
+- **Versioning**: Each schema operation increments the version number
+- **Indexes**: Create indexes on columns you'll frequently query (e.g., foreign keys, user IDs)
+- **Defaults**: `.defaultTo(value)` or `.defaultTo((b) => b.now())` for DB defaults;
+  `.defaultTo$((b) => b.cuid())` for runtime defaults
+
+### Using the ORM
+
+The ORM is available in both `withDependencies()` and `withServices()` via the `orm` parameter:
+
+```typescript
+const fragmentDef = defineFragmentWithDatabase<Config>("my-fragment")
+  .withDatabase(mySchema)
+  .withServices(({ orm }) => {
+    return {
+      createNote: async (note) => {
+        const id = await orm.create("note", note);
+        return { id: id.toJSON(), ...note };
+      },
+      getNotesByUser: (userId: string) => {
+        // Use whereIndex for efficient indexed queries
+        return orm.find("note", (b) =>
+          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
+        );
+      },
+    };
+  });
+```
+
+**ORM methods**:
+
+- `orm.create(table, data)` - Insert a row, returns FragnoId
+- `orm.find(table, builder)` - Query rows with filtering
+- `orm.findOne(table, builder)` - Query a single row
+- `orm.update(table, id, data)` - Update a row by ID
+- `orm.delete(table, id)` - Delete a row by ID
+- `.whereIndex(indexName, condition)` - Use indexes for efficient queries
+
+### Transactions (Unit of Work)
+
+Two-phase pattern for atomic operations (optimistic concurrency control):
+
+```typescript
+// Phase 1: Retrieve with version tracking
+const uow = orm
+  .createUnitOfWork()
+  .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)))
+  .find("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+const [users, accounts] = await uow.executeRetrieve();
+
+// Phase 2: Mutate atomically
+uow.update("users", users[0].id, (b) => b.set({ lastLogin: new Date() }).check());
+uow.update("accounts", accounts[0].id, (b) =>
+  b.set({ balance: accounts[0].balance + 100 }).check(),
+);
+
+const { success } = await uow.executeMutations();
+if (!success) {
+  /* Version conflict - retry */
+}
+```
+
+**Notes**: `.check()` enables optimistic concurrency control; requires `FragnoId` objects (not
+string IDs); use `uow.getCreatedIds()` for new record IDs
 
 ## Strategies for Building Fragments
 

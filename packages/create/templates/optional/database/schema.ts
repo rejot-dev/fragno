@@ -6,7 +6,10 @@ export const noteSchema = schema((s) => {
       .addColumn("id", idColumn())
       .addColumn("content", column("string"))
       .addColumn("userId", column("string"))
-      .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+      .addColumn(
+        "createdAt",
+        column("timestamp").defaultTo((b) => b.now()),
+      )
       .createIndex("idx_note_user", ["userId"]);
   });
 });
