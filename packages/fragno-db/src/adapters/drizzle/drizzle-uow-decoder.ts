@@ -92,6 +92,7 @@ function transformJoinArraysToObjects(
       joins?: JoinInfo[];
     };
   },
+  provider: SQLProvider,
 ): Record<string, unknown> {
   // Only process find operations with joins
   if (op.type !== "find" || !op.options?.joins) {
@@ -102,7 +103,17 @@ function transformJoinArraysToObjects(
 
   for (const join of op.options.joins) {
     const relationName = join.relation.name;
-    const value = row[relationName];
+    let value = row[relationName];
+
+    // For SQLite, json_array returns a JSON string that needs to be parsed
+    if (provider === "sqlite" && typeof value === "string") {
+      try {
+        value = JSON.parse(value) as unknown;
+      } catch {
+        // If parsing fails, skip this join
+        continue;
+      }
+    }
 
     // Skip if not an array (join didn't return data)
     if (!Array.isArray(value)) {
@@ -149,15 +160,21 @@ export function createDrizzleUOWDecoder<TSchema extends AnySchema>(
       // Handle count operations - return the count value directly
       if (op.type === "count") {
         if (result.rows.length > 0 && result.rows[0]) {
-          const row = result.rows[0];
-          return (row as Record<string, unknown>)["count"] as number;
+          const row = result.rows[0] as Record<string, unknown>;
+          const countValue = row["count"] ?? row["count(*)"];
+
+          if (typeof countValue !== "number") {
+            throw new Error(`Unexpected result for count, received: ${countValue}`);
+          }
+
+          return countValue;
         }
         return 0;
       }
 
       // Handle find operations - decode each row
       return result.rows.map((row) => {
-        const transformedRow = transformJoinArraysToObjects(row, op);
+        const transformedRow = transformJoinArraysToObjects(row, op, provider);
         return decodeResult(transformedRow, op.table, provider);
       });
     });
