@@ -45,3 +45,8 @@ export function createTableNameMapper(namespace: string): TableNameMapper {
     },
   };
 }
+
+export interface DrizzleResult {
+  rows: Record<string, unknown>[];
+  affectedRows: number;
+}

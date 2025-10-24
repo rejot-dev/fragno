@@ -2,8 +2,8 @@ import type { AnySchema, AnyTable } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import type { RetrievalOperation, UOWDecoder } from "../../query/unit-of-work";
 import { decodeResult } from "../../query/result-transform";
-import type { DrizzleResult } from "./drizzle-query";
 import { getOrderedJoinColumns } from "./join-column-utils";
+import type { DrizzleResult } from "./shared";
 
 /**
  * Join information with nested join support
