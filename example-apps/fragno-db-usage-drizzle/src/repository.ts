@@ -1,9 +1,10 @@
 import { eq, like, desc, and, sql } from "drizzle-orm";
 import { db } from "./database";
 import { user, blogPost } from "./schema/drizzle-schema";
-import { fragno_db_comment_db_schema } from "./schema/fragno-schema";
+import { fragno_db_comment_db_schema, fragno_db_rating_db_schema } from "./schema/fragno-schema";
 
 const { comment } = fragno_db_comment_db_schema;
+const { upvote_total } = fragno_db_rating_db_schema;
 
 type User = typeof user.$inferSelect;
 type NewUser = typeof user.$inferInsert;
@@ -93,12 +94,14 @@ export async function findBlogPostsWithAuthor() {
       authorName: user.name,
       authorEmail: user.email,
       comments: sql<Array<typeof comment.$inferSelect>>`json_agg(${comment})`.as("comments"),
+      rating: sql<number>`COALESCE(${upvote_total.total}, 0)`.as("rating"),
     })
     .from(blogPost)
     .innerJoin(user, eq(user.id, blogPost.authorId))
     .innerJoin(comment, eq(comment.postReference, sql`${blogPost.id}::text`))
+    .leftJoin(upvote_total, eq(upvote_total.reference, sql`${blogPost.id}::text`))
     .orderBy(desc(blogPost.createdAt))
-    .groupBy(blogPost.id, user.id);
+    .groupBy(blogPost.id, user.id, upvote_total.total);
 }
 
 export async function createBlogPost(post: NewBlogPost) {

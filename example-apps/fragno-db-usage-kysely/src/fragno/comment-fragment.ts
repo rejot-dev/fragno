@@ -1,22 +1,10 @@
-import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-import { db } from "../database";
 import { createCommentFragment } from "@fragno-dev/fragno-db-library";
-
-/**
- * Creates a Kysely adapter for the comment fragment
- */
-export function createAdapter() {
-  return new KyselyAdapter({
-    db,
-    provider: "postgresql",
-  });
-}
+import { adapter } from "./adapter";
 
 /**
  * Creates an instantiated comment fragment with database
  */
 export function createCommentFragmentServer() {
-  const adapter = createAdapter();
   return createCommentFragment({}, { databaseAdapter: adapter });
 }
 

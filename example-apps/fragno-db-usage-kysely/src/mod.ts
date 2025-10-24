@@ -6,6 +6,7 @@ import { pgFolder } from "./database";
 import { userCommand, userSubCommands } from "./commands/user";
 import { postCommand, postSubCommands } from "./commands/post";
 import { commentCommand, commentSubCommands } from "./commands/comment";
+import { ratingCommand, ratingSubCommands } from "./commands/rating";
 
 // Clean command
 const cleanCommand: Command = {
@@ -23,6 +24,7 @@ rootSubCommands.set("clean", cleanCommand);
 rootSubCommands.set("user", userCommand);
 rootSubCommands.set("post", postCommand);
 rootSubCommands.set("comment", commentCommand);
+rootSubCommands.set("rating", ratingCommand);
 
 export const mainCommand: Command = {
   name: "fragno-db-usage",
@@ -37,6 +39,7 @@ export const mainCommand: Command = {
     console.log("  user       User management commands");
     console.log("  post       Blog post management commands");
     console.log("  comment    Comment management commands");
+    console.log("  rating     Rating/upvote management commands");
     console.log("");
     console.log("Run 'bun run src/mod.ts <command> --help' for more information.");
   },
@@ -58,6 +61,10 @@ if (import.meta.main) {
   } else if (args[0] === "post" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
     await cli(args.slice(1), postCommand, {
       subCommands: postSubCommands,
+    });
+  } else if (args[0] === "rating" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
+    await cli(args.slice(1), ratingCommand, {
+      subCommands: ratingSubCommands,
     });
   } else {
     await cli(args, mainCommand, {

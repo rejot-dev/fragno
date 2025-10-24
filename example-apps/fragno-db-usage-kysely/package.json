@@ -16,9 +16,11 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
-    "db:migrate": "bun run db:migrate:kysely & bun run db:migrate:comment-fragment",
+    "db:migrate": "bun run db:migrate:kysely && bun run db:migrate:fragno",
     "db:migrate:kysely": "kysely migrate up",
-    "db:migrate:comment-fragment": "bun run ../../apps/fragno-cli/src/cli.ts db migrate --target ./src/fragno/comment-fragment.ts",
+    "db:generate:fragno": "bun run ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts -o ./migrations",
+    "db:migrate:fragno": "bun run ../../apps/fragno-cli/src/cli.ts db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:generate": "bun run ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "test": "vitest run"
   },
   "type": "module",
