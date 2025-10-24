@@ -68,10 +68,10 @@ export function fromDrizzle<T extends AnySchema>(
   }
 
   return {
-    find(tableName, builderFn) {
-      const uow = createUOW();
-      uow.find(tableName, builderFn);
-      return uow.executeRetrieve();
+    async find(tableName, builderFn) {
+      const uow = createUOW().find(tableName, builderFn);
+      const [result] = await uow.executeRetrieve();
+      return result;
     },
 
     async findFirst(tableName, builderFn) {
