@@ -116,6 +116,18 @@ describe("Fragno Database Drizzle", () => {
     });
   });
 
+  describe("Rating Commands", () => {
+    it("should add an upvote to a post", async () => {
+      const { ratingCommand, ratingSubCommands } = await import("./commands/rating");
+      await cli(["upvote", "--reference", "1"], ratingCommand, {
+        subCommands: ratingSubCommands,
+      });
+
+      expect(logs.some((log) => log.includes("Upvoted reference: 1"))).toBe(true);
+      expect(logs.some((log) => log.includes("Current rating: 1"))).toBe(true);
+    });
+  });
+
   describe("Comment Commands", () => {
     it("should create multiple comments", async () => {
       const { commentCommand, commentSubCommands } = await import("./commands/comment");
@@ -211,6 +223,8 @@ describe("Fragno Database Drizzle", () => {
 
       // Verify comments array exists in the output
       expect(logs.some((log) => log.includes("comments"))).toBe(true);
+
+      expect(logs.some((log) => log.includes("rating"))).toBe(true);
     });
   });
 });

@@ -17,8 +17,8 @@ export default async function setup() {
     stdio: "inherit",
   });
 
-  // Run Fragno migrations for the comment fragment
-  const args = ["src/fragno/comment-fragment.ts"];
+  // Run Fragno migrations for the comment and rating fragments
+  const args = ["src/fragno/comment-fragment.ts", "src/fragno/rating-fragment.ts"];
 
   // Validate arguments before running
   if (migrateCommand.args) {
@@ -33,4 +33,8 @@ export default async function setup() {
   await cli(args, migrateCommand);
 
   console.log("Test environment setup complete!");
+}
+
+if (import.meta.main) {
+  await setup();
 }

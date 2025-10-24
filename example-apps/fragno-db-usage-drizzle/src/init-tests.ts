@@ -18,8 +18,6 @@ export default async function setup() {
     "src/fragno/rating-fragment.ts",
     "-o",
     "src/schema/fragno-schema.ts",
-    "--prefix",
-    "// @prettier-ignore",
   ];
 
   // Validate arguments before running

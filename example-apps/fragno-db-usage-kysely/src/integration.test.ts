@@ -112,6 +112,18 @@ describe("Fragno Database Kysely", () => {
     });
   });
 
+  describe("Rating Commands", () => {
+    it("should add an upvote to a post", async () => {
+      const { ratingCommand, ratingSubCommands } = await import("./commands/rating");
+      await cli(["upvote", "--reference", "1"], ratingCommand, {
+        subCommands: ratingSubCommands,
+      });
+
+      expect(logs.some((log) => log.includes("Upvoted reference: 1"))).toBe(true);
+      expect(logs.some((log) => log.includes("Current rating: 1"))).toBe(true);
+    });
+  });
+
   describe("Comment Commands", () => {
     it("should create multiple comments", async () => {
       const { commentCommand, commentSubCommands } = await import("./commands/comment");
@@ -198,6 +210,31 @@ describe("Fragno Database Kysely", () => {
       expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
       expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
       expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+    });
+
+    it("should list posts with author and include comments", async () => {
+      const { postCommand, postSubCommands } = await import("./commands/post");
+      await cli(["list-with-author"], postCommand, {
+        subCommands: postSubCommands,
+      });
+
+      expect(logs).toContain("Blog posts with authors:");
+
+      // Check that the post is included
+      expect(logs.some((log) => log.includes("Updated Post"))).toBe(true);
+
+      // Check that the author is included
+      expect(logs.some((log) => log.includes("Updated User"))).toBe(true);
+
+      // Check that comments are included
+      expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
+      expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
+      expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+
+      // Verify comments array exists in the output
+      expect(logs.some((log) => log.includes("comments"))).toBe(true);
+
+      expect(logs.some((log) => log.includes("rating"))).toBe(true);
     });
   });
 });
