@@ -22,6 +22,7 @@ describe("DrizzleAdapter", () => {
     expect(result.schema).toMatchInlineSnapshot(`
       "import { pgTable, varchar, text, bigserial, integer, uniqueIndex } from "drizzle-orm/pg-core"
       import { createId } from "@fragno-dev/db/id"
+
       // ============================================================================
       // Settings Table (shared across all fragments)
       // ============================================================================
@@ -36,6 +37,8 @@ describe("DrizzleAdapter", () => {
         uniqueIndex("unique_key").on(table.key)
       ])
 
+      export const fragnoDbSettingSchemaVersion = 1;
+
       // ============================================================================
       // Fragment: test
       // ============================================================================
@@ -49,7 +52,8 @@ describe("DrizzleAdapter", () => {
 
       export const test_schema = {
         "users_test": users_test,
-        users: users_test
+        users: users_test,
+        schemaVersion: 1
       }"
     `);
   });
@@ -67,6 +71,7 @@ describe("DrizzleAdapter", () => {
     expect(result.schema).toMatchInlineSnapshot(`
       "import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core"
       import { createId } from "@fragno-dev/db/id"
+
       // ============================================================================
       // Settings Table (shared across all fragments)
       // ============================================================================
@@ -81,6 +86,8 @@ describe("DrizzleAdapter", () => {
         uniqueIndex("unique_key").on(table.key)
       ])
 
+      export const fragnoDbSettingSchemaVersion = 1;
+
       // ============================================================================
       // Fragment: test
       // ============================================================================
@@ -94,7 +101,8 @@ describe("DrizzleAdapter", () => {
 
       export const test_schema = {
         "users_test": users_test,
-        users: users_test
+        users: users_test,
+        schemaVersion: 1
       }"
     `);
   });
@@ -124,6 +132,7 @@ describe("DrizzleAdapter", () => {
     expect(result.schema).toMatchInlineSnapshot(`
       "import { pgTable, varchar, text, bigserial, integer, uniqueIndex } from "drizzle-orm/pg-core"
       import { createId } from "@fragno-dev/db/id"
+
       // ============================================================================
       // Settings Table (shared across all fragments)
       // ============================================================================
@@ -138,6 +147,8 @@ describe("DrizzleAdapter", () => {
         uniqueIndex("unique_key").on(table.key)
       ])
 
+      export const fragnoDbSettingSchemaVersion = 1;
+
       // ============================================================================
       // Fragment: test
       // ============================================================================
@@ -151,7 +162,8 @@ describe("DrizzleAdapter", () => {
 
       export const test_schema = {
         "users_test": users_test,
-        users: users_test
+        users: users_test,
+        schemaVersion: 1
       }"
     `);
   });

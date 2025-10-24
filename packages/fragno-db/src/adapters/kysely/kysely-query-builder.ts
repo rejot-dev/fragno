@@ -14,11 +14,13 @@ import type { Condition } from "../../query/condition-builder";
 import { serialize } from "../../schema/serialize";
 import type { CompiledJoin, SimplifyFindOptions } from "../../query/orm/orm";
 import { decodeResult, encodeValues, ReferenceSubquery } from "../../query/result-transform";
+import type { TableNameMapper } from "./kysely-shared";
 
 /**
  * Returns the fully qualified SQL name for a column (table.column).
  *
  * @param column - The column to get the full name for
+ * @param mapper - Optional table name mapper for namespace prefixing
  * @returns The fully qualified SQL name in the format "tableName.columnName"
  * @internal
  *
@@ -28,8 +30,9 @@ import { decodeResult, encodeValues, ReferenceSubquery } from "../../query/resul
  * // Returns: "users.email"
  * ```
  */
-export function fullSQLName(column: AnyColumn) {
-  return `${column.tableName}.${column.name}`;
+export function fullSQLName(column: AnyColumn, mapper?: TableNameMapper) {
+  const tableName = mapper ? mapper.toPhysical(column.tableName) : column.tableName;
+  return `${tableName}.${column.name}`;
 }
 
 /**
@@ -60,6 +63,7 @@ export function buildWhere(
   condition: Condition,
   eb: ExpressionBuilder<any, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   provider: SQLProvider,
+  mapper?: TableNameMapper,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): ExpressionWrapper<any, any, SqlBool> {
   if (condition.type === "compare") {
@@ -78,47 +82,55 @@ export function buildWhere(
       case "contains":
         v = "like";
         rhs =
-          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')` : `%${val}%`;
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))}, '%')`
+            : `%${val}%`;
         break;
       case "not contains":
         v = "not like";
         rhs =
-          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))}, '%')` : `%${val}%`;
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))}, '%')`
+            : `%${val}%`;
         break;
       case "starts with":
         v = "like";
-        rhs = val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val))}, '%')` : `${val}%`;
+        rhs =
+          val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val, mapper))}, '%')` : `${val}%`;
         break;
       case "not starts with":
         v = "not like";
-        rhs = val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val))}, '%')` : `${val}%`;
+        rhs =
+          val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val, mapper))}, '%')` : `${val}%`;
         break;
       case "ends with":
         v = "like";
-        rhs = val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))})` : `%${val}`;
+        rhs =
+          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))})` : `%${val}`;
         break;
       case "not ends with":
         v = "not like";
-        rhs = val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val))})` : `%${val}`;
+        rhs =
+          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))})` : `%${val}`;
         break;
       default:
         v = op;
-        rhs = val instanceof Column ? eb.ref(fullSQLName(val)) : val;
+        rhs = val instanceof Column ? eb.ref(fullSQLName(val, mapper)) : val;
     }
 
-    return eb(fullSQLName(left), v, rhs);
+    return eb(fullSQLName(left, mapper), v, rhs);
   }
 
   // Nested conditions
   if (condition.type === "and") {
-    return eb.and(condition.items.map((v) => buildWhere(v, eb, provider)));
+    return eb.and(condition.items.map((v) => buildWhere(v, eb, provider, mapper)));
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, provider));
+    return eb.not(buildWhere(condition.item, eb, provider, mapper));
   }
 
-  return eb.or(condition.items.map((v) => buildWhere(v, eb, provider)));
+  return eb.or(condition.items.map((v) => buildWhere(v, eb, provider, mapper)));
 }
 
 /**
@@ -353,14 +365,17 @@ export async function findMany(
  *
  * @param values - The encoded values that may contain ReferenceSubquery objects
  * @param kysely - The Kysely database instance for building subqueries
+ * @param mapper - Optional table name mapper for namespace prefixing
  * @returns Processed values with subqueries in place of ReferenceSubquery markers
  * @internal
  */
 function processReferenceSubqueries(
   values: Record<string, unknown>,
   kysely: Kysely<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  mapper?: TableNameMapper,
 ): Record<string, unknown> {
   const processed: Record<string, unknown> = {};
+  const getTableName = (table: AnyTable) => (mapper ? mapper.toPhysical(table.name) : table.name);
 
   for (const [key, value] of Object.entries(values)) {
     if (value instanceof ReferenceSubquery) {
@@ -369,7 +384,7 @@ function processReferenceSubqueries(
 
       // Build a subquery: SELECT _internal_id FROM referenced_table WHERE id = external_id LIMIT 1
       processed[key] = kysely
-        .selectFrom(refTable.name)
+        .selectFrom(getTableName(refTable))
         .select(refTable.getInternalIdColumn().name)
         .where(refTable.getIdColumn().name, "=", externalId)
         .limit(1);
@@ -399,21 +414,27 @@ function processReferenceSubqueries(
  * const result = await kysely.executeQuery(query);
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvider) {
+export function createKyselyQueryBuilder(
+  kysely: Kysely<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  provider: SQLProvider,
+  mapper?: TableNameMapper,
+) {
+  // Helper to get the physical table name (with namespace suffix if mapper is provided)
+  const getTableName = (table: AnyTable) => (mapper ? mapper.toPhysical(table.name) : table.name);
+
   return {
     count(table: AnyTable, { where }: { where?: Condition }): CompiledQuery {
-      let query = kysely.selectFrom(table.name).select(kysely.fn.countAll().as("count"));
+      let query = kysely.selectFrom(getTableName(table)).select(kysely.fn.countAll().as("count"));
       if (where) {
-        query = query.where((b) => buildWhere(where, b, provider));
+        query = query.where((b) => buildWhere(where, b, provider, mapper));
       }
       return query.compile();
     },
 
     create(table: AnyTable, values: Record<string, unknown>): CompiledQuery {
       const encodedValues = encodeValues(values, table, true, provider);
-      const processedValues = processReferenceSubqueries(encodedValues, kysely);
-      const insert = kysely.insertInto(table.name).values(processedValues);
+      const processedValues = processReferenceSubqueries(encodedValues, kysely, mapper);
+      const insert = kysely.insertInto(getTableName(table)).values(processedValues);
 
       if (provider === "mssql") {
         return (
@@ -425,7 +446,9 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       }
 
       if (provider === "postgresql" || provider === "sqlite") {
-        return insert.returning(mapSelect(true, table)).compile();
+        return insert
+          .returning(mapSelect(true, table, { tableName: getTableName(table) }))
+          .compile();
       }
 
       // For MySQL/other providers, return the insert query
@@ -436,11 +459,11 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       table: T,
       v: SimplifyFindOptions<FindManyOptions<T>>,
     ): CompiledQuery {
-      let query = kysely.selectFrom(table.name);
+      let query = kysely.selectFrom(getTableName(table));
 
       const where = v.where;
       if (where) {
-        query = query.where((eb) => buildWhere(where, eb, provider));
+        query = query.where((eb) => buildWhere(where, eb, provider, mapper));
       }
 
       if (v.offset !== undefined) {
@@ -453,7 +476,7 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
 
       if (v.orderBy) {
         for (const [col, mode] of v.orderBy) {
-          query = query.orderBy(fullSQLName(col), mode);
+          query = query.orderBy(fullSQLName(col, mapper), mode);
         }
       }
 
@@ -488,7 +511,7 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
             }),
           );
 
-          query = query.leftJoin(`${targetTable.name} as ${joinName}`, (b) =>
+          query = query.leftJoin(`${getTableName(targetTable)} as ${joinName}`, (b) =>
             b.on((eb) => {
               const conditions = [];
               for (const [left, right] of relation.on) {
@@ -507,7 +530,7 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
               }
 
               if (joinOptions.where) {
-                conditions.push(buildWhere(joinOptions.where, eb, provider));
+                conditions.push(buildWhere(joinOptions.where, eb, provider, mapper));
               }
 
               return eb.and(conditions);
@@ -519,10 +542,12 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
         }
       };
 
-      processJoins(v.join, table, table.name);
+      processJoins(v.join, table, getTableName(table));
 
       const compiledSelect = selectBuilder.compile();
-      mappedSelect.push(...mapSelect(compiledSelect.result, table));
+      mappedSelect.push(
+        ...mapSelect(compiledSelect.result, table, { tableName: getTableName(table) }),
+      );
 
       return query.select(mappedSelect).compile();
     },
@@ -535,26 +560,26 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       },
     ): CompiledQuery {
       const encoded = encodeValues(v.set, table, false, provider);
-      const processed = processReferenceSubqueries(encoded, kysely);
+      const processed = processReferenceSubqueries(encoded, kysely, mapper);
 
       // Automatically increment _version for optimistic concurrency control
       const versionCol = table.getVersionColumn();
       // Safe cast: we're building a SQL expression for incrementing the version
       processed[versionCol.name] = sql.raw(`COALESCE(${versionCol.name}, 0) + 1`) as unknown;
 
-      let query = kysely.updateTable(table.name).set(processed);
+      let query = kysely.updateTable(getTableName(table)).set(processed);
       const { where } = v;
       if (where) {
-        query = query.where((eb) => buildWhere(where, eb, provider));
+        query = query.where((eb) => buildWhere(where, eb, provider, mapper));
       }
       return query.compile();
     },
 
     upsertCheck(table: AnyTable, where: Condition | undefined): CompiledQuery {
       const idColumn = table.getIdColumn();
-      let query = kysely.selectFrom(table.name).select([`${idColumn.name} as id`]);
+      let query = kysely.selectFrom(getTableName(table)).select([`${idColumn.name} as id`]);
       if (where) {
-        query = query.where((b) => buildWhere(where, b, provider));
+        query = query.where((b) => buildWhere(where, b, provider, mapper));
       }
       return query.limit(1).compile();
     },
@@ -566,13 +591,13 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
       top?: boolean,
     ): CompiledQuery {
       const encoded = encodeValues(update, table, false, provider);
-      const processed = processReferenceSubqueries(encoded, kysely);
-      let query = kysely.updateTable(table.name).set(processed);
+      const processed = processReferenceSubqueries(encoded, kysely, mapper);
+      let query = kysely.updateTable(getTableName(table)).set(processed);
       if (top) {
         query = query.top(1);
       }
       if (where) {
-        query = query.where((b) => buildWhere(where, b, provider));
+        query = query.where((b) => buildWhere(where, b, provider, mapper));
       }
       return query.compile();
     },
@@ -580,20 +605,26 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
     upsertUpdateById(table: AnyTable, update: Record<string, unknown>, id: unknown): CompiledQuery {
       const idColumn = table.getIdColumn();
       const encoded = encodeValues(update, table, false, provider);
-      const processed = processReferenceSubqueries(encoded, kysely);
-      return kysely.updateTable(table.name).set(processed).where(idColumn.name, "=", id).compile();
+      const processed = processReferenceSubqueries(encoded, kysely, mapper);
+      return kysely
+        .updateTable(getTableName(table))
+        .set(processed)
+        .where(idColumn.name, "=", id)
+        .compile();
     },
 
     createMany(table: AnyTable, values: Record<string, unknown>[]): CompiledQuery {
       const encodedValues = values.map((v) => encodeValues(v, table, true, provider));
-      const processedValues = encodedValues.map((v) => processReferenceSubqueries(v, kysely));
-      return kysely.insertInto(table.name).values(processedValues).compile();
+      const processedValues = encodedValues.map((v) =>
+        processReferenceSubqueries(v, kysely, mapper),
+      );
+      return kysely.insertInto(getTableName(table)).values(processedValues).compile();
     },
 
     deleteMany(table: AnyTable, { where }: { where?: Condition }): CompiledQuery {
-      let query = kysely.deleteFrom(table.name);
+      let query = kysely.deleteFrom(getTableName(table));
       if (where) {
-        query = query.where((eb) => buildWhere(where, eb, provider));
+        query = query.where((eb) => buildWhere(where, eb, provider, mapper));
       }
       return query.compile();
     },
@@ -601,8 +632,8 @@ export function createKyselyQueryBuilder(kysely: Kysely<any>, provider: SQLProvi
     findById(table: AnyTable, idValue: unknown): CompiledQuery {
       const idColumn = table.getIdColumn();
       return kysely
-        .selectFrom(table.name)
-        .select(mapSelect(true, table))
+        .selectFrom(getTableName(table))
+        .select(mapSelect(true, table, { tableName: getTableName(table) }))
         .where(idColumn.name, "=", idValue)
         .limit(1)
         .compile();

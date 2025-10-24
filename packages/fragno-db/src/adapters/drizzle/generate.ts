@@ -5,13 +5,11 @@ import {
   type AnySchema,
   type AnyTable,
   InternalIdColumn,
-  schema,
-  idColumn,
-  column,
 } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
 import { createTableNameMapper } from "./shared";
+import { settingsSchema, SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -524,6 +522,9 @@ function generateFragmentSchemaExport(schema: AnySchema, namespace: string): str
     entries.push(`  ${table.ormName}: ${physicalExportName}`);
   }
 
+  // Add schema version as a number
+  entries.push(`  schemaVersion: ${schema.version}`);
+
   const exportName = namespace ? `${sanitizeNamespace(namespace)}_schema` : "_schema";
 
   return `export const ${exportName} = {\n${entries.join(",\n")}\n}`;
@@ -547,19 +548,11 @@ export interface GenerateSchemaOptions {
  * Generate a settings table for storing fragment versions
  */
 function generateSettingsTable(ctx: GeneratorContext): string {
-  // Create a Fragno schema for the settings table
-  const settingsSchema = schema((s) => {
-    return s.addTable("fragno_db_settings", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("key", column("string"))
-        .addColumn("value", column("string"))
-        .createIndex("unique_key", ["key"], { unique: true });
-    });
-  });
+  // Use centralized settings schema
 
   // Extract the table from the schema
-  const settingsTable = settingsSchema.tables.fragno_db_settings;
+  const settingsTable =
+    settingsSchema.tables[SETTINGS_TABLE_NAME as keyof typeof settingsSchema.tables];
 
   // Generate the table using the existing generateTable function
   const customTypes: string[] = [];
@@ -579,11 +572,14 @@ export function generateSchema(
   const sections: string[] = [];
 
   // Generate settings table first
+  sections.push("");
   sections.push("// ============================================================================");
   sections.push("// Settings Table (shared across all fragments)");
   sections.push("// ============================================================================");
   sections.push("");
   sections.push(generateSettingsTable(ctx));
+  sections.push("");
+  sections.push(`export const fragnoDbSettingSchemaVersion = ${settingsSchema.version};`);
 
   // Generate each fragment's tables
   for (const { namespace, schema } of fragments) {

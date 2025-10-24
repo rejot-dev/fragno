@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { ExtractPathParams } from "./internal/path";
 import { FragnoApiValidationError, type HTTPMethod } from "./api";
+import type { MutableRequestState } from "./mutable-request-state";
 
 export type RequestBodyType =
   | unknown // JSON
@@ -17,6 +18,7 @@ export class RequestInputContext<
   readonly #method: string;
   readonly #pathParams: ExtractPathParams<TPath>;
   readonly #searchParams: URLSearchParams;
+  readonly #headers: Headers;
   readonly #body: RequestBodyType;
   readonly #inputSchema: TInputSchema | undefined;
   readonly #shouldValidateInput: boolean;
@@ -26,6 +28,7 @@ export class RequestInputContext<
     method: string;
     pathParams: ExtractPathParams<TPath>;
     searchParams: URLSearchParams;
+    headers: Headers;
     body: RequestBodyType;
 
     request?: Request;
@@ -36,6 +39,7 @@ export class RequestInputContext<
     this.#method = config.method;
     this.#pathParams = config.pathParams;
     this.#searchParams = config.searchParams;
+    this.#headers = config.headers;
     this.#body = config.body;
     this.#inputSchema = config.inputSchema;
     this.#shouldValidateInput = config.shouldValidateInput ?? true;
@@ -54,22 +58,16 @@ export class RequestInputContext<
     pathParams: ExtractPathParams<TPath>;
     inputSchema?: TInputSchema;
     shouldValidateInput?: boolean;
+    state: MutableRequestState;
   }): Promise<RequestInputContext<TPath, TInputSchema>> {
-    const url = new URL(config.request.url);
-
-    // Clone the request to avoid consuming the body stream
-    // TODO: Probably we should just cache the result instead
-    const request = config.request.clone();
-
-    // TODO: Support other body types other than json
-    const json = request.body instanceof ReadableStream ? await request.json() : undefined;
-
+    // Use the mutable state (potentially modified by middleware)
     return new RequestInputContext({
       method: config.method,
       path: config.path,
-      pathParams: config.pathParams,
-      searchParams: url.searchParams,
-      body: json,
+      pathParams: config.state.pathParams as ExtractPathParams<TPath>,
+      searchParams: config.state.searchParams,
+      headers: config.state.headers,
+      body: config.state.body,
       inputSchema: config.inputSchema,
       shouldValidateInput: config.shouldValidateInput,
     });
@@ -88,12 +86,14 @@ export class RequestInputContext<
           path: TPath;
           pathParams: ExtractPathParams<TPath>;
           searchParams?: URLSearchParams;
+          headers?: Headers;
         }
       | {
           method: Exclude<HTTPMethod, "GET">;
           path: TPath;
           pathParams: ExtractPathParams<TPath>;
           searchParams?: URLSearchParams;
+          headers?: Headers;
           body: RequestBodyType;
           inputSchema?: TInputSchema;
         },
@@ -103,13 +103,13 @@ export class RequestInputContext<
       path: config.path,
       pathParams: config.pathParams,
       searchParams: config.searchParams ?? new URLSearchParams(),
+      headers: config.headers ?? new Headers(),
       body: "body" in config ? config.body : undefined,
       inputSchema: "inputSchema" in config ? config.inputSchema : undefined,
       shouldValidateInput: false, // No input validation in SSR context
     });
   }
 
-  // TODO(Wilco): We should support reading/modifying headers here.
   /**
    * The HTTP method as string (e.g., `GET`, `POST`)
    */
@@ -136,6 +136,13 @@ export class RequestInputContext<
    */
   get query(): URLSearchParams {
     return this.#searchParams;
+  }
+  /**
+   * [Headers](https://developer.mozilla.org/en-US/docs/Web/API/Headers) object for request headers
+   * @remarks `Headers`
+   */
+  get headers(): Headers {
+    return this.#headers;
   }
   // TODO: Should probably remove this
   /**

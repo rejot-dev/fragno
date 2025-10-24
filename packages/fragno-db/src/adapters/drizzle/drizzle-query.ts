@@ -5,13 +5,8 @@ import type { CompiledMutation, UOWExecutor } from "../../query/unit-of-work";
 import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import { parseDrizzle, type TableNameMapper } from "./shared";
+import { parseDrizzle, type DrizzleResult, type TableNameMapper } from "./shared";
 import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
-
-export interface DrizzleResult {
-  rows: Record<string, unknown>[];
-  affectedRows: number;
-}
 
 /**
  * Configuration options for creating a Drizzle Unit of Work

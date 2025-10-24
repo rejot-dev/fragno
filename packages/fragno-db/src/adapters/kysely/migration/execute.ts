@@ -16,13 +16,14 @@ import {
 import type { SQLProvider } from "../../../shared/providers";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { KyselyConfig } from "../kysely-adapter";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type KyselyAny = Kysely<any>;
+import type { TableNameMapper } from "../kysely-shared";
+import { SETTINGS_TABLE_NAME } from "../../../shared/settings-schema";
 
 export type ExecuteNode = Compilable & {
   execute(): Promise<unknown>;
 };
+
+type KyselyAny = Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const errors = {
   IdColumnUpdate:
@@ -204,11 +205,23 @@ export function execute(
   operation: MigrationOperation,
   config: KyselyConfig,
   onCustomNode: (op: CustomOperation) => ExecuteNode | ExecuteNode[],
+  mapper?: TableNameMapper,
 ): ExecuteNode | ExecuteNode[] {
   const { db, provider } = config;
 
+  // Settings table is never namespaced
+  const getTableName = (tableName: string) =>
+    tableName === SETTINGS_TABLE_NAME
+      ? tableName
+      : mapper
+        ? mapper.toPhysical(tableName)
+        : tableName;
+
   function createTable(tableName: string, columns: ColumnInfo[]) {
-    let builder = db.schema.createTable(tableName) as CreateTableBuilder<string, string>;
+    let builder = db.schema.createTable(getTableName(tableName)) as CreateTableBuilder<
+      string,
+      string
+    >;
 
     // Add columns from the column info array
     for (const columnInfo of columns) {
@@ -229,22 +242,24 @@ export function execute(
       if (provider === "mssql") {
         return rawToNode(
           db,
-          sql`EXEC sp_rename ${sql.lit(operation.from)}, ${sql.lit(operation.to)}`,
+          sql`EXEC sp_rename ${sql.lit(getTableName(operation.from))}, ${sql.lit(getTableName(operation.to))}`,
         );
       }
 
-      return db.schema.alterTable(operation.from).renameTo(operation.to);
+      return db.schema
+        .alterTable(getTableName(operation.from))
+        .renameTo(getTableName(operation.to));
     case "alter-table": {
       const results: ExecuteNode[] = [];
 
       for (const op of operation.value) {
-        results.push(...executeColumn(operation.name, op, config));
+        results.push(...executeColumn(getTableName(operation.name), op, config));
       }
 
       return results;
     }
     case "drop-table":
-      return db.schema.dropTable(operation.name);
+      return db.schema.dropTable(getTableName(operation.name));
     case "custom":
       return onCustomNode(operation);
     case "add-foreign-key": {
@@ -256,11 +271,11 @@ export function execute(
       const action = getForeignKeyAction(provider);
 
       return db.schema
-        .alterTable(table)
+        .alterTable(getTableName(table))
         .addForeignKeyConstraint(
           value.name,
           value.columns,
-          value.referencedTable,
+          getTableName(value.referencedTable),
           value.referencedColumns,
           (b) => b.onUpdate(action).onDelete(action),
         );
@@ -271,7 +286,7 @@ export function execute(
       }
 
       const { table, name } = operation;
-      let query = db.schema.alterTable(table).dropConstraint(name);
+      let query = db.schema.alterTable(getTableName(table)).dropConstraint(name);
 
       // MySQL doesn't support IF EXISTS for dropping constraints
       if (provider !== "mysql") {
@@ -282,12 +297,21 @@ export function execute(
     }
     case "add-index": {
       if (operation.unique) {
-        return createUniqueIndex(db, operation.name, operation.table, operation.columns, provider);
+        return createUniqueIndex(
+          db,
+          operation.name,
+          getTableName(operation.table),
+          operation.columns,
+          provider,
+        );
       }
-      return db.schema.createIndex(operation.name).on(operation.table).columns(operation.columns);
+      return db.schema
+        .createIndex(operation.name)
+        .on(getTableName(operation.table))
+        .columns(operation.columns);
     }
     case "drop-index": {
-      return dropUniqueIndex(db, operation.name, operation.table, provider);
+      return dropUniqueIndex(db, operation.name, getTableName(operation.table), provider);
     }
   }
 }

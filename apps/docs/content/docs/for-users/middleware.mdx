@@ -43,11 +43,6 @@ export function createExampleFragmentInstance() {
 }
 ```
 
-<Callout type="warn" title="Modifying the Request">
-  Request bodies and query parameters currently cannot be modified in middleware. See [Issue
-  #19](https://github.com/rejot-dev/fragno/issues/19).
-</Callout>
-
 ## Route-specific Usage
 
 `ifMatchesRoute` can be used to execute middleware only for specific routes. It has full type safety
@@ -83,6 +78,36 @@ export function createExampleFragmentInstance() {
     if (deleteResponse) {
       return deleteResponse;
     }
+  });
+}
+```
+
+## Modifying Requests
+
+Middleware can modify requests before they reach route handlers, including query parameters, path
+parameters, request body, and headers:
+
+```typescript title="lib/example-fragment-server.ts"
+export function createExampleFragmentInstance() {
+  return createExampleFragment({}).withMiddleware(async ({ ifMatchesRoute, requestState }) => {
+    await ifMatchesRoute("POST", "/users/:id", async ({ query, pathParams, input, headers }) => {
+      // Modify query parameters
+      query.set("role", "admin");
+
+      // Modify path parameters
+      pathParams.id = pathParams.id.toLowerCase();
+
+      // Modify headers
+      headers.set("X-Custom-Header", "middleware-value");
+
+      // Modify request body
+      const body = await input.valid();
+      requestState.setBody({
+        ...body,
+        createdBy: "system",
+        timestamp: Date.now(),
+      });
+    });
   });
 }
 ```
