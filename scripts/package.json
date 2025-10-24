@@ -6,7 +6,9 @@
   "scripts": {
     "types:check": "tsc --noEmit",
     "simplify-svg": "node --import tsx simplify-svg-colors.ts",
-    "generate-gallery": "node --import tsx generate-gallery.ts"
+    "generate-gallery": "node --import tsx generate-gallery.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "dependencies": {
     "commander": "^12.1.0",
@@ -14,9 +16,12 @@
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
     "@types/commander": "^2.12.5",
     "@types/culori": "^2.1.1",
     "@types/node": "^24.5.2",
-    "typescript": "^5.8.3"
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   }
 }

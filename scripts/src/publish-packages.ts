@@ -124,7 +124,8 @@ async function publishPackage(
     }
 
     const dryRunFlag = isDryRun ? "--dry-run" : "";
-    const command = `npm publish --access ${access} --tag ${tag} ${dryRunFlag}`.trim();
+    const command =
+      `pnpm publish --access ${access} --tag ${tag} ${dryRunFlag} --no-git-checks`.trim();
 
     try {
       execSync(command, {

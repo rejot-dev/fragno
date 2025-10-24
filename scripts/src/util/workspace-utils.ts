@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { join, relative } from "node:path";
 
 export type WorkspacePackage = {
@@ -16,37 +16,32 @@ export type PackageJson = {
 };
 
 export function getAllWorkspacePackages(): WorkspacePackage[] {
-  const packageJson = JSON.parse(
-    readFileSync(join(process.cwd(), "package.json"), "utf-8"),
-  ) as PackageJson;
-  const workspaces = packageJson.workspaces || [];
+  const output = execSync("pnpm list -r --only-projects --json", {
+    encoding: "utf-8",
+    cwd: process.cwd(),
+  });
 
-  const packages: WorkspacePackage[] = [];
-  for (const pattern of workspaces) {
-    // Simple glob handling for basic patterns like "packages/*" and "apps/*"
-    const [dir] = pattern.split("/*");
-    if (existsSync(dir)) {
-      const items = readdirSync(dir).filter((item) => existsSync(join(dir, item, "package.json")));
+  const pnpmPackages = JSON.parse(output) as Array<{
+    name: string;
+    version?: string;
+    path: string;
+    private?: boolean;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    workspaces?: string[];
+  }>;
 
-      for (const item of items) {
-        const path = join(dir, item);
-        const pkg = JSON.parse(readFileSync(join(path, "package.json"), "utf-8"));
-        packages.push({
-          path: relative(process.cwd(), path),
-          pkgData: {
-            name: pkg.name,
-            private: "private" in pkg ? pkg.private : false,
-            dependencies: pkg.dependencies,
-            devDependencies: pkg.devDependencies,
-            workspaces: pkg.workspaces,
-            version: pkg.version,
-          },
-        });
-      }
-    }
-  }
-
-  return packages;
+  return pnpmPackages.map((pkg) => ({
+    path: relative(process.cwd(), pkg.path),
+    pkgData: {
+      name: pkg.name,
+      private: pkg.private ?? false,
+      dependencies: pkg.dependencies,
+      devDependencies: pkg.devDependencies,
+      workspaces: pkg.workspaces,
+      version: pkg.version,
+    },
+  }));
 }
 
 export function getNonPrivatePackages(): WorkspacePackage[] {
@@ -65,4 +60,11 @@ export function findPackageDirectory(packageName: string): string | null {
   }
 
   return join(process.cwd(), packageInfo.path);
+}
+
+if (import.meta.main) {
+  console.log({
+    getNonPrivatePackages: getNonPrivatePackages(),
+    getAllWorkspacePackages: getAllWorkspacePackages(),
+  });
 }

@@ -40,6 +40,11 @@ jobs:
       - name: Build Publishable Packages
         run: pnpm exec turbo run build --filter='./packages/*' --filter='./apps/*' --filter='!./apps/docs/*'
 
+      - name: Setup NPM authentication
+        run: pnpm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
@@ -48,4 +53,4 @@ jobs:
           publish: pnpm run ci:publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
