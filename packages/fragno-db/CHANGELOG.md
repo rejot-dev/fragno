@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.3
+
+### Patch Changes
+
+- 0723f84: Fix transactions for Drizzle sync SQLite dialects
+
 ## 0.1.2
 
 ### Patch Changes
