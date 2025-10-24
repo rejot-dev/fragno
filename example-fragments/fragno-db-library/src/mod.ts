@@ -17,7 +17,10 @@ export const commentSchema = schema((s) => {
         .addColumn("id", idColumn())
         .addColumn("title", column("string"))
         .addColumn("content", column("string"))
-        .addColumn("createdAt", column("timestamp").defaultTo$("now")) // FIXME: Should support database time
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
         .addColumn("postReference", column("string")) // FIXME: Support external references
         .addColumn("userReference", column("string"))
         .addColumn("parentId", referenceColumn().nullable())

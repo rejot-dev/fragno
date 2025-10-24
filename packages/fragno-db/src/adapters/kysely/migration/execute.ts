@@ -394,12 +394,19 @@ function defaultValueToDB(column: ColumnInfo, provider: SQLProvider) {
     return undefined;
   }
 
-  if ("runtime" in value && value.runtime === "now") {
+  // Static default values: defaultTo(value)
+  if ("value" in value && value.value !== undefined) {
+    return sql.lit(value.value);
+  }
+
+  // Database-level special functions: defaultTo(b => b.now())
+  if ("dbSpecial" in value && value.dbSpecial === "now") {
     return sql`CURRENT_TIMESTAMP`;
   }
 
-  if ("value" in value && value.value !== undefined) {
-    return sql.lit(value.value);
+  // Runtime defaults (defaultTo$) are NOT generated in SQL - they're handled in application code
+  if ("runtime" in value) {
+    return undefined;
   }
 
   return undefined;

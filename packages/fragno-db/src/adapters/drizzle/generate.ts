@@ -265,6 +265,7 @@ function generateColumnDefinition(
   // Default values
   if (column.default) {
     if ("value" in column.default) {
+      // Static defaults: defaultTo(value)
       let value: string;
       if (typeof column.default.value === "bigint") {
         ctx.imports.addImport("sql", "drizzle-orm");
@@ -273,12 +274,22 @@ function generateColumnDefinition(
         value = JSON.stringify(column.default.value);
       }
       parts.push(`default(${value})`);
-    } else if (column.default.runtime === "auto") {
-      const idGen = ctx.idGeneratorImport ?? { name: "createId", from: "@fragno-dev/db/id" };
-      ctx.imports.addImport(idGen.name, idGen.from);
-      parts.push(`$defaultFn(() => ${idGen.name}())`);
-    } else if (column.default.runtime === "now") {
-      parts.push("defaultNow()");
+    } else if ("dbSpecial" in column.default) {
+      // Database-level special functions: defaultTo(b => b.now())
+      if (column.default.dbSpecial === "now") {
+        parts.push("defaultNow()");
+      }
+    } else if ("runtime" in column.default) {
+      // Runtime defaults: defaultTo$()
+      if (column.default.runtime === "cuid") {
+        const idGen = ctx.idGeneratorImport ?? { name: "createId", from: "@fragno-dev/db/id" };
+        ctx.imports.addImport(idGen.name, idGen.from);
+        parts.push(`$defaultFn(() => ${idGen.name}())`);
+      } else if (column.default.runtime === "now") {
+        // Runtime-generated timestamp (not database-level)
+        parts.push("$defaultFn(() => new Date())");
+      }
+      // Note: Custom functions in defaultTo$(() => ...) are not supported in schema generation
     }
   }
 

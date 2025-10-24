@@ -17,7 +17,10 @@ export const commentSchema = schema((s) => {
     return t
       .addColumn("id", idColumn())
       .addColumn("content", column("string"))
-      .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+      .addColumn(
+        "createdAt",
+        column("timestamp").defaultTo((b) => b.now()),
+      )
       .addColumn("userId", column("string"))
       .addColumn("postId", column("string"));
   });
@@ -56,11 +59,52 @@ referenceColumn(); // Foreign key reference (bigint)
 column("string")
   .nullable() // Allow NULL values
   .defaultTo("active"); // Database-level static default value
-
-column("timestamp").defaultTo$("now"); // Special default function: database-generated timestamp
 ```
 
-Currently only the custom function `defaultTo$("now")` is supported.
+## Default Values
+
+### `defaultTo()` - Database-Level
+
+Database generates the default. Falls back to application code if unsupported.
+
+```typescript
+// Static values
+column("string").defaultTo("active");
+column("integer").defaultTo(0);
+column("boolean").defaultTo(true);
+
+// Special functions
+column("timestamp").defaultTo((b) => b.now()); // DEFAULT NOW() or equivalent
+```
+
+### `defaultTo$()` - Runtime
+
+Application generates the default.
+
+```typescript
+column("string").defaultTo$((b) => b.cuid()); // Generate CUID
+column("timestamp").defaultTo$((b) => b.now()); // Generate timestamp
+column("integer").defaultTo$(42); // Static literal
+column("integer").defaultTo$((b) => Math.random()); // Custom logic
+```
+
+**Example:**
+
+```typescript
+.addTable("posts", (t) => {
+  return t
+    // idColumn() automatically creates a runtime CUID and database-level serial id
+    .addColumn("id", idColumn())
+    // database-level static default value "draft"
+    .addColumn("status", column("string").defaultTo("draft"))
+    // database-level timestamp default value
+    .addColumn("createdAt", column("timestamp").defaultTo((b) => b.now()))
+    // runtime CUID default value
+    .addColumn("sessionId", column("string").defaultTo$((b) => b.cuid()));
+    // runtime timestamp default value
+    .addColumn("updatedAt", column("timestamp").defaultTo$((b) => b.now()));
+});
+```
 
 ### Indexes
 

@@ -168,7 +168,7 @@ describe("execute() - MySQL", () => {
             type: "timestamp",
             isNullable: false,
             role: "regular",
-            default: { runtime: "now" },
+            default: { dbSpecial: "now" },
           },
         ],
       };
@@ -679,7 +679,7 @@ describe("execute() - MySQL", () => {
               type: "timestamp",
               isNullable: false,
               role: "regular",
-              default: { runtime: "now" },
+              default: { dbSpecial: "now" },
             },
             updateDataType: false,
             updateNullable: false,

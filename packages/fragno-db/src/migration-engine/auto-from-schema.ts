@@ -71,15 +71,13 @@ export function generateMigrationFromSchema(
             isNullable: col.isNullable,
             role: col.role,
             default: col.default
-              ? {
-                  value: "value" in col.default ? col.default.value : undefined,
-                  runtime:
-                    "runtime" in col.default
-                      ? typeof col.default.runtime === "string"
-                        ? col.default.runtime
-                        : undefined
-                      : undefined,
-                }
+              ? "value" in col.default
+                ? { value: col.default.value }
+                : "dbSpecial" in col.default
+                  ? { dbSpecial: col.default.dbSpecial }
+                  : "runtime" in col.default && typeof col.default.runtime === "string"
+                    ? { runtime: col.default.runtime }
+                    : undefined
               : undefined,
           });
         }
@@ -131,15 +129,13 @@ export function generateMigrationFromSchema(
                 isNullable: col.isNullable,
                 role: col.role,
                 default: col.default
-                  ? {
-                      value: "value" in col.default ? col.default.value : undefined,
-                      runtime:
-                        "runtime" in col.default
-                          ? typeof col.default.runtime === "string"
-                            ? col.default.runtime
-                            : undefined
-                          : undefined,
-                    }
+                  ? "value" in col.default
+                    ? { value: col.default.value }
+                    : "dbSpecial" in col.default
+                      ? { dbSpecial: col.default.dbSpecial }
+                      : "runtime" in col.default && typeof col.default.runtime === "string"
+                        ? { runtime: col.default.runtime }
+                        : undefined
                   : undefined,
               },
             };

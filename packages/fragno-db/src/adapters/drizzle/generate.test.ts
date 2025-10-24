@@ -266,9 +266,63 @@ describe("generateSchema", () => {
     it("should handle runtime default values", () => {
       const timestampSchema = schema((s) => {
         return s.addTable("events", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("createdAt", column("timestamp").defaultTo$("now"));
+          return t.addColumn("id", idColumn()).addColumn(
+            "createdAt",
+            column("timestamp").defaultTo$((b) => b.now()),
+          );
+        });
+      });
+
+      const generated = generateSchema(
+        [{ namespace: "test", schema: timestampSchema }],
+        "postgresql",
+      );
+      expect(generated).toMatchInlineSnapshot(`
+        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, timestamp } from "drizzle-orm/pg-core"
+        import { createId } from "@fragno-dev/db/id"
+
+        // ============================================================================
+        // Settings Table (shared across all fragments)
+        // ============================================================================
+
+        export const fragno_db_settings = pgTable("fragno_db_settings", {
+          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          key: text("key").notNull(),
+          value: text("value").notNull(),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _version: integer("_version").notNull().default(0)
+        }, (table) => [
+          uniqueIndex("unique_key").on(table.key)
+        ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
+
+        // ============================================================================
+        // Fragment: test
+        // ============================================================================
+
+        export const events_test = pgTable("events_test", {
+          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _version: integer("_version").notNull().default(0)
+        })
+
+        export const test_schema = {
+          "events_test": events_test,
+          events: events_test,
+          schemaVersion: 1
+        }"
+      `);
+    });
+
+    it("should handle database-level default values", () => {
+      const timestampSchema = schema((s) => {
+        return s.addTable("events", (t) => {
+          return t.addColumn("id", idColumn()).addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          );
         });
       });
 
