@@ -5,6 +5,7 @@ import { buildFindOptions } from "../../query/orm/orm";
 import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import type { ConditionBuilder, Condition } from "../../query/condition-builder";
+import type { TableNameMapper } from "./kysely-shared";
 
 /**
  * Internal query compiler interface for Kysely
@@ -27,9 +28,10 @@ export interface KyselyQueryCompiler {
 export function createKyselyQueryCompiler<T extends AnySchema>(
   schema: T,
   config: KyselyConfig,
+  mapper?: TableNameMapper,
 ): KyselyQueryCompiler {
   const { db: kysely, provider } = config;
-  const queryBuilder = createKyselyQueryBuilder(kysely, provider);
+  const queryBuilder = createKyselyQueryBuilder(kysely, provider, mapper);
 
   function toTable(name: unknown): AnyTable {
     const table = schema.tables[name as string];

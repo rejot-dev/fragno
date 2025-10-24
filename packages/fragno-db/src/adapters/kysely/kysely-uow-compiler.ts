@@ -12,6 +12,7 @@ import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { AnySelectClause } from "../../query/query";
+import type { TableNameMapper } from "./kysely-shared";
 
 /**
  * Create a Kysely-specific Unit of Work compiler
@@ -21,14 +22,16 @@ import type { AnySelectClause } from "../../query/query";
  *
  * @param schema - The database schema
  * @param config - Kysely configuration
+ * @param mapper - Optional table name mapper for namespace prefixing
  * @returns A UOWCompiler instance for Kysely
  */
 export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   schema: TSchema,
   config: KyselyConfig,
+  mapper?: TableNameMapper,
 ): UOWCompiler<TSchema, CompiledQuery> {
-  const queryCompiler = createKyselyQueryCompiler(schema, config);
-  const queryBuilder = createKyselyQueryBuilder(config.db, config.provider);
+  const queryCompiler = createKyselyQueryCompiler(schema, config, mapper);
+  const queryBuilder = createKyselyQueryBuilder(config.db, config.provider, mapper);
   const { provider } = config;
 
   function toTable(name: unknown) {
