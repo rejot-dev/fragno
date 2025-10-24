@@ -75,12 +75,14 @@ export const commentCommand: Command = {
   run: () => {
     console.log("Comment management commands");
     console.log("");
-    console.log("Usage: bun run src/mod.ts comment <command> [options]");
+    console.log("Usage: node --import tsx src/mod.ts comment <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  create    Create a new comment");
     console.log("  list      List comments for a post");
     console.log("");
-    console.log("Run 'bun run src/mod.ts comment <command> --help' for more information.");
+    console.log(
+      "Run 'node --import tsx src/mod.ts comment <command> --help' for more information.",
+    );
   },
 };

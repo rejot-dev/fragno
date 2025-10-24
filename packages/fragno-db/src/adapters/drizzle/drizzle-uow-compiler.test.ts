@@ -953,7 +953,7 @@ describe("drizzle-uow-compiler", () => {
       return async () => {
         await cleanup();
       };
-    }, 15000);
+    }, 20000);
 
     function createNestedUOW(name?: string) {
       const compiler = createDrizzleUOWCompiler(nestedSchema, nestedConfig);

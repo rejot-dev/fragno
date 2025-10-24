@@ -26,10 +26,17 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
 
   async isConnectionHealthy(): Promise<boolean> {
     try {
-      const result = (await (this.#drizzleConfig.db as DBType).execute(
-        sql`SELECT 1 as healthy`,
-      )) as DrizzleResult;
-      return result.rows[0]["healthy"] === 1;
+      const result = await (this.#drizzleConfig.db as DBType).execute(sql`SELECT 1 as healthy`);
+
+      // Handle different result formats across providers
+      // PostgreSQL/MySQL: { rows: [...] }
+      // SQLite: array directly or { rows: [...] }
+      if (Array.isArray(result)) {
+        return result.length > 0 && result[0]["healthy"] === 1;
+      } else {
+        const drizzleResult = result as DrizzleResult;
+        return drizzleResult.rows[0]["healthy"] === 1;
+      }
     } catch {
       return false;
     }

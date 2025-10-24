@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node --import tsx
 
 import { Command } from "commander";
 import { rgb, oklch, lab, formatHex, differenceEuclidean, type Oklch, type Lab } from "culori";

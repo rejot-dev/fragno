@@ -187,7 +187,7 @@ export const postCommand: Command = {
   run: () => {
     console.log("Blog post management commands");
     console.log("");
-    console.log("Usage: bun run src/mod.ts post <command> [options]");
+    console.log("Usage: node --import tsx src/mod.ts post <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  create             Create a new blog post");
@@ -199,6 +199,6 @@ export const postCommand: Command = {
     console.log("  update             Update a blog post");
     console.log("  delete             Delete a blog post");
     console.log("");
-    console.log("Run 'bun run src/mod.ts post <command> --help' for more information.");
+    console.log("Run 'node --import tsx src/mod.ts post <command> --help' for more information.");
   },
 };

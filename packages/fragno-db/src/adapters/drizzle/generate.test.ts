@@ -201,7 +201,7 @@ describe("generateSchema", () => {
           id: text("id").notNull().$defaultFn(() => createId()),
           key: text("key").notNull(),
           value: text("value").notNull(),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
@@ -218,7 +218,7 @@ describe("generateSchema", () => {
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("idx_email_test").on(table.email),
@@ -231,7 +231,7 @@ describe("generateSchema", () => {
           content: text("content").notNull(),
           userId: blob("userId", { mode: "bigint" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
@@ -624,7 +624,7 @@ describe("generateSchema", () => {
           id: text("id").notNull().$defaultFn(() => createId()),
           key: text("key").notNull(),
           value: text("value").notNull(),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
@@ -639,7 +639,7 @@ describe("generateSchema", () => {
         export const users_test = sqliteTable("users_test", {
           id: text("id").notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
@@ -653,7 +653,7 @@ describe("generateSchema", () => {
           id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: blob("userId", { mode: "bigint" }).notNull(),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
@@ -1020,7 +1020,7 @@ describe("generateSchema", () => {
           id: text("id").notNull().$defaultFn(() => createId()),
           key: text("key").notNull(),
           value: text("value").notNull(),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
@@ -1036,7 +1036,7 @@ describe("generateSchema", () => {
           id: text("id").notNull().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: blob("parentId", { mode: "bigint" }),
-          _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           foreignKey({

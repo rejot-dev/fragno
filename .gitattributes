@@ -3,3 +3,4 @@ package-lock.json -diff
 deno.lock -diff
 bun.lockb -diff
 bun.lock -diff
+pnpm-lock.yaml -diff

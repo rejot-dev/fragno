@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "collect-json-reports": "bun src/scripts/collect-json-outputs.ts",
+    "collect-json-reports": "node --import tsx src/scripts/collect-json-outputs.ts",
     "merge-json-reports": "nyc merge coverage/raw coverage/merged/merged-coverage.json",
     "report": "nyc report -t coverage/merged --report-dir coverage/report --reporter=html --exclude-after-remap false && echo -e '\nopen ./coverage/report/index.html'"
   },

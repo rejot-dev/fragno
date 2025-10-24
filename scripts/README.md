@@ -18,7 +18,7 @@ strategies, with optional Tailwind CSS color mapping.
 
 ```bash
 cd scripts
-bun install
+pnpm install
 ```
 
 ## Usage
@@ -27,20 +27,20 @@ bun install
 
 ```bash
 # Basic usage with 8 color buckets using centroid method
-bun simplify-svg-colors.ts input.svg -o output.svg
+node --import tsx simplify-svg-colors.ts input.svg -o output.svg
 
 # Advanced usage with specific parameters
-bun simplify-svg-colors.ts input.svg -o output.svg -b 6 -m most-vibrant -s kmeans -t -f cool
+node --import tsx simplify-svg-colors.ts input.svg -o output.svg -b 6 -m most-vibrant -s kmeans -t -f cool
 ```
 
 ### Batch Variant Generation
 
 ```bash
 # Generate all default variants (48 files)
-bun simplify-svg-colors.ts input.svg --generate-variants -o ./output/
+node --import tsx simplify-svg-colors.ts input.svg --generate-variants -o ./output/
 
 # Generate variants with custom bucket counts
-bun simplify-svg-colors.ts input.svg --generate-variants --bucket-counts 4,8,16 -o ./variants/
+node --import tsx simplify-svg-colors.ts input.svg --generate-variants --bucket-counts 4,8,16 -o ./variants/
 ```
 
 ## Options
@@ -88,30 +88,30 @@ bun simplify-svg-colors.ts input.svg --generate-variants --bucket-counts 4,8,16 
 
 ```bash
 # Reduce to 5 colors using most frequent method
-bun simplify-svg-colors.ts logo.svg -o logo-simple.svg -b 5 -m most-frequent
+node --import tsx simplify-svg-colors.ts logo.svg -o logo-simple.svg -b 5 -m most-frequent
 
 # Use k-means clustering with vibrant color selection
-bun simplify-svg-colors.ts icon.svg -o icon-clustered.svg -b 8 -s kmeans -m most-vibrant
+node --import tsx simplify-svg-colors.ts icon.svg -o icon-clustered.svg -b 8 -s kmeans -m most-vibrant
 ```
 
 ### Tailwind Color Mapping
 
 ```bash
 # Map colors to warm Tailwind palette
-bun simplify-svg-colors.ts illustration.svg -o illustration-warm.svg -t -f warm
+node --import tsx simplify-svg-colors.ts illustration.svg -o illustration-warm.svg -t -f warm
 
 # Map to specific blue family with 4 buckets
-bun simplify-svg-colors.ts chart.svg -o chart-blue.svg -b 4 -t -f blue
+node --import tsx simplify-svg-colors.ts chart.svg -o chart-blue.svg -b 4 -t -f blue
 ```
 
 ### Batch Processing
 
 ```bash
 # Generate comprehensive variants for design exploration
-bun simplify-svg-colors.ts artwork.svg --generate-variants -o ./artwork-variants/
+node --import tsx simplify-svg-colors.ts artwork.svg --generate-variants -o ./artwork-variants/
 
 # Generate variants with specific configurations
-bun simplify-svg-colors.ts logo.svg --generate-variants --bucket-counts 3,6,12 -o ./logo-options/
+node --import tsx simplify-svg-colors.ts logo.svg --generate-variants --bucket-counts 3,6,12 -o ./logo-options/
 ```
 
 ## Output

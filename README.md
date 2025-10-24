@@ -26,9 +26,9 @@ A **Fragment** is a full-stack **library** that:
 Start building a full-stack library:
 
 ```bash
-bun add @fragno-dev/core
-# or
 npm install @fragno-dev/core
+# or
+pnpm add @fragno-dev/core
 ```
 
 Full documentation is available at [fragno.dev](https://fragno.dev/docs).
@@ -101,14 +101,14 @@ A Fragment is a full-stack library that works across different frameworks.
 
 ```bash
 # Create from template
-bun create fragno@latest
-# or
 npm create fragno@latest
+# or
+pnpm create fragno@latest
 
 # Add to existing package
-bun add @fragno-dev/core
-# or
 npm install @fragno-dev/core
+# or
+pnpm add @fragno-dev/core
 ```
 
 ### 1. Create a Fragment (Library)

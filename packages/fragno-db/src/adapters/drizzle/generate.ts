@@ -248,12 +248,18 @@ function generateColumnDefinition(
 
   // Primary key for internal ID
   if (column instanceof InternalIdColumn || column.role === "internal-id") {
-    parts.push("primaryKey()");
-
     // Auto-increment based on provider
     // Note: PostgreSQL uses bigserial/serial which handle auto-increment automatically
-    if (ctx.provider === "mysql" || ctx.provider === "sqlite") {
+    if (ctx.provider === "sqlite") {
+      // SQLite uses primaryKey({ autoIncrement: true })
+      parts.push("primaryKey({ autoIncrement: true })");
+    } else if (ctx.provider === "mysql") {
+      // MySQL uses primaryKey().autoincrement()
+      parts.push("primaryKey()");
       parts.push("autoincrement()");
+    } else {
+      // PostgreSQL just uses primaryKey()
+      parts.push("primaryKey()");
     }
   }
 

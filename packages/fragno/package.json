@@ -3,67 +3,56 @@
   "version": "0.1.2",
   "exports": {
     ".": {
-      "bun": "./src/mod.ts",
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./api": {
-      "bun": "./src/api/api.ts",
       "development": "./src/api/api.ts",
       "types": "./dist/api/api.d.ts",
       "default": "./dist/api/api.js"
     },
     "./api/fragment-builder": {
-      "bun": "./src/api/fragment-builder.ts",
       "development": "./src/api/fragment-builder.ts",
       "types": "./dist/api/fragment-builder.d.ts",
       "default": "./dist/api/fragment-builder.js"
     },
     "./api/fragment-instantiation": {
-      "bun": "./src/api/fragment-instantiation.ts",
       "development": "./src/api/fragment-instantiation.ts",
       "types": "./dist/api/fragment-instantiation.d.ts",
       "default": "./dist/api/fragment-instantiation.js"
     },
     "./client": {
-      "bun": "./src/client/client.ts",
       "development": "./src/client/client.ts",
       "types": "./dist/client/client.d.ts",
       "default": "./dist/client/client.js"
     },
     "./react": {
-      "bun": "./src/client/react.ts",
       "development": "./src/client/react.ts",
       "types": "./dist/client/react.d.ts",
       "default": "./dist/client/react.js"
     },
     "./vanilla": {
-      "bun": "./src/client/vanilla.ts",
       "development": "./src/client/vanilla.ts",
       "types": "./dist/client/vanilla.d.ts",
       "default": "./dist/client/vanilla.js"
     },
     "./vue": {
-      "bun": "./src/client/vue.ts",
       "development": "./src/client/vue.ts",
       "types": "./dist/client/vue.d.ts",
       "default": "./dist/client/vue.js"
     },
     "./svelte": {
-      "bun": "./src/client/client.svelte.ts",
       "development": "./src/client/client.svelte.ts",
       "types": "./dist/client/client.svelte.d.ts",
       "default": "./dist/client/client.svelte.js"
     },
     "./solid": {
-      "bun": "./src/client/solid.ts",
       "development": "./src/client/solid.ts",
       "types": "./dist/client/solid.d.ts",
       "default": "./dist/client/solid.js"
     },
     "./react-ssr": {
-      "bun": "./src/integrations/react-ssr.ts",
       "development": "./src/integrations/react-ssr.ts",
       "types": "./dist/integrations/react-ssr.d.ts",
       "default": "./dist/integrations/react-ssr.js"

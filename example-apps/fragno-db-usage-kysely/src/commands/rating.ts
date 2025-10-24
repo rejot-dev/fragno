@@ -75,13 +75,13 @@ export const ratingCommand: Command = {
   run: () => {
     console.log("Rating/upvote management commands");
     console.log("");
-    console.log("Usage: bun run src/mod.ts rating <command> [options]");
+    console.log("Usage: node --import tsx src/mod.ts rating <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  upvote      Add an upvote to a reference");
     console.log("  downvote    Add a downvote to a reference");
     console.log("  get         Get the current rating for a reference");
     console.log("");
-    console.log("Run 'bun run src/mod.ts rating <command> --help' for more information.");
+    console.log("Run 'node --import tsx src/mod.ts rating <command> --help' for more information.");
   },
 };

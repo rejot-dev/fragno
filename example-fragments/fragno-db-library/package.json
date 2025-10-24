@@ -3,13 +3,11 @@
   "private": true,
   "exports": {
     ".": {
-      "bun": "./src/mod.ts",
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./upvote": {
-      "bun": "./src/upvote.ts",
       "development": "./src/upvote.ts",
       "types": "./dist/upvote.d.ts",
       "default": "./dist/upvote.js"
@@ -31,6 +29,6 @@
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
-    "@types/node": "^20"
+    "@types/node": "^22"
   }
 }

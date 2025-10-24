@@ -4,61 +4,51 @@
   "type": "module",
   "exports": {
     ".": {
-      "bun": "./src/mod.ts",
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
     "./id": {
-      "bun": "./src/id.ts",
       "development": "./src/id.ts",
       "types": "./dist/id.d.ts",
       "default": "./dist/id.js"
     },
     "./schema": {
-      "bun": "./src/schema/create.ts",
       "development": "./src/schema/create.ts",
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"
     },
     "./query": {
-      "bun": "./src/query/query.ts",
       "development": "./src/query/query.ts",
       "types": "./dist/query/query.d.ts",
       "default": "./dist/query/query.js"
     },
     "./adapters/kysely": {
-      "bun": "./src/adapters/kysely/kysely-adapter.ts",
       "development": "./src/adapters/kysely/kysely-adapter.ts",
       "types": "./dist/adapters/kysely/kysely-adapter.d.ts",
       "default": "./dist/adapters/kysely/kysely-adapter.js"
     },
     "./adapters/drizzle": {
-      "bun": "./src/adapters/drizzle/drizzle-adapter.ts",
       "development": "./src/adapters/drizzle/drizzle-adapter.ts",
       "types": "./dist/adapters/drizzle/drizzle-adapter.d.ts",
       "default": "./dist/adapters/drizzle/drizzle-adapter.js"
     },
     "./unit-of-work": {
-      "bun": "./src/query/unit-of-work.ts",
       "development": "./src/query/unit-of-work.ts",
       "types": "./dist/query/unit-of-work.d.ts",
       "default": "./dist/query/unit-of-work.js"
     },
     "./cursor": {
-      "bun": "./src/query/cursor.ts",
       "development": "./src/query/cursor.ts",
       "types": "./dist/query/cursor.d.ts",
       "default": "./dist/query/cursor.js"
     },
     "./fragment": {
-      "bun": "./src/fragment.ts",
       "development": "./src/fragment.ts",
       "types": "./dist/fragment.d.ts",
       "default": "./dist/fragment.js"
     },
     "./generation-engine": {
-      "bun": "./src/migration-engine/generation-engine.ts",
       "development": "./src/migration-engine/generation-engine.ts",
       "types": "./dist/migration-engine/generation-engine.d.ts",
       "default": "./dist/migration-engine/generation-engine.js"
@@ -76,9 +66,10 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/bun": "^1.2.23",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
+    "better-sqlite3": "^12.4.1",
     "drizzle-kit": "^0.31.5",
     "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",

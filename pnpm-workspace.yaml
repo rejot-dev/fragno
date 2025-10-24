@@ -1,0 +1,7 @@
+packages:
+  - "example-apps/*"
+  - "example-fragments/*"
+  - "apps/*"
+  - "packages/*"
+  - "packages-private/*"
+  - "scripts"

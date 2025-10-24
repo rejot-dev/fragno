@@ -54,8 +54,8 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
         await expect(fs.access(agentFile)).resolves.toBeUndefined();
       });
 
-      test("installs", { timeout: 10000 }, async () => {
-        const { stdout } = await execAsync("bun install", {
+      test("installs", { timeout: 20000 }, async () => {
+        const { stdout } = await execAsync("pnpm install", {
           cwd: tempDir,
           encoding: "utf8",
         });
@@ -63,7 +63,7 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
       });
 
       test("compiles", { timeout: 30000 }, async () => {
-        const { stdout } = await execAsync("bun run types:check", {
+        const { stdout } = await execAsync("pnpm run types:check", {
           cwd: tempDir,
           encoding: "utf8",
         });
@@ -72,12 +72,12 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
       });
       /*
       FIXME: Skipping this test for rollup:
-        When running rollup directly through bun run build or npm run build the build succeeds,
+        When running rollup directly through pnpm run build or npm run build the build succeeds,
         but somehow when running through vitest the module resolution mechanism changes causing
         the build to fail.
       */
       test.skipIf(buildTool === "rollup")("builds", { timeout: 50000 }, async () => {
-        const result = await execAsync("bun run build", {
+        const result = await execAsync("pnpm run build", {
           cwd: tempDir,
           encoding: "utf8",
         });

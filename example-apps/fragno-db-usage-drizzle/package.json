@@ -1,9 +1,8 @@
 {
-  "name": "@fragno-dev/fragno-db-usage-drizze",
+  "name": "@fragno-dev/fragno-db-usage-drizzle",
   "private": true,
   "exports": {
     ".": {
-      "bun": "./src/mod.ts",
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
@@ -31,8 +30,7 @@
     "@fragno-dev/cli": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/bun": "^1.2.23",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
     "drizzle-kit": "^0.31.5",
     "gunshi": "^0.26.3",

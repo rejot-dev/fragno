@@ -9,7 +9,7 @@
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "types:check": "tsc --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "cf-typegen": "bun run types:generate"
+    "cf-typegen": "pnpm run types:generate"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",

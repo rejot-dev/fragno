@@ -29,16 +29,16 @@ web framework and Astro's static site generation capabilities.
 
 ```bash
 # Install dependencies
-bun install
+pnpm install
 
 # Start development server
-bun run dev
+pnpm run dev
 
 # Build for production
-bun run build
+pnpm run build
 
 # Preview production build
-bun run preview
+pnpm run preview
 ```
 
 ## Architecture

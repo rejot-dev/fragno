@@ -80,7 +80,7 @@ describe("DrizzleAdapter", () => {
         id: text("id").notNull().$defaultFn(() => createId()),
         key: text("key").notNull(),
         value: text("value").notNull(),
-        _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+        _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
         _version: integer("_version").notNull().default(0)
       }, (table) => [
         uniqueIndex("unique_key").on(table.key)
@@ -95,7 +95,7 @@ describe("DrizzleAdapter", () => {
       export const users_test = sqliteTable("users_test", {
         id: text("id").notNull().$defaultFn(() => createId()),
         name: text("name").notNull(),
-        _internalId: integer("_internalId").primaryKey().autoincrement().notNull(),
+        _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
         _version: integer("_version").notNull().default(0)
       })
 

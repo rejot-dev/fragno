@@ -247,7 +247,7 @@ Fragments require code splitting between client and server bundles using
 ### Type Checking
 
 ```bash
-bun run types:check
+pnpm run types:check
 ```
 
 ## Common Patterns

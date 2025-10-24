@@ -6,10 +6,10 @@ pre-commit:
   jobs:
     - name: prettier
       run:
-        sh -c 'bunx prettier --ignore-unknown --check "{staged_files}"; code=$?; bunx prettier
-        --ignore-unknown --write "{staged_files}"; exit $code'
+        sh -c 'pnpm exec prettier --ignore-unknown --check "{staged_files}"; code=$?; pnpm exec
+        prettier --ignore-unknown --write "{staged_files}"; exit $code'
     - name: lint
-      run: bunx oxlint --fix "{staged_files}"
+      run: pnpm exec oxlint --fix "{staged_files}"
     - name: "turbo: build + test + type-check"
-      run: bunx turbo run --no-daemon build types:check test
+      run: pnpm exec turbo run --no-daemon build types:check test
       glob: "{*.ts,*.tsx,tsconfig.json}"
