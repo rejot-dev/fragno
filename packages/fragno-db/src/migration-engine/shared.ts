@@ -20,10 +20,7 @@ export interface ColumnInfo {
     | `varchar(${number})`;
   isNullable: boolean;
   role: "external-id" | "internal-id" | "version" | "reference" | "regular";
-  default?: {
-    value?: unknown;
-    runtime?: "now" | "auto";
-  };
+  default?: { value: unknown } | { dbSpecial: "now" } | { runtime: "cuid" | "now" };
 }
 
 export type MigrationOperation =

@@ -14,7 +14,10 @@ export const upvoteSchema = schema((s) => {
         .addColumn("reference", column("string"))
         .addColumn("ownerReference", column("string").nullable())
         .addColumn("rating", column("integer"))
-        .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
         .addColumn("note", column("string").nullable())
         .createIndex("idx_upvote_reference", ["reference", "ownerReference"]);
     })

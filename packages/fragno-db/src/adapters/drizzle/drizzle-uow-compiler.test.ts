@@ -755,9 +755,15 @@ describe("drizzle-uow-compiler", () => {
         return t
           .addColumn("id", idColumn())
           .addColumn("message", column("string"))
-          .addColumn("sessionId", column("string").defaultTo$("auto")) // runtime auto
-          .addColumn("timestamp", column("timestamp").defaultTo$("now")) // runtime now
-          .addColumn("counter", column("integer").defaultTo$((() => 42) as () => number)) // runtime function
+          .addColumn(
+            "sessionId",
+            column("string").defaultTo$((b) => b.cuid()),
+          ) // runtime cuid
+          .addColumn(
+            "timestamp",
+            column("timestamp").defaultTo$((b) => b.now()),
+          ) // runtime now
+          .addColumn("counter", column("integer").defaultTo$(42)) // runtime function
           .addColumn("status", column("string").defaultTo("pending")) // static default
           .createIndex("idx_session", ["sessionId"]);
       });

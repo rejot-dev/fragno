@@ -51,10 +51,16 @@ export function generateRuntimeDefault(column: AnyColumn): unknown {
     return undefined;
   }
 
+  // If it's a database-level special function (defaultTo(b => b.now())), return undefined
+  // as the database should handle this via DEFAULT NOW() or equivalent
+  if ("dbSpecial" in column.default) {
+    return undefined;
+  }
+
   // Handle runtime defaults (defaultTo$)
   const runtime = column.default.runtime;
 
-  if (runtime === "auto") {
+  if (runtime === "cuid") {
     return createId();
   }
 

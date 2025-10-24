@@ -66,7 +66,10 @@ describe("create", () => {
       return s.addTable("test", (t) => {
         return t
           .addColumn("id", idColumn())
-          .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo$((b) => b.now()),
+          )
           .addColumn("status", column("string").defaultTo("active"));
       });
     });

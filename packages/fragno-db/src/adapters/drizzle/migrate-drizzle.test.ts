@@ -19,8 +19,14 @@ describe("generateSchema and migrate", () => {
           .addColumn("age", column("integer").nullable())
           .addColumn("isActive", column("bool").defaultTo(true))
           .addColumn("bio", column("string").nullable())
-          .addColumn("createdAt", column("timestamp").defaultTo$("now"))
-          .addColumn("updatedAt", column("timestamp").defaultTo$("now"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
           .createIndex("idx_users_email", ["email"], { unique: true })
           .createIndex("idx_users_name", ["name"])
           .createIndex("idx_users_active", ["isActive"]);
@@ -40,7 +46,10 @@ describe("generateSchema and migrate", () => {
           .addColumn("metadata", column("json").nullable())
           .addColumn("rating", column("decimal").nullable())
           .addColumn("thumbnail", column("binary").nullable())
-          .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
           .createIndex("idx_posts_user", ["userId"])
           .createIndex("idx_posts_title", ["title"])
           .createIndex("idx_posts_slug", ["slug"], { unique: true })
@@ -53,7 +62,10 @@ describe("generateSchema and migrate", () => {
           .addColumn("postId", referenceColumn())
           .addColumn("userId", referenceColumn())
           .addColumn("parentId", referenceColumn().nullable())
-          .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
           .addColumn("editedAt", column("timestamp").nullable())
           .addColumn("isDeleted", column("bool").defaultTo(false))
           .createIndex("idx_comments_post", ["postId"])
@@ -77,7 +89,10 @@ describe("generateSchema and migrate", () => {
           .addColumn("postId", referenceColumn())
           .addColumn("tagId", referenceColumn())
           .addColumn("order", column("integer").defaultTo(0))
-          .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
           .createIndex("idx_postTags_post_tag", ["postId", "tagId"], { unique: true })
           .createIndex("idx_postTags_tag", ["tagId"]);
       })
