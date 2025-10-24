@@ -18,6 +18,7 @@ import {
   type FragnoMiddlewareCallback,
 } from "./request-middleware";
 import type { FragmentDefinition } from "./fragment-builder";
+import { MutableRequestState } from "./mutable-request-state";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -267,14 +268,25 @@ export function createFragment<
 
       const outputContext = new RequestOutputContext(outputSchema);
 
+      // Create mutable request state that can be modified by middleware
+      // Clone the request to avoid consuming the body stream
+      const clonedReq = req.clone();
+      const requestBody =
+        clonedReq.body instanceof ReadableStream ? await clonedReq.json() : undefined;
+
+      const requestState = new MutableRequestState({
+        pathParams: route.params ?? {},
+        searchParams: url.searchParams,
+        body: requestBody,
+        headers: new Headers(req.headers),
+      });
+
       if (middlewareHandler) {
         const middlewareInputContext = new RequestMiddlewareInputContext(routes, {
           method: req.method as HTTPMethod,
           path,
-          pathParams: route.params,
-          searchParams: new URL(req.url).searchParams,
-          body: req.body,
           request: req,
+          state: requestState,
         });
 
         const middlewareOutputContext = new RequestMiddlewareOutputContext(dependencies, services);
@@ -310,6 +322,7 @@ export function createFragment<
         path,
         pathParams: (route.params ?? {}) as ExtractPathParams<typeof path>,
         inputSchema,
+        state: requestState,
       });
 
       try {
