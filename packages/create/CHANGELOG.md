@@ -1,5 +1,11 @@
 # @fragno-dev/create
 
+## 0.1.0
+
+### Minor Changes
+
+- 4cd4081: Support optionally initializing a Fragment template with data layer
+
 ## 0.0.4
 
 ### Patch Changes

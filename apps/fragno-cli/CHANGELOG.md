@@ -1,5 +1,21 @@
 # @fragno-dev/cli
 
+## 0.1.3
+
+### Patch Changes
+
+- a8b1f81: `db generate` command now supports targeting multiple Fragment files
+- a8b1f81: `db info` command now supports targeting multiple files
+- be17727: Added support for generating migrations in multi-Fragment applications
+- Updated dependencies [e7122f2]
+- Updated dependencies [921ef11]
+- Updated dependencies [be17727]
+- Updated dependencies [8362d9a]
+- Updated dependencies [8362d9a]
+- Updated dependencies [c70de59]
+  - @fragno-dev/db@0.1.2
+  - @fragno-dev/core@0.1.2
+
 ## 0.1.2
 
 ### Patch Changes
