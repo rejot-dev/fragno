@@ -38,6 +38,7 @@ describe("generateSchema", () => {
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -51,6 +52,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -98,7 +101,8 @@ describe("generateSchema", () => {
           "users_test": users_test,
           users: users_test,
           "posts_test": posts_test,
-          posts: posts_test
+          posts: posts_test,
+          schemaVersion: 3
         }"
       `);
     });
@@ -111,6 +115,7 @@ describe("generateSchema", () => {
         "import { mysqlTable, varchar, text, bigint, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -124,6 +129,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -171,7 +178,8 @@ describe("generateSchema", () => {
           "users_test": users_test,
           users: users_test,
           "posts_test": posts_test,
-          posts: posts_test
+          posts: posts_test,
+          schemaVersion: 3
         }"
       `);
     });
@@ -184,6 +192,7 @@ describe("generateSchema", () => {
         "import { sqliteTable, text, integer, uniqueIndex, index, blob, foreignKey } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -197,6 +206,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -244,7 +255,8 @@ describe("generateSchema", () => {
           "users_test": users_test,
           users: users_test,
           "posts_test": posts_test,
-          posts: posts_test
+          posts: posts_test,
+          schemaVersion: 3
         }"
       `);
     });
@@ -267,6 +279,7 @@ describe("generateSchema", () => {
       expect(generated).toMatchInlineSnapshot(`
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, timestamp } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -281,6 +294,8 @@ describe("generateSchema", () => {
           uniqueIndex("unique_key").on(table.key)
         ])
 
+        export const fragnoDbSettingSchemaVersion = 1;
+
         // ============================================================================
         // Fragment: test
         // ============================================================================
@@ -294,7 +309,8 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           "events_test": events_test,
-          events: events_test
+          events: events_test,
+          schemaVersion: 1
         }"
       `);
     });
@@ -328,6 +344,7 @@ describe("generateSchema", () => {
             return value instanceof Buffer? value : Buffer.from(value)
           }
         });
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -342,6 +359,8 @@ describe("generateSchema", () => {
           uniqueIndex("unique_key").on(table.key)
         ])
 
+        export const fragnoDbSettingSchemaVersion = 1;
+
         // ============================================================================
         // Fragment: test
         // ============================================================================
@@ -355,7 +374,8 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           "files_test": files_test,
-          files: files_test
+          files: files_test,
+          schemaVersion: 1
         }"
       `);
     });
@@ -395,6 +415,7 @@ describe("generateSchema", () => {
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -408,6 +429,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -453,7 +476,8 @@ describe("generateSchema", () => {
           "users_test": users_test,
           users: users_test,
           "posts_test": posts_test,
-          posts: posts_test
+          posts: posts_test,
+          schemaVersion: 4
         }"
       `);
     });
@@ -464,6 +488,7 @@ describe("generateSchema", () => {
         "import { mysqlTable, varchar, text, bigint, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -477,6 +502,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -522,7 +549,8 @@ describe("generateSchema", () => {
           "users_test": users_test,
           users: users_test,
           "posts_test": posts_test,
-          posts: posts_test
+          posts: posts_test,
+          schemaVersion: 4
         }"
       `);
     });
@@ -533,6 +561,7 @@ describe("generateSchema", () => {
         "import { sqliteTable, text, integer, uniqueIndex, blob, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -546,6 +575,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -591,7 +622,8 @@ describe("generateSchema", () => {
           "users_test": users_test,
           users: users_test,
           "posts_test": posts_test,
-          posts: posts_test
+          posts: posts_test,
+          schemaVersion: 4
         }"
       `);
     });
@@ -638,6 +670,7 @@ describe("generateSchema", () => {
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -651,6 +684,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -681,7 +716,8 @@ describe("generateSchema", () => {
           "categories_test": categories_test,
           categories: categories_test,
           "products_test": products_test,
-          products: products_test
+          products: products_test,
+          schemaVersion: 3
         }"
       `);
     });
@@ -724,6 +760,7 @@ describe("generateSchema", () => {
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -737,6 +774,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -769,7 +808,8 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           "category_test": category_test,
-          category: category_test
+          category: category_test,
+          schemaVersion: 3
         }"
       `);
     });
@@ -801,6 +841,7 @@ describe("generateSchema", () => {
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -814,6 +855,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -844,7 +887,8 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           "comment_test": comment_test,
-          comment: comment_test
+          comment: comment_test,
+          schemaVersion: 2
         }"
       `);
     });
@@ -855,6 +899,7 @@ describe("generateSchema", () => {
         "import { mysqlTable, varchar, text, bigint, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -868,6 +913,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -898,7 +945,8 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           "comment_test": comment_test,
-          comment: comment_test
+          comment: comment_test,
+          schemaVersion: 2
         }"
       `);
     });
@@ -909,6 +957,7 @@ describe("generateSchema", () => {
         "import { sqliteTable, text, integer, uniqueIndex, blob, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
+
         // ============================================================================
         // Settings Table (shared across all fragments)
         // ============================================================================
@@ -922,6 +971,8 @@ describe("generateSchema", () => {
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -952,7 +1003,8 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           "comment_test": comment_test,
-          comment: comment_test
+          comment: comment_test,
+          schemaVersion: 2
         }"
       `);
     });
