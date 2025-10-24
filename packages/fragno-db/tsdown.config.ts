@@ -11,6 +11,7 @@ export default defineConfig({
     "./src/query/unit-of-work.ts",
     "./src/query/cursor.ts",
     "./src/fragment.ts",
+    "./src/migration-engine/generation-engine.ts",
   ],
   dts: true,
   unbundle: true,
