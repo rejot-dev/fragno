@@ -116,57 +116,55 @@ describe("KyselyAdapter PGLite", () => {
     expect(schemaVersion).toBeUndefined();
 
     const migrator = adapter.createMigrationEngine(testSchema, "test");
-    const preparedMigration = await migrator.prepareMigration();
+    const preparedMigration = await migrator.prepareMigration({
+      updateSettings: false,
+    });
     assert(preparedMigration.getSQL);
 
     expect(preparedMigration.getSQL()).toMatchInlineSnapshot(`
-      "create table "fragno_db_settings" ("key" varchar(255) primary key, "value" text not null);
+      "create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "age" integer, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      insert into "fragno_db_settings" ("key", "value") values ('test.schema_version', '12');
+      create index "name_idx" on "users_test" ("name");
 
-      create table "users" ("id" varchar(30) not null unique, "name" text not null, "age" integer, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create index "age_idx" on "users_test" ("age");
 
-      create index "name_idx" on "users" ("name");
+      create table "emails_test" ("id" varchar(30) not null unique, "user_id" bigint not null, "email" text not null, "is_primary" boolean default false not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create index "age_idx" on "users" ("age");
+      create unique index "unique_email" on "emails_test" ("email");
 
-      create table "emails" ("id" varchar(30) not null unique, "user_id" bigint not null, "email" text not null, "is_primary" boolean default false not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create index "user_emails" on "emails_test" ("user_id");
 
-      create unique index "unique_email" on "emails" ("email");
+      create table "posts_test" ("id" varchar(30) not null unique, "user_id" bigint not null, "title" text not null, "content" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create index "user_emails" on "emails" ("user_id");
+      create index "posts_user_idx" on "posts_test" ("user_id");
 
-      create table "posts" ("id" varchar(30) not null unique, "user_id" bigint not null, "title" text not null, "content" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "tags_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create index "posts_user_idx" on "posts" ("user_id");
+      create index "tag_name" on "tags_test" ("name");
 
-      create table "tags" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "post_tags_test" ("id" varchar(30) not null unique, "post_id" bigint not null, "tag_id" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create index "tag_name" on "tags" ("name");
+      create index "pt_post" on "post_tags_test" ("post_id");
 
-      create table "post_tags" ("id" varchar(30) not null unique, "post_id" bigint not null, "tag_id" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create index "pt_tag" on "post_tags_test" ("tag_id");
 
-      create index "pt_post" on "post_tags" ("post_id");
+      create table "comments_test" ("id" varchar(30) not null unique, "post_id" bigint not null, "user_id" bigint not null, "text" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      create index "pt_tag" on "post_tags" ("tag_id");
+      create index "comments_post_idx" on "comments_test" ("post_id");
 
-      create table "comments" ("id" varchar(30) not null unique, "post_id" bigint not null, "user_id" bigint not null, "text" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create index "comments_user_idx" on "comments_test" ("user_id");
 
-      create index "comments_post_idx" on "comments" ("post_id");
+      alter table "emails_test" add constraint "emails_users_user_fk" foreign key ("user_id") references "users_test" ("_internalId") on delete restrict on update restrict;
 
-      create index "comments_user_idx" on "comments" ("user_id");
+      alter table "posts_test" add constraint "posts_users_author_fk" foreign key ("user_id") references "users_test" ("_internalId") on delete restrict on update restrict;
 
-      alter table "emails" add constraint "emails_users_user_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;
+      alter table "post_tags_test" add constraint "post_tags_posts_post_fk" foreign key ("post_id") references "posts_test" ("_internalId") on delete restrict on update restrict;
 
-      alter table "posts" add constraint "posts_users_author_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;
+      alter table "post_tags_test" add constraint "post_tags_tags_tag_fk" foreign key ("tag_id") references "tags_test" ("_internalId") on delete restrict on update restrict;
 
-      alter table "post_tags" add constraint "post_tags_posts_post_fk" foreign key ("post_id") references "posts" ("_internalId") on delete restrict on update restrict;
+      alter table "comments_test" add constraint "comments_posts_post_fk" foreign key ("post_id") references "posts_test" ("_internalId") on delete restrict on update restrict;
 
-      alter table "post_tags" add constraint "post_tags_tags_tag_fk" foreign key ("tag_id") references "tags" ("_internalId") on delete restrict on update restrict;
-
-      alter table "comments" add constraint "comments_posts_post_fk" foreign key ("post_id") references "posts" ("_internalId") on delete restrict on update restrict;
-
-      alter table "comments" add constraint "comments_users_commenter_fk" foreign key ("user_id") references "users" ("_internalId") on delete restrict on update restrict;"
+      alter table "comments_test" add constraint "comments_users_commenter_fk" foreign key ("user_id") references "users_test" ("_internalId") on delete restrict on update restrict;"
     `);
 
     await preparedMigration.execute();
