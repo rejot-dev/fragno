@@ -2,6 +2,7 @@ import { test, expect, describe } from "vitest";
 import { RequestInputContext } from "./request-input-context";
 import { FragnoApiValidationError } from "./api";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { MutableRequestState } from "./mutable-request-state";
 
 // Mock schema implementations for testing
 const createMockSchema = (shouldPass: boolean, returnValue?: unknown): StandardSchemaV1 => ({
@@ -40,6 +41,7 @@ describe("RequestContext", () => {
       path: "/",
       pathParams: {},
       searchParams: new URLSearchParams(),
+      headers: new Headers(),
       body: undefined,
     });
 
@@ -59,6 +61,7 @@ describe("RequestContext", () => {
       path: "/api/test",
       pathParams: {},
       searchParams: new URLSearchParams(),
+      headers: new Headers(),
       body: jsonBody,
     });
 
@@ -73,6 +76,7 @@ describe("RequestContext", () => {
       path: "/api/form",
       pathParams: {},
       searchParams: new URLSearchParams(),
+      headers: new Headers(),
       body: formData,
       method: "POST",
     });
@@ -87,6 +91,7 @@ describe("RequestContext", () => {
       path: "/api/upload",
       pathParams: {},
       searchParams: new URLSearchParams(),
+      headers: new Headers(),
       body: blob,
       method: "POST",
     });
@@ -101,11 +106,23 @@ describe("RequestContext", () => {
     });
 
     const bodyData = { test: "data" };
+    const url = new URL(request.url);
+    const clonedReq = request.clone();
+    const body = clonedReq.body instanceof ReadableStream ? await clonedReq.json() : undefined;
+
+    const state = new MutableRequestState({
+      pathParams: {},
+      searchParams: url.searchParams,
+      body,
+      headers: new Headers(request.headers),
+    });
+
     const ctx = await RequestInputContext.fromRequest({
       request,
       method: "POST",
       path: "/api/test",
       pathParams: {},
+      state,
     });
 
     expect(ctx.path).toBe("/api/test");
@@ -131,6 +148,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: { test: "data" },
         method: "POST",
       });
@@ -143,6 +161,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: { test: "data" },
         inputSchema: validStringSchema,
         method: "POST",
@@ -158,6 +177,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: "test string",
         inputSchema: validStringSchema,
         method: "POST",
@@ -172,6 +192,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: 123, // Invalid for string schema
         inputSchema: invalidSchema,
         method: "POST",
@@ -185,6 +206,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: 123,
         inputSchema: invalidSchema,
         method: "POST",
@@ -213,6 +235,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: 123,
         inputSchema: invalidSchema,
         shouldValidateInput: false,
@@ -232,6 +255,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: formData,
         inputSchema: validStringSchema,
         method: "POST",
@@ -249,6 +273,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: blob,
         inputSchema: validStringSchema,
         method: "POST",
@@ -264,6 +289,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: null,
         inputSchema: validStringSchema,
         method: "POST",
@@ -278,6 +304,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         body: undefined,
         inputSchema: validStringSchema,
         method: "POST",
@@ -294,6 +321,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
         body: undefined,
@@ -308,6 +336,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         inputSchema: validStringSchema,
         shouldValidateInput: true,
         method: "POST",
@@ -322,6 +351,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         inputSchema: validStringSchema,
         shouldValidateInput: false,
         method: "POST",
@@ -346,6 +376,14 @@ describe("RequestContext", () => {
 
     test("Should pass through shouldValidateInput from fromRequest", async () => {
       const request = new Request("https://example.com/api/test");
+      const url = new URL(request.url);
+      const state = new MutableRequestState({
+        pathParams: {},
+        searchParams: url.searchParams,
+        body: undefined,
+        headers: new Headers(request.headers),
+      });
+
       const ctx = await RequestInputContext.fromRequest({
         request,
         path: "/test",
@@ -353,6 +391,7 @@ describe("RequestContext", () => {
         inputSchema: validStringSchema,
         shouldValidateInput: false,
         method: "POST",
+        state,
       });
 
       expect(ctx.input).toBeDefined();
@@ -365,6 +404,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         method: "POST",
         body: undefined,
       });
@@ -377,6 +417,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams: new URLSearchParams(),
+        headers: new Headers(),
         method: "POST",
         body: undefined,
       });
@@ -390,6 +431,7 @@ describe("RequestContext", () => {
         path: "/test",
         pathParams: {},
         searchParams,
+        headers: new Headers(),
         method: "POST",
         body: undefined,
       });
@@ -400,11 +442,20 @@ describe("RequestContext", () => {
 
     test("Should extract search params from request URL in fromRequest", async () => {
       const request = new Request("https://example.com/api/test?param=value");
+      const url = new URL(request.url);
+      const state = new MutableRequestState({
+        pathParams: {},
+        searchParams: url.searchParams,
+        body: undefined,
+        headers: new Headers(request.headers),
+      });
+
       const ctx = await RequestInputContext.fromRequest({
         request,
         path: "/test",
         pathParams: {},
         method: "POST",
+        state,
       });
 
       expect(ctx.query.get("param")).toBe("value");
