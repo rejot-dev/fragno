@@ -104,6 +104,8 @@ describe("DrizzleAdapter PGLite", () => {
       provider: "postgresql",
     });
 
+    expect(await adapter.isConnectionHealthy()).toBe(true);
+
     return async () => {
       await cleanup();
     };

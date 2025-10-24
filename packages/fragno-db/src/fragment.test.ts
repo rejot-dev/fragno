@@ -21,6 +21,7 @@ const mockDatabaseAdapter: DatabaseAdapter = {
   createSchemaGenerator: () => {
     throw new Error("Not implemented");
   },
+  isConnectionHealthy: () => Promise.resolve(true),
 };
 
 describe("DatabaseFragmentBuilder", () => {
