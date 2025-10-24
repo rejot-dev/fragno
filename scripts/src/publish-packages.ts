@@ -1,6 +1,4 @@
-#!/usr/bin/env bun
-
-import { $ } from "bun";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { getNonPrivatePackages } from "./util/workspace-utils";
 
@@ -28,7 +26,7 @@ async function main() {
     console.log(`
 📦 Fragno Package Publisher
 
-Usage: bun scripts/src/publish-packages.ts [options]
+Usage: node scripts/src/publish-packages.ts [options]
 
 Options:
   --dry-run              Show what would be published without actually publishing
@@ -38,12 +36,12 @@ Options:
 
 This script:
 1. Finds all non-private packages in the workspace
-2. Publishes each non-private package using 'bun publish' in the correct directory
+2. Publishes each non-private package using 'npm publish' in the correct directory
 
 Examples:
-  bun scripts/src/publish-packages.ts --dry-run
-  bun scripts/src/publish-packages.ts --access public --tag beta
-  bun scripts/src/publish-packages.ts --tag next
+  node scripts/src/publish-packages.ts --dry-run
+  node scripts/src/publish-packages.ts --access public --tag beta
+  node scripts/src/publish-packages.ts --tag next
 `);
     return;
   }
@@ -125,23 +123,32 @@ async function publishPackage(
       console.log(`   🧪 DRY RUN: Publishing ${pkg.name}@${pkg.version}`);
     }
 
-    const result =
-      await $`bun publish --access ${access} --tag ${tag} ${isDryRun ? "--dry-run" : ""}`
-        .cwd(packageDir)
-        .quiet();
+    const dryRunFlag = isDryRun ? "--dry-run" : "";
+    const command = `npm publish --access ${access} --tag ${tag} ${dryRunFlag}`.trim();
 
-    if (result.exitCode === 0) {
+    try {
+      execSync(command, {
+        cwd: packageDir,
+        stdio: "pipe",
+        encoding: "utf-8",
+      });
+
       if (isDryRun) {
         console.log(`   ✅ Dry run completed for ${pkg.name}@${pkg.version}`);
       } else {
         console.log(`   ✅ Successfully published ${pkg.name}@${pkg.version} with tag "${tag}"`);
       }
-    } else {
+      // oxlint-disable-next-line no-explicit-any
+    } catch (execError: any) {
       console.error(
         `   ❌ Failed to ${isDryRun ? "dry run" : "publish"} ${pkg.name}. This might be because the package is already published.`,
       );
-      console.error(`   📄 stdout: ${result.stdout.toString()}`);
-      console.error(`   📄 stderr: ${result.stderr.toString()}`);
+      if (execError.stdout) {
+        console.error(`   📄 stdout: ${execError.stdout}`);
+      }
+      if (execError.stderr) {
+        console.error(`   📄 stderr: ${execError.stderr}`);
+      }
     }
   } catch (error) {
     console.error(`   ❌ Error publishing ${pkg.name}:\n`, error);

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node --import tsx
 
 import { Command } from "commander";
 import { readdirSync, writeFileSync, statSync } from "fs";

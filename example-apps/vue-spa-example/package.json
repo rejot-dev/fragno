@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "run-p \"dev:frontend\" \"dev:backend\"",
     "dev:frontend": "vite",
-    "dev:backend": "bun run server/index.ts",
+    "dev:backend": "node --import tsx server/index.ts",
     "build": "run-p types:check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",

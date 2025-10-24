@@ -155,7 +155,7 @@ export const userCommand: Command = {
   run: () => {
     console.log("User management commands");
     console.log("");
-    console.log("Usage: bun run src/mod.ts user <command> [options]");
+    console.log("Usage: node --import tsx src/mod.ts user <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  create         Create a new user");
@@ -165,6 +165,6 @@ export const userCommand: Command = {
     console.log("  update         Update a user");
     console.log("  delete         Delete a user");
     console.log("");
-    console.log("Run 'bun run src/mod.ts user <command> --help' for more information.");
+    console.log("Run 'node --import tsx src/mod.ts user <command> --help' for more information.");
   },
 };

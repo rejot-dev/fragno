@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "types:check": "tsc --noEmit",
-    "simplify-svg": "bun simplify-svg-colors.ts",
-    "generate-gallery": "bun generate-gallery.ts"
+    "simplify-svg": "node --import tsx simplify-svg-colors.ts",
+    "generate-gallery": "node --import tsx generate-gallery.ts"
   },
   "dependencies": {
     "commander": "^12.1.0",
@@ -14,7 +14,6 @@
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
-    "@types/bun": "^1.2.23",
     "@types/commander": "^2.12.5",
     "@types/culori": "^2.1.1",
     "@types/node": "^24.5.2",

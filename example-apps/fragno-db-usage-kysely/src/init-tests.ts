@@ -13,7 +13,7 @@ export default async function setup() {
   await rm(pgFolder, { recursive: true, force: true });
 
   // Run kysely migrations for user and blog_post tables
-  execSync("bunx kysely migrate up --config ./kysely.config.ts", {
+  execSync("pnpm exec kysely migrate up --config ./kysely.config.ts", {
     stdio: "inherit",
   });
 

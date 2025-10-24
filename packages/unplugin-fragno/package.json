@@ -9,61 +9,51 @@
   ],
   "exports": {
     ".": {
-      "bun": "./src/index.ts",
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./macros": {
-      "bun": "./src/macros.ts",
       "development": "./src/macros.ts",
       "types": "./dist/macros.d.ts",
       "default": "./dist/macros.js"
     },
     "./astro": {
-      "bun": "./src/integrations/astro.ts",
       "development": "./src/integrations/astro.ts",
       "types": "./dist/integrations/astro.d.ts",
       "default": "./dist/integrations/astro.js"
     },
     "./esbuild": {
-      "bun": "./src/integrations/esbuild.ts",
       "development": "./src/integrations/esbuild.ts",
       "types": "./dist/integrations/esbuild.d.ts",
       "default": "./dist/integrations/esbuild.js"
     },
     "./farm": {
-      "bun": "./src/integrations/farm.ts",
       "development": "./src/integrations/farm.ts",
       "types": "./dist/integrations/farm.d.ts",
       "default": "./dist/integrations/farm.js"
     },
     "./nuxt": {
-      "bun": "./src/integrations/nuxt.ts",
       "development": "./src/integrations/nuxt.ts",
       "types": "./dist/integrations/nuxt.d.ts",
       "default": "./dist/integrations/nuxt.js"
     },
     "./rollup": {
-      "bun": "./src/integrations/rollup.ts",
       "development": "./src/integrations/rollup.ts",
       "types": "./dist/integrations/rollup.d.ts",
       "default": "./dist/integrations/rollup.js"
     },
     "./rspack": {
-      "bun": "./src/integrations/rspack.ts",
       "development": "./src/integrations/rspack.ts",
       "types": "./dist/integrations/rspack.d.ts",
       "default": "./dist/integrations/rspack.js"
     },
     "./vite": {
-      "bun": "./src/integrations/vite.ts",
       "development": "./src/integrations/vite.ts",
       "types": "./dist/integrations/vite.d.ts",
       "default": "./dist/integrations/vite.js"
     },
     "./webpack": {
-      "bun": "./src/integrations/webpack.ts",
       "development": "./src/integrations/webpack.ts",
       "types": "./dist/integrations/webpack.d.ts",
       "default": "./dist/integrations/webpack.js"

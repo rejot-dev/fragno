@@ -16,21 +16,21 @@
     "prettier-plugin-svelte": "^3.4.0",
     "prettier-plugin-tailwindcss": "^0.6.14",
     "tsdown": "^0.15.9",
+    "tsx": "^4.19.2",
     "turbo": "^2.5.8",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=22",
-    "bun": ">=1.2.20"
+    "node": ">=22"
   },
   "homepage": "https://fragno.dev",
   "license": "MIT",
-  "packageManager": "bun@1.2.20",
+  "packageManager": "pnpm@10.19.0",
   "private": true,
   "scripts": {
     "dev": "turbo watch --ui tui dev",
-    "cli:dev": "bun run apps/fragno-cli/src/cli.ts --",
+    "cli:dev": "node --import tsx apps/fragno-cli/src/cli.ts --",
     "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -38,7 +38,7 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "clean": "find . -type d \\( -name dist -o -name node_modules -o -name .turbo -o -name .next -o -name .output -o -name .nuxt -o -name .react-router -o -name .open-next -o -name .source -o -name .svelte-kit \\) -prune -exec rm -rf {} + -o -name tsconfig.tsbuildinfo -o -name coverage.json -exec rm -f {} +",
-    "clean:install": "bun run clean && bun install --linker=isolated",
+    "clean:install": "pnpm run clean && pnpm install",
     "build": "turbo run build",
     "build:watch": "turbo watch build",
     "build:ui": "turbo watch --ui tui build",
@@ -48,16 +48,8 @@
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test && turbo run collect-json-reports merge-json-reports report --filter=@fragno-private/vitest-config",
-    "ci:version": "changeset version && bun update && bun install --linker=isolated",
-    "ci:publish": "bun run scripts/src/publish-packages.ts --access public && changeset tag",
-    "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text bun.lock"
-  },
-  "workspaces": [
-    "example-apps/*",
-    "example-fragments/*",
-    "apps/*",
-    "packages/*",
-    "packages-private/*",
-    "scripts"
-  ]
+    "ci:version": "changeset version && pnpm update && pnpm install",
+    "ci:publish": "node --import tsx scripts/src/publish-packages.ts --access public && changeset tag",
+    "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text pnpm-lock.yaml"
+  }
 }

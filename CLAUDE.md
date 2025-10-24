@@ -23,13 +23,13 @@ integration with React, Vue, Node.js, and various meta-frameworks.
 These can be run in either the root or in specific package directories. In the root `turbo` is used
 as a monorepo manager.
 
-- `bun run build` - Build all packages
-- `bun run types:check` - TypeScript type checking across all packages
-- `bunx vitest run`
+- `pnpm run build` - Build all packages
+- `pnpm run types:check` - TypeScript type checking across all packages
+- `pnpm exec vitest run`
 
 ## Tools
 
-- Bun
+- pnpm + Node
 - Turbo(repo) for monorepo management
 - TSDown for building packages
 - Vitest

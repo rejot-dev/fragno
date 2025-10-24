@@ -32,7 +32,7 @@ export const mainCommand: Command = {
   run: () => {
     console.log("Fragno DB Usage CLI");
     console.log("");
-    console.log("Usage: bun run src/mod.ts <command> [options]");
+    console.log("Usage: node --import tsx src/mod.ts <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  clean      Clean the database folder");
@@ -41,7 +41,7 @@ export const mainCommand: Command = {
     console.log("  comment    Comment management commands");
     console.log("  rating     Rating/upvote management commands");
     console.log("");
-    console.log("Run 'bun run src/mod.ts <command> --help' for more information.");
+    console.log("Run 'node --import tsx src/mod.ts <command> --help' for more information.");
   },
 };
 

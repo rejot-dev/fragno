@@ -33,7 +33,7 @@ export default async function setup() {
   await cli(args, generateCommand);
 
   // Run drizzle-kit push to apply migrations
-  const migrateOutput = execSync("bunx drizzle-kit push --config ./drizzle.config.ts", {
+  const migrateOutput = execSync("pnpm exec drizzle-kit push --config ./drizzle.config.ts", {
     encoding: "utf-8",
   });
 

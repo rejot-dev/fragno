@@ -7,7 +7,6 @@
         "browser": "./dist/browser/index.js",
         "default": "./src/index.ts"
       },
-      "bun": "./src/index.ts",
       "browser": "./dist/browser/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/node/index.js"
@@ -76,6 +75,6 @@
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
-    "@types/node": "^20"
+    "@types/node": "^22"
   }
 }

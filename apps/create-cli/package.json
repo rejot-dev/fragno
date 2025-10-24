@@ -3,7 +3,6 @@
   "version": "0.1.1",
   "exports": {
     ".": {
-      "bun": "./index.ts",
       "development": "./index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
@@ -19,7 +18,7 @@
     "types:check": "tsc --noEmit"
   },
   "engines": {
-    "node": "^20.0.0 || >=22.0.0"
+    "node": ">=22"
   },
   "devDependencies": {
     "@types/node": "^22",

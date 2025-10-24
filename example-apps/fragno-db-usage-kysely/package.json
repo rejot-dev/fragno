@@ -1,9 +1,8 @@
 {
-  "name": "@fragno-dev/fragno-db-usage",
+  "name": "@fragno-dev/fragno-db-usage-kysely",
   "private": true,
   "exports": {
     ".": {
-      "bun": "./src/mod.ts",
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
@@ -16,11 +15,11 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
-    "db:migrate": "bun run db:migrate:kysely && bun run db:migrate:fragno",
+    "db:migrate": "pnpm run db:migrate:kysely && pnpm run db:migrate:fragno",
     "db:migrate:kysely": "kysely migrate up",
-    "db:generate:fragno": "bun run ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts -o ./migrations",
-    "db:migrate:fragno": "bun run ../../apps/fragno-cli/src/cli.ts db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
-    "db:generate": "bun run ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:generate:fragno": "node --import tsx ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts -o ./migrations",
+    "db:migrate:fragno": "node --import tsx ../../apps/fragno-cli/src/cli.ts db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:generate": "node --import tsx ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "test": "vitest run"
   },
   "type": "module",
@@ -37,8 +36,7 @@
     "@fragno-dev/cli": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/bun": "^1.2.23",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
     "kysely-ctl": "^0.19.0",
     "vitest": "^3.2.4"

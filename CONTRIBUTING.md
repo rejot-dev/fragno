@@ -39,7 +39,7 @@ If you want to contact us in a more casual manner than creating an issue, you ca
 ## Getting Started
 
 1. Clone the repository
-1. Run `bun install`
-1. Run `bun run build:watch` (or just `build`)
-1. `cd packages/<package-name>` & `bunx vitest` to run tests, or if in an app directory run
-   `bun run dev` to start the app
+1. Run `pnpm install`
+1. Run `pnpm run build:watch` (or just `build`)
+1. `cd packages/<package-name>` & `pnpm exec vitest` to run tests, or if in an app directory run
+   `pnpm run dev` to start the app
