@@ -1,5 +1,12 @@
 # @fragno-dev/db
 
+## 0.1.4
+
+### Patch Changes
+
+- 5d56f48: fix(SQLite + Kysely): foreign key references now generate valid migrations
+- fd3ddd2: fix(Drizzle): properly sanitize table references in foreign keys
+
 ## 0.1.3
 
 ### Patch Changes
