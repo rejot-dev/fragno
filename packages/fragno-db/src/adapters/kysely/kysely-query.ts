@@ -39,7 +39,9 @@ export function fromKysely<T extends AnySchema>(
   config: KyselyConfig,
   mapper?: TableNameMapper,
 ): AbstractQuery<T> {
-  const { db: kysely, provider } = config;
+  const { db, provider } = config;
+  // Resolve the db instance if it's a function
+  const kysely = typeof db === "function" ? db() : db;
   const uowCompiler = createKyselyUOWCompiler(schema, config, mapper);
 
   function createUOW(name?: string): UnitOfWork<T, []> {
