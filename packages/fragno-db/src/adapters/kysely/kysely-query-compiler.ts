@@ -30,7 +30,9 @@ export function createKyselyQueryCompiler<T extends AnySchema>(
   config: KyselyConfig,
   mapper?: TableNameMapper,
 ): KyselyQueryCompiler {
-  const { db: kysely, provider } = config;
+  const { db, provider } = config;
+  // Resolve the db instance if it's a function
+  const kysely = typeof db === "function" ? db() : db;
   const queryBuilder = createKyselyQueryBuilder(kysely, provider, mapper);
 
   function toTable(name: unknown): AnyTable {

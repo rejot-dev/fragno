@@ -15,7 +15,7 @@ import { SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
 type KyselyAny = Kysely<any>;
 
 export interface KyselyConfig {
-  db: KyselyAny;
+  db: KyselyAny | (() => KyselyAny);
   provider: SQLProvider;
 }
 
@@ -26,17 +26,26 @@ export class KyselyAdapter implements DatabaseAdapter {
     this.#kyselyConfig = config;
   }
 
+  #getDb(): KyselyAny {
+    const db = this.#kyselyConfig.db;
+    return typeof db === "function" ? db() : db;
+  }
+
   createQueryEngine<T extends AnySchema>(schema: T, namespace: string): AbstractQuery<T> {
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromKysely(schema, this.#kyselyConfig, mapper);
+    // Resolve the db instance if it's a function
+    const resolvedConfig: KyselyConfig = {
+      db: this.#getDb(),
+      provider: this.#kyselyConfig.provider,
+    };
+    return fromKysely(schema, resolvedConfig, mapper);
   }
 
   async isConnectionHealthy(): Promise<boolean> {
     try {
-      const result = await this.#kyselyConfig.db.executeQuery(
-        sql`SELECT 1 as healthy`.compile(this.#kyselyConfig.db),
-      );
+      const db = this.#getDb();
+      const result = await db.executeQuery(sql`SELECT 1 as healthy`.compile(db));
       return (result.rows[0] as Record<string, unknown>)["healthy"] === 1;
     } catch {
       return false;
@@ -44,7 +53,7 @@ export class KyselyAdapter implements DatabaseAdapter {
   }
 
   createMigrationEngine(schema: AnySchema, namespace: string): Migrator {
-    const manager = createSettingsManager(this.#kyselyConfig.db, namespace);
+    const manager = createSettingsManager(this.#getDb(), namespace);
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
 
     const preprocessMigrationOperations = (operations: MigrationOperation[]) => {
@@ -82,12 +91,13 @@ export class KyselyAdapter implements DatabaseAdapter {
     const migrator = createMigrator({
       schema,
       executor: async (operations) => {
+        const db = this.#getDb();
         // For SQLite, execute PRAGMA defer_foreign_keys BEFORE transaction
         if (this.#kyselyConfig.provider === "sqlite") {
-          await sql.raw("PRAGMA defer_foreign_keys = ON").execute(this.#kyselyConfig.db);
+          await sql.raw("PRAGMA defer_foreign_keys = ON").execute(db);
         }
 
-        await this.#kyselyConfig.db.transaction().execute(async (tx) => {
+        await db.transaction().execute(async (tx) => {
           const preprocessed = preprocessMigrationOperations(operations);
           const nodes = toExecutableNodes(preprocessed, tx);
           for (const node of nodes) {
@@ -110,7 +120,7 @@ export class KyselyAdapter implements DatabaseAdapter {
           }
 
           const preprocessed = preprocessMigrationOperations(operations);
-          const nodes = toExecutableNodes(preprocessed, this.#kyselyConfig.db);
+          const nodes = toExecutableNodes(preprocessed, this.#getDb());
           const compiled = nodes.map((node) => `${node.compile().sql};`);
 
           parts.push(...compiled);
@@ -142,7 +152,7 @@ export class KyselyAdapter implements DatabaseAdapter {
   }
 
   getSchemaVersion(namespace: string) {
-    const manager = createSettingsManager(this.#kyselyConfig.db, namespace);
+    const manager = createSettingsManager(this.#getDb(), namespace);
 
     return manager.get(`schema_version`);
   }

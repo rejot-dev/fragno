@@ -31,8 +31,10 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   mapper?: TableNameMapper,
 ): UOWCompiler<TSchema, CompiledQuery> {
   const queryCompiler = createKyselyQueryCompiler(schema, config, mapper);
-  const queryBuilder = createKyselyQueryBuilder(config.db, config.provider, mapper);
-  const { provider } = config;
+  const { db, provider } = config;
+  // Resolve the db instance if it's a function
+  const kysely = typeof db === "function" ? db() : db;
+  const queryBuilder = createKyselyQueryBuilder(kysely, provider, mapper);
 
   function toTable(name: unknown) {
     const table = schema.tables[name as string];

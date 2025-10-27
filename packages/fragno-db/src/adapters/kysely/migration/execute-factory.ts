@@ -10,17 +10,19 @@ import { MssqlMigrationExecutor } from "./execute-mssql";
  */
 export function createMigrationExecutor(config: KyselyConfig): MigrationExecutor {
   const { db, provider } = config;
+  // Resolve the db instance if it's a function
+  const kysely = typeof db === "function" ? db() : db;
 
   switch (provider) {
     case "sqlite":
-      return new SqliteMigrationExecutor(db, provider);
+      return new SqliteMigrationExecutor(kysely, provider);
     case "postgresql":
     case "cockroachdb":
-      return new PostgresMigrationExecutor(db, provider);
+      return new PostgresMigrationExecutor(kysely, provider);
     case "mysql":
-      return new MysqlMigrationExecutor(db, provider);
+      return new MysqlMigrationExecutor(kysely, provider);
     case "mssql":
-      return new MssqlMigrationExecutor(db, provider);
+      return new MssqlMigrationExecutor(kysely, provider);
     default: {
       // Ensure exhaustive switch
       const _exhaustive: never = provider;

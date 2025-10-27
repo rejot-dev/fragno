@@ -100,7 +100,7 @@ describe("DrizzleAdapter PGLite", () => {
     }
 
     adapter = new DrizzleAdapter({
-      db,
+      db: () => db,
       provider: "postgresql",
     });
 

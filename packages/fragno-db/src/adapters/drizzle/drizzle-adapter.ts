@@ -9,7 +9,7 @@ import { createSettingsManager, settingsSchema } from "../../shared/settings-sch
 import { sql } from "drizzle-orm";
 
 export interface DrizzleConfig {
-  db: unknown;
+  db: unknown | (() => unknown);
   provider: "sqlite" | "mysql" | "postgresql";
 }
 
@@ -24,9 +24,14 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
     return this.#drizzleConfig.provider;
   }
 
+  #getDb(): DBType {
+    const db = this.#drizzleConfig.db;
+    return (typeof db === "function" ? db() : db) as DBType;
+  }
+
   async isConnectionHealthy(): Promise<boolean> {
     try {
-      const result = await (this.#drizzleConfig.db as DBType).execute(sql`SELECT 1 as healthy`);
+      const result = await this.#getDb().execute(sql`SELECT 1 as healthy`);
 
       // Handle different result formats across providers
       // PostgreSQL/MySQL: { rows: [...] }
@@ -57,7 +62,12 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   ): AbstractQuery<TSchema, DrizzleUOWConfig> {
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromDrizzle(schema, this.#drizzleConfig, mapper);
+    // Resolve the db instance if it's a function
+    const resolvedConfig: DrizzleConfig = {
+      db: this.#getDb(),
+      provider: this.#drizzleConfig.provider,
+    };
+    return fromDrizzle(schema, resolvedConfig, mapper);
   }
 
   createSchemaGenerator(
