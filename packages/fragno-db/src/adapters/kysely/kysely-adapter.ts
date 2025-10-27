@@ -4,7 +4,7 @@ import type { DatabaseAdapter } from "../adapters";
 import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
-import { execute } from "./migration/execute";
+import { execute, preprocessOperations } from "./migration/execute";
 import type { AbstractQuery } from "../../query/query";
 import { fromKysely } from "./kysely-query";
 import { createTableNameMapper } from "./kysely-shared";
@@ -61,17 +61,21 @@ export class KyselyAdapter implements DatabaseAdapter {
     };
 
     const preprocess = (operations: MigrationOperation[], db: KyselyAny) => {
+      // Provider-specific preprocessing (e.g., SQLite merges FKs into create-table)
+      let preprocessed = preprocessOperations(operations, this.#kyselyConfig);
+
+      // Add provider-specific pragma/commands
       if (this.#kyselyConfig.provider === "mysql") {
-        operations.unshift({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" });
-        operations.push({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" });
+        preprocessed.unshift({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" });
+        preprocessed.push({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" });
       } else if (this.#kyselyConfig.provider === "sqlite") {
-        operations.unshift({
+        preprocessed.unshift({
           type: "custom",
           sql: "PRAGMA defer_foreign_keys = ON",
         });
       }
 
-      return operations.flatMap((op) =>
+      return preprocessed.flatMap((op) =>
         execute(op, this.#kyselyConfig, (node) => onCustomNode(node, db), mapper),
       );
     };

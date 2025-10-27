@@ -5,6 +5,22 @@ export interface ForeignKeyInfo {
   referencedColumns: string[];
 }
 
+/**
+ * Provider-specific metadata that can be attached to operations during preprocessing.
+ * This allows providers to add additional context without polluting the core operation types.
+ */
+export interface MigrationOperationMetadata {
+  [key: string]: unknown;
+}
+
+/**
+ * SQLite-specific metadata for create-table operations.
+ * Includes foreign keys that should be created inline with the table.
+ */
+export interface SqliteCreateTableMetadata extends MigrationOperationMetadata {
+  inlineForeignKeys?: ForeignKeyInfo[];
+}
+
 export interface ColumnInfo {
   name: string;
   type:
@@ -23,33 +39,35 @@ export interface ColumnInfo {
   default?: { value: unknown } | { dbSpecial: "now" } | { runtime: "cuid" | "now" };
 }
 
-export type MigrationOperation =
-  | TableOperation
-  | {
+export type MigrationOperation<
+  TMeta extends MigrationOperationMetadata = MigrationOperationMetadata,
+> =
+  | (TableOperation & { metadata?: TMeta })
+  | ({
       // warning: not supported by SQLite
       type: "add-foreign-key";
       table: string;
       value: ForeignKeyInfo;
-    }
-  | {
+    } & { metadata?: TMeta })
+  | ({
       // warning: not supported by SQLite
       type: "drop-foreign-key";
       table: string;
       name: string;
-    }
-  | {
+    } & { metadata?: TMeta })
+  | ({
       type: "drop-index";
       table: string;
       name: string;
-    }
-  | {
+    } & { metadata?: TMeta })
+  | ({
       type: "add-index";
       table: string;
       columns: string[];
       name: string;
       unique: boolean;
-    }
-  | CustomOperation;
+    } & { metadata?: TMeta })
+  | (CustomOperation & { metadata?: TMeta });
 
 export type CustomOperation = {
   type: "custom";
