@@ -1,11 +1,12 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { FragmentBuilder } from "../api/fragment-builder";
+import type { FragmentDefinition } from "../api/fragment-builder";
 import type { FragnoRouteConfig, HTTPMethod } from "../api/api";
 import type { ExtractPathParams } from "../api/internal/path";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
 import type { AnyRouteOrFactory, FlattenRouteFactories } from "../api/route";
 import { resolveRouteFactories } from "../api/route";
+import type { FragnoPublicConfig } from "../api/fragment-instantiation";
 
 /**
  * Discriminated union representing all possible test response types
@@ -131,10 +132,18 @@ async function* parseNDJSONStream<T>(response: Response): AsyncGenerator<T> {
 /**
  * Options for creating a test fragment
  */
-export interface CreateFragmentForTestOptions<TConfig, TDeps, TServices> {
+export interface CreateFragmentForTestOptions<
+  TConfig,
+  TDeps,
+  TServices,
+  TAdditionalContext extends Record<string, unknown>,
+  TOptions extends FragnoPublicConfig,
+> {
   config: TConfig;
+  options?: Partial<TOptions>;
   deps?: Partial<TDeps>;
   services?: Partial<TServices>;
+  additionalContext?: Partial<TAdditionalContext>;
 }
 
 /**
@@ -162,10 +171,17 @@ export interface InitRoutesOverrides<TConfig, TDeps, TServices> {
 /**
  * Fragment test instance with type-safe handler method
  */
-export interface FragmentForTest<TConfig, TDeps, TServices> {
+export interface FragmentForTest<
+  TConfig,
+  TDeps,
+  TServices,
+  TAdditionalContext extends Record<string, unknown>,
+  TOptions extends FragnoPublicConfig,
+> {
   config: TConfig;
   deps: TDeps;
   services: TServices;
+  additionalContext: TAdditionalContext & TOptions;
   handler: <
     TMethod extends HTTPMethod,
     TPath extends string,
@@ -197,7 +213,7 @@ export interface FragmentForTest<TConfig, TDeps, TServices> {
 /**
  * Create a fragment instance for testing with optional dependency and service overrides
  *
- * @param fragmentDefinition - The fragment definition created with defineFragment()
+ * @param fragmentBuilder - The fragment builder with definition and required options
  * @param options - Configuration and optional overrides for deps/services
  * @returns A fragment test instance with a type-safe handler method
  *
@@ -205,6 +221,7 @@ export interface FragmentForTest<TConfig, TDeps, TServices> {
  * ```typescript
  * const fragment = createFragmentForTest(chatnoDefinition, {
  *   config: { openaiApiKey: "test-key" },
+ *   options: { mountRoute: "/api/chatno" },
  *   services: {
  *     generateStreamMessages: mockGenerator
  *   }
@@ -228,31 +245,56 @@ export interface FragmentForTest<TConfig, TDeps, TServices> {
  * }
  * ```
  */
-export function createFragmentForTest<TConfig, TDeps, TServices extends Record<string, unknown>>(
-  fragmentDefinition: FragmentBuilder<TConfig, TDeps, TServices>,
-  options: CreateFragmentForTestOptions<TConfig, TDeps, TServices>,
-): FragmentForTest<TConfig, TDeps, TServices> {
-  const { config, deps: depsOverride, services: servicesOverride } = options;
+export function createFragmentForTest<
+  TConfig,
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TAdditionalContext extends Record<string, unknown>,
+  TOptions extends FragnoPublicConfig,
+>(
+  fragmentBuilder: {
+    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
+    $requiredOptions: TOptions;
+  },
+  options: CreateFragmentForTestOptions<TConfig, TDeps, TServices, TAdditionalContext, TOptions>,
+): FragmentForTest<TConfig, TDeps, TServices, TAdditionalContext, TOptions> {
+  const {
+    config,
+    options: fragmentOptions = {} as TOptions,
+    deps: depsOverride,
+    services: servicesOverride,
+    additionalContext: additionalContextOverride,
+  } = options;
 
   // Create deps from definition or use empty object
-  const definition = fragmentDefinition.definition;
-  const baseDeps = definition.dependencies ? definition.dependencies(config, {}) : ({} as TDeps);
+  const definition = fragmentBuilder.definition;
+  const baseDeps = definition.dependencies
+    ? definition.dependencies(config, fragmentOptions)
+    : ({} as TDeps);
 
   // Merge deps with overrides
   const deps = { ...baseDeps, ...depsOverride } as TDeps;
 
   // Create services from definition or use empty object
   const baseServices = definition.services
-    ? definition.services(config, {}, deps)
+    ? definition.services(config, fragmentOptions, deps)
     : ({} as TServices);
 
   // Merge services with overrides
   const services = { ...baseServices, ...servicesOverride } as TServices;
 
+  // Merge additional context with options
+  const additionalContext = {
+    ...definition.additionalContext,
+    ...fragmentOptions,
+    ...additionalContextOverride,
+  } as TAdditionalContext & TOptions;
+
   return {
     config,
     deps,
     services,
+    additionalContext,
     initRoutes: <const TRoutesOrFactories extends readonly AnyRouteOrFactory[]>(
       routesOrFactories: TRoutesOrFactories,
       overrides?: InitRoutesOverrides<TConfig, TDeps, TServices>,

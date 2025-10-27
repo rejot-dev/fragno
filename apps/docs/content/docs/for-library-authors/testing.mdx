@@ -97,3 +97,23 @@ expect(response.error).toEqual({
   code: "NOT_FOUND",
 });
 ```
+
+## Testing Database Fragments
+
+For Fragments that use `@fragno-dev/db`, use `createDatabaseFragmentForTest` from `@fragno-dev/test`
+to automatically set up an in-memory database with migrations:
+
+```typescript
+import { createDatabaseFragmentForTest } from "@fragno-dev/test";
+
+const fragment = await createDatabaseFragmentForTest(myDatabaseFragmentDefinition, {
+  config: { apiKey: "test-key" },
+  // Optional: specify database path (defaults to in-memory)
+  databasePath: ":memory:",
+  // Optional: migrate to specific schema version (defaults to latest)
+  migrateToVersion: 2,
+});
+```
+
+Fragments tested in this way use an in-memory SQLite database with migrations automatically applied.
+This means that you can directly test the data layer of your Fragment.

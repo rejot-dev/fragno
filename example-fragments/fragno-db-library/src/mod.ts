@@ -47,7 +47,9 @@ export interface CommentFragmentConfig {
   // Add any server-side configuration here if needed
 }
 
-const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>("fragno-db-comment")
+export const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>(
+  "fragno-db-comment",
+)
   .withDatabase(commentSchema)
   .withServices(({ orm }) => {
     return {
@@ -142,8 +144,9 @@ export function createFragnoDatabaseLibrary(orm: AbstractQuery<typeof commentSch
         id: id.valueOf(),
       };
     },
-    getComments: (postReference: string) => {
-      return internal.getComments(postReference);
+    getComments: async (postReference: string) => {
+      const comments = await internal.getComments(postReference);
+      return comments.map((c) => ({ ...c, id: c.id.valueOf() }));
     },
   };
 }
