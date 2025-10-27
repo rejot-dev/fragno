@@ -1,7 +1,7 @@
 import { assert, beforeAll, describe, expect, it } from "vitest";
-import { Kysely, SqliteDialect } from "kysely";
+import { Kysely } from "kysely";
+import { SQLocalKysely } from "sqlocal/kysely";
 import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-import SQLite from "better-sqlite3";
 import { commentSchema, createCommentFragment } from "./mod";
 
 describe("simple-auth-fragment", () => {
@@ -11,9 +11,7 @@ describe("simple-auth-fragment", () => {
   let fragment: ReturnType<typeof createCommentFragment>;
 
   beforeAll(async () => {
-    const dialect = new SqliteDialect({
-      database: new SQLite(":memory:"),
-    });
+    const { dialect } = new SQLocalKysely(":memory:");
 
     kysely = new Kysely({
       dialect,

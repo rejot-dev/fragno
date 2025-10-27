@@ -26,13 +26,12 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
+    "sqlocal": "^0.15.2",
     "zod": "^4.0.5"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
-    "better-sqlite3": "^12.4.1",
     "kysely": "^0.28.8"
   }
 }

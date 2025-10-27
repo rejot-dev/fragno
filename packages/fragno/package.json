@@ -12,6 +12,11 @@
       "types": "./dist/api/api.d.ts",
       "default": "./dist/api/api.js"
     },
+    "./test": {
+      "development": "./src/test/test.ts",
+      "types": "./dist/test/test.d.ts",
+      "default": "./dist/test/test.js"
+    },
     "./api/fragment-builder": {
       "development": "./src/api/fragment-builder.ts",
       "types": "./dist/api/fragment-builder.d.ts",

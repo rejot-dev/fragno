@@ -73,7 +73,6 @@ export class FragmentBuilder<
     });
   }
 }
-
 export function defineFragment<TConfig = {}>(name: string): FragmentBuilder<TConfig, {}, {}, {}> {
   return new FragmentBuilder({
     name,
