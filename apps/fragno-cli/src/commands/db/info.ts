@@ -165,13 +165,13 @@ export const infoCommand = define({
     console.log("");
     if (!hasMigrationSupport) {
       console.log("Note: These adapters do not support migrations.");
-      console.log("Use '@fragno-dev/cli db generate' to generate schema files.");
+      console.log("Use 'fragno-cli db generate' to generate schema files.");
     } else {
       const hasPendingMigrations = dbInfos.some(
         (info) => info.pendingVersions && info.pendingVersions > 0,
       );
       if (hasPendingMigrations) {
-        console.log("Run '@fragno-dev/cli db migrate <target>' to apply pending migrations.");
+        console.log("Run 'fragno-cli db migrate <target>' to apply pending migrations.");
       }
     }
   },

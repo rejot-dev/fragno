@@ -15,14 +15,14 @@ dbSubCommands.set("info", infoCommand);
 function printDbHelp() {
   console.log("Database management commands for Fragno");
   console.log("");
-  console.log("Usage: @fragno-dev/cli db <command> [options]");
+  console.log("Usage: fragno-cli db <command> [options]");
   console.log("");
   console.log("Commands:");
   console.log("  generate    Generate schema files from FragnoDatabase definitions");
   console.log("  migrate     Run database migrations");
   console.log("  info        Display database information and migration status");
   console.log("");
-  console.log("Run '@fragno-dev/cli db <command> --help' for more information.");
+  console.log("Run 'fragno-cli db <command> --help' for more information.");
 }
 
 // Define the db command with type safety
@@ -38,17 +38,17 @@ rootSubCommands.set("db", dbCommand);
 
 // Define the main command with type safety
 export const mainCommand = define({
-  name: "@fragno-dev/cli",
+  name: "fragno-cli",
   description: "Fragno CLI - Tools for working with Fragno fragments",
   run: () => {
     console.log("Fragno CLI - Tools for working with Fragno fragments");
     console.log("");
-    console.log("Usage: @fragno-dev/cli <command> [options]");
+    console.log("Usage: fragno-cli <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  db    Database management commands");
     console.log("");
-    console.log("Run '@fragno-dev/cli <command> --help' for more information.");
+    console.log("Run 'fragno-cli <command> --help' for more information.");
   },
 });
 
