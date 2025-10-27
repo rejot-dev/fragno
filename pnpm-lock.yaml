@@ -619,9 +619,18 @@ importers:
       '@fragno-private/typescript-config':
         specifier: workspace:*
         version: link:../../packages-private/typescript-config
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/node':
         specifier: ^22
         version: 22.18.12
+      better-sqlite3:
+        specifier: ^12.4.1
+        version: 12.4.1
+      kysely:
+        specifier: ^0.28.8
+        version: 0.28.8
 
   packages-private/typescript-config: {}
 
