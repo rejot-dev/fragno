@@ -47,44 +47,50 @@ export class KyselyAdapter implements DatabaseAdapter {
     const manager = createSettingsManager(this.#kyselyConfig.db, namespace);
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
 
-    const onCustomNode = (node: CustomOperation, db: KyselyAny) => {
-      const statement = sql.raw(node["sql"] as string);
-
-      return {
-        compile() {
-          return statement.compile(db);
-        },
-        execute() {
-          return statement.execute(db);
-        },
-      };
-    };
-
-    const preprocess = (operations: MigrationOperation[], db: KyselyAny) => {
-      // Provider-specific preprocessing (e.g., SQLite merges FKs into create-table)
+    const preprocessMigrationOperations = (operations: MigrationOperation[]) => {
       let preprocessed = preprocessOperations(operations, this.#kyselyConfig);
 
-      // Add provider-specific pragma/commands
       if (this.#kyselyConfig.provider === "mysql") {
         preprocessed.unshift({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" });
         preprocessed.push({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" });
-      } else if (this.#kyselyConfig.provider === "sqlite") {
-        preprocessed.unshift({
-          type: "custom",
-          sql: "PRAGMA defer_foreign_keys = ON",
-        });
       }
 
-      return preprocessed.flatMap((op) =>
-        execute(op, this.#kyselyConfig, (node) => onCustomNode(node, db), mapper),
+      return preprocessed;
+    };
+
+    // Convert operations to executable nodes bound to specific db instance
+    const toExecutableNodes = (operations: MigrationOperation[], db: KyselyAny) => {
+      const onCustomNode = (node: CustomOperation, db: KyselyAny) => {
+        const statement = sql.raw(node["sql"] as string);
+
+        return {
+          compile() {
+            return statement.compile(db);
+          },
+          execute() {
+            return statement.execute(db);
+          },
+        };
+      };
+
+      const dbConfig: KyselyConfig = { db, provider: this.#kyselyConfig.provider };
+      return operations.flatMap((op) =>
+        execute(op, dbConfig, (node) => onCustomNode(node, db), mapper),
       );
     };
 
     const migrator = createMigrator({
       schema,
       executor: async (operations) => {
+        // For SQLite, execute PRAGMA defer_foreign_keys BEFORE transaction
+        if (this.#kyselyConfig.provider === "sqlite") {
+          await sql.raw("PRAGMA defer_foreign_keys = ON").execute(this.#kyselyConfig.db);
+        }
+
         await this.#kyselyConfig.db.transaction().execute(async (tx) => {
-          for (const node of preprocess(operations, tx)) {
+          const preprocessed = preprocessMigrationOperations(operations);
+          const nodes = toExecutableNodes(preprocessed, tx);
+          for (const node of nodes) {
             try {
               await node.execute();
             } catch (e) {
@@ -96,11 +102,20 @@ export class KyselyAdapter implements DatabaseAdapter {
       },
       sql: {
         toSql: (operations) => {
-          const compiled = preprocess(operations, this.#kyselyConfig.db).map(
-            (m) => `${m.compile().sql};`,
-          );
+          const parts: string[] = [];
 
-          return compiled.join("\n\n");
+          // Add SQLite PRAGMA at the beginning
+          if (this.#kyselyConfig.provider === "sqlite") {
+            parts.push("PRAGMA defer_foreign_keys = ON;");
+          }
+
+          const preprocessed = preprocessMigrationOperations(operations);
+          const nodes = toExecutableNodes(preprocessed, this.#kyselyConfig.db);
+          const compiled = nodes.map((node) => `${node.compile().sql};`);
+
+          parts.push(...compiled);
+
+          return parts.join("\n\n");
         },
       },
 
