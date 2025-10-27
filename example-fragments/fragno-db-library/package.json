@@ -30,8 +30,11 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22",
-    "kysely": "^0.28.8"
+    "kysely": "^0.28.8",
+    "vitest": "^3.2.4"
   }
 }

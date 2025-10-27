@@ -1,0 +1,43 @@
+{
+  "name": "@fragno-dev/test",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "kysely": "^0.28.7",
+    "sqlocal": "^0.15.2"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "vitest": "^3.2.4",
+    "zod": "^4.1.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragno-test"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
+}
