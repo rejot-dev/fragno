@@ -338,8 +338,9 @@ function generateForeignKeys(ctx: GeneratorContext, table: AnyTable, namespace?:
         foreignColumns.push(`table.${actualRefCol}`);
       } else {
         // Suffix the foreign table reference with namespace if provided
-        const foreignTableRef =
-          mapper && namespace ? mapper.toPhysical(relation.table.ormName) : relation.table.ormName;
+        const foreignTableRef = namespace
+          ? `${relation.table.ormName}_${sanitizeNamespace(namespace)}`
+          : relation.table.ormName;
         foreignColumns.push(`${foreignTableRef}.${actualRefCol}`);
       }
     }

@@ -1063,4 +1063,101 @@ describe("generateSchema", () => {
       `);
     });
   });
+
+  describe("namespace sanitization", () => {
+    it("should sanitize namespace with special characters in foreign key references", () => {
+      const generated = generateSchema(
+        [{ namespace: "my-fragment-v2", schema: testSchema }],
+        "postgresql",
+      );
+
+      // Should generate valid JavaScript identifiers (underscores instead of hyphens)
+      expect(generated).toContain("export const users_my_fragment_v2 =");
+      expect(generated).toContain("export const posts_my_fragment_v2 =");
+
+      // Foreign key should reference sanitized table name
+      expect(generated).toContain("foreignColumns: [users_my_fragment_v2._internalId]");
+
+      // Relations should also use sanitized names
+      expect(generated).toContain("author: one(users_my_fragment_v2");
+      expect(generated).toContain("fields: [posts_my_fragment_v2.userId]");
+      expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
+
+      // Physical table names in the database can keep hyphens
+      expect(generated).toContain('pgTable("users_my-fragment-v2"');
+      expect(generated).toContain('pgTable("posts_my-fragment-v2"');
+
+      expect(generated).toMatchInlineSnapshot(`
+        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        import { createId } from "@fragno-dev/db/id"
+        import { relations } from "drizzle-orm"
+
+        // ============================================================================
+        // Settings Table (shared across all fragments)
+        // ============================================================================
+
+        export const fragno_db_settings = pgTable("fragno_db_settings", {
+          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          key: text("key").notNull(),
+          value: text("value").notNull(),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _version: integer("_version").notNull().default(0)
+        }, (table) => [
+          uniqueIndex("unique_key").on(table.key)
+        ])
+
+        export const fragnoDbSettingSchemaVersion = 1;
+
+        // ============================================================================
+        // Fragment: my-fragment-v2
+        // ============================================================================
+
+        export const users_my_fragment_v2 = pgTable("users_my-fragment-v2", {
+          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          name: text("name").notNull(),
+          email: text("email").notNull(),
+          age: integer("age"),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _version: integer("_version").notNull().default(0)
+        }, (table) => [
+          uniqueIndex("idx_email_my-fragment-v2").on(table.email),
+          index("idx_name_my-fragment-v2").on(table.name)
+        ])
+
+        export const posts_my_fragment_v2 = pgTable("posts_my-fragment-v2", {
+          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          title: text("title").notNull(),
+          content: text("content").notNull(),
+          userId: bigint("userId", { mode: "number" }).notNull(),
+          viewCount: integer("viewCount").notNull().default(0),
+          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+          _version: integer("_version").notNull().default(0)
+        }, (table) => [
+          foreignKey({
+            columns: [table.userId],
+            foreignColumns: [users_my_fragment_v2._internalId],
+            name: "fk_posts_users_author_my-fragment-v2"
+          }),
+          index("idx_user_my-fragment-v2").on(table.userId),
+          index("idx_title_my-fragment-v2").on(table.title)
+        ])
+
+        export const posts_my_fragment_v2Relations = relations(posts_my_fragment_v2, ({ one }) => ({
+          author: one(users_my_fragment_v2, {
+            relationName: "posts_users",
+            fields: [posts_my_fragment_v2.userId],
+            references: [users_my_fragment_v2._internalId]
+          })
+        }));
+
+        export const my_fragment_v2_schema = {
+          "users_my-fragment-v2": users_my_fragment_v2,
+          users: users_my_fragment_v2,
+          "posts_my-fragment-v2": posts_my_fragment_v2,
+          posts: posts_my_fragment_v2,
+          schemaVersion: 3
+        }"
+      `);
+    });
+  });
 });

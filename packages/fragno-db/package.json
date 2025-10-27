@@ -23,6 +23,11 @@
       "types": "./dist/query/query.d.ts",
       "default": "./dist/query/query.js"
     },
+    "./adapters": {
+      "development": "./src/adapters/adapters.ts",
+      "types": "./dist/adapters/adapters.d.ts",
+      "default": "./dist/adapters/adapters.js"
+    },
     "./adapters/kysely": {
       "development": "./src/adapters/kysely/kysely-adapter.ts",
       "types": "./dist/adapters/kysely/kysely-adapter.d.ts",
