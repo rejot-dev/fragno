@@ -4,6 +4,7 @@ import {
   createFragment,
   type FragnoPublicClientConfig,
   type FragnoPublicConfig,
+  defineRoutes,
 } from "@fragno-dev/core";
 import OpenAI from "openai";
 import { z } from "zod";
@@ -28,27 +29,13 @@ const healthRoute = defineRoute({
   },
 });
 
-const simpleStreamRoute = defineRoute({
-  method: "GET",
-  path: "/simple-stream",
-  outputSchema: z.array(
-    z.object({
-      message: z.string(),
-    }),
-  ),
-  handler: async (_ctx, { jsonStream }) => {
-    return jsonStream(async (stream) => {
-      for (let i = 0; i < 10; i++) {
-        await stream.sleep(500);
-        await stream.write({ message: `Item ${i + 1}` });
-      }
-    });
-  },
-});
-
 const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
-const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
+interface SimpleStreamService {
+  generateStreamMessages: () => AsyncGenerator<{ message: string }>;
+}
+
+export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
   .withDependencies(({ config }) => {
     return {
       openaiClient: new OpenAI({
@@ -59,10 +46,39 @@ const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
   .withServices(({ deps }) => {
     return {
       getOpenAIURL: () => deps.openaiClient.baseURL,
+      generateStreamMessages: async function* () {
+        for (let i = 0; i < 10; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          yield { message: `Item ${i + 1}` };
+        }
+      },
     };
   });
 
-const routes = [chatRouteFactory, healthRoute, simpleStreamRoute] as const;
+const simpleStreamRoute = defineRoutes<ChatnoServerConfig, {}, SimpleStreamService>().create(
+  ({ services }) => {
+    return [
+      defineRoute({
+        method: "GET",
+        path: "/simple-stream",
+        outputSchema: z.array(
+          z.object({
+            message: z.string(),
+          }),
+        ),
+        handler: async (_ctx, { jsonStream }) => {
+          return jsonStream(async (stream) => {
+            for await (const item of services.generateStreamMessages()) {
+              await stream.write(item);
+            }
+          });
+        },
+      }),
+    ];
+  },
+);
+
+export const routes = [chatRouteFactory, healthRoute, simpleStreamRoute] as const;
 
 // Server-side factory
 export function createChatno(

@@ -1,0 +1,99 @@
+---
+title: Testing
+description: Testing Fragno fragments
+---
+
+Fragno provides comprehensive testing utilities to help you test your fragments without running a
+server. The `createFragmentForTest` function creates a test instance with type-safe route handling
+and response parsing.
+
+## Creating a Test Fragment
+
+```typescript
+import { createFragmentForTest } from "@fragno-dev/core/test";
+
+const fragment = createFragmentForTest(myFragmentDefinition, {
+  config: { apiKey: "test-key" },
+  // Optional: override dependencies
+  deps: { httpClient: mockHttpClient },
+  // Optional: override services
+  services: { getUserById: mockGetUserById },
+});
+```
+
+## Initializing Routes
+
+Use `initRoutes` to resolve route factories with the fragment's context:
+
+```typescript
+const [userRoute, profileRoute] = fragment.initRoutes(routes);
+```
+
+You can override config/deps/services for specific routes to mock dependencies:
+
+```typescript
+const [route] = fragment.initRoutes(routes, {
+  services: { externalApi: mockApiImplementation },
+  config: { timeout: 1000 },
+});
+```
+
+## Testing Route Handlers
+
+The `handler` method executes routes and returns a typed discriminated union:
+
+```typescript
+const response = await fragment.handler(userRoute, {
+  pathParams: { id: "123" },
+  body: { name: "John" },
+  query: { filter: "active" },
+  headers: { authorization: "Bearer token" },
+});
+
+// Response is a discriminated union
+assert(response.type === "json");
+expect(response.status).toBe(200);
+expect(response.data).toEqual({ id: "123", name: "John" });
+```
+
+## Response Types
+
+The `handler` returns a discriminated union with four possible types:
+
+### JSON Response
+
+```typescript
+assert(response.type === "json");
+expect(response.status).toBe(200);
+expect(response.headers).toBeInstanceOf(Headers);
+expect(response.data).toEqual({ id: "123", name: "John" });
+```
+
+### Streaming Response
+
+```typescript
+assert(response.type === "jsonStream");
+const items = [];
+for await (const item of response.stream) {
+  items.push(item);
+}
+expect(items).toEqual([...expected]);
+```
+
+### Empty Response
+
+```typescript
+assert(response.type === "empty");
+expect(response.status).toBe(204);
+```
+
+### Error Response
+
+```typescript
+assert(response.type === "error");
+expect(response.status).toBe(404);
+expect(response.error).toEqual({
+  message: "Not found",
+  code: "NOT_FOUND",
+});
+```
