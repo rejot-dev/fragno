@@ -131,17 +131,32 @@ Use `defineFragmentWithDatabase()` when your Fragment needs to:
 Database schemas are defined in a separate `schema.ts` file using the Fragno schema builder:
 
 ```typescript
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
 export const noteSchema = schema((s) => {
-  return s.addTable("note", (t) => {
-    return t
-      .addColumn("id", idColumn()) // Auto-generated ID
-      .addColumn("content", column("string"))
-      .addColumn("userId", column("string"))
-      .addColumn("createdAt", column("timestamp").defaultTo$("now"))
-      .createIndex("idx_note_user", ["userId"]); // Index for efficient queries
-  });
+  return s
+    .addTable("users", (t) => {
+      return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+    })
+    .addTable("note", (t) => {
+      return t
+        .addColumn("id", idColumn()) // Auto-generated ID
+        .addColumn("content", column("string"))
+        .addColumn("userId", referenceColumn())
+        .addColumn("createdAt", column("timestamp").defaultTo$("now"))
+        .createIndex("idx_note_user", ["userId"]);
+    })
+    .addReference("author", {
+      from: {
+        table: "note",
+        column: "userId",
+      },
+      to: {
+        table: "user",
+        column: "id",
+      },
+      type: "one",
+    });
 });
 ```
 
