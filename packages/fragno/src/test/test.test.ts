@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createFragmentForTest } from "./test";
 import { defineFragment } from "../api/fragment-builder";
-import { defineRoute } from "../api/route";
+import { defineRoute, defineRoutes } from "../api/route";
 import { z } from "zod";
 
 describe("createFragmentForTest", () => {
@@ -314,6 +314,61 @@ describe("fragment.handler", () => {
       }
 
       expect(items).toEqual([{ value: 1 }, { value: 2 }, { value: 3 }, { value: 4 }, { value: 5 }]);
+    }
+  });
+
+  it("should handle route factory created with defineRoutes", async () => {
+    const fragment = defineFragment<{ apiKey: string }>("test").withServices(() => ({
+      getGreeting: (name: string) => `Hello, ${name}!`,
+      getCount: () => 42,
+    }));
+
+    const testFragment = createFragmentForTest(fragment, {
+      config: { apiKey: "test-key" },
+    });
+
+    type Config = { apiKey: string };
+    type Deps = {};
+    type Services = { getGreeting: (name: string) => string; getCount: () => number };
+
+    const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
+      defineRoute({
+        method: "GET",
+        path: "/greeting/:name",
+        outputSchema: z.object({ message: z.string() }),
+        handler: async ({ pathParams }, { json }) => {
+          return json({ message: services.getGreeting(pathParams.name) });
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/count",
+        outputSchema: z.object({ count: z.number() }),
+        handler: async (_ctx, { json }) => {
+          return json({ count: services.getCount() });
+        },
+      }),
+    ]);
+
+    const routes = [routeFactory] as const;
+    const [greetingRoute, countRoute] = testFragment.initRoutes(routes);
+
+    // Test first route
+    const greetingResponse = await testFragment.handler(greetingRoute, {
+      pathParams: { name: "World" },
+    });
+
+    expect(greetingResponse.type).toBe("json");
+    if (greetingResponse.type === "json") {
+      expect(greetingResponse.data).toEqual({ message: "Hello, World!" });
+    }
+
+    // Test second route
+    const countResponse = await testFragment.handler(countRoute);
+
+    expect(countResponse.type).toBe("json");
+    if (countResponse.type === "json") {
+      expect(countResponse.data).toEqual({ count: 42 });
     }
   });
 

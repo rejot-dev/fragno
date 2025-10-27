@@ -3,6 +3,8 @@ import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
 import { createDatabaseFragmentForTest } from "./index";
 import { unlinkSync, existsSync } from "node:fs";
+import { defineRoute, defineRoutes } from "@fragno-dev/core";
+import { z } from "zod";
 
 // Test schema with multiple versions
 const testSchema = schema((s) => {
@@ -258,6 +260,145 @@ describe("createDatabaseFragmentForTest", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         createDatabaseFragmentForTest(nonDbFragment as any),
       ).rejects.toThrow("Fragment 'non-db-fragment' does not have a database schema");
+    });
+  });
+
+  describe("route handling with defineRoutes", () => {
+    it("should handle route factory with multiple routes", async () => {
+      const fragment = await createDatabaseFragmentForTest(testFragmentDef);
+
+      type Config = {};
+      type Deps = {};
+      type Services = {
+        createUser: (data: { name: string; email: string; age?: number | null }) => Promise<{
+          name: string;
+          email: string;
+          age?: number | null;
+          id: string;
+        }>;
+        getUsers: () => Promise<{ name: string; email: string; age: number | null; id: string }[]>;
+      };
+
+      const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
+        defineRoute({
+          method: "POST",
+          path: "/users",
+          inputSchema: z.object({
+            name: z.string(),
+            email: z.string(),
+            age: z.number().nullable().optional(),
+          }),
+          outputSchema: z.object({
+            id: z.string(),
+            name: z.string(),
+            email: z.string(),
+            age: z.number().nullable().optional(),
+          }),
+          handler: async ({ input }, { json }) => {
+            if (input) {
+              const data = await input.valid();
+              const user = await services.createUser(data);
+              return json(user);
+            }
+            return json({ id: "", name: "", email: "", age: null });
+          },
+        }),
+        defineRoute({
+          method: "GET",
+          path: "/users",
+          outputSchema: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              email: z.string(),
+              age: z.number().nullable(),
+            }),
+          ),
+          handler: async (_ctx, { json }) => {
+            const users = await services.getUsers();
+            return json(users);
+          },
+        }),
+      ]);
+
+      const routes = [routeFactory] as const;
+      const [createUserRoute, getUsersRoute] = fragment.initRoutes(routes);
+
+      // Test creating a user
+      const createResponse = await fragment.handler(createUserRoute, {
+        body: { name: "John Doe", email: "john@example.com", age: 30 },
+      });
+
+      expect(createResponse.type).toBe("json");
+      if (createResponse.type === "json") {
+        expect(createResponse.data).toMatchObject({
+          id: expect.any(String),
+          name: "John Doe",
+          email: "john@example.com",
+          age: 30,
+        });
+      }
+
+      // Test getting users
+      const getUsersResponse = await fragment.handler(getUsersRoute);
+
+      expect(getUsersResponse.type).toBe("json");
+      if (getUsersResponse.type === "json") {
+        expect(getUsersResponse.data).toHaveLength(1);
+        expect(getUsersResponse.data[0]).toMatchObject({
+          id: expect.any(String),
+          name: "John Doe",
+          email: "john@example.com",
+          age: 30,
+        });
+      }
+    });
+  });
+
+  describe("resetDatabase", () => {
+    it("should clear all data and recreate a fresh database", async () => {
+      const fragment = await createDatabaseFragmentForTest(testFragmentDef);
+
+      // Create some users
+      await fragment.services.createUser({
+        name: "User 1",
+        email: "user1@example.com",
+        age: 25,
+      });
+      await fragment.services.createUser({
+        name: "User 2",
+        email: "user2@example.com",
+        age: 30,
+      });
+
+      // Verify users exist
+      let users = await fragment.services.getUsers();
+      expect(users).toHaveLength(2);
+
+      // Reset the database
+      await fragment.resetDatabase();
+
+      // Verify database is empty
+      users = await fragment.services.getUsers();
+      expect(users).toHaveLength(0);
+
+      // Verify we can still create new users after reset
+      const newUser = await fragment.services.createUser({
+        name: "User After Reset",
+        email: "after@example.com",
+        age: 35,
+      });
+
+      expect(newUser).toMatchObject({
+        id: expect.any(String),
+        name: "User After Reset",
+        email: "after@example.com",
+        age: 35,
+      });
+
+      users = await fragment.services.getUsers();
+      expect(users).toHaveLength(1);
+      expect(users[0]).toMatchObject(newUser);
     });
   });
 });
