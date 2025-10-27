@@ -1,0 +1,13 @@
+# @fragno-dev/test
+
+## 0.1.1
+
+### Patch Changes
+
+- 711226d: feat(testing): add `createDatabaseFragmentForTest` in new test package that automatically
+  sets up a Fragment's database and makes it ready for testing
+- Updated dependencies [8b2859c]
+- Updated dependencies [bef9f6c]
+- Updated dependencies [711226d]
+  - @fragno-dev/db@0.1.5
+  - @fragno-dev/core@0.1.3

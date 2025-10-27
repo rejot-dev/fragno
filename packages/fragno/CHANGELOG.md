@@ -1,5 +1,14 @@
 # @fragno-dev/core
 
+## 0.1.3
+
+### Patch Changes
+
+- bef9f6c: feat(testing): add `createFragmentForTest` test helper to easily test API routes defined
+  in Fragments
+- 711226d: feat(testing): add `createDatabaseFragmentForTest` in new test package that automatically
+  sets up a Fragment's database and makes it ready for testing
+
 ## 0.1.2
 
 ### Patch Changes
