@@ -1,5 +1,13 @@
 # @fragno-dev/test
 
+## 0.1.2
+
+### Patch Changes
+
+- 6fd2528: feat(testing): add resetDatabase method to test Fragment instance
+- Updated dependencies [70bdcb2]
+  - @fragno-dev/db@0.1.6
+
 ## 0.1.1
 
 ### Patch Changes
