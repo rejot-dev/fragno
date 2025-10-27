@@ -6,6 +6,7 @@ export default defineConfig({
     "./src/id.ts",
     "./src/schema/create.ts",
     "./src/query/query.ts",
+    "./src/adapters/adapters.ts",
     "./src/adapters/kysely/kysely-adapter.ts",
     "./src/adapters/drizzle/drizzle-adapter.ts",
     "./src/query/unit-of-work.ts",
