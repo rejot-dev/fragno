@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.5
+
+### Patch Changes
+
+- 8b2859c: fix(SQLite + Kysely): fix migrations hanging in some cases
+
 ## 0.1.4
 
 ### Patch Changes
