@@ -7,5 +7,4 @@ export function createAdapter() {
     provider: "postgresql",
   });
 }
-
 export const adapter = createAdapter();

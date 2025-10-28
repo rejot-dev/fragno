@@ -1,6 +1,10 @@
 import { sql, type Kysely } from "kysely";
 import type { SQLProvider } from "../../shared/providers";
-import type { DatabaseAdapter } from "../adapters";
+import {
+  fragnoDatabaseAdapterNameFakeSymbol,
+  fragnoDatabaseAdapterVersionFakeSymbol,
+  type DatabaseAdapter,
+} from "../adapters";
 import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
@@ -24,6 +28,19 @@ export class KyselyAdapter implements DatabaseAdapter {
 
   constructor(config: KyselyConfig) {
     this.#kyselyConfig = config;
+  }
+
+  get [fragnoDatabaseAdapterNameFakeSymbol](): string {
+    return "kysely";
+  }
+
+  get [fragnoDatabaseAdapterVersionFakeSymbol](): number {
+    return 0;
+  }
+
+  async close(): Promise<void> {
+    const db = this.#getDb();
+    await db.destroy();
   }
 
   #getDb(): KyselyAny {

@@ -3,7 +3,13 @@ import type { AbstractQuery } from "../query/query";
 import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
 
+export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
+export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
+
 export interface DatabaseAdapter<TUOWConfig = void> {
+  [fragnoDatabaseAdapterNameFakeSymbol]: string;
+  [fragnoDatabaseAdapterVersionFakeSymbol]: number;
+
   /**
    * Get current schema version, undefined if not initialized.
    */
@@ -26,4 +32,6 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   ) => SchemaGenerator;
 
   isConnectionHealthy: () => Promise<boolean>;
+
+  close: () => Promise<void>;
 }

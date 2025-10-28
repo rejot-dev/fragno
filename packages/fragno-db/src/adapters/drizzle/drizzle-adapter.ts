@@ -7,6 +7,10 @@ import { fromDrizzle, type DrizzleUOWConfig } from "./drizzle-query";
 import { createTableNameMapper, type DBType, type DrizzleResult } from "./shared";
 import { createSettingsManager, settingsSchema } from "../../shared/settings-schema";
 import { sql } from "drizzle-orm";
+import {
+  fragnoDatabaseAdapterNameFakeSymbol,
+  fragnoDatabaseAdapterVersionFakeSymbol,
+} from "../adapters";
 
 export interface DrizzleConfig {
   db: unknown | (() => unknown);
@@ -18,6 +22,18 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
 
   constructor(config: DrizzleConfig) {
     this.#drizzleConfig = config;
+  }
+
+  get [fragnoDatabaseAdapterNameFakeSymbol](): string {
+    return "drizzle";
+  }
+
+  get [fragnoDatabaseAdapterVersionFakeSymbol](): number {
+    return 0;
+  }
+
+  async close(): Promise<void> {
+    //
   }
 
   get provider(): "sqlite" | "mysql" | "postgresql" {

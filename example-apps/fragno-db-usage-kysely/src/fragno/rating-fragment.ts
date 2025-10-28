@@ -7,5 +7,4 @@ import { adapter } from "./adapter";
 export function createRatingFragmentServer() {
   return createRatingFragment({}, { databaseAdapter: adapter });
 }
-
 export const fragment = createRatingFragmentServer();

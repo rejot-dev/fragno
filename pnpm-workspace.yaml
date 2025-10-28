@@ -1,9 +1,13 @@
 packages:
-  - "example-apps/*"
-  - "example-fragments/*"
-  - "apps/*"
-  - "packages/*"
-  - "packages-private/*"
-  - "scripts"
+  - example-apps/*
+  - example-fragments/*
+  - apps/*
+  - packages/*
+  - packages-private/*
+  - scripts
+
 onlyBuiltDependencies:
-  - "better-sqlite3"
+  - better-sqlite3
+
+patchedDependencies:
+  "@paralleldrive/cuid2@2.3.0": patches/@paralleldrive__cuid2@2.3.0.patch

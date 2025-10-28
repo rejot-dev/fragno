@@ -7,5 +7,4 @@ import { adapter } from "./adapter";
 export function createCommentFragmentServer() {
   return createCommentFragment({}, { databaseAdapter: adapter });
 }
-
 export const fragment = createCommentFragmentServer();

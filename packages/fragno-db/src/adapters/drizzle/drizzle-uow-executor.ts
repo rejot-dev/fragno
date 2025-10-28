@@ -85,6 +85,11 @@ function getAffectedRows(result: unknown): number {
   }
 
   if (result && typeof result === "object") {
+    // libsql uses rowsAffected
+    if ("rowsAffected" in result && typeof result["rowsAffected"] === "number") {
+      return result["rowsAffected"];
+    }
+
     if ("affectedRows" in result && typeof result["affectedRows"] === "number") {
       return result["affectedRows"];
     }
@@ -114,14 +119,20 @@ async function executeInTransaction(
   db: DBType,
   provider: "sqlite" | "mysql" | "postgresql",
   syncExecutor: (db: SyncSQLiteDB) => void,
-  asyncExecutor: (tx: { execute: (sql: SQL) => Promise<unknown> }) => Promise<void>,
+  asyncExecutor: (tx: {
+    execute?: (sql: SQL) => Promise<unknown>;
+    run?: (sql: SQL) => Promise<unknown>;
+  }) => Promise<void>,
 ): Promise<void> {
   if (provider === "sqlite" && isSyncSQLite(db)) {
     assertSyncSQLite(db);
     db.transaction(() => syncExecutor(db));
   } else {
     await db.transaction(
-      async (tx) => await asyncExecutor(tx as { execute: (sql: SQL) => Promise<unknown> }),
+      async (tx) =>
+        await asyncExecutor(
+          tx as { execute?: (sql: SQL) => Promise<unknown>; run?: (sql: SQL) => Promise<unknown> },
+        ),
     );
   }
 }
@@ -186,7 +197,13 @@ export async function executeDrizzleRetrievalPhase(
     },
     async (tx) => {
       for (const query of retrievalBatch) {
-        const result = (await tx.execute(toSQL(query, provider))) as DrizzleResult;
+        const sqlObj = toSQL(query, provider);
+        // Fallback to run when execute is not available (e.g., libsql)
+        const executeMethod = tx.execute ?? tx.run;
+        if (!executeMethod) {
+          throw new Error("Transaction object has neither execute nor run method");
+        }
+        const result = (await executeMethod.call(tx, sqlObj)) as DrizzleResult;
         retrievalResults.push(result);
       }
     },
@@ -232,7 +249,13 @@ export async function executeDrizzleMutationPhase(
       },
       async (tx) => {
         for (const { query, expectedAffectedRows } of mutationBatch) {
-          const result = await tx.execute(toSQL(query, provider));
+          const sqlObj = toSQL(query, provider);
+          // Fallback to run when execute is not available (e.g., libsql)
+          const executeMethod = tx.execute ?? tx.run;
+          if (!executeMethod) {
+            throw new Error("Transaction object has neither execute nor run method");
+          }
+          const result = await executeMethod.call(tx, sqlObj);
 
           if (expectedAffectedRows === null) {
             createdInternalIds.push(extractCreatedInternalId(result));

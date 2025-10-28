@@ -6,10 +6,17 @@ import { schema, idColumn, column } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./mod";
 import { z } from "zod";
+import {
+  fragnoDatabaseAdapterNameFakeSymbol,
+  fragnoDatabaseAdapterVersionFakeSymbol,
+} from "./adapters/adapters";
 
 type Empty = Record<never, never>;
 
 const mockDatabaseAdapter: DatabaseAdapter = {
+  [fragnoDatabaseAdapterNameFakeSymbol]: "mock",
+  [fragnoDatabaseAdapterVersionFakeSymbol]: 0,
+  close: () => Promise.resolve(),
   createQueryEngine: () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return {} as any;

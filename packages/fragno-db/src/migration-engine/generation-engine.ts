@@ -6,6 +6,10 @@ import {
   SETTINGS_NAMESPACE,
   createSettingsManager,
 } from "../shared/settings-schema";
+import {
+  fragnoDatabaseAdapterNameFakeSymbol,
+  fragnoDatabaseAdapterVersionFakeSymbol,
+} from "../adapters/adapters";
 
 export interface GenerationEngineResult {
   schema: string;
@@ -201,12 +205,20 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     );
   }
 
-  // Validate all use same adapter
-  const allSameAdapter = databases.every((db) => db.adapter === adapter);
-  if (!allSameAdapter) {
-    throw new Error(
-      "All fragments must use the same database adapter instance. Mixed adapters are not supported.",
-    );
+  // Validate all use same adapter name and version
+  const firstAdapterName = adapter[fragnoDatabaseAdapterNameFakeSymbol];
+  const firstAdapterVersion = adapter[fragnoDatabaseAdapterVersionFakeSymbol];
+
+  for (const db of databases) {
+    const dbAdapterName = db.adapter[fragnoDatabaseAdapterNameFakeSymbol];
+    const dbAdapterVersion = db.adapter[fragnoDatabaseAdapterVersionFakeSymbol];
+
+    if (dbAdapterName !== firstAdapterName || dbAdapterVersion !== firstAdapterVersion) {
+      throw new Error(
+        `All fragments must use the same database adapter. ` +
+          `Found: ${firstAdapterName}@${firstAdapterVersion} and ${dbAdapterName}@${dbAdapterVersion}`,
+      );
+    }
   }
 
   if (!(await adapter.isConnectionHealthy())) {
