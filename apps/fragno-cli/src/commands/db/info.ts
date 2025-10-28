@@ -1,8 +1,6 @@
 import { resolve } from "node:path";
 import { define } from "gunshi";
-import { findFragnoDatabases } from "../../utils/find-fragno-databases";
-import type { FragnoDatabase } from "@fragno-dev/db";
-import type { AnySchema } from "@fragno-dev/db/schema";
+import { importFragmentFiles } from "../../utils/find-fragno-databases";
 
 export const infoCommand = define({
   name: "info",
@@ -15,56 +13,11 @@ export const infoCommand = define({
       throw new Error("At least one target file path is required");
     }
 
-    // De-duplicate targets (in case same file was specified multiple times)
-    const uniqueTargets = Array.from(new Set(targets));
+    // Resolve all target paths
+    const targetPaths = targets.map((target) => resolve(process.cwd(), target));
 
-    // Load all target files and collect FragnoDatabase instances
-    const allFragnoDatabases: FragnoDatabase<AnySchema>[] = [];
-
-    for (const target of uniqueTargets) {
-      const targetPath = resolve(process.cwd(), target);
-      console.log(`Loading target file: ${targetPath}`);
-
-      // Dynamically import the target file
-      let targetModule: Record<string, unknown>;
-      try {
-        targetModule = await import(targetPath);
-      } catch (error) {
-        throw new Error(
-          `Failed to import target file ${target}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-
-      // Find all FragnoDatabase instances or instantiated fragments with databases
-      const fragnoDatabases = findFragnoDatabases(targetModule);
-
-      if (fragnoDatabases.length === 0) {
-        console.warn(
-          `Warning: No FragnoDatabase instances found in ${target}.\n` +
-            `Make sure you export either:\n` +
-            `  - A FragnoDatabase instance created with .create(adapter)\n` +
-            `  - An instantiated fragment with embedded database definition\n`,
-        );
-        continue;
-      }
-
-      if (fragnoDatabases.length > 1) {
-        console.warn(
-          `Warning: Multiple FragnoDatabase instances found in ${target} (${fragnoDatabases.length}). Showing info for all of them.`,
-        );
-      }
-
-      allFragnoDatabases.push(...fragnoDatabases);
-    }
-
-    if (allFragnoDatabases.length === 0) {
-      throw new Error(
-        `No FragnoDatabase instances found in any of the target files.\n` +
-          `Make sure your files export either:\n` +
-          `  - A FragnoDatabase instance created with .create(adapter)\n` +
-          `  - An instantiated fragment with embedded database definition\n`,
-      );
-    }
+    // Import all fragment files
+    const { databases: allFragnoDatabases } = await importFragmentFiles(targetPaths);
 
     // Collect database information
     const dbInfos = await Promise.all(
@@ -116,9 +69,7 @@ export const infoCommand = define({
 
     // Print compact table
     console.log("");
-    console.log(
-      `Found ${allFragnoDatabases.length} database(s) across ${uniqueTargets.length} file(s):`,
-    );
+    console.log(`Database Information:`);
     console.log("");
 
     // Table header

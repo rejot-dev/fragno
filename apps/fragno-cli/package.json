@@ -21,15 +21,16 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@types/node": "^22",
     "@fragno-private/typescript-config": "workspace:*",
-    "@fragno-private/vitest-config": "workspace:*"
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
-    "gunshi": "^0.26.3",
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/db": "workspace:*"
+    "@fragno-dev/db": "workspace:*",
+    "c12": "^3.3.1",
+    "gunshi": "^0.26.3"
   },
   "main": "./dist/cli.js",
   "module": "./dist/cli.js",

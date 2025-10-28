@@ -30,7 +30,7 @@
   "private": true,
   "scripts": {
     "dev": "turbo watch --ui tui dev",
-    "cli:dev": "node --import tsx apps/fragno-cli/src/cli.ts --",
+    "cli": "tsx apps/fragno-cli/src/cli.ts",
     "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -40,7 +40,7 @@
     "clean": "find . -type d \\( -name dist -o -name node_modules -o -name .turbo -o -name .next -o -name .output -o -name .nuxt -o -name .react-router -o -name .open-next -o -name .source -o -name .svelte-kit \\) -prune -exec rm -rf {} + -o -name tsconfig.tsbuildinfo -o -name coverage.json -exec rm -f {} +",
     "clean:install": "pnpm run clean && pnpm install",
     "build": "turbo run build",
-    "build:watch": "turbo watch build",
+    "build:watch": "turbo watch build --filter='!./apps/docs/*'",
     "build:ui": "turbo watch --ui tui build",
     "build:clean": "turbo run build --force",
     "types:check": "turbo run types:check",
@@ -51,5 +51,8 @@
     "ci:version": "changeset version && pnpm update && pnpm install",
     "ci:publish": "node --import tsx scripts/src/publish-packages.ts --access public && changeset tag",
     "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text pnpm-lock.yaml"
+  },
+  "bin": {
+    "dev-cli": "./dev-cli"
   }
 }

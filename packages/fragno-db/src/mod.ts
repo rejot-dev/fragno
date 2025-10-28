@@ -112,7 +112,7 @@ export class FragnoDatabase<const T extends AnySchema> {
     return this.#schema;
   }
 
-  get adapter() {
+  get adapter(): DatabaseAdapter {
     return this.#adapter;
   }
 }

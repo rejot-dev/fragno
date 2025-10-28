@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/libsql";
+import { createClient } from "@libsql/client";
 import { DrizzleAdapter } from "./drizzle-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
@@ -73,7 +73,7 @@ describe("DrizzleAdapter SQLite", () => {
 
   let adapter: DrizzleAdapter;
   let db: DBType;
-  let sqliteDb: Database.Database;
+  // let sqliteDb: Database.Database;
 
   beforeAll(async () => {
     // Write schema to file and dynamically import it
@@ -84,12 +84,11 @@ describe("DrizzleAdapter SQLite", () => {
       "namespace",
     );
 
-    // Create in-memory SQLite database
-    sqliteDb = new Database(":memory:");
+    const client = createClient({
+      url: "file::memory:?cache=shared",
+    });
 
-    // Create Drizzle instance with better-sqlite3
-    db = drizzle({
-      client: sqliteDb,
+    db = drizzle(client, {
       schema: schemaModule,
     }) as unknown as DBType;
 
@@ -99,9 +98,8 @@ describe("DrizzleAdapter SQLite", () => {
 
     const migrationStatements = await generateSQLiteMigration(emptyJson, targetJson);
 
-    // Execute migration SQL - for better-sqlite3, use exec on the raw database
     for (const statement of migrationStatements) {
-      sqliteDb.exec(statement);
+      await client.execute(statement);
     }
 
     adapter = new DrizzleAdapter({
@@ -110,7 +108,7 @@ describe("DrizzleAdapter SQLite", () => {
     });
 
     return async () => {
-      sqliteDb.close();
+      client.close();
       await cleanup();
     };
   }, 12000);
