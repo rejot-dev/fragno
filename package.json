@@ -15,7 +15,7 @@
     "prettier-plugin-sql": "^0.19.2",
     "prettier-plugin-svelte": "^3.4.0",
     "prettier-plugin-tailwindcss": "^0.6.14",
-    "tsdown": "^0.15.10",
+    "tsdown": "^0.15.11",
     "tsx": "^4.20.6",
     "turbo": "^2.5.8",
     "typescript": "^5.9.3",
