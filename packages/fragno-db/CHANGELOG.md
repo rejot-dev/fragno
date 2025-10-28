@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.8
+
+### Patch Changes
+
+- f3cdb1d: fix: properly generate subqueries in Postgres/Drizzle when inserting using external IDs
+
 ## 0.1.7
 
 ### Patch Changes
