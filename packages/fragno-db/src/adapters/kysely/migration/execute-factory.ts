@@ -9,9 +9,9 @@ import { MssqlMigrationExecutor } from "./execute-mssql";
  * Create a provider-specific migration executor.
  */
 export function createMigrationExecutor(config: KyselyConfig): MigrationExecutor {
-  const { db, provider } = config;
-  // Resolve the db instance if it's a function
-  const kysely = typeof db === "function" ? db() : db;
+  const { provider } = config;
+  // Resolve db instance (lazy or eager)
+  const kysely = typeof config.db === "function" ? config.db() : config.db;
 
   switch (provider) {
     case "sqlite":

@@ -78,12 +78,7 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   ): AbstractQuery<TSchema, DrizzleUOWConfig> {
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    // Resolve the db instance if it's a function
-    const resolvedConfig: DrizzleConfig = {
-      db: this.#getDb(),
-      provider: this.#drizzleConfig.provider,
-    };
-    return fromDrizzle(schema, resolvedConfig, mapper);
+    return fromDrizzle(schema, this.#drizzleConfig, mapper);
   }
 
   createSchemaGenerator(

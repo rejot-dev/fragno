@@ -51,12 +51,8 @@ export class KyselyAdapter implements DatabaseAdapter {
   createQueryEngine<T extends AnySchema>(schema: T, namespace: string): AbstractQuery<T> {
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    // Resolve the db instance if it's a function
-    const resolvedConfig: KyselyConfig = {
-      db: this.#getDb(),
-      provider: this.#kyselyConfig.provider,
-    };
-    return fromKysely(schema, resolvedConfig, mapper);
+    // Pass original config with lazy db - it will be resolved at execution time
+    return fromKysely(schema, this.#kyselyConfig, mapper);
   }
 
   async isConnectionHealthy(): Promise<boolean> {

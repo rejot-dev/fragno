@@ -46,17 +46,23 @@ export function fromDrizzle<T extends AnySchema>(
   config: DrizzleConfig,
   mapper?: TableNameMapper,
 ): AbstractQuery<T, DrizzleUOWConfig> {
-  const [db] = parseDrizzle(config.db);
   const { provider } = config;
+
+  // Helper to lazily resolve the db instance
+  const getDb = () => {
+    const db = config.db;
+    const resolved = typeof db === "function" ? db() : db;
+    return parseDrizzle(resolved)[0];
+  };
 
   function createUOW(name?: string, uowConfig?: DrizzleUOWConfig) {
     const uowCompiler = createDrizzleUOWCompiler(schema, config, mapper, uowConfig?.onQuery);
 
     const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
       executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
-        executeDrizzleRetrievalPhase(db, retrievalBatch, provider),
+        executeDrizzleRetrievalPhase(getDb(), retrievalBatch, provider),
       executeMutationPhase: (mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) =>
-        executeDrizzleMutationPhase(db, mutationBatch, provider),
+        executeDrizzleMutationPhase(getDb(), mutationBatch, provider),
     };
 
     const decoder = createDrizzleUOWDecoder(schema, provider);

@@ -39,17 +39,22 @@ export function fromKysely<T extends AnySchema>(
   config: KyselyConfig,
   mapper?: TableNameMapper,
 ): AbstractQuery<T> {
-  const { db, provider } = config;
-  // Resolve the db instance if it's a function
-  const kysely = typeof db === "function" ? db() : db;
-  const uowCompiler = createKyselyUOWCompiler(schema, config, mapper);
+  const { provider } = config;
+
+  // Helper to lazily resolve the db instance
+  const getDb = () => {
+    const db = config.db;
+    return typeof db === "function" ? db() : db;
+  };
 
   function createUOW(name?: string): UnitOfWork<T, []> {
+    const uowCompiler = createKyselyUOWCompiler(schema, config, mapper);
+
     const executor: UOWExecutor<CompiledQuery, unknown> = {
       executeRetrievalPhase: (retrievalBatch: CompiledQuery[]) =>
-        executeKyselyRetrievalPhase(kysely, retrievalBatch),
+        executeKyselyRetrievalPhase(getDb(), retrievalBatch),
       executeMutationPhase: (mutationBatch: CompiledMutation<CompiledQuery>[]) =>
-        executeKyselyMutationPhase(kysely, mutationBatch),
+        executeKyselyMutationPhase(getDb(), mutationBatch),
     };
 
     // Create a decoder function to transform raw results into application format
