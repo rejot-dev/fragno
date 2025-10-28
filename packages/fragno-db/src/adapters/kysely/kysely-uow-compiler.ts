@@ -1,4 +1,4 @@
-import type { CompiledQuery } from "kysely";
+import type { CompiledQuery, Kysely } from "kysely";
 import type { AnyColumn, AnySchema, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
@@ -6,13 +6,17 @@ import type {
   RetrievalOperation,
   UOWCompiler,
 } from "../../query/unit-of-work";
-import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
 import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { AnySelectClause } from "../../query/query";
 import type { TableNameMapper } from "./kysely-shared";
+import type { ConnectionPool } from "../../shared/connection-pool";
+import type { SQLProvider } from "../../shared/providers";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type KyselyAny = Kysely<any>;
 
 /**
  * Create a Kysely-specific Unit of Work compiler
@@ -21,19 +25,20 @@ import type { TableNameMapper } from "./kysely-shared";
  * that can be executed as a batch/transaction.
  *
  * @param schema - The database schema
- * @param config - Kysely configuration
+ * @param pool - Connection pool for acquiring database connections
+ * @param provider - SQL provider (postgresql, mysql, sqlite, etc.)
  * @param mapper - Optional table name mapper for namespace prefixing
  * @returns A UOWCompiler instance for Kysely
  */
 export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   schema: TSchema,
-  config: KyselyConfig,
+  pool: ConnectionPool<KyselyAny>,
+  provider: SQLProvider,
   mapper?: TableNameMapper,
 ): UOWCompiler<TSchema, CompiledQuery> {
-  const queryCompiler = createKyselyQueryCompiler(schema, config, mapper);
-  const { provider } = config;
-  // Resolve db instance (lazy or eager)
-  const kysely = typeof config.db === "function" ? config.db() : config.db;
+  const queryCompiler = createKyselyQueryCompiler(schema, pool, provider, mapper);
+  // Get kysely instance for query building (compilation doesn't execute, just builds SQL)
+  const kysely = pool.getDatabaseSync();
   const queryBuilder = createKyselyQueryBuilder(kysely, provider, mapper);
 
   function toTable(name: unknown) {

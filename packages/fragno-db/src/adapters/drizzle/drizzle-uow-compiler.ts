@@ -8,13 +8,19 @@ import type {
   UOWCompiler,
 } from "../../query/unit-of-work";
 import { buildCondition, type Condition } from "../../query/condition-builder";
-import type { DrizzleConfig } from "./drizzle-adapter";
-import { type ColumnType, type TableType, type TableNameMapper, parseDrizzle } from "./shared";
+import {
+  type ColumnType,
+  type TableType,
+  type TableNameMapper,
+  parseDrizzle,
+  type DBType,
+} from "./shared";
 import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { CompiledJoin } from "../../query/orm/orm";
 import { getOrderedJoinColumns } from "./join-column-utils";
+import type { ConnectionPool } from "../../shared/connection-pool";
 
 export type DrizzleCompiledQuery = {
   sql: string;
@@ -28,21 +34,23 @@ export type DrizzleCompiledQuery = {
  * that can be executed as a batch/transaction.
  *
  * @param schema - The database schema
- * @param config - Drizzle configuration
+ * @param pool - Connection pool for acquiring database connections
+ * @param provider - SQL provider (sqlite, mysql, postgresql)
  * @param mapper - Optional table name mapper for namespace prefixing
  * @param onQuery - Optional callback to receive compiled queries for logging/debugging
  * @returns A UOWCompiler instance for Drizzle
  */
 export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   schema: TSchema,
-  config: DrizzleConfig,
+  pool: ConnectionPool<DBType>,
+  provider: "sqlite" | "mysql" | "postgresql",
   mapper?: TableNameMapper,
   onQuery?: (query: DrizzleCompiledQuery) => void,
 ): UOWCompiler<TSchema, DrizzleCompiledQuery> {
-  // Resolve db instance (lazy or eager)
-  const dbRaw = typeof config.db === "function" ? config.db() : config.db;
+  // Get db synchronously for compilation (doesn't execute, just builds SQL)
+  // TODO: We don't even need a Drizzle instance with a db client attached here. `drizzle({ schema })` is enough.
+  const dbRaw = pool.getDatabaseSync();
   const [db, drizzleTables] = parseDrizzle(dbRaw);
-  const { provider } = config;
 
   /**
    * Convert a Fragno table to a Drizzle table

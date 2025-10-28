@@ -14,8 +14,10 @@ export function getClient(): PGlite {
   return clientInstance;
 }
 
-export function getDb() {
+export async function getDb() {
   if (!dbInstance) {
+    // Simulate async database initialization (e.g., connection pool, remote connection)
+    await new Promise((resolve) => setTimeout(resolve, 10));
     dbInstance = drizzle(getClient(), { schema });
   }
   return dbInstance;
