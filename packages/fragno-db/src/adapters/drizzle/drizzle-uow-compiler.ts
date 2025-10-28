@@ -39,7 +39,9 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   mapper?: TableNameMapper,
   onQuery?: (query: DrizzleCompiledQuery) => void,
 ): UOWCompiler<TSchema, DrizzleCompiledQuery> {
-  const [db, drizzleTables] = parseDrizzle(config.db);
+  // Resolve db instance (lazy or eager)
+  const dbRaw = typeof config.db === "function" ? config.db() : config.db;
+  const [db, drizzleTables] = parseDrizzle(dbRaw);
   const { provider } = config;
 
   /**

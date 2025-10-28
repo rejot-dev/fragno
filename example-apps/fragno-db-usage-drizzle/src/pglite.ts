@@ -1,4 +1,6 @@
-import { client } from "./database";
+import { getClient } from "./database";
+
+const client = getClient();
 
 const res = await client.query(`
   SELECT table_name

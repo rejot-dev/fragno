@@ -1,9 +1,9 @@
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
-import { db } from "../database";
+import { getDb } from "../database";
 
 export function createAdapter() {
   return new DrizzleAdapter({
-    db,
+    db: getDb,
     provider: "postgresql",
   });
 }
