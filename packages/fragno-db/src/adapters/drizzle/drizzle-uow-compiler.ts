@@ -185,16 +185,15 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
         const externalId = value.externalIdValue;
         const internalIdCol = refTable.getInternalIdColumn();
         const idCol = refTable.getIdColumn();
-        const drizzleRefTable = toDrizzleTable(refTable);
-        const drizzleIdCol = toDrizzleColumn(idCol);
 
-        // Create a parameterized SQL subquery using Drizzle's query builder
+        // Map logical table name to physical table name using the mapper
+        const physicalTableName = mapper ? mapper.toPhysical(refTable.ormName) : refTable.ormName;
+
+        // Build a SQL subquery using Drizzle's sql template
+        // This creates a subquery: (SELECT _internalId FROM table WHERE id = ? LIMIT 1)
         // Safe cast: we're building a SQL subquery that returns a single bigint value
-        processed[key] = db
-          .select({ value: drizzleRefTable[internalIdCol.ormName] })
-          .from(drizzleRefTable)
-          .where(Drizzle.eq(drizzleIdCol, externalId))
-          .limit(1) as unknown;
+        processed[key] =
+          Drizzle.sql`(select ${Drizzle.sql.identifier(internalIdCol.name)} from ${Drizzle.sql.identifier(physicalTableName)} where ${Drizzle.sql.identifier(idCol.name)} = ${externalId} limit 1)`;
       } else {
         processed[key] = value;
       }

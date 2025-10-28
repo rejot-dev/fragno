@@ -388,6 +388,131 @@ describe("drizzle-uow-compiler", () => {
       ]);
     });
 
+    it("should compile create operation with external id string for reference column", () => {
+      const uow = createTestUOW();
+      // Create a post with userId as just an external id string
+      uow.create("posts", {
+        title: "Test Post",
+        content: "Post content",
+        userId: "user_external_id_123",
+        viewCount: 5,
+      });
+
+      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+      expect(batch.expectedAffectedRows).toBeNull();
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_internalId", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit 1), $5, default, default)"`,
+      );
+      expect(batch.query.params).toMatchObject([
+        expect.any(String), // auto-generated post ID
+        "Test Post",
+        "Post content",
+        "user_external_id_123", // external id string
+        5, // viewCount
+      ]);
+    });
+
+    it("should compile create operation with bigint for reference column (no subquery)", () => {
+      const uow = createTestUOW();
+      // Create a post with userId as a bigint directly (internal ID)
+      uow.create("posts", {
+        title: "Direct ID Post",
+        content: "Content with direct bigint",
+        userId: 12345n,
+      });
+
+      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+      expect(batch.expectedAffectedRows).toBeNull();
+      // Should NOT have a subquery when using bigint directly
+      expect(batch.query.sql).not.toMatch(/\(select.*from.*users/i);
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_internalId", "_version") values ($1, $2, $3, $4, default, default, default)"`,
+      );
+      expect(batch.query.params).toMatchObject([
+        expect.any(String), // auto-generated post ID
+        "Direct ID Post",
+        "Content with direct bigint",
+        12345n, // bigint internal ID directly
+      ]);
+    });
+
+    it("should compile create operation with FragnoId object for reference column", () => {
+      const uow = createTestUOW();
+      const userId = FragnoId.fromExternal("user_ext_789", 0);
+      // Create a post with userId as a FragnoId object
+      uow.create("posts", {
+        title: "Post with FragnoId",
+        content: "Content",
+        userId,
+      });
+
+      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+      expect(batch.expectedAffectedRows).toBeNull();
+      // FragnoId should use internal ID directly (no subquery needed if available)
+      // But since we don't have the internal ID populated in the test, it should serialize
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_internalId", "_version") values ($1, $2, $3, $4, default, default, default)"`,
+      );
+    });
+
+    it("should compile update operation with external id string for reference column", () => {
+      const uow = createTestUOW();
+      const postId = FragnoId.fromExternal("post123", 0);
+      uow.update("posts", postId, (b) =>
+        b.set({
+          userId: "new_user_external_id_456",
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+      expect(batch.expectedAffectedRows).toBeNull();
+      // Should generate a subquery for the string external ID in UPDATE
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = $1 limit 1), "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = $2"`,
+      );
+      expect(batch.query.params).toMatchObject([
+        "new_user_external_id_456", // external id string
+        "post123", // post external id
+      ]);
+    });
+
+    it("should compile update operation with bigint for reference column (no subquery)", () => {
+      const uow = createTestUOW();
+      const postId = FragnoId.fromExternal("post456", 0);
+      uow.update("posts", postId, (b) =>
+        b.set({
+          userId: 99999n,
+        }),
+      );
+
+      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+      expect(batch.expectedAffectedRows).toBeNull();
+      // Should NOT have a subquery when using bigint directly
+      expect(batch.query.sql).not.toMatch(/\(select.*from.*users/i);
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"update "posts" set "userId" = $1, "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = $2"`,
+      );
+      expect(batch.query.params).toMatchObject([
+        99999n, // bigint internal ID directly
+        "post456", // post external id
+      ]);
+    });
+
     it("should compile update operation with ID", () => {
       const uow = createTestUOW();
       const userId = FragnoId.fromExternal("user123", 0);
