@@ -1,13 +1,17 @@
 import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
-import type { KyselyConfig } from "./kysely-adapter";
 import type { CompiledMutation, UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
 import { decodeResult } from "../../query/result-transform";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import type { CompiledQuery } from "kysely";
+import type { CompiledQuery, Kysely } from "kysely";
 import type { TableNameMapper } from "./kysely-shared";
+import type { ConnectionPool } from "../../shared/connection-pool";
+import type { SQLProvider } from "../../shared/providers";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type KyselyAny = Kysely<any>;
 
 /**
  * Creates a Kysely-based query engine for the given schema.
@@ -17,16 +21,15 @@ import type { TableNameMapper } from "./kysely-shared";
  * enabling features like SQL snapshot testing.
  *
  * @param schema - The database schema definition
- * @param config - Kysely configuration containing the database instance and provider
+ * @param pool - Connection pool for acquiring database connections
+ * @param provider - SQL provider (postgresql, mysql, sqlite, etc.)
  * @param mapper - Optional table name mapper for namespace prefixing
  * @returns An AbstractQuery instance for performing database operations
  *
  * @example
  * ```ts
- * const queryEngine = fromKysely(mySchema, {
- *   db: kysely,
- *   provider: 'postgresql'
- * });
+ * const pool = createSimpleConnectionPool(kysely);
+ * const queryEngine = fromKysely(mySchema, pool, 'postgresql');
  *
  * const users = await queryEngine.findMany('users', {
  *   where: (b) => b('age', '>', 18),
@@ -36,25 +39,30 @@ import type { TableNameMapper } from "./kysely-shared";
  */
 export function fromKysely<T extends AnySchema>(
   schema: T,
-  config: KyselyConfig,
+  pool: ConnectionPool<KyselyAny>,
+  provider: SQLProvider,
   mapper?: TableNameMapper,
 ): AbstractQuery<T> {
-  const { provider } = config;
-
-  // Helper to lazily resolve the db instance
-  const getDb = () => {
-    const db = config.db;
-    return typeof db === "function" ? db() : db;
-  };
-
   function createUOW(name?: string): UnitOfWork<T, []> {
-    const uowCompiler = createKyselyUOWCompiler(schema, config, mapper);
+    const uowCompiler = createKyselyUOWCompiler(schema, pool, provider, mapper);
 
     const executor: UOWExecutor<CompiledQuery, unknown> = {
-      executeRetrievalPhase: (retrievalBatch: CompiledQuery[]) =>
-        executeKyselyRetrievalPhase(getDb(), retrievalBatch),
-      executeMutationPhase: (mutationBatch: CompiledMutation<CompiledQuery>[]) =>
-        executeKyselyMutationPhase(getDb(), mutationBatch),
+      async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {
+        const conn = await pool.connect();
+        try {
+          return await executeKyselyRetrievalPhase(conn.db, retrievalBatch);
+        } finally {
+          await conn.release();
+        }
+      },
+      async executeMutationPhase(mutationBatch: CompiledMutation<CompiledQuery>[]) {
+        const conn = await pool.connect();
+        try {
+          return await executeKyselyMutationPhase(conn.db, mutationBatch);
+        } finally {
+          await conn.release();
+        }
+      },
     };
 
     // Create a decoder function to transform raw results into application format

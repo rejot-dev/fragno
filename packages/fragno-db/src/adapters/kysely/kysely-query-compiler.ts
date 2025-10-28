@@ -1,11 +1,15 @@
-import type { CompiledQuery } from "kysely";
+import type { CompiledQuery, Kysely } from "kysely";
 import type { AnySchema, AnyTable } from "../../schema/create";
 import { buildCondition } from "../../query/condition-builder";
 import { buildFindOptions } from "../../query/orm/orm";
-import type { KyselyConfig } from "./kysely-adapter";
 import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import type { ConditionBuilder, Condition } from "../../query/condition-builder";
 import type { TableNameMapper } from "./kysely-shared";
+import type { ConnectionPool } from "../../shared/connection-pool";
+import type { SQLProvider } from "../../shared/providers";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type KyselyAny = Kysely<any>;
 
 /**
  * Internal query compiler interface for Kysely
@@ -27,12 +31,12 @@ export interface KyselyQueryCompiler {
 
 export function createKyselyQueryCompiler<T extends AnySchema>(
   schema: T,
-  config: KyselyConfig,
+  pool: ConnectionPool<KyselyAny>,
+  provider: SQLProvider,
   mapper?: TableNameMapper,
 ): KyselyQueryCompiler {
-  const { provider } = config;
-  // Resolve db instance (lazy or eager)
-  const kysely = typeof config.db === "function" ? config.db() : config.db;
+  // Get kysely instance for query building (compilation doesn't execute, just builds SQL)
+  const kysely = pool.getDatabaseSync();
   const queryBuilder = createKyselyQueryBuilder(kysely, provider, mapper);
 
   function toTable(name: unknown): AnyTable {

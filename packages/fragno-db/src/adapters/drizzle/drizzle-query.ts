@@ -1,12 +1,12 @@
 import type { AbstractQuery } from "../../query/query";
 import type { AnySchema } from "../../schema/create";
-import type { DrizzleConfig } from "./drizzle-adapter";
 import type { CompiledMutation, UOWExecutor } from "../../query/unit-of-work";
 import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import { parseDrizzle, type DrizzleResult, type TableNameMapper } from "./shared";
+import { parseDrizzle, type DrizzleResult, type TableNameMapper, type DBType } from "./shared";
 import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
+import type { ConnectionPool } from "../../shared/connection-pool";
 
 /**
  * Configuration options for creating a Drizzle Unit of Work
@@ -27,42 +27,53 @@ export interface DrizzleUOWConfig {
  * enabling features like SQL snapshot testing.
  *
  * @param schema - The database schema definition
- * @param config - Drizzle configuration containing the database instance and provider
+ * @param pool - Connection pool for acquiring database connections
+ * @param provider - SQL provider (sqlite, mysql, postgresql)
  * @param mapper - Optional table name mapper for namespace prefixing
  * @returns An AbstractQuery instance for performing database operations
  *
  * @example
  * ```ts
- * const queryEngine = fromDrizzle(mySchema, {
- *   db: drizzle,
- *   provider: 'postgresql'
- * });
+ * const pool = createSimpleConnectionPool(drizzle);
+ * const queryEngine = fromDrizzle(mySchema, pool, 'postgresql');
  *
  * const uow = queryEngine.createUnitOfWork('myOperation');
  * ```
  */
 export function fromDrizzle<T extends AnySchema>(
   schema: T,
-  config: DrizzleConfig,
+  pool: ConnectionPool<DBType>,
+  provider: "sqlite" | "mysql" | "postgresql",
   mapper?: TableNameMapper,
 ): AbstractQuery<T, DrizzleUOWConfig> {
-  const { provider } = config;
-
-  // Helper to lazily resolve the db instance
-  const getDb = () => {
-    const db = config.db;
-    const resolved = typeof db === "function" ? db() : db;
-    return parseDrizzle(resolved)[0];
-  };
-
   function createUOW(name?: string, uowConfig?: DrizzleUOWConfig) {
-    const uowCompiler = createDrizzleUOWCompiler(schema, config, mapper, uowConfig?.onQuery);
+    const uowCompiler = createDrizzleUOWCompiler(
+      schema,
+      pool,
+      provider,
+      mapper,
+      uowConfig?.onQuery,
+    );
 
     const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
-      executeRetrievalPhase: (retrievalBatch: DrizzleCompiledQuery[]) =>
-        executeDrizzleRetrievalPhase(getDb(), retrievalBatch, provider),
-      executeMutationPhase: (mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) =>
-        executeDrizzleMutationPhase(getDb(), mutationBatch, provider),
+      async executeRetrievalPhase(retrievalBatch: DrizzleCompiledQuery[]) {
+        const conn = await pool.connect();
+        try {
+          const db = parseDrizzle(conn.db)[0];
+          return await executeDrizzleRetrievalPhase(db, retrievalBatch, provider);
+        } finally {
+          await conn.release();
+        }
+      },
+      async executeMutationPhase(mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) {
+        const conn = await pool.connect();
+        try {
+          const db = parseDrizzle(conn.db)[0];
+          return await executeDrizzleMutationPhase(db, mutationBatch, provider);
+        } finally {
+          await conn.release();
+        }
+      },
     };
 
     const decoder = createDrizzleUOWDecoder(schema, provider);

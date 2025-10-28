@@ -11,17 +11,23 @@ import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "../adapters";
+import type { ConnectionPool } from "../../shared/connection-pool";
+import { createDrizzleConnectionPool } from "./drizzle-connection-pool";
 
 export interface DrizzleConfig {
-  db: unknown | (() => unknown);
+  db: unknown | (() => unknown | Promise<unknown>);
   provider: "sqlite" | "mysql" | "postgresql";
 }
 
 export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
-  #drizzleConfig: DrizzleConfig;
+  #connectionPool: ConnectionPool<DBType>;
+  #provider: "sqlite" | "mysql" | "postgresql";
 
   constructor(config: DrizzleConfig) {
-    this.#drizzleConfig = config;
+    this.#connectionPool = createDrizzleConnectionPool(
+      config.db as DBType | (() => DBType | Promise<DBType>),
+    );
+    this.#provider = config.provider;
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {
@@ -33,21 +39,17 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   }
 
   async close(): Promise<void> {
-    //
+    await this.#connectionPool.close();
   }
 
   get provider(): "sqlite" | "mysql" | "postgresql" {
-    return this.#drizzleConfig.provider;
-  }
-
-  #getDb(): DBType {
-    const db = this.#drizzleConfig.db;
-    return (typeof db === "function" ? db() : db) as DBType;
+    return this.#provider;
   }
 
   async isConnectionHealthy(): Promise<boolean> {
+    const conn = await this.#connectionPool.connect();
     try {
-      const result = await this.#getDb().execute(sql`SELECT 1 as healthy`);
+      const result = await conn.db.execute(sql`SELECT 1 as healthy`);
 
       // Handle different result formats across providers
       // PostgreSQL/MySQL: { rows: [...] }
@@ -60,6 +62,8 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
       }
     } catch {
       return false;
+    } finally {
+      await conn.release();
     }
   }
 
@@ -78,7 +82,7 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   ): AbstractQuery<TSchema, DrizzleUOWConfig> {
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromDrizzle(schema, this.#drizzleConfig, mapper);
+    return fromDrizzle(schema, this.#connectionPool, this.#provider, mapper);
   }
 
   createSchemaGenerator(
@@ -90,7 +94,7 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
         const path = genOptions?.path ?? options?.path ?? "fragno-schema.ts";
 
         return {
-          schema: generateSchema(fragments, this.#drizzleConfig.provider),
+          schema: generateSchema(fragments, this.#provider),
           path,
         };
       },
