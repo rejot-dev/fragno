@@ -1,5 +1,12 @@
 # @fragno-dev/cli
 
+## 0.1.9
+
+### Patch Changes
+
+- Updated dependencies [f3cdb1d]
+  - @fragno-dev/db@0.1.8
+
 ## 0.1.8
 
 ### Patch Changes
