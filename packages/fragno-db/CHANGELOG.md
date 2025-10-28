@@ -1,5 +1,13 @@
 # @fragno-dev/db
 
+## 0.1.7
+
+### Patch Changes
+
+- e36dbcd: fix: allow async lazy initialization of `db` in adapters
+- ab6c4bf: fix: make Fragment loading in the CLI more robust
+- d1feecd: fix: allow lazy initialization of `db` in adapters
+
 ## 0.1.6
 
 ### Patch Changes

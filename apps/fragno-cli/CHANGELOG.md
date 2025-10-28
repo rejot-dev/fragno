@@ -1,5 +1,15 @@
 # @fragno-dev/cli
 
+## 0.1.8
+
+### Patch Changes
+
+- ab6c4bf: fix: make Fragment loading in the CLI more robust
+- Updated dependencies [e36dbcd]
+- Updated dependencies [ab6c4bf]
+- Updated dependencies [d1feecd]
+  - @fragno-dev/db@0.1.7
+
 ## 0.1.7
 
 ### Patch Changes
