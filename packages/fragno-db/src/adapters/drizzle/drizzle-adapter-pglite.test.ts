@@ -326,6 +326,60 @@ describe("DrizzleAdapter PGLite", () => {
     });
   });
 
+  it("should support inserting with external id string", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create a user first
+    const createUserUow = queryEngine
+      .createUnitOfWork("create-user-for-external-id")
+      .create("users", { name: "External ID Test User", age: 35 });
+    await createUserUow.executeMutations();
+
+    // Get the user
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-external-id")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "External ID Test User")),
+      )
+      .executeRetrieve();
+
+    // Create an email using just the external id string (not the full id object)
+    const createEmailUow = queryEngine
+      .createUnitOfWork("create-email-with-external-id")
+      .create("emails", {
+        user_id: user.id.externalId,
+        email: "external-id-test@example.com",
+        is_primary: false,
+      });
+
+    const { success } = await createEmailUow.executeMutations();
+    expect(success).toBe(true);
+
+    // Verify the email was created and can be retrieved with a join
+    const [[email]] = await queryEngine
+      .createUnitOfWork("get-email-by-external-id")
+      .find("emails", (b) =>
+        b
+          .whereIndex("unique_email", (eb) => eb("email", "=", "external-id-test@example.com"))
+          .join((jb) => jb.user((builder) => builder.select(["name", "id"]))),
+      )
+      .executeRetrieve();
+
+    expect(email).toMatchObject({
+      email: "external-id-test@example.com",
+      is_primary: false,
+      user_id: expect.objectContaining({
+        internalId: user.id.internalId,
+      }),
+      user: {
+        id: expect.objectContaining({
+          externalId: user.id.externalId,
+        }),
+        name: "External ID Test User",
+      },
+    });
+  });
+
   it("should support complex nested joins (comments -> post -> author)", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const queries: DrizzleCompiledQuery[] = [];
