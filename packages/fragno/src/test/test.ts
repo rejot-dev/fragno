@@ -357,7 +357,7 @@ export function createFragmentForTest<
         pathParams,
         searchParams,
         headers: requestHeaders,
-        body,
+        parsedBody: body,
         inputSchema: route.inputSchema,
         shouldValidateInput: false, // Skip validation in tests
       });

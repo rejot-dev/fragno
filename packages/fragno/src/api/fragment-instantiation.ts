@@ -3,7 +3,7 @@ import { type FragnoRouteConfig, type HTTPMethod } from "./api";
 import { FragnoApiError } from "./error";
 import { getMountRoute } from "./internal/route";
 import { addRoute, createRouter, findRoute } from "rou3";
-import { RequestInputContext } from "./request-input-context";
+import { RequestInputContext, type RequestBodyType } from "./request-input-context";
 import type { ExtractPathParams } from "./internal/path";
 import { RequestOutputContext } from "./request-output-context";
 import {
@@ -281,10 +281,28 @@ export function createFragment<
       const outputContext = new RequestOutputContext(outputSchema);
 
       // Create mutable request state that can be modified by middleware
-      // Clone the request to avoid consuming the body stream
-      const clonedReq = req.clone();
-      const requestBody =
-        clonedReq.body instanceof ReadableStream ? await clonedReq.json() : undefined;
+      // Clone the request to read body as both text and JSON without consuming original stream
+      let requestBody: RequestBodyType = undefined;
+      let rawBody: string | undefined = undefined;
+
+      if (req.body instanceof ReadableStream) {
+        // Clone request to make sure we don't consume body stream
+        const clonedReq = req.clone();
+
+        // Get raw text
+        rawBody = await clonedReq.text();
+
+        // Parse JSON if body is not empty
+        if (rawBody) {
+          try {
+            requestBody = JSON.parse(rawBody);
+          } catch {
+            // If JSON parsing fails, keep body as undefined
+            // This handles cases where body is not JSON
+            requestBody = undefined;
+          }
+        }
+      }
 
       const requestState = new MutableRequestState({
         pathParams: route.params ?? {},
@@ -335,6 +353,7 @@ export function createFragment<
         pathParams: (route.params ?? {}) as ExtractPathParams<typeof path>,
         inputSchema,
         state: requestState,
+        rawBody,
       });
 
       try {
