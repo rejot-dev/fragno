@@ -37,7 +37,6 @@ export type DrizzleCompiledQuery = {
  * @param pool - Connection pool for acquiring database connections
  * @param provider - SQL provider (sqlite, mysql, postgresql)
  * @param mapper - Optional table name mapper for namespace prefixing
- * @param onQuery - Optional callback to receive compiled queries for logging/debugging
  * @returns A UOWCompiler instance for Drizzle
  */
 export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
@@ -45,7 +44,6 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   pool: ConnectionPool<DBType>,
   provider: "sqlite" | "mysql" | "postgresql",
   mapper?: TableNameMapper,
-  onQuery?: (query: DrizzleCompiledQuery) => void,
 ): UOWCompiler<TSchema, DrizzleCompiledQuery> {
   // Get db synchronously for compilation (doesn't execute, just builds SQL)
   // TODO: We don't even need a Drizzle instance with a db client attached here. `drizzle({ schema })` is enough.
@@ -314,7 +312,6 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           const query = db.select({ count: Drizzle.count() }).from(drizzleTable);
 
           const compiledQuery = whereClause ? query.where(whereClause).toSQL() : query.toSQL();
-          onQuery?.(compiledQuery);
           return compiledQuery;
         }
 
@@ -451,7 +448,6 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
           const physicalTableName = mapper ? mapper.toPhysical(op.table.ormName) : op.table.ormName;
           const compiledQuery = db.query[physicalTableName].findMany(queryConfig).toSQL();
-          onQuery?.(compiledQuery);
           return compiledQuery;
         }
       }
@@ -469,7 +465,6 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           const values = processReferenceSubqueries(encodedValues);
 
           const compiledQuery = db.insert(drizzleTable).values(values).toSQL();
-          onQuery?.(compiledQuery);
           return {
             query: compiledQuery,
             expectedAffectedRows: null, // creates don't need affected row checks
@@ -513,7 +508,6 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           ) as unknown;
 
           const compiledQuery = db.update(drizzleTable).set(setValues).where(whereClause).toSQL();
-          onQuery?.(compiledQuery);
           return {
             query: compiledQuery,
             expectedAffectedRows: op.checkVersion ? 1 : null,
@@ -526,7 +520,23 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           const versionColumn = table.getVersionColumn();
           const drizzleTable = toDrizzleTable(table);
 
+          if (!op.id) {
+            throw new Error(
+              `[Drizzle] Delete operation on table "${op.table}" has undefined id. ` +
+                `Make sure you're passing a valid FragnoId or string ID.`,
+            );
+          }
+
           const externalId = typeof op.id === "string" ? op.id : op.id.externalId;
+
+          if (!externalId) {
+            throw new Error(
+              `[Drizzle] Delete operation on table "${op.table}" has invalid id. ` +
+                `The FragnoId object exists but has no externalId. ` +
+                `Received: ${JSON.stringify(op.id)}. ` +
+                `Make sure the record was properly loaded from the database.`,
+            );
+          }
           const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
 
           // Build WHERE clause that filters by ID and optionally by version
@@ -549,7 +559,6 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           const whereClause = condition === true ? undefined : buildWhere(condition);
 
           const compiledQuery = db.delete(drizzleTable).where(whereClause).toSQL();
-          onQuery?.(compiledQuery);
           return {
             query: compiledQuery,
             expectedAffectedRows: op.checkVersion ? 1 : null,

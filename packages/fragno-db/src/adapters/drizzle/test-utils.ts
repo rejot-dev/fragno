@@ -53,6 +53,7 @@ export async function writeAndLoadSchema(
   return {
     schemaModule,
     schemaFilePath,
+    drizzleSchemaTs,
     cleanup,
   };
 }

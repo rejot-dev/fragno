@@ -38,6 +38,11 @@
       "types": "./dist/adapters/drizzle/drizzle-adapter.d.ts",
       "default": "./dist/adapters/drizzle/drizzle-adapter.js"
     },
+    "./adapters/drizzle/generate": {
+      "development": "./src/adapters/drizzle/generate.ts",
+      "types": "./dist/adapters/drizzle/generate.d.ts",
+      "default": "./dist/adapters/drizzle/generate.js"
+    },
     "./unit-of-work": {
       "development": "./src/query/unit-of-work.ts",
       "types": "./dist/query/unit-of-work.d.ts",

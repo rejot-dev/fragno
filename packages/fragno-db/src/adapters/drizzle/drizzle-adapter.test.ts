@@ -51,7 +51,7 @@ describe("DrizzleAdapter", () => {
       })
 
       export const test_schema = {
-        "users_test": users_test,
+        users_test: users_test,
         users: users_test,
         schemaVersion: 1
       }"
@@ -100,7 +100,7 @@ describe("DrizzleAdapter", () => {
       })
 
       export const test_schema = {
-        "users_test": users_test,
+        users_test: users_test,
         users: users_test,
         schemaVersion: 1
       }"
@@ -161,7 +161,7 @@ describe("DrizzleAdapter", () => {
       })
 
       export const test_schema = {
-        "users_test": users_test,
+        users_test: users_test,
         users: users_test,
         schemaVersion: 1
       }"
