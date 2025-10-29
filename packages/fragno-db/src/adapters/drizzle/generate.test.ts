@@ -105,11 +105,13 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           users_test: users_test,
-          users: users_test,
           users_testRelations: users_testRelations,
+          users: users_test,
+          usersRelations: users_testRelations,
           posts_test: posts_test,
-          posts: posts_test,
           posts_testRelations: posts_testRelations,
+          posts: posts_test,
+          postsRelations: posts_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -190,11 +192,13 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           users_test: users_test,
-          users: users_test,
           users_testRelations: users_testRelations,
+          users: users_test,
+          usersRelations: users_testRelations,
           posts_test: posts_test,
-          posts: posts_test,
           posts_testRelations: posts_testRelations,
+          posts: posts_test,
+          postsRelations: posts_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -275,11 +279,13 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           users_test: users_test,
-          users: users_test,
           users_testRelations: users_testRelations,
+          users: users_test,
+          usersRelations: users_testRelations,
           posts_test: posts_test,
-          posts: posts_test,
           posts_testRelations: posts_testRelations,
+          posts: posts_test,
+          postsRelations: posts_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -555,11 +561,13 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           users_test: users_test,
-          users: users_test,
           users_testRelations: users_testRelations,
+          users: users_test,
+          usersRelations: users_testRelations,
           posts_test: posts_test,
-          posts: posts_test,
           posts_testRelations: posts_testRelations,
+          posts: posts_test,
+          postsRelations: posts_testRelations,
           schemaVersion: 4
         }"
       `);
@@ -633,11 +641,13 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           users_test: users_test,
-          users: users_test,
           users_testRelations: users_testRelations,
+          users: users_test,
+          usersRelations: users_testRelations,
           posts_test: posts_test,
-          posts: posts_test,
           posts_testRelations: posts_testRelations,
+          posts: posts_test,
+          postsRelations: posts_testRelations,
           schemaVersion: 4
         }"
       `);
@@ -711,11 +721,13 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           users_test: users_test,
-          users: users_test,
           users_testRelations: users_testRelations,
+          users: users_test,
+          usersRelations: users_testRelations,
           posts_test: posts_test,
-          posts: posts_test,
           posts_testRelations: posts_testRelations,
+          posts: posts_test,
+          postsRelations: posts_testRelations,
           schemaVersion: 4
         }"
       `);
@@ -807,8 +819,9 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           categories_test: categories_test,
-          categories: categories_test,
           categories_testRelations: categories_testRelations,
+          categories: categories_test,
+          categoriesRelations: categories_testRelations,
           products_test: products_test,
           products: products_test,
           schemaVersion: 3
@@ -905,8 +918,9 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           category_test: category_test,
-          category: category_test,
           category_testRelations: category_testRelations,
+          category: category_test,
+          categoryRelations: category_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -988,8 +1002,9 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           comment_test: comment_test,
-          comment: comment_test,
           comment_testRelations: comment_testRelations,
+          comment: comment_test,
+          commentRelations: comment_testRelations,
           schemaVersion: 2
         }"
       `);
@@ -1050,8 +1065,9 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           comment_test: comment_test,
-          comment: comment_test,
           comment_testRelations: comment_testRelations,
+          comment: comment_test,
+          commentRelations: comment_testRelations,
           schemaVersion: 2
         }"
       `);
@@ -1112,8 +1128,9 @@ describe("generateSchema", () => {
 
         export const test_schema = {
           comment_test: comment_test,
-          comment: comment_test,
           comment_testRelations: comment_testRelations,
+          comment: comment_test,
+          commentRelations: comment_testRelations,
           schemaVersion: 2
         }"
       `);
@@ -1262,11 +1279,13 @@ describe("generateSchema", () => {
 
         export const my_fragment_v2_schema = {
           users_my_fragment_v2: users_my_fragment_v2,
-          users: users_my_fragment_v2,
           users_my_fragment_v2Relations: users_my_fragment_v2Relations,
+          users: users_my_fragment_v2,
+          usersRelations: users_my_fragment_v2Relations,
           posts_my_fragment_v2: posts_my_fragment_v2,
-          posts: posts_my_fragment_v2,
           posts_my_fragment_v2Relations: posts_my_fragment_v2Relations,
+          posts: posts_my_fragment_v2,
+          postsRelations: posts_my_fragment_v2Relations,
           schemaVersion: 3
         }"
       `);

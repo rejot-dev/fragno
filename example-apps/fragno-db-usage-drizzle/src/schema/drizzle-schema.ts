@@ -1,5 +1,9 @@
 import { integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
-import { fragno_db_rating_db_schema, fragno_db_comment_db_schema } from "./fragno-schema";
+import {
+  fragno_db_rating_db_schema,
+  fragno_db_comment_db_schema,
+  simple_auth_db_schema,
+} from "./fragno-schema";
 
 export const user = pgTable("user", {
   id: serial("id").primaryKey(),
@@ -21,6 +25,7 @@ export const blogPost = pgTable("blog_post", {
 export const schema = {
   ...fragno_db_comment_db_schema,
   ...fragno_db_rating_db_schema,
+  ...simple_auth_db_schema,
   user,
   blogPost,
 };

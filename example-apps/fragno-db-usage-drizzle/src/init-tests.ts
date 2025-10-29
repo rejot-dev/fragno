@@ -18,12 +18,19 @@ export default async function setup() {
   await writeFile(
     schemaOut,
     `// Temporary dummy exports
-    export const fragno_db_rating_db_schema = {};
-    export const fragno_db_comment_db_schema = {};\n`,
+export const fragno_db_rating_db_schema = {};
+export const fragno_db_comment_db_schema = {};
+export const simple_auth_db_schema = {};\n`,
   );
 
   // Generate schema from fragment
-  const args = ["src/fragno/comment-fragment.ts", "src/fragno/rating-fragment.ts", "-o", schemaOut];
+  const args = [
+    "src/fragno/comment-fragment.ts",
+    "src/fragno/rating-fragment.ts",
+    "src/fragno/auth-fragment.ts",
+    "-o",
+    schemaOut,
+  ];
 
   if (generateCommand.args) {
     const tokens = parseArgs(args);

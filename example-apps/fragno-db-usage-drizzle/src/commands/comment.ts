@@ -1,6 +1,6 @@
 import type { Command } from "gunshi";
 import { createCommentFragmentServer } from "../fragno/comment-fragment";
-import { adapter } from "../fragno/adapter";
+import { adapter } from "../fragno-adapter";
 
 const commentCreateCommand: Command = {
   name: "create",

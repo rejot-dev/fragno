@@ -224,6 +224,12 @@ importers:
       '@fragno-dev/fragno-db-library':
         specifier: workspace:*
         version: link:../../example-fragments/fragno-db-library
+      '@fragno-dev/node':
+        specifier: workspace:*
+        version: link:../../packages/fragno-node
+      '@fragno-dev/simple-auth-fragment':
+        specifier: workspace:*
+        version: link:../../example-fragments/simple-auth-fragment
       drizzle-orm:
         specifier: ^0.44.6
         version: 0.44.7(@electric-sql/pglite@0.3.11)(@libsql/client@0.15.15)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.4.1)(gel@2.1.1)(kysely@0.28.8)

@@ -547,21 +547,15 @@ function generateFragmentSchemaExport(
   namespace: string,
   tablesWithRelations?: Set<string>,
 ): string {
-  const entries: string[] = [];
+  const drizzleEntries: string[] = [];
 
   for (const table of Object.values(schema.tables)) {
     const physicalExportName = namespace
       ? `${table.ormName}_${sanitizeNamespace(namespace)}`
       : table.ormName;
 
-    // Use sanitized export name (valid JS identifier) as the key
-    // Drizzle requires all schema keys to be valid identifiers
-    entries.push(`  ${physicalExportName}: ${physicalExportName}`);
-
-    // Add convenient alias using the original table name (without namespace)
-    if (namespace) {
-      entries.push(`  ${table.ormName}: ${physicalExportName}`);
-    }
+    // Add physical table name to drizzle schema
+    drizzleEntries.push(`  ${physicalExportName}: ${physicalExportName}`);
 
     // Include relations for this table if they exist (either explicit or inverse)
     if (tablesWithRelations?.has(table.name)) {
@@ -569,16 +563,30 @@ function generateFragmentSchemaExport(
         ? `${table.ormName}_${sanitizeNamespace(namespace)}Relations`
         : `${table.ormName}Relations`;
 
-      entries.push(`  ${relationsName}: ${relationsName}`);
+      drizzleEntries.push(`  ${relationsName}: ${relationsName}`);
+    }
+
+    // Add convenience aliases WITH their relations to work around Drizzle bug
+    // The key insight: Drizzle needs BOTH the table alias AND its relations alias
+    // in the same schema object for relational queries to work
+    if (namespace) {
+      drizzleEntries.push(`  ${table.ormName}: ${physicalExportName}`);
+
+      // Also add the relations under the aliased name if they exist
+      if (tablesWithRelations?.has(table.name)) {
+        const physicalRelationsName = `${table.ormName}_${sanitizeNamespace(namespace)}Relations`;
+        const aliasRelationsName = `${table.ormName}Relations`;
+        drizzleEntries.push(`  ${aliasRelationsName}: ${physicalRelationsName}`);
+      }
     }
   }
 
   // Add schema version as a number
-  entries.push(`  schemaVersion: ${schema.version}`);
+  drizzleEntries.push(`  schemaVersion: ${schema.version}`);
 
   const exportName = namespace ? `${sanitizeNamespace(namespace)}_schema` : "_schema";
 
-  return `export const ${exportName} = {\n${entries.join(",\n")}\n}`;
+  return `export const ${exportName} = {\n${drizzleEntries.join(",\n")}\n}`;
 }
 
 // ============================================================================
