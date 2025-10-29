@@ -1,0 +1,91 @@
+---
+title: Admin Routes
+description: Build admin dashboards for managing Stripe data
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+The Stripe fragment provides reactive hooks that wrap some of the Stripe API routes. These make it
+easy to build UI's in an admin dashboard in order to link Stripe data (products/prices/etc) to your
+internal application data.
+
+## Available Admin Routes
+
+The fragment exposes these admin endpoints:
+
+| Route                                   | Description                        | Hook                 |
+| --------------------------------------- | ---------------------------------- | -------------------- |
+| `GET /admin/customers`                  | List all Stripe customers          | `useCustomers()`     |
+| `GET /admin/products`                   | List all Stripe products           | `useProducts()`      |
+| `GET /admin/products/:productId/prices` | List prices for a specific product | `usePrices()`        |
+| `GET /admin/subscriptions`              | List all local subscriptions       | `useSubscriptions()` |
+
+## Using Admin Hooks
+
+Use the `isAdmin` property in `authMiddleware` to make sure these routes are only accessible to
+admins.
+
+### Example: Listing Products
+
+Display all Stripe products with pagination:
+
+```typescript title="app/admin/products.tsx"
+import { stripeClient } from "@/lib/stripe-client";
+import { useState } from "react";
+
+export function ProductsPage() {
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+
+  const {
+    data: products,
+    loading,
+    error,
+  } = stripeClient.useProducts({
+    query: {
+      limit: 25,
+      startingAfter: cursor,
+    },
+  });
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <h1>Products ({products?.products.length})</h1>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products?.products.map((product) => (
+            <tr key={product.id}>
+              <td>{product.id}</td>
+              <td>{product.name}</td>
+              <td>{product.description}</td>
+              <td>{product.active ? "✓" : "✗"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {products?.hasMore && (
+        <button
+          onClick={() => {
+            const lastProduct = response.products[response.products.length - 1];
+            setCursor(lastProduct.id);
+          }}
+        >
+          Load More
+        </button>
+      )}
+    </div>
+  );
+}
+```

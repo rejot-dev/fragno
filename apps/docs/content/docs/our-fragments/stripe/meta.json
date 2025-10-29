@@ -1,0 +1,4 @@
+{
+  "title": "Stripe",
+  "pages": ["quickstart", "subscriptions", "webhooks", "admin-hooks"]
+}
