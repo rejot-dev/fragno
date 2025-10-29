@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.9
+
+### Patch Changes
+
+- 8fcceb6: fix: Properly support inverse relations in Drizzle
+
 ## 0.1.8
 
 ### Patch Changes
