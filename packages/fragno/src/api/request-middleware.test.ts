@@ -628,4 +628,255 @@ describe("Request Middleware", () => {
       custom: "middleware-value",
     });
   });
+
+  test("ifMatchesRoute properly awaits async handlers", async () => {
+    const fragment = defineFragment("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string(), verified: z.boolean() }),
+        handler: async ({ input }, { json }) => {
+          const body = await input.valid();
+          return json({
+            id: 1,
+            name: body.name,
+            verified: false,
+          });
+        },
+      }),
+    ] as const;
+
+    let asyncOperationCompleted = false;
+
+    const instance = createFragment(fragment, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+        // Simulate async operation (e.g., database lookup)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const body = await input.valid();
+
+        // Verify the async operation completed
+        asyncOperationCompleted = true;
+
+        // Check if user exists
+        if (body.name === "existing-user") {
+          return new Response(
+            JSON.stringify({
+              message: "User already exists",
+              code: "USER_EXISTS",
+            }),
+            { status: 409, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        return undefined;
+      });
+
+      return result;
+    });
+
+    // Test with existing user
+    const existingUserReq = new Request("http://localhost/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "existing-user" }),
+    });
+
+    const existingUserRes = await instance.handler(existingUserReq);
+    expect(asyncOperationCompleted).toBe(true);
+    expect(existingUserRes.status).toBe(409);
+    expect(await existingUserRes.json()).toEqual({
+      message: "User already exists",
+      code: "USER_EXISTS",
+    });
+
+    // Reset flag
+    asyncOperationCompleted = false;
+
+    // Test with new user
+    const newUserReq = new Request("http://localhost/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "new-user" }),
+    });
+
+    const newUserRes = await instance.handler(newUserReq);
+    expect(asyncOperationCompleted).toBe(true);
+    expect(newUserRes.status).toBe(200);
+    expect(await newUserRes.json()).toEqual({
+      id: 1,
+      name: "new-user",
+      verified: false,
+    });
+  });
+
+  test("ifMatchesRoute handles async errors properly", async () => {
+    const fragment = defineFragment("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/data",
+        outputSchema: z.object({ data: z.string() }),
+        handler: async (_, { json }) => {
+          return json({ data: "test" });
+        },
+      }),
+    ] as const;
+
+    const instance = createFragment(fragment, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      const result = await ifMatchesRoute("GET", "/data", async (_, { error }) => {
+        // Simulate async operation that fails
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        // Simulate an error condition (e.g., database unavailable)
+        return error(
+          {
+            message: "Service temporarily unavailable",
+            code: "SERVICE_UNAVAILABLE",
+          },
+          503,
+        );
+      });
+
+      return result;
+    });
+
+    const req = new Request("http://localhost/api/data", {
+      method: "GET",
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      message: "Service temporarily unavailable",
+      code: "SERVICE_UNAVAILABLE",
+    });
+  });
+
+  test("ifMatchesRoute with async body modification", async () => {
+    const fragment = defineFragment("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/posts",
+        inputSchema: z.object({ title: z.string(), content: z.string() }),
+        outputSchema: z.object({
+          title: z.string(),
+          content: z.string(),
+          slug: z.string(),
+          createdAt: z.number(),
+        }),
+        handler: async ({ input }, { json }) => {
+          const body = await input.valid();
+          return json({
+            title: body.title,
+            content: body.content,
+            slug: body.title.toLowerCase().replace(/\s+/g, "-"),
+            createdAt: Date.now(),
+          });
+        },
+      }),
+    ] as const;
+
+    const instance = createFragment(fragment, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute, requestState }) => {
+      const result = await ifMatchesRoute("POST", "/posts", async ({ input }) => {
+        // Simulate async operation to enrich the body (e.g., fetching user data)
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        const body = await input.valid();
+
+        // Enrich the body with additional data
+        requestState.setBody({
+          ...body,
+          content: `${body.content}\n\n[Enhanced by middleware]`,
+        });
+
+        return undefined;
+      });
+
+      return result;
+    });
+
+    const req = new Request("http://localhost/api/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Test Post",
+        content: "Original content",
+      }),
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(200);
+
+    const responseBody = await res.json();
+    expect(responseBody).toMatchObject({
+      title: "Test Post",
+      content: "Original content\n\n[Enhanced by middleware]",
+      slug: "test-post",
+    });
+    expect(responseBody.createdAt).toBeTypeOf("number");
+  });
+
+  test("multiple async operations in ifMatchesRoute complete in order", async () => {
+    const fragment = defineFragment("test-lib");
+
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/status",
+        outputSchema: z.object({ message: z.string() }),
+        handler: async (_, { json }) => {
+          return json({ message: "OK" });
+        },
+      }),
+    ] as const;
+
+    const executionOrder: string[] = [];
+
+    const instance = createFragment(fragment, {}, routes, {
+      mountRoute: "/api",
+    }).withMiddleware(async ({ ifMatchesRoute }) => {
+      executionOrder.push("start");
+
+      const result = await ifMatchesRoute("GET", "/status", async () => {
+        executionOrder.push("before-first-async");
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        executionOrder.push("after-first-async");
+
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        executionOrder.push("after-second-async");
+
+        return undefined;
+      });
+
+      executionOrder.push("end");
+
+      return result;
+    });
+
+    const req = new Request("http://localhost/api/status", {
+      method: "GET",
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(200);
+    expect(executionOrder).toEqual([
+      "start",
+      "before-first-async",
+      "after-first-async",
+      "after-second-async",
+      "end",
+    ]);
+  });
 });

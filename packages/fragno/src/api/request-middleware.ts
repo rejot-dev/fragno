@@ -143,6 +143,6 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
     const outputContext = new RequestOutputContext(this.#route.outputSchema);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (handler as any)(inputContext, outputContext);
+    return await (handler as any)(inputContext, outputContext);
   };
 }
