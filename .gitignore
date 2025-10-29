@@ -69,6 +69,9 @@ CLAUDE.local.md
 **/*.pglite
 **/*.pglite/**
 
+# Test artifacts
+**/_generated
+
 # .beads directory files (keep JSONL only)
 .beads/
 

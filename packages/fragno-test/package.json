@@ -25,11 +25,36 @@
     "kysely": "^0.28.7",
     "sqlocal": "^0.15.2"
   },
+  "peerDependencies": {
+    "@electric-sql/pglite": "^0.3.11",
+    "drizzle-kit": "^0.30.3",
+    "drizzle-orm": "^0.44.7",
+    "kysely-pglite": "^0.6.1"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": {
+      "optional": true
+    },
+    "drizzle-kit": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "kysely-pglite": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.11",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@libsql/client": "^0.14.0",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
+    "drizzle-kit": "^0.30.3",
+    "drizzle-orm": "^0.44.7",
+    "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4",
     "zod": "^4.1.12"
   },

@@ -3,7 +3,9 @@ import { commentFragmentDef } from "./mod";
 import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 
 describe("comment-fragment", async () => {
-  const fragment = await createDatabaseFragmentForTest(commentFragmentDef);
+  const fragment = await createDatabaseFragmentForTest(commentFragmentDef, {
+    adapter: { type: "kysely-sqlite" },
+  });
 
   it("should run queries", async () => {
     const query = await fragment.services.createComment({

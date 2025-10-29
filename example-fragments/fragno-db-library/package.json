@@ -20,7 +20,8 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "type": "module",
   "dependencies": {
