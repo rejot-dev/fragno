@@ -106,12 +106,36 @@ to automatically set up an in-memory database with migrations:
 ```typescript
 import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 
-const fragment = await createDatabaseFragmentForTest(myDatabaseFragmentDefinition, {
+const { fragment, test } = await createDatabaseFragmentForTest(myDatabaseFragmentDefinition, {
+  adapter: { type: "kysely-sqlite" },
   config: { apiKey: "test-key" },
-  // Optional: specify database path (defaults to in-memory)
-  databasePath: ":memory:",
   // Optional: migrate to specific schema version (defaults to latest)
   migrateToVersion: 2,
+});
+
+// Access fragment methods as usual
+await fragment.services.createUser({ name: "John" });
+```
+
+### Cleanup
+
+The `test.cleanup()` function closes database connections and deletes any database files created
+during testing. This is useful in `afterAll` hooks to clean up resources:
+
+```typescript
+describe("User tests", () => {
+  const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDefinition, {
+    adapter: { type: "kysely-sqlite" },
+  });
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("test 1", async () => {
+    await fragment.services.createUser({ name: "Alice" });
+    // ... assertions
+  });
 });
 ```
 

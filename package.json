@@ -40,7 +40,7 @@
     "clean": "find . -type d \\( -name dist -o -name node_modules -o -name .turbo -o -name .next -o -name .output -o -name .nuxt -o -name .react-router -o -name .open-next -o -name .source -o -name .svelte-kit \\) -prune -exec rm -rf {} + -o -name tsconfig.tsbuildinfo -o -name coverage.json -exec rm -f {} +",
     "clean:install": "pnpm run clean && pnpm install",
     "build": "turbo run build",
-    "build:watch": "turbo watch build --filter='!./apps/docs/*'",
+    "build:watch": "turbo watch build --filter='!./apps/**'",
     "build:ui": "turbo watch --ui tui build",
     "build:clean": "turbo run build --force",
     "types:check": "turbo run types:check",
