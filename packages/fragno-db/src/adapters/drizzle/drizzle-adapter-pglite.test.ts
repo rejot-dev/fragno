@@ -488,4 +488,125 @@ describe("DrizzleAdapter PGLite", () => {
       `"select "comments_namespace"."id", "comments_namespace"."post_id", "comments_namespace"."user_id", "comments_namespace"."text", "comments_namespace"."_internalId", "comments_namespace"."_version", "comments_namespace_post"."data" as "post", "comments_namespace_commenter"."data" as "commenter" from "comments_namespace" "comments_namespace" left join lateral (select json_build_array("comments_namespace_post"."id", "comments_namespace_post"."title", "comments_namespace_post"."content", "comments_namespace_post"."_internalId", "comments_namespace_post"."_version", "comments_namespace_post_author"."data") as "data" from (select * from "posts_namespace" "comments_namespace_post" where "comments_namespace_post"."_internalId" = "comments_namespace"."post_id" order by "comments_namespace_post"."id" desc limit $1) "comments_namespace_post" left join lateral (select json_build_array("comments_namespace_post_author"."id", "comments_namespace_post_author"."name", "comments_namespace_post_author"."age", "comments_namespace_post_author"."_internalId", "comments_namespace_post_author"."_version") as "data" from (select * from "users_namespace" "comments_namespace_post_author" where "comments_namespace_post_author"."_internalId" = "comments_namespace_post"."user_id" order by "comments_namespace_post_author"."name" asc limit $2) "comments_namespace_post_author") "comments_namespace_post_author" on true) "comments_namespace_post" on true left join lateral (select json_build_array("comments_namespace_commenter"."id", "comments_namespace_commenter"."name", "comments_namespace_commenter"."_internalId", "comments_namespace_commenter"."_version") as "data" from (select * from "users_namespace" "comments_namespace_commenter" where "comments_namespace_commenter"."_internalId" = "comments_namespace"."user_id" limit $3) "comments_namespace_commenter") "comments_namespace_commenter" on true"`,
     );
   });
+
+  it("should support joins with convenience aliases when relations are also aliased", async () => {
+    // This test demonstrates the solution: include BOTH table aliases AND relations aliases
+    // in the same schema object. This works around Drizzle's relation resolution bug.
+    //
+    // The bug: When Drizzle processes a relational query with `.join()`, it looks up
+    // tableConfig.relations[relationKey]. If the tableConfig comes from an alias that
+    // doesn't have matching relations, it returns undefined and crashes.
+    //
+    // The fix: For each table alias (e.g., `user`), also add a relations alias
+    // (e.g., `userRelations`) pointing to the same relations object.
+
+    const authSchema = schema((s) => {
+      return s
+        .addTable("user", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .addColumn("passwordHash", column("string"));
+        })
+        .addTable("session", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn())
+            .addColumn("expiresAt", column("timestamp"));
+        })
+        .addReference("sessionOwner", {
+          from: { table: "session", column: "userId" },
+          to: { table: "user", column: "id" },
+          type: "one",
+        });
+    });
+
+    // Generate schema with BOTH table aliases AND relations aliases
+    const { schemaModule, cleanup } = await writeAndLoadSchema(
+      "drizzle-adapter-with-relations-aliases",
+      authSchema,
+      "postgresql",
+      "test-namespace",
+    );
+
+    // The schema now includes:
+    // - user_test_namespace + user_test_namespaceRelations (physical)
+    // - user + userRelations (aliases that point to the same objects)
+    const schemaWithAliases = {
+      ...schemaModule.test_namespace_schema,
+    };
+
+    // Create Drizzle instance
+    const db = drizzle({
+      schema: schemaWithAliases,
+    }) as unknown as DBType;
+
+    // Generate and run migrations
+    const require = createRequire(import.meta.url);
+    const { generateDrizzleJson, generateMigration } =
+      require("drizzle-kit/api") as typeof import("drizzle-kit/api");
+
+    const migrationStatements = await generateMigration(
+      generateDrizzleJson({}),
+      generateDrizzleJson(schemaModule),
+    );
+
+    for (const statement of migrationStatements) {
+      await db.execute(statement);
+    }
+
+    const adapter = new DrizzleAdapter({
+      db: async () => db,
+      provider: "postgresql",
+    });
+
+    await adapter.isConnectionHealthy();
+    const queryEngine = adapter.createQueryEngine(authSchema, "test-namespace");
+
+    // Create a user
+    await queryEngine
+      .createUnitOfWork("create-user")
+      .create("user", {
+        email: "test@example.com",
+        passwordHash: "hash",
+      })
+      .executeMutations();
+
+    // Create a session
+    const [[user]] = await queryEngine.createUnitOfWork("get-user").find("user").executeRetrieve();
+
+    await queryEngine
+      .createUnitOfWork("create-session")
+      .create("session", {
+        userId: user.id,
+        expiresAt: new Date("2025-12-31"),
+      })
+      .executeMutations();
+
+    // Get session
+    const [[session]] = await queryEngine
+      .createUnitOfWork("get-session")
+      .find("session")
+      .executeRetrieve();
+
+    // Find session with join - this works now!
+    // The key is that when Drizzle looks up the session's relations,
+    // it finds BOTH `sessionOwner` (from session_test_namespaceRelations)
+    // AND the same relations via `sessionRelations` (the alias)
+    const [[sessionWithUser]] = await queryEngine
+      .createUnitOfWork("find-session-with-join")
+      .find("session", (b) =>
+        b
+          .whereIndex("primary", (eb) => eb("id", "=", session.id.valueOf()))
+          .join((j) => j.sessionOwner((b) => b.select(["id", "email"]))),
+      )
+      .executeRetrieve();
+
+    // Verify the join worked
+    expect(sessionWithUser).toBeDefined();
+    expect(sessionWithUser.sessionOwner).toBeDefined();
+    expect(sessionWithUser.sessionOwner?.email).toBe("test@example.com");
+
+    await cleanup();
+  });
 });

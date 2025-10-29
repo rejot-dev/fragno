@@ -34,6 +34,7 @@ follow best practices.
 - DO NOT push
 - ALWAYS keep tests, types, and docs together with the actual code that is being changed.
 - Commit EVERYTHING unless something is gitignored.
+- Each line of the commit message should be less than 72 characters.
 
 ### Commit Structure
 

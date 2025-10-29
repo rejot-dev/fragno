@@ -64,10 +64,10 @@ yarn-error.log*
 # LLMs
 CLAUDE.local.md
 
-# Pglite
-
+# Databases
 **/*.pglite
 **/*.pglite/**
+*.db
 
 # Test artifacts
 **/_generated

@@ -95,5 +95,13 @@
   "dependencies": {
     "@paralleldrive/cuid2": "^2.2.2",
     "kysely": "^0.28.7"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "^0.44.6"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-orm": {
+      "optional": true
+    }
   }
 }

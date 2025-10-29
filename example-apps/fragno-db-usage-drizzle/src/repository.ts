@@ -139,3 +139,105 @@ export async function searchBlogPostsByTitle(searchTerm: string) {
     .where(like(blogPost.title, `%${searchTerm}%`))
     .orderBy(desc(blogPost.createdAt));
 }
+
+// ============================================================================
+// Complex Relational Queries (demonstrating Fragno relations work properly)
+// ============================================================================
+
+/**
+ * Fetch auth sessions with their owner users using CONVENIENCE ALIASES.
+ * This is the KEY TEST that demonstrates the fix for the relations bug.
+ * We're using the 'session' convenience alias from simple_auth_db_schema.
+ */
+export async function findAuthSessionsWithOwners() {
+  const db = await getDb();
+  return await db.query.session.findMany({
+    with: {
+      sessionOwner: {
+        columns: {
+          id: true,
+          email: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: (session, { desc }) => [desc(session.createdAt)],
+  });
+}
+
+/**
+ * Fetch a specific auth session with its owner using convenience aliases.
+ * This demonstrates that joins work with the aliased tables.
+ */
+export async function findAuthSessionById(sessionId: string) {
+  const db = await getDb();
+  return await db.query.session.findFirst({
+    where: (session, { eq }) => eq(session.id, sessionId),
+    with: {
+      sessionOwner: {
+        columns: {
+          id: true,
+          email: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Fetch auth users with all their sessions.
+ * Note: We use the physical table name to avoid confusion with the app's 'user' table.
+ */
+export async function findAuthUsersWithSessions() {
+  const db = await getDb();
+  return await db.query.user_simple_auth_db.findMany({
+    with: {
+      sessionList: {
+        orderBy: (session, { desc }) => [desc(session.createdAt)],
+      },
+    },
+  });
+}
+
+/**
+ * Fetch comments with their nested replies (self-referential relation).
+ * This demonstrates that self-referential relations work correctly.
+ */
+export async function findCommentsWithReplies(postReference: string) {
+  const db = await getDb();
+  return await db.query.comment.findMany({
+    where: (comment, { eq, isNull }) =>
+      and(eq(comment.postReference, postReference), isNull(comment.parentId)),
+    with: {
+      commentList: {
+        // Get first level of nested replies
+        orderBy: (comment, { asc }) => [asc(comment.createdAt)],
+        with: {
+          commentList: {
+            // Get second level of nested replies
+            orderBy: (comment, { asc }) => [asc(comment.createdAt)],
+          },
+        },
+      },
+    },
+    orderBy: (comment, { desc }) => [desc(comment.createdAt)],
+  });
+}
+
+/**
+ * Fetch a single comment with its parent and replies.
+ * This demonstrates bidirectional self-referential relations.
+ */
+export async function findCommentWithParentAndReplies(commentId: string) {
+  const db = await getDb();
+  return await db.query.comment.findFirst({
+    where: (comment, { eq }) => eq(comment.id, commentId),
+    with: {
+      parent: true,
+      commentList: {
+        orderBy: (comment, { asc }) => [asc(comment.createdAt)],
+      },
+    },
+  });
+}

@@ -1,6 +1,6 @@
 import type { Command } from "gunshi";
 import { createRatingFragmentServer } from "../fragno/rating-fragment";
-import { adapter } from "../fragno/adapter";
+import { adapter } from "../fragno-adapter";
 
 const ratingUpvoteCommand: Command = {
   name: "upvote",
