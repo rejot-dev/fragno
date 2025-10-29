@@ -1,0 +1,215 @@
+---
+title: Quick Start
+description: Install and configure the Stripe fragment
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="warning">The Stripe fragment is new and under active development.</Callout>
+
+## Overview
+
+The Fragno Stripe fragment makes it easy to manage Stripe subscriptions in your application. This
+guide will walk you through installation and basic setup to get your first subscription working.
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- **Stripe API Key**
+- **Stripe Webhook Secret**
+- **A Stripe Product & Price**: Create at least one product with a price in your
+  [Stripe Dashboard](https://dashboard.stripe.com/products)
+- **Database Adapter**: The fragment requires either Kysely or Drizzle for database operations
+
+## Installation
+
+Install the Stripe fragment and Fragno db package:
+
+```npm
+npm install @fragno-dev/stripe @fragno-dev/db
+```
+
+## Server Setup
+
+### 1. Create the Fragment Instance
+
+Create a file to instantiate your Stripe fragment (e.g., `lib/stripe.ts` or `server/stripe.ts`):
+
+```typescript title="lib/stripe.ts"
+import { createStripeFragment } from "@fragno-dev/stripe";
+/* These imports are illustrative and application specific */
+import { updateEntity } from "@/db/repo";
+import { getSession } from "@/lib/auth";
+
+export const stripeFragment = createStripeFragment({
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+  webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+
+  // Link Stripe customers to your users
+  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
+    // When a Stripe customer is created, save the ID to your internal record
+    await updateEntity(referenceId, { stripeCustomerId });
+  },
+
+  // Authentication middleware, called by request handlers in order to get session context
+  // on an authenticated route
+  authMiddleware: {
+    getUserData: async (headers: Headers) => {
+      // Get session using your authentication system
+      const session = getSession(headers);
+
+      return {
+        // Your application's identifier for the entity which owns the subscription
+        referenceId: session.user.id,
+        customerEmail: session.user.email,
+
+        // Only used when updating an existing subscription.
+        stripeCustomerId: session.user.stripeCustomerId || undefined,
+        subscriptionId: session.user.subscriptionId || undefined,
+
+        // For administrative roles the Stripe fragment has a few convenient hooks
+        isAdmin: session.user.role === "admin",
+      };
+    },
+  },
+});
+```
+
+For additional details on setting up the `onStripeCustomerCreated` and `authMiddleware` callbacks,
+see [Subscriptions](docs/our-fragments/stripe/subscriptions#configuration-requirements) page.
+
+<Callout type="info">
+  **What is `referenceId`?** This is your application's identifier for the entity that owns the
+  subscription (typically a user ID or organization ID). The fragment uses this to link Stripe data
+  back to your application's data model.
+</Callout>
+
+### 2. Mount the Fragment Routes
+
+The fragment provides HTTP routes that need to be mounted in your application. How you do this
+depends on your framework. See [Frameworks](/docs/frameworks) supported frameworks.
+
+```ts tab="Generic"
+import { stripeFragment } from "@/lib/stripe";
+
+export function GET(req: Request): Response {
+  return stripeFragment.handler(req);
+}
+
+export function POST(req: Request): Response {
+  return stripeFragment.handler(req);
+}
+```
+
+```ts title="app/routes/api/stripe.tsx" tab="React Router v7"
+import { stripeFragment } from "@/lib/stripe";
+
+export const handlers = stripeFragment.handlersFor("react-router");
+
+// Note: React Router requires individual exports, destructured exports don't work
+export const action = handlers.action;
+export const loader = handlers.loader;
+```
+
+```ts title="app/api/stripe/[...all]/route.ts" tab="Next.js"
+import { stripeFragment } from "@/lib/stripe";
+
+export const { GET, POST, PUT, PATCH, DELETE } = stripeFragment.handlersFor("next-js");
+```
+
+```ts title="server/api/stripe/[...all].ts" tab="Nuxt"
+import { stripeFragment } from "@/lib/stripe";
+
+export default fromWebHandler(stripeFragment.handler);
+```
+
+```ts title="pages/api/stripe/[...all].ts" tab="Astro"
+import { stripeFragment } from "@/lib/stripe";
+
+export const { ALL } = stripeFragment.handlersFor("astro");
+export const prerender = false;
+```
+
+```ts title="routes/api/stripe/[...path].ts" tab="SvelteKit"
+import { stripeFragment } from "@/lib/stripe";
+
+export const { GET, POST, PUT, PATCH, DELETE } = stripeFragment.handlersFor("svelte-kit");
+export const prerender = false;
+```
+
+```ts title="index.ts", tab="Hono"
+import { Hono } from "hono";
+import { stripeFragment } from "@/lib/stripe";
+
+const app = new Hono();
+app.all("/api/stripe/*", (c) => stripeFragment.handler(c.req.raw));
+```
+
+### 3. Run Database Migrations
+
+The fragment adds a `stripe_subscription` table to your database. Generate the schema for this table
+using the `fragno-cli`. For setting up Fragno DB schemas, see the
+[Fragno DB Quickstart](/docs/for-users/database-fragments/overview#quick-start).
+
+```bash npm
+# Generate schema file
+npx fragno-cli db generate lib/stripe.ts -o db/stripe.schema.ts
+```
+
+## Creating a subscription
+
+Create a client instance to use the fragment in your frontend:
+
+```typescript title="lib/stripe-client.ts"
+import { createStripeFragmentClient } from "@fragno-dev/stripe/react";
+// or:  /vue, /solid, /svelte
+
+export const stripeClient = createStripeFragmentClient();
+```
+
+This client exposes two mutators for managing subscriptions:
+
+- `upgradeSubscription`: create or update a subscription
+- `cancelSubscription`: cancel a subscription
+
+```typescript title="components/subscribe.tsx"
+import { stripeClient } from "@/lib/stripe-client";
+
+export function SubscribeButton() {
+  const { mutate, loading, error } = stripeClient.upgradeSubscription();
+
+  const handleSubscribe = async () => {
+    const { url, redirect } = await mutate({
+      body: {
+        priceId: "price_1234567890", // The Stripe price ID being subscribed to
+        successUrl: `${window.location.origin}/success`,
+        cancelUrl: window.location.href,
+      },
+    });
+
+    if (redirect) {
+      window.location.href = url; // Redirect to Stripe Checkout Portal
+    }
+  };
+
+  return (
+    <button onClick={handleSubscribe} disabled={loading}>
+      {loading ? "Loading..." : "Subscribe"}
+    </button>
+  );
+}
+```
+
+## Your First Subscription
+
+With the setup complete, here's the flow when a user subscribes:
+
+1. **User clicks subscribe** → Your app calls `upgradeSubscription`
+2. **Fragment checks for customer** → Creates one if needed, triggers `onStripeCustomerCreated`
+3. **Stripe Checkout session created** → User redirects to Stripe's checkout page
+4. **User completes payment** → Stripe sends webhook to your app
+5. **Webhook processed** → Subscription saved to your database
+6. **User redirected back** → Success page shows active subscription
+
+The fragment handles all the webhook processing and database synchronization automatically!

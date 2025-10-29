@@ -1,3 +1,5 @@
 pnpm-lock.yaml
 *.pglite
 example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema.ts
+packages/stripe/src/webhook/test-events
+
