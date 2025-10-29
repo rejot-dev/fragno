@@ -19,7 +19,8 @@ export class RequestInputContext<
   readonly #pathParams: ExtractPathParams<TPath>;
   readonly #searchParams: URLSearchParams;
   readonly #headers: Headers;
-  readonly #body: RequestBodyType;
+  readonly #body: string | undefined;
+  readonly #parsedBody: RequestBodyType;
   readonly #inputSchema: TInputSchema | undefined;
   readonly #shouldValidateInput: boolean;
 
@@ -28,9 +29,9 @@ export class RequestInputContext<
     method: string;
     pathParams: ExtractPathParams<TPath>;
     searchParams: URLSearchParams;
+    parsedBody: RequestBodyType;
+    rawBody?: string;
     headers: Headers;
-    body: RequestBodyType;
-
     request?: Request;
     inputSchema?: TInputSchema;
     shouldValidateInput?: boolean;
@@ -40,7 +41,8 @@ export class RequestInputContext<
     this.#pathParams = config.pathParams;
     this.#searchParams = config.searchParams;
     this.#headers = config.headers;
-    this.#body = config.body;
+    this.#body = config.rawBody;
+    this.#parsedBody = config.parsedBody;
     this.#inputSchema = config.inputSchema;
     this.#shouldValidateInput = config.shouldValidateInput ?? true;
   }
@@ -59,6 +61,7 @@ export class RequestInputContext<
     inputSchema?: TInputSchema;
     shouldValidateInput?: boolean;
     state: MutableRequestState;
+    rawBody?: string;
   }): Promise<RequestInputContext<TPath, TInputSchema>> {
     // Use the mutable state (potentially modified by middleware)
     return new RequestInputContext({
@@ -67,7 +70,8 @@ export class RequestInputContext<
       pathParams: config.state.pathParams as ExtractPathParams<TPath>,
       searchParams: config.state.searchParams,
       headers: config.state.headers,
-      body: config.state.body,
+      parsedBody: config.state.body,
+      rawBody: config.rawBody,
       inputSchema: config.inputSchema,
       shouldValidateInput: config.shouldValidateInput,
     });
@@ -104,7 +108,7 @@ export class RequestInputContext<
       pathParams: config.pathParams,
       searchParams: config.searchParams ?? new URLSearchParams(),
       headers: config.headers ?? new Headers(),
-      body: "body" in config ? config.body : undefined,
+      parsedBody: "body" in config ? config.body : undefined,
       inputSchema: "inputSchema" in config ? config.inputSchema : undefined,
       shouldValidateInput: false, // No input validation in SSR context
     });
@@ -144,13 +148,11 @@ export class RequestInputContext<
   get headers(): Headers {
     return this.#headers;
   }
-  // TODO: Should probably remove this
-  /**
-   * @internal
-   */
-  get rawBody(): RequestBodyType {
+
+  get rawBody(): string | undefined {
     return this.#body;
   }
+
   /**
    * Input validation context (only if inputSchema is defined)
    * @remarks `InputContext`
@@ -175,7 +177,7 @@ export class RequestInputContext<
       valid: async () => {
         if (!this.#shouldValidateInput) {
           // In SSR context, return the body directly without validation
-          return this.#body;
+          return this.#parsedBody;
         }
 
         return this.#validateInput();
@@ -191,11 +193,11 @@ export class RequestInputContext<
       throw new Error("No input schema defined for this route");
     }
 
-    if (this.#body instanceof FormData || this.#body instanceof Blob) {
+    if (this.#parsedBody instanceof FormData || this.#parsedBody instanceof Blob) {
       throw new Error("Schema validation is only supported for JSON data, not FormData or Blob");
     }
 
-    const result = await this.#inputSchema["~standard"].validate(this.#body);
+    const result = await this.#inputSchema["~standard"].validate(this.#parsedBody);
 
     if (result.issues) {
       throw new FragnoApiValidationError("Validation failed", result.issues);

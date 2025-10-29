@@ -42,61 +42,67 @@ describe("RequestContext", () => {
       pathParams: {},
       searchParams: new URLSearchParams(),
       headers: new Headers(),
-      body: undefined,
+      parsedBody: undefined,
     });
 
-    const { path, pathParams, query: searchParams, input, rawBody: body } = ctx;
+    const { path, pathParams, query: searchParams, input, rawBody } = ctx;
 
     expect(path).toBe("/");
     expect(pathParams).toEqual({});
     expect(searchParams).toBeInstanceOf(URLSearchParams);
     expect(input).toBeUndefined();
-    expect(body).toBeUndefined();
+    expect(rawBody).toBeUndefined();
   });
 
   test("Should support body in constructor", () => {
     const jsonBody = { test: "data" };
+    const rawBodyText = JSON.stringify(jsonBody);
     const ctx = new RequestInputContext({
       method: "POST",
       path: "/api/test",
       pathParams: {},
       searchParams: new URLSearchParams(),
       headers: new Headers(),
-      body: jsonBody,
+      parsedBody: jsonBody,
+      rawBody: rawBodyText,
     });
 
-    expect(ctx.rawBody).toEqual(jsonBody);
+    expect(ctx.rawBody).toEqual(rawBodyText);
   });
 
   test("Should support FormData body", () => {
     const formData = new FormData();
     formData.append("key", "value");
+    const rawBodyText = "form-data-as-text";
 
     const ctx = new RequestInputContext({
       path: "/api/form",
       pathParams: {},
       searchParams: new URLSearchParams(),
       headers: new Headers(),
-      body: formData,
+      parsedBody: formData,
+      rawBody: rawBodyText,
       method: "POST",
     });
 
-    expect(ctx.rawBody).toBe(formData);
+    expect(ctx.rawBody).toBe(rawBodyText);
   });
 
   test("Should support Blob body", () => {
     const blob = new Blob(["test content"], { type: "text/plain" });
+    const rawBodyText = "test content";
 
     const ctx = new RequestInputContext({
       path: "/api/upload",
       pathParams: {},
       searchParams: new URLSearchParams(),
       headers: new Headers(),
-      body: blob,
+      parsedBody: blob,
+      rawBody: rawBodyText,
       method: "POST",
     });
 
-    expect(ctx.rawBody).toBe(blob);
+    expect(ctx.rawBody).toBe(rawBodyText);
   });
 
   test("Should create RequestContext with fromRequest static method", async () => {
@@ -105,10 +111,10 @@ describe("RequestContext", () => {
       body: JSON.stringify({ test: "data" }),
     });
 
-    const bodyData = { test: "data" };
     const url = new URL(request.url);
     const clonedReq = request.clone();
     const body = clonedReq.body instanceof ReadableStream ? await clonedReq.json() : undefined;
+    const rawBodyText = JSON.stringify({ test: "data" });
 
     const state = new MutableRequestState({
       pathParams: {},
@@ -123,10 +129,11 @@ describe("RequestContext", () => {
       path: "/api/test",
       pathParams: {},
       state,
+      rawBody: rawBodyText,
     });
 
     expect(ctx.path).toBe("/api/test");
-    expect(ctx.rawBody).toEqual(bodyData);
+    expect(ctx.rawBody).toEqual(rawBodyText);
   });
 
   test("Should create RequestContext with fromSSRContext static method", () => {
@@ -139,7 +146,8 @@ describe("RequestContext", () => {
     });
 
     expect(ctx.path).toBe("/api/ssr");
-    expect(ctx.rawBody).toEqual(bodyData);
+    // rawBody is not set in fromSSRContext
+    expect(ctx.rawBody).toBeUndefined();
   });
 
   describe("Input handling", () => {
@@ -149,7 +157,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: { test: "data" },
+        parsedBody: { test: "data" },
         method: "POST",
       });
 
@@ -162,7 +170,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: { test: "data" },
+        parsedBody: { test: "data" },
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -178,7 +186,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: "test string",
+        parsedBody: "test string",
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -193,7 +201,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: 123, // Invalid for string schema
+        parsedBody: 123, // Invalid for string schema
         inputSchema: invalidSchema,
         method: "POST",
       });
@@ -207,7 +215,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: 123,
+        parsedBody: 123,
         inputSchema: invalidSchema,
         method: "POST",
       });
@@ -236,13 +244,13 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: 123,
+        parsedBody: 123,
         inputSchema: invalidSchema,
         shouldValidateInput: false,
         method: "POST",
       });
 
-      // Should return the raw body without validation when validation is disabled
+      // Should return the parsed body without validation when validation is disabled
       const result = await ctx.input?.valid();
       expect(result).toBe(123);
     });
@@ -256,7 +264,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: formData,
+        parsedBody: formData,
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -274,7 +282,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: blob,
+        parsedBody: blob,
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -290,7 +298,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: null,
+        parsedBody: null,
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -305,7 +313,7 @@ describe("RequestContext", () => {
         pathParams: {},
         searchParams: new URLSearchParams(),
         headers: new Headers(),
-        body: undefined,
+        parsedBody: undefined,
         inputSchema: validStringSchema,
         method: "POST",
       });
@@ -324,7 +332,7 @@ describe("RequestContext", () => {
         headers: new Headers(),
         inputSchema: validStringSchema,
         method: "POST",
-        body: undefined,
+        parsedBody: undefined,
       });
 
       // We can't directly access the private field, but we can test the behavior
@@ -340,7 +348,7 @@ describe("RequestContext", () => {
         inputSchema: validStringSchema,
         shouldValidateInput: true,
         method: "POST",
-        body: undefined,
+        parsedBody: undefined,
       });
 
       expect(ctx.input).toBeDefined();
@@ -355,7 +363,7 @@ describe("RequestContext", () => {
         inputSchema: validStringSchema,
         shouldValidateInput: false,
         method: "POST",
-        body: undefined,
+        parsedBody: undefined,
       });
 
       expect(ctx.input).toBeDefined();
@@ -406,7 +414,7 @@ describe("RequestContext", () => {
         searchParams: new URLSearchParams(),
         headers: new Headers(),
         method: "POST",
-        body: undefined,
+        parsedBody: undefined,
       });
 
       expect(ctx.pathParams).toEqual({});
@@ -419,7 +427,7 @@ describe("RequestContext", () => {
         searchParams: new URLSearchParams(),
         headers: new Headers(),
         method: "POST",
-        body: undefined,
+        parsedBody: undefined,
       });
 
       expect(ctx.query.toString()).toBe("");
@@ -433,7 +441,7 @@ describe("RequestContext", () => {
         searchParams,
         headers: new Headers(),
         method: "POST",
-        body: undefined,
+        parsedBody: undefined,
       });
 
       expect(ctx.query.get("key")).toBe("value");
