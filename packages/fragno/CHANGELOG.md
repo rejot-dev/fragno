@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.4
+
+### Patch Changes
+
+- ca57fac: feat: allow async middleware
+
 ## 0.1.3
 
 ### Patch Changes
