@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "include": ["**/*.ts", "**/*.tsx"],
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "references": [
+    {
+      "path": "../../packages/stripe"
+    }
+  ]
+}

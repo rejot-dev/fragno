@@ -30,6 +30,9 @@
     },
     {
       "path": "example-apps/solid-start-example"
+    },
+    {
+      "path": "example-apps/stripe-webshop"
     }
   ]
 }
