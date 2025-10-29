@@ -1,5 +1,12 @@
 # @fragno-dev/chatno
 
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies [ca57fac]
+  - @fragno-dev/core@0.1.4
+
 ## 0.0.11
 
 ### Patch Changes
