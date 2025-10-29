@@ -1,5 +1,13 @@
 # @fragno-dev/test
 
+## 0.1.5
+
+### Patch Changes
+
+- 7445a73: feat: Added support for testing using different adapters
+- Updated dependencies [8fcceb6]
+  - @fragno-dev/db@0.1.9
+
 ## 0.1.4
 
 ### Patch Changes
