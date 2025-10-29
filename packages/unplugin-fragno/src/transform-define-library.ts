@@ -113,6 +113,15 @@ const createNoOpArrowFunction = (): t.ArrowFunctionExpression => {
   return t.arrowFunctionExpression([], t.blockStatement([]));
 };
 
+/**
+ * Create an arrow function that returns its first parameter.
+ * Used for utility functions like schema() where the callback needs to return a builder.
+ */
+const createPassThroughArrowFunction = (): t.ArrowFunctionExpression => {
+  const param = t.identifier("s");
+  return t.arrowFunctionExpression([param], param);
+};
+
 const isDefineLibraryChain = (node: t.Node, scope: Scope): boolean => {
   // Check direct defineFragment call
   if (t.isCallExpression(node) && isDefineLibraryCall(node, scope)) {
@@ -153,8 +162,10 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
       if (t.isIdentifier(callee)) {
         const binding = path.scope.getBinding(callee.name);
         if (binding && isUtilityFunctionBinding(binding)) {
-          // Replace with a no-op function call
-          path.node.arguments = [createNoOpArrowFunction()];
+          // Replace with a pass-through function that returns its parameter
+          // This prevents errors like "Cannot read properties of undefined (reading 'build')"
+          // when schema(() => {}) would return undefined
+          path.node.arguments = [createPassThroughArrowFunction()];
           return;
         }
       }

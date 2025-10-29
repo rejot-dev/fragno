@@ -420,7 +420,7 @@ describe("defineFragmentWithDatabase with full database integration", () => {
       import type { TableToInsertValues } from "@fragno-dev/db/query";
       import { defineFragmentWithDatabase } from "@fragno-dev/db";
       import { z } from "zod";
-      export const noteSchema = schema(() => {});
+      export const noteSchema = schema(s => s);
       const lib = defineFragmentWithDatabase("mylib").withDatabase(() => {}).withServices(() => {});"
     `);
   });
@@ -628,7 +628,7 @@ describe("schema utility function transformation", () => {
 
   test("ssr:false - transforms schema call to no-op", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain("schema(() => {})");
+    expect(result.code).toContain("schema(s => s)");
     expect(result.code).not.toContain("addTable");
     expect(result.code).not.toContain("addColumn");
     expect(result.code).not.toContain("createIndex");
@@ -657,7 +657,7 @@ describe("schema from @fragno-dev/db", () => {
 
   test("ssr:false - transforms schema from main package", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain("schema(() => {})");
+    expect(result.code).toContain("schema(s => s)");
     expect(result.code).not.toContain("addTable");
   });
 });
@@ -681,8 +681,61 @@ describe("multiple schema calls", () => {
 
   test("ssr:false - transforms all schema calls", () => {
     const result = transform(source, "", { ssr: false });
-    const schemaNoOpCount = (result.code.match(/schema\(\(\) => \{\}\)/g) || []).length;
+    const schemaNoOpCount = (result.code.match(/schema\(s => s\)/g) || []).length;
     expect(schemaNoOpCount).toBe(2);
     expect(result.code).not.toContain("addTable");
+  });
+});
+
+describe("schema in separate file scenario", () => {
+  const source = dedent`
+    import { schema } from "@fragno-dev/db/schema";
+    
+    export const authSchema = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", { type: "string" });
+      });
+    });
+  `;
+
+  test("ssr:false - callback returns builder to prevent build error", () => {
+    const result = transform(source, "", { ssr: false });
+    // The callback should return the builder parameter to avoid undefined.build() error
+    expect(result.code).toContain("s => s");
+    expect(result.code).not.toContain("addTable");
+    expect(result.code).not.toContain("addColumn");
+
+    expect(result.code).toMatchInlineSnapshot(`
+      "import { schema } from "@fragno-dev/db/schema";
+      export const authSchema = schema(s => s);"
+    `);
+  });
+
+  test("ssr:true - keeps original schema implementation", () => {
+    const result = transform(source, "", { ssr: true });
+    expect(result.code).toContain("addTable");
+    expect(result.code).toContain("addColumn");
+  });
+
+  test("ssr:false - transformed code can be executed without errors", () => {
+    // Mock the schema function to match the actual implementation
+    const mockSchema = (
+      callback: (builder: { build: () => object }) => { build: () => object },
+    ) => {
+      const builder = { build: () => ({}) };
+      return callback(builder).build();
+    };
+
+    // The transformed code should be: schema(s => s)
+    // When executed, this should not throw an error
+    expect(() => {
+      mockSchema((s) => s);
+    }).not.toThrow();
+
+    // Verify the old approach would have failed
+    expect(() => {
+      // @ts-expect-error - intentionally testing wrong type
+      mockSchema(() => {});
+    }).toThrow();
   });
 });
