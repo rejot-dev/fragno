@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.10
+
+### Patch Changes
+
+- ad3e63b: fix: workaround Drizzle limitation around relationships
+
 ## 0.1.9
 
 ### Patch Changes
