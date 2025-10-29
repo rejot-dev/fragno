@@ -1207,4 +1207,101 @@ describe("drizzle-uow-compiler", () => {
       );
     });
   });
+
+  describe("auth schema with session joins", () => {
+    const authSchema = schema((s) => {
+      return s
+        .addTable("user", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("email", column("string"))
+            .addColumn("passwordHash", column("string"))
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo$((b) => b.now()),
+            )
+            .createIndex("idx_user_email", ["email"]);
+        })
+        .addTable("session", (t) => {
+          return t
+            .addColumn("id", idColumn())
+            .addColumn("userId", referenceColumn())
+            .addColumn("expiresAt", column("timestamp"))
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo$((b) => b.now()),
+            )
+            .createIndex("idx_session_user", ["userId"]);
+        })
+        .addReference("sessionOwner", {
+          from: {
+            table: "session",
+            column: "userId",
+          },
+          to: {
+            table: "user",
+            column: "id",
+          },
+          type: "one",
+        });
+    });
+
+    let authDb: DBType;
+    let authPool: ConnectionPool<DBType>;
+
+    beforeAll(async () => {
+      // Write schema to file and dynamically import it
+      const { schemaModule, cleanup } = await writeAndLoadSchema(
+        "drizzle-uow-compiler-auth",
+        authSchema,
+        "postgresql",
+      );
+
+      // Create Drizzle instance with PGLite (in-memory Postgres)
+      authDb = drizzle({
+        schema: schemaModule,
+      }) as unknown as DBType;
+
+      // Wrap in connection pool
+      authPool = createDrizzleConnectionPool(authDb);
+
+      return async () => {
+        await cleanup();
+      };
+    }, 12000);
+
+    function createAuthUOW(name?: string) {
+      const compiler = createDrizzleUOWCompiler(authSchema, authPool, "postgresql");
+      const mockExecutor = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const mockDecoder: UOWDecoder<typeof authSchema> = (rawResults, operations) => {
+        if (rawResults.length !== operations.length) {
+          throw new Error("rawResults and ops must have the same length");
+        }
+        return rawResults;
+      };
+      return new UnitOfWork(authSchema, compiler, mockExecutor, mockDecoder, name);
+    }
+
+    it("should compile find session with user join", () => {
+      const uow = createAuthUOW();
+      const sessionId = "session123";
+      uow.find("session", (b) =>
+        b
+          .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+          .join((j) => j.sessionOwner((b) => b.select(["id", "email"]))),
+      );
+
+      const compiler = createDrizzleUOWCompiler(authSchema, authPool, "postgresql");
+      const compiled = uow.compile(compiler);
+
+      expect(compiled.retrievalBatch).toHaveLength(1);
+      expect(compiled.retrievalBatch[0].sql).toMatchInlineSnapshot(
+        `"select "session"."id", "session"."userId", "session"."expiresAt", "session"."createdAt", "session"."_internalId", "session"."_version", "session_sessionOwner"."data" as "sessionOwner" from "session" "session" left join lateral (select json_build_array("session_sessionOwner"."id", "session_sessionOwner"."email", "session_sessionOwner"."_internalId", "session_sessionOwner"."_version") as "data" from (select * from "user" "session_sessionOwner" where "session_sessionOwner"."_internalId" = "session"."userId" limit $1) "session_sessionOwner") "session_sessionOwner" on true where "session"."id" = $2"`,
+      );
+      expect(compiled.retrievalBatch[0].params).toEqual([1, sessionId]);
+    });
+  });
 });

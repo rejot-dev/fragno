@@ -17,6 +17,11 @@ export interface DrizzleUOWConfig {
    * This callback is invoked for each query as it's compiled
    */
   onQuery?: (query: DrizzleCompiledQuery) => void;
+  /**
+   * If true, the query will not be executed and the query will be returned. Not respected for UOWs
+   * since those have to be manually executed.
+   */
+  dryRun?: boolean;
 }
 
 /**
@@ -45,18 +50,21 @@ export function fromDrizzle<T extends AnySchema>(
   pool: ConnectionPool<DBType>,
   provider: "sqlite" | "mysql" | "postgresql",
   mapper?: TableNameMapper,
+  uowConfig?: DrizzleUOWConfig,
 ): AbstractQuery<T, DrizzleUOWConfig> {
-  function createUOW(name?: string, uowConfig?: DrizzleUOWConfig) {
-    const uowCompiler = createDrizzleUOWCompiler(
-      schema,
-      pool,
-      provider,
-      mapper,
-      uowConfig?.onQuery,
-    );
+  function createUOW(opts: { name?: string; config?: DrizzleUOWConfig }) {
+    const uowCompiler = createDrizzleUOWCompiler(schema, pool, provider, mapper);
 
     const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
       async executeRetrievalPhase(retrievalBatch: DrizzleCompiledQuery[]) {
+        // In dryRun mode, skip execution and return empty results
+        if (opts.config?.dryRun) {
+          return retrievalBatch.map(() => ({
+            rows: [],
+            affectedRows: 0,
+          }));
+        }
+
         const conn = await pool.connect();
         try {
           const db = parseDrizzle(conn.db)[0];
@@ -66,6 +74,14 @@ export function fromDrizzle<T extends AnySchema>(
         }
       },
       async executeMutationPhase(mutationBatch: CompiledMutation<DrizzleCompiledQuery>[]) {
+        // In dryRun mode, skip execution and return success with mock internal IDs
+        if (opts.config?.dryRun) {
+          return {
+            success: true,
+            createdInternalIds: mutationBatch.map(() => null),
+          };
+        }
+
         const conn = await pool.connect();
         try {
           const db = parseDrizzle(conn.db)[0];
@@ -78,18 +94,33 @@ export function fromDrizzle<T extends AnySchema>(
 
     const decoder = createDrizzleUOWDecoder(schema, provider);
 
-    return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
+    const { onQuery, ...restUowConfig } = opts.config ?? {};
+
+    return new UnitOfWork(schema, uowCompiler, executor, decoder, opts.name, {
+      ...restUowConfig,
+      onQuery: (query) => {
+        // Handle both CompiledQuery and CompiledMutation structures
+        // Retrieval operations return DrizzleCompiledQuery directly: { sql, params }
+        // Mutation operations return CompiledMutation: { query: DrizzleCompiledQuery, expectedAffectedRows }
+        const actualQuery =
+          query && typeof query === "object" && "query" in query
+            ? (query as CompiledMutation<DrizzleCompiledQuery>).query
+            : (query as DrizzleCompiledQuery);
+
+        opts.config?.onQuery?.(actualQuery);
+      },
+    });
   }
 
   return {
     find(tableName, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.find(tableName, builderFn);
       return uow.executeRetrieve();
     },
 
     async findFirst(tableName, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       if (builderFn) {
         uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
       } else {
@@ -101,7 +132,7 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     async create(tableName, values) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.create(tableName as string, values as never);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -117,7 +148,7 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     async createMany(tableName, valuesArray) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       for (const values of valuesArray) {
         uow.create(tableName as string, values as never);
       }
@@ -130,7 +161,7 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     async update(tableName, id, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.update(tableName as string, id, builderFn as never);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -164,7 +195,7 @@ export function fromDrizzle<T extends AnySchema>(
         throw new Error("set() must be called in updateMany");
       }
 
-      const findUow = createUOW();
+      const findUow = createUOW({ config: uowConfig });
       findUow.find(tableName, (b) => {
         if (whereConfig.condition) {
           return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
@@ -179,7 +210,7 @@ export function fromDrizzle<T extends AnySchema>(
         return;
       }
 
-      const updateUow = createUOW();
+      const updateUow = createUOW({ config: uowConfig });
       for (const record of records as never as Array<{ id: unknown }>) {
         updateUow.update(tableName as string, record.id as string, (b) =>
           b.set(setValues as never),
@@ -192,7 +223,7 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     async delete(tableName, id, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.delete(tableName as string, id, builderFn as never);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -216,7 +247,7 @@ export function fromDrizzle<T extends AnySchema>(
         throw new Error("whereIndex() must be called in deleteMany");
       }
 
-      const findUow = createUOW();
+      const findUow = createUOW({ config: uowConfig });
       findUow.find(tableName as string, (b) => {
         if (whereConfig.condition) {
           return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
@@ -231,7 +262,7 @@ export function fromDrizzle<T extends AnySchema>(
         return;
       }
 
-      const deleteUow = createUOW();
+      const deleteUow = createUOW({ config: uowConfig });
       for (const record of records as never as Array<{ id: unknown }>) {
         deleteUow.delete(tableName as string, record.id as string);
       }
@@ -241,8 +272,14 @@ export function fromDrizzle<T extends AnySchema>(
       }
     },
 
-    createUnitOfWork(name, uowConfig) {
-      return createUOW(name, uowConfig);
+    createUnitOfWork(name, nestedUowConfig) {
+      return createUOW({
+        name,
+        config: {
+          ...uowConfig,
+          ...nestedUowConfig,
+        },
+      });
     },
   } as AbstractQuery<T, DrizzleUOWConfig>;
 }

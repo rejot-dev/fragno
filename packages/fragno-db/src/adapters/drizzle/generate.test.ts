@@ -89,6 +89,12 @@ describe("generateSchema", () => {
           index("idx_title_test").on(table.title)
         ])
 
+        export const users_testRelations = relations(users_test, ({ many }) => ({
+          postsList: many(posts_test, {
+            relationName: "posts_users"
+          })
+        }));
+
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           author: one(users_test, {
             relationName: "posts_users",
@@ -98,10 +104,12 @@ describe("generateSchema", () => {
         }));
 
         export const test_schema = {
-          "users_test": users_test,
+          users_test: users_test,
           users: users_test,
-          "posts_test": posts_test,
+          users_testRelations: users_testRelations,
+          posts_test: posts_test,
           posts: posts_test,
+          posts_testRelations: posts_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -166,6 +174,12 @@ describe("generateSchema", () => {
           index("idx_title_test").on(table.title)
         ])
 
+        export const users_testRelations = relations(users_test, ({ many }) => ({
+          postsList: many(posts_test, {
+            relationName: "posts_users"
+          })
+        }));
+
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           author: one(users_test, {
             relationName: "posts_users",
@@ -175,10 +189,12 @@ describe("generateSchema", () => {
         }));
 
         export const test_schema = {
-          "users_test": users_test,
+          users_test: users_test,
           users: users_test,
-          "posts_test": posts_test,
+          users_testRelations: users_testRelations,
+          posts_test: posts_test,
           posts: posts_test,
+          posts_testRelations: posts_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -243,6 +259,12 @@ describe("generateSchema", () => {
           index("idx_title_test").on(table.title)
         ])
 
+        export const users_testRelations = relations(users_test, ({ many }) => ({
+          postsList: many(posts_test, {
+            relationName: "posts_users"
+          })
+        }));
+
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           author: one(users_test, {
             relationName: "posts_users",
@@ -252,10 +274,12 @@ describe("generateSchema", () => {
         }));
 
         export const test_schema = {
-          "users_test": users_test,
+          users_test: users_test,
           users: users_test,
-          "posts_test": posts_test,
+          users_testRelations: users_testRelations,
+          posts_test: posts_test,
           posts: posts_test,
+          posts_testRelations: posts_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -309,7 +333,7 @@ describe("generateSchema", () => {
         })
 
         export const test_schema = {
-          "events_test": events_test,
+          events_test: events_test,
           events: events_test,
           schemaVersion: 1
         }"
@@ -362,7 +386,7 @@ describe("generateSchema", () => {
         })
 
         export const test_schema = {
-          "events_test": events_test,
+          events_test: events_test,
           events: events_test,
           schemaVersion: 1
         }"
@@ -427,7 +451,7 @@ describe("generateSchema", () => {
         })
 
         export const test_schema = {
-          "files_test": files_test,
+          files_test: files_test,
           files: files_test,
           schemaVersion: 1
         }"
@@ -497,12 +521,6 @@ describe("generateSchema", () => {
           _version: integer("_version").notNull().default(0)
         })
 
-        export const users_testRelations = relations(users_test, ({ many }) => ({
-          posts: many(posts_test, {
-            relationName: "users_posts"
-          })
-        }));
-
         export const posts_test = pgTable("posts_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
@@ -518,6 +536,15 @@ describe("generateSchema", () => {
           index("idx_user_test").on(table.userId)
         ])
 
+        export const users_testRelations = relations(users_test, ({ many }) => ({
+          posts: many(posts_test, {
+            relationName: "users_posts"
+          }),
+          postsList: many(posts_test, {
+            relationName: "posts_users"
+          })
+        }));
+
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           author: one(users_test, {
             relationName: "posts_users",
@@ -527,10 +554,12 @@ describe("generateSchema", () => {
         }));
 
         export const test_schema = {
-          "users_test": users_test,
+          users_test: users_test,
           users: users_test,
-          "posts_test": posts_test,
+          users_testRelations: users_testRelations,
+          posts_test: posts_test,
           posts: posts_test,
+          posts_testRelations: posts_testRelations,
           schemaVersion: 4
         }"
       `);
@@ -570,12 +599,6 @@ describe("generateSchema", () => {
           _version: integer("_version").notNull().default(0)
         })
 
-        export const users_testRelations = relations(users_test, ({ many }) => ({
-          posts: many(posts_test, {
-            relationName: "users_posts"
-          })
-        }));
-
         export const posts_test = mysqlTable("posts_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
@@ -591,6 +614,15 @@ describe("generateSchema", () => {
           index("idx_user_test").on(table.userId)
         ])
 
+        export const users_testRelations = relations(users_test, ({ many }) => ({
+          posts: many(posts_test, {
+            relationName: "users_posts"
+          }),
+          postsList: many(posts_test, {
+            relationName: "posts_users"
+          })
+        }));
+
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           author: one(users_test, {
             relationName: "posts_users",
@@ -600,10 +632,12 @@ describe("generateSchema", () => {
         }));
 
         export const test_schema = {
-          "users_test": users_test,
+          users_test: users_test,
           users: users_test,
-          "posts_test": posts_test,
+          users_testRelations: users_testRelations,
+          posts_test: posts_test,
           posts: posts_test,
+          posts_testRelations: posts_testRelations,
           schemaVersion: 4
         }"
       `);
@@ -643,12 +677,6 @@ describe("generateSchema", () => {
           _version: integer("_version").notNull().default(0)
         })
 
-        export const users_testRelations = relations(users_test, ({ many }) => ({
-          posts: many(posts_test, {
-            relationName: "users_posts"
-          })
-        }));
-
         export const posts_test = sqliteTable("posts_test", {
           id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
@@ -664,6 +692,15 @@ describe("generateSchema", () => {
           index("idx_user_test").on(table.userId)
         ])
 
+        export const users_testRelations = relations(users_test, ({ many }) => ({
+          posts: many(posts_test, {
+            relationName: "users_posts"
+          }),
+          postsList: many(posts_test, {
+            relationName: "posts_users"
+          })
+        }));
+
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           author: one(users_test, {
             relationName: "posts_users",
@@ -673,10 +710,12 @@ describe("generateSchema", () => {
         }));
 
         export const test_schema = {
-          "users_test": users_test,
+          users_test: users_test,
           users: users_test,
-          "posts_test": posts_test,
+          users_testRelations: users_testRelations,
+          posts_test: posts_test,
           posts: posts_test,
+          posts_testRelations: posts_testRelations,
           schemaVersion: 4
         }"
       `);
@@ -752,12 +791,6 @@ describe("generateSchema", () => {
           _version: integer("_version").notNull().default(0)
         })
 
-        export const categories_testRelations = relations(categories_test, ({ many }) => ({
-          products: many(products_test, {
-            relationName: "categories_products"
-          })
-        }));
-
         export const products_test = pgTable("products_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
@@ -766,10 +799,17 @@ describe("generateSchema", () => {
           _version: integer("_version").notNull().default(0)
         })
 
+        export const categories_testRelations = relations(categories_test, ({ many }) => ({
+          products: many(products_test, {
+            relationName: "categories_products"
+          })
+        }));
+
         export const test_schema = {
-          "categories_test": categories_test,
+          categories_test: categories_test,
           categories: categories_test,
-          "products_test": products_test,
+          categories_testRelations: categories_testRelations,
+          products_test: products_test,
           products: products_test,
           schemaVersion: 3
         }"
@@ -857,12 +897,16 @@ describe("generateSchema", () => {
           }),
           children: many(category_test, {
             relationName: "category_category"
+          }),
+          categoryList: many(category_test, {
+            relationName: "category_category"
           })
         }));
 
         export const test_schema = {
-          "category_test": category_test,
+          category_test: category_test,
           category: category_test,
+          category_testRelations: category_testRelations,
           schemaVersion: 3
         }"
       `);
@@ -931,17 +975,21 @@ describe("generateSchema", () => {
           index("idx_parent_test").on(table.parentId)
         ])
 
-        export const comment_testRelations = relations(comment_test, ({ one }) => ({
+        export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
             relationName: "comment_comment",
             fields: [comment_test.parentId],
             references: [comment_test._internalId]
+          }),
+          commentList: many(comment_test, {
+            relationName: "comment_comment"
           })
         }));
 
         export const test_schema = {
-          "comment_test": comment_test,
+          comment_test: comment_test,
           comment: comment_test,
+          comment_testRelations: comment_testRelations,
           schemaVersion: 2
         }"
       `);
@@ -989,17 +1037,21 @@ describe("generateSchema", () => {
           index("idx_parent_test").on(table.parentId)
         ])
 
-        export const comment_testRelations = relations(comment_test, ({ one }) => ({
+        export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
             relationName: "comment_comment",
             fields: [comment_test.parentId],
             references: [comment_test._internalId]
+          }),
+          commentList: many(comment_test, {
+            relationName: "comment_comment"
           })
         }));
 
         export const test_schema = {
-          "comment_test": comment_test,
+          comment_test: comment_test,
           comment: comment_test,
+          comment_testRelations: comment_testRelations,
           schemaVersion: 2
         }"
       `);
@@ -1047,17 +1099,21 @@ describe("generateSchema", () => {
           index("idx_parent_test").on(table.parentId)
         ])
 
-        export const comment_testRelations = relations(comment_test, ({ one }) => ({
+        export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
             relationName: "comment_comment",
             fields: [comment_test.parentId],
             references: [comment_test._internalId]
+          }),
+          commentList: many(comment_test, {
+            relationName: "comment_comment"
           })
         }));
 
         export const test_schema = {
-          "comment_test": comment_test,
+          comment_test: comment_test,
           comment: comment_test,
+          comment_testRelations: comment_testRelations,
           schemaVersion: 2
         }"
       `);
@@ -1065,6 +1121,54 @@ describe("generateSchema", () => {
   });
 
   describe("namespace sanitization", () => {
+    it("should sanitize namespace with hyphens for Drizzle compatibility", () => {
+      const generated = generateSchema(
+        [{ namespace: "auth-db", schema: testSchema }],
+        "postgresql",
+      );
+
+      // TypeScript exports must use sanitized names (underscores)
+      expect(generated).toContain("export const users_auth_db =");
+      expect(generated).toContain("export const posts_auth_db =");
+
+      // Physical table names must also be sanitized for Drizzle's relational query system
+      expect(generated).toContain('pgTable("users_auth_db"');
+      expect(generated).toContain('pgTable("posts_auth_db"');
+
+      // Foreign key name should use sanitized namespace
+      expect(generated).toContain('name: "fk_posts_users_author_auth_db"');
+
+      // Relations should reference sanitized table names
+      expect(generated).toContain("foreignColumns: [users_auth_db._internalId]");
+      expect(generated).toContain("fields: [posts_auth_db.userId]");
+      expect(generated).toContain("references: [users_auth_db._internalId]");
+
+      // Schema export should use sanitized keys
+      expect(generated).toContain("export const auth_db_schema = {");
+      expect(generated).toContain("users_auth_db: users_auth_db");
+      expect(generated).toContain("users: users_auth_db");
+      expect(generated).toContain("posts_auth_db: posts_auth_db");
+      expect(generated).toContain("posts: posts_auth_db");
+
+      // Inverse relations should be generated for relational queries
+      expect(generated).toContain("users_auth_dbRelations");
+      expect(generated).toContain("postsList: many(posts_auth_db");
+    });
+
+    it("should generate inverse relations for namespaced tables", () => {
+      const generated = generateSchema([{ namespace: "my-app", schema: testSchema }], "postgresql");
+
+      // User should have inverse "many" relation to posts
+      expect(generated).toMatch(
+        /export const users_my_appRelations = relations\(users_my_app, \(\{ many \}\) => \(\{/,
+      );
+      expect(generated).toContain("postsList: many(posts_my_app");
+
+      // Both relations should be included in schema export
+      expect(generated).toContain("users_my_appRelations: users_my_appRelations");
+      expect(generated).toContain("posts_my_appRelations: posts_my_appRelations");
+    });
+
     it("should sanitize namespace with special characters in foreign key references", () => {
       const generated = generateSchema(
         [{ namespace: "my-fragment-v2", schema: testSchema }],
@@ -1083,9 +1187,9 @@ describe("generateSchema", () => {
       expect(generated).toContain("fields: [posts_my_fragment_v2.userId]");
       expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
 
-      // Physical table names in the database can keep hyphens
-      expect(generated).toContain('pgTable("users_my-fragment-v2"');
-      expect(generated).toContain('pgTable("posts_my-fragment-v2"');
+      // Physical table names must also be sanitized for Drizzle's relational query system
+      expect(generated).toContain('pgTable("users_my_fragment_v2"');
+      expect(generated).toContain('pgTable("posts_my_fragment_v2"');
 
       expect(generated).toMatchInlineSnapshot(`
         "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
@@ -1112,7 +1216,7 @@ describe("generateSchema", () => {
         // Fragment: my-fragment-v2
         // ============================================================================
 
-        export const users_my_fragment_v2 = pgTable("users_my-fragment-v2", {
+        export const users_my_fragment_v2 = pgTable("users_my_fragment_v2", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
@@ -1124,7 +1228,7 @@ describe("generateSchema", () => {
           index("idx_name_my-fragment-v2").on(table.name)
         ])
 
-        export const posts_my_fragment_v2 = pgTable("posts_my-fragment-v2", {
+        export const posts_my_fragment_v2 = pgTable("posts_my_fragment_v2", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
@@ -1136,11 +1240,17 @@ describe("generateSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_my_fragment_v2._internalId],
-            name: "fk_posts_users_author_my-fragment-v2"
+            name: "fk_posts_users_author_my_fragment_v2"
           }),
           index("idx_user_my-fragment-v2").on(table.userId),
           index("idx_title_my-fragment-v2").on(table.title)
         ])
+
+        export const users_my_fragment_v2Relations = relations(users_my_fragment_v2, ({ many }) => ({
+          postsList: many(posts_my_fragment_v2, {
+            relationName: "posts_users"
+          })
+        }));
 
         export const posts_my_fragment_v2Relations = relations(posts_my_fragment_v2, ({ one }) => ({
           author: one(users_my_fragment_v2, {
@@ -1151,10 +1261,12 @@ describe("generateSchema", () => {
         }));
 
         export const my_fragment_v2_schema = {
-          "users_my-fragment-v2": users_my_fragment_v2,
+          users_my_fragment_v2: users_my_fragment_v2,
           users: users_my_fragment_v2,
-          "posts_my-fragment-v2": posts_my_fragment_v2,
+          users_my_fragment_v2Relations: users_my_fragment_v2Relations,
+          posts_my_fragment_v2: posts_my_fragment_v2,
           posts: posts_my_fragment_v2,
+          posts_my_fragment_v2Relations: posts_my_fragment_v2Relations,
           schemaVersion: 3
         }"
       `);

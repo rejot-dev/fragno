@@ -801,6 +801,11 @@ export function createUnitOfWork<
   >;
 }
 
+export interface UnitOfWorkConfig {
+  dryRun?: boolean;
+  onQuery?: (query: unknown) => void;
+}
+
 /**
  * Unit of Work implementation with optimistic concurrency control
  *
@@ -835,13 +840,19 @@ export class UnitOfWork<
   const TRawInput = unknown,
 > {
   #schema: TSchema;
+
   #name?: string;
+  #config?: UnitOfWorkConfig;
+
   #state: UOWState = "building-retrieval";
+
   #retrievalOps: RetrievalOperation<TSchema>[] = [];
   #mutationOps: MutationOperation<TSchema>[] = [];
+
   #compiler: UOWCompiler<TSchema, unknown>;
   #executor: UOWExecutor<unknown, TRawInput>;
   #decoder: UOWDecoder<TSchema, TRawInput>;
+
   #retrievalResults?: TRetrievalResults;
   #createdInternalIds: (bigint | null)[] = [];
 
@@ -851,12 +862,14 @@ export class UnitOfWork<
     executor: UOWExecutor<unknown, TRawInput>,
     decoder: UOWDecoder<TSchema, TRawInput>,
     name?: string,
+    config?: UnitOfWorkConfig,
   ) {
     this.#schema = schema;
     this.#compiler = compiler;
     this.#executor = executor;
     this.#decoder = decoder;
     this.#name = name;
+    this.#config = config;
   }
 
   get schema(): TSchema {
@@ -891,8 +904,15 @@ export class UnitOfWork<
     for (const op of this.#retrievalOps) {
       const compiled = this.#compiler.compileRetrievalOperation(op);
       if (compiled !== null) {
+        this.#config?.onQuery?.(compiled);
+
         retrievalBatch.push(compiled);
       }
+    }
+
+    if (this.#config?.dryRun) {
+      this.#state = "executed";
+      return [] as unknown as TRetrievalResults;
     }
 
     const results = this.#decoder(
@@ -1099,8 +1119,16 @@ export class UnitOfWork<
     for (const op of this.#mutationOps) {
       const compiled = this.#compiler.compileMutationOperation(op);
       if (compiled !== null) {
+        this.#config?.onQuery?.(compiled);
         mutationBatch.push(compiled);
       }
+    }
+
+    if (this.#config?.dryRun) {
+      this.#state = "executed";
+      return {
+        success: true,
+      };
     }
 
     // Execute mutation phase

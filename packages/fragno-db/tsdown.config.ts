@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/adapters/adapters.ts",
     "./src/adapters/kysely/kysely-adapter.ts",
     "./src/adapters/drizzle/drizzle-adapter.ts",
+    "./src/adapters/drizzle/generate.ts",
     "./src/query/unit-of-work.ts",
     "./src/query/cursor.ts",
     "./src/fragment.ts",

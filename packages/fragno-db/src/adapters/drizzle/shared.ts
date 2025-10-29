@@ -31,15 +31,25 @@ export interface TableNameMapper {
 }
 
 /**
+ * Sanitize a namespace to be a valid JavaScript identifier
+ * Replaces hyphens and other invalid characters with underscores
+ */
+export function sanitizeNamespace(namespace: string): string {
+  return namespace.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+/**
  * Creates a table name mapper for a given namespace.
- * Physical names have format: {logicalName}_{namespace}
+ * Physical names have format: {logicalName}_{sanitizedNamespace}
+ * The namespace is sanitized to match TypeScript export names used in the schema
  */
 export function createTableNameMapper(namespace: string): TableNameMapper {
+  const sanitized = sanitizeNamespace(namespace);
   return {
-    toPhysical: (logicalName: string) => `${logicalName}_${namespace}`,
+    toPhysical: (logicalName: string) => `${logicalName}_${sanitized}`,
     toLogical: (physicalName: string) => {
-      if (physicalName.endsWith(`_${namespace}`)) {
-        return physicalName.slice(0, -(namespace.length + 1));
+      if (physicalName.endsWith(`_${sanitized}`)) {
+        return physicalName.slice(0, -(sanitized.length + 1));
       }
       return physicalName;
     },

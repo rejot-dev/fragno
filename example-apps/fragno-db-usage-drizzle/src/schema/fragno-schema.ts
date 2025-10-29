@@ -22,7 +22,7 @@ export const fragnoDbSettingSchemaVersion = 1;
 // Fragment: fragno-db-comment-db
 // ============================================================================
 
-export const comment_fragno_db_comment_db = pgTable("comment_fragno-db-comment-db", {
+export const comment_fragno_db_comment_db = pgTable("comment_fragno_db_comment_db", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -37,22 +37,26 @@ export const comment_fragno_db_comment_db = pgTable("comment_fragno-db-comment-d
   foreignKey({
     columns: [table.parentId],
     foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent_fragno-db-comment-db"
+    name: "fk_comment_comment_parent_fragno_db_comment_db"
   }),
   index("idx_comment_post_fragno-db-comment-db").on(table.postReference)
 ])
 
-export const comment_fragno_db_comment_dbRelations = relations(comment_fragno_db_comment_db, ({ one }) => ({
+export const comment_fragno_db_comment_dbRelations = relations(comment_fragno_db_comment_db, ({ one, many }) => ({
   parent: one(comment_fragno_db_comment_db, {
     relationName: "comment_comment",
     fields: [comment_fragno_db_comment_db.parentId],
     references: [comment_fragno_db_comment_db._internalId]
+  }),
+  commentList: many(comment_fragno_db_comment_db, {
+    relationName: "comment_comment"
   })
 }));
 
 export const fragno_db_comment_db_schema = {
-  "comment_fragno-db-comment-db": comment_fragno_db_comment_db,
+  comment_fragno_db_comment_db: comment_fragno_db_comment_db,
   comment: comment_fragno_db_comment_db,
+  comment_fragno_db_comment_dbRelations: comment_fragno_db_comment_dbRelations,
   schemaVersion: 3
 }
 
@@ -60,7 +64,7 @@ export const fragno_db_comment_db_schema = {
 // Fragment: fragno-db-rating-db
 // ============================================================================
 
-export const upvote_fragno_db_rating_db = pgTable("upvote_fragno-db-rating-db", {
+export const upvote_fragno_db_rating_db = pgTable("upvote_fragno_db_rating_db", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
@@ -73,7 +77,7 @@ export const upvote_fragno_db_rating_db = pgTable("upvote_fragno-db-rating-db", 
   index("idx_upvote_reference_fragno-db-rating-db").on(table.reference, table.ownerReference)
 ])
 
-export const upvote_total_fragno_db_rating_db = pgTable("upvote_total_fragno-db-rating-db", {
+export const upvote_total_fragno_db_rating_db = pgTable("upvote_total_fragno_db_rating_db", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: integer("total").notNull().default(0),
@@ -84,9 +88,9 @@ export const upvote_total_fragno_db_rating_db = pgTable("upvote_total_fragno-db-
 ])
 
 export const fragno_db_rating_db_schema = {
-  "upvote_fragno-db-rating-db": upvote_fragno_db_rating_db,
+  upvote_fragno_db_rating_db: upvote_fragno_db_rating_db,
   upvote: upvote_fragno_db_rating_db,
-  "upvote_total_fragno-db-rating-db": upvote_total_fragno_db_rating_db,
+  upvote_total_fragno_db_rating_db: upvote_total_fragno_db_rating_db,
   upvote_total: upvote_total_fragno_db_rating_db,
   schemaVersion: 2
 }

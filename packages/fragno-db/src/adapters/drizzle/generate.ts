@@ -4,11 +4,12 @@ import {
   type AnyColumn,
   type AnySchema,
   type AnyTable,
+  type Relation,
   InternalIdColumn,
 } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
-import { createTableNameMapper } from "./shared";
+import { createTableNameMapper, sanitizeNamespace } from "./shared";
 import { settingsSchema, SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
 
 // ============================================================================
@@ -407,10 +408,13 @@ function generateTable(
   const columns = generateAllColumns(ctx, table, customTypes);
   const constraints = generateTableConstraints(ctx, table, namespace);
 
-  // Suffix table name with namespace if provided
-  const physicalTableName = namespace ? `${table.ormName}_${namespace}` : table.ormName;
-  // Sanitize namespace for use in export name (valid JS identifier)
-  const exportName = namespace ? `${table.ormName}_${sanitizeNamespace(namespace)}` : table.ormName;
+  // Suffix table name with namespace if provided, and sanitize for use as database table name
+  // Database table names must also be valid identifiers to work with Drizzle's relational query system
+  const physicalTableName = namespace
+    ? `${table.ormName}_${sanitizeNamespace(namespace)}`
+    : table.ormName;
+  // Same sanitized name for TypeScript export
+  const exportName = physicalTableName;
 
   const args: string[] = [`"${physicalTableName}"`, `{\n${columns.join(",\n")}\n}`];
 
@@ -429,11 +433,13 @@ function generateRelation(
   ctx: GeneratorContext,
   table: AnyTable,
   namespace?: string,
+  inverseRelations?: Array<{ fromTable: AnyTable; relation: Relation }>,
 ): string | undefined {
   const relations: string[] = [];
   let hasOne = false;
   let hasMany = false;
 
+  // Generate explicit relations defined on this table
   for (const relation of Object.values(table.relations)) {
     const options: string[] = [`relationName: "${relation.id}"`];
 
@@ -479,6 +485,30 @@ function generateRelation(
     relations.push(ident(`${relation.name}: ${relation.type}(${args.join(", ")})`));
   }
 
+  // Generate inverse relations for tables that reference this table
+  // Drizzle requires both sides of a relation to be defined
+  if (inverseRelations && inverseRelations.length > 0) {
+    for (const { fromTable, relation } of inverseRelations) {
+      // Only generate inverse for "one" relations (they become "many" on this side)
+      if (relation.type === "one") {
+        hasMany = true;
+
+        const fromTableRef = namespace
+          ? `${fromTable.ormName}_${sanitizeNamespace(namespace)}`
+          : fromTable.ormName;
+
+        // Generate inverse relation name with consistent suffix
+        // e.g., if session has "sessionOwner" relation to user, user gets "sessionList" inverse relation
+        const inverseRelationName = `${fromTable.ormName}List`;
+
+        const options: string[] = [`relationName: "${relation.id}"`];
+        const args: string[] = [fromTableRef, `{\n${ident(options.join(",\n"))}\n}`];
+
+        relations.push(ident(`${inverseRelationName}: many(${args.join(", ")})`));
+      }
+    }
+  }
+
   if (relations.length === 0) {
     return undefined;
   }
@@ -509,18 +539,14 @@ ${relations.join(",\n")}
 // ============================================================================
 
 /**
- * Sanitize a namespace to be a valid JavaScript identifier
- * Replaces hyphens and other invalid characters with underscores
- */
-function sanitizeNamespace(namespace: string): string {
-  return namespace.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-/**
  * Generate a schema export object for a fragment
  * This groups all tables by their logical names for easier access
  */
-function generateFragmentSchemaExport(schema: AnySchema, namespace: string): string {
+function generateFragmentSchemaExport(
+  schema: AnySchema,
+  namespace: string,
+  tablesWithRelations?: Set<string>,
+): string {
   const entries: string[] = [];
 
   for (const table of Object.values(schema.tables)) {
@@ -528,14 +554,23 @@ function generateFragmentSchemaExport(schema: AnySchema, namespace: string): str
       ? `${table.ormName}_${sanitizeNamespace(namespace)}`
       : table.ormName;
 
+    // Use sanitized export name (valid JS identifier) as the key
+    // Drizzle requires all schema keys to be valid identifiers
+    entries.push(`  ${physicalExportName}: ${physicalExportName}`);
+
+    // Add convenient alias using the original table name (without namespace)
     if (namespace) {
-      const physicalTableName = namespace ? `${table.ormName}_${namespace}` : table.ormName;
-      // Use physical table name as key for Drizzle schema lookups
-      entries.push(`  "${physicalTableName}": ${physicalExportName}`);
+      entries.push(`  ${table.ormName}: ${physicalExportName}`);
     }
 
-    // Also provide logical name for convenience
-    entries.push(`  ${table.ormName}: ${physicalExportName}`);
+    // Include relations for this table if they exist (either explicit or inverse)
+    if (tablesWithRelations?.has(table.name)) {
+      const relationsName = namespace
+        ? `${table.ormName}_${sanitizeNamespace(namespace)}Relations`
+        : `${table.ormName}Relations`;
+
+      entries.push(`  ${relationsName}: ${relationsName}`);
+    }
   }
 
   // Add schema version as a number
@@ -616,17 +651,41 @@ export function generateSchema(
       const tableCode = generateTable(ctx, table, customTypes, namespace);
       fragmentTables.push("");
       fragmentTables.push(tableCode);
+    }
 
-      const relationCode = generateRelation(ctx, table, namespace);
+    // Build a map of inverse relations for tables that are referenced but don't have their own relations
+    // This is needed for Drizzle's relational query API to work correctly
+    const inverseRelations = new Map<string, Array<{ fromTable: AnyTable; relation: Relation }>>();
+    for (const table of Object.values(schema.tables)) {
+      for (const relation of Object.values(table.relations)) {
+        // Track this relation as an inverse on the target table
+        const targetTableName = relation.table.name;
+        if (!inverseRelations.has(targetTableName)) {
+          inverseRelations.set(targetTableName, []);
+        }
+        inverseRelations.get(targetTableName)!.push({ fromTable: table, relation });
+      }
+    }
+
+    // Generate relations for all tables (both explicit and inverse)
+    const tablesWithRelations = new Set<string>();
+    for (const table of Object.values(schema.tables)) {
+      const relationCode = generateRelation(
+        ctx,
+        table,
+        namespace,
+        inverseRelations.get(table.name),
+      );
       if (relationCode) {
         fragmentTables.push("");
         fragmentTables.push(relationCode);
+        tablesWithRelations.add(table.name);
       }
     }
 
     // Generate schema export object
     fragmentTables.push("");
-    fragmentTables.push(generateFragmentSchemaExport(schema, namespace));
+    fragmentTables.push(generateFragmentSchemaExport(schema, namespace, tablesWithRelations));
 
     sections.push(...fragmentTables);
   }
