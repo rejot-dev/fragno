@@ -188,16 +188,16 @@ export function createTodosClient(fragnoConfig = {}) {
 
 ## Framework Support Matrix
 
-| Client-side Frameworks | Support | —   | Server-side Frameworks  | Support    |
-| ---------------------- | ------- | --- | ----------------------- | ---------- |
-| React                  | ✅      |     | Node.js / Express       | ✅         |
-| Vue                    | ✅      |     | React Router v7 / Remix | ✅         |
-| Vanilla JavaScript     | ✅      |     | Astro                   | ✅         |
-| Svelte                 | ✅      |     | Next.js                 | ✅         |
-| SolidJS                | ✅      |     | Nuxt                    | ✅         |
-|                        |         |     | SvelteKit               | ✅         |
-|                        |         |     | SolidStart              | ✅         |
-|                        |         |     | Tanstack Start          | 🔄 Planned |
+| Client-side Frameworks | Support | —   | Server-side Frameworks  | Support |
+| ---------------------- | ------- | --- | ----------------------- | ------- |
+| React                  | ✅      |     | Node.js / Express       | ✅      |
+| Vue                    | ✅      |     | React Router v7 / Remix | ✅      |
+| Vanilla JavaScript     | ✅      |     | Astro                   | ✅      |
+| Svelte                 | ✅      |     | Next.js                 | ✅      |
+| SolidJS                | ✅      |     | Nuxt                    | ✅      |
+|                        |         |     | SvelteKit               | ✅      |
+|                        |         |     | SolidStart              | ✅      |
+|                        |         |     | TanStack Start          | ✅      |
 
 See the [Framework Support](https://fragno.dev/docs/frameworks) page for the full list of supported
 frameworks.

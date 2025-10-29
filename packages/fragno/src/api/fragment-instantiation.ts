@@ -48,6 +48,8 @@ type SolidStartHandlers = {
   OPTIONS: (args: { request: Request }) => Promise<Response>;
 };
 
+type TanStackStartHandlers = SolidStartHandlers;
+
 type StandardHandlers = {
   GET: (req: Request) => Promise<Response>;
   POST: (req: Request) => Promise<Response>;
@@ -64,6 +66,7 @@ type HandlersByFramework = {
   "next-js": StandardHandlers;
   "svelte-kit": StandardHandlers;
   "solid-start": SolidStartHandlers;
+  "tanstack-start": TanStackStartHandlers;
 };
 
 // Not actually a symbol, since we might be dealing with multiple instances of this code.
@@ -225,6 +228,15 @@ export function createFragment<
           OPTIONS: handler,
         },
         "solid-start": {
+          GET: ({ request }: { request: Request }) => handler(request),
+          POST: ({ request }: { request: Request }) => handler(request),
+          PUT: ({ request }: { request: Request }) => handler(request),
+          DELETE: ({ request }: { request: Request }) => handler(request),
+          PATCH: ({ request }: { request: Request }) => handler(request),
+          HEAD: ({ request }: { request: Request }) => handler(request),
+          OPTIONS: ({ request }: { request: Request }) => handler(request),
+        },
+        "tanstack-start": {
           GET: ({ request }: { request: Request }) => handler(request),
           POST: ({ request }: { request: Request }) => handler(request),
           PUT: ({ request }: { request: Request }) => handler(request),
