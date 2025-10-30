@@ -49,7 +49,8 @@
     "test:watch": "turbo run test:watch",
     "test:coverage": "turbo run test && turbo run collect-json-reports merge-json-reports report --filter=@fragno-private/vitest-config",
     "ci:version": "changeset version && pnpm update && pnpm install",
-    "ci:publish": "pnpm publish -r --access public --no-git-checks && changeset tag",
+    "ci:publish": "changeset publish && changeset tag",
+    "ci:canary": "changeset version --snapshot canary && changeset publish --tag canary --no-git-tag",
     "diff:lockfile": "git -c core.attributesfile=/dev/null --no-pager diff --text pnpm-lock.yaml"
   },
   "bin": {
