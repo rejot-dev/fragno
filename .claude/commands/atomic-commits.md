@@ -5,6 +5,8 @@ follow best practices.
 
 ## Steps
 
+1. Take into account the context of the current chat, it's likely commits are related to the current
+   session.
 1. Run `git status` to understand what files have changed
 1. Run `git diff` (or read changed files) to analyze the nature of changes
 1. Analyze and group changes into logical, atomic commits based on:
@@ -23,8 +25,10 @@ follow best practices.
 1. Iterate on feedback until the user approves
 1. Execute the commits in order using `git add` (with specific files/patches as needed) and
    `git commit`
+1. Create a changeset if the changes are relevant to end users of Fragno (see Changesets section)
 1. After all commits are done, run `git log --oneline -n [number]` to show the final result
-1. Respond with: "✓ Created [N] atomic commits" and show the log output
+1. Respond with: "✓ Created [N] atomic commits" (and mention changeset if created) and show the log
+   output
 
 ## Rules
 
@@ -79,6 +83,22 @@ follow best practices.
 - Use `git add -p` when a single file contains multiple independent changes
 - Only split when changes are truly independent
 - When in doubt, keep related changes together
+
+### Changesets
+
+- The changeset file HAS TO BE part of the commit that includes the changes
+- Create a changeset ONLY if the changes affect end users of Fragno (library authors or app
+  developers using Fragno)
+- DO create changesets for:
+  - New features, APIs, or functionality
+  - Bug fixes that affect user code
+  - Breaking changes
+- DO NOT create changesets for:
+  - Internal refactoring that doesn't change public APIs
+  - Test-only changes
+  - Build tooling or CI updates
+  - Development workflow improvements
+  - Example app changes (unless they demonstrate new features)
 
 ## Analysis Guidelines
 
