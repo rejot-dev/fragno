@@ -103,7 +103,7 @@ export function fromKysely<T extends AnySchema>(
   return {
     async find(tableName, builderFn) {
       const uow = createUOW();
-      uow.find(tableName, builderFn);
+      uow.find(tableName, builderFn as never);
       // executeRetrieve returns an array of results (one per find operation)
       // Since we only have one find, unwrap the first result
       const [result]: unknown[][] = await uow.executeRetrieve();
@@ -113,7 +113,10 @@ export function fromKysely<T extends AnySchema>(
     async findFirst(tableName, builderFn) {
       const uow = createUOW();
       if (builderFn) {
-        uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+        // Safe: builderFn returns a FindBuilder instance which has pageSize method.
+        // Using `as any` because TBuilderResult is unconstrained in the overload signature.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        uow.find(tableName, (b) => (builderFn(b as never) as any).pageSize(1));
       } else {
         uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
       }
