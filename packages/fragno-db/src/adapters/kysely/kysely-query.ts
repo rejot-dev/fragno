@@ -1,6 +1,11 @@
-import type { AbstractQuery } from "../../query/query";
-import type { AnySchema } from "../../schema/create";
-import type { CompiledMutation, UOWDecoder, UOWExecutor } from "../../query/unit-of-work";
+import type { AbstractQuery, TableToUpdateValues } from "../../query/query";
+import type { AnySchema, AnyTable } from "../../schema/create";
+import type {
+  CompiledMutation,
+  UOWDecoder,
+  UOWExecutor,
+  ValidIndexName,
+} from "../../query/unit-of-work";
 import { decodeResult } from "../../query/result-transform";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
@@ -12,6 +17,37 @@ import type { SQLProvider } from "../../shared/providers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
+
+/**
+ * Special builder for updateMany operations that captures configuration
+ */
+class UpdateManySpecialBuilder<TTable extends AnyTable> {
+  #indexName?: string;
+  #condition?: unknown;
+  #setValues?: TableToUpdateValues<TTable>;
+
+  whereIndex<TIndexName extends ValidIndexName<TTable>>(
+    indexName: TIndexName,
+    condition?: unknown,
+  ): this {
+    this.#indexName = indexName as string;
+    this.#condition = condition;
+    return this;
+  }
+
+  set(values: TableToUpdateValues<TTable>): this {
+    this.#setValues = values;
+    return this;
+  }
+
+  getConfig() {
+    return {
+      indexName: this.#indexName,
+      condition: this.#condition,
+      setValues: this.#setValues,
+    };
+  }
+}
 
 /**
  * Creates a Kysely-based query engine for the given schema.
@@ -103,7 +139,9 @@ export function fromKysely<T extends AnySchema>(
   return {
     async find(tableName, builderFn) {
       const uow = createUOW();
-      uow.find(tableName, builderFn as never);
+      // Safe: builderFn returns a FindBuilder (or void), which matches UnitOfWork signature
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      uow.find(tableName, builderFn as any);
       // executeRetrieve returns an array of results (one per find operation)
       // Since we only have one find, unwrap the first result
       const [result]: unknown[][] = await uow.executeRetrieve();
@@ -113,10 +151,10 @@ export function fromKysely<T extends AnySchema>(
     async findFirst(tableName, builderFn) {
       const uow = createUOW();
       if (builderFn) {
-        // Safe: builderFn returns a FindBuilder instance which has pageSize method.
-        // Using `as any` because TBuilderResult is unconstrained in the overload signature.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        uow.find(tableName, (b) => (builderFn(b as never) as any).pageSize(1));
+        uow.find(tableName, (b) => {
+          builderFn(b);
+          return b.pageSize(1);
+        });
       } else {
         uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
       }
@@ -157,7 +195,7 @@ export function fromKysely<T extends AnySchema>(
 
     async update(tableName, id, builderFn) {
       const uow = createUOW();
-      uow.update(tableName, id, builderFn as never);
+      uow.update(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to update record (version conflict or record not found)");
@@ -165,24 +203,17 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async updateMany(tableName, builderFn) {
-      // Create a special builder that captures both where and set operations
-      let whereConfig: { indexName?: string; condition?: unknown } = {};
-      let setValues: unknown;
+      const table = schema.tables[tableName];
+      if (!table) {
+        throw new Error(`Table ${tableName} not found in schema`);
+      }
 
-      const specialBuilder = {
-        whereIndex(indexName: string, condition?: unknown) {
-          whereConfig = { indexName, condition };
-          return this;
-        },
-        set(values: unknown) {
-          setValues = values;
-          return this;
-        },
-      };
-
+      const specialBuilder = new UpdateManySpecialBuilder<typeof table>();
       builderFn(specialBuilder);
 
-      if (!whereConfig.indexName) {
+      const { indexName, condition, setValues } = specialBuilder.getConfig();
+
+      if (!indexName) {
         throw new Error("whereIndex() must be called in updateMany");
       }
       if (!setValues) {
@@ -192,13 +223,14 @@ export function fromKysely<T extends AnySchema>(
       // First, find all matching records
       const findUow = createUOW();
       findUow.find(tableName, (b) => {
-        if (whereConfig.condition) {
-          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
+        if (condition) {
+          // Safe: condition is captured from whereIndex call with proper typing
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return b.whereIndex(indexName as ValidIndexName<typeof table>, condition as any);
         }
-        return b.whereIndex(whereConfig.indexName as never);
+        return b.whereIndex(indexName as ValidIndexName<typeof table>);
       });
-      const findResults: unknown[][] = await findUow.executeRetrieve();
-      const records = findResults[0];
+      const [records]: unknown[][] = await findUow.executeRetrieve();
 
       if (!records || records.length === 0) {
         return;
@@ -206,10 +238,8 @@ export function fromKysely<T extends AnySchema>(
 
       // Now update all found records
       const updateUow = createUOW();
-      for (const record of records as never as Array<{ id: unknown }>) {
-        updateUow.update(tableName as string, record.id as string, (b) =>
-          b.set(setValues as never),
-        );
+      for (const record of records as Array<{ id: unknown }>) {
+        updateUow.update(tableName, record.id as string, (b) => b.set(setValues));
       }
       const { success } = await updateUow.executeMutations();
       if (!success) {
@@ -219,7 +249,7 @@ export function fromKysely<T extends AnySchema>(
 
     async delete(tableName, id, builderFn) {
       const uow = createUOW();
-      uow.delete(tableName, id, builderFn as never);
+      uow.delete(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to delete record (version conflict or record not found)");
@@ -227,43 +257,18 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async deleteMany(tableName, builderFn) {
-      // Create a special builder that captures where configuration
-      let whereConfig: { indexName?: string; condition?: unknown } = {};
-
-      const specialBuilder = {
-        whereIndex(indexName: string, condition?: unknown) {
-          whereConfig = { indexName, condition };
-          return this;
-        },
-      };
-
-      // Safe: Call builderFn to capture the configuration
-      builderFn(specialBuilder as never);
-
-      if (!whereConfig.indexName) {
-        throw new Error("whereIndex() must be called in deleteMany");
-      }
-
-      // First, find all matching records
       const findUow = createUOW();
-      findUow.find(tableName as string, (b) => {
-        if (whereConfig.condition) {
-          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
-        }
-        return b.whereIndex(whereConfig.indexName as never);
-      });
-      const findResults2 = await findUow.executeRetrieve();
-      const records = (findResults2 as unknown as [unknown])[0];
+      findUow.find(tableName, builderFn);
+      const [records]: unknown[][] = await findUow.executeRetrieve();
 
-      // @ts-expect-error - Type narrowing doesn't work through unknown cast
       if (!records || records.length === 0) {
         return;
       }
 
       // Now delete all found records
       const deleteUow = createUOW();
-      for (const record of records as never as Array<{ id: unknown }>) {
-        deleteUow.delete(tableName as string, record.id as string);
+      for (const record of records as Array<{ id: unknown }>) {
+        deleteUow.delete(tableName, record.id as string);
       }
       const { success } = await deleteUow.executeMutations();
       if (!success) {

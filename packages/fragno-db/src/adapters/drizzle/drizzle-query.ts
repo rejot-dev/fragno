@@ -1,12 +1,13 @@
 import type { AbstractQuery } from "../../query/query";
-import type { AnySchema } from "../../schema/create";
-import type { CompiledMutation, UOWExecutor } from "../../query/unit-of-work";
+import type { AnySchema, AnyTable } from "../../schema/create";
+import type { CompiledMutation, UOWExecutor, ValidIndexName } from "../../query/unit-of-work";
 import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
 import { parseDrizzle, type DrizzleResult, type TableNameMapper, type DBType } from "./shared";
 import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
 import type { ConnectionPool } from "../../shared/connection-pool";
+import type { TableToUpdateValues } from "../../query/query";
 
 /**
  * Configuration options for creating a Drizzle Unit of Work
@@ -22,6 +23,37 @@ export interface DrizzleUOWConfig {
    * since those have to be manually executed.
    */
   dryRun?: boolean;
+}
+
+/**
+ * Special builder for updateMany operations that captures configuration
+ */
+class UpdateManySpecialBuilder<TTable extends AnyTable> {
+  #indexName?: string;
+  #condition?: unknown;
+  #setValues?: TableToUpdateValues<TTable>;
+
+  whereIndex<TIndexName extends ValidIndexName<TTable>>(
+    indexName: TIndexName,
+    condition?: unknown,
+  ): this {
+    this.#indexName = indexName as string;
+    this.#condition = condition;
+    return this;
+  }
+
+  set(values: TableToUpdateValues<TTable>): this {
+    this.#setValues = values;
+    return this;
+  }
+
+  getConfig() {
+    return {
+      indexName: this.#indexName,
+      condition: this.#condition,
+      setValues: this.#setValues,
+    };
+  }
 }
 
 /**
@@ -114,7 +146,9 @@ export function fromDrizzle<T extends AnySchema>(
 
   return {
     async find(tableName, builderFn) {
-      const uow = createUOW({ config: uowConfig }).find(tableName, builderFn as never);
+      // Safe: builderFn returns a FindBuilder (or void), which matches UnitOfWork signature
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const uow = createUOW({ config: uowConfig }).find(tableName, builderFn as any);
       const [result] = await uow.executeRetrieve();
       return result;
     },
@@ -122,10 +156,10 @@ export function fromDrizzle<T extends AnySchema>(
     async findFirst(tableName, builderFn) {
       const uow = createUOW({ config: uowConfig });
       if (builderFn) {
-        // Safe: builderFn returns a FindBuilder instance which has pageSize method.
-        // Using `as any` because TBuilderResult is unconstrained in the overload signature.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        uow.find(tableName, (b) => (builderFn(b as never) as any).pageSize(1));
+        uow.find(tableName, (b) => {
+          builderFn(b);
+          return b.pageSize(1);
+        });
       } else {
         uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
       }
@@ -136,7 +170,7 @@ export function fromDrizzle<T extends AnySchema>(
 
     async create(tableName, values) {
       const uow = createUOW({ config: uowConfig });
-      uow.create(tableName as string, values as never);
+      uow.create(tableName, values);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to create record");
@@ -153,7 +187,7 @@ export function fromDrizzle<T extends AnySchema>(
     async createMany(tableName, valuesArray) {
       const uow = createUOW({ config: uowConfig });
       for (const values of valuesArray) {
-        uow.create(tableName as string, values as never);
+        uow.create(tableName, values);
       }
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -165,7 +199,7 @@ export function fromDrizzle<T extends AnySchema>(
 
     async update(tableName, id, builderFn) {
       const uow = createUOW({ config: uowConfig });
-      uow.update(tableName as string, id, builderFn as never);
+      uow.update(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to update record (version conflict or record not found)");
@@ -173,25 +207,17 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     async updateMany(tableName, builderFn) {
-      // FIXME: This is not correct
+      const table = schema.tables[tableName];
+      if (!table) {
+        throw new Error(`Table ${tableName} not found in schema`);
+      }
 
-      let whereConfig: { indexName?: string; condition?: unknown } = {};
-      let setValues: unknown;
-
-      const specialBuilder = {
-        whereIndex(indexName: string, condition?: unknown) {
-          whereConfig = { indexName, condition };
-          return this;
-        },
-        set(values: unknown) {
-          setValues = values;
-          return this;
-        },
-      };
-
+      const specialBuilder = new UpdateManySpecialBuilder<typeof table>();
       builderFn(specialBuilder);
 
-      if (!whereConfig.indexName) {
+      const { indexName, condition, setValues } = specialBuilder.getConfig();
+
+      if (!indexName) {
         throw new Error("whereIndex() must be called in updateMany");
       }
       if (!setValues) {
@@ -200,24 +226,22 @@ export function fromDrizzle<T extends AnySchema>(
 
       const findUow = createUOW({ config: uowConfig });
       findUow.find(tableName, (b) => {
-        if (whereConfig.condition) {
-          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
+        if (condition) {
+          // Safe: condition is captured from whereIndex call with proper typing
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return b.whereIndex(indexName as ValidIndexName<typeof table>, condition as any);
         }
-        return b.whereIndex(whereConfig.indexName as never);
+        return b.whereIndex(indexName as ValidIndexName<typeof table>);
       });
-      const findResults = await findUow.executeRetrieve();
-      const records = (findResults as unknown as [unknown])[0];
+      const [records]: unknown[][] = await findUow.executeRetrieve();
 
-      // @ts-expect-error - Type narrowing doesn't work through unknown cast
       if (!records || records.length === 0) {
         return;
       }
 
       const updateUow = createUOW({ config: uowConfig });
-      for (const record of records as never as Array<{ id: unknown }>) {
-        updateUow.update(tableName as string, record.id as string, (b) =>
-          b.set(setValues as never),
-        );
+      for (const record of records as Array<{ id: unknown }>) {
+        updateUow.update(tableName, record.id as string, (b) => b.set(setValues));
       }
       const { success } = await updateUow.executeMutations();
       if (!success) {
@@ -227,7 +251,7 @@ export function fromDrizzle<T extends AnySchema>(
 
     async delete(tableName, id, builderFn) {
       const uow = createUOW({ config: uowConfig });
-      uow.delete(tableName as string, id, builderFn as never);
+      uow.delete(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
         throw new Error("Failed to delete record (version conflict or record not found)");
@@ -235,39 +259,17 @@ export function fromDrizzle<T extends AnySchema>(
     },
 
     async deleteMany(tableName, builderFn) {
-      let whereConfig: { indexName?: string; condition?: unknown } = {};
-
-      const specialBuilder = {
-        whereIndex(indexName: string, condition?: unknown) {
-          whereConfig = { indexName, condition };
-          return this;
-        },
-      };
-
-      builderFn(specialBuilder as never);
-
-      if (!whereConfig.indexName) {
-        throw new Error("whereIndex() must be called in deleteMany");
-      }
-
       const findUow = createUOW({ config: uowConfig });
-      findUow.find(tableName as string, (b) => {
-        if (whereConfig.condition) {
-          return b.whereIndex(whereConfig.indexName as never, whereConfig.condition as never);
-        }
-        return b.whereIndex(whereConfig.indexName as never);
-      });
-      const findResults2 = await findUow.executeRetrieve();
-      const records = (findResults2 as unknown as [unknown])[0];
+      findUow.find(tableName, builderFn);
+      const [records]: unknown[][] = await findUow.executeRetrieve();
 
-      // @ts-expect-error - Type narrowing doesn't work through unknown cast
       if (!records || records.length === 0) {
         return;
       }
 
       const deleteUow = createUOW({ config: uowConfig });
-      for (const record of records as never as Array<{ id: unknown }>) {
-        deleteUow.delete(tableName as string, record.id as string);
+      for (const record of records as Array<{ id: unknown }>) {
+        deleteUow.delete(tableName, record.id as string);
       }
       const { success } = await deleteUow.executeMutations();
       if (!success) {
