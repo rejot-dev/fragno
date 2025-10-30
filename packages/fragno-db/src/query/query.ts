@@ -17,7 +17,7 @@ export type RawColumnValues<T extends AnyTable> = {
   [K in keyof T["columns"] as string extends K ? never : K]: T["columns"][K]["$out"];
 };
 
-export type TableToColumnValues<T extends AnyTable> = RawColumnValues<T>;
+export type TableToColumnValues<T extends AnyTable> = Prettify<RawColumnValues<T>>;
 
 type PickNullable<T> = {
   [P in keyof T as null extends T[P] ? P : never]: T[P];
@@ -44,18 +44,16 @@ export type TableToUpdateValues<T extends AnyTable> = {
 type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends true
   ? TableToColumnValues<T>
   : S extends (keyof T["columns"])[]
-    ? {
+    ? Prettify<{
         [K in S[number] as string extends K ? never : K]: K extends keyof T["columns"]
           ? T["columns"][K]["$out"]
           : never;
-      }
+      }>
     : never;
 
-export type SelectResult<
-  T extends AnyTable,
-  JoinOut,
-  Select extends SelectClause<T>,
-> = MainSelectResult<Select, T> & JoinOut;
+export type SelectResult<T extends AnyTable, JoinOut, Select extends SelectClause<T>> = Prettify<
+  MainSelectResult<Select, T> & JoinOut
+>;
 
 interface MapRelationType<Type> {
   one: Type | null;
@@ -68,9 +66,11 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
         options?: FindManyOptions<Target, Select, JoinOut, false>,
       ) => JoinBuilder<
         T,
-        Out & {
-          [$K in K]: MapRelationType<SelectResult<Target, JoinOut, Select>>[Type];
-        }
+        Prettify<
+          Out & {
+            [$K in K]: MapRelationType<SelectResult<Target, JoinOut, Select>>[Type];
+          }
+        >
       >
     : never;
 };
