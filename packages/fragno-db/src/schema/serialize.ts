@@ -300,6 +300,22 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
     return new Date(value);
   }
 
+  if (
+    (provider === "postgresql" || provider === "cockroachdb") &&
+    (col.type === "timestamp" || col.type === "date") &&
+    typeof value === "string"
+  ) {
+    return new Date(value);
+  }
+
+  if (
+    provider === "mysql" &&
+    (col.type === "timestamp" || col.type === "date") &&
+    typeof value === "string"
+  ) {
+    return new Date(value);
+  }
+
   if (col.type === "bool" && typeof value === "number") {
     return value === 1;
   }

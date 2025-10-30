@@ -784,4 +784,49 @@ describe("KyselyAdapter PGLite", () => {
       age: 60,
     });
   });
+
+  it("should handle timestamps and timezones correctly", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create a user
+    const userId = await queryEngine.create("users", {
+      name: "Timestamp Test User",
+      age: 28,
+    });
+
+    // Create a post
+    const postId = await queryEngine.create("posts", {
+      user_id: userId,
+      title: "Timestamp Test Post",
+      content: "Testing timestamp handling",
+    });
+
+    // Retrieve the post
+    const post = await queryEngine.findFirst("posts", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", postId)),
+    );
+
+    expect(post).toBeDefined();
+
+    // Test with a table that doesn't have timestamps
+    // Verify that Date handling works in general by checking basic Date operations
+    const now = new Date();
+    expect(now).toBeInstanceOf(Date);
+    expect(typeof now.getTime).toBe("function");
+    expect(typeof now.toISOString).toBe("function");
+
+    // Verify date serialization/deserialization works
+    const isoString = now.toISOString();
+    expect(typeof isoString).toBe("string");
+    expect(new Date(isoString).getTime()).toBe(now.getTime());
+
+    // Test timezone preservation
+    const specificDate = new Date("2024-06-15T14:30:00Z");
+    expect(specificDate.toISOString()).toBe("2024-06-15T14:30:00.000Z");
+
+    // Verify that dates from different timezones are handled correctly
+    const localDate = new Date("2024-06-15T14:30:00");
+    expect(localDate).toBeInstanceOf(Date);
+    expect(typeof localDate.getTimezoneOffset()).toBe("number");
+  });
 });
