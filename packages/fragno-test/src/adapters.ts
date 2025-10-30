@@ -7,6 +7,7 @@ import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
+import type { AbstractQuery } from "@fragno-dev/db/query";
 import { createRequire } from "node:module";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -34,6 +35,7 @@ export type TestContext<T extends SupportedAdapter> = T extends
   | KyselySqliteAdapter
   | KyselyPgliteAdapter
   ? {
+      readonly db: AbstractQuery<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       readonly kysely: Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       readonly adapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
       resetDatabase: () => Promise<void>;
@@ -41,6 +43,7 @@ export type TestContext<T extends SupportedAdapter> = T extends
     }
   : T extends DrizzlePgliteAdapter
     ? {
+        readonly db: AbstractQuery<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
         readonly drizzle: ReturnType<typeof drizzle<any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
         readonly adapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
         resetDatabase: () => Promise<void>;
@@ -90,11 +93,15 @@ export async function createKyselySqliteAdapter(
         });
     await preparedMigration.execute();
 
-    return { kysely, adapter };
+    // Create ORM instance
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = adapter.createQueryEngine(schema, namespace) as AbstractQuery<any>;
+
+    return { kysely, adapter, orm };
   };
 
   // Create initial database
-  let { kysely, adapter } = await createDatabase();
+  let { kysely, adapter, orm } = await createDatabase();
 
   // Reset database function - creates a fresh in-memory database and re-runs migrations
   const resetDatabase = async () => {
@@ -105,6 +112,7 @@ export async function createKyselySqliteAdapter(
     const newDb = await createDatabase();
     kysely = newDb.kysely;
     adapter = newDb.adapter;
+    orm = newDb.orm;
   };
 
   // Cleanup function - closes connections (no files to delete for in-memory)
@@ -114,6 +122,9 @@ export async function createKyselySqliteAdapter(
 
   return {
     testContext: {
+      get db() {
+        return orm;
+      },
       get kysely() {
         return kysely;
       },
@@ -168,11 +179,15 @@ export async function createKyselyPgliteAdapter(
         });
     await preparedMigration.execute();
 
-    return { kysely, adapter, kyselyPglite };
+    // Create ORM instance
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = adapter.createQueryEngine(schema, namespace) as AbstractQuery<any>;
+
+    return { kysely, adapter, kyselyPglite, orm };
   };
 
   // Create initial database
-  let { kysely, adapter, kyselyPglite } = await createDatabase();
+  let { kysely, adapter, kyselyPglite, orm } = await createDatabase();
 
   // Reset database function - creates a fresh database and re-runs migrations
   const resetDatabase = async () => {
@@ -190,6 +205,7 @@ export async function createKyselyPgliteAdapter(
     kysely = newDb.kysely;
     adapter = newDb.adapter;
     kyselyPglite = newDb.kyselyPglite;
+    orm = newDb.orm;
   };
 
   // Cleanup function - closes connections and deletes database directory
@@ -210,6 +226,9 @@ export async function createKyselyPgliteAdapter(
 
   return {
     testContext: {
+      get db() {
+        return orm;
+      },
       get kysely() {
         return kysely;
       },
@@ -301,11 +320,15 @@ export async function createDrizzlePgliteAdapter(
       provider: "postgresql",
     });
 
-    return { drizzle: db, adapter, pglite, cleanup };
+    // Create ORM instance
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orm = adapter.createQueryEngine(schema, namespace) as AbstractQuery<any>;
+
+    return { drizzle: db, adapter, pglite, cleanup, orm };
   };
 
   // Create initial database
-  let { drizzle: drizzleDb, adapter, pglite, cleanup: schemaCleanup } = await createDatabase();
+  let { drizzle: drizzleDb, adapter, pglite, cleanup: schemaCleanup, orm } = await createDatabase();
 
   // Reset database function - creates a fresh database and re-runs migrations
   const resetDatabase = async () => {
@@ -319,6 +342,7 @@ export async function createDrizzlePgliteAdapter(
     adapter = newDb.adapter;
     pglite = newDb.pglite;
     schemaCleanup = newDb.cleanup;
+    orm = newDb.orm;
   };
 
   // Cleanup function - closes connections and deletes generated files and database directory
@@ -334,6 +358,9 @@ export async function createDrizzlePgliteAdapter(
 
   return {
     testContext: {
+      get db() {
+        return orm;
+      },
       get drizzle() {
         return drizzleDb;
       },

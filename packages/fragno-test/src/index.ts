@@ -170,6 +170,13 @@ export async function createDatabaseFragmentForTest<
   // that may not exist depending on the adapter type
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const testContext: any = Object.create(originalTestContext, {
+    db: {
+      get() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (originalTestContext as any).db;
+      },
+      enumerable: true,
+    },
     kysely: {
       get() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

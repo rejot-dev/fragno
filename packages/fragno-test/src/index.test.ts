@@ -372,53 +372,170 @@ describe("createDatabaseFragmentForTest", () => {
   });
 
   describe("resetDatabase", () => {
-    it("should clear all data and recreate a fresh database", async () => {
-      // Don't destructure so we can access the updated fragment through getters after reset
-      const result = await createDatabaseFragmentForTest(testFragmentDef, {
-        adapter: { type: "kysely-sqlite" },
+    const adapters = [
+      { name: "Kysely SQLite", adapter: { type: "kysely-sqlite" as const } },
+      { name: "Kysely PGLite", adapter: { type: "kysely-pglite" as const } },
+      { name: "Drizzle PGLite", adapter: { type: "drizzle-pglite" as const } },
+    ];
+
+    for (const { name, adapter } of adapters) {
+      describe(name, () => {
+        it("should clear all data and recreate a fresh database", async () => {
+          // Don't destructure so we can access the updated fragment through getters after reset
+          const result = await createDatabaseFragmentForTest(testFragmentDef, {
+            adapter,
+          });
+
+          // Create some users
+          await result.services.createUser({
+            name: "User 1",
+            email: "user1@example.com",
+            age: 25,
+          });
+          await result.services.createUser({
+            name: "User 2",
+            email: "user2@example.com",
+            age: 30,
+          });
+
+          // Verify users exist
+          let users = await result.services.getUsers();
+          expect(users).toHaveLength(2);
+
+          // Reset the database
+          await result.test.resetDatabase();
+
+          // Verify database is empty (accessing through result to get updated fragment)
+          users = await result.services.getUsers();
+          expect(users).toHaveLength(0);
+
+          // Verify we can still create new users after reset
+          const newUser = await result.services.createUser({
+            name: "User After Reset",
+            email: "after@example.com",
+            age: 35,
+          });
+
+          expect(newUser).toMatchObject({
+            id: expect.any(String),
+            name: "User After Reset",
+            email: "after@example.com",
+            age: 35,
+          });
+
+          users = await result.services.getUsers();
+          expect(users).toHaveLength(1);
+          expect(users[0]).toMatchObject(newUser);
+
+          // Cleanup
+          await result.test.cleanup();
+        }, 10000);
       });
+    }
+  });
 
-      // Create some users
-      await result.services.createUser({
-        name: "User 1",
-        email: "user1@example.com",
-        age: 25,
+  describe("db property access", () => {
+    const adapters = [
+      { name: "Kysely SQLite", adapter: { type: "kysely-sqlite" as const } },
+      { name: "Kysely PGLite", adapter: { type: "kysely-pglite" as const } },
+      { name: "Drizzle PGLite", adapter: { type: "drizzle-pglite" as const } },
+    ];
+
+    for (const { name, adapter } of adapters) {
+      describe(name, () => {
+        it("should expose db property for direct ORM queries", async () => {
+          const { test } = await createDatabaseFragmentForTest(testFragmentDef, {
+            adapter,
+          });
+
+          // Test creating a record directly using test.db
+          const userId = await test.db.create("users", {
+            name: "Direct DB User",
+            email: "direct@example.com",
+            age: 28,
+          });
+
+          expect(userId).toBeDefined();
+          expect(typeof userId.valueOf()).toBe("string");
+
+          // Test finding records using test.db
+          const users = await test.db.find("users", (b) =>
+            b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
+          );
+
+          expect(users).toHaveLength(1);
+          expect(users[0]).toMatchObject({
+            id: userId,
+            name: "Direct DB User",
+            email: "direct@example.com",
+            age: 28,
+          });
+
+          // Test findFirst using test.db
+          const user = await test.db.findFirst("users", (b) =>
+            b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
+          );
+
+          expect(user).toMatchObject({
+            id: userId,
+            name: "Direct DB User",
+            email: "direct@example.com",
+            age: 28,
+          });
+
+          // Cleanup
+          await test.cleanup();
+        }, 10000);
+
+        it("should maintain db property after resetDatabase", async () => {
+          const result = await createDatabaseFragmentForTest(testFragmentDef, {
+            adapter,
+          });
+
+          // Create initial data using test.db
+          await result.test.db.create("users", {
+            name: "Before Reset",
+            email: "before@example.com",
+            age: 25,
+          });
+
+          // Verify db works before reset
+          expect(result.test.db).toBeDefined();
+          expect(typeof result.test.db.create).toBe("function");
+
+          // Verify data exists
+          let users = await result.test.db.find("users");
+          expect(users).toHaveLength(1);
+
+          // Reset database
+          await result.test.resetDatabase();
+
+          // Verify database was actually reset (no data)
+          users = await result.test.db.find("users");
+          expect(users).toHaveLength(0);
+
+          // Verify we can still use the ORM after reset
+          const newUserId = await result.test.db.create("users", {
+            name: "After Reset",
+            email: "after@example.com",
+            age: 30,
+          });
+
+          expect(newUserId).toBeDefined();
+
+          const newUsers = await result.test.db.find("users");
+          expect(newUsers).toHaveLength(1);
+          expect(newUsers[0]).toMatchObject({
+            name: "After Reset",
+            email: "after@example.com",
+            age: 30,
+          });
+
+          // Cleanup
+          await result.test.cleanup();
+        }, 10000);
       });
-      await result.services.createUser({
-        name: "User 2",
-        email: "user2@example.com",
-        age: 30,
-      });
-
-      // Verify users exist
-      let users = await result.services.getUsers();
-      expect(users).toHaveLength(2);
-
-      // Reset the database
-      await result.test.resetDatabase();
-
-      // Verify database is empty (accessing through result to get updated fragment)
-      users = await result.services.getUsers();
-      expect(users).toHaveLength(0);
-
-      // Verify we can still create new users after reset
-      const newUser = await result.services.createUser({
-        name: "User After Reset",
-        email: "after@example.com",
-        age: 35,
-      });
-
-      expect(newUser).toMatchObject({
-        id: expect.any(String),
-        name: "User After Reset",
-        email: "after@example.com",
-        age: 35,
-      });
-
-      users = await result.services.getUsers();
-      expect(users).toHaveLength(1);
-      expect(users[0]).toMatchObject(newUser);
-    });
+    }
   });
 
   describe("multiple adapters with auth-like schema", () => {
@@ -475,57 +592,49 @@ describe("createDatabaseFragmentForTest", () => {
 
     for (const { name, adapter } of adapters) {
       describe(name, () => {
-        it(
-          "should create user and session",
-          async () => {
-            const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, {
-              adapter,
-            });
+        it("should create user and session", async () => {
+          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, {
+            adapter,
+          });
 
-            // Create a user
-            const user = await fragment.services.createUser("test@test.com", "hashed-password");
-            expect(user).toMatchObject({
-              id: expect.any(String),
-              email: "test@test.com",
-              passwordHash: "hashed-password",
-            });
+          // Create a user
+          const user = await fragment.services.createUser("test@test.com", "hashed-password");
+          expect(user).toMatchObject({
+            id: expect.any(String),
+            email: "test@test.com",
+            passwordHash: "hashed-password",
+          });
 
-            // Create a session for the user
-            const session = await fragment.services.createSession(user.id);
-            expect(session).toMatchObject({
-              id: expect.any(String),
-              userId: user.id,
-              expiresAt: expect.any(Date),
-            });
+          // Create a session for the user
+          const session = await fragment.services.createSession(user.id);
+          expect(session).toMatchObject({
+            id: expect.any(String),
+            userId: user.id,
+            expiresAt: expect.any(Date),
+          });
 
-            // Find user by email
-            const foundUser = await fragment.services.getUserByEmail("test@test.com");
-            expect(foundUser).toMatchObject({
-              id: user.id,
-              email: "test@test.com",
-              passwordHash: "hashed-password",
-            });
+          // Find user by email
+          const foundUser = await fragment.services.getUserByEmail("test@test.com");
+          expect(foundUser).toMatchObject({
+            id: user.id,
+            email: "test@test.com",
+            passwordHash: "hashed-password",
+          });
 
-            // Cleanup
-            await test.cleanup();
-          },
-          { timeout: 10000 },
-        );
+          // Cleanup
+          await test.cleanup();
+        }, 10000);
 
-        it(
-          "should return null when user not found",
-          async () => {
-            const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, {
-              adapter,
-            });
+        it("should return null when user not found", async () => {
+          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, {
+            adapter,
+          });
 
-            const notFound = await fragment.services.getUserByEmail("nonexistent@test.com");
-            expect(notFound).toBeNull();
+          const notFound = await fragment.services.getUserByEmail("nonexistent@test.com");
+          expect(notFound).toBeNull();
 
-            await test.cleanup();
-          },
-          { timeout: 10000 },
-        );
+          await test.cleanup();
+        }, 10000);
       });
     }
   });
