@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.11
+
+### Patch Changes
+
+- 9a58d8c: fix: automatically create subqueries when filtering on FragnoReference objects
+
 ## 0.1.10
 
 ### Patch Changes
