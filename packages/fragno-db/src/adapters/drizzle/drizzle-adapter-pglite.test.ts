@@ -38,6 +38,10 @@ describe("DrizzleAdapter PGLite", () => {
           .addColumn("user_id", referenceColumn())
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
+          .addColumn(
+            "created_at",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
           .createIndex("posts_user_idx", ["user_id"]);
       })
       .addTable("comments", (t) => {
@@ -608,5 +612,62 @@ describe("DrizzleAdapter PGLite", () => {
     expect(sessionWithUser.sessionOwner?.email).toBe("test@example.com");
 
     await cleanup();
+  });
+
+  it("should handle timestamps and timezones correctly", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create a user
+    const createUserUow = queryEngine
+      .createUnitOfWork("create-user-for-timestamp")
+      .create("users", { name: "Timestamp User", age: 28 });
+    await createUserUow.executeMutations();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-timestamp")
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Timestamp User")))
+      .executeRetrieve();
+
+    // Create a post with database-generated timestamp (defaultTo(b => b.now()))
+    const createPostUow = queryEngine
+      .createUnitOfWork("create-post-with-timestamp")
+      .create("posts", {
+        user_id: user.id,
+        title: "Timestamp Test Post",
+        content: "Testing timestamp handling",
+      });
+    await createPostUow.executeMutations();
+
+    const createdPostIds = createPostUow.getCreatedIds();
+    expect(createdPostIds).toHaveLength(1);
+    const postId = createdPostIds[0];
+
+    // Retrieve the specific post we just created by its ID
+    const [[post]] = await queryEngine
+      .createUnitOfWork("get-post-with-timestamp")
+      .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postId)))
+      .executeRetrieve();
+
+    // Verify created_at is a Date
+    expect(post.created_at).toBeInstanceOf(Date);
+
+    // Verify the timestamp is a valid date (not too far in the past or future)
+    const now = Date.now();
+    const createdTime = post.created_at.getTime();
+    expect(createdTime).toBeGreaterThan(now - 24 * 60 * 60 * 1000); // Within last 24 hours
+    expect(createdTime).toBeLessThan(now + 24 * 60 * 60 * 1000); // Not more than 24 hours in future
+
+    // Verify we can compare timestamps
+    expect(post.created_at.getTime()).toBeGreaterThan(0);
+
+    // Test that the Date object has the correct methods
+    expect(typeof post.created_at.toISOString).toBe("function");
+    expect(typeof post.created_at.getTime).toBe("function");
+    expect(typeof post.created_at.getTimezoneOffset).toBe("function");
+
+    // Verify the date can be serialized and deserialized
+    const isoString = post.created_at.toISOString();
+    expect(typeof isoString).toBe("string");
+    expect(new Date(isoString).getTime()).toBe(post.created_at.getTime());
   });
 });

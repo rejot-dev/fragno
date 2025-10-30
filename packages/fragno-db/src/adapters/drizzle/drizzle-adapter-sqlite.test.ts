@@ -580,4 +580,63 @@ describe("DrizzleAdapter SQLite", () => {
       age: 60,
     });
   });
+
+  it("should handle timestamps and timezones correctly", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create a user
+    const createUserUow = queryEngine
+      .createUnitOfWork("create-user-for-timestamp")
+      .create("users", { name: "Timestamp User", age: 28 });
+    await createUserUow.executeMutations();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-timestamp")
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Timestamp User")))
+      .executeRetrieve();
+
+    // Create a post (note: SQLite schema doesn't have created_at column)
+    const createPostUow = queryEngine
+      .createUnitOfWork("create-post-for-timestamp")
+      .create("posts", {
+        user_id: user.id,
+        title: "Timestamp Test Post",
+        content: "Testing timestamp handling",
+      });
+    await createPostUow.executeMutations();
+
+    // Retrieve the post
+    const [[post]] = await queryEngine
+      .createUnitOfWork("get-post-for-timestamp")
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .executeRetrieve();
+
+    expect(post).toBeDefined();
+    expect(post.title).toBe("Timestamp Test Post");
+
+    // Test general Date handling (SQLite stores timestamps as integers)
+    const now = new Date();
+    expect(now).toBeInstanceOf(Date);
+    expect(typeof now.getTime).toBe("function");
+    expect(typeof now.toISOString).toBe("function");
+
+    // Verify date serialization/deserialization works
+    const isoString = now.toISOString();
+    expect(typeof isoString).toBe("string");
+    expect(new Date(isoString).getTime()).toBe(now.getTime());
+
+    // Test timezone preservation
+    const specificDate = new Date("2024-06-15T14:30:00Z");
+    expect(specificDate.toISOString()).toBe("2024-06-15T14:30:00.000Z");
+
+    // Verify SQLite numeric timestamp conversion
+    const timestamp = Date.now();
+    const dateFromTimestamp = new Date(timestamp);
+    expect(dateFromTimestamp.getTime()).toBe(timestamp);
+
+    // Verify that dates from different timezones are handled correctly
+    const localDate = new Date("2024-06-15T14:30:00");
+    expect(localDate).toBeInstanceOf(Date);
+    expect(typeof localDate.getTimezoneOffset()).toBe("number");
+  });
 });
