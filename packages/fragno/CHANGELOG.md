@@ -1,5 +1,12 @@
 # @fragno-dev/core
 
+## 0.1.5
+
+### Patch Changes
+
+- b6dd67a: Core: changed rawBody in RequestInputContext to be a string
+- ec1aed0: Added helper for tanstack-start handlers
+
 ## 0.1.4
 
 ### Patch Changes
