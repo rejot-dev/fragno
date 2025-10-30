@@ -178,7 +178,7 @@ describe("drizzle-query", () => {
 
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."userId" = $1"`,
+        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."userId" = (select "_internalId" from "user" where "id" = $1 limit 1)"`,
       );
       expect(query.params).toEqual([userId]);
     });
@@ -394,7 +394,7 @@ describe("drizzle-query", () => {
       // Verify the find query that's executed first
       const findQuery = queries[0];
       expect(findQuery.sql).toMatchInlineSnapshot(
-        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."userId" = $1"`,
+        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."userId" = (select "_internalId" from "user" where "id" = $1 limit 1)"`,
       );
       expect(findQuery.params).toEqual([userId]);
 

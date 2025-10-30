@@ -45,6 +45,8 @@ export function fullSQLName(column: AnyColumn, mapper?: TableNameMapper) {
  * @param condition - The condition tree to build the WHERE clause from
  * @param eb - Kysely expression builder for constructing SQL expressions
  * @param provider - The SQL provider (affects SQL generation)
+ * @param mapper - Optional table name mapper for namespace prefixing
+ * @param table - The table being queried (used for resolving reference columns)
  * @returns A Kysely expression wrapper representing the WHERE clause
  * @internal
  *
@@ -64,6 +66,7 @@ export function buildWhere(
   eb: ExpressionBuilder<any, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   provider: SQLProvider,
   mapper?: TableNameMapper,
+  table?: AnyTable,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): ExpressionWrapper<any, any, SqlBool> {
   if (condition.type === "compare") {
@@ -72,7 +75,28 @@ export function buildWhere(
     let val = condition.b;
 
     if (!(val instanceof Column)) {
-      val = serialize(val, left, provider);
+      // Handle string references - convert external ID to internal ID via subquery
+      if (left.role === "reference" && typeof val === "string" && table) {
+        // Find relation that uses this column
+        const relation = Object.values(table.relations).find((rel) =>
+          rel.on.some(([localCol]) => localCol === left.ormName),
+        );
+        if (relation) {
+          const refTable = relation.table;
+          const internalIdCol = refTable.getInternalIdColumn();
+          const idCol = refTable.getIdColumn();
+          const physicalTableName = mapper ? mapper.toPhysical(refTable.ormName) : refTable.ormName;
+
+          // Build a SQL subquery
+          val = eb
+            .selectFrom(physicalTableName)
+            .select(internalIdCol.name)
+            .where(idCol.name, "=", val)
+            .limit(1);
+        }
+      } else {
+        val = serialize(val, left, provider);
+      }
     }
 
     let v: BinaryOperator;
@@ -123,14 +147,14 @@ export function buildWhere(
 
   // Nested conditions
   if (condition.type === "and") {
-    return eb.and(condition.items.map((v) => buildWhere(v, eb, provider, mapper)));
+    return eb.and(condition.items.map((v) => buildWhere(v, eb, provider, mapper, table)));
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, provider, mapper));
+    return eb.not(buildWhere(condition.item, eb, provider, mapper, table));
   }
 
-  return eb.or(condition.items.map((v) => buildWhere(v, eb, provider, mapper)));
+  return eb.or(condition.items.map((v) => buildWhere(v, eb, provider, mapper, table)));
 }
 
 /**
@@ -426,7 +450,7 @@ export function createKyselyQueryBuilder(
     count(table: AnyTable, { where }: { where?: Condition }): CompiledQuery {
       let query = kysely.selectFrom(getTableName(table)).select(kysely.fn.countAll().as("count"));
       if (where) {
-        query = query.where((b) => buildWhere(where, b, provider, mapper));
+        query = query.where((b) => buildWhere(where, b, provider, mapper, table));
       }
       return query.compile();
     },
@@ -463,7 +487,7 @@ export function createKyselyQueryBuilder(
 
       const where = v.where;
       if (where) {
-        query = query.where((eb) => buildWhere(where, eb, provider, mapper));
+        query = query.where((eb) => buildWhere(where, eb, provider, mapper, table));
       }
 
       if (v.offset !== undefined) {
@@ -530,7 +554,7 @@ export function createKyselyQueryBuilder(
               }
 
               if (joinOptions.where) {
-                conditions.push(buildWhere(joinOptions.where, eb, provider, mapper));
+                conditions.push(buildWhere(joinOptions.where, eb, provider, mapper, targetTable));
               }
 
               return eb.and(conditions);
@@ -570,7 +594,7 @@ export function createKyselyQueryBuilder(
       let query = kysely.updateTable(getTableName(table)).set(processed);
       const { where } = v;
       if (where) {
-        query = query.where((eb) => buildWhere(where, eb, provider, mapper));
+        query = query.where((eb) => buildWhere(where, eb, provider, mapper, table));
       }
       return query.compile();
     },
@@ -579,7 +603,7 @@ export function createKyselyQueryBuilder(
       const idColumn = table.getIdColumn();
       let query = kysely.selectFrom(getTableName(table)).select([`${idColumn.name} as id`]);
       if (where) {
-        query = query.where((b) => buildWhere(where, b, provider, mapper));
+        query = query.where((b) => buildWhere(where, b, provider, mapper, table));
       }
       return query.limit(1).compile();
     },
@@ -597,7 +621,7 @@ export function createKyselyQueryBuilder(
         query = query.top(1);
       }
       if (where) {
-        query = query.where((b) => buildWhere(where, b, provider, mapper));
+        query = query.where((b) => buildWhere(where, b, provider, mapper, table));
       }
       return query.compile();
     },
@@ -624,7 +648,7 @@ export function createKyselyQueryBuilder(
     deleteMany(table: AnyTable, { where }: { where?: Condition }): CompiledQuery {
       let query = kysely.deleteFrom(getTableName(table));
       if (where) {
-        query = query.where((eb) => buildWhere(where, eb, provider, mapper));
+        query = query.where((eb) => buildWhere(where, eb, provider, mapper, table));
       }
       return query.compile();
     },

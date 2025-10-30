@@ -97,8 +97,33 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
       if (right instanceof Column) {
         right = toDrizzleColumn(right);
       } else {
-        // Serialize non-Column values (e.g., FragnoId -> string, Date -> number for SQLite)
-        right = serialize(right, condition.a, provider);
+        // Handle string references - convert external ID to internal ID via subquery
+        if (condition.a.role === "reference" && typeof right === "string") {
+          // Find the table that contains this column
+          const table = Object.values(schema.tables).find((t) =>
+            Object.values(t.columns).includes(condition.a),
+          );
+          if (table) {
+            // Find relation that uses this column
+            const relation = Object.values(table.relations).find((rel) =>
+              rel.on.some(([localCol]) => localCol === condition.a.ormName),
+            );
+            if (relation) {
+              const refTable = relation.table;
+              const internalIdCol = refTable.getInternalIdColumn();
+              const idCol = refTable.getIdColumn();
+              const physicalTableName = mapper
+                ? mapper.toPhysical(refTable.ormName)
+                : refTable.ormName;
+
+              // Build a SQL subquery using Drizzle's sql template
+              right = Drizzle.sql`(select ${Drizzle.sql.identifier(internalIdCol.name)} from ${Drizzle.sql.identifier(physicalTableName)} where ${Drizzle.sql.identifier(idCol.name)} = ${right} limit 1)`;
+            }
+          }
+        } else {
+          // Serialize non-Column values (e.g., FragnoId -> string, Date -> number for SQLite)
+          right = serialize(right, condition.a, provider);
+        }
       }
 
       switch (op) {
