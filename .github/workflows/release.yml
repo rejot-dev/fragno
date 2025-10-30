@@ -13,10 +13,10 @@ permissions:
 concurrency: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
 
 jobs:
-  release:
+  canary:
     # prettier-ignore
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
-    name: Release
+    name: Publish Canary
     runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -47,6 +47,35 @@ jobs:
 
       - name: Publish Canary Packages
         run: pnpm run ci:canary
+        env:
+          CANARY_SUFFIX: canary-${{ github.run_id }}-${{ github.run_attempt }}
+
+  release:
+    # prettier-ignore
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
+    name: Release
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Publishable Packages
+        run: pnpm exec turbo run build --filter='./packages/*' --filter='./apps/*' --filter='!./apps/docs/*'
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
