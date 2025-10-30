@@ -114,7 +114,7 @@ export function fromDrizzle<T extends AnySchema>(
 
   return {
     async find(tableName, builderFn) {
-      const uow = createUOW({ config: uowConfig }).find(tableName, builderFn);
+      const uow = createUOW({ config: uowConfig }).find(tableName, builderFn as never);
       const [result] = await uow.executeRetrieve();
       return result;
     },
@@ -122,7 +122,10 @@ export function fromDrizzle<T extends AnySchema>(
     async findFirst(tableName, builderFn) {
       const uow = createUOW({ config: uowConfig });
       if (builderFn) {
-        uow.find(tableName, (b) => builderFn(b as never).pageSize(1));
+        // Safe: builderFn returns a FindBuilder instance which has pageSize method.
+        // Using `as any` because TBuilderResult is unconstrained in the overload signature.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        uow.find(tableName, (b) => (builderFn(b as never) as any).pageSize(1));
       } else {
         uow.find(tableName, (b) => b.whereIndex("primary").pageSize(1));
       }

@@ -77,6 +77,32 @@ export type JoinBuilder<T extends AnyTable, Out = {}> = {
 
 export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
 
+/**
+ * Extract Select type parameter from a FindBuilder type (handles Omit wrapper)
+ * @internal
+ */
+type ExtractSelect<T> =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends FindBuilder<any, infer TSelect, any>
+    ? TSelect
+    : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      T extends Omit<FindBuilder<any, infer TSelect, any>, any>
+      ? TSelect
+      : true;
+
+/**
+ * Extract JoinOut type parameter from a FindBuilder type (handles Omit wrapper)
+ * @internal
+ */
+type ExtractJoinOut<T> =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends FindBuilder<any, any, infer TJoinOut>
+    ? TJoinOut
+    : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      T extends Omit<FindBuilder<any, any, infer TJoinOut>, any>
+      ? TJoinOut
+      : {};
+
 export type FindFirstOptions<
   T extends AnyTable = AnyTable,
   Select extends SelectClause<T> = SelectClause<T>,
@@ -109,31 +135,49 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   /**
    * Find multiple records using a builder pattern
    */
-  find: <
-    TableName extends keyof TSchema["tables"] & string,
-    Select extends SelectClause<TSchema["tables"][TableName]> = true,
-    JoinOut = {},
-  >(
-    table: TableName,
-    builderFn?: (
-      builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
-    ) => Omit<FindBuilder<TSchema["tables"][TableName], Select, JoinOut>, "build">,
-  ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select>[]>;
+  find: {
+    // Overload when builder function is provided - infer Select and JoinOut from builder
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+      table: TableName,
+      builderFn: (
+        builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
+      ) => TBuilderResult,
+    ): Promise<
+      SelectResult<
+        TSchema["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TableName]>>
+      >[]
+    >;
+    // Overload when no builder function - return all columns
+    <TableName extends keyof TSchema["tables"] & string>(
+      table: TableName,
+    ): Promise<SelectResult<TSchema["tables"][TableName], {}, true>[]>;
+  };
 
   /**
    * Find the first record matching the criteria
    * Implemented as a wrapper around find() with pageSize(1)
    */
-  findFirst: <
-    TableName extends keyof TSchema["tables"] & string,
-    Select extends SelectClause<TSchema["tables"][TableName]> = true,
-    JoinOut = {},
-  >(
-    table: TableName,
-    builderFn?: (
-      builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
-    ) => Omit<FindBuilder<TSchema["tables"][TableName], Select, JoinOut>, "build">,
-  ) => Promise<SelectResult<TSchema["tables"][TableName], JoinOut, Select> | null>;
+  findFirst: {
+    // Overload when builder function is provided - infer Select and JoinOut from builder
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+      table: TableName,
+      builderFn: (
+        builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
+      ) => TBuilderResult,
+    ): Promise<SelectResult<
+      TSchema["tables"][TableName],
+      ExtractJoinOut<TBuilderResult>,
+      Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TableName]>>
+    > | null>;
+    // Overload when no builder function - return all columns
+    <TableName extends keyof TSchema["tables"] & string>(
+      table: TableName,
+    ): Promise<SelectResult<TSchema["tables"][TableName], {}, true> | null>;
+  };
 
   /**
    * Create a single record

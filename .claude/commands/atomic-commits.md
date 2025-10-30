@@ -19,10 +19,12 @@ follow best practices.
    - Commit message (with conventional commit format)
    - Commit description (brief explanation of the changes)
    - Files/changes included in each commit (use globs to keep it brief)
+   - Changeset for commit, including version to increase (minor/patch)
 1. Present the plan in a markdown code block
 1. Ask: "If this looks good, say 'yes'. If you'd like to adjust the grouping or order, let me know
    what to change."
 1. Iterate on feedback until the user approves
+1. Create the changeset files
 1. Execute the commits in order using `git add` (with specific files/patches as needed) and
    `git commit`
 1. Create a changeset if the changes are relevant to end users of Fragno (see Changesets section)

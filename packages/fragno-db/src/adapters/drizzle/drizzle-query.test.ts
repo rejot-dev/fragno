@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/pglite";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import type { DBType } from "./shared";
 import { writeAndLoadSchema } from "./test-utils";
@@ -134,9 +134,13 @@ describe("drizzle-query", () => {
     it("should find with select subset of columns", async () => {
       const someExternalId = "some-external-id";
 
-      await orm.findFirst("user", (b) =>
+      const res = await orm.findFirst("user", (b) =>
         b.whereIndex("primary", (eb) => eb("id", "=", someExternalId)).select(["id", "email"]),
       );
+
+      if (res) {
+        expectTypeOf(res.email).toEqualTypeOf<string>();
+      }
 
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(
@@ -194,7 +198,7 @@ describe("drizzle-query", () => {
     });
 
     it("should find with select subset", async () => {
-      await orm.find("user", (b) => b.whereIndex("primary").select(["id", "email"]));
+      const _res = await orm.find("user", (b) => b.whereIndex("primary").select(["id", "email"]));
 
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(
