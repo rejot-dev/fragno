@@ -137,7 +137,6 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
    */
   find: {
     // Overload when builder function is provided - infer Select and JoinOut from builder
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
       table: TableName,
       builderFn: (
@@ -205,8 +204,8 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
     table: TableName,
     id: FragnoId | string,
     builderFn: (
-      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build" | "check">,
-    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build" | "check">,
+      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
   ) => Promise<void>;
 
   /**
@@ -224,9 +223,7 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   delete: <TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
     id: FragnoId | string,
-    builderFn?: (
-      builder: Omit<DeleteBuilder, "build" | "check">,
-    ) => Omit<DeleteBuilder, "build" | "check">,
+    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build">,
   ) => Promise<void>;
 
   /**

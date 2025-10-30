@@ -939,7 +939,7 @@ export class UnitOfWork<
     builderFn?: (
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build">,
+    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build"> | void,
   ): UnitOfWork<
     TSchema,
     [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>[]],
@@ -1053,7 +1053,7 @@ export class UnitOfWork<
     builderFn: (
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
-    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
   ): this {
     if (this.#state === "executed") {
       throw new Error(`update() can only be called during mutation phase.`);
@@ -1084,7 +1084,7 @@ export class UnitOfWork<
     builderFn?: (
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<DeleteBuilder, "build">,
-    ) => Omit<DeleteBuilder, "build">,
+    ) => Omit<DeleteBuilder, "build"> | void,
   ): this {
     if (this.#state === "executed") {
       throw new Error(`delete() can only be called during mutation phase.`);
