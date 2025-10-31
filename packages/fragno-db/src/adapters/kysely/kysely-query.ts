@@ -19,6 +19,22 @@ import type { SQLProvider } from "../../shared/providers";
 type KyselyAny = Kysely<any>;
 
 /**
+ * Configuration options for creating a Kysely Unit of Work
+ */
+export interface KyselyUOWConfig {
+  /**
+   * Optional callback to receive compiled SQL queries for logging/debugging
+   * This callback is invoked for each query as it's compiled
+   */
+  onQuery?: (query: CompiledQuery) => void;
+  /**
+   * If true, the query will not be executed and the query will be returned. Not respected for UOWs
+   * since those have to be manually executed.
+   */
+  dryRun?: boolean;
+}
+
+/**
  * Special builder for updateMany operations that captures configuration
  */
 class UpdateManySpecialBuilder<TTable extends AnyTable> {
@@ -78,12 +94,18 @@ export function fromKysely<T extends AnySchema>(
   pool: ConnectionPool<KyselyAny>,
   provider: SQLProvider,
   mapper?: TableNameMapper,
-): AbstractQuery<T> {
-  function createUOW(name?: string): UnitOfWork<T, []> {
+  uowConfig?: KyselyUOWConfig,
+): AbstractQuery<T, KyselyUOWConfig> {
+  function createUOW(opts: { name?: string; config?: KyselyUOWConfig }) {
     const uowCompiler = createKyselyUOWCompiler(schema, pool, provider, mapper);
 
     const executor: UOWExecutor<CompiledQuery, unknown> = {
       async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {
+        // In dryRun mode, skip execution and return empty results
+        if (opts.config?.dryRun) {
+          return retrievalBatch.map(() => []);
+        }
+
         const conn = await pool.connect();
         try {
           return await executeKyselyRetrievalPhase(conn.db, retrievalBatch);
@@ -92,6 +114,14 @@ export function fromKysely<T extends AnySchema>(
         }
       },
       async executeMutationPhase(mutationBatch: CompiledMutation<CompiledQuery>[]) {
+        // In dryRun mode, skip execution and return success with mock internal IDs
+        if (opts.config?.dryRun) {
+          return {
+            success: true,
+            createdInternalIds: mutationBatch.map(() => null),
+          };
+        }
+
         const conn = await pool.connect();
         try {
           return await executeKyselyMutationPhase(conn.db, mutationBatch);
@@ -133,12 +163,27 @@ export function fromKysely<T extends AnySchema>(
       });
     };
 
-    return new UnitOfWork(schema, uowCompiler, executor, decoder, name);
+    const { onQuery, ...restUowConfig } = opts.config ?? {};
+
+    return new UnitOfWork(schema, uowCompiler, executor, decoder, opts.name, {
+      ...restUowConfig,
+      onQuery: (query) => {
+        // CompiledMutation has { query: CompiledQuery, expectedAffectedRows: number | null }
+        // CompiledQuery has { query: QueryAST, sql: string, parameters: unknown[] }
+        // Check for expectedAffectedRows to distinguish CompiledMutation from CompiledQuery
+        const actualQuery =
+          query && typeof query === "object" && "expectedAffectedRows" in query
+            ? (query as CompiledMutation<CompiledQuery>).query
+            : (query as CompiledQuery);
+
+        opts.config?.onQuery?.(actualQuery);
+      },
+    });
   }
 
   return {
     async find(tableName, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       // Safe: builderFn returns a FindBuilder (or void), which matches UnitOfWork signature
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       uow.find(tableName, builderFn as any);
@@ -149,7 +194,7 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async findFirst(tableName, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       if (builderFn) {
         uow.find(tableName, (b) => {
           builderFn(b);
@@ -164,16 +209,15 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async create(tableName, values) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.create(tableName, values);
       const { success } = await uow.executeMutations();
       if (!success) {
-        // This should not happen because we don't `.check()` this call.
-        // TODO: Verify what happens when there are unique constraints
         throw new Error("Failed to create record");
       }
 
-      const [createdId] = uow.getCreatedIds();
+      const createdIds = uow.getCreatedIds();
+      const createdId = createdIds[0];
       if (!createdId) {
         throw new Error("Failed to get created ID");
       }
@@ -181,7 +225,7 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async createMany(tableName, valuesArray) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       for (const values of valuesArray) {
         uow.create(tableName, values);
       }
@@ -194,7 +238,7 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async update(tableName, id, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.update(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -220,8 +264,7 @@ export function fromKysely<T extends AnySchema>(
         throw new Error("set() must be called in updateMany");
       }
 
-      // First, find all matching records
-      const findUow = createUOW();
+      const findUow = createUOW({ config: uowConfig });
       findUow.find(tableName, (b) => {
         if (condition) {
           // Safe: condition is captured from whereIndex call with proper typing
@@ -236,8 +279,7 @@ export function fromKysely<T extends AnySchema>(
         return;
       }
 
-      // Now update all found records
-      const updateUow = createUOW();
+      const updateUow = createUOW({ config: uowConfig });
       for (const record of records as Array<{ id: unknown }>) {
         updateUow.update(tableName, record.id as string, (b) => b.set(setValues));
       }
@@ -248,7 +290,7 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async delete(tableName, id, builderFn) {
-      const uow = createUOW();
+      const uow = createUOW({ config: uowConfig });
       uow.delete(tableName, id, builderFn);
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -257,7 +299,7 @@ export function fromKysely<T extends AnySchema>(
     },
 
     async deleteMany(tableName, builderFn) {
-      const findUow = createUOW();
+      const findUow = createUOW({ config: uowConfig });
       findUow.find(tableName, builderFn);
       const [records]: unknown[][] = await findUow.executeRetrieve();
 
@@ -265,8 +307,7 @@ export function fromKysely<T extends AnySchema>(
         return;
       }
 
-      // Now delete all found records
-      const deleteUow = createUOW();
+      const deleteUow = createUOW({ config: uowConfig });
       for (const record of records as Array<{ id: unknown }>) {
         deleteUow.delete(tableName, record.id as string);
       }
@@ -276,8 +317,14 @@ export function fromKysely<T extends AnySchema>(
       }
     },
 
-    createUnitOfWork(name) {
-      return createUOW(name);
+    createUnitOfWork(name, nestedUowConfig) {
+      return createUOW({
+        name,
+        config: {
+          ...uowConfig,
+          ...nestedUowConfig,
+        },
+      });
     },
-  } as AbstractQuery<T>;
+  } as AbstractQuery<T, KyselyUOWConfig>;
 }

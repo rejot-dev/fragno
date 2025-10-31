@@ -1,14 +1,13 @@
-import { drizzle } from "drizzle-orm/pglite";
-import { beforeAll, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
+import { Kysely } from "kysely";
+import { KyselyPGlite } from "kysely-pglite";
+import { assert, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import { column, FragnoId, idColumn, referenceColumn, schema } from "../../schema/create";
-import type { DBType } from "./shared";
-import { writeAndLoadSchema } from "./test-utils";
-import { fromDrizzle } from "./drizzle-query";
-import { createDrizzleConnectionPool } from "./drizzle-connection-pool";
+import { fromKysely } from "./kysely-query";
+import { createKyselyConnectionPool } from "./kysely-connection-pool";
 import type { ConnectionPool } from "../../shared/connection-pool";
-import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
+import type { CompiledQuery } from "kysely";
 
-describe("drizzle-query", () => {
+describe("kysely-query", () => {
   const authSchema = schema((s) => {
     return s
       .addTable("user", (t) => {
@@ -46,39 +45,29 @@ describe("drizzle-query", () => {
       });
   });
 
-  let db: DBType;
-  let pool: ConnectionPool<DBType>;
-  let orm: ReturnType<typeof fromDrizzle<typeof authSchema>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let kysely: Kysely<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: ConnectionPool<Kysely<any>>;
+  let orm: ReturnType<typeof fromKysely<typeof authSchema>>;
 
-  const queries: DrizzleCompiledQuery[] = [];
+  const queries: CompiledQuery[] = [];
 
   beforeAll(async () => {
-    // Write schema to file and dynamically import it
-    const { schemaModule, cleanup, drizzleSchemaTs } = await writeAndLoadSchema(
-      "drizzle-query",
-      authSchema,
-      "postgresql",
-    );
+    // Create Kysely instance with PGLite (in-memory Postgres)
+    const { dialect } = await KyselyPGlite.create();
+    kysely = new Kysely({
+      dialect,
+    });
 
-    console.log(drizzleSchemaTs);
-
-    // Create Drizzle instance with PGLite (in-memory Postgres)
-    db = drizzle({
-      schema: schemaModule,
-    }) as unknown as DBType;
-
-    // Create connection pool and ORM instance
-    pool = createDrizzleConnectionPool(db);
-    orm = fromDrizzle(authSchema, pool, "postgresql", undefined, {
+    // Wrap in connection pool
+    pool = createKyselyConnectionPool(kysely);
+    orm = fromKysely(authSchema, pool, "postgresql", undefined, {
       onQuery: (query) => {
         queries.push(query);
       },
       dryRun: true,
     });
-
-    return async () => {
-      await cleanup();
-    };
   });
 
   beforeEach(() => {
@@ -97,10 +86,11 @@ describe("drizzle-query", () => {
       );
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "session"."id", "session"."userId", "session"."expiresAt", "session"."createdAt", "session"."_internalId", "session"."_version", "session_sessionOwner"."data" as "sessionOwner" from "session" "session" left join lateral (select json_build_array("session_sessionOwner"."id", "session_sessionOwner"."email", "session_sessionOwner"."_internalId", "session_sessionOwner"."_version") as "data" from (select * from "user" "session_sessionOwner" where "session_sessionOwner"."_internalId" = "session"."userId" limit $1) "session_sessionOwner") "session_sessionOwner" on true where "session"."id" = $2 limit $3"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "sessionOwner"."id" as "sessionOwner:id", "sessionOwner"."email" as "sessionOwner:email", "sessionOwner"."_internalId" as "sessionOwner:_internalId", "sessionOwner"."_version" as "sessionOwner:_version", "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version" from "session" left join "user" as "sessionOwner" on "session"."userId" = "sessionOwner"."_internalId" where "session"."id" = $1 limit $2"`,
       );
-      expect(query.params).toEqual([1, someExternalId, 1]);
+      expect(query?.parameters).toEqual([someExternalId, 1]);
     });
 
     it("should find session without join", async () => {
@@ -111,10 +101,11 @@ describe("drizzle-query", () => {
       );
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."id" = $1 limit $2"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version" from "session" where "session"."id" = $1 limit $2"`,
       );
-      expect(query.params).toEqual([someExternalId, 1]);
+      expect(query?.parameters).toEqual([someExternalId, 1]);
     });
 
     it("should find user by email using custom index", async () => {
@@ -125,10 +116,11 @@ describe("drizzle-query", () => {
       );
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "email", "passwordHash", "createdAt", "_internalId", "_version" from "user" "user" where "user"."email" = $1 limit $2"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "user"."id" as "id", "user"."email" as "email", "user"."passwordHash" as "passwordHash", "user"."createdAt" as "createdAt", "user"."_internalId" as "_internalId", "user"."_version" as "_version" from "user" where "user"."email" = $1 limit $2"`,
       );
-      expect(query.params).toEqual([email, 1]);
+      expect(query?.parameters).toEqual([email, 1]);
     });
 
     it("should find with select subset of columns", async () => {
@@ -143,10 +135,11 @@ describe("drizzle-query", () => {
       }
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "email", "_internalId", "_version" from "user" "user" where "user"."id" = $1 limit $2"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "user"."id" as "id", "user"."email" as "email", "user"."_internalId" as "_internalId", "user"."_version" as "_version" from "user" where "user"."id" = $1 limit $2"`,
       );
-      expect(query.params).toEqual([someExternalId, 1]);
+      expect(query?.parameters).toEqual([someExternalId, 1]);
     });
   });
 
@@ -155,10 +148,11 @@ describe("drizzle-query", () => {
       await orm.find("session", (b) => b.whereIndex("primary"));
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session""`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version" from "session""`,
       );
-      expect(query.params).toEqual([]);
+      expect(query?.parameters).toEqual([]);
     });
 
     it("should find sessions with user join", async () => {
@@ -167,10 +161,11 @@ describe("drizzle-query", () => {
       );
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "session"."id", "session"."userId", "session"."expiresAt", "session"."createdAt", "session"."_internalId", "session"."_version", "session_sessionOwner"."data" as "sessionOwner" from "session" "session" left join lateral (select json_build_array("session_sessionOwner"."id", "session_sessionOwner"."email", "session_sessionOwner"."_internalId", "session_sessionOwner"."_version") as "data" from (select * from "user" "session_sessionOwner" where "session_sessionOwner"."_internalId" = "session"."userId" limit $1) "session_sessionOwner") "session_sessionOwner" on true"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "sessionOwner"."id" as "sessionOwner:id", "sessionOwner"."email" as "sessionOwner:email", "sessionOwner"."_internalId" as "sessionOwner:_internalId", "sessionOwner"."_version" as "sessionOwner:_version", "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version" from "session" left join "user" as "sessionOwner" on "session"."userId" = "sessionOwner"."_internalId""`,
       );
-      expect(query.params).toEqual([1]);
+      expect(query?.parameters).toEqual([]);
     });
 
     it("should find sessions with where clause using custom index", async () => {
@@ -181,30 +176,33 @@ describe("drizzle-query", () => {
       );
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."userId" = (select "_internalId" from "user" where "id" = $1 limit 1)"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version" from "session" where "session"."userId" = (select "_internalId" from "user" where "id" = $1 limit $2)"`,
       );
-      expect(query.params).toEqual([userId]);
+      expect(query?.parameters).toEqual([userId, 1]);
     });
 
     it("should find with pageSize", async () => {
       await orm.find("user", (b) => b.whereIndex("primary").pageSize(10));
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "email", "passwordHash", "createdAt", "_internalId", "_version" from "user" "user" limit $1"`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "user"."id" as "id", "user"."email" as "email", "user"."passwordHash" as "passwordHash", "user"."createdAt" as "createdAt", "user"."_internalId" as "_internalId", "user"."_version" as "_version" from "user" limit $1"`,
       );
-      expect(query.params).toEqual([10]);
+      expect(query?.parameters).toEqual([10]);
     });
 
     it("should find with select subset", async () => {
       const _res = await orm.find("user", (b) => b.whereIndex("primary").select(["id", "email"]));
 
       const [query] = queries;
-      expect(query.sql).toMatchInlineSnapshot(
-        `"select "id", "email", "_internalId", "_version" from "user" "user""`,
+      assert(query?.sql);
+      expect(query?.sql).toMatchInlineSnapshot(
+        `"select "user"."id" as "id", "user"."email" as "email", "user"."_internalId" as "_internalId", "user"."_version" as "_version" from "user""`,
       );
-      expect(query.params).toEqual([]);
+      expect(query?.parameters).toEqual([]);
     });
   });
 
@@ -223,13 +221,12 @@ describe("drizzle-query", () => {
       // Verify the SQL query was captured
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(
-        `"insert into "user" ("id", "email", "passwordHash", "createdAt", "_internalId", "_version") values ($1, $2, $3, $4, default, default)"`,
+        `"insert into "user" ("id", "email", "passwordHash", "createdAt") values ($1, $2, $3, $4) returning "user"."id" as "id", "user"."email" as "email", "user"."passwordHash" as "passwordHash", "user"."createdAt" as "createdAt", "user"."_internalId" as "_internalId", "user"."_version" as "_version""`,
       );
-      expect(query.params[0]).toEqual("user-123");
-      expect(query.params[1]).toEqual("test@example.com");
-      expect(query.params[2]).toEqual("hashed-password");
-      expect(typeof query.params[3]).toBe("string"); // createdAt timestamp (serialized)
-      expect(query.params[3]).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO format
+      expect(query.parameters[0]).toEqual("user-123");
+      expect(query.parameters[1]).toEqual("test@example.com");
+      expect(query.parameters[2]).toEqual("hashed-password");
+      expect(query.parameters[3]).toBeInstanceOf(Date); // createdAt timestamp
     });
 
     it("should create a new session", async () => {
@@ -248,13 +245,13 @@ describe("drizzle-query", () => {
       // Verify the SQL query was captured
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(
-        `"insert into "session" ("id", "userId", "expiresAt", "createdAt", "_internalId", "_version") values ($1, (select "_internalId" from "user" where "id" = $2 limit 1), $3, $4, default, default)"`,
+        `"insert into "session" ("id", "userId", "expiresAt", "createdAt") values ($1, (select "_internalId" from "user" where "id" = $2 limit $3), $4, $5) returning "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version""`,
       );
-      expect(query.params[0]).toEqual("session-456");
-      expect(query.params[1]).toEqual("user-123"); // userId is resolved via subquery
-      expect(query.params[2]).toEqual(expiresAt.toISOString());
-      expect(typeof query.params[3]).toBe("string"); // createdAt timestamp (serialized)
-      expect(query.params[3]).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO format
+      expect(query.parameters[0]).toEqual("session-456");
+      expect(query.parameters[1]).toEqual("user-123"); // userId is resolved via subquery
+      expect(query.parameters[2]).toEqual(1); // Limit for subquery
+      expect(query.parameters[3]).toEqual(expiresAt);
+      expect(query.parameters[4]).toBeInstanceOf(Date); // createdAt timestamp
     });
   });
 
@@ -284,19 +281,19 @@ describe("drizzle-query", () => {
 
       // Check the first user insert
       expect(queries[0].sql).toMatchInlineSnapshot(
-        `"insert into "user" ("id", "email", "passwordHash", "createdAt", "_internalId", "_version") values ($1, $2, $3, $4, default, default)"`,
+        `"insert into "user" ("id", "email", "passwordHash", "createdAt") values ($1, $2, $3, $4) returning "user"."id" as "id", "user"."email" as "email", "user"."passwordHash" as "passwordHash", "user"."createdAt" as "createdAt", "user"."_internalId" as "_internalId", "user"."_version" as "_version""`,
       );
-      expect(queries[0].params[0]).toEqual("user-1");
-      expect(queries[0].params[1]).toEqual("user1@example.com");
-      expect(queries[0].params[2]).toEqual("hash1");
+      expect(queries[0].parameters[0]).toEqual("user-1");
+      expect(queries[0].parameters[1]).toEqual("user1@example.com");
+      expect(queries[0].parameters[2]).toEqual("hash1");
 
       // Check the second user insert
       expect(queries[1].sql).toMatchInlineSnapshot(
-        `"insert into "user" ("id", "email", "passwordHash", "createdAt", "_internalId", "_version") values ($1, $2, $3, $4, default, default)"`,
+        `"insert into "user" ("id", "email", "passwordHash", "createdAt") values ($1, $2, $3, $4) returning "user"."id" as "id", "user"."email" as "email", "user"."passwordHash" as "passwordHash", "user"."createdAt" as "createdAt", "user"."_internalId" as "_internalId", "user"."_version" as "_version""`,
       );
-      expect(queries[1].params[0]).toEqual("user-2");
-      expect(queries[1].params[1]).toEqual("user2@example.com");
-      expect(queries[1].params[2]).toEqual("hash2");
+      expect(queries[1].parameters[0]).toEqual("user-2");
+      expect(queries[1].parameters[1]).toEqual("user2@example.com");
+      expect(queries[1].parameters[2]).toEqual("hash2");
     });
   });
 
@@ -315,7 +312,7 @@ describe("drizzle-query", () => {
       expect(query.sql).toMatchInlineSnapshot(
         `"update "user" set "email" = $1, "_version" = COALESCE(_version, 0) + 1 where "user"."id" = $2"`,
       );
-      expect(query.params).toEqual(["newemail@example.com", userId]);
+      expect(query.parameters).toEqual(["newemail@example.com", userId]);
     });
 
     it("should update session expiration", async () => {
@@ -333,7 +330,7 @@ describe("drizzle-query", () => {
       expect(query.sql).toMatchInlineSnapshot(
         `"update "session" set "expiresAt" = $1, "_version" = COALESCE(_version, 0) + 1 where "session"."id" = $2"`,
       );
-      expect(query.params).toEqual([newExpiresAt.toISOString(), sessionId]);
+      expect(query.parameters).toEqual([newExpiresAt, sessionId]);
     });
 
     it("should update with version check using FragnoId", async () => {
@@ -352,7 +349,7 @@ describe("drizzle-query", () => {
       expect(query.sql).toMatchInlineSnapshot(
         `"update "user" set "email" = $1, "_version" = COALESCE(_version, 0) + 1 where ("user"."id" = $2 and "user"."_version" = $3)"`,
       );
-      expect(query.params).toEqual(["checked@example.com", "user-123", 5]);
+      expect(query.parameters).toEqual(["checked@example.com", "user-123", 5]);
     });
 
     it("should throw when trying to check() with string ID", async () => {
@@ -377,10 +374,11 @@ describe("drizzle-query", () => {
 
       // Verify the find query that's executed first
       const findQuery = queries[0];
-      expect(findQuery.sql).toMatchInlineSnapshot(
-        `"select "id", "email", "passwordHash", "createdAt", "_internalId", "_version" from "user" "user" where "user"."email" = $1"`,
+      assert(findQuery?.sql);
+      expect(findQuery?.sql).toMatchInlineSnapshot(
+        `"select "user"."id" as "id", "user"."email" as "email", "user"."passwordHash" as "passwordHash", "user"."createdAt" as "createdAt", "user"."_internalId" as "_internalId", "user"."_version" as "_version" from "user" where "user"."email" = $1"`,
       );
-      expect(findQuery.params).toEqual(["old@example.com"]);
+      expect(findQuery?.parameters).toEqual(["old@example.com"]);
 
       // Note: In dryRun mode, no actual records are found, so no update queries are generated
       // This is expected behavior - updateMany only generates update queries for found records
@@ -396,7 +394,7 @@ describe("drizzle-query", () => {
       // Verify the SQL query was captured
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(`"delete from "user" where "user"."id" = $1"`);
-      expect(query.params).toEqual([userId]);
+      expect(query.parameters).toEqual([userId]);
     });
 
     it("should delete session by id", async () => {
@@ -407,7 +405,7 @@ describe("drizzle-query", () => {
       // Verify the SQL query was captured
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(`"delete from "session" where "session"."id" = $1"`);
-      expect(query.params).toEqual([sessionId]);
+      expect(query.parameters).toEqual([sessionId]);
     });
 
     it("should delete with version check using FragnoId", async () => {
@@ -420,7 +418,7 @@ describe("drizzle-query", () => {
       expect(query.sql).toMatchInlineSnapshot(
         `"delete from "user" where ("user"."id" = $1 and "user"."_version" = $2)"`,
       );
-      expect(query.params).toEqual(["user-789", 3]);
+      expect(query.parameters).toEqual(["user-789", 3]);
     });
 
     it("should throw when trying to check() with string ID on delete", async () => {
@@ -443,10 +441,11 @@ describe("drizzle-query", () => {
 
       // Verify the find query that's executed first
       const findQuery = queries[0];
-      expect(findQuery.sql).toMatchInlineSnapshot(
-        `"select "id", "userId", "expiresAt", "createdAt", "_internalId", "_version" from "session" "session" where "session"."userId" = (select "_internalId" from "user" where "id" = $1 limit 1)"`,
+      assert(findQuery?.sql);
+      expect(findQuery?.sql).toMatchInlineSnapshot(
+        `"select "session"."id" as "id", "session"."userId" as "userId", "session"."expiresAt" as "expiresAt", "session"."createdAt" as "createdAt", "session"."_internalId" as "_internalId", "session"."_version" as "_version" from "session" where "session"."userId" = (select "_internalId" from "user" where "id" = $1 limit $2)"`,
       );
-      expect(findQuery.params).toEqual([userId]);
+      expect(findQuery?.parameters).toEqual([userId, 1]);
 
       // Note: In dryRun mode, no actual records are found, so no delete queries are generated
       // This is expected behavior - deleteMany only generates delete queries for found records
@@ -471,7 +470,7 @@ describe("drizzle-query", () => {
       // Verify the SQL query was captured with the external ID
       const [query] = queries;
       expect(query.sql).toMatchInlineSnapshot(`"delete from "user" where "user"."id" = $1"`);
-      expect(query.params).toEqual(["fragno-user-123"]);
+      expect(query.parameters).toEqual(["fragno-user-123"]);
     });
 
     it("should accept FragnoId in update", async () => {
@@ -493,7 +492,7 @@ describe("drizzle-query", () => {
       expect(query.sql).toMatchInlineSnapshot(
         `"update "user" set "email" = $1, "_version" = COALESCE(_version, 0) + 1 where "user"."id" = $2"`,
       );
-      expect(query.params).toEqual(["updated@example.com", "fragno-user-456"]);
+      expect(query.parameters).toEqual(["updated@example.com", "fragno-user-456"]);
     });
   });
 });

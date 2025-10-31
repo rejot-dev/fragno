@@ -52,7 +52,7 @@ export class FragnoDatabaseDefinition<const T extends AnySchema> {
   /**
    * Creates a FragnoDatabase instance by binding an adapter to this definition.
    */
-  create(adapter: DatabaseAdapter): FragnoDatabase<T> {
+  create<TUOWConfig = void>(adapter: DatabaseAdapter<TUOWConfig>): FragnoDatabase<T, TUOWConfig> {
     return new FragnoDatabase({
       namespace: this.#namespace,
       schema: this.#schema,
@@ -65,12 +65,12 @@ export class FragnoDatabaseDefinition<const T extends AnySchema> {
  * A Fragno database instance with a bound adapter.
  * Created from a FragnoDatabaseDefinition by calling .create(adapter).
  */
-export class FragnoDatabase<const T extends AnySchema> {
+export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
   #namespace: string;
   #schema: T;
-  #adapter: DatabaseAdapter;
+  #adapter: DatabaseAdapter<TUOWConfig>;
 
-  constructor(options: { namespace: string; schema: T; adapter: DatabaseAdapter }) {
+  constructor(options: { namespace: string; schema: T; adapter: DatabaseAdapter<TUOWConfig> }) {
     this.#namespace = options.namespace;
     this.#schema = options.schema;
     this.#adapter = options.adapter;
@@ -80,7 +80,7 @@ export class FragnoDatabase<const T extends AnySchema> {
     return fragnoDatabaseFakeSymbol;
   }
 
-  async createClient(): Promise<AbstractQuery<T>> {
+  async createClient(): Promise<AbstractQuery<T, TUOWConfig>> {
     const dbVersion = await this.#adapter.getSchemaVersion(this.#namespace);
     if (dbVersion !== this.#schema.version.toString()) {
       throw new Error(
@@ -112,7 +112,7 @@ export class FragnoDatabase<const T extends AnySchema> {
     return this.#schema;
   }
 
-  get adapter(): DatabaseAdapter {
+  get adapter(): DatabaseAdapter<TUOWConfig> {
     return this.#adapter;
   }
 }

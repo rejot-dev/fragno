@@ -34,7 +34,8 @@ export interface ExecuteMigrationResult {
 }
 
 export async function generateMigrationsOrSchema<
-  const TDatabases extends FragnoDatabase<AnySchema>[],
+  // oxlint-disable-next-line no-explicit-any
+  const TDatabases extends FragnoDatabase<AnySchema, any>[],
 >(
   databases: TDatabases,
   options?: {
