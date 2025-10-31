@@ -26,7 +26,7 @@ export function CopyMarkdownButton({ markdownText }: CopyMarkdownButtonProps) {
       onClick={handleCopy}
       className={cn(
         buttonVariants({
-          color: "secondary",
+          variant: "secondary",
           size: "sm",
           className: "gap-2",
         }),
