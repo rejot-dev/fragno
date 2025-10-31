@@ -4,6 +4,8 @@ import { cli, define, parseArgs, resolveArgs } from "gunshi";
 import { generateCommand } from "./commands/db/generate.js";
 import { migrateCommand } from "./commands/db/migrate.js";
 import { infoCommand } from "./commands/db/info.js";
+import { searchCommand } from "./commands/search.js";
+import { corpusCommand } from "./commands/corpus.js";
 
 // Create a Map of db sub-commands
 const dbSubCommands = new Map();
@@ -35,6 +37,8 @@ export const dbCommand = define({
 // Create a Map of root sub-commands
 const rootSubCommands = new Map();
 rootSubCommands.set("db", dbCommand);
+rootSubCommands.set("search", searchCommand);
+rootSubCommands.set("corpus", corpusCommand);
 
 // Define the main command with type safety
 export const mainCommand = define({
@@ -46,7 +50,9 @@ export const mainCommand = define({
     console.log("Usage: fragno-cli <command> [options]");
     console.log("");
     console.log("Commands:");
-    console.log("  db    Database management commands");
+    console.log("  db       Database management commands");
+    console.log("  search   Search the Fragno documentation");
+    console.log("  corpus   View code examples and documentation");
     console.log("");
     console.log("Run 'fragno-cli <command> --help' for more information.");
   },
@@ -57,8 +63,14 @@ if (import.meta.main) {
     // Parse arguments to handle nested subcommands
     const args = process.argv.slice(2);
 
-    // Check if we're calling a db subcommand directly
-    if (args[0] === "db" && args.length > 1) {
+    // Check if we're calling the search or corpus command directly
+    if (args[0] === "search") {
+      const searchArgs = args.slice(1);
+      await cli(searchArgs, searchCommand);
+    } else if (args[0] === "corpus") {
+      const corpusArgs = args.slice(1);
+      await cli(corpusArgs, corpusCommand);
+    } else if (args[0] === "db" && args.length > 1) {
       const subCommandName = args[1];
 
       // Check if it's a help request
@@ -110,4 +122,4 @@ if (import.meta.main) {
   }
 }
 
-export { generateCommand, migrateCommand, infoCommand };
+export { generateCommand, migrateCommand, infoCommand, searchCommand, corpusCommand };
