@@ -120,7 +120,8 @@ describe("DrizzleAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create initial user using UOW
-    const createUow = queryEngine.createUnitOfWork("create-user").create("users", {
+    const createUow = queryEngine.createUnitOfWork("create-user");
+    createUow.create("users", {
       name: "Alice",
       age: 25,
     });
@@ -205,12 +206,11 @@ describe("DrizzleAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create some users
-    await queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", { name: "User1", age: 20 })
-      .create("users", { name: "User2", age: 30 })
-      .create("users", { name: "User3", age: 40 })
-      .executeMutations();
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", { name: "User1", age: 20 });
+    createUow.create("users", { name: "User2", age: 30 });
+    createUow.create("users", { name: "User3", age: 40 });
+    await createUow.executeMutations();
 
     // Count all users
     const [totalCount] = await queryEngine
@@ -225,13 +225,12 @@ describe("DrizzleAdapter PGLite", () => {
   it("should support cursor-based pagination", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
-    const createUow = queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", { name: "Page User A", age: 20 })
-      .create("users", { name: "Page User B", age: 30 })
-      .create("users", { name: "Page User C", age: 40 })
-      .create("users", { name: "Page User D", age: 50 })
-      .create("users", { name: "Page User E", age: 60 });
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", { name: "Page User A", age: 20 });
+    createUow.create("users", { name: "Page User B", age: 30 });
+    createUow.create("users", { name: "Page User C", age: 40 });
+    createUow.create("users", { name: "Page User D", age: 50 });
+    createUow.create("users", { name: "Page User E", age: 60 });
 
     await createUow.executeMutations();
 
@@ -273,9 +272,8 @@ describe("DrizzleAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const queries: DrizzleCompiledQuery[] = [];
 
-    const createUow = queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", { name: "Email User", age: 20 });
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", { name: "Email User", age: 20 });
 
     await createUow.executeMutations();
 
@@ -286,7 +284,8 @@ describe("DrizzleAdapter PGLite", () => {
       .executeRetrieve();
 
     // Create an email for testing joins
-    const createEmailUow = queryEngine.createUnitOfWork("create-test-email").create("emails", {
+    const createEmailUow = queryEngine.createUnitOfWork("create-test-email");
+    createEmailUow.create("emails", {
       user_id: existingUser.id,
       email: "test@example.com",
       is_primary: true,
@@ -334,9 +333,8 @@ describe("DrizzleAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create a user first
-    const createUserUow = queryEngine
-      .createUnitOfWork("create-user-for-external-id")
-      .create("users", { name: "External ID Test User", age: 35 });
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-external-id");
+    createUserUow.create("users", { name: "External ID Test User", age: 35 });
     await createUserUow.executeMutations();
 
     // Get the user
@@ -348,13 +346,12 @@ describe("DrizzleAdapter PGLite", () => {
       .executeRetrieve();
 
     // Create an email using just the external id string (not the full id object)
-    const createEmailUow = queryEngine
-      .createUnitOfWork("create-email-with-external-id")
-      .create("emails", {
-        user_id: user.id.externalId,
-        email: "external-id-test@example.com",
-        is_primary: false,
-      });
+    const createEmailUow = queryEngine.createUnitOfWork("create-email-with-external-id");
+    createEmailUow.create("emails", {
+      user_id: user.id.externalId,
+      email: "external-id-test@example.com",
+      is_primary: false,
+    });
 
     const { success } = await createEmailUow.executeMutations();
     expect(success).toBe(true);
@@ -389,9 +386,8 @@ describe("DrizzleAdapter PGLite", () => {
     const queries: DrizzleCompiledQuery[] = [];
 
     // Create a user (author)
-    const createAuthorUow = queryEngine
-      .createUnitOfWork("create-author")
-      .create("users", { name: "Blog Author", age: 30 });
+    const createAuthorUow = queryEngine.createUnitOfWork("create-author");
+    createAuthorUow.create("users", { name: "Blog Author", age: 30 });
     await createAuthorUow.executeMutations();
 
     // Get the author
@@ -401,7 +397,8 @@ describe("DrizzleAdapter PGLite", () => {
       .executeRetrieve();
 
     // Create a post by the author
-    const createPostUow = queryEngine.createUnitOfWork("create-post").create("posts", {
+    const createPostUow = queryEngine.createUnitOfWork("create-post");
+    createPostUow.create("posts", {
       user_id: author.id,
       title: "My First Post",
       content: "This is the content of my first post",
@@ -412,9 +409,8 @@ describe("DrizzleAdapter PGLite", () => {
     const [[post]] = await queryEngine.createUnitOfWork("get-post").find("posts").executeRetrieve();
 
     // Create a commenter
-    const createCommenterUow = queryEngine
-      .createUnitOfWork("create-commenter")
-      .create("users", { name: "Commenter User", age: 25 });
+    const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
+    createCommenterUow.create("users", { name: "Commenter User", age: 25 });
     await createCommenterUow.executeMutations();
 
     // Get the commenter
@@ -424,7 +420,8 @@ describe("DrizzleAdapter PGLite", () => {
       .executeRetrieve();
 
     // Create a comment on the post
-    const createCommentUow = queryEngine.createUnitOfWork("create-comment").create("comments", {
+    const createCommentUow = queryEngine.createUnitOfWork("create-comment");
+    createCommentUow.create("comments", {
       post_id: post.id,
       user_id: commenter.id,
       text: "Great post!",
@@ -568,24 +565,22 @@ describe("DrizzleAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(authSchema, "test-namespace");
 
     // Create a user
-    await queryEngine
-      .createUnitOfWork("create-user")
-      .create("user", {
-        email: "test@example.com",
-        passwordHash: "hash",
-      })
-      .executeMutations();
+    const createUserUow = queryEngine.createUnitOfWork("create-user");
+    createUserUow.create("user", {
+      email: "test@example.com",
+      passwordHash: "hash",
+    });
+    await createUserUow.executeMutations();
 
     // Create a session
     const [[user]] = await queryEngine.createUnitOfWork("get-user").find("user").executeRetrieve();
 
-    await queryEngine
-      .createUnitOfWork("create-session")
-      .create("session", {
-        userId: user.id,
-        expiresAt: new Date("2025-12-31"),
-      })
-      .executeMutations();
+    const createSessionUow = queryEngine.createUnitOfWork("create-session");
+    createSessionUow.create("session", {
+      userId: user.id,
+      expiresAt: new Date("2025-12-31"),
+    });
+    await createSessionUow.executeMutations();
 
     // Get session
     const [[session]] = await queryEngine
@@ -618,9 +613,8 @@ describe("DrizzleAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create a user
-    const createUserUow = queryEngine
-      .createUnitOfWork("create-user-for-timestamp")
-      .create("users", { name: "Timestamp User", age: 28 });
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-timestamp");
+    createUserUow.create("users", { name: "Timestamp User", age: 28 });
     await createUserUow.executeMutations();
 
     const [[user]] = await queryEngine
@@ -629,13 +623,12 @@ describe("DrizzleAdapter PGLite", () => {
       .executeRetrieve();
 
     // Create a post with database-generated timestamp (defaultTo(b => b.now()))
-    const createPostUow = queryEngine
-      .createUnitOfWork("create-post-with-timestamp")
-      .create("posts", {
-        user_id: user.id,
-        title: "Timestamp Test Post",
-        content: "Testing timestamp handling",
-      });
+    const createPostUow = queryEngine.createUnitOfWork("create-post-with-timestamp");
+    createPostUow.create("posts", {
+      user_id: user.id,
+      title: "Timestamp Test Post",
+      content: "Testing timestamp handling",
+    });
     await createPostUow.executeMutations();
 
     const createdPostIds = createPostUow.getCreatedIds();
@@ -669,5 +662,71 @@ describe("DrizzleAdapter PGLite", () => {
     const isoString = post.created_at.toISOString();
     expect(typeof isoString).toBe("string");
     expect(new Date(isoString).getTime()).toBe(post.created_at.getTime());
+  });
+
+  it("should create user and post in same transaction using returned ID", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const queries: DrizzleCompiledQuery[] = [];
+
+    // Create UOW and create both user and post in same transaction
+    const uow = queryEngine.createUnitOfWork("create-user-and-post", {
+      onQuery: (query) => queries.push(query),
+    });
+
+    // Create user and capture the returned ID
+    const userId = uow.create("users", {
+      name: "UOW Test User",
+      age: 35,
+    });
+
+    // Use the returned FragnoId directly to create a post in the same transaction
+    // The compiler will extract externalId and generate a subquery to lookup the internal ID
+    const postId = uow.create("posts", {
+      user_id: userId,
+      title: "UOW Test Post",
+      content: "This post was created in the same transaction as the user",
+    });
+
+    // Execute all mutations in a single transaction
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(true);
+
+    // Verify both records were created
+    const userIdStr = userId.toString();
+    const postIdStr = postId.toString();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("verify-user")
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
+      .executeRetrieve();
+
+    expect(user.name).toBe("UOW Test User");
+    expect(user.age).toBe(35);
+
+    const [[post]] = await queryEngine
+      .createUnitOfWork("verify-post")
+      .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
+      .executeRetrieve();
+
+    expect(post.title).toBe("UOW Test Post");
+    expect(post.content).toBe("This post was created in the same transaction as the user");
+
+    // Verify the foreign key relationship is correct
+    expect(post.user_id.internalId).toBe(user.id.internalId);
+
+    const [insertUserQuery, insertPostQuery] = queries;
+    expect(insertUserQuery.sql).toMatchInlineSnapshot(
+      `"insert into "users_namespace" ("id", "name", "age", "_internalId", "_version") values ($1, $2, $3, default, default)"`,
+    );
+    expect(insertUserQuery.params).toEqual([userId.externalId, "UOW Test User", 35]);
+    expect(insertPostQuery.sql).toMatchInlineSnapshot(
+      `"insert into "posts_namespace" ("id", "user_id", "title", "content", "created_at", "_internalId", "_version") values ($1, (select "_internalId" from "users_namespace" where "id" = $2 limit 1), $3, $4, default, default, default)"`,
+    );
+    expect(insertPostQuery.params).toEqual([
+      postId.externalId,
+      userId.externalId,
+      "UOW Test Post",
+      "This post was created in the same transaction as the user",
+    ]);
   });
 });

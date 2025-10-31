@@ -457,10 +457,9 @@ describe("drizzle-uow-compiler", () => {
       const [batch] = compiled.mutationBatch;
       assert(batch);
       expect(batch.expectedAffectedRows).toBeNull();
-      // FragnoId should use internal ID directly (no subquery needed if available)
-      // But since we don't have the internal ID populated in the test, it should serialize
+      // FragnoId should generate a subquery to lookup the internal ID from external ID
       expect(batch.query.sql).toMatchInlineSnapshot(
-        `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_internalId", "_version") values ($1, $2, $3, $4, default, default, default)"`,
+        `"insert into "posts" ("id", "title", "content", "userId", "viewCount", "_internalId", "_version") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit 1), default, default, default)"`,
       );
     });
 
@@ -1302,6 +1301,67 @@ describe("drizzle-uow-compiler", () => {
         `"select "session"."id", "session"."userId", "session"."expiresAt", "session"."createdAt", "session"."_internalId", "session"."_version", "session_sessionOwner"."data" as "sessionOwner" from "session" "session" left join lateral (select json_build_array("session_sessionOwner"."id", "session_sessionOwner"."email", "session_sessionOwner"."_internalId", "session_sessionOwner"."_version") as "data" from (select * from "user" "session_sessionOwner" where "session_sessionOwner"."_internalId" = "session"."userId" limit $1) "session_sessionOwner") "session_sessionOwner" on true where "session"."id" = $2"`,
       );
       expect(compiled.retrievalBatch[0].params).toEqual([1, sessionId]);
+    });
+
+    it("should support creating and using ID in same UOW", () => {
+      const uow = createAuthUOW("create-user-and-session");
+
+      // Create user and capture the returned ID
+      const userId = uow.create("user", {
+        email: "test@example.com",
+        passwordHash: "hashed_password",
+      });
+
+      // Use the returned FragnoId directly to create a session
+      // The compiler should extract externalId and generate a subquery
+      uow.create("session", {
+        userId: userId,
+        expiresAt: new Date("2025-12-31"),
+      });
+
+      const compiler = createDrizzleUOWCompiler(authSchema, authPool, "postgresql");
+      const compiled = uow.compile(compiler);
+
+      // Should have no retrieval operations
+      expect(compiled.retrievalBatch).toHaveLength(0);
+
+      // Should have 2 mutation operations (create user, create session)
+      expect(compiled.mutationBatch).toHaveLength(2);
+
+      const [userCreate, sessionCreate] = compiled.mutationBatch;
+      assert(userCreate);
+      assert(sessionCreate);
+
+      // Verify user create SQL
+      expect(userCreate.query.sql).toMatchInlineSnapshot(
+        `"insert into "user" ("id", "email", "passwordHash", "createdAt", "_internalId", "_version") values ($1, $2, $3, $4, default, default)"`,
+      );
+      expect(userCreate.query.params).toMatchObject([
+        userId.externalId, // The generated ID
+        "test@example.com",
+        "hashed_password",
+        expect.any(String), // timestamp
+      ]);
+      expect(userCreate.expectedAffectedRows).toBeNull();
+
+      // Verify session create SQL - FragnoId generates subquery to lookup internal ID
+      expect(sessionCreate.query.sql).toMatchInlineSnapshot(
+        `"insert into "session" ("id", "userId", "expiresAt", "createdAt", "_internalId", "_version") values ($1, (select "_internalId" from "user" where "id" = $2 limit 1), $3, $4, default, default)"`,
+      );
+      expect(sessionCreate.query.params).toMatchObject([
+        expect.any(String), // generated session ID
+        userId.externalId, // FragnoId's externalId is used in the subquery
+        expect.any(String), // expiresAt timestamp
+        expect.any(String), // createdAt timestamp
+      ]);
+      expect(sessionCreate.expectedAffectedRows).toBeNull();
+
+      // Verify the returned FragnoId has the expected structure
+      expect(userId).toMatchObject({
+        externalId: expect.any(String),
+        version: 0,
+        internalId: undefined,
+      });
     });
   });
 });

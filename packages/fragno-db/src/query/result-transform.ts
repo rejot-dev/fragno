@@ -123,18 +123,36 @@ export function encodeValues(
     }
 
     if (value !== undefined) {
-      // Handle string references - convert external ID to internal ID via subquery
-      if (col.role === "reference" && typeof value === "string") {
-        // Find relation that uses this column
-        const relation = Object.values(table.relations).find((rel) =>
-          rel.on.some(([localCol]) => localCol === k),
-        );
-        if (relation) {
-          result[col.name] = new ReferenceSubquery(relation.table, value);
-          continue;
+      // Handle string references and FragnoId objects
+      if (col.role === "reference") {
+        if (typeof value === "string") {
+          // String external ID - generate subquery
+          const relation = Object.values(table.relations).find((rel) =>
+            rel.on.some(([localCol]) => localCol === k),
+          );
+          if (relation) {
+            result[col.name] = new ReferenceSubquery(relation.table, value);
+            continue;
+          }
+          throw new Error(`Reference column ${k} not found in table ${table.name}`);
+        } else if (value instanceof FragnoId) {
+          // FragnoId object
+          if (value.internalId !== undefined) {
+            // If internal ID is populated, use it directly (no subquery needed)
+            result[col.name] = value.internalId;
+            continue;
+          } else {
+            // If internal ID is not populated, use external ID via subquery
+            const relation = Object.values(table.relations).find((rel) =>
+              rel.on.some(([localCol]) => localCol === k),
+            );
+            if (relation) {
+              result[col.name] = new ReferenceSubquery(relation.table, value.externalId);
+              continue;
+            }
+            throw new Error(`Reference column ${k} not found in table ${table.name}`);
+          }
         }
-
-        throw new Error(`Reference column ${k} not found in table ${table.name}`);
       }
 
       result[col.name] = serialize(value, col, provider);

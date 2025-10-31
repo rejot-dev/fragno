@@ -118,16 +118,15 @@ describe("DrizzleAdapter SQLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create two users at once using UOW
-    const createUow = queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", {
-        name: "Alice",
-        age: 25,
-      })
-      .create("users", {
-        name: "Bob",
-        age: 30,
-      });
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", {
+      name: "Alice",
+      age: 25,
+    });
+    createUow.create("users", {
+      name: "Bob",
+      age: 30,
+    });
 
     expectTypeOf(createUow.find).parameter(0).toEqualTypeOf<keyof typeof testSchema.tables>();
 
@@ -232,12 +231,11 @@ describe("DrizzleAdapter SQLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create some users
-    await queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", { name: "User1", age: 20 })
-      .create("users", { name: "User2", age: 30 })
-      .create("users", { name: "User3", age: 40 })
-      .executeMutations();
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", { name: "User1", age: 20 });
+    createUow.create("users", { name: "User2", age: 30 });
+    createUow.create("users", { name: "User3", age: 40 });
+    await createUow.executeMutations();
 
     // Count all users
     const [totalCount] = await queryEngine
@@ -253,13 +251,12 @@ describe("DrizzleAdapter SQLite", () => {
   it("should support cursor-based pagination", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
-    const createUow = queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", { name: "Page User A", age: 20 })
-      .create("users", { name: "Page User B", age: 30 })
-      .create("users", { name: "Page User C", age: 40 })
-      .create("users", { name: "Page User D", age: 50 })
-      .create("users", { name: "Page User E", age: 60 });
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", { name: "Page User A", age: 20 });
+    createUow.create("users", { name: "Page User B", age: 30 });
+    createUow.create("users", { name: "Page User C", age: 40 });
+    createUow.create("users", { name: "Page User D", age: 50 });
+    createUow.create("users", { name: "Page User E", age: 60 });
 
     await createUow.executeMutations();
 
@@ -302,9 +299,8 @@ describe("DrizzleAdapter SQLite", () => {
   it("should support joins", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
-    const createUow = queryEngine
-      .createUnitOfWork("create-users")
-      .create("users", { name: "Email User", age: 20 });
+    const createUow = queryEngine.createUnitOfWork("create-users");
+    createUow.create("users", { name: "Email User", age: 20 });
 
     const { success } = await createUow.executeMutations();
     expect(success).toBe(true);
@@ -321,7 +317,8 @@ describe("DrizzleAdapter SQLite", () => {
     expect(createdUser.name).toBe("Email User");
 
     // Create an email for testing joins
-    const createEmailUow = queryEngine.createUnitOfWork("create-test-email").create("emails", {
+    const createEmailUow = queryEngine.createUnitOfWork("create-test-email");
+    createEmailUow.create("emails", {
       user_id: createdUser.id,
       email: "test@example.com",
       is_primary: true,
@@ -364,9 +361,8 @@ describe("DrizzleAdapter SQLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create a user (author)
-    const createAuthorUow = queryEngine
-      .createUnitOfWork("create-author")
-      .create("users", { name: "Blog Author", age: 30 });
+    const createAuthorUow = queryEngine.createUnitOfWork("create-author");
+    createAuthorUow.create("users", { name: "Blog Author", age: 30 });
     await createAuthorUow.executeMutations();
 
     // Fetch the created author to get the proper ID
@@ -376,7 +372,8 @@ describe("DrizzleAdapter SQLite", () => {
       .executeRetrieve();
 
     // Create a post by the author
-    const createPostUow = queryEngine.createUnitOfWork("create-post").create("posts", {
+    const createPostUow = queryEngine.createUnitOfWork("create-post");
+    createPostUow.create("posts", {
       user_id: author.id,
       title: "My First Post",
       content: "This is the content of my first post",
@@ -390,9 +387,8 @@ describe("DrizzleAdapter SQLite", () => {
       .executeRetrieve();
 
     // Create a commenter
-    const createCommenterUow = queryEngine
-      .createUnitOfWork("create-commenter")
-      .create("users", { name: "Commenter User", age: 25 });
+    const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
+    createCommenterUow.create("users", { name: "Commenter User", age: 25 });
     await createCommenterUow.executeMutations();
 
     // Fetch the created commenter to get the proper ID
@@ -402,7 +398,8 @@ describe("DrizzleAdapter SQLite", () => {
       .executeRetrieve();
 
     // Create a comment on the post
-    const createCommentUow = queryEngine.createUnitOfWork("create-comment").create("comments", {
+    const createCommentUow = queryEngine.createUnitOfWork("create-comment");
+    createCommentUow.create("comments", {
       post_id: post.id,
       user_id: commenter.id,
       text: "Great post!",
@@ -585,9 +582,8 @@ describe("DrizzleAdapter SQLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create a user
-    const createUserUow = queryEngine
-      .createUnitOfWork("create-user-for-timestamp")
-      .create("users", { name: "Timestamp User", age: 28 });
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-timestamp");
+    createUserUow.create("users", { name: "Timestamp User", age: 28 });
     await createUserUow.executeMutations();
 
     const [[user]] = await queryEngine
@@ -596,13 +592,12 @@ describe("DrizzleAdapter SQLite", () => {
       .executeRetrieve();
 
     // Create a post (note: SQLite schema doesn't have created_at column)
-    const createPostUow = queryEngine
-      .createUnitOfWork("create-post-for-timestamp")
-      .create("posts", {
-        user_id: user.id,
-        title: "Timestamp Test Post",
-        content: "Testing timestamp handling",
-      });
+    const createPostUow = queryEngine.createUnitOfWork("create-post-for-timestamp");
+    createPostUow.create("posts", {
+      user_id: user.id,
+      title: "Timestamp Test Post",
+      content: "Testing timestamp handling",
+    });
     await createPostUow.executeMutations();
 
     // Retrieve the post
