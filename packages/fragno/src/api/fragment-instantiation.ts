@@ -24,9 +24,14 @@ export interface FragnoPublicConfig {
   mountRoute?: string;
 }
 
+export type FetcherConfig =
+  | { type: "options"; options: RequestInit }
+  | { type: "function"; fetcher: typeof fetch };
+
 export interface FragnoPublicClientConfig {
   mountRoute?: string;
   baseUrl?: string;
+  fetcherConfig?: FetcherConfig;
 }
 
 type AstroHandlers = {

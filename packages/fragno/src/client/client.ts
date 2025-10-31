@@ -13,6 +13,7 @@ import { getMountRoute } from "../api/internal/route";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
 import type {
+  FetcherConfig,
   FragnoFragmentSharedConfig,
   FragnoPublicClientConfig,
 } from "../api/fragment-instantiation";
@@ -31,6 +32,7 @@ import {
   type FlattenRouteFactories,
   resolveRouteFactories,
 } from "../api/route";
+import { mergeFetcherConfigs } from "./internal/fetcher-merge";
 
 /**
  * Symbols used to identify hook types
@@ -487,6 +489,7 @@ export class ClientBuilder<
 > {
   #publicConfig: FragnoPublicClientConfig;
   #fragmentConfig: TFragmentConfig;
+  #fetcherConfig?: FetcherConfig;
 
   #cache = new Map<string, CacheLine>();
 
@@ -497,6 +500,7 @@ export class ClientBuilder<
   constructor(publicConfig: FragnoPublicClientConfig, fragmentConfig: TFragmentConfig) {
     this.#publicConfig = publicConfig;
     this.#fragmentConfig = fragmentConfig;
+    this.#fetcherConfig = publicConfig.fetcherConfig;
 
     const [createFetcherStore, createMutatorStore, { invalidateKeys }] = nanoquery({
       cache: this.#cache,
@@ -512,6 +516,54 @@ export class ClientBuilder<
 
   createStore<const T extends object>(obj: T): FragnoStoreData<T> {
     return { obj: obj, [STORE_SYMBOL]: true };
+  }
+
+  /**
+   * Build a URL for a custom backend call using the configured baseUrl and mountRoute.
+   * Useful for fragment authors who need to make custom fetch calls.
+   */
+  buildUrl<TPath extends string>(
+    path: TPath,
+    params?: {
+      path?: MaybeExtractPathParamsOrWiden<TPath, string>;
+      query?: Record<string, string>;
+    },
+  ): string {
+    const baseUrl = this.#publicConfig.baseUrl ?? "";
+    const mountRoute = getMountRoute(this.#fragmentConfig);
+
+    return buildUrl(
+      { baseUrl, mountRoute, path },
+      { pathParams: params?.path, queryParams: params?.query },
+    );
+  }
+
+  /**
+   * Get the configured fetcher function for custom backend calls.
+   * Returns fetch with merged options applied.
+   */
+  getFetcher(): {
+    fetcher: typeof fetch;
+    defaultOptions: RequestInit | undefined;
+  } {
+    return {
+      fetcher: this.#getFetcher(),
+      defaultOptions: this.#getFetcherOptions(),
+    };
+  }
+
+  #getFetcher(): typeof fetch {
+    if (this.#fetcherConfig?.type === "function") {
+      return this.#fetcherConfig.fetcher;
+    }
+    return fetch;
+  }
+
+  #getFetcherOptions(): RequestInit | undefined {
+    if (this.#fetcherConfig?.type === "options") {
+      return this.#fetcherConfig.options;
+    }
+    return undefined;
   }
 
   createHook<TPath extends ExtractGetRoutePaths<TFragmentConfig["routes"]>>(
@@ -611,6 +663,8 @@ export class ClientBuilder<
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
     const mountRoute = getMountRoute(this.#fragmentConfig);
+    const fetcher = this.#getFetcher();
+    const fetcherOptions = this.#getFetcherOptions();
 
     async function callServerSideHandler(params: {
       pathParams?: Record<string, string | ReadableAtom<string>>;
@@ -650,7 +704,7 @@ export class ClientBuilder<
 
       let response: Response;
       try {
-        response = await fetch(url);
+        response = fetcherOptions ? await fetcher(url, fetcherOptions) : await fetcher(url);
       } catch (error) {
         throw FragnoClientFetchError.fromUnknownFetchError(error);
       }
@@ -795,6 +849,8 @@ export class ClientBuilder<
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
     const mountRoute = getMountRoute(this.#fragmentConfig);
+    const fetcher = this.#getFetcher();
+    const fetcherOptions = this.#getFetcherOptions();
 
     async function executeMutateQuery({
       body,
@@ -828,10 +884,12 @@ export class ClientBuilder<
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        const requestOptions: RequestInit = {
+          ...fetcherOptions,
           method,
           body: body !== undefined ? JSON.stringify(body) : undefined,
-        });
+        };
+        response = await fetcher(url, requestOptions);
       } catch (error) {
         throw FragnoClientFetchError.fromUnknownFetchError(error);
       }
@@ -1008,6 +1066,7 @@ export function createClientBuilder<
   },
   publicConfig: FragnoPublicClientConfig,
   routesOrFactories: TRoutesOrFactories,
+  authorFetcherConfig?: FetcherConfig,
 ): ClientBuilder<
   FlattenRouteFactories<TRoutesOrFactories>,
   FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
@@ -1030,12 +1089,15 @@ export function createClientBuilder<
   };
 
   const mountRoute = publicConfig.mountRoute ?? `/${definition.name}`;
+  const mergedFetcherConfig = mergeFetcherConfigs(authorFetcherConfig, publicConfig.fetcherConfig);
   const fullPublicConfig = {
     ...publicConfig,
     mountRoute,
+    fetcherConfig: mergedFetcherConfig,
   };
 
   return new ClientBuilder(fullPublicConfig, fragmentConfig);
 }
 
 export * from "./client-error";
+export type { FetcherConfig };
