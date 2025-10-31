@@ -1688,3 +1688,267 @@ describe("type guards", () => {
     expect(isGetHook(Symbol("fragno-get-hook"))).toBe(false);
   });
 });
+
+describe("Custom Fetcher Configuration", () => {
+  const testFragment = defineFragment("test-fragment");
+  const testRoutes = [
+    defineRoute({
+      method: "GET",
+      path: "/users",
+      outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+      handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({ name: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string() }),
+      handler: async (_ctx, { json }) => json({ id: 2, name: "Jane" }),
+    }),
+  ] as const;
+
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (global.fetch as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("fragment author sets RequestInit options (credentials)", async () => {
+    let capturedOptions: RequestInit | undefined;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+      capturedOptions = options;
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John" }],
+      } as Response;
+    });
+
+    const client = createClientBuilder(testFragment, clientConfig, testRoutes, {
+      type: "options",
+      options: { credentials: "include" },
+    });
+
+    const useUsers = client.createHook("/users");
+    await useUsers.query();
+
+    expect(capturedOptions).toBeDefined();
+    expect(capturedOptions?.credentials).toBe("include");
+  });
+
+  test("user overrides with their own RequestInit (deep merge)", async () => {
+    let capturedOptions: RequestInit | undefined;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+      capturedOptions = options;
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John" }],
+      } as Response;
+    });
+
+    const authorConfig = { type: "options", options: { credentials: "include" } } as const;
+    const userConfig = {
+      ...clientConfig,
+      fetcherConfig: { type: "options", options: { mode: "cors" } } as const,
+    };
+
+    const client = createClientBuilder(testFragment, userConfig, testRoutes, authorConfig);
+
+    const useUsers = client.createHook("/users");
+    await useUsers.query();
+
+    expect(capturedOptions).toBeDefined();
+    expect(capturedOptions?.credentials).toBe("include");
+    expect(capturedOptions?.mode).toBe("cors");
+  });
+
+  test("user provides custom fetch function (takes full precedence)", async () => {
+    const customFetch = vi.fn(async () => ({
+      headers: new Headers(),
+      ok: true,
+      json: async () => [{ id: 999, name: "Custom" }],
+    })) as unknown as typeof fetch;
+
+    const authorConfig = { type: "options", options: { credentials: "include" } } as const;
+    const userConfig = {
+      ...clientConfig,
+      fetcherConfig: { type: "function", fetcher: customFetch } as const,
+    };
+
+    const client = createClientBuilder(testFragment, userConfig, testRoutes, authorConfig);
+
+    const useUsers = client.createHook("/users");
+    const result = await useUsers.query();
+
+    expect(customFetch).toHaveBeenCalled();
+    expect(result).toEqual([{ id: 999, name: "Custom" }]);
+  });
+
+  test("author provides custom fetch, user provides RequestInit (user RequestInit used)", async () => {
+    const authorFetch = vi.fn(async () => ({
+      headers: new Headers(),
+      ok: true,
+      json: async () => [{ id: 777, name: "Author" }],
+    })) as unknown as typeof fetch;
+
+    let capturedOptions: RequestInit | undefined;
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+      capturedOptions = options;
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John" }],
+      } as Response;
+    });
+
+    const authorConfig = { type: "function", fetcher: authorFetch } as const;
+    const userConfig = {
+      ...clientConfig,
+      fetcherConfig: { type: "options", options: { credentials: "include" } } as const,
+    };
+
+    const client = createClientBuilder(testFragment, userConfig, testRoutes, authorConfig);
+
+    const useUsers = client.createHook("/users");
+    await useUsers.query();
+
+    // User's RequestInit takes precedence, so global fetch should be used
+    expect(authorFetch).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalled();
+    expect(capturedOptions?.credentials).toBe("include");
+  });
+
+  test("headers merge correctly (user headers override author headers)", async () => {
+    let capturedOptions: RequestInit | undefined;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+      capturedOptions = options;
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John" }],
+      } as Response;
+    });
+
+    const authorConfig = {
+      type: "options",
+      options: {
+        headers: {
+          "X-Author-Header": "author-value",
+          "X-Shared-Header": "author-shared",
+        },
+      },
+    } as const;
+
+    const userConfig = {
+      ...clientConfig,
+      fetcherConfig: {
+        type: "options",
+        options: {
+          headers: {
+            "X-User-Header": "user-value",
+            "X-Shared-Header": "user-shared",
+          },
+        },
+      } as const,
+    };
+
+    const client = createClientBuilder(testFragment, userConfig, testRoutes, authorConfig);
+
+    const useUsers = client.createHook("/users");
+    await useUsers.query();
+
+    expect(capturedOptions).toBeDefined();
+    const headers = new Headers(capturedOptions?.headers);
+    expect(headers.get("X-Author-Header")).toBe("author-value");
+    expect(headers.get("X-User-Header")).toBe("user-value");
+    expect(headers.get("X-Shared-Header")).toBe("user-shared"); // User overrides
+  });
+
+  test("custom fetcher works with mutators", async () => {
+    let capturedOptions: RequestInit | undefined;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+      capturedOptions = options;
+      return {
+        headers: new Headers(),
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 2, name: "Jane" }),
+      } as Response;
+    });
+
+    const client = createClientBuilder(testFragment, clientConfig, testRoutes, {
+      type: "options",
+      options: { credentials: "include" },
+    });
+
+    const mutator = client.createMutator("POST", "/users");
+    await mutator.mutateQuery({ body: { name: "Jane" } });
+
+    expect(capturedOptions).toBeDefined();
+    expect(capturedOptions?.credentials).toBe("include");
+    expect(capturedOptions?.method).toBe("POST");
+  });
+
+  test("buildUrl method works correctly", () => {
+    const client = createClientBuilder(testFragment, clientConfig, testRoutes);
+
+    const url1 = client.buildUrl("/users");
+    expect(url1).toBe("http://localhost:3000/api/test-fragment/users");
+
+    const url2 = client.buildUrl("/users/:id", { path: { id: "123" } });
+    expect(url2).toBe("http://localhost:3000/api/test-fragment/users/123");
+
+    const url3 = client.buildUrl("/users", { query: { sort: "name", order: "asc" } });
+    expect(url3).toBe("http://localhost:3000/api/test-fragment/users?sort=name&order=asc");
+
+    const url4 = client.buildUrl("/users/:id", {
+      path: { id: "456" },
+      query: { include: "posts" },
+    });
+    expect(url4).toBe("http://localhost:3000/api/test-fragment/users/456?include=posts");
+  });
+
+  test("getFetcher returns correct fetcher and options", () => {
+    const customFetch = vi.fn() as unknown as typeof fetch;
+    const client = createClientBuilder(
+      testFragment,
+      {
+        ...clientConfig,
+        fetcherConfig: { type: "function", fetcher: customFetch },
+      },
+      testRoutes,
+    );
+
+    const { fetcher, defaultOptions } = client.getFetcher();
+    expect(fetcher).toBe(customFetch);
+    expect(defaultOptions).toBeUndefined();
+  });
+
+  test("getFetcher returns default fetch and options", () => {
+    const client = createClientBuilder(
+      testFragment,
+      {
+        ...clientConfig,
+        fetcherConfig: { type: "options", options: { credentials: "include" } },
+      },
+      testRoutes,
+    );
+
+    const { fetcher, defaultOptions } = client.getFetcher();
+    expect(fetcher).toBe(fetch);
+    expect(defaultOptions).toBeDefined();
+    expect(defaultOptions?.credentials).toBe("include");
+  });
+});
