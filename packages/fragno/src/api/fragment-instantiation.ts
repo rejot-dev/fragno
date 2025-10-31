@@ -19,6 +19,8 @@ import {
 } from "./request-middleware";
 import type { FragmentDefinition } from "./fragment-builder";
 import { MutableRequestState } from "./mutable-request-state";
+import type { RouteHandlerInputOptions } from "./route-handler-input-options";
+import type { ExtractRoutePath } from "../client/client";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -94,6 +96,20 @@ export interface FragnoInstantiatedFragment<
   handlersFor: <T extends FullstackFrameworks>(framework: T) => HandlersByFramework[T];
   handler: (req: Request) => Promise<Response>;
   mountRoute: string;
+  callRoute: <TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
+    method: TMethod,
+    path: TPath,
+    inputOptions?: RouteHandlerInputOptions<
+      TPath,
+      Extract<TRoutes[number], { method: TMethod; path: TPath }> extends {
+        inputSchema: infer TInputSchema;
+      }
+        ? TInputSchema extends StandardSchemaV1 | undefined
+          ? TInputSchema
+          : undefined
+        : undefined
+    >,
+  ) => Promise<Response>;
   withMiddleware: (
     handler: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>,
   ) => FragnoInstantiatedFragment<TRoutes, TDeps, TServices, TAdditionalContext>;
@@ -138,6 +154,8 @@ export function createFragment<
   TServices,
   TAdditionalContext
 > {
+  type TRoutes = FlattenRouteFactories<TRoutesOrFactories>;
+
   const definition = fragmentBuilder.definition;
 
   const dependencies = definition.dependencies?.(config, options) ?? ({} as TDeps);
@@ -197,6 +215,84 @@ export function createFragment<
       middlewareHandler = handler;
 
       return fragment;
+    },
+    callRoute: async <TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
+      method: TMethod,
+      path: TPath,
+      inputOptions?: RouteHandlerInputOptions<
+        TPath,
+        Extract<TRoutes[number], { method: TMethod; path: TPath }> extends {
+          inputSchema: infer TInputSchema;
+        }
+          ? TInputSchema extends StandardSchemaV1 | undefined
+            ? TInputSchema
+            : undefined
+          : undefined
+      >,
+    ): Promise<Response> => {
+      // Find the route configuration
+      const route = routes.find((r) => r.method === method && r.path === path);
+
+      if (!route) {
+        return Response.json(
+          {
+            error: `Route ${method} ${path} not found`,
+            code: "ROUTE_NOT_FOUND",
+          },
+          { status: 404 },
+        );
+      }
+
+      const {
+        pathParams = {} as ExtractPathParams<TPath>,
+        body,
+        query,
+        headers,
+      } = inputOptions || {};
+
+      // Convert query to URLSearchParams if needed
+      const searchParams =
+        query instanceof URLSearchParams
+          ? query
+          : query
+            ? new URLSearchParams(query)
+            : new URLSearchParams();
+
+      // Convert headers to Headers if needed
+      const requestHeaders =
+        headers instanceof Headers ? headers : headers ? new Headers(headers) : new Headers();
+
+      // Construct RequestInputContext
+      const inputContext = new RequestInputContext({
+        path: route.path,
+        method: route.method,
+        pathParams,
+        searchParams,
+        headers: requestHeaders,
+        parsedBody: body,
+        inputSchema: route.inputSchema,
+        shouldValidateInput: true, // Enable validation for production use
+      });
+
+      // Construct RequestOutputContext
+      const outputContext = new RequestOutputContext(route.outputSchema);
+
+      // Call the route handler
+      try {
+        const response = await route.handler(inputContext, outputContext);
+        return response;
+      } catch (error) {
+        console.error("Error in callRoute handler", error);
+
+        if (error instanceof FragnoApiError) {
+          return error.toResponse();
+        }
+
+        return Response.json(
+          { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
+          { status: 500 },
+        );
+      }
     },
     handlersFor: <T extends FullstackFrameworks>(framework: T): HandlersByFramework[T] => {
       const handler = fragment.handler;

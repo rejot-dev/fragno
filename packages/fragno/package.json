@@ -27,6 +27,11 @@
       "types": "./dist/api/fragment-instantiation.d.ts",
       "default": "./dist/api/fragment-instantiation.js"
     },
+    "./api/route": {
+      "development": "./src/api/route.ts",
+      "types": "./dist/api/route.d.ts",
+      "default": "./dist/api/route.js"
+    },
     "./client": {
       "development": "./src/client/client.ts",
       "types": "./dist/client/client.d.ts",

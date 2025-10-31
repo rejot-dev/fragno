@@ -6,6 +6,7 @@ import {
 } from "@fragno-dev/core/test";
 import type { FragnoPublicConfig } from "@fragno-dev/core/api/fragment-instantiation";
 import type { FragmentDefinition } from "@fragno-dev/core/api/fragment-builder";
+import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/api/route";
 import {
   createAdapter,
   type SupportedAdapter,
@@ -14,6 +15,9 @@ import {
   type KyselyPgliteAdapter,
   type DrizzlePgliteAdapter,
 } from "./adapters";
+import type { FragnoRouteConfig } from "@fragno-dev/core";
+import type { HTTPMethod } from "@fragno-dev/core/api";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 // Re-export utilities from @fragno-dev/core/test
 export {
@@ -22,7 +26,6 @@ export {
   type CreateFragmentForTestOptions,
   type RouteHandlerInputOptions,
   type FragmentForTest,
-  type InitRoutesOverrides,
 } from "@fragno-dev/core/test";
 
 // Re-export adapter types
@@ -64,23 +67,32 @@ export interface DatabaseFragmentTestResult<
   TAdditionalContext extends Record<string, unknown>,
   TOptions extends FragnoPublicConfig,
   TAdapter extends SupportedAdapter,
+  TRoutes extends readonly FragnoRouteConfig<
+    HTTPMethod,
+    string,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined,
+    string,
+    string
+  >[],
 > {
-  readonly fragment: FragmentForTest<TConfig, TDeps, TServices, TAdditionalContext, TOptions>;
+  readonly fragment: FragmentForTest<
+    TConfig,
+    TDeps,
+    TServices,
+    TAdditionalContext,
+    TOptions,
+    TRoutes
+  >;
   readonly services: TServices;
-  readonly initRoutes: FragmentForTest<
+  readonly callRoute: FragmentForTest<
     TConfig,
     TDeps,
     TServices,
     TAdditionalContext,
-    TOptions
-  >["initRoutes"];
-  readonly handler: FragmentForTest<
-    TConfig,
-    TDeps,
-    TServices,
-    TAdditionalContext,
-    TOptions
-  >["handler"];
+    TOptions,
+    TRoutes
+  >["callRoute"];
   readonly config: TConfig;
   readonly deps: TDeps;
   readonly additionalContext: TAdditionalContext;
@@ -95,11 +107,13 @@ export async function createDatabaseFragmentForTest<
   const TOptions extends FragnoPublicConfig,
   const TSchema extends AnySchema,
   const TAdapter extends SupportedAdapter,
+  const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
   fragmentBuilder: {
     definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
     $requiredOptions: TOptions;
   },
+  routesOrFactories: TRoutesOrFactories,
   options: CreateDatabaseFragmentForTestOptions<
     TConfig,
     TDeps,
@@ -109,7 +123,15 @@ export async function createDatabaseFragmentForTest<
     TAdapter
   >,
 ): Promise<
-  DatabaseFragmentTestResult<TConfig, TDeps, TServices, TAdditionalContext, TOptions, TAdapter>
+  DatabaseFragmentTestResult<
+    TConfig,
+    TDeps,
+    TServices,
+    TAdditionalContext,
+    TOptions,
+    TAdapter,
+    FlattenRouteFactories<TRoutesOrFactories>
+  >
 > {
   const {
     adapter: adapterConfig,
@@ -151,10 +173,10 @@ export async function createDatabaseFragmentForTest<
     databaseAdapter: adapter,
   } as unknown as TOptions;
 
-  // Safe cast: If config is not provided, we pass undefined as TConfig.
-  // The base createFragmentForTest expects config: TConfig, but if TConfig allows undefined
-  // or if the fragment doesn't use config in its dependencies function, this will work correctly.
-  let fragment = createFragmentForTest(fragmentBuilder, {
+  let fragment = createFragmentForTest(fragmentBuilder, routesOrFactories, {
+    // Safe cast: If config is not provided, we pass undefined as TConfig.
+    // The base createFragmentForTest expects config: TConfig, but if TConfig allows undefined
+    // or if the fragment doesn't use config in its dependencies function, this will work correctly.
     config: config as TConfig,
     options: mergedOptions,
     deps,
@@ -208,7 +230,7 @@ export async function createDatabaseFragmentForTest<
           databaseAdapter: originalTestContext.adapter,
         } as unknown as TOptions;
 
-        fragment = createFragmentForTest(fragmentBuilder, {
+        fragment = createFragmentForTest(fragmentBuilder, routesOrFactories, {
           config: config as TConfig,
           options: mergedOptions,
           deps,
@@ -234,11 +256,8 @@ export async function createDatabaseFragmentForTest<
     get services() {
       return fragment.services;
     },
-    get initRoutes() {
-      return fragment.initRoutes;
-    },
-    get handler() {
-      return fragment.handler;
+    get callRoute() {
+      return fragment.callRoute;
     },
     get config() {
       return fragment.config;

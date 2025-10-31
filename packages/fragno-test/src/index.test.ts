@@ -55,7 +55,7 @@ describe("createDatabaseFragmentForTest", () => {
     });
 
     it("should use in-memory database by default", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
       });
 
@@ -79,7 +79,7 @@ describe("createDatabaseFragmentForTest", () => {
     });
 
     it("should create database at specified path", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite", databasePath: testDbPath },
       });
 
@@ -103,7 +103,7 @@ describe("createDatabaseFragmentForTest", () => {
 
   describe("migrateToVersion option", () => {
     it("should migrate to latest version by default", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
       });
 
@@ -124,7 +124,7 @@ describe("createDatabaseFragmentForTest", () => {
 
     it("should migrate to specific version when specified", async () => {
       // Migrate to version 1 (before 'age' column was added)
-      const { test } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
         migrateToVersion: 1,
       });
@@ -155,7 +155,7 @@ describe("createDatabaseFragmentForTest", () => {
 
     it("should allow creating user with age when migrated to version 2", async () => {
       // Explicitly migrate to version 2
-      const { fragment, test } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { fragment, test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
         migrateToVersion: 2,
       });
@@ -200,7 +200,7 @@ describe("createDatabaseFragmentForTest", () => {
     });
 
     it("should work with both databasePath and migrateToVersion", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite", databasePath: testDbPath },
         migrateToVersion: 2,
       });
@@ -231,7 +231,7 @@ describe("createDatabaseFragmentForTest", () => {
 
   describe("fragment initialization", () => {
     it("should provide kysely instance", async () => {
-      const { test } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
       });
 
@@ -240,7 +240,7 @@ describe("createDatabaseFragmentForTest", () => {
     });
 
     it("should provide adapter instance", async () => {
-      const { test } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
       });
 
@@ -249,13 +249,11 @@ describe("createDatabaseFragmentForTest", () => {
     });
 
     it("should have all standard fragment test properties", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, {
+      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
         adapter: { type: "kysely-sqlite" },
       });
 
       expect(fragment.services).toBeDefined();
-      expect(fragment.initRoutes).toBeDefined();
-      expect(fragment.handler).toBeDefined();
     });
 
     it("should throw error for non-database fragment", async () => {
@@ -270,7 +268,7 @@ describe("createDatabaseFragmentForTest", () => {
 
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        createDatabaseFragmentForTest(nonDbFragment as any, {
+        createDatabaseFragmentForTest(nonDbFragment as any, [], {
           adapter: { type: "kysely-sqlite" },
         }),
       ).rejects.toThrow("Fragment 'non-db-fragment' does not have a database schema");
@@ -279,10 +277,6 @@ describe("createDatabaseFragmentForTest", () => {
 
   describe("route handling with defineRoutes", () => {
     it("should handle route factory with multiple routes", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, {
-        adapter: { type: "kysely-sqlite" },
-      });
-
       type Config = {};
       type Deps = {};
       type Services = {
@@ -338,10 +332,11 @@ describe("createDatabaseFragmentForTest", () => {
       ]);
 
       const routes = [routeFactory] as const;
-      const [createUserRoute, getUsersRoute] = fragment.initRoutes(routes);
-
+      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, routes, {
+        adapter: { type: "kysely-sqlite" },
+      });
       // Test creating a user
-      const createResponse = await fragment.handler(createUserRoute, {
+      const createResponse = await fragment.callRoute("POST", "/users", {
         body: { name: "John Doe", email: "john@example.com", age: 30 },
       });
 
@@ -356,7 +351,7 @@ describe("createDatabaseFragmentForTest", () => {
       }
 
       // Test getting users
-      const getUsersResponse = await fragment.handler(getUsersRoute);
+      const getUsersResponse = await fragment.callRoute("GET", "/users");
 
       expect(getUsersResponse.type).toBe("json");
       if (getUsersResponse.type === "json") {
@@ -382,7 +377,7 @@ describe("createDatabaseFragmentForTest", () => {
       describe(name, () => {
         it("should clear all data and recreate a fresh database", async () => {
           // Don't destructure so we can access the updated fragment through getters after reset
-          const result = await createDatabaseFragmentForTest(testFragmentDef, {
+          const result = await createDatabaseFragmentForTest(testFragmentDef, [], {
             adapter,
           });
 
@@ -444,7 +439,7 @@ describe("createDatabaseFragmentForTest", () => {
     for (const { name, adapter } of adapters) {
       describe(name, () => {
         it("should expose db property for direct ORM queries", async () => {
-          const { test } = await createDatabaseFragmentForTest(testFragmentDef, {
+          const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
             adapter,
           });
 
@@ -488,7 +483,7 @@ describe("createDatabaseFragmentForTest", () => {
         }, 10000);
 
         it("should maintain db property after resetDatabase", async () => {
-          const result = await createDatabaseFragmentForTest(testFragmentDef, {
+          const result = await createDatabaseFragmentForTest(testFragmentDef, [], {
             adapter,
           });
 
@@ -593,7 +588,7 @@ describe("createDatabaseFragmentForTest", () => {
     for (const { name, adapter } of adapters) {
       describe(name, () => {
         it("should create user and session", async () => {
-          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, {
+          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, [], {
             adapter,
           });
 
@@ -626,7 +621,7 @@ describe("createDatabaseFragmentForTest", () => {
         }, 10000);
 
         it("should return null when user not found", async () => {
-          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, {
+          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, [], {
             adapter,
           });
 
