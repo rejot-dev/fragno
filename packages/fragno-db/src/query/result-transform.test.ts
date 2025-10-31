@@ -226,7 +226,7 @@ describe("encodeValues", () => {
       });
     });
 
-    it("should fallback to external ID for reference when internal ID unavailable", () => {
+    it("should convert FragnoId without internalId to ReferenceSubquery for reference columns", () => {
       const fragnoId = new FragnoId({
         externalId: "user123",
         version: 1,
@@ -238,10 +238,10 @@ describe("encodeValues", () => {
         "postgresql",
       );
 
-      expect(result).toEqual({
-        title: "Test Post",
-        userId: "user123",
-      });
+      // FragnoId without internalId should be converted to ReferenceSubquery for database lookup
+      expect(result["title"]).toBe("Test Post");
+      expect(result["userId"]).toBeInstanceOf(ReferenceSubquery);
+      expect((result["userId"] as ReferenceSubquery).externalIdValue).toBe("user123");
     });
 
     it("should handle FragnoId across different providers", () => {

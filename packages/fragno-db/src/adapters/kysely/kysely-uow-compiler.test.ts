@@ -913,4 +913,70 @@ describe("kysely-uow-compiler", () => {
       expect(compiled.mutationBatch).toHaveLength(1);
     });
   });
+
+  describe("create and use ID in same UOW", () => {
+    it("should support creating and using ID in same UOW", () => {
+      const uow = createTestUOW("create-user-and-post");
+
+      // Create user and capture the returned ID
+      const userId = uow.create("users", {
+        name: "John Doe",
+        email: "john@example.com",
+        age: 30,
+      });
+
+      // Use the returned FragnoId directly to create a post
+      // The compiler should extract externalId and generate a subquery
+      uow.create("posts", {
+        userId: userId,
+        title: "My First Post",
+        content: "This is my first post",
+      });
+
+      const compiler = createKyselyUOWCompiler(testSchema, pool, "postgresql");
+      const compiled = uow.compile(compiler);
+
+      // Should have no retrieval operations
+      expect(compiled.retrievalBatch).toHaveLength(0);
+
+      // Should have 2 mutation operations (create user, create post)
+      expect(compiled.mutationBatch).toHaveLength(2);
+
+      const [userCreate, postCreate] = compiled.mutationBatch;
+      assert(userCreate);
+      assert(postCreate);
+
+      // Verify user create SQL
+      expect(userCreate.query.sql).toMatchInlineSnapshot(
+        `"insert into "users" ("id", "name", "email", "age") values ($1, $2, $3, $4) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+      );
+      expect(userCreate.query.parameters).toMatchObject([
+        userId.externalId, // The generated ID
+        "John Doe",
+        "john@example.com",
+        30,
+      ]);
+      expect(userCreate.expectedAffectedRows).toBeNull();
+
+      // Verify post create SQL - FragnoId generates subquery to lookup internal ID
+      expect(postCreate.query.sql).toMatchInlineSnapshot(
+        `"insert into "posts" ("id", "title", "content", "userId") values ($1, $2, $3, (select "_internalId" from "users" where "id" = $4 limit $5)) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+      );
+      expect(postCreate.query.parameters).toMatchObject([
+        expect.any(String), // generated post ID
+        "My First Post",
+        "This is my first post",
+        userId.externalId, // FragnoId's externalId is used in the subquery
+        1, // limit parameter
+      ]);
+      expect(postCreate.expectedAffectedRows).toBeNull();
+
+      // Verify the returned FragnoId has the expected structure
+      expect(userId).toMatchObject({
+        externalId: expect.any(String),
+        version: 0,
+        internalId: undefined,
+      });
+    });
+  });
 });

@@ -829,4 +829,47 @@ describe("KyselyAdapter PGLite", () => {
     expect(localDate).toBeInstanceOf(Date);
     expect(typeof localDate.getTimezoneOffset()).toBe("number");
   });
+
+  it("should create user and post in same transaction using returned ID", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create UOW and create both user and post in same transaction
+    const uow = queryEngine.createUnitOfWork("create-user-and-post");
+
+    // Create user and capture the returned ID
+    const userId = uow.create("users", {
+      name: "UOW Test User",
+      age: 35,
+    });
+
+    // Use the returned FragnoId directly to create a post in the same transaction
+    // The compiler will extract externalId and generate a subquery to lookup the internal ID
+    const postId = uow.create("posts", {
+      user_id: userId,
+      title: "UOW Test Post",
+      content: "This post was created in the same transaction as the user",
+    });
+
+    // Execute all mutations in a single transaction
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(true);
+
+    // Verify both records were created
+    const user = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+    );
+
+    expect(user?.name).toBe("UOW Test User");
+    expect(user?.age).toBe(35);
+
+    const post = await queryEngine.findFirst("posts", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", postId.externalId)),
+    );
+
+    expect(post?.title).toBe("UOW Test Post");
+    expect(post?.content).toBe("This post was created in the same transaction as the user");
+
+    // Verify the foreign key relationship is correct
+    expect(post?.user_id.internalId).toBe(user?.id.internalId);
+  });
 });

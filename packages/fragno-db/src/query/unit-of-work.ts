@@ -985,11 +985,12 @@ export class UnitOfWork<
 
   /**
    * Add a create operation (mutation phase only)
+   * Returns a FragnoId with the external ID that can be used immediately in subsequent operations
    */
   create<TableName extends keyof TSchema["tables"] & string>(
     table: TableName,
     values: TableToInsertValues<TSchema["tables"][TableName]>,
-  ): this {
+  ): FragnoId {
     if (this.#state === "executed") {
       throw new Error(`create() can only be called during mutation phase.`);
     }
@@ -1041,7 +1042,7 @@ export class UnitOfWork<
       generatedExternalId: externalId,
     });
 
-    return this;
+    return FragnoId.fromExternal(externalId, 0);
   }
 
   /**
@@ -1054,7 +1055,7 @@ export class UnitOfWork<
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
     ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
-  ): this {
+  ): void {
     if (this.#state === "executed") {
       throw new Error(`update() can only be called during mutation phase.`);
     }
@@ -1071,8 +1072,6 @@ export class UnitOfWork<
       checkVersion,
       set,
     });
-
-    return this;
   }
 
   /**
@@ -1085,7 +1084,7 @@ export class UnitOfWork<
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<DeleteBuilder, "build">,
     ) => Omit<DeleteBuilder, "build"> | void,
-  ): this {
+  ): void {
     if (this.#state === "executed") {
       throw new Error(`delete() can only be called during mutation phase.`);
     }
@@ -1101,8 +1100,6 @@ export class UnitOfWork<
       id: opId,
       checkVersion,
     });
-
-    return this;
   }
 
   /**
