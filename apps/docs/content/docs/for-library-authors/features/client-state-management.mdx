@@ -209,3 +209,45 @@ We can return any other values or functions from the `createMyFragmentClient` fu
   If an object is passed to `createStore`, all fields on this object will be made reactive. In the
   case of a function, nothing will happen to it. Deeply nested keys will **not** be considered.
 </Callout>
+
+## Custom Fetcher Configuration
+
+Set default fetch configuration for your Fragment's HTTP requests using the fourth parameter of
+`createClientBuilder`. Useful for authentication, credentials, or custom fetch implementations.
+
+```typescript title="src/index.ts"
+export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const builder = createClientBuilder(myFragmentDefinition, fragnoConfig, routes, {
+    type: "options",
+    options: { credentials: "include" },
+  });
+
+  return { useTodos: builder.createHook("/todos") };
+}
+```
+
+Two configuration types:
+
+- `{ type: "options", options: RequestInit }` - Merge RequestInit options with user config
+- `{ type: "function", fetcher: typeof fetch }` - Provide custom fetch function
+
+User configuration takes precedence: custom functions override everything, RequestInit options deep
+merge (user wins conflicts), headers merge with user values winning.
+
+### Custom Backend Calls
+
+Use `buildUrl()` and `getFetcher()` for requests beyond `createHook`/`createMutator`:
+
+```typescript title="src/index.ts"
+export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const builder = createClientBuilder(myFragmentDefinition, fragnoConfig, routes);
+
+  async function customCall(userId: string) {
+    const { fetcher, defaultOptions } = builder.getFetcher();
+    const url = builder.buildUrl("/users/:id", { path: { id: userId } });
+    return fetcher(url, { ...defaultOptions, method: "GET" }).then((r) => r.json());
+  }
+
+  return { useTodos: builder.createHook("/todos"), customCall };
+}
+```
