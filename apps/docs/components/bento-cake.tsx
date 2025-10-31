@@ -25,15 +25,11 @@ export default function BentoCake({ className }: { className?: string }) {
           {/* Database */}
           <div className="flex items-center gap-4 pl-16">
             <Cake variant="cake-layer" layerVariant="bottom" className="size-21" />
-            <span className="text-s font-medium">
-              Database
-              <br />
-              <span className="text-fd-muted-foreground text-xs">(coming soon)</span>
-            </span>
+            <span className="text-s font-medium">Database</span>
           </div>
         </div>
         <h3 className="mb-4 text-xl font-bold">Libraries</h3>
-        <p className="text-s text-fd-muted-foreground">
+        <p className="text-s text-fd-muted-foreground text-center">
           Traditional libraries target either the frontend or backend.
         </p>
       </div>

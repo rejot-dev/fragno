@@ -177,7 +177,7 @@ export function ViewOptions({
       <PopoverTrigger
         className={cn(
           buttonVariants({
-            color: "secondary",
+            variant: "secondary",
             size: "sm",
             className: "gap-2",
           }),

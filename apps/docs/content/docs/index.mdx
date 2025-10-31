@@ -26,6 +26,7 @@ A **Fragment** is a full-stack **library** that:
 - Contains both server-side API logic and client-side integration code
 - Works across multiple frameworks (React, Vue, Next.js, Nuxt, [etc.](./docs/frameworks))
 - Provides end-to-end functionality: type-safe & reactive
+- Optionally includes a database layer with type-safe data persistence
 
 Fragments enable the Fragment-author to write API routes as a library that are **embedded** into the
 user's project. Fragno also provides building blocks for the Fragment-author to create client-side
@@ -47,14 +48,15 @@ Fragno is the most **developer-friendly** way to help users adopt your API.
 
 ## Features
 
-- 🔐 **End-to-end type safety**: routes are typed using Standard Schema and client-side hooks are
-  fully type-safe
-- 🚀 **Built-in state management**: reactive stores with caching built in (TanStack Query-style),
-  using [Nano Stores](https://github.com/nanostores/nanostores)
-- 🔄 **Middleware support**: Users can use middleware for custom request processing such as
+- **End-to-end type safety**: routes are typed using Standard Schema and client-side hooks are fully
+  type-safe
+- **Built-in frontend state management**: reactive stores with caching built in (TanStack
+  Query-style), using [Nano Stores](https://github.com/nanostores/nanostores)
+- **Data layer**: Optional database layer with type-safe data persistence
+- **Middleware support**: Users can use middleware for custom request processing such as
   authentication.
-- 🌊 **Streaming support**: Real-time data with NDJSON (newline-delimited JSON) streaming
-- 📦 **Automatic code splitting**: code is split on the library level, no added build complexity for
+- **Streaming support**: Real-time data with NDJSON (newline-delimited JSON) streaming
+- **Automatic code splitting**: code is split on the library level, no added build complexity for
   end-users.
 
 ## What's Next?

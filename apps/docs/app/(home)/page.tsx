@@ -22,6 +22,7 @@ import {
 
 import BentoCake from "@/components/bento-cake";
 import Frameworks from "@/components/frameworks";
+import DatabaseIntegration from "@/components/database-integration";
 import { GitHub } from "@/components/logos/github";
 
 function Hero() {
@@ -281,7 +282,7 @@ export function Chat() {
         <div className="space-y-6 lg:w-2/5">
           <p className="text-fd-muted-foreground font-medium">With Fragno you build</p>
           <h2 className="text-4xl font-extrabold tracking-tight md:text-6xl">
-            <span className="text-blue-700 dark:text-blue-400">End-to-end Libraries</span>
+            <span className="text-blue-700 dark:text-blue-400">Full-Stack Libraries</span>
           </h2>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
             Traditional libraries integrate on <em>either</em> the frontend <em>or</em> the backend,
@@ -511,6 +512,9 @@ export default function HomePage() {
       <Frameworks />
       <WhatFragnoProvides />
       {/* <Features /> */}
+
+      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <DatabaseIntegration />
       <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
 
       <DocsSection />
