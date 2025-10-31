@@ -1,0 +1,164 @@
+---
+title: Stripe
+description: Manage Stripe customers and subscriptions
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="warning">The Stripe fragment is new and under active development.</Callout>
+
+## Managing Stripe Customers
+
+To view Stripe customers in an admin dashboard use the `useCustomers` hook.
+
+### Creating a Stripe Customer on SignUp
+
+If you want to create a stripe customer on sign up, you can do so using the stripe client exposed
+through the fragment services.
+
+```typescript
+import { stripeFragment } from "@/fragments/stripe";
+// Your internal model for users
+import { updateUser, type User } from "@/db/user-repo";
+
+/* Somewhere in your code... */
+onUserCreated(user: User) {
+  const client = stripeFragment.services.getStripeClient();
+
+  // If this call fails the user will still be created in the database but not linked to a stripe customer!
+  const customer = await client.customers.create({
+    name: user.name,
+    email: user.email,
+    metadata: {
+      // The reference Id can later be used to map stripe customers back to your users in the database.
+      referenceId: user.id,
+    },
+  });
+
+  // If your user table has a stripeCustomerId column, you can update the user with the created stripe customer id.
+  await updateUser(user.id, { stripeCustomerId: customer.id });
+}
+
+```
+
+<Callout type="warning">
+  Creating a Stripe customer can fail, in which case your user model will not have a corresponding
+  Stripe customer. When creating a subscription, a Stripe customer is optional and we'll create one
+  if it doesn't exist.
+</Callout>
+
+## Subscriptions
+
+The Fragno Stripe fragment makes it easy to track subscriptions in your own application. This
+fragment adds the `subscription` table and implements hooks for creating, updating, and canceling
+subscriptions. On top of that. we have implemented all necessary webhook events that ensure that
+your subscriptions table stays in sync.
+
+### Pricing Model
+
+The Stripe pricing model around subscriptions is based on products and prices, these two entities
+must exist in Stripe before you can start tracking subscriptions for your users.
+
+<Callout type="info">
+  Stripe also has a concept of "plans" but this API is superseded by the more flexible [Prices
+  API](https://docs.stripe.com/api/prices). This fragment uses the latter.
+</Callout>
+
+### Admin Dashboard Routes
+
+The Stripe fragment provides admin-only routes for managing customers, products, prices, and
+subscriptions. These routes are designed for building administrative interfaces.
+
+#### Available Admin Routes
+
+- `GET /admin/customers` - List all Stripe customers with pagination
+- `GET /admin/products` - List all Stripe products with pagination
+- `GET /admin/products/:productId/prices` - List prices for a specific product
+- `GET /admin/subscriptions` - List all subscriptions from your database
+
+#### Securing Admin Routes
+
+<Callout type="warning">
+  Admin routes are not automatically protected. You must add authentication middleware to prevent
+  unauthorized access!
+</Callout>
+
+Use Fragno's `withMiddleware()` API to protect admin routes when instantiating the fragment:
+
+```typescript title="lib/stripe.ts"
+import { createStripeFragment } from "@fragno-dev/stripe";
+import { auth } from "@/lib/auth"; // Your auth provider
+
+export const stripeFragment = createStripeFragment(
+  {
+    /* your config */
+  },
+  {
+    /* fragno config */
+  },
+).withMiddleware(async ({ path, headers }, { error }) => {
+  // Protect admin routes
+  if (path.startsWith("/admin/")) {
+    const session = await auth.api.getSession({ headers });
+
+    if (!session?.user) {
+      return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+    }
+
+    // Check if user has admin role
+    if (session.user.role !== "admin") {
+      return error({ message: "Forbidden", code: "FORBIDDEN" }, 403);
+    }
+  }
+
+  return undefined;
+});
+```
+
+#### Using Admin Hooks
+
+Once protected, you can use the provided hooks to build admin interfaces. For example, to list
+products:
+
+```typescript
+import myStripeClient from "@/fragments/stripe/client";
+
+const {
+  data: products,
+  loading,
+  error,
+} = myStripeClient.useProducts({
+  query: { limit: "10" },
+});
+```
+
+### Creating Subscriptions
+
+Adding or changing a customers subscription can be done using the `upgradeSubscription` Mutator.
+
+```typescript title="pricing-component.ts"
+import myStripeClient from "@/fragments/stripe/client";
+
+// These are your internal models for users and subscription plans
+import type { User } from "@/db/user-repo";
+import type { Plan } from "@/db/plan-repo";
+
+const { mutate, error, loading } = myStripeClient.upgradeSubscription();
+
+const handleUpgrade = async (user: User, plan: Plan) => {
+  const { url, redirect } = await mutate({
+    body: {
+      customerId: user.stripeCustomerId,
+      priceId: plan.stripePriceId,
+      // TODO: other things
+    },
+  });
+  if (redirect) {
+    window.location.href = url;
+  }
+};
+```
+
+## Webhooks
+
+{/* TODO */}
