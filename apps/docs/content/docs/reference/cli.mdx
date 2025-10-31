@@ -201,3 +201,32 @@ npx fragno-cli db info lib/comment-fragment-server.ts
 **What it does:**
 
 This command shows you the current status of the database and schema.
+
+### `search`
+
+Search the Fragno documentation directly from the command line. Results are grouped by page, showing
+all relevant sections found on each page.
+
+**Usage:**
+
+```bash
+npx fragno-cli search <query> [options]
+```
+
+**Arguments:**
+
+- `<query>` - Search query (can be multiple words)
+
+**Options:**
+
+- `--limit` - Maximum number of results to show (default: 10)
+- `--json` - Output results in JSON format instead of markdown
+- `--base-url` - Base URL for the documentation site (default: fragno.dev)
+
+**Examples:**
+
+```bash
+npx fragno-cli search orm
+
+npx fragno-cli search "getting started" --limit 5 --json
+```
