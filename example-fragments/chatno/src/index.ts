@@ -78,6 +78,7 @@ const simpleStreamRoute = defineRoutes<ChatnoServerConfig, {}, SimpleStreamServi
   },
 );
 
+export { healthRoute, simpleStreamRoute };
 export const routes = [chatRouteFactory, healthRoute, simpleStreamRoute] as const;
 
 // Server-side factory

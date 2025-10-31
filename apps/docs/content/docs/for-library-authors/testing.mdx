@@ -11,8 +11,9 @@ and response parsing.
 
 ```typescript
 import { createFragmentForTest } from "@fragno-dev/core/test";
+import { routes } from "./fragment-definition";
 
-const fragment = createFragmentForTest(myFragmentDefinition, {
+const fragment = createFragmentForTest(myFragmentDefinition, routes, {
   config: { apiKey: "test-key" },
   // Optional: override dependencies
   deps: { httpClient: mockHttpClient },
@@ -21,29 +22,12 @@ const fragment = createFragmentForTest(myFragmentDefinition, {
 });
 ```
 
-## Initializing Routes
-
-Use `initRoutes` to resolve route factories with the fragment's context:
-
-```typescript
-const [userRoute, profileRoute] = fragment.initRoutes(routes);
-```
-
-You can override config/deps/services for specific routes to mock dependencies:
-
-```typescript
-const [route] = fragment.initRoutes(routes, {
-  services: { externalApi: mockApiImplementation },
-  config: { timeout: 1000 },
-});
-```
-
 ## Testing Route Handlers
 
-The `handler` method executes routes and returns a typed discriminated union:
+The `callRoute` method executes routes by method and path, returning a typed discriminated union:
 
 ```typescript
-const response = await fragment.handler(userRoute, {
+const response = await fragment.callRoute("POST", "/users/:id", {
   pathParams: { id: "123" },
   body: { name: "John" },
   query: { filter: "active" },
@@ -56,9 +40,12 @@ expect(response.status).toBe(200);
 expect(response.data).toEqual({ id: "123", name: "John" });
 ```
 
+The method and path parameters are strongly typed based on your fragment's routes, providing
+autocomplete and type checking.
+
 ## Response Types
 
-The `handler` returns a discriminated union with four possible types:
+The `callRoute` method returns a discriminated union with four possible types:
 
 ### JSON Response
 
@@ -106,15 +93,24 @@ to automatically set up an in-memory database with migrations:
 ```typescript
 import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 
-const { fragment, test } = await createDatabaseFragmentForTest(myDatabaseFragmentDefinition, {
-  adapter: { type: "kysely-sqlite" },
-  config: { apiKey: "test-key" },
-  // Optional: migrate to specific schema version (defaults to latest)
-  migrateToVersion: 2,
-});
+const { fragment, test } = await createDatabaseFragmentForTest(
+  myDatabaseFragmentDefinition,
+  routes,
+  {
+    adapter: { type: "kysely-sqlite" },
+    config: { apiKey: "test-key" },
+    // Optional: migrate to specific schema version (defaults to latest)
+    migrateToVersion: 2,
+  },
+);
 
 // Access fragment methods as usual
 await fragment.services.createUser({ name: "John" });
+
+// Or test routes directly
+const response = await fragment.callRoute("POST", "/users", {
+  body: { name: "John" },
+});
 ```
 
 ### Cleanup
@@ -124,7 +120,7 @@ during testing. This is useful in `afterAll` hooks to clean up resources:
 
 ```typescript
 describe("User tests", () => {
-  const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDefinition, {
+  const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDefinition, routes, {
     adapter: { type: "kysely-sqlite" },
   });
 
@@ -133,8 +129,10 @@ describe("User tests", () => {
   });
 
   it("test 1", async () => {
-    await fragment.services.createUser({ name: "Alice" });
-    // ... assertions
+    const response = await fragment.callRoute("POST", "/users", {
+      body: { name: "Alice" },
+    });
+    expect(response.type).toBe("json");
   });
 });
 ```

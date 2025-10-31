@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
 import { createFragmentForTest } from "./test";
 import { defineFragment } from "../api/fragment-builder";
 import { defineRoute, defineRoutes } from "../api/route";
@@ -7,7 +7,7 @@ import { z } from "zod";
 describe("createFragmentForTest", () => {
   it("should create a test fragment with config only", () => {
     const fragment = defineFragment<{ apiKey: string }>("test");
-    const testFragment = createFragmentForTest(fragment, {
+    const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
     });
 
@@ -21,7 +21,7 @@ describe("createFragmentForTest", () => {
       client: { apiKey: config.apiKey },
     }));
 
-    const testFragment = createFragmentForTest(fragment, {
+    const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
     });
 
@@ -33,7 +33,7 @@ describe("createFragmentForTest", () => {
       client: { apiKey: config.apiKey },
     }));
 
-    const testFragment = createFragmentForTest(fragment, {
+    const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
       deps: { client: { apiKey: "override-key" } },
     });
@@ -50,7 +50,7 @@ describe("createFragmentForTest", () => {
         getApiKey: () => deps.client.apiKey,
       }));
 
-    const testFragment = createFragmentForTest(fragment, {
+    const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
     });
 
@@ -66,7 +66,7 @@ describe("createFragmentForTest", () => {
         getApiKey: () => deps.client.apiKey,
       }));
 
-    const testFragment = createFragmentForTest(fragment, {
+    const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
       services: { getApiKey: () => "override-key" },
     });
@@ -74,145 +74,51 @@ describe("createFragmentForTest", () => {
     expect(testFragment.services.getApiKey()).toBe("override-key");
   });
 
-  it("should initialize routes with fragment context", () => {
-    const fragment = defineFragment<{ multiplier: number }>("test")
-      .withDependencies(() => ({ dep: "value" }))
-      .withServices(({ config }) => ({
-        multiply: (x: number) => x * config.multiplier,
-      }));
-
-    const testFragment = createFragmentForTest(fragment, {
-      config: { multiplier: 2 },
-    });
-
-    const route = defineRoute({
-      method: "GET",
-      path: "/test",
-      outputSchema: z.object({ result: z.number() }),
-      handler: async (_ctx, { json }) => {
-        return json({ result: 42 });
-      },
-    });
-
-    const routes = [route] as const;
-    const [initializedRoute] = testFragment.initRoutes(routes);
-
-    expect(initializedRoute).toBe(route);
-    expect(initializedRoute.method).toBe("GET");
-    expect(initializedRoute.path).toBe("/test");
-  });
-
   it("should initialize route factories with fragment context", async () => {
-    const fragment = defineFragment<{ multiplier: number }>("test")
+    type Config = { multiplier: number };
+    type Deps = { dep: string };
+    type Services = { multiply: (x: number) => number };
+
+    const fragment = defineFragment<Config>("test")
       .withDependencies(() => ({ dep: "value" }))
       .withServices(({ config }) => ({
         multiply: (x: number) => x * config.multiplier,
       }));
 
-    const testFragment = createFragmentForTest(fragment, {
+    const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
+      defineRoute({
+        method: "GET",
+        path: "/multiply/:num",
+        outputSchema: z.object({ result: z.number() }),
+        handler: async ({ pathParams }, { json }) => {
+          const { num } = pathParams;
+          return json({ result: services.multiply(Number(num)) });
+        },
+      }),
+    ]);
+
+    const routes = [routeFactory] as const;
+
+    const testFragment = createFragmentForTest(fragment, routes, {
       config: { multiplier: 3 },
     });
 
-    const routeFactory = ({ services }: { services: { multiply: (x: number) => number } }) => {
-      return [
-        defineRoute({
-          method: "GET",
-          path: "/multiply",
-          outputSchema: z.object({ result: z.number() }),
-          handler: async (_ctx, { json }) => {
-            return json({ result: services.multiply(5) });
-          },
-        }),
-      ];
-    };
-
-    const routes = [routeFactory] as const;
-    const [multiplyRoute] = testFragment.initRoutes(routes);
-
-    expect(multiplyRoute.method).toBe("GET");
-    expect(multiplyRoute.path).toBe("/multiply");
-
     // Test that the route was initialized with the correct services
-    const response = await testFragment.handler(multiplyRoute);
+    const response = await testFragment.callRoute("GET", "/multiply/:num", {
+      //       ^?
+      pathParams: { num: "5" },
+    });
     expect(response.type).toBe("json");
     if (response.type === "json") {
       expect(response.data).toEqual({ result: 15 }); // 5 * 3
+      expectTypeOf(response.data).toMatchObjectType<{ result: number }>();
     }
-  });
-
-  it("should allow overriding config/deps/services for specific route initialization", async () => {
-    const fragment = defineFragment<{ multiplier: number }>("test")
-      .withDependencies(() => ({ baseUrl: "https://api.example.com" }))
-      .withServices(({ config }) => ({
-        multiply: (x: number) => x * config.multiplier,
-        getMessage: (): string => "original message",
-      }));
-
-    const testFragment = createFragmentForTest(fragment, {
-      config: { multiplier: 2 },
-    });
-
-    const routeFactory = ({
-      config,
-      services,
-    }: {
-      config: { multiplier: number };
-      services: { multiply: (x: number) => number; getMessage: () => string };
-    }) => {
-      return [
-        defineRoute({
-          method: "GET",
-          path: "/test",
-          outputSchema: z.object({
-            result: z.number(),
-            message: z.string(),
-            multiplier: z.number(),
-          }),
-          handler: async (_ctx, { json }) => {
-            return json({
-              result: services.multiply(10),
-              message: services.getMessage(),
-              multiplier: config.multiplier,
-            });
-          },
-        }),
-      ];
-    };
-
-    const routes = [routeFactory] as const;
-
-    // Initialize with overrides - completely replace the multiply service
-    const [overriddenRoute] = testFragment.initRoutes(routes, {
-      config: { multiplier: 5 },
-      services: {
-        multiply: (x: number) => x * 5, // Mock implementation uses hardcoded multiplier
-        getMessage: (): string => "mocked message",
-      },
-    });
-
-    const response = await testFragment.handler(overriddenRoute);
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual({
-        result: 50, // 10 * 5 (mocked multiply service)
-        message: "mocked message", // overridden service
-        multiplier: 5, // overridden config
-      });
-    }
-
-    // Verify original fragment config/services are unchanged
-    expect(testFragment.config.multiplier).toBe(2);
-    expect(testFragment.services.multiply(10)).toBe(20); // Original multiplier is 2
-    expect(testFragment.services.getMessage()).toBe("original message");
   });
 });
 
-describe("fragment.handler", () => {
+describe("fragment.callRoute", () => {
   it("should handle JSON response", async () => {
     const fragment = defineFragment<{ apiKey: string }>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: { apiKey: "test-key" },
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -223,21 +129,23 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route);
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: { apiKey: "test-key" },
+    });
+
+    const response = await testFragment.callRoute("GET", "/test");
 
     expect(response.type).toBe("json");
     if (response.type === "json") {
       expect(response.status).toBe(200);
       expect(response.data).toEqual({ message: "hello" });
       expect(response.headers).toBeInstanceOf(Headers);
+      expectTypeOf(response.data).toMatchObjectType<{ message: string }>();
     }
   });
 
   it("should handle empty response", async () => {
     const fragment = defineFragment<{ apiKey: string }>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: { apiKey: "test-key" },
-    });
 
     const route = defineRoute({
       method: "DELETE",
@@ -247,7 +155,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route);
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: { apiKey: "test-key" },
+    });
+
+    const response = await testFragment.callRoute("DELETE", "/test");
 
     expect(response.type).toBe("empty");
     if (response.type === "empty") {
@@ -258,9 +170,6 @@ describe("fragment.handler", () => {
 
   it("should handle error response", async () => {
     const fragment = defineFragment<{ apiKey: string }>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: { apiKey: "test-key" },
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -271,7 +180,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route);
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: { apiKey: "test-key" },
+    });
+
+    const response = await testFragment.callRoute("GET", "/test");
 
     expect(response.type).toBe("error");
     if (response.type === "error") {
@@ -283,9 +196,6 @@ describe("fragment.handler", () => {
 
   it("should handle JSON stream response", async () => {
     const fragment = defineFragment<{ apiKey: string }>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: { apiKey: "test-key" },
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -300,7 +210,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route);
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: { apiKey: "test-key" },
+    });
+
+    const response = await testFragment.callRoute("GET", "/test/stream");
 
     expect(response.type).toBe("jsonStream");
     if (response.type === "jsonStream") {
@@ -314,6 +228,7 @@ describe("fragment.handler", () => {
       }
 
       expect(items).toEqual([{ value: 1 }, { value: 2 }, { value: 3 }, { value: 4 }, { value: 5 }]);
+      expectTypeOf(items[0]).toMatchObjectType<{ value: number }>();
     }
   });
 
@@ -322,10 +237,6 @@ describe("fragment.handler", () => {
       getGreeting: (name: string) => `Hello, ${name}!`,
       getCount: () => 42,
     }));
-
-    const testFragment = createFragmentForTest(fragment, {
-      config: { apiKey: "test-key" },
-    });
 
     type Config = { apiKey: string };
     type Deps = {};
@@ -350,11 +261,12 @@ describe("fragment.handler", () => {
       }),
     ]);
 
-    const routes = [routeFactory] as const;
-    const [greetingRoute, countRoute] = testFragment.initRoutes(routes);
+    const testFragment = createFragmentForTest(fragment, [routeFactory], {
+      config: { apiKey: "test-key" },
+    });
 
     // Test first route
-    const greetingResponse = await testFragment.handler(greetingRoute, {
+    const greetingResponse = await testFragment.callRoute("GET", "/greeting/:name", {
       pathParams: { name: "World" },
     });
 
@@ -364,7 +276,7 @@ describe("fragment.handler", () => {
     }
 
     // Test second route
-    const countResponse = await testFragment.handler(countRoute);
+    const countResponse = await testFragment.callRoute("GET", "/count");
 
     expect(countResponse.type).toBe("json");
     if (countResponse.type === "json") {
@@ -374,9 +286,6 @@ describe("fragment.handler", () => {
 
   it("should handle path parameters", async () => {
     const fragment = defineFragment<{}>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: {},
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -387,7 +296,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route, {
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: {},
+    });
+
+    const response = await testFragment.callRoute("GET", "/users/:id", {
       pathParams: { id: "123" },
     });
 
@@ -399,9 +312,6 @@ describe("fragment.handler", () => {
 
   it("should handle query parameters", async () => {
     const fragment = defineFragment<{}>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: {},
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -412,7 +322,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route, {
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: {},
+    });
+
+    const response = await testFragment.callRoute("GET", "/search", {
       query: { q: "test" },
     });
 
@@ -424,9 +338,6 @@ describe("fragment.handler", () => {
 
   it("should handle request body", async () => {
     const fragment = defineFragment<{}>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: {},
-    });
 
     const route = defineRoute({
       method: "POST",
@@ -442,7 +353,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route, {
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: {},
+    });
+
+    const response = await testFragment.callRoute("POST", "/users", {
       body: { name: "John", email: "john@example.com" },
     });
 
@@ -454,9 +369,6 @@ describe("fragment.handler", () => {
 
   it("should handle custom headers", async () => {
     const fragment = defineFragment<{}>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: {},
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -467,7 +379,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route, {
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: {},
+    });
+
+    const response = await testFragment.callRoute("GET", "/test", {
       headers: { authorization: "Bearer token" },
     });
 
@@ -479,9 +395,6 @@ describe("fragment.handler", () => {
 
   it("should properly type path params", async () => {
     const fragment = defineFragment<{}>("test");
-    const testFragment = createFragmentForTest(fragment, {
-      config: {},
-    });
 
     const route = defineRoute({
       method: "GET",
@@ -492,7 +405,11 @@ describe("fragment.handler", () => {
       },
     });
 
-    const response = await testFragment.handler(route, {
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: {},
+    });
+
+    const response = await testFragment.callRoute("GET", "/orgs/:orgId/users/:userId", {
       pathParams: { orgId: "123", userId: "456" },
     });
 
