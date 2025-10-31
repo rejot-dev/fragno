@@ -10,7 +10,7 @@ import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
 import { execute, preprocessOperations } from "./migration/execute";
 import type { AbstractQuery } from "../../query/query";
-import { fromKysely } from "./kysely-query";
+import { fromKysely, type KyselyUOWConfig } from "./kysely-query";
 import { createTableNameMapper } from "./kysely-shared";
 import { createHash } from "node:crypto";
 import { SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
@@ -25,7 +25,7 @@ export interface KyselyConfig {
   provider: SQLProvider;
 }
 
-export class KyselyAdapter implements DatabaseAdapter {
+export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
   #connectionPool: ConnectionPool<KyselyAny>;
   #provider: SQLProvider;
 
@@ -46,7 +46,10 @@ export class KyselyAdapter implements DatabaseAdapter {
     await this.#connectionPool.close();
   }
 
-  createQueryEngine<T extends AnySchema>(schema: T, namespace: string): AbstractQuery<T> {
+  createQueryEngine<T extends AnySchema>(
+    schema: T,
+    namespace: string,
+  ): AbstractQuery<T, KyselyUOWConfig> {
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
     return fromKysely(schema, this.#connectionPool, this.#provider, mapper);

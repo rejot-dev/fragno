@@ -1,4 +1,4 @@
-import type { Kysely, QueryResult } from "kysely";
+import type { CompiledQuery, Kysely, QueryResult } from "kysely";
 import type { CompiledMutation, MutationResult } from "../../query/unit-of-work";
 
 function getAffectedRows(result: QueryResult<unknown>): number {
@@ -43,9 +43,7 @@ function getAffectedRows(result: QueryResult<unknown>): number {
 export async function executeKyselyRetrievalPhase(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kysely: Kysely<any>,
-  retrievalBatch: (Kysely<unknown>["executeQuery"] extends (query: infer Q) => unknown
-    ? Q
-    : never)[],
+  retrievalBatch: CompiledQuery[],
 ): Promise<unknown[]> {
   // If no retrieval operations, return empty array immediately
   if (retrievalBatch.length === 0) {
@@ -56,8 +54,8 @@ export async function executeKyselyRetrievalPhase(
 
   // Execute all retrieval queries inside a transaction for snapshot isolation
   await kysely.transaction().execute(async (tx) => {
-    for (const query of retrievalBatch) {
-      const result = await tx.executeQuery(query);
+    for (const compiledQuery of retrievalBatch) {
+      const result = await tx.executeQuery(compiledQuery);
       retrievalResults.push(result.rows);
     }
   });
@@ -87,9 +85,7 @@ export async function executeKyselyRetrievalPhase(
 export async function executeKyselyMutationPhase(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kysely: Kysely<any>,
-  mutationBatch: CompiledMutation<
-    Kysely<unknown>["executeQuery"] extends (query: infer Q) => unknown ? Q : never
-  >[],
+  mutationBatch: CompiledMutation<CompiledQuery>[],
 ): Promise<MutationResult> {
   // If there are no mutations, return success immediately
   if (mutationBatch.length === 0) {
