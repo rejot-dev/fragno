@@ -1,5 +1,5 @@
 import { define } from "gunshi";
-import { getSubjects, getSubject } from "@fragno-private/corpus";
+import { getSubjects, getSubject } from "@fragno-dev/corpus";
 
 /**
  * Print a subject with its examples

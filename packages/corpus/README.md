@@ -1,4 +1,4 @@
-# @fragno-private/corpus
+# @fragno-dev/corpus
 
 Code examples and documentation for Fragno, organized by subject. Used by the Fragno CLI and
 documentation site to provide tested, type-checked examples for humans and LLMs.
@@ -15,7 +15,7 @@ Corpus is a collection of working code examples organized into subjects like "de
 ## Usage
 
 ```typescript
-import { getSubjects, getSubject, getAllSubjects } from "@fragno-private/corpus";
+import { getSubjects, getSubject, getAllSubjects } from "@fragno-dev/corpus";
 
 // List available subjects
 const subjects = getSubjects();

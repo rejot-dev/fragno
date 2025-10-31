@@ -186,12 +186,12 @@ importers:
       '@fragno-dev/core':
         specifier: workspace:*
         version: link:../../packages/fragno
+      '@fragno-dev/corpus':
+        specifier: workspace:*
+        version: link:../../packages/corpus
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db
-      '@fragno-private/corpus':
-        specifier: workspace:*
-        version: link:../../packages-private/corpus
       c12:
         specifier: ^3.3.1
         version: 3.3.1(magicast@0.3.5)
@@ -716,34 +716,6 @@ importers:
         specifier: ^4.0.4
         version: 4.0.4(@types/debug@4.1.12)(@types/node@22.18.13)(@vitest/ui@3.2.4(vitest@3.2.4))(happy-dom@20.0.8)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)
 
-  packages-private/corpus:
-    dependencies:
-      '@fragno-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/fragno
-      '@fragno-dev/db':
-        specifier: workspace:*
-        version: link:../../packages/fragno-db
-      zod:
-        specifier: ^4.0.5
-        version: 4.1.12
-    devDependencies:
-      '@fragno-private/typescript-config':
-        specifier: workspace:*
-        version: link:../typescript-config
-      '@fragno-private/vitest-config':
-        specifier: workspace:*
-        version: link:../vitest-config
-      '@types/node':
-        specifier: ^22
-        version: 22.18.13
-      drizzle-orm:
-        specifier: ^0.44.7
-        version: 0.44.7(@electric-sql/pglite@0.3.11)(@libsql/client@0.15.15)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.4.1)(gel@2.1.1)(kysely@0.28.8)
-      kysely:
-        specifier: ^0.28.0
-        version: 0.28.8
-
   packages-private/typescript-config: {}
 
   packages-private/vitest-config:
@@ -770,6 +742,34 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/corpus:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      zod:
+        specifier: ^4.0.5
+        version: 4.1.12
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^22
+        version: 22.18.13
+      drizzle-orm:
+        specifier: ^0.44.7
+        version: 0.44.7(@electric-sql/pglite@0.3.11)(@libsql/client@0.15.15)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.4.1)(gel@2.1.1)(kysely@0.28.8)
+      kysely:
+        specifier: ^0.28.0
+        version: 0.28.8
 
   packages/create:
     dependencies:
