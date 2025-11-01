@@ -1,5 +1,13 @@
 # @fragno-dev/cli
 
+## 0.1.15
+
+### Patch Changes
+
+- c74bf81: fix: `corpus` command now shows full examples
+- Updated dependencies [c74bf81]
+  - @fragno-dev/corpus@0.0.3
+
 ## 0.1.14
 
 ### Patch Changes
