@@ -1,5 +1,50 @@
 # @fragno-dev/test
 
+## 0.1.9
+
+### Patch Changes
+
+- be1a630: **BREAKING**: `callRoute` now returns type-safe `FragnoResponse<T>` instead of raw
+  `Response`
+
+  The `callRoute` method on fragment instances now returns a parsed `FragnoResponse<T>`
+  discriminated union instead of a raw `Response`. This provides type-safe access to response data
+  without manual JSON parsing.
+
+  **Migration:**
+
+  Preferably use the new type-safe response:
+
+  ```diff
+  - const response = await fragment.callRoute("GET", "/users");
+  - const data = await response.json();
+  + const response = await fragment.callRoute("GET", "/users");
+  + if (response.type === "json") {
+  +   const data = response.data; // fully typed!
+  + }
+  ```
+
+  - or -
+
+  Switch to `callRouteRaw` if you need the raw response:
+
+  ```diff
+  - const response = await fragment.callRoute("GET", "/users");
+  + const response = await fragment.callRouteRaw("GET", "/users");
+  ```
+
+- e99ef47: feat: expose `db` object to run queries directly in tests
+- Updated dependencies [be1a630]
+- Updated dependencies [b2a88aa]
+- Updated dependencies [2900bfa]
+- Updated dependencies [059a249]
+- Updated dependencies [f3f7bc2]
+- Updated dependencies [a9f8159]
+- Updated dependencies [9d4cd3a]
+- Updated dependencies [fdb5aaf]
+  - @fragno-dev/core@0.1.6
+  - @fragno-dev/db@0.1.12
+
 ## 0.1.8
 
 ### Patch Changes

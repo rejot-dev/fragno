@@ -1,5 +1,35 @@
 # @fragno-dev/cli
 
+## 0.1.14
+
+### Patch Changes
+
+- 4ec7e78: feat: add search command for documentation lookup
+
+  Add a new `search` command to fragno-cli that searches the Fragno documentation directly from the
+  command line. Results are automatically grouped by page URL with all relevant sections displayed
+  together.
+
+- 4ec7e78: feat: add corpus command to view code examples and documentation
+
+  The new `corpus` command allows users and LLMs to access tested, type-checked code examples
+  organized by subject. Examples include route definition, database querying, and adapter setup. Use
+  `fragno-cli corpus [topic...]` to view one or more topics.
+
+- 27cc540: fix: Corpus dependency issue
+- Updated dependencies [be1a630]
+- Updated dependencies [b2a88aa]
+- Updated dependencies [2900bfa]
+- Updated dependencies [27cc540]
+- Updated dependencies [059a249]
+- Updated dependencies [f3f7bc2]
+- Updated dependencies [a9f8159]
+- Updated dependencies [9d4cd3a]
+- Updated dependencies [fdb5aaf]
+  - @fragno-dev/core@0.1.6
+  - @fragno-dev/db@0.1.12
+  - @fragno-dev/corpus@0.0.2
+
 ## 0.1.13
 
 ### Patch Changes
