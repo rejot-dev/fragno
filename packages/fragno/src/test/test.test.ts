@@ -367,6 +367,34 @@ describe("fragment.callRoute", () => {
     }
   });
 
+  it("should have the right types", () => {
+    const fragment = defineFragment<{}>("test");
+
+    const route = defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({ name: z.string(), email: z.string() }),
+      outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
+      handler: async ({ input }, { json }) => {
+        if (input) {
+          const data = await input.valid();
+          return json({ id: 1, name: data.name, email: data.email });
+        }
+        return json({ id: 1, name: "", email: "" });
+      },
+    });
+
+    const testFragment = createFragmentForTest(fragment, [route], {
+      config: {},
+    });
+
+    // Check what type body is expected to have
+    type InputOptions = Parameters<typeof testFragment.callRoute<"POST", "/users">>[2];
+    type BodyType = NonNullable<NonNullable<InputOptions>["body"]>;
+
+    expectTypeOf<BodyType>().toMatchObjectType<{ name: string; email: string }>();
+  });
+
   it("should handle custom headers", async () => {
     const fragment = defineFragment<{}>("test");
 

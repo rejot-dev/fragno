@@ -20,7 +20,7 @@ import {
 import type { FragmentDefinition } from "./fragment-builder";
 import { MutableRequestState } from "./mutable-request-state";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
-import type { ExtractRoutePath } from "../client/client";
+import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -101,13 +101,7 @@ export interface FragnoInstantiatedFragment<
     path: TPath,
     inputOptions?: RouteHandlerInputOptions<
       TPath,
-      Extract<TRoutes[number], { method: TMethod; path: TPath }> extends {
-        inputSchema: infer TInputSchema;
-      }
-        ? TInputSchema extends StandardSchemaV1 | undefined
-          ? TInputSchema
-          : undefined
-        : undefined
+      ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
     >,
   ) => Promise<Response>;
   withMiddleware: (
@@ -221,13 +215,7 @@ export function createFragment<
       path: TPath,
       inputOptions?: RouteHandlerInputOptions<
         TPath,
-        Extract<TRoutes[number], { method: TMethod; path: TPath }> extends {
-          inputSchema: infer TInputSchema;
-        }
-          ? TInputSchema extends StandardSchemaV1 | undefined
-            ? TInputSchema
-            : undefined
-          : undefined
+        ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
       >,
     ): Promise<Response> => {
       // Find the route configuration
