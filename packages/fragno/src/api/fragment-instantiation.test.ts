@@ -31,9 +31,11 @@ describe("callRoute", () => {
       body: { name: "World" },
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ message: "Hello, World!" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ message: "Hello, World!" });
+    }
   });
 
   test("calls route handler with path params", async () => {
@@ -60,9 +62,11 @@ describe("callRoute", () => {
       pathParams: { id: "123" },
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ userId: "123" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ userId: "123" });
+    }
   });
 
   test("calls route handler with query parameters", async () => {
@@ -93,9 +97,11 @@ describe("callRoute", () => {
       query: { q: "test", limit: "10" },
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ query: "test", limit: "10" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ query: "test", limit: "10" });
+    }
   });
 
   test("calls route handler with URLSearchParams query", async () => {
@@ -124,9 +130,11 @@ describe("callRoute", () => {
       query: searchParams,
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ query: "test-query" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ query: "test-query" });
+    }
   });
 
   test("calls route handler with headers", async () => {
@@ -153,9 +161,11 @@ describe("callRoute", () => {
       headers: { authorization: "Bearer token123" },
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ auth: "Bearer token123" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ auth: "Bearer token123" });
+    }
   });
 
   test("calls route handler with Headers object", async () => {
@@ -183,9 +193,11 @@ describe("callRoute", () => {
       headers: requestHeaders,
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ auth: "Bearer token456" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ auth: "Bearer token456" });
+    }
   });
 
   test("preserves response headers including Set-Cookie", async () => {
@@ -217,11 +229,13 @@ describe("callRoute", () => {
       body: { username: "testuser" },
     });
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Set-Cookie")).toBe("session=testuser; HttpOnly; Path=/");
-    expect(response.headers.get("X-Custom-Header")).toBe("custom-value");
-    const data = await response.json();
-    expect(data).toEqual({ success: true });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Set-Cookie")).toBe("session=testuser; HttpOnly; Path=/");
+      expect(response.headers.get("X-Custom-Header")).toBe("custom-value");
+      expect(response.data).toEqual({ success: true });
+    }
   });
 
   test("validates input and returns error for invalid data", async () => {
@@ -250,9 +264,11 @@ describe("callRoute", () => {
       body: { age: 15 },
     });
 
-    expect(response.status).toBe(400);
-    const data = await response.json();
-    expect(data).toHaveProperty("code", "FRAGNO_VALIDATION_ERROR");
+    expect(response.type).toBe("error");
+    if (response.type === "error") {
+      expect(response.status).toBe(400);
+      expect(response.error.code).toBe("FRAGNO_VALIDATION_ERROR");
+    }
   });
 
   test("handles errors thrown in route handler", async () => {
@@ -277,12 +293,14 @@ describe("callRoute", () => {
 
     const response = await instance.callRoute("GET", "/error");
 
-    expect(response.status).toBe(500);
-    const data = await response.json();
-    expect(data).toEqual({
-      error: "Internal server error",
-      code: "INTERNAL_SERVER_ERROR",
-    });
+    expect(response.type).toBe("error");
+    if (response.type === "error") {
+      expect(response.status).toBe(500);
+      expect(response.error).toEqual({
+        message: "Internal server error",
+        code: "INTERNAL_SERVER_ERROR",
+      });
+    }
   });
 
   test("calls route handler with all parameters combined", async () => {
@@ -325,14 +343,16 @@ describe("callRoute", () => {
       headers: { authorization: "Bearer xyz" },
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({
-      id: "user123",
-      name: "John Doe",
-      reason: "profile-update",
-      auth: "Bearer xyz",
-    });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({
+        id: "user123",
+        name: "John Doe",
+        reason: "profile-update",
+        auth: "Bearer xyz",
+      });
+    }
   });
 
   test("calls route handler with no input options", async () => {
@@ -357,9 +377,11 @@ describe("callRoute", () => {
 
     const response = await instance.callRoute("GET", "/ping");
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ status: "ok" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ status: "ok" });
+    }
   });
 
   test("uses services in route handler called via callRoute", async () => {
@@ -392,9 +414,11 @@ describe("callRoute", () => {
 
     const response = await instance.callRoute("GET", "/me");
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ name: "Test User" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ name: "Test User" });
+    }
   });
 
   test("uses deps in route handler called via callRoute", async () => {
@@ -427,8 +451,10 @@ describe("callRoute", () => {
 
     const response = await instance.callRoute("GET", "/data");
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toEqual({ result: "database-result" });
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.status).toBe(200);
+      expect(response.data).toEqual({ result: "database-result" });
+    }
   });
 });

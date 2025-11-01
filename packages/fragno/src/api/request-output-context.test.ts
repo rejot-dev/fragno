@@ -53,8 +53,8 @@ describe("RequestOutputContext", () => {
       expect(response).toBeInstanceOf(Response);
       expect(response.status).toBe(201);
 
-      const body = await response.json();
-      expect(body).toBe(null);
+      const body = await response.text();
+      expect(body).toBe("");
     });
 
     test("Should return empty response with custom status number", async () => {
@@ -63,8 +63,8 @@ describe("RequestOutputContext", () => {
 
       expect(response.status).toBe(204);
 
-      const body = await response.json();
-      expect(body).toBe(null);
+      const body = await response.text();
+      expect(body).toBe("");
     });
 
     test("Should return empty response with custom headers via second parameter", async () => {
@@ -75,8 +75,8 @@ describe("RequestOutputContext", () => {
       expect(response.status).toBe(201);
       expect(response.headers.get("X-Custom")).toBe("test-value");
 
-      const body = await response.json();
-      expect(body).toBe(null);
+      const body = await response.text();
+      expect(body).toBe("");
     });
 
     test("Should return empty response with status and headers via second parameter", async () => {
@@ -87,8 +87,8 @@ describe("RequestOutputContext", () => {
       expect(response.status).toBe(204);
       expect(response.headers.get("X-Custom")).toBe("test-value");
 
-      const body = await response.json();
-      expect(body).toBe(null);
+      const body = await response.text();
+      expect(body).toBe("");
     });
 
     test("Should return empty response with ResponseInit object", async () => {
@@ -103,8 +103,8 @@ describe("RequestOutputContext", () => {
       expect(response.status).toBe(204);
       expect(response.headers.get("X-Custom")).toBe("test-value");
 
-      const body = await response.json();
-      expect(body).toBe(null);
+      const body = await response.text();
+      expect(body).toBe("");
     });
 
     test("Should handle multiple headers in ResponseInit", async () => {

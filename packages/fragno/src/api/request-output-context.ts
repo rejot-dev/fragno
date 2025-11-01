@@ -75,7 +75,7 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
 
     if (typeof initOrStatus === "undefined") {
       const mergedHeaders = mergeHeaders(defaultHeaders, headers);
-      return Response.json(null, {
+      return new Response(null, {
         status: 201,
         headers: mergedHeaders,
       });
@@ -83,14 +83,14 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
 
     if (typeof initOrStatus === "number") {
       const mergedHeaders = mergeHeaders(defaultHeaders, headers);
-      return Response.json(null, {
+      return new Response(null, {
         status: initOrStatus,
         headers: mergedHeaders,
       });
     }
 
     const mergedHeaders = mergeHeaders(defaultHeaders, initOrStatus.headers, headers);
-    return Response.json(null, {
+    return new Response(null, {
       status: initOrStatus.status,
       headers: mergedHeaders,
     });

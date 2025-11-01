@@ -21,6 +21,8 @@ import type { FragmentDefinition } from "./fragment-builder";
 import { MutableRequestState } from "./mutable-request-state";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
+import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
+import type { InferOrUnknown } from "../util/types-util";
 
 export interface FragnoPublicConfig {
   mountRoute?: string;
@@ -97,6 +99,18 @@ export interface FragnoInstantiatedFragment<
   handler: (req: Request) => Promise<Response>;
   mountRoute: string;
   callRoute: <TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
+    method: TMethod,
+    path: TPath,
+    inputOptions?: RouteHandlerInputOptions<
+      TPath,
+      ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
+    >,
+  ) => Promise<
+    FragnoResponse<
+      InferOrUnknown<NonNullable<ExtractRouteByPath<TRoutes, TPath, TMethod>["outputSchema"]>>
+    >
+  >;
+  callRouteRaw: <TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
     method: TMethod,
     path: TPath,
     inputOptions?: RouteHandlerInputOptions<
@@ -211,6 +225,24 @@ export function createFragment<
       return fragment;
     },
     callRoute: async <TMethod extends HTTPMethod, TPath extends ExtractRoutePath<TRoutes, TMethod>>(
+      method: TMethod,
+      path: TPath,
+      inputOptions?: RouteHandlerInputOptions<
+        TPath,
+        ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
+      >,
+    ): Promise<
+      FragnoResponse<
+        InferOrUnknown<NonNullable<ExtractRouteByPath<TRoutes, TPath, TMethod>["outputSchema"]>>
+      >
+    > => {
+      const response = await fragment.callRouteRaw(method, path, inputOptions);
+      return parseFragnoResponse(response);
+    },
+    callRouteRaw: async <
+      TMethod extends HTTPMethod,
+      TPath extends ExtractRoutePath<TRoutes, TMethod>,
+    >(
       method: TMethod,
       path: TPath,
       inputOptions?: RouteHandlerInputOptions<

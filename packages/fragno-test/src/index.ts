@@ -22,7 +22,6 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 // Re-export utilities from @fragno-dev/core/test
 export {
   createFragmentForTest,
-  type TestResponse,
   type CreateFragmentForTestOptions,
   type RouteHandlerInputOptions,
   type FragmentForTest,
