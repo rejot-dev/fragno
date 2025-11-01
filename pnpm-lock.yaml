@@ -744,17 +744,13 @@ importers:
         version: 5.9.3
 
   packages/corpus:
-    dependencies:
+    devDependencies:
       '@fragno-dev/core':
         specifier: workspace:*
         version: link:../fragno
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
-      zod:
-        specifier: ^4.0.5
-        version: 4.1.12
-    devDependencies:
       '@fragno-private/typescript-config':
         specifier: workspace:*
         version: link:../../packages-private/typescript-config
@@ -770,6 +766,9 @@ importers:
       kysely:
         specifier: ^0.28.0
         version: 0.28.8
+      zod:
+        specifier: ^4.0.5
+        version: 4.1.12
 
   packages/create:
     dependencies:

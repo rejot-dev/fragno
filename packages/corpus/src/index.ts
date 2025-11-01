@@ -5,7 +5,7 @@ import {
   loadAllSubjects,
   type SubjectInfo,
   type Subject,
-} from "./parser.js";
+} from "./parser";
 
 /**
  * Get basic information about all available subjects

@@ -19,14 +19,12 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/db": "workspace:*",
-    "zod": "^4.0.5"
-  },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "zod": "^4.0.5",
     "@types/node": "^22",
     "drizzle-orm": "^0.44.7",
     "kysely": "^0.28.0"

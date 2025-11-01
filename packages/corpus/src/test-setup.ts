@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadAllSubjects } from "./parser.js";
+import { loadAllSubjects } from "./parser";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const TEMP_TEST_DIR = join(__dirname, "../.corpus-tests");
