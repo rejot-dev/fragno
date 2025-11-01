@@ -1,5 +1,51 @@
 # @fragno-dev/core
 
+## 0.1.6
+
+### Patch Changes
+
+- be1a630: **BREAKING**: `callRoute` now returns type-safe `FragnoResponse<T>` instead of raw
+  `Response`
+
+  The `callRoute` method on fragment instances now returns a parsed `FragnoResponse<T>`
+  discriminated union instead of a raw `Response`. This provides type-safe access to response data
+  without manual JSON parsing.
+
+  **Migration:**
+
+  Preferably use the new type-safe response:
+
+  ```diff
+  - const response = await fragment.callRoute("GET", "/users");
+  - const data = await response.json();
+  + const response = await fragment.callRoute("GET", "/users");
+  + if (response.type === "json") {
+  +   const data = response.data; // fully typed!
+  + }
+  ```
+
+  - or -
+
+  Switch to `callRouteRaw` if you need the raw response:
+
+  ```diff
+  - const response = await fragment.callRoute("GET", "/users");
+  + const response = await fragment.callRouteRaw("GET", "/users");
+  ```
+
+- b2a88aa: Add custom fetcher configuration support for ClientBuilder
+
+  Fragment authors can now provide default fetch configuration when creating clients, and users can
+  override or extend these settings. Supports both RequestInit options (credentials, headers, etc.)
+  and custom fetch functions.
+
+- a9f8159: feat: introduce `callRoute` API method on instantiated Fragments
+
+  test: the `createFragmentForTest` signature has also changed to accept routes as the second
+  parameter, and the test fragment's `callRoute` now uses the same signature as the main API.
+
+- 9d4cd3a: fix: improve typing on callRoute body parameter
+
 ## 0.1.5
 
 ### Patch Changes

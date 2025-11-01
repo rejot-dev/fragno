@@ -1,5 +1,18 @@
 # @fragno-dev/db
 
+## 0.1.12
+
+### Patch Changes
+
+- 2900bfa: fix: improve typing on query results
+- 059a249: Properly construct return type for `find` and `findFirst` with `select()`. The return
+  type now correctly infers only the selected columns from the builder function, providing better
+  type safety when using `.select()` to specify a subset of columns.
+- f3f7bc2: feat: allow creating and referencing an object in a single unit of work
+- fdb5aaf: Fix timestamp deserialization for PostgreSQL, MySQL, and CockroachDB. Previously,
+  timestamp and date columns were returned as strings instead of JavaScript Date objects. Now they
+  are properly converted to Date objects with full timezone support.
+
 ## 0.1.11
 
 ### Patch Changes
