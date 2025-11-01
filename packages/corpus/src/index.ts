@@ -48,4 +48,4 @@ export function getAllSubjects(): Subject[] {
 }
 
 // Re-export types
-export type { Subject, SubjectInfo, Example } from "./parser.js";
+export type { Subject, SubjectInfo, Example, Section } from "./parser.js";

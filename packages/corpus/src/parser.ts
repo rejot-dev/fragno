@@ -24,6 +24,14 @@ export interface Example {
 }
 
 /**
+ * A markdown section with heading and content
+ */
+export interface Section {
+  heading: string;
+  content: string;
+}
+
+/**
  * Complete subject with all examples and metadata
  */
 export interface Subject {
@@ -33,6 +41,7 @@ export interface Subject {
   imports: string;
   init: string;
   examples: Example[];
+  sections: Section[];
 }
 
 /**
@@ -49,6 +58,7 @@ export interface ParsedMarkdown {
     testType?: "route" | "database" | "none";
     testName?: string;
   }>;
+  sections: Section[];
 }
 
 // Look for subjects directory in source or relative to built dist
@@ -118,12 +128,34 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
   const descriptionMatch = afterTitle.match(/\n\n([\s\S]*?)(?=```|##|$)/);
   const description = descriptionMatch ? descriptionMatch[1].trim() : "";
 
+  // Extract all sections (## headings and their content)
+  const sections: Section[] = [];
+  const sectionRegex = /^##\s+(.+)$/gm;
+  const matches = [...content.matchAll(sectionRegex)];
+
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    const heading = match[1].trim();
+    const sectionStart = match.index! + match[0].length;
+    const nextSectionStart = matches[i + 1]?.index ?? content.length;
+    let sectionContent = content.substring(sectionStart, nextSectionStart).trim();
+
+    // Convert @fragno directive code blocks to regular typescript blocks for display
+    sectionContent = sectionContent.replace(/```typescript @fragno-\w+(?::\w+)?/g, "```typescript");
+    sectionContent = sectionContent.trim();
+
+    if (sectionContent) {
+      sections.push({ heading, content: sectionContent });
+    }
+  }
+
   return {
     title,
     description,
     imports,
     init,
     testBlocks,
+    sections,
   };
 }
 
@@ -145,6 +177,7 @@ export function markdownToSubject(id: string, parsed: ParsedMarkdown): Subject {
     imports: parsed.imports,
     init: parsed.init,
     examples,
+    sections: parsed.sections,
   };
 }
 

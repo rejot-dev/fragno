@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 
-import { cli, define, parseArgs, resolveArgs } from "gunshi";
+import { cli, define } from "gunshi";
 import { generateCommand } from "./commands/db/generate.js";
 import { migrateCommand } from "./commands/db/migrate.js";
 import { infoCommand } from "./commands/db/info.js";
 import { searchCommand } from "./commands/search.js";
 import { corpusCommand } from "./commands/corpus.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf-8"));
+const version = packageJson.version;
 
 // Create a Map of db sub-commands
 const dbSubCommands = new Map();
@@ -13,108 +20,112 @@ dbSubCommands.set("generate", generateCommand);
 dbSubCommands.set("migrate", migrateCommand);
 dbSubCommands.set("info", infoCommand);
 
-// Helper function to print db command help
-function printDbHelp() {
-  console.log("Database management commands for Fragno");
-  console.log("");
-  console.log("Usage: fragno-cli db <command> [options]");
-  console.log("");
-  console.log("Commands:");
-  console.log("  generate    Generate schema files from FragnoDatabase definitions");
-  console.log("  migrate     Run database migrations");
-  console.log("  info        Display database information and migration status");
-  console.log("");
-  console.log("Run 'fragno-cli db <command> --help' for more information.");
-}
-
-// Define the db command with type safety
+// Define the db command with nested subcommands
 export const dbCommand = define({
   name: "db",
   description: "Database management commands",
-  run: printDbHelp,
 });
 
-// Create a Map of root sub-commands
-const rootSubCommands = new Map();
-rootSubCommands.set("db", dbCommand);
-rootSubCommands.set("search", searchCommand);
-rootSubCommands.set("corpus", corpusCommand);
-
-// Define the main command with type safety
+// Define the main command
 export const mainCommand = define({
   name: "fragno-cli",
-  description: "Fragno CLI - Tools for working with Fragno fragments",
-  run: () => {
-    console.log("Fragno CLI - Tools for working with Fragno fragments");
-    console.log("");
-    console.log("Usage: fragno-cli <command> [options]");
-    console.log("");
-    console.log("Commands:");
-    console.log("  db       Database management commands");
-    console.log("  search   Search the Fragno documentation");
-    console.log("  corpus   View code examples and documentation");
-    console.log("");
-    console.log("Run 'fragno-cli <command> --help' for more information.");
-  },
+  description: "Tools for working with Fragno fragments",
 });
 
 if (import.meta.main) {
   try {
-    // Parse arguments to handle nested subcommands
     const args = process.argv.slice(2);
 
-    // Check if we're calling the search or corpus command directly
+    // Manual routing for top-level commands
     if (args[0] === "search") {
-      const searchArgs = args.slice(1);
-      await cli(searchArgs, searchCommand);
+      // Run search command directly
+      await cli(args.slice(1), searchCommand, {
+        name: "fragno-cli search",
+        version,
+      });
     } else if (args[0] === "corpus") {
-      const corpusArgs = args.slice(1);
-      await cli(corpusArgs, corpusCommand);
-    } else if (args[0] === "db" && args.length > 1) {
+      // Run corpus command directly
+      await cli(args.slice(1), corpusCommand, {
+        name: "fragno-cli corpus",
+        version,
+      });
+    } else if (args[0] === "db") {
+      // Handle db subcommands
       const subCommandName = args[1];
 
-      // Check if it's a help request
-      if (subCommandName === "--help" || subCommandName === "-h") {
-        printDbHelp();
-        process.exit(0);
-      }
-
-      const subCommand = dbSubCommands.get(subCommandName);
-
-      if (!subCommand) {
-        console.error(`Unknown command: ${subCommandName}`);
+      if (!subCommandName || subCommandName === "--help" || subCommandName === "-h") {
+        // Show db help with subcommands
+        console.log("fragno-cli (fragno-cli v" + version + ")");
         console.log("");
-        printDbHelp();
-        process.exit(1);
+        console.log("Database management commands");
+        console.log("");
+        console.log("USAGE:");
+        console.log("  fragno-cli db <COMMAND>");
+        console.log("");
+        console.log("COMMANDS:");
+        console.log(
+          "  generate              Generate schema files from FragnoDatabase definitions",
+        );
+        console.log("  migrate               Run database migrations");
+        console.log("  info                  Display database information and migration status");
+        console.log("");
+        console.log("For more info, run any command with the `--help` flag:");
+        console.log("  fragno-cli db generate --help");
+        console.log("  fragno-cli db migrate --help");
+        console.log("  fragno-cli db info --help");
+        console.log("");
+        console.log("OPTIONS:");
+        console.log("  -h, --help             Display this help message");
+        console.log("  -v, --version          Display this version");
+      } else if (subCommandName === "--version" || subCommandName === "-v") {
+        console.log(version);
+      } else {
+        // Route to specific db subcommand
+        const subCommand = dbSubCommands.get(subCommandName);
+
+        if (!subCommand) {
+          console.error(`Unknown command: ${subCommandName}`);
+          console.log("");
+          console.log("Run 'fragno-cli db --help' for available commands.");
+          process.exit(1);
+        }
+
+        // Run the subcommand
+        await cli(args.slice(2), subCommand, {
+          name: `fragno-cli db ${subCommandName}`,
+          version,
+        });
       }
-
-      // Run the specific subcommand with its args
-      const subArgs = args.slice(2);
-      const isSubCommandHelp = subArgs.includes("--help") || subArgs.includes("-h");
-
-      // Check for validation errors before running
-      let hasValidationError = false;
-      if (!isSubCommandHelp && subCommand.args) {
-        const tokens = parseArgs(subArgs);
-        const resolved = resolveArgs(subCommand.args, tokens);
-        hasValidationError = !!resolved.error;
-      }
-
-      // Run the command (let gunshi handle printing errors/help)
-      await cli(subArgs, subCommand);
-
-      // Exit with error code if there was a validation error
-      if (hasValidationError) {
-        process.exit(1);
-      }
-    } else if (args[0] === "db") {
-      // "db" command with no subcommand - show db help
-      printDbHelp();
+    } else if (!args.length || args[0] === "--help" || args[0] === "-h") {
+      // Show main help
+      console.log("fragno-cli (fragno-cli v" + version + ")");
+      console.log("");
+      console.log("Tools for working with Fragno fragments");
+      console.log("");
+      console.log("USAGE:");
+      console.log("  fragno-cli <COMMAND>");
+      console.log("");
+      console.log("COMMANDS:");
+      console.log("  db                    Database management commands");
+      console.log("  search                Search the Fragno documentation");
+      console.log("  corpus                View code examples and documentation for Fragno");
+      console.log("");
+      console.log("For more info, run any command with the `--help` flag:");
+      console.log("  fragno-cli db --help");
+      console.log("  fragno-cli search --help");
+      console.log("  fragno-cli corpus --help");
+      console.log("");
+      console.log("OPTIONS:");
+      console.log("  -h, --help             Display this help message");
+      console.log("  -v, --version          Display this version");
+    } else if (args[0] === "--version" || args[0] === "-v") {
+      console.log(version);
     } else {
-      // Run the main CLI
-      await cli(args, mainCommand, {
-        subCommands: rootSubCommands,
-      });
+      // Unknown command
+      console.error(`Unknown command: ${args[0]}`);
+      console.log("");
+      console.log("Run 'fragno-cli --help' for available commands.");
+      process.exit(1);
     }
   } catch (error) {
     console.error("Error:", error instanceof Error ? error.message : error);

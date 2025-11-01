@@ -99,6 +99,7 @@ describe("markdownToSubject", () => {
       imports: "import { x } from 'y';",
       init: "const config = {};",
       testBlocks: [{ code: "const test = 1;", explanation: "Test explanation" }],
+      sections: [],
     };
 
     const result = markdownToSubject("test-id", parsed);

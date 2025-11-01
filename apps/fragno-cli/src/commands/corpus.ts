@@ -30,20 +30,10 @@ function printSubject(subject: ReturnType<typeof getSubject>[number]): void {
     console.log("```\n");
   }
 
-  // Print examples
-  for (let i = 0; i < subject.examples.length; i++) {
-    const example = subject.examples[i];
-
-    console.log(`### Example ${i + 1}\n`);
-    console.log("```typescript");
-    console.log(example.code);
-    console.log("```");
-
-    if (example.explanation) {
-      console.log();
-      console.log(example.explanation);
-    }
-
+  // Print all sections (full markdown content)
+  for (const section of subject.sections) {
+    console.log(`## ${section.heading}\n`);
+    console.log(section.content);
     console.log();
   }
 }
