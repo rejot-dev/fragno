@@ -79,5 +79,5 @@ CLAUDE.local.md
 !.beads/*.jsonl
 
 # Corpus tests
-**/.corpus-tests
-.corpus-tests
+**/corpus-tests
+corpus-tests

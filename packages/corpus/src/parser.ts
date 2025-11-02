@@ -19,7 +19,6 @@ export interface SubjectInfo {
 export interface Example {
   code: string;
   explanation: string;
-  testType?: "route" | "database" | "none";
   testName?: string;
 }
 
@@ -55,7 +54,6 @@ export interface ParsedMarkdown {
   testBlocks: Array<{
     code: string;
     explanation: string;
-    testType?: "route" | "database" | "none";
     testName?: string;
   }>;
   sections: Section[];
@@ -90,22 +88,18 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
   const initMatch = content.match(/```typescript @fragno-init\n([\s\S]*?)```/);
   const init = initMatch ? initMatch[1].trim() : "";
 
-  // Extract all test blocks with their explanations and test type
+  // Extract all test blocks with their explanations
   const testBlockRegex =
-    /```typescript @fragno-test(?::(\w+))?\n([\s\S]*?)```([\s\S]*?)(?=```typescript @fragno-test|$)/g;
+    /```typescript @fragno-test\n([\s\S]*?)```([\s\S]*?)(?=```typescript @fragno-test|$)/g;
   const testBlocks: Array<{
     code: string;
     explanation: string;
-    testType?: "route" | "database" | "none";
     testName?: string;
   }> = [];
 
   let match;
   while ((match = testBlockRegex.exec(content)) !== null) {
-    const testTypeRaw = match[1]; // route, database, or undefined
-    const testType = testTypeRaw === "route" || testTypeRaw === "database" ? testTypeRaw : "none";
-
-    const code = match[2].trim();
+    const code = match[1].trim();
 
     // Extract test name from first line if it's a comment
     const lines = code.split("\n");
@@ -115,12 +109,12 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
     }
 
     // Get explanation text after the code block until next code block or end
-    const afterBlock = match[3];
+    const afterBlock = match[2];
     const explanation = afterBlock
       .split(/```/)[0] // Stop at next code block
       .trim();
 
-    testBlocks.push({ code, explanation, testType, testName });
+    testBlocks.push({ code, explanation, testName });
   }
 
   // Extract description (everything between title and first code block or ## heading)
@@ -166,7 +160,6 @@ export function markdownToSubject(id: string, parsed: ParsedMarkdown): Subject {
   const examples: Example[] = parsed.testBlocks.map((block) => ({
     code: block.code,
     explanation: block.explanation,
-    testType: block.testType,
     testName: block.testName,
   }));
 

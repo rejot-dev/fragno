@@ -5,6 +5,6 @@
     "rootDir": ".",
     "composite": true
   },
-  "include": ["src"],
+  "include": ["src", "corpus-tests"],
   "exclude": ["node_modules", "dist"]
 }

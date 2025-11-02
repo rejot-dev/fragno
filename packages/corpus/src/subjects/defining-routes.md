@@ -13,7 +13,7 @@ import { z } from "zod";
 
 A simple GET route with an output schema.
 
-```typescript @fragno-test:route
+```typescript @fragno-test
 // should define a basic GET route
 const basicGetRoute = defineRoute({
   method: "GET",
@@ -35,7 +35,7 @@ The handler receives a context object and helpers like `json()` for sending resp
 
 Routes can accept and validate request bodies using `inputSchema`.
 
-```typescript @fragno-test:route
+```typescript @fragno-test
 // should define a POST route with input schema
 const createItemRoute = defineRoute({
   method: "POST",
@@ -70,7 +70,7 @@ The `input.valid()` method validates the request body against the schema and ret
 
 Routes can declare query parameters they expect to receive.
 
-```typescript @fragno-test:route
+```typescript @fragno-test
 // should define a route with query parameters
 const listItemsRoute = defineRoute({
   method: "GET",
@@ -103,7 +103,7 @@ Query parameters are accessed via `query.get(name)` from the context.
 
 Routes can define custom error codes and return errors with appropriate status codes.
 
-```typescript @fragno-test:route
+```typescript @fragno-test
 // should define a route with error codes
 const validateItemRoute = defineRoute({
   method: "POST",

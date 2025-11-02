@@ -92,9 +92,9 @@ describe("corpus API", () => {
     it("database-querying should have database content", () => {
       const [subject] = getSubject("database-querying");
 
-      // Database querying examples are currently documentation-only
       expect(subject.title).toBe("Database Querying");
-      expect(subject.imports).toContain("defineFragnoDatabase");
+      expect(subject.imports).toContain("defineFragmentWithDatabase");
+      expect(subject.examples.length).toBeGreaterThan(0);
     });
 
     it("database-adapters should have adapter overview", () => {

@@ -4,8 +4,10 @@ Fragno provides a unified database query API that works across different ORMs. T
 CRUD operations and querying with conditions.
 
 ```typescript @fragno-imports
-import { defineFragnoDatabase, schema, idColumn, column } from "@fragno-dev/db";
-import type { AbstractQuery } from "@fragno-dev/db";
+import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
+import { schema, idColumn, column } from "@fragno-dev/db/schema";
+import type { AbstractQuery } from "@fragno-dev/db/query";
+import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 ```
 
 ```typescript @fragno-init
@@ -32,24 +34,36 @@ const userSchema = schema((s) => {
 });
 
 type UserSchema = typeof userSchema;
-declare const orm: AbstractQuery<UserSchema>;
+
+// Create a test fragment with database
+const testFragmentDef = defineFragmentWithDatabase("test-db-fragment")
+  .withDatabase(userSchema)
+  .withServices(({ orm }) => {
+    return { orm };
+  });
+
+const { fragment, test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
+  adapter: { type: "kysely-sqlite" },
+});
+
+const orm = fragment.services.orm;
 ```
 
 ## Create
 
 Create a single record in the database.
 
-```typescript
-export async function createUser() {
-  const userId = await orm.create("users", {
-    id: "user-123",
-    email: "john@example.com",
-    name: "John Doe",
-    age: 30,
-  });
+```typescript @fragno-test
+// should create a single user
+const userId = await orm.create("users", {
+  id: "user-123",
+  email: "john@example.com",
+  name: "John Doe",
+  age: 30,
+});
 
-  return userId; // Returns a FragnoId object
-}
+expect(userId).toBeDefined();
+expect(userId.valueOf()).toBe("user-123");
 ```
 
 The `create` method returns a `FragnoId` object representing the created record's ID.
@@ -58,39 +72,48 @@ The `create` method returns a `FragnoId` object representing the created record'
 
 Create multiple records at once.
 
-```typescript
-export async function createMultipleUsers() {
-  const userIds = await orm.createMany("users", [
-    {
-      id: "user-1",
-      email: "user1@example.com",
-      name: "User One",
-      age: 25,
-    },
-    {
-      id: "user-2",
-      email: "user2@example.com",
-      name: "User Two",
-      age: 35,
-    },
-  ]);
+```typescript @fragno-test
+// should create multiple users at once
+const userIds = await orm.createMany("users", [
+  {
+    id: "user-1",
+    email: "user1@example.com",
+    name: "User One",
+    age: 25,
+  },
+  {
+    id: "user-2",
+    email: "user2@example.com",
+    name: "User Two",
+    age: 35,
+  },
+]);
 
-  return userIds; // Returns an array of FragnoId objects
-}
+expect(userIds).toHaveLength(2);
+expect(userIds[0].valueOf()).toBe("user-1");
+expect(userIds[1].valueOf()).toBe("user-2");
 ```
 
 ## Find First
 
 Query for a single record using an index.
 
-```typescript
-export async function findUserByEmail(email: string) {
-  const user = await orm.findFirst("users", (b) =>
-    b.whereIndex("idx_email", (eb) => eb("email", "=", email)),
-  );
+```typescript @fragno-test
+// should find user by email using index
+await orm.create("users", {
+  id: "user-find-1",
+  email: "findme@example.com",
+  name: "Find Me",
+  age: 28,
+});
 
-  return user; // Returns the user object or null if not found
-}
+const user = await orm.findFirst("users", (b) =>
+  b.whereIndex("idx_email", (eb) => eb("email", "=", "findme@example.com")),
+);
+
+expect(user).toBeDefined();
+expect(user?.email).toBe("findme@example.com");
+expect(user?.name).toBe("Find Me");
 ```
 
 Use `findFirst` when you expect a single result or want to get the first matching record.
@@ -113,14 +136,39 @@ export async function findUserEmailOnly(userId: string) {
 
 Query for multiple records matching conditions.
 
-```typescript
-export async function findPostsByAuthor(authorId: string) {
-  const posts = await orm.find("posts", (b) =>
-    b.whereIndex("idx_author", (eb) => eb("authorId", "=", authorId)),
-  );
+```typescript @fragno-test
+// should find multiple posts by author
+await orm.createMany("posts", [
+  {
+    id: "post-1",
+    title: "First Post",
+    content: "Content 1",
+    authorId: "author-123",
+    publishedAt: null,
+  },
+  {
+    id: "post-2",
+    title: "Second Post",
+    content: "Content 2",
+    authorId: "author-123",
+    publishedAt: null,
+  },
+  {
+    id: "post-3",
+    title: "Other Post",
+    content: "Content 3",
+    authorId: "author-456",
+    publishedAt: null,
+  },
+]);
 
-  return posts; // Returns an array of posts
-}
+const posts = await orm.find("posts", (b) =>
+  b.whereIndex("idx_author", (eb) => eb("authorId", "=", "author-123")),
+);
+
+expect(posts).toHaveLength(2);
+expect(posts[0].authorId).toBe("author-123");
+expect(posts[1].authorId).toBe("author-123");
 ```
 
 The `find` method returns all records matching the where clause.
@@ -155,14 +203,27 @@ When using `whereIndex("primary")` without conditions, it returns all records.
 
 Update a single record by ID.
 
-```typescript
-export async function updateUserEmail(userId: string, newEmail: string) {
-  await orm.update("users", userId, (b) =>
-    b.set({
-      email: newEmail,
-    }),
-  );
-}
+```typescript @fragno-test
+// should update a user's email
+await orm.create("users", {
+  id: "user-update-1",
+  email: "old@example.com",
+  name: "Update Test",
+  age: 30,
+});
+
+await orm.update("users", "user-update-1", (b) =>
+  b.set({
+    email: "new@example.com",
+  }),
+);
+
+const updatedUser = await orm.findFirst("users", (b) =>
+  b.whereIndex("primary", (eb) => eb("id", "=", "user-update-1")),
+);
+
+expect(updatedUser?.email).toBe("new@example.com");
+expect(updatedUser?.name).toBe("Update Test");
 ```
 
 The `update` method modifies a single record identified by its ID.
@@ -185,10 +246,22 @@ export async function updatePostsPublishedDate(authorId: string, publishedAt: Da
 
 Delete a single record by ID.
 
-```typescript
-export async function deleteUser(userId: string) {
-  await orm.delete("users", userId);
-}
+```typescript @fragno-test
+// should delete a user by ID
+await orm.create("users", {
+  id: "user-delete-1",
+  email: "delete@example.com",
+  name: "Delete Me",
+  age: 25,
+});
+
+await orm.delete("users", "user-delete-1");
+
+const deletedUser = await orm.findFirst("users", (b) =>
+  b.whereIndex("primary", (eb) => eb("id", "=", "user-delete-1")),
+);
+
+expect(deletedUser).toBeNull();
 ```
 
 ## Delete Many
