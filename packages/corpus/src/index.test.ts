@@ -59,6 +59,15 @@ describe("corpus API", () => {
       expect(typeof example.code).toBe("string");
       expect(typeof example.explanation).toBe("string");
     });
+
+    it("should have prelude and testInit arrays", () => {
+      const [subject] = getSubject("defining-routes");
+
+      expect(subject).toHaveProperty("prelude");
+      expect(subject).toHaveProperty("testInit");
+      expect(Array.isArray(subject.prelude)).toBe(true);
+      expect(Array.isArray(subject.testInit)).toBe(true);
+    });
   });
 
   describe("getAllSubjects", () => {

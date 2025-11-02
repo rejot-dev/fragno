@@ -6,6 +6,7 @@ import {
   type SubjectInfo,
   type Subject,
 } from "./parser";
+import { orderSubjects } from "./subject-tree";
 
 /**
  * Get basic information about all available subjects
@@ -25,7 +26,7 @@ export function getSubjects(): SubjectInfo[] {
 /**
  * Get one or more subjects by their IDs
  * @param ids Subject IDs to load
- * @returns Array of complete subject data
+ * @returns Array of complete subject data ordered by the subject tree
  * @example
  * ```ts
  * // Get single subject
@@ -36,7 +37,9 @@ export function getSubjects(): SubjectInfo[] {
  * ```
  */
 export function getSubject(...ids: string[]): Subject[] {
-  return loadSubjects(ids);
+  // Order subjects deterministically according to the tree structure
+  const orderedIds = orderSubjects(ids);
+  return loadSubjects(orderedIds);
 }
 
 /**
@@ -48,4 +51,13 @@ export function getAllSubjects(): Subject[] {
 }
 
 // Re-export types
-export type { Subject, SubjectInfo, Example, Section } from "./parser.js";
+export type { Subject, SubjectInfo, Example, Section, CodeBlock } from "./parser.js";
+
+// Re-export subject tree utilities
+export {
+  orderSubjects,
+  getSubjectParent,
+  getSubjectChildren,
+  expandSubjectWithChildren,
+  getAllSubjectIdsInOrder,
+} from "./subject-tree.js";

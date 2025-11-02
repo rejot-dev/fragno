@@ -37,30 +37,27 @@ import { z } from "zod";
 import { z } from "zod";`);
   });
 
-  it("should extract init block when present", () => {
+  it("should handle prelude and testInit blocks separately", () => {
     const content = `# Test
 
 \`\`\`typescript @fragno-imports
 import { x } from "y";
 \`\`\`
 
-\`\`\`typescript @fragno-init
-const config = { key: "value" };
+\`\`\`typescript @fragno-prelude:schema
+const schema = {};
+\`\`\`
+
+\`\`\`typescript @fragno-test-init
+const config = {};
 \`\`\``;
 
     const result = parseMarkdownFile(content);
-    expect(result.init).toBe(`const config = { key: "value" };`);
-  });
-
-  it("should handle missing init block", () => {
-    const content = `# Test
-
-\`\`\`typescript @fragno-imports
-import { x } from "y";
-\`\`\``;
-
-    const result = parseMarkdownFile(content);
-    expect(result.init).toBe("");
+    expect(result.prelude).toHaveLength(1);
+    expect(result.prelude[0].code).toBe("const schema = {};");
+    expect(result.prelude[0].id).toBe("schema");
+    expect(result.testInit).toHaveLength(1);
+    expect(result.testInit[0].code).toBe("const config = {};");
   });
 
   it("should extract multiple test blocks", () => {
@@ -97,8 +94,9 @@ describe("markdownToSubject", () => {
       title: "Test Subject",
       description: "Test description",
       imports: "import { x } from 'y';",
-      init: "const config = {};",
-      testBlocks: [{ code: "const test = 1;", explanation: "Test explanation" }],
+      prelude: [{ code: "const schema = {};", id: "schema" }],
+      testInit: [{ code: "const config = {};", id: undefined }],
+      testBlocks: [{ code: "const test = 1;", explanation: "Test explanation", id: "test-1" }],
       sections: [],
     };
 
@@ -108,9 +106,13 @@ describe("markdownToSubject", () => {
     expect(result.title).toBe("Test Subject");
     expect(result.description).toBe("Test description");
     expect(result.imports).toBe("import { x } from 'y';");
-    expect(result.init).toBe("const config = {};");
+    expect(result.prelude).toHaveLength(1);
+    expect(result.prelude[0].code).toBe("const schema = {};");
+    expect(result.testInit).toHaveLength(1);
+    expect(result.testInit[0].code).toBe("const config = {};");
     expect(result.examples).toHaveLength(1);
     expect(result.examples[0].code).toBe("const test = 1;");
     expect(result.examples[0].explanation).toBe("Test explanation");
+    expect(result.examples[0].id).toBe("test-1");
   });
 });

@@ -12,7 +12,7 @@ import type { DatabaseAdapter } from "@fragno-dev/db";
 A database adapter is a bridge between Fragno's type-safe database API and your underlying ORM. It
 translates Fragno's query operations into ORM-specific syntax.
 
-```typescript
+```typescript @fragno-test:what-is-adapter
 // Adapters implement the DatabaseAdapter interface
 declare const adapter: DatabaseAdapter;
 
@@ -39,7 +39,7 @@ Choose the provider that matches your database type when creating an adapter.
 Multiple fragments can share the same adapter, meaning they all use your application's single
 database connection.
 
-```typescript
+```typescript @fragno-test:shared-adapters
 declare const adapter: DatabaseAdapter;
 
 // All fragments use the same adapter
@@ -59,7 +59,7 @@ This ensures fragments integrate seamlessly with your existing database infrastr
 Adapters manage connection lifecycle automatically. Call `close()` when shutting down your
 application to properly release database connections.
 
-```typescript
+```typescript @fragno-test:cleanup
 declare const adapter: DatabaseAdapter;
 
 export async function cleanup() {

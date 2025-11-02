@@ -13,7 +13,7 @@ import { z } from "zod";
 
 A simple GET route with an output schema.
 
-```typescript @fragno-test
+```typescript @fragno-test:basic-get-route
 // should define a basic GET route
 const basicGetRoute = defineRoute({
   method: "GET",
@@ -35,7 +35,7 @@ The handler receives a context object and helpers like `json()` for sending resp
 
 Routes can accept and validate request bodies using `inputSchema`.
 
-```typescript @fragno-test
+```typescript @fragno-test:post-route
 // should define a POST route with input schema
 const createItemRoute = defineRoute({
   method: "POST",
@@ -70,7 +70,7 @@ The `input.valid()` method validates the request body against the schema and ret
 
 Routes can declare query parameters they expect to receive.
 
-```typescript @fragno-test
+```typescript @fragno-test:query-parameters
 // should define a route with query parameters
 const listItemsRoute = defineRoute({
   method: "GET",
@@ -103,7 +103,7 @@ Query parameters are accessed via `query.get(name)` from the context.
 
 Routes can define custom error codes and return errors with appropriate status codes.
 
-```typescript @fragno-test
+```typescript @fragno-test:error-handling
 // should define a route with error codes
 const validateItemRoute = defineRoute({
   method: "POST",
@@ -149,7 +149,7 @@ The `error()` helper sends an error response with a custom error code and HTTP s
 
 Routes can access dependencies defined in `withDependencies` through route factories.
 
-```typescript
+```typescript @fragno-test:using-dependencies
 interface AppConfig {
   apiKey: string;
 }
@@ -185,7 +185,7 @@ Dependencies are passed to the route factory function and can be used in route h
 
 Services defined in `withServices` can be used in routes for business logic.
 
-```typescript
+```typescript @fragno-test:using-services
 interface DataService {
   getData: () => string;
   processData: (input: string) => Promise<string>;
@@ -223,7 +223,7 @@ Services provide reusable business logic that can be shared across multiple rout
 
 A complete example showing how routes integrate with fragment definition.
 
-```typescript
+```typescript @fragno-test:complete-fragment
 interface MyFragmentConfig {
   apiKey: string;
 }

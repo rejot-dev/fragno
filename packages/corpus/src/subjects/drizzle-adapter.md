@@ -12,7 +12,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 Create a DrizzleAdapter with your Drizzle database instance and provider.
 
-```typescript
+```typescript @fragno-test:basic-setup
 interface MyDatabase {
   users: {
     id: string;
@@ -42,7 +42,7 @@ The adapter requires your Drizzle instance and the database provider (`"postgres
 
 For async or sync database initialization, pass a factory function instead of a direct instance.
 
-```typescript
+```typescript @fragno-test:factory-function
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 async function createDatabase(): Promise<PgliteDatabase> {

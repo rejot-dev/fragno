@@ -37,8 +37,13 @@ export async function setup() {
       const testFilePath = join(TEMP_TEST_DIR, testFileName);
 
       // Generate test file content
+      // Combine all prelude and testInit blocks into a single string
+      const allPrelude = subject.prelude.map((block) => block.code).join("\n\n");
+      const allTestInit = subject.testInit.map((block) => block.code).join("\n\n");
+      const allInit = [allPrelude, allTestInit].filter(Boolean).join("\n\n");
+
       // Make describe async if there's init code (for database setup)
-      const isAsync = subject.init.length > 0 ? "async " : "";
+      const isAsync = allInit.length > 0 ? "async " : "";
 
       let testFileContent = `/* eslint-disable */
 // Auto-generated test file for subject: ${subject.title}
@@ -48,7 +53,7 @@ import { describe, it, expect } from "vitest";
 ${subject.imports}
 
 describe("${subject.id}", ${isAsync}() => {
-${subject.init ? `${subject.init}\n` : ""}
+${allInit ? `${allInit}\n` : ""}
 `;
 
       for (let i = 0; i < subject.examples.length; i++) {
@@ -56,10 +61,14 @@ ${subject.init ? `${subject.init}\n` : ""}
         const testName = example.testName || `test ${i + 1}`;
 
         testFileContent += `  it("${testName}", async () => {\n`;
-        // Indent the code
+        // Indent the code and strip export statements
         const indentedCode = example.code
           .split("\n")
-          .map((line) => `    ${line}`)
+          .map((line) => {
+            // Remove 'export ' or 'export\t' from the beginning of lines (with optional leading whitespace)
+            const stripped = line.replace(/^(\s*)export\s+/, "$1");
+            return `    ${stripped}`;
+          })
           .join("\n");
         testFileContent += `${indentedCode}\n`;
         testFileContent += `  });\n\n`;

@@ -20,6 +20,15 @@ export interface Example {
   code: string;
   explanation: string;
   testName?: string;
+  id?: string;
+}
+
+/**
+ * A code block with optional ID
+ */
+export interface CodeBlock {
+  code: string;
+  id?: string;
 }
 
 /**
@@ -28,6 +37,7 @@ export interface Example {
 export interface Section {
   heading: string;
   content: string;
+  lineNumber?: number;
 }
 
 /**
@@ -38,7 +48,8 @@ export interface Subject {
   title: string;
   description: string;
   imports: string;
-  init: string;
+  prelude: CodeBlock[];
+  testInit: CodeBlock[];
   examples: Example[];
   sections: Section[];
 }
@@ -50,11 +61,13 @@ export interface ParsedMarkdown {
   title: string;
   description: string;
   imports: string;
-  init: string;
+  prelude: CodeBlock[];
+  testInit: CodeBlock[];
   testBlocks: Array<{
     code: string;
     explanation: string;
     testName?: string;
+    id?: string;
   }>;
   sections: Section[];
 }
@@ -73,6 +86,26 @@ const SUBJECTS_DIR = (() => {
 })();
 
 /**
+ * Helper function to extract code blocks with optional IDs from a directive
+ */
+function extractCodeBlocks(content: string, directive: string): CodeBlock[] {
+  const regex = new RegExp(
+    `\`\`\`typescript @fragno-${directive}(?::(\\w+(?:-\\w+)*))?\\n([\\s\\S]*?)\`\`\``,
+    "g",
+  );
+  const blocks: CodeBlock[] = [];
+
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    const id = match[1] || undefined;
+    const code = match[2].trim();
+    blocks.push({ code, id });
+  }
+
+  return blocks;
+}
+
+/**
  * Parses a markdown file and extracts structured content
  */
 export function parseMarkdownFile(content: string): ParsedMarkdown {
@@ -84,22 +117,26 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
   const importsMatch = content.match(/```typescript @fragno-imports\n([\s\S]*?)```/);
   const imports = importsMatch ? importsMatch[1].trim() : "";
 
-  // Extract init block (optional)
-  const initMatch = content.match(/```typescript @fragno-init\n([\s\S]*?)```/);
-  const init = initMatch ? initMatch[1].trim() : "";
+  // Extract prelude blocks
+  const prelude = extractCodeBlocks(content, "prelude");
 
-  // Extract all test blocks with their explanations
+  // Extract test-init blocks
+  const testInit = extractCodeBlocks(content, "test-init");
+
+  // Extract all test blocks with their explanations and optional IDs
   const testBlockRegex =
-    /```typescript @fragno-test\n([\s\S]*?)```([\s\S]*?)(?=```typescript @fragno-test|$)/g;
+    /```typescript @fragno-test(?::(\w+(?:-\w+)*))?\n([\s\S]*?)```([\s\S]*?)(?=```typescript @fragno-test|$)/g;
   const testBlocks: Array<{
     code: string;
     explanation: string;
     testName?: string;
+    id?: string;
   }> = [];
 
   let match;
   while ((match = testBlockRegex.exec(content)) !== null) {
-    const code = match[1].trim();
+    const id = match[1] || undefined;
+    const code = match[2].trim();
 
     // Extract test name from first line if it's a comment
     const lines = code.split("\n");
@@ -109,12 +146,12 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
     }
 
     // Get explanation text after the code block until next code block or end
-    const afterBlock = match[2];
+    const afterBlock = match[3];
     const explanation = afterBlock
       .split(/```/)[0] // Stop at next code block
       .trim();
 
-    testBlocks.push({ code, explanation, testName });
+    testBlocks.push({ code, explanation, testName, id });
   }
 
   // Extract description (everything between title and first code block or ## heading)
@@ -135,7 +172,10 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
     let sectionContent = content.substring(sectionStart, nextSectionStart).trim();
 
     // Convert @fragno directive code blocks to regular typescript blocks for display
-    sectionContent = sectionContent.replace(/```typescript @fragno-\w+(?::\w+)?/g, "```typescript");
+    sectionContent = sectionContent.replace(
+      /```typescript @fragno-\w+(?::\w+(?:-\w+)*)?/g,
+      "```typescript",
+    );
     sectionContent = sectionContent.trim();
 
     if (sectionContent) {
@@ -147,7 +187,8 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
     title,
     description,
     imports,
-    init,
+    prelude,
+    testInit,
     testBlocks,
     sections,
   };
@@ -161,6 +202,7 @@ export function markdownToSubject(id: string, parsed: ParsedMarkdown): Subject {
     code: block.code,
     explanation: block.explanation,
     testName: block.testName,
+    id: block.id,
   }));
 
   return {
@@ -168,7 +210,8 @@ export function markdownToSubject(id: string, parsed: ParsedMarkdown): Subject {
     title: parsed.title,
     description: parsed.description,
     imports: parsed.imports,
-    init: parsed.init,
+    prelude: parsed.prelude,
+    testInit: parsed.testInit,
     examples,
     sections: parsed.sections,
   };
