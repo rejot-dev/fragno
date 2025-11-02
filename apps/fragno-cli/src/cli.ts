@@ -55,8 +55,6 @@ if (import.meta.main) {
 
       if (!subCommandName || subCommandName === "--help" || subCommandName === "-h") {
         // Show db help with subcommands
-        console.log("fragno-cli (fragno-cli v" + version + ")");
-        console.log("");
         console.log("Database management commands");
         console.log("");
         console.log("USAGE:");
@@ -98,9 +96,7 @@ if (import.meta.main) {
       }
     } else if (!args.length || args[0] === "--help" || args[0] === "-h") {
       // Show main help
-      console.log("fragno-cli (fragno-cli v" + version + ")");
-      console.log("");
-      console.log("Tools for working with Fragno fragments");
+      console.log("Tools for working with Fragno");
       console.log("");
       console.log("USAGE:");
       console.log("  fragno-cli <COMMAND>");

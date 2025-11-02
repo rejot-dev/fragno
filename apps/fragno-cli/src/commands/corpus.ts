@@ -1,41 +1,40 @@
 import { define } from "gunshi";
 import { getSubjects, getSubject } from "@fragno-dev/corpus";
+import { marked } from "marked";
+// @ts-expect-error - marked-terminal types are outdated for v7
+import { markedTerminal } from "marked-terminal";
+
+// Always configure marked to use terminal renderer
+marked.use(markedTerminal());
 
 /**
  * Print a subject with its examples
  */
 function printSubject(subject: ReturnType<typeof getSubject>[number]): void {
-  console.log(`\n${"=".repeat(60)}`);
-  console.log(`${subject.title}`);
-  console.log(`${"=".repeat(60)}\n`);
+  // Build full markdown
+  let fullMarkdown = `# ${subject.title}\n\n`;
 
   if (subject.description) {
-    console.log(subject.description);
-    console.log();
+    fullMarkdown += `${subject.description}\n\n`;
   }
 
-  // Print imports block if present
+  // Add imports block if present
   if (subject.imports) {
-    console.log("### Imports\n");
-    console.log("```typescript");
-    console.log(subject.imports);
-    console.log("```\n");
+    fullMarkdown += `### Imports\n\n\`\`\`typescript\n${subject.imports}\n\`\`\`\n\n`;
   }
 
-  // Print init block if present
+  // Add init block if present
   if (subject.init) {
-    console.log("### Initialization\n");
-    console.log("```typescript");
-    console.log(subject.init);
-    console.log("```\n");
+    fullMarkdown += `### Initialization\n\n\`\`\`typescript\n${subject.init}\n\`\`\`\n\n`;
   }
 
-  // Print all sections (full markdown content)
+  // Add all sections
   for (const section of subject.sections) {
-    console.log(`## ${section.heading}\n`);
-    console.log(section.content);
-    console.log();
+    fullMarkdown += `## ${section.heading}\n\n${section.content}\n\n`;
   }
+
+  // Render and print the full markdown
+  console.log(marked.parse(fullMarkdown));
 }
 
 /**
@@ -79,10 +78,6 @@ export const corpusCommand = define({
       for (const subject of subjects) {
         printSubject(subject);
       }
-
-      console.log(`${"=".repeat(60)}`);
-      console.log(`Displayed ${subjects.length} topic(s)`);
-      console.log(`${"=".repeat(60)}\n`);
     } catch (error) {
       console.error("Error loading topics:", error instanceof Error ? error.message : error);
       console.log("\nRun 'fragno-cli corpus' to see available topics.");

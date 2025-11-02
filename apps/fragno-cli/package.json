@@ -28,10 +28,12 @@
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/db": "workspace:*",
     "@fragno-dev/corpus": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
     "c12": "^3.3.1",
-    "gunshi": "^0.26.3"
+    "gunshi": "^0.26.3",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0"
   },
   "main": "./dist/cli.js",
   "module": "./dist/cli.js",
