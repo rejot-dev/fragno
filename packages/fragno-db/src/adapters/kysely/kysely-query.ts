@@ -14,6 +14,7 @@ import type { CompiledQuery, Kysely } from "kysely";
 import type { TableNameMapper } from "./kysely-shared";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import type { SQLProvider } from "../../shared/providers";
+import { createCursorFromRecord, Cursor, type CursorResult } from "../../query/cursor";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
@@ -159,7 +160,45 @@ export function fromKysely<T extends AnySchema>(
 
         // Each result is an array of rows - decode each row
         const rowArray = rows as Record<string, unknown>[];
-        return rowArray.map((row) => decodeResult(row, op.table, provider));
+        const decodedRows = rowArray.map((row) => decodeResult(row, op.table, provider));
+
+        // If cursor generation is requested, wrap in CursorResult
+        if (op.withCursor) {
+          let cursor: Cursor | undefined;
+
+          // Generate cursor from last item if results exist
+          if (decodedRows.length > 0 && op.options.orderByIndex && op.options.pageSize) {
+            const lastItem = decodedRows[decodedRows.length - 1];
+            const indexName = op.options.orderByIndex.indexName;
+
+            // Get index columns
+            let indexColumns;
+            if (indexName === "_primary") {
+              indexColumns = [op.table.getIdColumn()];
+            } else {
+              const index = op.table.indexes[indexName];
+              if (index) {
+                indexColumns = index.columns;
+              }
+            }
+
+            if (indexColumns && lastItem) {
+              cursor = createCursorFromRecord(lastItem as Record<string, unknown>, indexColumns, {
+                indexName: op.options.orderByIndex.indexName,
+                orderDirection: op.options.orderByIndex.direction,
+                pageSize: op.options.pageSize,
+              });
+            }
+          }
+
+          const result: CursorResult<unknown> = {
+            items: decodedRows,
+            cursor,
+          };
+          return result;
+        }
+
+        return decodedRows;
       });
     };
 
@@ -191,6 +230,16 @@ export function fromKysely<T extends AnySchema>(
       // Since we only have one find, unwrap the first result
       const [result]: unknown[][] = await uow.executeRetrieve();
       return result ?? [];
+    },
+
+    async findWithCursor(tableName, builderFn) {
+      // Safe: builderFn returns a FindBuilder, which matches UnitOfWork signature
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const uow = createUOW({ config: uowConfig }).findWithCursor(tableName, builderFn as any);
+      // executeRetrieve returns an array of results (one per find operation)
+      // Since we only have one findWithCursor, unwrap the first result
+      const [result] = await uow.executeRetrieve();
+      return result as CursorResult<unknown>;
     },
 
     async findFirst(tableName, builderFn) {

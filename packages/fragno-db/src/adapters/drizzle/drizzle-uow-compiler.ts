@@ -423,8 +423,9 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           // Add cursor-based pagination conditions
           if ((after || before) && indexColumns.length > 0) {
             const cursor = after || before;
-            const cursorData = decodeCursor(cursor!);
-            const serializedValues = serializeCursorValues(cursorData, indexColumns, provider);
+            // Decode cursor if it's a string, otherwise use it as-is
+            const cursorObj = typeof cursor === "string" ? decodeCursor(cursor!) : cursor!;
+            const serializedValues = serializeCursorValues(cursorObj, indexColumns, provider);
 
             // Build tuple comparison for cursor pagination
             // For "after" with "asc": (col1, col2, ...) > (val1, val2, ...)

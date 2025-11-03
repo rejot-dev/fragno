@@ -8,6 +8,7 @@ import type {
   UpdateManyBuilder,
 } from "./unit-of-work";
 import type { Prettify } from "../util/types";
+import type { CursorResult } from "./cursor";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
@@ -154,6 +155,24 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
       table: TableName,
     ): Promise<SelectResult<TSchema["tables"][TableName], {}, true>[]>;
   };
+
+  /**
+   * Find multiple records with cursor pagination metadata
+   */
+  findWithCursor: <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    table: TableName,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => TBuilderResult,
+  ) => Promise<
+    CursorResult<
+      SelectResult<
+        TSchema["tables"][TableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TableName]>>
+      >
+    >
+  >;
 
   /**
    * Find the first record matching the criteria

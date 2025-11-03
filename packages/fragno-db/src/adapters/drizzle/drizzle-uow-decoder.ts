@@ -4,6 +4,7 @@ import type { RetrievalOperation, UOWDecoder } from "../../query/unit-of-work";
 import { decodeResult } from "../../query/result-transform";
 import { getOrderedJoinColumns } from "./join-column-utils";
 import type { DrizzleResult } from "./shared";
+import { createCursorFromRecord, Cursor, type CursorResult } from "../../query/cursor";
 
 /**
  * Join information with nested join support
@@ -173,10 +174,48 @@ export function createDrizzleUOWDecoder<TSchema extends AnySchema>(
       }
 
       // Handle find operations - decode each row
-      return result.rows.map((row) => {
+      const decodedRows = result.rows.map((row) => {
         const transformedRow = transformJoinArraysToObjects(row, op, provider);
         return decodeResult(transformedRow, op.table, provider);
       });
+
+      // If cursor generation is requested, wrap in CursorResult
+      if (op.withCursor) {
+        let cursor: Cursor | undefined;
+
+        // Generate cursor from last item if results exist
+        if (decodedRows.length > 0 && op.options.orderByIndex && op.options.pageSize) {
+          const lastItem = decodedRows[decodedRows.length - 1];
+          const indexName = op.options.orderByIndex.indexName;
+
+          // Get index columns
+          let indexColumns;
+          if (indexName === "_primary") {
+            indexColumns = [op.table.getIdColumn()];
+          } else {
+            const index = op.table.indexes[indexName];
+            if (index) {
+              indexColumns = index.columns;
+            }
+          }
+
+          if (indexColumns && lastItem) {
+            cursor = createCursorFromRecord(lastItem as Record<string, unknown>, indexColumns, {
+              indexName: op.options.orderByIndex.indexName,
+              orderDirection: op.options.orderByIndex.direction,
+              pageSize: op.options.pageSize,
+            });
+          }
+        }
+
+        const cursorResult: CursorResult<unknown> = {
+          items: decodedRows,
+          cursor,
+        };
+        return cursorResult;
+      }
+
+      return decodedRows;
     });
   };
 }

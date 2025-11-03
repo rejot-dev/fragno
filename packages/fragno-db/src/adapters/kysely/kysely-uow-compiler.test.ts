@@ -5,6 +5,7 @@ import { UnitOfWork, type UOWDecoder } from "../../query/unit-of-work";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import { createKyselyConnectionPool } from "./kysely-connection-pool";
+import { Cursor } from "../../query/cursor";
 
 describe("kysely-uow-compiler", () => {
   const testSchema = schema((s) => {
@@ -252,7 +253,12 @@ describe("kysely-uow-compiler", () => {
 
     it("should compile find operation with cursor pagination using after", () => {
       const uow = createTestUOW();
-      const cursor = "eyJpbmRleFZhbHVlcyI6eyJuYW1lIjoiQWxpY2UifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9"; // {"indexValues":{"name":"Alice"},"direction":"forward"}
+      const cursor = new Cursor({
+        indexName: "idx_name",
+        orderDirection: "asc",
+        pageSize: 10,
+        indexValues: { name: "Alice" },
+      });
       uow.find("users", (b) =>
         b.whereIndex("idx_name").orderByIndex("idx_name", "asc").after(cursor).pageSize(10),
       );
@@ -269,7 +275,12 @@ describe("kysely-uow-compiler", () => {
 
     it("should compile find operation with cursor pagination using before", () => {
       const uow = createTestUOW();
-      const cursor = "eyJpbmRleFZhbHVlcyI6eyJuYW1lIjoiQm9iIn0sImRpcmVjdGlvbiI6ImJhY2t3YXJkIn0="; // {"indexValues":{"name":"Bob"},"direction":"backward"}
+      const cursor = new Cursor({
+        indexName: "idx_name",
+        orderDirection: "desc",
+        pageSize: 10,
+        indexValues: { name: "Bob" },
+      });
       uow.find("users", (b) =>
         b.whereIndex("idx_name").orderByIndex("idx_name", "desc").before(cursor).pageSize(10),
       );
@@ -286,7 +297,12 @@ describe("kysely-uow-compiler", () => {
 
     it("should compile find operation with cursor pagination and additional where conditions", () => {
       const uow = createTestUOW();
-      const cursor = "eyJpbmRleFZhbHVlcyI6eyJuYW1lIjoiQWxpY2UifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9";
+      const cursor = new Cursor({
+        indexName: "idx_name",
+        orderDirection: "asc",
+        pageSize: 5,
+        indexValues: { name: "Alice" },
+      });
       uow.find("users", (b) =>
         b
           .whereIndex("idx_name", (eb) => eb("name", "starts with", "John"))

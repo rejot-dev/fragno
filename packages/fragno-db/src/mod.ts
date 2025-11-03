@@ -1,8 +1,11 @@
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
+import type { CursorResult } from "./query/cursor";
+import { Cursor } from "./query/cursor";
 
-export type { DatabaseAdapter };
+export type { DatabaseAdapter, CursorResult };
+export { Cursor };
 
 export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
 export const fragnoDatabaseLibraryVersion = "0.1" as const;
@@ -129,3 +132,5 @@ export {
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
 } from "./fragment";
+
+export { decodeCursor, type CursorData } from "./query/cursor";

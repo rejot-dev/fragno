@@ -73,32 +73,62 @@ const userCount = await orm.find("users", (b) => b.whereIndex("primary").selectC
 
 ### Cursor-Based Pagination
 
-Use cursor-based pagination for efficient paging through large result sets:
+Use cursor-based pagination for efficient paging through large result sets. Fragno DB provides
+`findWithCursor()` which automatically generates cursors from query results:
 
 ```typescript
-import { encodeCursor } from "@fragno-dev/db";
+// Fetch first page with automatic cursor generation
+const firstPage = await orm.findWithCursor("users", (b) =>
+  b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
+);
+// Returns: { items: User[], cursor?: Cursor }
 
-// Fetch first page
-const firstPage = await orm.find("users", (b) =>
+// Fetch next page using the returned cursor (simplified - cursor contains all metadata!)
+if (firstPage.cursor) {
+  const nextPage = await orm.findWithCursor("users", (b) => b.after(firstPage.cursor));
+}
+
+// Or be explicit with parameters (they must match the cursor):
+if (firstPage.cursor) {
+  const nextPage = await orm.findWithCursor("users", (b) =>
+    b.whereIndex("idx_name").after(firstPage.cursor).orderByIndex("idx_name", "asc").pageSize(10),
+  );
+}
+
+// Access the results
+firstPage.items.forEach((user) => {
+  console.log(user.name);
+});
+
+// Send cursor to client (encode to opaque string)
+const cursorForClient = firstPage.cursor?.encode();
+```
+
+**Manual Cursor Creation** (advanced):
+
+If you need more control, you can manually create cursors:
+
+```typescript
+import { Cursor } from "@fragno-dev/db";
+
+// Fetch page with regular find()
+const users = await orm.find("users", (b) =>
   b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
 );
 
-// Create cursor from last item
-const lastItem = firstPage[firstPage.length - 1];
-const cursor = encodeCursor({
+// Manually create cursor from last item
+const lastItem = users[users.length - 1];
+const cursor = new Cursor({
+  indexName: "idx_name",
+  orderDirection: "asc",
+  pageSize: 10,
   indexValues: { name: lastItem.name },
-  direction: "forward",
 });
-
-// Fetch next page using cursor
-const nextPage = await orm.find("users", (b) =>
-  b.whereIndex("idx_name").after(cursor).pageSize(10).orderByIndex("idx_name", "asc"),
-);
 ```
 
-<Callout title="Cursor API Ergonomics" type="warn">
-  The cursor API currently requires manually building cursor objects with index values. This is not
-  very ergonomic and will be improved in future versions.
+<Callout title="When to Use findWithCursor()" type="info">
+  Use `findWithCursor()` when you need pagination metadata. Use regular `find()` when you don't need
+  cursors. Both methods support the same query building features.
 </Callout>
 
 ### Ordering

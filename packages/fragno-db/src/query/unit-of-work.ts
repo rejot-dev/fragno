@@ -4,6 +4,8 @@ import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "./query";
 import { buildCondition } from "./condition-builder";
 import type { CompiledJoin } from "./orm/orm";
+import type { CursorResult } from "./cursor";
+import { Cursor } from "./cursor";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining
@@ -112,11 +114,11 @@ type FindOptions<
   /**
    * Cursor for pagination - continue after this cursor
    */
-  after?: string;
+  after?: Cursor | string;
   /**
    * Cursor for pagination - continue before this cursor
    */
-  before?: string;
+  before?: Cursor | string;
   /**
    * Number of results per page
    */
@@ -144,6 +146,7 @@ export type RetrievalOperation<
       table: TTable;
       indexName: string;
       options: FindOptions<TTable, SelectClause<TTable>>;
+      withCursor?: boolean;
     }
   | {
       type: "count";
@@ -262,12 +265,13 @@ export class FindBuilder<
     indexName: string;
     direction: "asc" | "desc";
   };
-  #afterCursor?: string;
-  #beforeCursor?: string;
+  #afterCursor?: Cursor | string;
+  #beforeCursor?: Cursor | string;
   #pageSizeValue?: number;
   #selectClause?: TSelect;
   #joinClause?: (jb: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TJoinOut>;
   #countMode = false;
+  #cursorMetadata?: Cursor;
 
   constructor(tableName: string, table: TTable) {
     this.#tableName = tableName;
@@ -357,17 +361,27 @@ export class FindBuilder<
 
   /**
    * Set cursor to continue pagination after this point (forward pagination)
+   * If a Cursor object is provided, its metadata will be used to set defaults for
+   * index, orderByIndex, and pageSize (if not explicitly set)
    */
-  after(cursor: string): this {
+  after(cursor: Cursor | string): this {
     this.#afterCursor = cursor;
+    if (cursor instanceof Cursor) {
+      this.#cursorMetadata = cursor;
+    }
     return this;
   }
 
   /**
    * Set cursor to continue pagination before this point (backward pagination)
+   * If a Cursor object is provided, its metadata will be used to set defaults for
+   * index, orderByIndex, and pageSize (if not explicitly set)
    */
-  before(cursor: string): this {
+  before(cursor: Cursor | string): this {
     this.#beforeCursor = cursor;
+    if (cursor instanceof Cursor) {
+      this.#cursorMetadata = cursor;
+    }
     return this;
   }
 
@@ -400,7 +414,47 @@ export class FindBuilder<
         indexName: string;
         options: Pick<FindOptions<TTable>, "where" | "useIndex">;
       } {
-    if (!this.#indexName) {
+    // Apply cursor metadata as defaults if available and not explicitly set
+    let indexName = this.#indexName;
+    let orderByIndex = this.#orderByIndexClause;
+    let pageSize = this.#pageSizeValue;
+
+    if (this.#cursorMetadata) {
+      // Use cursor metadata as defaults
+      if (!indexName) {
+        indexName = this.#cursorMetadata.indexName;
+      }
+      if (!orderByIndex) {
+        orderByIndex = {
+          indexName: this.#cursorMetadata.indexName,
+          direction: this.#cursorMetadata.orderDirection,
+        };
+      }
+      if (pageSize === undefined) {
+        pageSize = this.#cursorMetadata.pageSize;
+      }
+
+      // Validate that explicit params match cursor params
+      if (indexName && indexName !== this.#cursorMetadata.indexName) {
+        throw new Error(
+          `Index mismatch: builder specifies "${indexName}" but cursor specifies "${this.#cursorMetadata.indexName}"`,
+        );
+      }
+      if (
+        orderByIndex &&
+        (orderByIndex.indexName !== this.#cursorMetadata.indexName ||
+          orderByIndex.direction !== this.#cursorMetadata.orderDirection)
+      ) {
+        throw new Error(`Order mismatch: builder and cursor specify different ordering`);
+      }
+      if (pageSize !== undefined && pageSize !== this.#cursorMetadata.pageSize) {
+        throw new Error(
+          `Page size mismatch: builder specifies ${pageSize} but cursor specifies ${this.#cursorMetadata.pageSize}`,
+        );
+      }
+    }
+
+    if (!indexName) {
       throw new Error(
         `Must specify an index using .whereIndex() before finalizing find operation on table "${this.#tableName}"`,
       );
@@ -410,9 +464,9 @@ export class FindBuilder<
     if (this.#countMode) {
       return {
         type: "count",
-        indexName: this.#indexName,
+        indexName,
         options: {
-          useIndex: this.#indexName,
+          useIndex: indexName,
           where: this.#whereClause,
         },
       };
@@ -424,18 +478,24 @@ export class FindBuilder<
       compiledJoins = buildJoinIndexed(this.#table, this.#joinClause);
     }
 
+    // Convert Cursor objects to strings for after/before
+    const afterCursor =
+      this.#afterCursor instanceof Cursor ? this.#afterCursor.encode() : this.#afterCursor;
+    const beforeCursor =
+      this.#beforeCursor instanceof Cursor ? this.#beforeCursor.encode() : this.#beforeCursor;
+
     const options: FindOptions<TTable, TSelect> = {
-      useIndex: this.#indexName,
+      useIndex: indexName,
       select: this.#selectClause,
       where: this.#whereClause,
-      orderByIndex: this.#orderByIndexClause,
-      after: this.#afterCursor,
-      before: this.#beforeCursor,
-      pageSize: this.#pageSizeValue,
+      orderByIndex,
+      after: afterCursor,
+      before: beforeCursor,
+      pageSize,
       joins: compiledJoins,
     };
 
-    return { type: "find", indexName: this.#indexName, options };
+    return { type: "find", indexName, options };
   }
 }
 
@@ -979,6 +1039,64 @@ export class UnitOfWork<
     return this as unknown as UnitOfWork<
       TSchema,
       [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>[]],
+      TRawInput
+    >;
+  }
+
+  /**
+   * Add a find operation with cursor metadata (retrieval phase only)
+   */
+  findWithCursor<
+    TTableName extends keyof TSchema["tables"] & string,
+    TSelect extends SelectClause<TSchema["tables"][TTableName]> = true,
+    TJoinOut = {},
+  >(
+    tableName: TTableName,
+    builderFn: (
+      // We omit "build" because we don't want to expose it to the user
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build"> | void,
+  ): UnitOfWork<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      CursorResult<SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>>,
+    ],
+    TRawInput
+  > {
+    if (this.#state !== "building-retrieval") {
+      throw new Error(
+        `findWithCursor() can only be called during retrieval phase. Current state: ${this.#state}`,
+      );
+    }
+
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    // Create builder and pass to callback
+    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
+    builderFn(builder);
+    const { indexName, options, type } = builder.build();
+
+    this.#retrievalOps.push({
+      type,
+      // Safe: we know the table is part of the schema from the findWithCursor() method
+      table: table as TSchema["tables"][TTableName],
+      indexName,
+      // Safe: we're storing the options for later compilation
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      options: options as any,
+      withCursor: true,
+    });
+
+    return this as unknown as UnitOfWork<
+      TSchema,
+      [
+        ...TRetrievalResults,
+        CursorResult<SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>>,
+      ],
       TRawInput
     >;
   }

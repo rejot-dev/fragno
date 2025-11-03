@@ -3,34 +3,98 @@ import { serialize } from "../schema/serialize";
 import type { SQLProvider } from "../shared/providers";
 
 /**
- * Cursor data structure containing index values and pagination direction
+ * Cursor object containing all information needed for pagination
  */
-export interface CursorData {
+export class Cursor {
+  readonly #indexName: string;
+  readonly #orderDirection: "asc" | "desc";
+  readonly #pageSize: number;
+  readonly #indexValues: Record<string, unknown>;
+
+  constructor(data: {
+    indexName: string;
+    orderDirection: "asc" | "desc";
+    pageSize: number;
+    indexValues: Record<string, unknown>;
+  }) {
+    this.#indexName = data.indexName;
+    this.#orderDirection = data.orderDirection;
+    this.#pageSize = data.pageSize;
+    this.#indexValues = data.indexValues;
+  }
+
   /**
-   * Values for each column in the index, keyed by column ORM name
+   * Get the index name being used for pagination
    */
-  indexValues: Record<string, unknown>;
+  get indexName(): string {
+    return this.#indexName;
+  }
+
   /**
-   * Direction of pagination
+   * Get the ordering direction
    */
-  direction: "forward" | "backward";
+  get orderDirection(): "asc" | "desc" {
+    return this.#orderDirection;
+  }
+
+  /**
+   * Get the page size
+   */
+  get pageSize(): number {
+    return this.#pageSize;
+  }
+
+  /**
+   * Get the cursor position values
+   */
+  get indexValues(): Record<string, unknown> {
+    return this.#indexValues;
+  }
+
+  /**
+   * Encode cursor to an opaque base64 string (safe to send to client)
+   */
+  encode(): string {
+    const data: CursorData = {
+      v: 1,
+      indexName: this.#indexName,
+      orderDirection: this.#orderDirection,
+      pageSize: this.#pageSize,
+      indexValues: this.#indexValues,
+    };
+    return encodeCursorData(data);
+  }
 }
 
 /**
- * Encode cursor data to a base64 string
- *
- * @param data - The cursor data to encode
- * @returns Base64-encoded cursor string
- *
- * @example
- * ```ts
- * const cursor = encodeCursor({
- *   indexValues: { id: "abc123", createdAt: 1234567890 },
- *   direction: "forward"
- * });
- * ```
+ * Result of a cursor-based query containing items and pagination cursor
  */
-export function encodeCursor(data: CursorData): string {
+export interface CursorResult<T> {
+  /**
+   * The query results
+   */
+  items: T[];
+  /**
+   * Cursor to fetch the next page (undefined if no more results)
+   */
+  cursor?: Cursor;
+}
+
+/**
+ * Cursor data structure for serialization
+ */
+export interface CursorData {
+  v: number; // version
+  indexName: string;
+  orderDirection: "asc" | "desc";
+  pageSize: number;
+  indexValues: Record<string, unknown>;
+}
+
+/**
+ * Encode cursor data to a base64 string (internal)
+ */
+function encodeCursorData(data: CursorData): string {
   const json = JSON.stringify(data);
   // Use Buffer in Node.js or btoa in browsers
   if (typeof Buffer !== "undefined") {
@@ -40,18 +104,18 @@ export function encodeCursor(data: CursorData): string {
 }
 
 /**
- * Decode a base64 cursor string back to cursor data
+ * Decode a base64 cursor string back to a Cursor object
  *
  * @param cursor - The base64-encoded cursor string
- * @returns Decoded cursor data
+ * @returns Decoded Cursor object
  * @throws Error if cursor is invalid or malformed
  *
  * @example
  * ```ts
- * const data = decodeCursor("eyJpbmRleFZhbHVlcyI6e30sImRpcmVjdGlvbiI6ImZvcndhcmQifQ==");
+ * const cursor = decodeCursor("eyJpbmRleFZhbHVlcyI6e30sImRpcmVjdGlvbiI6ImZvcndhcmQifQ==");
  * ```
  */
-export function decodeCursor(cursor: string): CursorData {
+export function decodeCursor(cursor: string): Cursor {
   try {
     let json: string;
     if (typeof Buffer !== "undefined") {
@@ -67,46 +131,73 @@ export function decodeCursor(cursor: string): CursorData {
       typeof data !== "object" ||
       !data.indexValues ||
       typeof data.indexValues !== "object" ||
-      (data.direction !== "forward" && data.direction !== "backward")
+      typeof data.pageSize !== "number" ||
+      !data.indexName ||
+      !data.orderDirection ||
+      (data.orderDirection !== "asc" && data.orderDirection !== "desc")
     ) {
       throw new Error("Invalid cursor structure");
     }
 
-    return data as CursorData;
+    // Only support v1
+    const version = typeof data.v === "number" ? data.v : 0;
+    if (version !== 1) {
+      throw new Error(`Unsupported cursor version: ${version}. Only v1 is supported.`);
+    }
+
+    return new Cursor({
+      indexName: data.indexName,
+      orderDirection: data.orderDirection,
+      pageSize: data.pageSize,
+      indexValues: data.indexValues,
+    });
   } catch (error) {
     throw new Error(`Invalid cursor: ${error instanceof Error ? error.message : "malformed data"}`);
   }
 }
 
 /**
- * Create a cursor from a record and index columns
+ * Create a cursor from a record and pagination metadata
  *
  * @param record - The database record
  * @param indexColumns - The columns that make up the index
- * @param direction - The pagination direction
- * @returns Encoded cursor string
+ * @param metadata - Pagination metadata (index name, order direction, page size)
+ * @returns Cursor object
  *
  * @example
  * ```ts
  * const cursor = createCursorFromRecord(
  *   { id: "abc", name: "Alice", createdAt: 123 },
  *   [table.columns.createdAt, table.columns.id],
- *   "forward"
+ *   {
+ *     indexName: "idx_created",
+ *     orderDirection: "asc",
+ *     pageSize: 10
+ *   }
  * );
  * ```
  */
 export function createCursorFromRecord(
   record: Record<string, unknown>,
   indexColumns: AnyColumn[],
-  direction: "forward" | "backward",
-): string {
+  metadata: {
+    indexName: string;
+    orderDirection: "asc" | "desc";
+    pageSize: number;
+  },
+): Cursor {
   const indexValues: Record<string, unknown> = {};
 
   for (const col of indexColumns) {
     indexValues[col.ormName] = record[col.ormName];
   }
 
-  return encodeCursor({ indexValues, direction });
+  return new Cursor({
+    indexName: metadata.indexName,
+    orderDirection: metadata.orderDirection,
+    pageSize: metadata.pageSize,
+    indexValues,
+  });
 }
 
 /**
@@ -115,7 +206,7 @@ export function createCursorFromRecord(
  * Converts cursor values (which are in application format) to database format
  * using the column serialization rules.
  *
- * @param cursorData - The decoded cursor data
+ * @param cursor - The cursor object
  * @param indexColumns - The columns that make up the index
  * @param provider - The SQL provider
  * @returns Serialized values ready for database queries
@@ -123,21 +214,21 @@ export function createCursorFromRecord(
  * @example
  * ```ts
  * const serialized = serializeCursorValues(
- *   cursorData,
+ *   cursor,
  *   [table.columns.createdAt],
  *   "postgresql"
  * );
  * ```
  */
 export function serializeCursorValues(
-  cursorData: CursorData,
+  cursor: Cursor,
   indexColumns: AnyColumn[],
   provider: SQLProvider,
 ): Record<string, unknown> {
   const serialized: Record<string, unknown> = {};
 
   for (const col of indexColumns) {
-    const value = cursorData.indexValues[col.ormName];
+    const value = cursor.indexValues[col.ormName];
     if (value !== undefined) {
       serialized[col.ormName] = serialize(value, col, provider);
     }

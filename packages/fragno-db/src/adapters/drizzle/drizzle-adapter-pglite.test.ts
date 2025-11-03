@@ -1,10 +1,10 @@
 import { drizzle } from "drizzle-orm/pglite";
 import { DrizzleAdapter } from "./drizzle-adapter";
-import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { assert, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import type { DBType } from "./shared";
 import { createRequire } from "node:module";
-import { encodeCursor } from "../../query/cursor";
+import { Cursor } from "../../query/cursor";
 import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { writeAndLoadSchema } from "./test-utils";
 
@@ -245,10 +245,12 @@ describe("DrizzleAdapter PGLite", () => {
 
     // Create cursor from last item of first page
     const lastItem = firstPage[firstPage.length - 1]!;
-    const cursor = encodeCursor({
+    const cursor = new Cursor({
+      indexName: "name_idx",
+      orderDirection: "asc",
+      pageSize: 2,
       indexValues: { name: lastItem.name },
-      direction: "forward",
-    });
+    }).encode();
 
     // Fetch next page using cursor
     const [secondPage] = await queryEngine
@@ -728,5 +730,70 @@ describe("DrizzleAdapter PGLite", () => {
       "UOW Test Post",
       "This post was created in the same transaction as the user",
     ]);
+  });
+
+  it("should support cursor-based pagination with findWithCursor()", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create multiple users for pagination testing
+    for (let i = 1; i <= 25; i++) {
+      await queryEngine.create("users", {
+        name: `Cursor User ${i.toString().padStart(2, "0")}`,
+        age: 20 + i,
+      });
+    }
+
+    // Fetch first page with cursor
+    const firstPage = await queryEngine.findWithCursor("users", (b) =>
+      b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(10),
+    );
+
+    // Check structure
+    expect(firstPage).toHaveProperty("items");
+    expect(firstPage).toHaveProperty("cursor");
+    expect(Array.isArray(firstPage.items)).toBe(true);
+    expect(firstPage.items.length).toBeGreaterThan(0);
+    expect(firstPage.items.length).toBeLessThanOrEqual(10);
+
+    assert(firstPage.cursor instanceof Cursor);
+    expect(firstPage.items).toHaveLength(10);
+    expect(firstPage.cursor).toBeInstanceOf(Cursor);
+
+    // Fetch second page using cursor
+    const secondPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx")
+        .after(firstPage.cursor!)
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(secondPage.items.length).toBeGreaterThan(0);
+    expect(secondPage.items.length).toBeLessThanOrEqual(10);
+
+    // Verify no overlap - first item of second page should come after last item of first page
+    const firstPageLastName = firstPage.items[firstPage.items.length - 1].name;
+    const secondPageFirstName = secondPage.items[0].name;
+    expect(secondPageFirstName > firstPageLastName).toBe(true);
+  });
+
+  it("should support findWithCursor() in Unit of Work", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Use findWithCursor in UOW
+    const uow = queryEngine
+      .createUnitOfWork("cursor-test")
+      .findWithCursor("users", (b) =>
+        b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(5),
+      );
+
+    const [result] = await uow.executeRetrieve();
+
+    // Verify result structure
+    expect(result).toHaveProperty("items");
+    expect(result).toHaveProperty("cursor");
+    expect(Array.isArray(result.items)).toBe(true);
+    expect(result.items).toHaveLength(5);
+    expect(result.cursor).toBeInstanceOf(Cursor);
   });
 });

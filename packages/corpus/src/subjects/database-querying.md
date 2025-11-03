@@ -187,6 +187,29 @@ export async function findUsersPaginated(pageSize: number) {
 }
 ```
 
+## Cursor-Based Pagination
+
+Use `findWithCursor` for efficient pagination with cursor support.
+
+```typescript @fragno-test:cursor-pagination
+const firstPage = await orm.findWithCursor("users", (b) =>
+  b.whereIndex("idx_email").orderByIndex("idx_email", "asc").pageSize(2),
+);
+
+const cursor = firstPage.cursor;
+if (cursor) {
+  const nextPage = await orm.findWithCursor("users", (b) => b.after(cursor));
+}
+```
+
+The `findWithCursor` method returns a `CursorResult` object containing:
+
+- `items`: The array of results for the current page
+- `cursor`: A `Cursor` object for fetching the next page (undefined if no more results)
+
+The cursor automatically stores pagination metadata (index, ordering, page size), so you can simply
+pass it to `b.after()` for the next page.
+
 ## Find All
 
 Query all records from a table.

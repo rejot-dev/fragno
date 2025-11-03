@@ -10,7 +10,7 @@ import {
   type FragnoId,
   type FragnoReference,
 } from "../../schema/create";
-import { encodeCursor } from "../../query/cursor";
+import { Cursor } from "../../query/cursor";
 
 describe("KyselyAdapter PGLite", () => {
   const testSchema = schema((s) => {
@@ -396,10 +396,12 @@ describe("KyselyAdapter PGLite", () => {
 
     // Get cursor for pagination (using the last item from page 1)
     const lastItem = page1Results[page1Results.length - 1]!;
-    const cursor = encodeCursor({
+    const cursor = new Cursor({
+      indexName: "name_idx",
+      orderDirection: "asc",
+      pageSize: 2,
       indexValues: { name: lastItem.name },
-      direction: "forward",
-    });
+    }).encode();
 
     // Get page 2 using the cursor
     const page2 = queryEngine
@@ -871,5 +873,101 @@ describe("KyselyAdapter PGLite", () => {
 
     // Verify the foreign key relationship is correct
     expect(post?.user_id.internalId).toBe(user?.id.internalId);
+  });
+
+  it("should support cursor-based pagination with findWithCursor()", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create multiple users for pagination testing with unique prefix
+    const prefix = "CursorPagTest";
+    const userIds: FragnoId[] = [];
+    for (let i = 1; i <= 25; i++) {
+      const userId = await queryEngine.create("users", {
+        name: `${prefix} ${i.toString().padStart(2, "0")}`,
+        age: 20 + i,
+      });
+      userIds.push(userId);
+    }
+
+    // Fetch first page with cursor (filter by prefix to avoid other test data)
+    const firstPage = await queryEngine.findWithCursor("users", (b) =>
+      b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(10),
+    );
+
+    // Check structure
+    expect(firstPage).toHaveProperty("items");
+    expect(firstPage).toHaveProperty("cursor");
+    expect(Array.isArray(firstPage.items)).toBe(true);
+    expect(firstPage.items.length).toBeGreaterThan(0);
+
+    assert(firstPage.cursor instanceof Cursor);
+
+    // Fetch second page using cursor
+    const secondPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx")
+        .after(firstPage.cursor!)
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(secondPage.items.length).toBeGreaterThan(0);
+
+    // Verify no overlap - all names in second page should be different from first page
+    const firstPageNames = new Set(firstPage.items.map((u) => u.name));
+    const secondPageNames = secondPage.items.map((u) => u.name);
+
+    for (const name of secondPageNames) {
+      expect(firstPageNames.has(name)).toBe(false);
+    }
+
+    // Verify ordering - last item of first page should come before first item of second page
+    const firstPageLast = firstPage.items[firstPage.items.length - 1].name;
+    const secondPageFirst = secondPage.items[0].name;
+    expect(firstPageLast < secondPageFirst).toBe(true);
+
+    // Verify our test data is present
+    const testUsers = await queryEngine.find("users", (b) =>
+      b.whereIndex("name_idx").pageSize(100),
+    );
+    const testUserNames = testUsers.filter((u) => u.name.startsWith(prefix)).map((u) => u.name);
+    expect(testUserNames).toHaveLength(25);
+  });
+
+  it("should support findWithCursor() in Unit of Work", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create test users if not already present
+    const existingUsers = await queryEngine.find("users", (b) =>
+      b.whereIndex("name_idx").pageSize(1),
+    );
+
+    if (existingUsers.length === 0) {
+      for (let i = 1; i <= 5; i++) {
+        await queryEngine.create("users", {
+          name: `UOW Cursor User ${i}`,
+          age: 30 + i,
+        });
+      }
+    }
+
+    // Use findWithCursor in UOW
+    const uow = queryEngine
+      .createUnitOfWork("cursor-test")
+      .findWithCursor("users", (b) =>
+        b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(3),
+      );
+
+    const [result] = await uow.executeRetrieve();
+
+    // Verify result structure
+    expect(result).toHaveProperty("items");
+    expect(result).toHaveProperty("cursor");
+    expect(Array.isArray(result.items)).toBe(true);
+    expect(result.items.length).toBeGreaterThan(0);
+
+    if (result.items.length === 3) {
+      expect(result.cursor).toBeInstanceOf(Cursor);
+    }
   });
 });

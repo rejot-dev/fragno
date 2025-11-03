@@ -8,6 +8,7 @@ import { parseDrizzle, type DrizzleResult, type TableNameMapper, type DBType } f
 import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import type { TableToUpdateValues } from "../../query/query";
+import type { CursorResult } from "../../query/cursor";
 
 /**
  * Configuration options for creating a Drizzle Unit of Work
@@ -151,6 +152,14 @@ export function fromDrizzle<T extends AnySchema>(
       const uow = createUOW({ config: uowConfig }).find(tableName, builderFn as any);
       const [result] = await uow.executeRetrieve();
       return result;
+    },
+
+    async findWithCursor(tableName, builderFn) {
+      // Safe: builderFn returns a FindBuilder, which matches UnitOfWork signature
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const uow = createUOW({ config: uowConfig }).findWithCursor(tableName, builderFn as any);
+      const [result] = await uow.executeRetrieve();
+      return result as CursorResult<unknown>;
     },
 
     async findFirst(tableName, builderFn) {

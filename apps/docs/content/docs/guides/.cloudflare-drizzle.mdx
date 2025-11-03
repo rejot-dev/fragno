@@ -1,0 +1,447 @@
+TODO(Wilco): This guide is unfinished, mostly because we have no good example fragment to use.
+
+# Integrating a Fragment on Cloudflare with React Router v7, Neon, and Drizzle
+
+This guide shows how to integrate Fragno Fragments into a Cloudflare Workers application using React
+Router v7, Neon PostgreSQL, and Drizzle ORM.
+
+This pattern is based on an open-source production implementation, the full code is available on
+[GitHub](https://github.com/is3a-org/site).
+
+## Prerequisites
+
+- A React Router v7 project configured for Cloudflare Workers
+- A Neon PostgreSQL database (or any PostgreSQL provider)
+- Basic familiarity with Drizzle ORM
+
+## Step 1: Installation
+
+Install the Fragment and required dependencies:
+
+```bash
+pnpm add @fragno-dev/example-fragment @fragno-dev/db drizzle-orm pg dotenv
+pnpm add -D @fragno-dev/cli drizzle-kit @types/pg
+```
+
+## Step 2: Database Configuration
+
+### 2.1 Configure Environment Variables
+
+Create a `.dev.vars` file in your project root:
+
+```bash
+PG_DATABASE_URL=postgresql://user:password@your-neon-host.neon.tech/dbname?sslmode=require
+```
+
+For production, set this in your Cloudflare Workers secrets:
+
+```bash
+wrangler secret put PG_DATABASE_URL
+```
+
+### 2.2 Create Database Client and Drizzle Setup
+
+Create `app/db/postgres/is3a-postgres.ts`:
+
+```typescript
+import { drizzle } from "drizzle-orm/node-postgres";
+import { schema } from "./postgres.schema.ts";
+import { Client } from "pg";
+
+export function createPostgresClient() {
+  return new Client({
+    connectionString: process.env.PG_DATABASE_URL!,
+  });
+}
+
+export function createDrizzleDatabase(client: Client) {
+  return drizzle({ client, schema });
+}
+
+export type DrizzleDatabase = ReturnType<typeof createDrizzleDatabase>;
+```
+
+**Key Pattern**: We export factory functions instead of singleton instances because Cloudflare
+Workers requires per-request database connections.
+
+### 2.3 Create Drizzle Adapter for Fragno
+
+Create `app/fragno/database-adapter.ts`:
+
+```typescript
+import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import type { DrizzleDatabase } from "../db/postgres/is3a-postgres.ts";
+
+export function createAdapter(db: DrizzleDatabase | (() => DrizzleDatabase)) {
+  if (typeof db === "function") {
+    return new DrizzleAdapter({
+      db: db(),
+      provider: "postgresql",
+    });
+  }
+
+  return new DrizzleAdapter({
+    db,
+    provider: "postgresql",
+  });
+}
+```
+
+This adapter accepts either a database instance or a factory function, providing flexibility for
+different initialization patterns.
+
+## Step 3: Create Server-Side Fragment Instance
+
+Create `app/fragno/simple-auth-server.ts`:
+
+```typescript
+import { createAuthFragment } from "@is3a/simple-auth-fragment";
+import { createAdapter } from "./database-adapter.ts";
+import {
+  createPostgresClient,
+  type DrizzleDatabase,
+  createDrizzleDatabase,
+} from "../db/postgres/is3a-postgres.ts";
+
+export function createSimpleAuthServer(db: DrizzleDatabase | (() => DrizzleDatabase)) {
+  return createAuthFragment(
+    {
+      sendEmail: async ({ to, subject, body }) => {
+        console.log(`Sending email to ${to} with subject ${subject}`);
+        // Implement your email sending logic here
+      },
+    },
+    {
+      databaseAdapter: createAdapter(db),
+    },
+  );
+}
+
+// Top-level instance for CLI tools (schema generation)
+export const fragment = createSimpleAuthServer(() => {
+  const client = createPostgresClient();
+  return createDrizzleDatabase(client);
+});
+```
+
+**Important**: The factory function pattern allows passing a database instance per request, which is
+required for Cloudflare Workers' stateless architecture.
+
+## Step 4: Configure Cloudflare Worker
+
+Update your `workers/app.ts` to create database connections per request and pass them via context:
+
+```typescript
+import { createRequestHandler } from "react-router";
+import {
+  createDrizzleDatabase,
+  createPostgresClient,
+  type DrizzleDatabase,
+} from "~/db/postgres/is3a-postgres";
+
+declare module "react-router" {
+  export interface AppLoadContext {
+    cloudflare: {
+      env: CloudflareEnv;
+      ctx: ExecutionContext;
+    };
+    db: DrizzleDatabase;
+  }
+}
+
+const requestHandler = createRequestHandler(
+  () => import("virtual:react-router/server-build"),
+  import.meta.env.MODE,
+);
+
+export default {
+  async fetch(request, env, ctx) {
+    const client = createPostgresClient();
+    try {
+      await client.connect();
+      const db = createDrizzleDatabase(client);
+
+      return await requestHandler(request, {
+        cloudflare: { env, ctx },
+        db,
+      });
+    } catch (error) {
+      console.error("Error fetching request", error);
+      return new Response("Internal Server Error", { status: 500 });
+    } finally {
+      await client.end();
+    }
+  },
+} satisfies ExportedHandler<CloudflareEnv>;
+```
+
+**Key Points**:
+
+- Database connection is created per request
+- Connection is properly cleaned up in the `finally` block
+- Database instance is passed via `AppLoadContext` for type-safe access in routes
+
+## Step 5: Mount API Routes
+
+Create a React Router v7 API route at `app/routes/api/simple-auth.tsx`:
+
+```typescript
+import { createSimpleAuthServer } from "~/fragno/simple-auth-server";
+import type { Route } from "./+types/simple-auth";
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  return createSimpleAuthServer(context.db).handler(request);
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  return createSimpleAuthServer(context.db).handler(request);
+}
+```
+
+This creates a catch-all route at `/api/simple-auth` that forwards all requests to the Fragment
+handler. Both `loader` (GET) and `action` (POST/PUT/DELETE) are required to handle all HTTP methods.
+
+## Step 6: Schema Management
+
+### 6.1 Configure Drizzle Kit for Dual Schemas
+
+Create `postgres.drizzle.config.ts`:
+
+```typescript
+import { defineConfig } from "drizzle-kit";
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: ".dev.vars",
+});
+
+if (!process.env.PG_DATABASE_URL) {
+  throw new Error("PG_DATABASE_URL is not set");
+}
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: ["./app/db/postgres/postgres.schema.ts", "./app/db/postgres/fragno-schema.ts"],
+  out: "./app/db/postgres/migrations",
+  dbCredentials: {
+    url: process.env.PG_DATABASE_URL!,
+  },
+});
+```
+
+**Important**: Both your application schema and the Fragno-generated schema must be included in the
+`schema` array.
+
+### 6.2 Setup Package Scripts
+
+Add these scripts to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "db:fragno:generate": "./node_modules/@fragno-dev/cli/dist/cli.js db generate app/fragno/simple-auth-server.ts -o app/db/postgres/fragno-schema.ts",
+    "db:postgres:generate": "drizzle-kit generate --config postgres.drizzle.config.ts",
+    "db:postgres:push": "drizzle-kit push --config postgres.drizzle.config.ts",
+    "db:postgres:migrate": "drizzle-kit migrate --config postgres.drizzle.config.ts"
+  }
+}
+```
+
+### 6.3 Generate and Merge Schemas
+
+1. **Generate Fragno schema** (creates Fragment database tables):
+
+   ```bash
+   pnpm db:fragno:generate
+   ```
+
+   This creates `app/db/postgres/fragno-schema.ts` with the Fragment's database schema.
+
+2. **Create your application schema** at `app/db/postgres/postgres.schema.ts`:
+
+   ```typescript
+   import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+   import { simple_auth_db_schema } from "./fragno-schema.ts";
+
+   export const location = pgTable("location", {
+     id: serial().primaryKey(),
+     name: text().notNull(),
+     email: text(),
+     // ... your other columns
+   });
+
+   // Export combined schema
+   export const schema = {
+     location,
+     // ... your other tables
+     ...simple_auth_db_schema, // Include Fragment tables
+   };
+   ```
+
+3. **Generate and run migrations**:
+   ```bash
+   pnpm db:postgres:generate
+   pnpm db:postgres:push
+   ```
+
+### 6.4 Schema Update Workflow
+
+When the Fragment is updated and requires schema changes:
+
+```bash
+# 1. Regenerate Fragno schema
+pnpm db:fragno:generate
+
+# 2. Generate new migration
+pnpm db:postgres:generate
+
+# 3. Apply migration to database
+pnpm db:postgres:push
+```
+
+## Step 7: Client-Side Integration
+
+### 7.1 Create Client Instance
+
+Create `app/lib/simple-auth-client.ts`:
+
+```typescript
+import { createAuthFragmentClient } from "@is3a/simple-auth-fragment/react";
+
+export const simpleAuthClient = createAuthFragmentClient();
+```
+
+**Note**: The file should NOT end with `.client.ts` as this prevents server-side rendering in some
+frameworks.
+
+### 7.2 Use in React Components
+
+```typescript
+import { simpleAuthClient } from "~/lib/simple-auth-client";
+
+export default function LoginPage() {
+  const { login, loading, error } = simpleAuthClient.useLogin();
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+
+    await login({ email, password });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="email" type="email" required />
+      <input name="password" type="password" required />
+      <button type="submit" disabled={loading}>
+        {loading ? "Logging in..." : "Login"}
+      </button>
+      {error && <p>{error.message}</p>}
+    </form>
+  );
+}
+```
+
+## Key Differences from Standard Setup
+
+### 1. Per-Request Database Pattern
+
+Unlike traditional Node.js servers with connection pooling, Cloudflare Workers require creating
+database connections per request:
+
+**❌ Don't** (singleton pattern):
+
+```typescript
+const db = createDrizzleDatabase(createPostgresClient());
+export const fragment = createAuthFragment({}, { databaseAdapter: createAdapter(db) });
+```
+
+**✅ Do** (per-request pattern):
+
+```typescript
+export function createSimpleAuthServer(db: DrizzleDatabase) {
+  return createAuthFragment({}, { databaseAdapter: createAdapter(db) });
+}
+```
+
+### 2. AppLoadContext for Dependency Injection
+
+React Router v7's `AppLoadContext` provides type-safe dependency injection:
+
+```typescript
+declare module "react-router" {
+  export interface AppLoadContext {
+    db: DrizzleDatabase;
+    // Add other dependencies as needed
+  }
+}
+```
+
+Access in routes via `context` parameter:
+
+```typescript
+export async function loader({ context }: Route.LoaderArgs) {
+  const db = context.db; // Type-safe!
+  // ...
+}
+```
+
+### 3. Dual Schema Management
+
+Fragno Fragments generate their own schema which must be:
+
+- Generated separately via CLI (`pnpm db:fragno:generate`)
+- Merged with your application schema
+- Included in Drizzle Kit configuration
+
+This keeps Fragment schema generation separate from your application schema while ensuring both are
+included in migrations.
+
+### 4. Drizzle-Specific Adapter
+
+Use `DrizzleAdapter` from `@fragno-dev/db/adapters/drizzle` instead of the generic Kysely adapter.
+This provides optimized integration with Drizzle ORM.
+
+## Troubleshooting
+
+### Connection Pool Errors
+
+If you see connection pool errors, ensure you're:
+
+- Creating a new client per request
+- Calling `client.connect()` before use
+- Calling `client.end()` in the `finally` block
+
+### Schema Sync Issues
+
+If migrations fail:
+
+```bash
+# Regenerate both schemas
+pnpm db:fragno:generate
+pnpm db:postgres:generate
+
+# Inspect the generated migration
+cat app/db/postgres/migrations/XXXX_migration_name.sql
+
+# Apply if correct
+pnpm db:postgres:push
+```
+
+### Type Errors with AppLoadContext
+
+Ensure the module augmentation is in your worker entry file (`workers/app.ts`), not in a separate
+types file, as it needs to be loaded before route imports.
+
+## Complete Example Repository
+
+This guide is based on the IS3A production implementation. See the following files for the complete
+working example:
+
+- [Database Setup](apps/web/app/db/postgres/is3a-postgres.ts)
+- [Fragment Server](apps/web/app/fragno/simple-auth-server.ts)
+- [Worker Configuration](apps/web/workers/app.ts)
+- [API Route](apps/web/app/routes/api/simple-auth.tsx)
+- [Client Integration](apps/web/app/lib/simple-auth-client.ts)

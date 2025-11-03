@@ -6,7 +6,7 @@ import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import type { DBType } from "./shared";
 import { createRequire } from "node:module";
 import { writeAndLoadSchema } from "./test-utils";
-import { encodeCursor } from "../../query/cursor";
+import { Cursor } from "../../query/cursor";
 
 // Import drizzle-kit for migrations
 const require = createRequire(import.meta.url);
@@ -272,10 +272,12 @@ describe("DrizzleAdapter SQLite", () => {
 
     // Create cursor from last item of first page
     const lastItem = firstPage[firstPage.length - 1]!;
-    const cursor = encodeCursor({
+    const cursor = new Cursor({
+      indexName: "name_idx",
+      orderDirection: "asc",
+      pageSize: 2,
       indexValues: { name: lastItem.name },
-      direction: "forward",
-    });
+    }).encode();
 
     // Fetch next page using cursor
     const [secondPage] = await queryEngine
