@@ -1,5 +1,19 @@
 # @fragno-dev/cli
 
+## 0.1.15
+
+### Patch Changes
+
+- c3d52b8: feat: add `--start`, `--end`, `--headings`, and `--id` flags to corpus command
+- c74bf81: fix: `corpus` command now shows full examples
+- a2c6228: feat: properly render Markdown output in terminal (syntax highlighting etc)
+- Updated dependencies [be537b1]
+- Updated dependencies [b54ff8b]
+- Updated dependencies [c3d52b8]
+- Updated dependencies [c74bf81]
+  - @fragno-dev/corpus@0.0.3
+  - @fragno-dev/db@0.1.13
+
 ## 0.1.14
 
 ### Patch Changes
