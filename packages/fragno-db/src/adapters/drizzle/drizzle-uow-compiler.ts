@@ -14,6 +14,7 @@ import {
   type TableNameMapper,
   parseDrizzle,
   type DBType,
+  createTableNameMapper,
 } from "./shared";
 import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
@@ -33,30 +34,42 @@ export type DrizzleCompiledQuery = {
  * This compiler translates UOW operations into Drizzle query functions
  * that can be executed as a batch/transaction.
  *
- * @param schema - The database schema
  * @param pool - Connection pool for acquiring database connections
  * @param provider - SQL provider (sqlite, mysql, postgresql)
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param mapper - Optional table name mapper for namespace prefixing (fallback for operations without explicit namespace)
  * @returns A UOWCompiler instance for Drizzle
  */
-export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
-  schema: TSchema,
+export function createDrizzleUOWCompiler(
   pool: ConnectionPool<DBType>,
   provider: "sqlite" | "mysql" | "postgresql",
   mapper?: TableNameMapper,
-): UOWCompiler<TSchema, DrizzleCompiledQuery> {
+): UOWCompiler<DrizzleCompiledQuery> {
   // Get db synchronously for compilation (doesn't execute, just builds SQL)
   // TODO: We don't even need a Drizzle instance with a db client attached here. `drizzle({ schema })` is enough.
   const dbRaw = pool.getDatabaseSync();
   const [db, drizzleTables] = parseDrizzle(dbRaw);
 
   /**
+   * Get the mapper for a specific operation
+   * Uses operation's namespace if provided, otherwise falls back to the default mapper
+   */
+  function getMapperForOperation(namespace: string | undefined): TableNameMapper | undefined {
+    if (namespace) {
+      return createTableNameMapper(namespace);
+    }
+    return mapper;
+  }
+
+  /**
    * Convert a Fragno table to a Drizzle table
    * @throws Error if table is not found in Drizzle schema
    */
-  function toDrizzleTable(table: AnyTable): TableType {
-    // Map logical table name to physical table name using the mapper
-    const physicalTableName = mapper ? mapper.toPhysical(table.ormName) : table.ormName;
+  function toDrizzleTable(table: AnyTable, namespace: string | undefined): TableType {
+    // Get the mapper for this operation's namespace
+    const opMapper = getMapperForOperation(namespace);
+
+    // Map logical table name to physical table name using the operation-specific mapper
+    const physicalTableName = opMapper ? opMapper.toPhysical(table.ormName) : table.ormName;
     const out = drizzleTables[physicalTableName];
     if (out) {
       return out;
@@ -71,13 +84,17 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
    * Convert a Fragno column to a Drizzle column
    * @throws Error if column is not found in Drizzle table
    */
-  function toDrizzleColumn(col: AnyColumn): ColumnType {
+  function toDrizzleColumn(
+    schema: AnySchema,
+    namespace: string | undefined,
+    col: AnyColumn,
+  ): ColumnType {
     const fragnoTable = schema.tables[col.tableName];
     if (!fragnoTable) {
       throw new Error(`[Drizzle] Unknown table ${col.tableName} for column ${col.ormName}.`);
     }
 
-    const table = toDrizzleTable(fragnoTable);
+    const table = toDrizzleTable(fragnoTable, namespace);
     const out = table[col.ormName];
     if (out) {
       return out;
@@ -89,13 +106,17 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   /**
    * Build a WHERE clause from a condition using Drizzle's query builder
    */
-  function buildWhere(condition: Condition): Drizzle.SQL | undefined {
+  function buildWhere(
+    schema: AnySchema,
+    namespace: string | undefined,
+    condition: Condition,
+  ): Drizzle.SQL | undefined {
     if (condition.type === "compare") {
-      const left = toDrizzleColumn(condition.a);
+      const left = toDrizzleColumn(schema, namespace, condition.a);
       const op = condition.operator;
       let right = condition.b;
       if (right instanceof Column) {
-        right = toDrizzleColumn(right);
+        right = toDrizzleColumn(schema, namespace, right);
       } else {
         // Handle string references - convert external ID to internal ID via subquery
         if (condition.a.role === "reference" && typeof right === "string") {
@@ -181,11 +202,11 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
     }
 
     if (condition.type === "and") {
-      return Drizzle.and(...condition.items.map((item) => buildWhere(item)));
+      return Drizzle.and(...condition.items.map((item) => buildWhere(schema, namespace, item)));
     }
 
     if (condition.type === "not") {
-      const result = buildWhere(condition.item);
+      const result = buildWhere(schema, namespace, condition.item);
       if (!result) {
         return;
       }
@@ -193,7 +214,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
       return Drizzle.not(result);
     }
 
-    return Drizzle.or(...condition.items.map((item) => buildWhere(item)));
+    return Drizzle.or(...condition.items.map((item) => buildWhere(schema, namespace, item)));
   }
 
   /**
@@ -229,7 +250,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
    * Get table from schema by name
    * @throws Error if table is not found in schema
    */
-  function getTable(name: unknown): AnyTable {
+  function getTable(schema: AnySchema, name: unknown): AnyTable {
     const table = schema.tables[name as string];
     if (!table) {
       throw new Error(`Invalid table name ${name}.`);
@@ -260,6 +281,8 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
    * Process joins recursively to support nested joins with orderBy and limit
    */
   function processJoins(
+    schema: AnySchema,
+    namespace: string | undefined,
     joins: CompiledJoin[],
   ): Record<string, Drizzle.DBQueryConfig<"many", boolean>> {
     const result: Record<string, Drizzle.DBQueryConfig<"many", boolean>> = {};
@@ -286,7 +309,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
       let joinOrderBy: Drizzle.SQL[] | undefined;
       if (options.orderBy && options.orderBy.length > 0) {
         joinOrderBy = options.orderBy.map(([col, direction]) => {
-          const drizzleCol = toDrizzleColumn(col);
+          const drizzleCol = toDrizzleColumn(schema, namespace, col);
           return direction === "asc" ? Drizzle.asc(drizzleCol) : Drizzle.desc(drizzleCol);
         });
       }
@@ -294,7 +317,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
       // Build WHERE clause for this join if provided
       let joinWhere: Drizzle.SQL | undefined;
       if (options.where) {
-        joinWhere = buildWhere(options.where);
+        joinWhere = buildWhere(schema, namespace, options.where);
       }
 
       // Build the join config
@@ -307,7 +330,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
       // Recursively process nested joins
       if (options.join && options.join.length > 0) {
-        joinConfig.with = processJoins(options.join);
+        joinConfig.with = processJoins(schema, namespace, options.join);
       }
 
       result[joinName] = joinConfig;
@@ -317,7 +340,8 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
   }
 
   return {
-    compileRetrievalOperation(op: RetrievalOperation<TSchema>): DrizzleCompiledQuery | null {
+    compileRetrievalOperation(op: RetrievalOperation<AnySchema>): DrizzleCompiledQuery | null {
+      const schema = op.schema;
       switch (op.type) {
         case "count": {
           // Build WHERE clause
@@ -329,11 +353,11 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
               return null;
             }
             if (condition !== true) {
-              whereClause = buildWhere(condition);
+              whereClause = buildWhere(schema, op.namespace, condition);
             }
           }
 
-          const drizzleTable = toDrizzleTable(op.table);
+          const drizzleTable = toDrizzleTable(op.table, op.namespace);
           const query = db.select({ count: Drizzle.count() }).from(drizzleTable);
 
           const compiledQuery = whereClause ? query.where(whereClause).toSQL() : query.toSQL();
@@ -377,7 +401,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
           let orderBy: Drizzle.SQL[] | undefined;
           if (indexColumns.length > 0) {
             orderBy = indexColumns.map((col) => {
-              const drizzleCol = toDrizzleColumn(col);
+              const drizzleCol = toDrizzleColumn(schema, op.namespace, col);
               return orderDirection === "asc" ? Drizzle.asc(drizzleCol) : Drizzle.desc(drizzleCol);
             });
           }
@@ -413,7 +437,7 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
               return null;
             }
             if (condition !== true) {
-              const clause = buildWhere(condition);
+              const clause = buildWhere(schema, op.namespace, condition);
               if (clause) {
                 whereClauses.push(clause);
               }
@@ -436,12 +460,12 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
             if (indexColumns.length === 1) {
               // Simple single-column case
-              const col = toDrizzleColumn(indexColumns[0]!);
+              const col = toDrizzleColumn(schema, op.namespace, indexColumns[0]!);
               const val = serializedValues[indexColumns[0]!.ormName];
               whereClauses.push(useGreaterThan ? Drizzle.gt(col, val) : Drizzle.lt(col, val));
             } else {
               // Multi-column tuple comparison using SQL
-              const drizzleCols = indexColumns.map((c) => toDrizzleColumn(c));
+              const drizzleCols = indexColumns.map((c) => toDrizzleColumn(schema, op.namespace, c));
               const vals = indexColumns.map((c) => serializedValues[c.ormName]);
               const operator = useGreaterThan ? ">" : "<";
               // Safe cast: building a SQL comparison expression for cursor pagination
@@ -469,23 +493,37 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
 
           // Process joins recursively to support nested joins
           if (joins) {
-            queryConfig.with = processJoins(joins);
+            queryConfig.with = processJoins(schema, op.namespace, joins);
           }
 
-          const physicalTableName = mapper ? mapper.toPhysical(op.table.ormName) : op.table.ormName;
-          const compiledQuery = db.query[physicalTableName].findMany(queryConfig).toSQL();
+          // For multi-schema support: get the mapper for the operation's namespace
+          const opMapper = getMapperForOperation(op.namespace);
+          const physicalTableName = opMapper
+            ? opMapper.toPhysical(op.table.ormName)
+            : op.table.ormName;
+          const tableQuery = db.query[physicalTableName];
+
+          if (!tableQuery) {
+            throw new Error(
+              `[Drizzle] Table ${op.table.ormName} (physical: ${physicalTableName}) not found in db.query. ` +
+                `Available tables: ${Object.keys(db.query).join(", ")}`,
+            );
+          }
+
+          const compiledQuery = tableQuery.findMany(queryConfig).toSQL();
           return compiledQuery;
         }
       }
     },
 
     compileMutationOperation(
-      op: MutationOperation<TSchema>,
+      op: MutationOperation<AnySchema>,
     ): CompiledMutation<DrizzleCompiledQuery> | null {
+      const schema = op.schema;
       switch (op.type) {
         case "create": {
-          const table = getTable(op.table);
-          const drizzleTable = toDrizzleTable(table);
+          const table = getTable(schema, op.table);
+          const drizzleTable = toDrizzleTable(table, op.namespace);
           // encodeValues now handles runtime defaults automatically
           const encodedValues = encodeValues(op.values, table, true, provider);
           const values = processReferenceSubqueries(encodedValues);
@@ -498,10 +536,10 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
         }
 
         case "update": {
-          const table = getTable(op.table);
+          const table = getTable(schema, op.table);
           const idColumn = table.getIdColumn();
           const versionColumn = table.getVersionColumn();
-          const drizzleTable = toDrizzleTable(table);
+          const drizzleTable = toDrizzleTable(table, op.namespace);
 
           const externalId = typeof op.id === "string" ? op.id : op.id.externalId;
           const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
@@ -523,7 +561,8 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
             return null;
           }
 
-          const whereClause = condition === true ? undefined : buildWhere(condition);
+          const whereClause =
+            condition === true ? undefined : buildWhere(schema, op.namespace, condition);
           const encodedSetValues = encodeValues(op.set, table, false, provider);
           const setValues = processReferenceSubqueries(encodedSetValues);
 
@@ -541,10 +580,10 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
         }
 
         case "delete": {
-          const table = getTable(op.table);
+          const table = getTable(schema, op.table);
           const idColumn = table.getIdColumn();
           const versionColumn = table.getVersionColumn();
-          const drizzleTable = toDrizzleTable(table);
+          const drizzleTable = toDrizzleTable(table, op.namespace);
 
           if (!op.id) {
             throw new Error(
@@ -582,7 +621,8 @@ export function createDrizzleUOWCompiler<TSchema extends AnySchema>(
             return null;
           }
 
-          const whereClause = condition === true ? undefined : buildWhere(condition);
+          const whereClause =
+            condition === true ? undefined : buildWhere(schema, op.namespace, condition);
 
           const compiledQuery = db.delete(drizzleTable).where(whereClause).toSQL();
           return {

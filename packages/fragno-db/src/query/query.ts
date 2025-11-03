@@ -82,7 +82,7 @@ export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
  * Extract Select type parameter from a FindBuilder type (handles Omit wrapper)
  * @internal
  */
-type ExtractSelect<T> =
+export type ExtractSelect<T> =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends FindBuilder<any, infer TSelect, any>
     ? TSelect
@@ -95,7 +95,7 @@ type ExtractSelect<T> =
  * Extract JoinOut type parameter from a FindBuilder type (handles Omit wrapper)
  * @internal
  */
-type ExtractJoinOut<T> =
+export type ExtractJoinOut<T> =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   T extends FindBuilder<any, any, infer TJoinOut>
     ? TJoinOut

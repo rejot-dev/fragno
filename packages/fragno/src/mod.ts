@@ -1,4 +1,9 @@
-export { defineFragment, FragmentBuilder, type FragmentDefinition } from "./api/fragment-builder";
+export {
+  defineFragment,
+  FragmentBuilder,
+  type FragmentDefinition,
+  type RouteHandler,
+} from "./api/fragment-builder";
 
 export {
   createFragment,
@@ -18,3 +23,6 @@ export {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
 } from "./api/route";
+
+export { RequestInputContext } from "./api/request-input-context";
+export { RequestOutputContext } from "./api/request-output-context";

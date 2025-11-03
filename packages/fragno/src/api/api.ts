@@ -23,6 +23,12 @@ export type ValidPath<T extends string = string> = T extends `/${infer Rest}`
       : T
   : PathError<T, "Path must start with '/'.">; // Excludes paths not starting with "/"
 
+/**
+ * Base ServiceContext interface. Can be augmented by packages like @fragno-dev/db.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface RequestThisContext {}
+
 export interface FragnoRouteConfig<
   TMethod extends HTTPMethod,
   TPath extends string,
@@ -30,6 +36,7 @@ export interface FragnoRouteConfig<
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string = string,
   TQueryParameters extends string = string,
+  TThisContext extends RequestThisContext = RequestThisContext,
 > {
   method: TMethod;
   path: TPath;
@@ -38,6 +45,7 @@ export interface FragnoRouteConfig<
   errorCodes?: readonly TErrorCode[];
   queryParameters?: readonly TQueryParameters[];
   handler(
+    this: TThisContext,
     inputCtx: RequestInputContext<TPath, TInputSchema>,
     outputCtx: RequestOutputContext<TOutputSchema, TErrorCode>,
   ): Promise<Response>;
@@ -50,6 +58,7 @@ export function addRoute<
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string = string,
   TQueryParameters extends string = string,
+  TThisContext extends RequestThisContext = RequestThisContext,
 >(
   route: FragnoRouteConfig<
     TMethod,
@@ -57,9 +66,18 @@ export function addRoute<
     undefined,
     TOutputSchema,
     TErrorCode,
-    TQueryParameters
+    TQueryParameters,
+    TThisContext
   > & { inputSchema?: undefined },
-): FragnoRouteConfig<TMethod, TPath, undefined, TOutputSchema, TErrorCode, TQueryParameters>;
+): FragnoRouteConfig<
+  TMethod,
+  TPath,
+  undefined,
+  TOutputSchema,
+  TErrorCode,
+  TQueryParameters,
+  TThisContext
+>;
 
 // Overload for routes with inputSchema
 export function addRoute<
@@ -69,6 +87,7 @@ export function addRoute<
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string = string,
   TQueryParameters extends string = string,
+  TThisContext extends RequestThisContext = RequestThisContext,
 >(
   route: FragnoRouteConfig<
     TMethod,
@@ -76,11 +95,20 @@ export function addRoute<
     TInputSchema,
     TOutputSchema,
     TErrorCode,
-    TQueryParameters
+    TQueryParameters,
+    TThisContext
   > & {
     inputSchema: TInputSchema;
   },
-): FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>;
+): FragnoRouteConfig<
+  TMethod,
+  TPath,
+  TInputSchema,
+  TOutputSchema,
+  TErrorCode,
+  TQueryParameters,
+  TThisContext
+>;
 
 // Implementation
 export function addRoute<
@@ -90,6 +118,7 @@ export function addRoute<
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCode extends string = string,
   TQueryParameters extends string = string,
+  TThisContext extends RequestThisContext = RequestThisContext,
 >(
   route: FragnoRouteConfig<
     TMethod,
@@ -97,9 +126,18 @@ export function addRoute<
     TInputSchema,
     TOutputSchema,
     TErrorCode,
-    TQueryParameters
+    TQueryParameters,
+    TThisContext
   >,
-): FragnoRouteConfig<TMethod, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters> {
+): FragnoRouteConfig<
+  TMethod,
+  TPath,
+  TInputSchema,
+  TOutputSchema,
+  TErrorCode,
+  TQueryParameters,
+  TThisContext
+> {
   return route;
 }
 

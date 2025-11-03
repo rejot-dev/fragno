@@ -6,6 +6,14 @@ import type { AnySchema } from "../schema/create";
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
 
+/**
+ * Maps logical table names (used by fragment authors) to physical table names (with namespace suffix)
+ */
+export interface TableNameMapper {
+  toPhysical(logicalName: string): string;
+  toLogical(physicalName: string): string;
+}
+
 export interface DatabaseAdapter<TUOWConfig = void> {
   [fragnoDatabaseAdapterNameFakeSymbol]: string;
   [fragnoDatabaseAdapterVersionFakeSymbol]: number;
@@ -30,6 +38,12 @@ export interface DatabaseAdapter<TUOWConfig = void> {
     fragments: { schema: AnySchema; namespace: string }[],
     options?: { path?: string },
   ) => SchemaGenerator;
+
+  /**
+   * Creates a table name mapper for the given namespace.
+   * Used to convert between logical table names and physical table names.
+   */
+  createTableNameMapper: (namespace: string) => TableNameMapper;
 
   isConnectionHealthy: () => Promise<boolean>;
 

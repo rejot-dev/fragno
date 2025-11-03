@@ -4,10 +4,9 @@ import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 
 describe("simple-auth-fragment", async () => {
   const { fragment, test } = await createDatabaseFragmentForTest(
-    authFragmentDefinition,
-    [authRoutesFactory],
+    { definition: authFragmentDefinition, routes: [authRoutesFactory] },
     {
-      adapter: { type: "drizzle-pglite" },
+      adapter: { type: "kysely-sqlite" },
     },
   );
 

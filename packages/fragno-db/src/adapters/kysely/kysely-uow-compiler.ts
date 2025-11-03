@@ -11,7 +11,7 @@ import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { AnySelectClause } from "../../query/query";
-import type { TableNameMapper } from "./kysely-shared";
+import { type TableNameMapper, createTableNameMapper } from "./kysely-shared";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import type { SQLProvider } from "../../shared/providers";
 
@@ -24,24 +24,57 @@ type KyselyAny = Kysely<any>;
  * This compiler translates UOW operations into Kysely CompiledQuery objects
  * that can be executed as a batch/transaction.
  *
- * @param schema - The database schema
  * @param pool - Connection pool for acquiring database connections
  * @param provider - SQL provider (postgresql, mysql, sqlite, etc.)
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param mapper - Optional table name mapper for namespace prefixing (fallback for operations without explicit namespace)
  * @returns A UOWCompiler instance for Kysely
  */
-export function createKyselyUOWCompiler<TSchema extends AnySchema>(
-  schema: TSchema,
+export function createKyselyUOWCompiler(
   pool: ConnectionPool<KyselyAny>,
   provider: SQLProvider,
   mapper?: TableNameMapper,
-): UOWCompiler<TSchema, CompiledQuery> {
-  const queryCompiler = createKyselyQueryCompiler(schema, pool, provider, mapper);
+): UOWCompiler<CompiledQuery> {
   // Get kysely instance for query building (compilation doesn't execute, just builds SQL)
   const kysely = pool.getDatabaseSync();
-  const queryBuilder = createKyselyQueryBuilder(kysely, provider, mapper);
 
-  function toTable(name: unknown) {
+  /**
+   * Get the mapper for a specific operation
+   * Uses operation's namespace if provided, otherwise falls back to the default mapper
+   */
+  function getMapperForOperation(namespace: string | undefined): TableNameMapper | undefined {
+    if (namespace) {
+      return createTableNameMapper(namespace);
+    }
+    return mapper;
+  }
+
+  // Cache query compilers and builders by namespace for performance
+  const compilerCache = new Map<string | undefined, ReturnType<typeof createKyselyQueryCompiler>>();
+  const builderCache = new Map<string | undefined, ReturnType<typeof createKyselyQueryBuilder>>();
+
+  function getQueryCompiler(schema: AnySchema, namespace: string | undefined) {
+    const cacheKey = namespace;
+    let compiler = compilerCache.get(cacheKey);
+    if (!compiler) {
+      const opMapper = getMapperForOperation(namespace);
+      compiler = createKyselyQueryCompiler(schema, pool, provider, opMapper);
+      compilerCache.set(cacheKey, compiler);
+    }
+    return compiler;
+  }
+
+  function getQueryBuilder(namespace: string | undefined) {
+    const cacheKey = namespace;
+    let builder = builderCache.get(cacheKey);
+    if (!builder) {
+      const opMapper = getMapperForOperation(namespace);
+      builder = createKyselyQueryBuilder(kysely, provider, opMapper);
+      builderCache.set(cacheKey, builder);
+    }
+    return builder;
+  }
+
+  function toTable(schema: AnySchema, name: unknown) {
     const table = schema.tables[name as string];
     if (!table) {
       throw new Error(`Invalid table name ${name}.`);
@@ -50,7 +83,8 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
   }
 
   return {
-    compileRetrievalOperation(op: RetrievalOperation<TSchema>): CompiledQuery | null {
+    compileRetrievalOperation(op: RetrievalOperation<AnySchema>): CompiledQuery | null {
+      const queryCompiler = getQueryCompiler(op.schema, op.namespace);
       switch (op.type) {
         case "count": {
           return queryCompiler.count(op.table.name, {
@@ -159,8 +193,9 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
             }
           }
 
-          // When we have joins or need to bypass buildFindOptions, use queryBuilder directly
+          // When we have joins or need to bypass buildFindOptions, use operation-specific queryBuilder
           if (join && join.length > 0) {
+            const queryBuilder = getQueryBuilder(op.namespace);
             return queryBuilder.findMany(op.table, {
               // Safe cast: select from UOW matches SimplifyFindOptions requirement
               select: (findManyOptions.select ?? true) as AnySelectClause,
@@ -182,8 +217,9 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
     },
 
     compileMutationOperation(
-      op: MutationOperation<TSchema>,
+      op: MutationOperation<AnySchema>,
     ): CompiledMutation<CompiledQuery> | null {
+      const queryCompiler = getQueryCompiler(op.schema, op.namespace);
       switch (op.type) {
         case "create":
           // queryCompiler.create() calls encodeValues() which handles runtime defaults
@@ -193,7 +229,7 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
           };
 
         case "update": {
-          const table = toTable(op.table);
+          const table = toTable(op.schema, op.table);
           const idColumn = table.getIdColumn();
           const versionColumn = table.getVersionColumn();
 
@@ -226,7 +262,7 @@ export function createKyselyUOWCompiler<TSchema extends AnySchema>(
         }
 
         case "delete": {
-          const table = toTable(op.table);
+          const table = toTable(op.schema, op.table);
           const idColumn = table.getIdColumn();
           const versionColumn = table.getVersionColumn();
 

@@ -1,10 +1,16 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
 import { defineFragmentWithDatabase, type FragnoPublicConfigWithDatabase } from "./fragment";
-import { createFragment, defineRoute, type FragnoPublicClientConfig } from "@fragno-dev/core";
+import {
+  createFragment,
+  type FragnoPublicClientConfig,
+  defineRoute,
+  defineRoutes,
+} from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { schema, idColumn, column } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./mod";
+import type { DatabaseRequestThisContext } from "./fragment";
 import { z } from "zod";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
@@ -28,6 +34,10 @@ const mockDatabaseAdapter: DatabaseAdapter = {
   createSchemaGenerator: () => {
     throw new Error("Not implemented");
   },
+  createTableNameMapper: (namespace: string) => ({
+    toPhysical: (logicalName: string) => `${logicalName}_${namespace}`,
+    toLogical: (physicalName: string) => physicalName.replace(`_${namespace}`, ""),
+  }),
   isConnectionHealthy: () => Promise.resolve(true),
 };
 
@@ -336,6 +346,134 @@ describe("DatabaseFragmentBuilder", () => {
       const useUsers = builder.createHook("/users");
       expect(useUsers).toHaveProperty("route");
       expect(useUsers.route.path).toBe("/users");
+    });
+  });
+
+  describe("Route handler this context", () => {
+    test("this context has database functionality for database fragments", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-db").withDatabase(testSchema);
+
+      // Use defineRoutes with the fragment builder to get proper this typing
+      const routesFactory = defineRoutes(fragmentDef).create(({ defineRoute }) => {
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/test",
+            handler: async function (_, { json }) {
+              // Type check that this has getUnitOfWork method
+              expectTypeOf(this).toHaveProperty("getUnitOfWork");
+              expectTypeOf(this.getUnitOfWork).toBeFunction();
+              return json({ ok: true });
+            },
+          }),
+        ];
+      });
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      const fragment = createFragment(fragmentDef, {}, [routesFactory], options);
+      expect(fragment).toBeDefined();
+    });
+
+    test("database fragment routes have access to database this context", async () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-db").withDatabase(testSchema);
+
+      // Use defineRoutes with fragment builder reference for proper this typing
+      const routesFactory = defineRoutes(fragmentDef).create(({ defineRoute }) => {
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/test-uow",
+            outputSchema: z.object({ result: z.string() }),
+            handler: async function (_, { json }) {
+              // The type system ensures 'this' is DatabaseRequestThisContext
+              // which has getUnitOfWork method available
+              expectTypeOf(this).toHaveProperty("getUnitOfWork");
+              expectTypeOf(this.getUnitOfWork).toBeFunction();
+              return json({ result: "ok" });
+            },
+          }),
+        ];
+      });
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      const fragment = createFragment(fragmentDef, {}, [routesFactory], options);
+
+      // Verify the fragment was created successfully
+      expect(fragment).toBeDefined();
+      expect(fragment.config.name).toBe("test-db");
+    });
+  });
+
+  describe("providesService with this context", () => {
+    test("providesService functions have access to DatabaseRequestThisContext", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      // Define a service with a function that uses 'this'
+      const userService = {
+        getCurrentUser: function (this: DatabaseRequestThisContext, userId: string) {
+          // Type check that this has getUnitOfWork method
+          expectTypeOf(this).toHaveProperty("getUnitOfWork");
+          expectTypeOf(this.getUnitOfWork).toBeFunction();
+          return { id: userId, name: "Test User" };
+        },
+      };
+
+      // This should compile without errors because the function has the correct this type
+      const fragmentDef = defineFragmentWithDatabase("test-service")
+        .withDatabase(testSchema)
+        .providesService("userService", userService);
+
+      expect(fragmentDef).toBeDefined();
+      expect(fragmentDef.definition.providedServices).toBeDefined();
+    });
+
+    test("providesService binds services correctly", async () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const userService = {
+        testMethod: function (this: DatabaseRequestThisContext) {
+          // At runtime, this should have access to getUnitOfWork
+          const uow = this.getUnitOfWork();
+          return { hasUow: !!uow };
+        },
+      };
+
+      const fragmentDef = defineFragmentWithDatabase("test-service-runtime")
+        .withDatabase(testSchema)
+        .providesService("userService", userService);
+
+      // Verify the definition has the provided service
+      expect(fragmentDef.definition.providedServices).toBeDefined();
+      expect(fragmentDef.definition.providedServices?.userService).toBeDefined();
+
+      // Type checking is the main test here - if the service functions
+      // don't have the correct `this` type, TypeScript will error at compile time
     });
   });
 });

@@ -68,6 +68,8 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
  * @param pool - Connection pool for acquiring database connections
  * @param provider - SQL provider (sqlite, mysql, postgresql)
  * @param mapper - Optional table name mapper for namespace prefixing
+ * @param uowConfig - Optional UOW configuration
+ * @param schemaNamespaceMap - Optional WeakMap for schema-to-namespace lookups
  * @returns An AbstractQuery instance for performing database operations
  *
  * @example
@@ -84,9 +86,10 @@ export function fromDrizzle<T extends AnySchema>(
   provider: "sqlite" | "mysql" | "postgresql",
   mapper?: TableNameMapper,
   uowConfig?: DrizzleUOWConfig,
+  schemaNamespaceMap?: WeakMap<AnySchema, string>,
 ): AbstractQuery<T, DrizzleUOWConfig> {
   function createUOW(opts: { name?: string; config?: DrizzleUOWConfig }) {
-    const uowCompiler = createDrizzleUOWCompiler(schema, pool, provider, mapper);
+    const uowCompiler = createDrizzleUOWCompiler(pool, provider, mapper);
 
     const executor: UOWExecutor<DrizzleCompiledQuery, DrizzleResult> = {
       async executeRetrievalPhase(retrievalBatch: DrizzleCompiledQuery[]) {
@@ -125,24 +128,32 @@ export function fromDrizzle<T extends AnySchema>(
       },
     };
 
-    const decoder = createDrizzleUOWDecoder(schema, provider);
+    const decoder = createDrizzleUOWDecoder(provider);
 
     const { onQuery, ...restUowConfig } = opts.config ?? {};
 
-    return new UnitOfWork(schema, uowCompiler, executor, decoder, opts.name, {
-      ...restUowConfig,
-      onQuery: (query) => {
-        // Handle both CompiledQuery and CompiledMutation structures
-        // Retrieval operations return DrizzleCompiledQuery directly: { sql, params }
-        // Mutation operations return CompiledMutation: { query: DrizzleCompiledQuery, expectedAffectedRows }
-        const actualQuery =
-          query && typeof query === "object" && "query" in query
-            ? (query as CompiledMutation<DrizzleCompiledQuery>).query
-            : (query as DrizzleCompiledQuery);
+    return new UnitOfWork(
+      schema,
+      uowCompiler,
+      executor,
+      decoder,
+      opts.name,
+      {
+        ...restUowConfig,
+        onQuery: (query) => {
+          // Handle both CompiledQuery and CompiledMutation structures
+          // Retrieval operations return DrizzleCompiledQuery directly: { sql, params }
+          // Mutation operations return CompiledMutation: { query: DrizzleCompiledQuery, expectedAffectedRows }
+          const actualQuery =
+            query && typeof query === "object" && "query" in query
+              ? (query as CompiledMutation<DrizzleCompiledQuery>).query
+              : (query as DrizzleCompiledQuery);
 
-        opts.config?.onQuery?.(actualQuery);
+          opts.config?.onQuery?.(actualQuery);
+        },
       },
-    });
+      schemaNamespaceMap,
+    );
   }
 
   return {

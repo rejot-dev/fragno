@@ -22,6 +22,7 @@ export interface DrizzleConfig {
 export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   #connectionPool: ConnectionPool<DBType>;
   #provider: "sqlite" | "mysql" | "postgresql";
+  #schemaNamespaceMap = new WeakMap<AnySchema, string>();
 
   constructor(config: DrizzleConfig) {
     this.#connectionPool = createDrizzleConnectionPool(
@@ -40,6 +41,10 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
 
   async close(): Promise<void> {
     await this.#connectionPool.close();
+  }
+
+  createTableNameMapper(namespace: string) {
+    return createTableNameMapper(namespace);
   }
 
   get provider(): "sqlite" | "mysql" | "postgresql" {
@@ -80,9 +85,19 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
     schema: TSchema,
     namespace: string,
   ): AbstractQuery<TSchema, DrizzleUOWConfig> {
+    // Register schema-namespace mapping
+    this.#schemaNamespaceMap.set(schema, namespace);
+
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromDrizzle(schema, this.#connectionPool, this.#provider, mapper);
+    return fromDrizzle(
+      schema,
+      this.#connectionPool,
+      this.#provider,
+      mapper,
+      undefined,
+      this.#schemaNamespaceMap,
+    );
   }
 
   createSchemaGenerator(

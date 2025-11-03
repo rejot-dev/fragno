@@ -23,12 +23,14 @@ export interface CreateFragmentForTestOptions<
   TServices,
   TAdditionalContext extends Record<string, unknown>,
   TOptions extends FragnoPublicConfig,
+  TRequiredInterfaces extends Record<string, unknown> = {},
 > {
   config: TConfig;
   options?: Partial<TOptions>;
   deps?: Partial<TDeps>;
   services?: Partial<TServices>;
   additionalContext?: Partial<TAdditionalContext>;
+  interfaceImplementations?: TRequiredInterfaces;
 }
 
 /**
@@ -108,18 +110,34 @@ export function createFragmentForTest<
   TServices extends Record<string, unknown>,
   TAdditionalContext extends Record<string, unknown>,
   TOptions extends FragnoPublicConfig,
+  TRequiredInterfaces extends Record<string, unknown>,
+  TProvidedInterfaces extends Record<string, unknown>,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
   fragmentBuilder: {
-    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
+    definition: FragmentDefinition<
+      TConfig,
+      TDeps,
+      TServices,
+      TAdditionalContext,
+      TRequiredInterfaces,
+      TProvidedInterfaces
+    >;
     $requiredOptions: TOptions;
   },
   routesOrFactories: TRoutesOrFactories,
-  options: CreateFragmentForTestOptions<TConfig, TDeps, TServices, TAdditionalContext, TOptions>,
+  options: CreateFragmentForTestOptions<
+    TConfig,
+    TDeps,
+    TServices,
+    TAdditionalContext,
+    TOptions,
+    TRequiredInterfaces
+  >,
 ): FragmentForTest<
   TConfig,
-  TDeps,
-  TServices,
+  TDeps & TRequiredInterfaces,
+  TServices & TProvidedInterfaces,
   TAdditionalContext,
   TOptions,
   FlattenRouteFactories<TRoutesOrFactories>
@@ -130,6 +148,7 @@ export function createFragmentForTest<
     deps: depsOverride,
     services: servicesOverride,
     additionalContext: additionalContextOverride,
+    interfaceImplementations,
   } = options;
 
   // Create deps from definition or use empty object
@@ -138,16 +157,24 @@ export function createFragmentForTest<
     ? definition.dependencies(config, fragmentOptions)
     : ({} as TDeps);
 
-  // Merge deps with overrides
-  const deps = { ...baseDeps, ...depsOverride } as TDeps;
+  // Merge deps with overrides and interface implementations
+  const deps = {
+    ...baseDeps,
+    ...interfaceImplementations,
+    ...depsOverride,
+  } as TDeps & TRequiredInterfaces;
 
   // Create services from definition or use empty object
   const baseServices = definition.services
     ? definition.services(config, fragmentOptions, deps)
     : ({} as TServices);
 
-  // Merge services with overrides
-  const services = { ...baseServices, ...servicesOverride } as TServices;
+  // Merge services with provided services and overrides
+  const services = {
+    ...baseServices,
+    ...definition.providedServices,
+    ...servicesOverride,
+  } as TServices & TProvidedInterfaces;
 
   // Merge additional context with options
   const additionalContext = {
@@ -157,7 +184,13 @@ export function createFragmentForTest<
   } as TAdditionalContext & TOptions;
 
   // Create the actual fragment using createFragment
-  const fragment = createFragment(fragmentBuilder, config, routesOrFactories, fragmentOptions);
+  const fragment = createFragment(
+    fragmentBuilder,
+    config,
+    routesOrFactories,
+    fragmentOptions,
+    interfaceImplementations,
+  );
 
   return {
     config,

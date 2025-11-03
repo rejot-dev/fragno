@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { DrizzleAdapter } from "./drizzle-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import type { DBType } from "./shared";
 import { createRequire } from "node:module";
 import { writeAndLoadSchema } from "./test-utils";
@@ -71,6 +71,30 @@ describe("DrizzleAdapter SQLite", () => {
       });
   });
 
+  // Second schema for multi-schema testing
+  const schema2 = schema((s) => {
+    return s
+      .addTable("products", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("price", column("integer"))
+          .createIndex("name_idx", ["name"]);
+      })
+      .addTable("orders", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("product_id", referenceColumn())
+          .addColumn("quantity", column("integer"))
+          .createIndex("product_orders_idx", ["product_id"]);
+      })
+      .addReference("product", {
+        type: "one",
+        from: { table: "orders", column: "product_id" },
+        to: { table: "products", column: "id" },
+      });
+  });
+
   let adapter: DrizzleAdapter;
   let db: DBType;
   // let sqliteDb: Database.Database;
@@ -84,17 +108,28 @@ describe("DrizzleAdapter SQLite", () => {
       "namespace",
     );
 
+    // Write second schema to file and dynamically import it
+    const { schemaModule: schemaModule2, cleanup: cleanup2 } = await writeAndLoadSchema(
+      "drizzle-adapter-sqlite-schema2",
+      schema2,
+      "sqlite",
+      "namespace2",
+    );
+
     const client = createClient({
       url: "file::memory:?cache=shared",
     });
 
+    // Merge both schema modules for the db
+    const mergedSchema = { ...schemaModule, ...schemaModule2 };
+
     db = drizzle(client, {
-      schema: schemaModule,
+      schema: mergedSchema,
     }) as unknown as DBType;
 
-    // Generate and run migrations
+    // Generate and run migrations for both schemas
     const emptyJson = await generateSQLiteDrizzleJson({});
-    const targetJson = await generateSQLiteDrizzleJson(schemaModule);
+    const targetJson = await generateSQLiteDrizzleJson(mergedSchema);
 
     const migrationStatements = await generateSQLiteMigration(emptyJson, targetJson);
 
@@ -110,6 +145,7 @@ describe("DrizzleAdapter SQLite", () => {
     return async () => {
       client.close();
       await cleanup();
+      await cleanup2();
     };
   }, 12000);
 
@@ -128,7 +164,12 @@ describe("DrizzleAdapter SQLite", () => {
       age: 30,
     });
 
-    expectTypeOf(createUow.find).parameter(0).toEqualTypeOf<keyof typeof testSchema.tables>();
+    expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
+      Parameters<typeof createUow.find>[0]
+    >();
+    expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
+      "users" | "emails" | "posts" | "comments"
+    >();
 
     const { success: createSuccess } = await createUow.executeMutations();
     expect(createSuccess).toBe(true);
@@ -635,5 +676,92 @@ describe("DrizzleAdapter SQLite", () => {
     const localDate = new Date("2024-06-15T14:30:00");
     expect(localDate).toBeInstanceOf(Date);
     expect(typeof localDate.getTimezoneOffset()).toBe("number");
+  });
+
+  it("should support forSchema for multi-schema queries", async () => {
+    const queryEngine1 = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine2 = adapter.createQueryEngine(schema2, "namespace2");
+
+    // Create test data in schema1 (users)
+    const createUsersUow = queryEngine1.createUnitOfWork("create-users-for-multi-schema");
+    createUsersUow.create("users", { name: "Multi Schema User 1", age: 25 });
+    createUsersUow.create("users", { name: "Multi Schema User 2", age: 30 });
+    const { success: success1 } = await createUsersUow.executeMutations();
+    expect(success1).toBe(true);
+
+    // Create test data in schema2 (products)
+    const createProductsUow = queryEngine2.createUnitOfWork("create-products-for-multi-schema");
+    createProductsUow.create("products", { name: "Product A", price: 100 });
+    createProductsUow.create("products", { name: "Product B", price: 200 });
+    const { success: success2 } = await createProductsUow.executeMutations();
+    expect(success2).toBe(true);
+
+    // Now use forSchema to query from both schemas
+    const uow = queryEngine1.createUnitOfWork("multi-schema-query");
+
+    const view1 = uow
+      .forSchema(testSchema)
+      .find("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "Multi Schema User"))
+          .select(["id", "name"]),
+      )
+      .find("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "Multi Schema User"))
+          .select(["name", "age"]),
+      );
+
+    const view2 = uow
+      .forSchema(schema2)
+      .find("products", (b) => b.whereIndex("primary").select(["name", "price"]));
+
+    // Execute the retrieval phase once
+    await uow.executeRetrieve();
+
+    // Get results from view1
+    const [users1, users2] = await view1.retrievalPhase;
+    const [user1] = users1;
+    expectTypeOf(user1).toMatchObjectType<{ id: FragnoId; name: string }>();
+
+    const [user2] = users2;
+    expectTypeOf(user2).toMatchObjectType<{ name: string; age: number | null }>();
+
+    // Get results from view2
+    const [products] = await view2.retrievalPhase;
+    const [product1] = products;
+    expectTypeOf(product1).toMatchObjectType<{ name: string; price: number }>();
+
+    // Verify users from schema1
+    expect(users1).toHaveLength(2);
+    expect(users1[0]).toMatchObject({
+      id: expect.any(Object),
+      name: "Multi Schema User 1",
+    });
+    expect(users1[1]).toMatchObject({
+      id: expect.any(Object),
+      name: "Multi Schema User 2",
+    });
+
+    expect(users2).toHaveLength(2);
+    expect(users2[0]).toMatchObject({
+      name: "Multi Schema User 1",
+      age: 25,
+    });
+    expect(users2[1]).toMatchObject({
+      name: "Multi Schema User 2",
+      age: 30,
+    });
+
+    // Verify products from schema2
+    expect(products).toHaveLength(2);
+    expect(products[0]).toMatchObject({
+      name: "Product A",
+      price: 100,
+    });
+    expect(products[1]).toMatchObject({
+      name: "Product B",
+      price: 200,
+    });
   });
 });

@@ -129,8 +129,28 @@ export function defineFragnoDatabase<const TSchema extends AnySchema>(
 export {
   defineFragmentWithDatabase,
   DatabaseFragmentBuilder,
+  defineServices,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
+  type DatabaseRouteHandler,
 } from "./fragment";
 
 export { decodeCursor, type CursorData } from "./query/cursor";
+
+export {
+  createUnitOfWork,
+  UnitOfWork,
+  UnitOfWorkSchemaView,
+  type IUnitOfWorkBase,
+  type UOWCompiler,
+  type UOWExecutor,
+  type UOWDecoder,
+} from "./query/unit-of-work";
+
+export {
+  withUnitOfWork,
+  serviceContext,
+  uowStorage,
+  type DatabaseRequestThisContext,
+} from "./fragment";
+export { type BoundServices } from "./bind-services";

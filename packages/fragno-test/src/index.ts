@@ -10,14 +10,14 @@ import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/
 import {
   createAdapter,
   type SupportedAdapter,
-  type TestContext,
+  type AdapterContext,
   type KyselySqliteAdapter,
   type KyselyPgliteAdapter,
   type DrizzlePgliteAdapter,
+  type SchemaConfig,
 } from "./adapters";
-import type { FragnoRouteConfig } from "@fragno-dev/core";
-import type { HTTPMethod } from "@fragno-dev/core/api";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { withUnitOfWork, type IUnitOfWorkBase, type DatabaseAdapter } from "@fragno-dev/db";
+import type { AbstractQuery } from "@fragno-dev/db/query";
 
 // Re-export utilities from @fragno-dev/core/test
 export {
@@ -33,240 +33,404 @@ export type {
   KyselySqliteAdapter,
   KyselyPgliteAdapter,
   DrizzlePgliteAdapter,
-  TestContext,
+  AdapterContext,
 } from "./adapters";
 
 /**
- * Options for creating a database fragment for testing
+ * Base test context with common functionality across all adapters
  */
-export interface CreateDatabaseFragmentForTestOptions<
-  TConfig,
-  TDeps,
-  TServices,
-  TAdditionalContext extends Record<string, unknown>,
-  TOptions extends FragnoPublicConfig,
-  TAdapter extends SupportedAdapter,
-> extends Omit<
-    CreateFragmentForTestOptions<TConfig, TDeps, TServices, TAdditionalContext, TOptions>,
-    "config"
-  > {
-  adapter: TAdapter;
-  migrateToVersion?: number;
-  config?: TConfig;
+export interface BaseTestContext {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly adapter: DatabaseAdapter<any>;
+  createUnitOfWork: (name?: string) => IUnitOfWorkBase;
+  withUnitOfWork: <T>(fn: (uow: IUnitOfWorkBase) => Promise<T>) => Promise<T>;
+  callService: <T>(fn: () => T | Promise<T>) => Promise<T>;
+  resetDatabase: () => Promise<void>;
+  cleanup: () => Promise<void>;
 }
 
 /**
- * Result of creating a database fragment for testing
- * All properties are getters that return the current fragment instance
+ * Internal interface with getOrm for adapter implementations
  */
-export interface DatabaseFragmentTestResult<
-  TConfig,
-  TDeps,
-  TServices,
-  TAdditionalContext extends Record<string, unknown>,
-  TOptions extends FragnoPublicConfig,
-  TAdapter extends SupportedAdapter,
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
+export interface InternalTestContextMethods {
+  getOrm: <TSchema extends AnySchema>(namespace: string) => AbstractQuery<TSchema>;
+  createUnitOfWork: (name?: string) => IUnitOfWorkBase;
+  withUnitOfWork: <T>(fn: (uow: IUnitOfWorkBase) => Promise<T>) => Promise<T>;
+  callService: <T>(fn: () => T | Promise<T>) => Promise<T>;
+}
+
+/**
+ * Helper to create common test context methods from an ORM map
+ * This is used internally by adapter implementations to avoid code duplication
+ */
+export function createCommonTestContextMethods(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ormMap: Map<string, AbstractQuery<any>>,
+): InternalTestContextMethods {
+  return {
+    getOrm: <TSchema extends AnySchema>(namespace: string) => {
+      const orm = ormMap.get(namespace);
+      if (!orm) {
+        throw new Error(`No ORM found for namespace: ${namespace}`);
+      }
+      return orm as AbstractQuery<TSchema>;
+    },
+    createUnitOfWork: (name?: string) => {
+      // Use the first schema's ORM to create a base UOW
+      const firstOrm = ormMap.values().next().value;
+      if (!firstOrm) {
+        throw new Error("No ORMs available to create UnitOfWork");
+      }
+      return firstOrm.createUnitOfWork(name);
+    },
+    withUnitOfWork: async <T>(fn: (uow: IUnitOfWorkBase) => Promise<T>) => {
+      const firstOrm = ormMap.values().next().value;
+      if (!firstOrm) {
+        throw new Error("No ORMs available to create UnitOfWork");
+      }
+      const uow = firstOrm.createUnitOfWork();
+      return withUnitOfWork(uow, async () => {
+        return await fn(uow);
+      });
+    },
+    callService: async <T>(fn: () => T | Promise<T>) => {
+      const firstOrm = ormMap.values().next().value;
+      if (!firstOrm) {
+        throw new Error("No ORMs available to create UnitOfWork");
+      }
+      const uow = firstOrm.createUnitOfWork();
+      return withUnitOfWork(uow, async () => {
+        // Call the function to schedule operations (don't await yet)
+        const resultPromise = fn();
+
+        // Execute UOW phases
+        await uow.executeRetrieve();
+        await uow.executeMutations();
+
+        // Now await the result
+        return await resultPromise;
+      });
+    },
+  };
+}
+
+/**
+ * Complete test context combining base and adapter-specific functionality
+ */
+export type TestContext<T extends SupportedAdapter> = BaseTestContext & AdapterContext<T>;
+
+/**
+ * Helper type to extract the schema from a fragment definition's additional context
+ */
+type ExtractSchemaFromAdditionalContext<TAdditionalContext> = TAdditionalContext extends {
+  databaseSchema?: infer TSchema extends AnySchema;
+}
+  ? TSchema
+  : AnySchema;
+
+/**
+ * Fragment configuration for multi-fragment setup
+ */
+export interface FragmentConfig<
+  TDef extends {
+    definition: FragmentDefinition<any, any, any, any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    $requiredOptions: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  } = {
+    definition: FragmentDefinition<any, any, any, any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    $requiredOptions: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  },
+  TRoutes extends readonly AnyRouteOrFactory[] = readonly AnyRouteOrFactory[],
 > {
-  readonly fragment: FragmentForTest<
-    TConfig,
-    TDeps,
-    TServices,
-    TAdditionalContext,
-    TOptions,
-    TRoutes
+  definition: TDef;
+  routes: TRoutes;
+  config?: TDef["definition"] extends FragmentDefinition<infer TConfig, any, any, any, any, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+    ? TConfig
+    : never;
+  migrateToVersion?: number;
+}
+
+/**
+ * Options for creating multiple database fragments for testing
+ */
+export interface MultiFragmentTestOptions<TAdapter extends SupportedAdapter> {
+  adapter: TAdapter;
+}
+
+/**
+ * Result type for a single fragment in a multi-fragment setup
+ */
+type FragmentResultFromConfig<TConfig extends FragmentConfig> = TConfig["definition"] extends {
+  definition: FragmentDefinition<
+    infer TConf,
+    infer TDeps,
+    infer TServices,
+    infer TAdditionalCtx,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    infer TProvidedServices
   >;
-  readonly services: TServices;
-  readonly callRoute: FragmentForTest<
-    TConfig,
-    TDeps,
-    TServices,
-    TAdditionalContext,
-    TOptions,
-    TRoutes
-  >["callRoute"];
-  readonly config: TConfig;
-  readonly deps: TDeps;
-  readonly additionalContext: TAdditionalContext;
+  $requiredOptions: infer TOptions extends FragnoPublicConfig;
+}
+  ? {
+      fragment: FragmentForTest<
+        TConf,
+        TDeps,
+        TServices & TProvidedServices,
+        TAdditionalCtx,
+        TOptions,
+        FlattenRouteFactories<TConfig["routes"]>
+      >;
+      services: TServices & TProvidedServices;
+      callRoute: FragmentForTest<
+        TConf,
+        TDeps,
+        TServices & TProvidedServices,
+        TAdditionalCtx,
+        TOptions,
+        FlattenRouteFactories<TConfig["routes"]>
+      >["callRoute"];
+      config: TConf;
+      deps: TDeps;
+      additionalContext: TAdditionalCtx;
+      db: AbstractQuery<ExtractSchemaFromAdditionalContext<TAdditionalCtx>>;
+    }
+  : never;
+
+export interface SingleFragmentTestResult<
+  TFragment extends FragmentConfig,
+  TAdapter extends SupportedAdapter,
+> {
+  fragment: FragmentResultFromConfig<TFragment>;
   test: TestContext<TAdapter>;
 }
 
-export async function createDatabaseFragmentForTest<
-  const TConfig,
-  const TDeps,
-  const TServices extends Record<string, unknown>,
-  const TAdditionalContext extends Record<string, unknown>,
-  const TOptions extends FragnoPublicConfig,
-  const TSchema extends AnySchema,
-  const TAdapter extends SupportedAdapter,
-  const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
->(
-  fragmentBuilder: {
-    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
-    $requiredOptions: TOptions;
-  },
-  routesOrFactories: TRoutesOrFactories,
-  options: CreateDatabaseFragmentForTestOptions<
-    TConfig,
-    TDeps,
-    TServices,
-    TAdditionalContext,
-    TOptions,
-    TAdapter
-  >,
-): Promise<
-  DatabaseFragmentTestResult<
-    TConfig,
-    TDeps,
-    TServices,
-    TAdditionalContext,
-    TOptions,
-    TAdapter,
-    FlattenRouteFactories<TRoutesOrFactories>
-  >
+/**
+ * Result of creating multiple database fragments for testing (array input)
+ */
+export interface MultiFragmentTestResult<
+  TFragments extends readonly FragmentConfig[],
+  TAdapter extends SupportedAdapter,
 > {
-  const {
-    adapter: adapterConfig,
-    migrateToVersion,
-    config,
-    options: fragmentOptions,
-    deps,
-    services,
-    additionalContext,
-  } = options;
+  fragments: {
+    [K in keyof TFragments]: FragmentResultFromConfig<TFragments[K]>;
+  };
+  test: TestContext<TAdapter>;
+}
 
-  // Get schema and namespace from fragment definition's additionalContext
-  // Safe cast: DatabaseFragmentBuilder adds databaseSchema and databaseNamespace to additionalContext
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fragmentAdditionalContext = fragmentBuilder.definition.additionalContext as any;
-  const schema = fragmentAdditionalContext?.databaseSchema as TSchema | undefined;
-  const namespace = (fragmentAdditionalContext?.databaseNamespace as string | undefined) ?? "";
+/**
+ * Result of creating multiple database fragments for testing (object input)
+ */
+export interface NamedMultiFragmentTestResult<
+  TFragments extends Record<string, FragmentConfig>,
+  TAdapter extends SupportedAdapter,
+> {
+  fragments: {
+    [K in keyof TFragments]: FragmentResultFromConfig<TFragments[K]>;
+  };
+  test: TestContext<TAdapter>;
+}
 
-  if (!schema) {
-    throw new Error(
-      `Fragment '${fragmentBuilder.definition.name}' does not have a database schema. ` +
-        `Make sure you're using defineFragmentWithDatabase().withDatabase(schema).`,
+/**
+ * Create multiple database fragments for testing with a shared adapter (array input)
+ */
+export async function createDatabaseFragmentsForTest<
+  const TFragments extends readonly FragmentConfig[],
+  const TAdapter extends SupportedAdapter,
+>(
+  fragments: TFragments,
+  options: MultiFragmentTestOptions<TAdapter>,
+): Promise<MultiFragmentTestResult<TFragments, TAdapter>>;
+
+/**
+ * Create multiple database fragments for testing with a shared adapter (object input)
+ */
+export async function createDatabaseFragmentsForTest<
+  const TFragments extends Record<string, FragmentConfig>,
+  const TAdapter extends SupportedAdapter,
+>(
+  fragments: TFragments,
+  options: MultiFragmentTestOptions<TAdapter>,
+): Promise<NamedMultiFragmentTestResult<TFragments, TAdapter>>;
+
+/**
+ * Implementation of createDatabaseFragmentsForTest
+ */
+export async function createDatabaseFragmentsForTest<
+  const TFragments extends readonly FragmentConfig[] | Record<string, FragmentConfig>,
+  const TAdapter extends SupportedAdapter,
+>(
+  fragments: TFragments,
+  options: MultiFragmentTestOptions<TAdapter>,
+): Promise<
+  | MultiFragmentTestResult<any, TAdapter> // eslint-disable-line @typescript-eslint/no-explicit-any
+  | NamedMultiFragmentTestResult<any, TAdapter> // eslint-disable-line @typescript-eslint/no-explicit-any
+> {
+  const { adapter: adapterConfig } = options;
+
+  // Convert to array for processing
+  const isArray = Array.isArray(fragments);
+  const fragmentsArray: FragmentConfig[] = isArray
+    ? fragments
+    : Object.values(fragments as Record<string, FragmentConfig>);
+
+  // Extract schemas from all fragments
+  const schemaConfigs: SchemaConfig[] = fragmentsArray.map((fragmentConfig) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fragmentAdditionalContext = fragmentConfig.definition.definition.additionalContext as any;
+    const schema = fragmentAdditionalContext?.databaseSchema as AnySchema | undefined;
+    const namespace =
+      (fragmentAdditionalContext?.databaseNamespace as string | undefined) ??
+      fragmentConfig.definition.definition.name + "-db";
+
+    if (!schema) {
+      throw new Error(
+        `Fragment '${fragmentConfig.definition.definition.name}' does not have a database schema. ` +
+          `Make sure you're using defineFragmentWithDatabase().withDatabase(schema).`,
+      );
+    }
+
+    return {
+      schema,
+      namespace,
+      migrateToVersion: fragmentConfig.migrateToVersion,
+    };
+  });
+
+  // Create adapter with all schemas
+  const { testContext, adapter } = await createAdapter(adapterConfig, schemaConfigs);
+
+  // Helper to create fragments with service wiring
+  const createFragments = () => {
+    // First pass: collect all provided services and wrap them
+    // Map from service name to { service: wrapped service, orm: ORM for that service's schema }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const providedServicesByName: Record<string, { service: any; orm: any }> = {};
+
+    for (let i = 0; i < fragmentsArray.length; i++) {
+      const fragmentConfig = fragmentsArray[i]!;
+      const providedServices = fragmentConfig.definition.definition.providedServices;
+      if (providedServices) {
+        const namespace = schemaConfigs[i]!.namespace;
+        const orm = testContext.getOrm(namespace);
+
+        // Collect each provided service
+        for (const [serviceName, serviceImpl] of Object.entries(providedServices)) {
+          if (serviceImpl && typeof serviceImpl === "object") {
+            providedServicesByName[serviceName] = { service: serviceImpl, orm };
+          }
+        }
+      }
+    }
+
+    // Second pass: create fragments with service dependencies wired up
+    return fragmentsArray.map((fragmentConfig, index) => {
+      const namespace = schemaConfigs[index]!.namespace;
+
+      // Get ORM for this fragment's namespace
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const schema = schemaConfigs[index]!.schema as any;
+      const orm = testContext.getOrm(namespace);
+
+      // Create fragment with database adapter in options
+      const mergedOptions = {
+        databaseAdapter: adapter,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
+
+      // Build interface implementations for services this fragment uses
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const interfaceImplementations: Record<string, any> = {};
+      const usedServices = fragmentConfig.definition.definition.usedServices;
+
+      if (usedServices) {
+        for (const serviceName of Object.keys(usedServices)) {
+          if (providedServicesByName[serviceName]) {
+            // Use the wrapped service
+            interfaceImplementations[serviceName] = providedServicesByName[serviceName]!.service;
+          }
+        }
+      }
+
+      const fragment = createFragmentForTest(fragmentConfig.definition, fragmentConfig.routes, {
+        config: fragmentConfig.config,
+        options: mergedOptions,
+        interfaceImplementations,
+      });
+
+      // Return fragment services without wrapping - users manage UOW lifecycle explicitly
+      return {
+        fragment,
+        services: fragment.services,
+        callRoute: fragment.callRoute,
+        config: fragment.config,
+        deps: fragment.deps,
+        additionalContext: fragment.additionalContext,
+        get db() {
+          return orm;
+        },
+        _orm: orm,
+        _schema: schema,
+      };
+    });
+  };
+
+  const fragmentResults = createFragments();
+
+  // Wrap resetDatabase to also recreate all fragments
+  const originalResetDatabase = testContext.resetDatabase;
+  const resetDatabase = async () => {
+    await originalResetDatabase();
+
+    // Recreate all fragments with service wiring
+    const newFragmentResults = createFragments();
+
+    // Update the result objects
+    newFragmentResults.forEach((newResult, index) => {
+      const result = fragmentResults[index]!;
+      result.fragment = newResult.fragment;
+      result.services = newResult.services;
+      result.callRoute = newResult.callRoute;
+      result.config = newResult.config;
+      result.deps = newResult.deps;
+      result.additionalContext = newResult.additionalContext;
+      result._orm = newResult._orm;
+    });
+  };
+
+  const finalTestContext = {
+    ...testContext,
+    resetDatabase,
+  };
+
+  // Return in the same structure as input
+  if (isArray) {
+    return {
+      fragments: fragmentResults as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      test: finalTestContext,
+    };
+  } else {
+    const keys = Object.keys(fragments as Record<string, FragmentConfig>);
+    const fragmentsObject = Object.fromEntries(
+      keys.map((key, index) => [key, fragmentResults[index]]),
     );
+    return {
+      fragments: fragmentsObject as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      test: finalTestContext,
+    };
   }
+}
 
-  // Create adapter using the factory
-  const { testContext: originalTestContext, adapter } = await createAdapter(
-    adapterConfig,
-    schema,
-    namespace,
-    migrateToVersion,
-  );
+export async function createDatabaseFragmentForTest<
+  const TFragment extends FragmentConfig,
+  const TAdapter extends SupportedAdapter,
+>(
+  fragment: TFragment,
+  options: MultiFragmentTestOptions<TAdapter>,
+): Promise<SingleFragmentTestResult<TFragment, TAdapter>> {
+  const result = await createDatabaseFragmentsForTest([fragment], options);
 
-  // Create fragment with database adapter in options
-  // Safe cast: We're merging the user's options with the databaseAdapter, which is required by TOptions
-  // The user's TOptions is constrained to FragnoPublicConfig (or a subtype), which we extend with databaseAdapter
-  let mergedOptions = {
-    ...fragmentOptions,
-    databaseAdapter: adapter,
-  } as unknown as TOptions;
-
-  let fragment = createFragmentForTest(fragmentBuilder, routesOrFactories, {
-    // Safe cast: If config is not provided, we pass undefined as TConfig.
-    // The base createFragmentForTest expects config: TConfig, but if TConfig allows undefined
-    // or if the fragment doesn't use config in its dependencies function, this will work correctly.
-    config: config as TConfig,
-    options: mergedOptions,
-    deps,
-    services,
-    additionalContext,
-  });
-
-  // Wrap resetDatabase to also recreate the fragment with the new adapter
-  const originalResetDatabase = originalTestContext.resetDatabase;
-
-  // Create test context with getters that always return current values
-  // We need to cast to any to avoid TypeScript errors when accessing kysely/drizzle properties
-  // that may not exist depending on the adapter type
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const testContext: any = Object.create(originalTestContext, {
-    db: {
-      get() {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (originalTestContext as any).db;
-      },
-      enumerable: true,
-    },
-    kysely: {
-      get() {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (originalTestContext as any).kysely;
-      },
-      enumerable: true,
-    },
-    drizzle: {
-      get() {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (originalTestContext as any).drizzle;
-      },
-      enumerable: true,
-    },
-    adapter: {
-      get() {
-        return originalTestContext.adapter;
-      },
-      enumerable: true,
-    },
-    resetDatabase: {
-      value: async () => {
-        // Call the original reset database function
-        await originalResetDatabase();
-
-        // Recreate the fragment with the new adapter (which has been updated by the factory's resetDatabase)
-        mergedOptions = {
-          ...fragmentOptions,
-          databaseAdapter: originalTestContext.adapter,
-        } as unknown as TOptions;
-
-        fragment = createFragmentForTest(fragmentBuilder, routesOrFactories, {
-          config: config as TConfig,
-          options: mergedOptions,
-          deps,
-          services,
-          additionalContext,
-        });
-      },
-      enumerable: true,
-    },
-    cleanup: {
-      value: async () => {
-        await originalTestContext.cleanup();
-      },
-      enumerable: true,
-    },
-  });
-
-  // Return an object with getters for fragment properties so they always reference the current fragment
   return {
-    get fragment() {
-      return fragment;
-    },
-    get services() {
-      return fragment.services;
-    },
-    get callRoute() {
-      return fragment.callRoute;
-    },
-    get config() {
-      return fragment.config;
-    },
-    get deps() {
-      return fragment.deps;
-    },
-    get additionalContext() {
-      return fragment.additionalContext;
-    },
-    test: testContext,
+    fragment: result.fragments[0]!,
+    test: result.test,
   };
 }

@@ -534,4 +534,44 @@ describe("new-fragment API", () => {
       expect(fragment.mountRoute).toBe("/custom");
     });
   });
+
+  describe("Route handler this context", () => {
+    test("this context type is RequestThisContext for standard fragments", () => {
+      const fragmentDef = defineFragment("test");
+
+      const routesFactory = defineRoutes().create(() => {
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/test",
+            handler: async function (_, { json }) {
+              // this should be RequestThisContext
+              // (we can't easily test the exact type due to how TypeScript handles 'this')
+              expect(this).toBeDefined();
+              expect(typeof this).toBe("object");
+              return json({ ok: true });
+            },
+          }),
+        ];
+      });
+
+      const _fragment = createFragment(fragmentDef, {}, [routesFactory], {});
+      expect(_fragment).toBeDefined();
+    });
+
+    test("defineRoute without defineRoutes defaults to RequestThisContext", () => {
+      const route = defineRoute({
+        method: "GET",
+        path: "/test",
+        handler: async function (_, { json }) {
+          // this defaults to RequestThisContext
+          expect(this).toBeDefined();
+          expect(typeof this).toBe("object");
+          return json({ ok: true });
+        },
+      });
+
+      expect(route).toBeDefined();
+    });
+  });
 });

@@ -1,11 +1,19 @@
 import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn, Relation } from "../schema/create";
 import { FragnoId } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
-import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "./query";
+import type {
+  SelectClause,
+  TableToInsertValues,
+  TableToUpdateValues,
+  SelectResult,
+  ExtractSelect,
+  ExtractJoinOut,
+} from "./query";
 import { buildCondition } from "./condition-builder";
 import type { CompiledJoin } from "./orm/orm";
 import type { CursorResult } from "./cursor";
 import { Cursor } from "./cursor";
+import type { Prettify } from "../util/types";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining
@@ -143,6 +151,8 @@ export type RetrievalOperation<
 > =
   | {
       type: "find";
+      schema: TSchema;
+      namespace?: string;
       table: TTable;
       indexName: string;
       options: FindOptions<TTable, SelectClause<TTable>>;
@@ -150,6 +160,8 @@ export type RetrievalOperation<
     }
   | {
       type: "count";
+      schema: TSchema;
+      namespace?: string;
       table: TTable;
       indexName: string;
       options: Pick<FindOptions<TTable>, "where" | "useIndex">;
@@ -164,6 +176,8 @@ export type MutationOperation<
 > =
   | {
       type: "update";
+      schema: TSchema;
+      namespace?: string;
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
@@ -171,12 +185,16 @@ export type MutationOperation<
     }
   | {
       type: "create";
+      schema: TSchema;
+      namespace?: string;
       table: TTable["name"];
       values: TableToInsertValues<TTable>;
       generatedExternalId: string;
     }
   | {
       type: "delete";
+      schema: TSchema;
+      namespace?: string;
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
@@ -198,16 +216,16 @@ export interface CompiledMutation<TOutput> {
 /**
  * Compiler interface for Unit of Work operations
  */
-export interface UOWCompiler<TSchema extends AnySchema, TOutput> {
+export interface UOWCompiler<TOutput> {
   /**
    * Compile a retrieval operation to the adapter's query format
    */
-  compileRetrievalOperation(op: RetrievalOperation<TSchema>): TOutput | null;
+  compileRetrievalOperation(op: RetrievalOperation<AnySchema>): TOutput | null;
 
   /**
    * Compile a mutation operation to the adapter's query format
    */
-  compileMutationOperation(op: MutationOperation<TSchema>): CompiledMutation<TOutput> | null;
+  compileMutationOperation(op: MutationOperation<AnySchema>): CompiledMutation<TOutput> | null;
 }
 
 export type MutationResult =
@@ -237,7 +255,7 @@ export interface UOWExecutor<TOutput, TRawResult = unknown> {
  * Transforms raw database results into application format (e.g., converting raw columns
  * into FragnoId objects with external ID, internal ID, and version).
  */
-export interface UOWDecoder<TSchema extends AnySchema, TRawInput = unknown> {
+export interface UOWDecoder<TRawInput = unknown> {
   /**
    * Decode raw database results from the retrieval phase
    *
@@ -245,7 +263,7 @@ export interface UOWDecoder<TSchema extends AnySchema, TRawInput = unknown> {
    * @param operations - Array of retrieval operations that produced these results
    * @returns Decoded results in application format
    */
-  (rawResults: TRawInput[], operations: RetrievalOperation<TSchema>[]): unknown[];
+  (rawResults: TRawInput[], operations: RetrievalOperation<AnySchema>[]): unknown[];
 }
 
 /**
@@ -843,22 +861,45 @@ export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
   return compiled;
 }
 
+/**
+ * Base interface for Unit of Work with schema-agnostic methods only.
+ * This allows UOW instances to be passed between services that use different schemas.
+ */
+export interface IUnitOfWorkBase {
+  // Getters (schema-agnostic)
+  readonly state: UOWState;
+  readonly name: string | undefined;
+  readonly retrievalPhase: Promise<unknown[]>;
+  readonly mutationPhase: Promise<void>;
+
+  // Execution (schema-agnostic)
+  executeRetrieve(): Promise<unknown[]>;
+  executeMutations(): Promise<{ success: boolean }>;
+
+  // Inspection (schema-agnostic)
+  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<AnySchema>>;
+  getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>>;
+  getCreatedIds(): FragnoId[];
+
+  // Schema-specific view (for cross-schema operations)
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): UnitOfWorkSchemaView<TOtherSchema, [], any>;
+}
+
 export function createUnitOfWork<
   const TSchema extends AnySchema,
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
 >(
   schema: TSchema,
-  compiler: UOWCompiler<TSchema, unknown>,
+  compiler: UOWCompiler<unknown>,
   executor: UOWExecutor<unknown, TRawInput>,
-  decoder: UOWDecoder<TSchema, TRawInput>,
+  decoder: UOWDecoder<TRawInput>,
   name?: string,
 ): UnitOfWork<TSchema, TRetrievalResults, TRawInput> {
-  return new UnitOfWork(schema, compiler, executor, decoder, name) as UnitOfWork<
-    TSchema,
-    TRetrievalResults,
-    TRawInput
-  >;
+  return new UnitOfWork(schema, compiler, executor, decoder, name);
 }
 
 export interface UnitOfWorkConfig {
@@ -898,7 +939,8 @@ export class UnitOfWork<
   const TSchema extends AnySchema,
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
-> {
+> implements IUnitOfWorkBase
+{
   #schema: TSchema;
 
   #name?: string;
@@ -906,23 +948,32 @@ export class UnitOfWork<
 
   #state: UOWState = "building-retrieval";
 
-  #retrievalOps: RetrievalOperation<TSchema>[] = [];
-  #mutationOps: MutationOperation<TSchema>[] = [];
+  // Operations can now come from any schema
+  #retrievalOps: RetrievalOperation<AnySchema>[] = [];
+  #mutationOps: MutationOperation<AnySchema>[] = [];
 
-  #compiler: UOWCompiler<TSchema, unknown>;
+  #compiler: UOWCompiler<unknown>;
   #executor: UOWExecutor<unknown, TRawInput>;
-  #decoder: UOWDecoder<TSchema, TRawInput>;
+  #decoder: UOWDecoder<TRawInput>;
+  #schemaNamespaceMap?: WeakMap<AnySchema, string>;
 
   #retrievalResults?: TRetrievalResults;
   #createdInternalIds: (bigint | null)[] = [];
 
+  // Phase coordination promises
+  #retrievalPhaseResolve?: (value: TRetrievalResults) => void;
+  #mutationPhaseResolve?: () => void;
+  #retrievalPhasePromise: Promise<TRetrievalResults>;
+  #mutationPhasePromise: Promise<void>;
+
   constructor(
     schema: TSchema,
-    compiler: UOWCompiler<TSchema, unknown>,
+    compiler: UOWCompiler<unknown>,
     executor: UOWExecutor<unknown, TRawInput>,
-    decoder: UOWDecoder<TSchema, TRawInput>,
+    decoder: UOWDecoder<TRawInput>,
     name?: string,
     config?: UnitOfWorkConfig,
+    schemaNamespaceMap?: WeakMap<AnySchema, string>,
   ) {
     this.#schema = schema;
     this.#compiler = compiler;
@@ -930,10 +981,43 @@ export class UnitOfWork<
     this.#decoder = decoder;
     this.#name = name;
     this.#config = config;
+    this.#schemaNamespaceMap = schemaNamespaceMap;
+
+    // Initialize phase coordination promises
+    this.#retrievalPhasePromise = new Promise<TRetrievalResults>((resolve) => {
+      this.#retrievalPhaseResolve = resolve;
+    });
+    this.#mutationPhasePromise = new Promise<void>((resolve) => {
+      this.#mutationPhaseResolve = resolve;
+    });
   }
 
   get schema(): TSchema {
     return this.#schema;
+  }
+
+  get $results(): Prettify<TRetrievalResults> {
+    throw new Error("type only");
+  }
+
+  /**
+   * Get a schema-specific view of this UOW for type-safe operations
+   * Returns a wrapper that uses a different schema for operations.
+   * The namespace is automatically resolved from the schema-namespace map.
+   */
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+  ): UnitOfWorkSchemaView<TOtherSchema, [], TRawInput> {
+    // Look up namespace from map
+    const resolvedNamespace = this.#schemaNamespaceMap?.get(schema);
+
+    // Safe cast: UnitOfWorkSchemaView starts with empty result types
+    // As operations are added, the types will accumulate correctly
+    return new UnitOfWorkSchemaView(
+      schema,
+      resolvedNamespace,
+      this as unknown as UnitOfWork<AnySchema, unknown[], TRawInput>,
+    );
   }
 
   get state(): UOWState {
@@ -945,27 +1029,45 @@ export class UnitOfWork<
   }
 
   /**
+   * Promise that resolves when the retrieval phase is executed
+   * Service methods can await this to coordinate multi-phase logic
+   */
+  get retrievalPhase(): Promise<TRetrievalResults> {
+    return this.#retrievalPhasePromise;
+  }
+
+  /**
+   * Promise that resolves when the mutation phase is executed
+   * Service methods can await this to coordinate multi-phase logic
+   */
+  get mutationPhase(): Promise<void> {
+    return this.#mutationPhasePromise;
+  }
+
+  /**
    * Execute the retrieval phase and transition to mutation phase
    * Returns all results from find operations
    */
   async executeRetrieve(): Promise<TRetrievalResults> {
-    if (this.#retrievalOps.length === 0) {
-      return [] as unknown as TRetrievalResults;
-    }
-
     if (this.#state !== "building-retrieval") {
       throw new Error(
         `Cannot execute retrieval from state ${this.#state}. Must be in building-retrieval state.`,
       );
     }
 
-    // Compile retrieval operations
+    if (this.#retrievalOps.length === 0) {
+      this.#state = "building-mutation";
+      const emptyResults = [] as unknown as TRetrievalResults;
+      this.#retrievalPhaseResolve?.(emptyResults);
+      return emptyResults;
+    }
+
+    // Compile retrieval operations using single compiler
     const retrievalBatch: unknown[] = [];
     for (const op of this.#retrievalOps) {
       const compiled = this.#compiler.compileRetrievalOperation(op);
       if (compiled !== null) {
         this.#config?.onQuery?.(compiled);
-
         retrievalBatch.push(compiled);
       }
     }
@@ -975,14 +1077,18 @@ export class UnitOfWork<
       return [] as unknown as TRetrievalResults;
     }
 
-    const results = this.#decoder(
-      await this.#executor.executeRetrievalPhase(retrievalBatch),
-      this.#retrievalOps,
-    );
+    // Execute all operations together (ideally in same transaction)
+    const rawResults = await this.#executor.executeRetrievalPhase(retrievalBatch);
+
+    // Decode results using single decoder
+    const results = this.#decoder(rawResults, this.#retrievalOps);
 
     // Store results and transition to mutation phase
     this.#retrievalResults = results as TRetrievalResults;
     this.#state = "building-mutation";
+
+    // Resolve the retrieval phase promise to unblock waiting service methods
+    this.#retrievalPhaseResolve?.(this.#retrievalResults);
 
     return this.#retrievalResults;
   }
@@ -990,19 +1096,45 @@ export class UnitOfWork<
   /**
    * Add a find operation using a builder callback (retrieval phase only)
    */
-  find<
-    TTableName extends keyof TSchema["tables"] & string,
-    TSelect extends SelectClause<TSchema["tables"][TTableName]> = true,
-    TJoinOut = {},
-  >(
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
-    builderFn?: (
-      // We omit "build" because we don't want to expose it to the user
+    builderFn: (
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build"> | void,
+    ) => TBuilderResult,
   ): UnitOfWork<
     TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>[]],
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      >[],
+    ],
+    TRawInput
+  >;
+  find<TTableName extends keyof TSchema["tables"] & string>(
+    tableName: TTableName,
+  ): UnitOfWork<
+    TSchema,
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
+    TRawInput
+  >;
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn?: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWork<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      >[],
+    ],
     TRawInput
   > {
     if (this.#state !== "building-retrieval") {
@@ -1028,6 +1160,7 @@ export class UnitOfWork<
 
     this.#retrievalOps.push({
       type,
+      schema: this.#schema,
       // Safe: we know the table is part of the schema from the find() method
       table: table as TSchema["tables"][TTableName],
       indexName,
@@ -1036,31 +1169,31 @@ export class UnitOfWork<
       options: options as any,
     });
 
-    return this as unknown as UnitOfWork<
-      TSchema,
-      [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>[]],
-      TRawInput
-    >;
+    // Safe: return type is correctly specified in the method signature
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
   }
 
   /**
    * Add a find operation with cursor metadata (retrieval phase only)
    */
-  findWithCursor<
-    TTableName extends keyof TSchema["tables"] & string,
-    TSelect extends SelectClause<TSchema["tables"][TTableName]> = true,
-    TJoinOut = {},
-  >(
+  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
     builderFn: (
       // We omit "build" because we don't want to expose it to the user
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => Omit<FindBuilder<TSchema["tables"][TTableName], TSelect, TJoinOut>, "build"> | void,
+    ) => TBuilderResult,
   ): UnitOfWork<
     TSchema,
     [
       ...TRetrievalResults,
-      CursorResult<SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>>,
+      CursorResult<
+        SelectResult<
+          TSchema["tables"][TTableName],
+          ExtractJoinOut<TBuilderResult>,
+          Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+        >
+      >,
     ],
     TRawInput
   > {
@@ -1082,6 +1215,7 @@ export class UnitOfWork<
 
     this.#retrievalOps.push({
       type,
+      schema: this.#schema,
       // Safe: we know the table is part of the schema from the findWithCursor() method
       table: table as TSchema["tables"][TTableName],
       indexName,
@@ -1091,14 +1225,9 @@ export class UnitOfWork<
       withCursor: true,
     });
 
-    return this as unknown as UnitOfWork<
-      TSchema,
-      [
-        ...TRetrievalResults,
-        CursorResult<SelectResult<TSchema["tables"][TTableName], TJoinOut, TSelect>>,
-      ],
-      TRawInput
-    >;
+    // Safe: return type is correctly specified in the method signature
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
   }
 
   /**
@@ -1155,6 +1284,7 @@ export class UnitOfWork<
 
     this.#mutationOps.push({
       type: "create",
+      schema: this.#schema,
       table,
       values: updatedValues,
       generatedExternalId: externalId,
@@ -1185,6 +1315,7 @@ export class UnitOfWork<
 
     this.#mutationOps.push({
       type: "update",
+      schema: this.#schema,
       table,
       id: opId,
       checkVersion,
@@ -1214,6 +1345,7 @@ export class UnitOfWork<
 
     this.#mutationOps.push({
       type: "delete",
+      schema: this.#schema,
       table,
       id: opId,
       checkVersion,
@@ -1229,7 +1361,7 @@ export class UnitOfWork<
       throw new Error(`Cannot execute mutations from state ${this.#state}.`);
     }
 
-    // Compile mutation operations
+    // Compile mutation operations using single compiler
     const mutationBatch: CompiledMutation<unknown>[] = [];
     for (const op of this.#mutationOps) {
       const compiled = this.#compiler.compileMutationOperation(op);
@@ -1254,6 +1386,9 @@ export class UnitOfWork<
       this.#createdInternalIds = result.createdInternalIds;
     }
 
+    // Resolve the mutation phase promise to unblock waiting service methods
+    this.#mutationPhaseResolve?.();
+
     return {
       success: result.success,
     };
@@ -1262,15 +1397,32 @@ export class UnitOfWork<
   /**
    * Get the retrieval operations (for inspection/debugging)
    */
-  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<TSchema>> {
+  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<AnySchema>> {
     return this.#retrievalOps;
   }
 
   /**
    * Get the mutation operations (for inspection/debugging)
    */
-  getMutationOperations(): ReadonlyArray<MutationOperation<TSchema>> {
+  getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>> {
     return this.#mutationOps;
+  }
+
+  /**
+   * @internal
+   * Add a retrieval operation (used by SchemaView)
+   */
+  addRetrievalOperation(op: RetrievalOperation<AnySchema>): number {
+    this.#retrievalOps.push(op);
+    return this.#retrievalOps.length - 1;
+  }
+
+  /**
+   * @internal
+   * Add a mutation operation (used by SchemaView)
+   */
+  addMutationOperation(op: MutationOperation<AnySchema>): void {
+    this.#mutationOps.push(op);
   }
 
   /**
@@ -1312,7 +1464,7 @@ export class UnitOfWork<
    * @internal
    * Compile the unit of work to executable queries for testing
    */
-  compile<TOutput>(compiler: UOWCompiler<TSchema, TOutput>): {
+  compile<TOutput>(compiler: UOWCompiler<TOutput>): {
     name?: string;
     retrievalBatch: TOutput[];
     mutationBatch: CompiledMutation<TOutput>[];
@@ -1338,5 +1490,302 @@ export class UnitOfWork<
       retrievalBatch,
       mutationBatch,
     };
+  }
+}
+
+/**
+ * A lightweight wrapper around a parent UOW that provides type-safe operations for a different schema.
+ * All operations are stored in the parent UOW, but this wrapper ensures the correct schema is used.
+ */
+export class UnitOfWorkSchemaView<
+  const TSchema extends AnySchema,
+  const TRetrievalResults extends unknown[] = [],
+  const TRawInput = unknown,
+> implements IUnitOfWorkBase
+{
+  #schema: TSchema;
+  #namespace?: string;
+  #parent: UnitOfWork<AnySchema, unknown[], TRawInput>;
+  #operationIndices: number[] = [];
+
+  constructor(
+    schema: TSchema,
+    namespace: string | undefined,
+    parent: UnitOfWork<AnySchema, unknown[], TRawInput>,
+  ) {
+    this.#schema = schema;
+    this.#namespace = namespace;
+    this.#parent = parent;
+  }
+
+  get $results(): Prettify<TRetrievalResults> {
+    throw new Error("type only");
+  }
+
+  get schema(): TSchema {
+    return this.#schema;
+  }
+
+  get name(): string | undefined {
+    return this.#parent.name;
+  }
+
+  get state() {
+    return this.#parent.state;
+  }
+
+  get retrievalPhase(): Promise<TRetrievalResults> {
+    // Filter parent's results to only include operations from this view
+    return this.#parent.retrievalPhase.then((allResults) => {
+      const filteredResults = this.#operationIndices.map((index) => allResults[index]);
+      return filteredResults as TRetrievalResults;
+    });
+  }
+
+  get mutationPhase(): Promise<void> {
+    return this.#parent.mutationPhase;
+  }
+
+  getRetrievalOperations() {
+    return this.#parent.getRetrievalOperations();
+  }
+
+  getMutationOperations() {
+    return this.#parent.getMutationOperations();
+  }
+
+  getCreatedIds() {
+    return this.#parent.getCreatedIds();
+  }
+
+  async executeRetrieve(): Promise<unknown[]> {
+    return this.#parent.executeRetrieve();
+  }
+
+  async executeMutations(): Promise<{ success: boolean }> {
+    return this.#parent.executeMutations();
+  }
+
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWorkSchemaView<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      >[],
+    ],
+    TRawInput
+  >;
+  find<TTableName extends keyof TSchema["tables"] & string>(
+    tableName: TTableName,
+  ): UnitOfWorkSchemaView<
+    TSchema,
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
+    TRawInput
+  >;
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn?: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWorkSchemaView<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      >[],
+    ],
+    TRawInput
+  > {
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
+    if (builderFn) {
+      builderFn(builder);
+    } else {
+      builder.whereIndex("primary");
+    }
+    const { indexName, options, type } = builder.build();
+
+    const operationIndex = this.#parent.addRetrievalOperation({
+      type,
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: table as TSchema["tables"][TTableName],
+      indexName,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      options: options as any,
+    });
+
+    // Track which operation index belongs to this view
+    this.#operationIndices.push(operationIndex);
+
+    // Safe: return type is correctly specified in the method signature
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
+  }
+
+  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWorkSchemaView<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      CursorResult<
+        SelectResult<
+          TSchema["tables"][TTableName],
+          ExtractJoinOut<TBuilderResult>,
+          Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+        >
+      >,
+    ],
+    TRawInput
+  > {
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
+    builderFn(builder);
+    const { indexName, options, type } = builder.build();
+
+    const operationIndex = this.#parent.addRetrievalOperation({
+      type,
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: table as TSchema["tables"][TTableName],
+      indexName,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      options: options as any,
+      withCursor: true,
+    });
+
+    // Track which operation index belongs to this view
+    this.#operationIndices.push(operationIndex);
+
+    // Safe: return type is correctly specified in the method signature
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
+  }
+
+  create<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    values: TableToInsertValues<TSchema["tables"][TableName]>,
+  ): FragnoId {
+    const tableSchema = this.#schema.tables[tableName];
+    if (!tableSchema) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const idColumn = tableSchema.getIdColumn();
+    let externalId: string;
+    let updatedValues = values;
+
+    // Check if ID value is provided in values
+    const providedIdValue = (values as Record<string, unknown>)[idColumn.ormName];
+
+    if (providedIdValue !== undefined) {
+      // Extract string from FragnoId or use string directly
+      if (
+        typeof providedIdValue === "object" &&
+        providedIdValue !== null &&
+        "externalId" in providedIdValue
+      ) {
+        externalId = (providedIdValue as FragnoId).externalId;
+      } else {
+        externalId = providedIdValue as string;
+      }
+    } else {
+      // Generate using the column's default configuration
+      const generated = idColumn.generateDefaultValue();
+      if (generated === undefined) {
+        throw new Error(
+          `No ID value provided and ID column ${idColumn.ormName} has no default generator`,
+        );
+      }
+      externalId = generated as string;
+
+      // Add the generated ID to values so it's used in the insert
+      updatedValues = {
+        ...values,
+        [idColumn.ormName]: externalId,
+      } as TableToInsertValues<TSchema["tables"][TableName]>;
+    }
+
+    this.#parent.addMutationOperation({
+      type: "create",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      values: updatedValues,
+      generatedExternalId: externalId,
+    });
+
+    return FragnoId.fromExternal(externalId, 0);
+  }
+
+  update<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    id: FragnoId | string,
+    builderFn: (
+      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
+  ): void {
+    const builder = new UpdateBuilder<TSchema["tables"][TableName]>(tableName, id);
+    builderFn(builder);
+    const { id: opId, checkVersion, set } = builder.build();
+
+    this.#parent.addMutationOperation({
+      type: "update",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      id: opId,
+      checkVersion,
+      set,
+    });
+  }
+
+  delete<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    id: FragnoId | string,
+    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build"> | void,
+  ): void {
+    const builder = new DeleteBuilder(tableName, id);
+    builderFn?.(builder);
+    const { id: opId, checkVersion } = builder.build();
+
+    this.#parent.addMutationOperation({
+      type: "delete",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      id: opId,
+      checkVersion,
+    });
+  }
+
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+  ): UnitOfWorkSchemaView<TOtherSchema, [], TRawInput> {
+    // Delegate to the parent's forSchema to create a new view
+    return this.#parent.forSchema(schema);
   }
 }
