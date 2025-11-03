@@ -1,5 +1,11 @@
 # @fragno-dev/db
 
+## 0.1.13
+
+### Patch Changes
+
+- b54ff8b: Refactor cursor-based pagination API to make it more consistent and easier to use.
+
 ## 0.1.12
 
 ### Patch Changes

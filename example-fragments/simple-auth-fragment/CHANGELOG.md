@@ -1,5 +1,12 @@
 # @fragno-dev/simple-auth-fragment
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [b54ff8b]
+  - @fragno-dev/db@0.1.13
+
 ## 0.0.5
 
 ### Patch Changes
