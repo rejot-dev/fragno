@@ -126,7 +126,12 @@ describe("DrizzleAdapter PGLite", () => {
       age: 25,
     });
 
-    expectTypeOf(createUow.find).parameter(0).toEqualTypeOf<keyof typeof testSchema.tables>();
+    expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
+      Parameters<typeof createUow.find>[0]
+    >();
+    expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
+      "users" | "emails" | "posts" | "comments"
+    >();
 
     const { success: createSuccess } = await createUow.executeMutations();
     expect(createSuccess).toBe(true);

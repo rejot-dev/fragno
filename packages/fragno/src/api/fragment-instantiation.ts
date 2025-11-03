@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { type FragnoRouteConfig, type HTTPMethod } from "./api";
+import { type FragnoRouteConfig, type HTTPMethod, type RequestThisContext } from "./api";
 import { FragnoApiError } from "./error";
 import { getMountRoute } from "./internal/route";
 import { addRoute, createRouter, findRoute } from "rou3";
@@ -17,7 +17,7 @@ import {
   RequestMiddlewareOutputContext,
   type FragnoMiddlewareCallback,
 } from "./request-middleware";
-import type { FragmentDefinition } from "./fragment-builder";
+import type { FragmentDefinition, RouteHandler } from "./fragment-builder";
 import { MutableRequestState } from "./mutable-request-state";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
@@ -147,29 +147,65 @@ export function createFragment<
   const TServices extends Record<string, unknown>,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   const TAdditionalContext extends Record<string, unknown>,
+  const TRequiredInterfaces extends Record<string, unknown>,
+  const TProvidedInterfaces extends Record<string, unknown>,
   const TOptions extends FragnoPublicConfig,
+  const TThisContext extends RequestThisContext = RequestThisContext,
 >(
   fragmentBuilder: {
-    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
+    definition: FragmentDefinition<
+      TConfig,
+      TDeps,
+      TServices,
+      TAdditionalContext,
+      TRequiredInterfaces,
+      TProvidedInterfaces,
+      TThisContext
+    >;
     $requiredOptions: TOptions;
   },
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
   options: TOptions,
+  interfaceImplementations?: TRequiredInterfaces,
 ): FragnoInstantiatedFragment<
   FlattenRouteFactories<TRoutesOrFactories>,
-  TDeps,
-  TServices,
+  TDeps & TRequiredInterfaces,
+  TServices & TProvidedInterfaces,
   TAdditionalContext
 > {
   type TRoutes = FlattenRouteFactories<TRoutesOrFactories>;
 
   const definition = fragmentBuilder.definition;
 
-  const dependencies = definition.dependencies?.(config, options) ?? ({} as TDeps);
-  const services = definition.services?.(config, options, dependencies) ?? ({} as TServices);
+  // Validate required services are satisfied
+  if (definition.usedServices) {
+    for (const [serviceName, serviceMeta] of Object.entries(definition.usedServices)) {
+      const implementation = interfaceImplementations?.[serviceName];
+      if (serviceMeta.required && !implementation) {
+        throw new Error(
+          `Fragment '${definition.name}' requires service '${serviceMeta.name}' but it was not provided`,
+        );
+      }
+    }
+  }
 
-  const context = { config, deps: dependencies, services };
+  const dependencies = definition.dependencies?.(config, options) ?? ({} as TDeps);
+
+  // Merge interface implementations into dependencies
+  const depsWithInterfaces = {
+    ...dependencies,
+    ...interfaceImplementations,
+  } as TDeps & TRequiredInterfaces;
+
+  const servicesFromWithServices =
+    definition.services?.(config, options, depsWithInterfaces) ?? ({} as TServices);
+  const services = {
+    ...servicesFromWithServices,
+    ...definition.providedServices,
+  } as TServices & TProvidedInterfaces;
+
+  const context = { config, deps: depsWithInterfaces, services };
   const routes = resolveRouteFactories(context, routesOrFactories);
 
   const mountRoute = getMountRoute({
@@ -185,13 +221,21 @@ export function createFragment<
         StandardSchemaV1 | undefined,
         StandardSchemaV1 | undefined,
         string,
-        string
+        string,
+        RequestThisContext
       >
     >();
 
   let middlewareHandler:
-    | FragnoMiddlewareCallback<FlattenRouteFactories<TRoutesOrFactories>, TDeps, TServices>
+    | FragnoMiddlewareCallback<
+        FlattenRouteFactories<TRoutesOrFactories>,
+        TDeps & TRequiredInterfaces,
+        TServices & TProvidedInterfaces
+      >
     | undefined;
+
+  // Store the handler wrapper if provided (e.g., for database support)
+  const handlerWrapper = definition.createHandlerWrapper?.(options);
 
   for (const routeConfig of routes) {
     addRoute(router, routeConfig.method.toUpperCase(), routeConfig.path, routeConfig);
@@ -199,8 +243,8 @@ export function createFragment<
 
   const fragment: FragnoInstantiatedFragment<
     FlattenRouteFactories<TRoutesOrFactories>,
-    TDeps,
-    TServices,
+    TDeps & TRequiredInterfaces,
+    TServices & TProvidedInterfaces,
     TAdditionalContext & TOptions
   > = {
     [instantiatedFragmentFakeSymbol]: instantiatedFragmentFakeSymbol,
@@ -210,7 +254,7 @@ export function createFragment<
       routes,
     },
     services,
-    deps: dependencies,
+    deps: depsWithInterfaces,
     additionalContext: {
       ...definition.additionalContext,
       ...options,
@@ -297,9 +341,25 @@ export function createFragment<
       // Construct RequestOutputContext
       const outputContext = new RequestOutputContext(route.outputSchema);
 
-      // Call the route handler
+      // Call the route handler (wrap with handlerWrapper if provided)
       try {
-        const response = await route.handler(inputContext, outputContext);
+        let response: Response;
+        const thisContext: RequestThisContext = {};
+
+        if (handlerWrapper) {
+          // Wrapper handles binding the this context internally for database fragments
+          // Safe: wrapper knows how to handle the specific this type (DatabaseRequestThisContext)
+          const wrappedHandler = handlerWrapper(route.handler as unknown as RouteHandler);
+          response = await wrappedHandler.call(thisContext, inputContext, outputContext);
+        } else {
+          // For standard fragments, bind to an empty RequestThisContext
+          // Safe: we know route.handler expects RequestThisContext for standard fragments
+          response = await (route.handler as RouteHandler).call(
+            thisContext,
+            inputContext,
+            outputContext,
+          );
+        }
         return response;
       } catch (error) {
         console.error("Error in callRoute handler", error);
@@ -440,7 +500,10 @@ export function createFragment<
           state: requestState,
         });
 
-        const middlewareOutputContext = new RequestMiddlewareOutputContext(dependencies, services);
+        const middlewareOutputContext = new RequestMiddlewareOutputContext(
+          depsWithInterfaces,
+          services,
+        );
 
         try {
           const middlewareResult = await middlewareHandler(
@@ -478,7 +541,16 @@ export function createFragment<
       });
 
       try {
-        const result = await handler(inputContext, outputContext);
+        // Apply handler wrapper if provided (e.g., for database support)
+        // Safe cast: handler wrapper preserves handler signature
+        const actualHandler = handlerWrapper
+          ? (handlerWrapper(handler as RouteHandler) as typeof handler)
+          : handler;
+
+        // Create base this context (empty object for standard fragments)
+        // Database fragments will provide their own context via handler wrapper
+        const thisContext = {} as RequestThisContext;
+        const result = await actualHandler.call(thisContext, inputContext, outputContext);
         return result;
       } catch (error) {
         console.error("Error in handler", error);

@@ -74,12 +74,12 @@ describe("drizzle-uow-compiler", () => {
   });
 
   function createTestUOWWithSchema<const T extends AnySchema>(schema: T) {
-    const compiler = createDrizzleUOWCompiler(schema, pool, "postgresql");
+    const compiler = createDrizzleUOWCompiler(pool, "postgresql");
     const mockExecutor = {
       executeRetrievalPhase: async () => [],
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
-    const mockDecoder: UOWDecoder<T> = (rawResults, operations) => {
+    const mockDecoder: UOWDecoder = (rawResults, operations) => {
       if (rawResults.length !== operations.length) {
         throw new Error("rawResults and ops must have the same length");
       }
@@ -89,12 +89,12 @@ describe("drizzle-uow-compiler", () => {
   }
 
   function createTestUOW(name?: string) {
-    const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+    const compiler = createDrizzleUOWCompiler(pool, "postgresql");
     const mockExecutor = {
       executeRetrievalPhase: async () => [],
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
-    const mockDecoder: UOWDecoder<typeof testSchema> = (rawResults, operations) => {
+    const mockDecoder: UOWDecoder = (rawResults, operations) => {
       if (rawResults.length !== operations.length) {
         throw new Error("rawResults and ops must have the same length");
       }
@@ -104,7 +104,7 @@ describe("drizzle-uow-compiler", () => {
   }
 
   it("should create a compiler with the correct structure", () => {
-    const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+    const compiler = createDrizzleUOWCompiler(pool, "postgresql");
 
     expect(compiler).toBeDefined();
     expect(compiler.compileRetrievalOperation).toBeInstanceOf(Function);
@@ -118,7 +118,7 @@ describe("drizzle-uow-compiler", () => {
         b.whereIndex("idx_email", (eb) => eb("email", "=", "test@example.com")),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -134,7 +134,7 @@ describe("drizzle-uow-compiler", () => {
         b.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["id", "name"]),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -148,7 +148,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users", (b) => b.whereIndex("primary").pageSize(10));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -162,7 +162,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users", (b) => b.whereIndex("primary").orderByIndex("primary", "desc"));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -175,7 +175,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users", (b) => b.whereIndex("idx_name").orderByIndex("idx_name", "desc"));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -191,7 +191,7 @@ describe("drizzle-uow-compiler", () => {
       );
       uow.find("posts", (b) => b.whereIndex("idx_title", (eb) => eb("title", "contains", "test")));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(2);
@@ -207,7 +207,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users", (b) => b.whereIndex("primary").selectCount());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -222,7 +222,7 @@ describe("drizzle-uow-compiler", () => {
         b.whereIndex("idx_name", (eb) => eb("name", "starts with", "John")).selectCount(),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -244,7 +244,7 @@ describe("drizzle-uow-compiler", () => {
         b.whereIndex("idx_name").orderByIndex("idx_name", "asc").after(cursor).pageSize(10),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -266,7 +266,7 @@ describe("drizzle-uow-compiler", () => {
         b.whereIndex("idx_name").orderByIndex("idx_name", "desc").before(cursor).pageSize(10),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -292,7 +292,7 @@ describe("drizzle-uow-compiler", () => {
           .pageSize(5),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -310,7 +310,7 @@ describe("drizzle-uow-compiler", () => {
           .join((jb) => jb.author()),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -333,7 +333,7 @@ describe("drizzle-uow-compiler", () => {
           ),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -351,7 +351,7 @@ describe("drizzle-uow-compiler", () => {
           .join((jb) => jb.author((builder) => builder.orderByIndex("idx_name", "desc"))),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -367,7 +367,7 @@ describe("drizzle-uow-compiler", () => {
         b.whereIndex("primary").join((jb) => jb.author((builder) => builder.pageSize(5))),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -388,7 +388,7 @@ describe("drizzle-uow-compiler", () => {
         age: 30,
       });
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -414,7 +414,7 @@ describe("drizzle-uow-compiler", () => {
         viewCount: 5,
       });
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -440,7 +440,7 @@ describe("drizzle-uow-compiler", () => {
         userId: 12345n,
       });
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -468,7 +468,7 @@ describe("drizzle-uow-compiler", () => {
         userId,
       });
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -488,7 +488,7 @@ describe("drizzle-uow-compiler", () => {
         }),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -512,7 +512,7 @@ describe("drizzle-uow-compiler", () => {
         }),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -538,7 +538,7 @@ describe("drizzle-uow-compiler", () => {
         }),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -554,7 +554,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user123", 5);
       uow.update("users", userId, (b) => b.set({ age: 18 }).check());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -570,7 +570,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user123", 0);
       uow.delete("users", userId);
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -586,7 +586,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user123", 3);
       uow.delete("users", userId, (b) => b.check());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -606,7 +606,7 @@ describe("drizzle-uow-compiler", () => {
         }),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -621,7 +621,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.delete("users", "user123");
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -661,7 +661,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user456", 0);
       uow.delete("posts", userId);
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [createBatch, updateBatch, deleteBatch] = compiled.mutationBatch;
 
@@ -700,7 +700,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user123", 3);
       uow.update("users", userId, (b) => b.set({ age: 31 }).check());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.name).toBe("update-user-balance");
@@ -732,7 +732,7 @@ describe("drizzle-uow-compiler", () => {
         ),
       );
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -746,7 +746,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users", (b) => b.whereIndex("primary", () => false));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       // When condition is false, the operation should return null and not be added to batch
@@ -757,7 +757,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users", (b) => b.whereIndex("primary", () => true));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -774,7 +774,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user123", 5);
       uow.update("users", userId, (b) => b.set({ age: 31 }).check());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -791,7 +791,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user456", 3);
       uow.delete("users", userId, (b) => b.check());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -811,7 +811,7 @@ describe("drizzle-uow-compiler", () => {
       uow.update("users", userId, (b) => b.set({ age: 30 }).check());
       uow.update("posts", postId, (b) => b.set({ viewCount: 100 }).check());
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [userBatch, postBatch] = compiled.mutationBatch;
 
@@ -838,7 +838,7 @@ describe("drizzle-uow-compiler", () => {
       const userId = FragnoId.fromExternal("user1", 0);
       uow.update("users", userId, (b) => b.set({ age: 25 }));
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -854,7 +854,7 @@ describe("drizzle-uow-compiler", () => {
     it("should handle UOW with no operations", () => {
       const uow = createTestUOW();
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(0);
@@ -865,7 +865,7 @@ describe("drizzle-uow-compiler", () => {
       const uow = createTestUOW();
       uow.find("users");
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -879,7 +879,7 @@ describe("drizzle-uow-compiler", () => {
         email: "test@example.com",
       });
 
-      const compiler = createDrizzleUOWCompiler(testSchema, pool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(0);
@@ -939,7 +939,7 @@ describe("drizzle-uow-compiler", () => {
         message: "Test log",
       });
 
-      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(defaultsPool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -969,7 +969,7 @@ describe("drizzle-uow-compiler", () => {
         status: "active",
       });
 
-      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(defaultsPool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -991,7 +991,7 @@ describe("drizzle-uow-compiler", () => {
         counter: 999, // override the function default
       });
 
-      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(defaultsPool, "postgresql");
       const compiled = uow.compile(compiler);
       const [batch] = compiled.mutationBatch;
       assert(batch);
@@ -1012,7 +1012,7 @@ describe("drizzle-uow-compiler", () => {
       uow.create("logs", { message: "Log 2" });
       uow.create("logs", { message: "Log 3" });
 
-      const compiler = createDrizzleUOWCompiler(defaultsSchema, defaultsPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(defaultsPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.mutationBatch).toHaveLength(3);
@@ -1091,7 +1091,7 @@ describe("drizzle-uow-compiler", () => {
     }, 20000);
 
     function createNestedUOW(name?: string) {
-      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(nestedPool, "postgresql");
       const mockExecutor = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
@@ -1119,7 +1119,7 @@ describe("drizzle-uow-compiler", () => {
           ),
       );
 
-      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(nestedPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -1157,7 +1157,7 @@ describe("drizzle-uow-compiler", () => {
           ),
       );
 
-      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(nestedPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -1190,7 +1190,7 @@ describe("drizzle-uow-compiler", () => {
           ),
       );
 
-      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(nestedPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -1212,7 +1212,7 @@ describe("drizzle-uow-compiler", () => {
         ),
       );
 
-      const compiler = createDrizzleUOWCompiler(nestedSchema, nestedPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(nestedPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -1286,12 +1286,12 @@ describe("drizzle-uow-compiler", () => {
     }, 12000);
 
     function createAuthUOW(name?: string) {
-      const compiler = createDrizzleUOWCompiler(authSchema, authPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(authPool, "postgresql");
       const mockExecutor = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
-      const mockDecoder: UOWDecoder<typeof authSchema> = (rawResults, operations) => {
+      const mockDecoder: UOWDecoder = (rawResults, operations) => {
         if (rawResults.length !== operations.length) {
           throw new Error("rawResults and ops must have the same length");
         }
@@ -1309,7 +1309,7 @@ describe("drizzle-uow-compiler", () => {
           .join((j) => j.sessionOwner((b) => b.select(["id", "email"]))),
       );
 
-      const compiler = createDrizzleUOWCompiler(authSchema, authPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(authPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -1335,7 +1335,7 @@ describe("drizzle-uow-compiler", () => {
         expiresAt: new Date("2025-12-31"),
       });
 
-      const compiler = createDrizzleUOWCompiler(authSchema, authPool, "postgresql");
+      const compiler = createDrizzleUOWCompiler(authPool, "postgresql");
       const compiled = uow.compile(compiler);
 
       // Should have no retrieval operations

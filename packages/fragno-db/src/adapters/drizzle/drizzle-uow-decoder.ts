@@ -143,17 +143,14 @@ function transformJoinArraysToObjects(
   return transformedRow;
 }
 
-export function createDrizzleUOWDecoder<TSchema extends AnySchema>(
-  _schema: TSchema,
-  provider: SQLProvider,
-): UOWDecoder<TSchema, DrizzleResult> {
+export function createDrizzleUOWDecoder(provider: SQLProvider): UOWDecoder<DrizzleResult> {
   return (rawResults, ops) => {
     if (rawResults.length !== ops.length) {
       throw new Error("rawResults and ops must have the same length");
     }
 
     return rawResults.map((result, index) => {
-      const op = ops[index] as RetrievalOperation<TSchema>;
+      const op = ops[index] as RetrievalOperation<AnySchema>;
       if (!op) {
         throw new Error("op must be defined");
       }

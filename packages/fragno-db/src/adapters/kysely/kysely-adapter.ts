@@ -28,6 +28,7 @@ export interface KyselyConfig {
 export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
   #connectionPool: ConnectionPool<KyselyAny>;
   #provider: SQLProvider;
+  #schemaNamespaceMap = new WeakMap<AnySchema, string>();
 
   constructor(config: KyselyConfig) {
     this.#connectionPool = createKyselyConnectionPool(config.db);
@@ -46,13 +47,27 @@ export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
     await this.#connectionPool.close();
   }
 
+  createTableNameMapper(namespace: string) {
+    return createTableNameMapper(namespace);
+  }
+
   createQueryEngine<T extends AnySchema>(
     schema: T,
     namespace: string,
   ): AbstractQuery<T, KyselyUOWConfig> {
+    // Register schema-namespace mapping
+    this.#schemaNamespaceMap.set(schema, namespace);
+
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromKysely(schema, this.#connectionPool, this.#provider, mapper);
+    return fromKysely(
+      schema,
+      this.#connectionPool,
+      this.#provider,
+      mapper,
+      undefined,
+      this.#schemaNamespaceMap,
+    );
   }
 
   async isConnectionHealthy(): Promise<boolean> {

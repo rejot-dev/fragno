@@ -44,11 +44,14 @@ const testFragmentDef = defineFragmentWithDatabase("test-db-fragment")
     return { orm };
   });
 
-const { fragment, test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-  adapter: { type: "kysely-sqlite" },
-});
+const { fragment, test } = await createDatabaseFragmentForTest(
+  { definition: testFragmentDef, routes: [] },
+  {
+    adapter: { type: "kysely-sqlite" },
+  },
+);
 
-const orm = fragment.services.orm;
+const db = fragment.db;
 ```
 
 ## Create
@@ -57,7 +60,7 @@ Create a single record in the database.
 
 ```typescript @fragno-test:create-user
 // should create a single user
-const userId = await orm.create("users", {
+const userId = await db.create("users", {
   id: "user-123",
   email: "john@example.com",
   name: "John Doe",
@@ -76,7 +79,7 @@ Create multiple records at once.
 
 ```typescript @fragno-test:create-many
 // should create multiple users at once
-const userIds = await orm.createMany("users", [
+const userIds = await db.createMany("users", [
   {
     id: "user-1",
     email: "user1@example.com",
@@ -102,14 +105,14 @@ Query for a single record using an index.
 
 ```typescript @fragno-test:find-user-by-email
 // should find user by email using index
-await orm.create("users", {
+await db.create("users", {
   id: "user-find-1",
   email: "findme@example.com",
   name: "Find Me",
   age: 28,
 });
 
-const user = await orm.findFirst("users", (b) =>
+const user = await db.findFirst("users", (b) =>
   b.whereIndex("idx_email", (eb) => eb("email", "=", "findme@example.com")),
 );
 
@@ -126,7 +129,7 @@ Query a single record and select specific columns.
 
 ```typescript @fragno-test:find-user-select
 export async function findUserEmailOnly(userId: string) {
-  const user = await orm.findFirst("users", (b) =>
+  const user = await db.findFirst("users", (b) =>
     b.whereIndex("primary", (eb) => eb("id", "=", userId)).select(["id", "email"]),
   );
 
@@ -140,7 +143,7 @@ Query for multiple records matching conditions.
 
 ```typescript @fragno-test:find-many
 // should find multiple posts by author
-await orm.createMany("posts", [
+await db.createMany("posts", [
   {
     id: "post-1",
     title: "First Post",
@@ -164,7 +167,7 @@ await orm.createMany("posts", [
   },
 ]);
 
-const posts = await orm.find("posts", (b) =>
+const posts = await db.find("posts", (b) =>
   b.whereIndex("idx_author", (eb) => eb("authorId", "=", "author-123")),
 );
 
@@ -181,7 +184,7 @@ Limit the number of results returned.
 
 ```typescript @fragno-test:find-paginated
 export async function findUsersPaginated(pageSize: number) {
-  const users = await orm.find("users", (b) => b.whereIndex("primary").pageSize(pageSize));
+  const users = await db.find("users", (b) => b.whereIndex("primary").pageSize(pageSize));
 
   return users;
 }
@@ -192,13 +195,13 @@ export async function findUsersPaginated(pageSize: number) {
 Use `findWithCursor` for efficient pagination with cursor support.
 
 ```typescript @fragno-test:cursor-pagination
-const firstPage = await orm.findWithCursor("users", (b) =>
+const firstPage = await db.findWithCursor("users", (b) =>
   b.whereIndex("idx_email").orderByIndex("idx_email", "asc").pageSize(2),
 );
 
 const cursor = firstPage.cursor;
 if (cursor) {
-  const nextPage = await orm.findWithCursor("users", (b) => b.after(cursor));
+  const nextPage = await db.findWithCursor("users", (b) => b.after(cursor));
 }
 ```
 
@@ -216,7 +219,7 @@ Query all records from a table.
 
 ```typescript @fragno-test:find-all
 export async function findAllUsers() {
-  const users = await orm.find("users", (b) => b.whereIndex("primary"));
+  const users = await db.find("users", (b) => b.whereIndex("primary"));
 
   return users;
 }
@@ -230,20 +233,20 @@ Update a single record by ID.
 
 ```typescript @fragno-test:update-user
 // should update a user's email
-await orm.create("users", {
+await db.create("users", {
   id: "user-update-1",
   email: "old@example.com",
   name: "Update Test",
   age: 30,
 });
 
-await orm.update("users", "user-update-1", (b) =>
+await db.update("users", "user-update-1", (b) =>
   b.set({
     email: "new@example.com",
   }),
 );
 
-const updatedUser = await orm.findFirst("users", (b) =>
+const updatedUser = await db.findFirst("users", (b) =>
   b.whereIndex("primary", (eb) => eb("id", "=", "user-update-1")),
 );
 
@@ -259,7 +262,7 @@ Update multiple records matching a condition.
 
 ```typescript @fragno-test:update-many
 export async function updatePostsPublishedDate(authorId: string, publishedAt: Date) {
-  await orm.updateMany("posts", (b) =>
+  await db.updateMany("posts", (b) =>
     b.whereIndex("idx_author", (eb) => eb("authorId", "=", authorId)).set({ publishedAt }),
   );
 }
@@ -273,16 +276,16 @@ Delete a single record by ID.
 
 ```typescript @fragno-test:delete-user
 // should delete a user by ID
-await orm.create("users", {
+await db.create("users", {
   id: "user-delete-1",
   email: "delete@example.com",
   name: "Delete Me",
   age: 25,
 });
 
-await orm.delete("users", "user-delete-1");
+await db.delete("users", "user-delete-1");
 
-const deletedUser = await orm.findFirst("users", (b) =>
+const deletedUser = await db.findFirst("users", (b) =>
   b.whereIndex("primary", (eb) => eb("id", "=", "user-delete-1")),
 );
 
@@ -295,7 +298,7 @@ Delete multiple records matching a condition.
 
 ```typescript @fragno-test:delete-many
 export async function deletePostsByAuthor(authorId: string) {
-  await orm.deleteMany("posts", (b) =>
+  await db.deleteMany("posts", (b) =>
     b.whereIndex("idx_author", (eb) => eb("authorId", "=", authorId)),
   );
 }
@@ -308,7 +311,7 @@ export async function deletePostsByAuthor(authorId: string) {
 Use expression builders within `whereIndex()` to create queries with conditions.
 
 ```typescript @fragno-test:query-conditions
-const user = await orm.findFirst("users", (b) =>
+const user = await db.findFirst("users", (b) =>
   b.whereIndex("idx_email", (eb) => eb("email", "=", "adult1@example.com")),
 );
 ```

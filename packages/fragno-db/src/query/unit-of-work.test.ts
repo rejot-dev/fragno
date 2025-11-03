@@ -9,14 +9,10 @@ import {
   type IndexColumns,
 } from "./unit-of-work";
 import { createIndexedBuilder } from "./condition-builder";
-import type { AnySchema } from "../schema/create";
 import type { AbstractQuery } from "./query";
 
 // Mock compiler and executor for testing
-function createMockCompiler<TSchema extends AnySchema = AnySchema>(): UOWCompiler<
-  TSchema,
-  unknown
-> {
+function createMockCompiler(): UOWCompiler<unknown> {
   return {
     compileRetrievalOperation: () => null,
     compileMutationOperation: () => null,
@@ -30,7 +26,7 @@ function createMockExecutor() {
   };
 }
 
-function createMockDecoder<TSchema extends AnySchema = AnySchema>(): UOWDecoder<TSchema> {
+function createMockDecoder(): UOWDecoder {
   return (rawResults, operations) => {
     if (rawResults.length !== operations.length) {
       throw new Error("rawResults and operations must have the same length");
@@ -706,16 +702,16 @@ describe("IndexedConditionBuilder", () => {
 
       const uow = createUnitOfWork(
         typeTestSchema,
-        createMockCompiler<typeof typeTestSchema>(),
+        createMockCompiler(),
         createMockExecutor(),
-        createMockDecoder<typeof typeTestSchema>(),
+        createMockDecoder(),
       );
       expectTypeOf(uow.schema).toEqualTypeOf(typeTestSchema);
       expectTypeOf<keyof typeof typeTestSchema.tables>().toEqualTypeOf<"users">();
       type _Query = AbstractQuery<typeof typeTestSchema>;
       expectTypeOf<Parameters<_Query["create"]>[0]>().toEqualTypeOf<"users">();
 
-      expectTypeOf(uow.find).parameter(0).toEqualTypeOf<"users">();
+      expectTypeOf<Parameters<typeof uow.find>[0]>().toEqualTypeOf<"users">();
 
       uow.find("users", (b) =>
         b.whereIndex("primary", (eb) => {

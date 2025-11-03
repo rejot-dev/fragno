@@ -114,6 +114,19 @@ describe("UnitOfWork type tests", () => {
     }>();
   });
 
+  it("should type find with select clause correctly", async () => {
+    const uow = createTestUOW();
+
+    const uow1 = uow.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
+    const [_userResult] = await uow1.executeRetrieve();
+    type UserResult = RecursivePrettify<(typeof _userResult)[number]>;
+
+    expectTypeOf<UserResult>().toEqualTypeOf<{
+      id: FragnoId;
+      name: string;
+    }>();
+  });
+
   it("should type find with joins correctly", async () => {
     const uow = createTestUOW();
 

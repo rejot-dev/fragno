@@ -77,6 +77,8 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
  * @param pool - Connection pool for acquiring database connections
  * @param provider - SQL provider (postgresql, mysql, sqlite, etc.)
  * @param mapper - Optional table name mapper for namespace prefixing
+ * @param uowConfig - Optional UOW configuration
+ * @param schemaNamespaceMap - Optional WeakMap for schema-to-namespace lookups
  * @returns An AbstractQuery instance for performing database operations
  *
  * @example
@@ -96,9 +98,10 @@ export function fromKysely<T extends AnySchema>(
   provider: SQLProvider,
   mapper?: TableNameMapper,
   uowConfig?: KyselyUOWConfig,
+  schemaNamespaceMap?: WeakMap<AnySchema, string>,
 ): AbstractQuery<T, KyselyUOWConfig> {
   function createUOW(opts: { name?: string; config?: KyselyUOWConfig }) {
-    const uowCompiler = createKyselyUOWCompiler(schema, pool, provider, mapper);
+    const uowCompiler = createKyselyUOWCompiler(pool, provider, mapper);
 
     const executor: UOWExecutor<CompiledQuery, unknown> = {
       async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {
@@ -133,7 +136,7 @@ export function fromKysely<T extends AnySchema>(
     };
 
     // Create a decoder function to transform raw results into application format
-    const decoder: UOWDecoder<T> = (rawResults, ops) => {
+    const decoder: UOWDecoder<unknown> = (rawResults, ops) => {
       if (rawResults.length !== ops.length) {
         throw new Error("rawResults and ops must have the same length");
       }
@@ -204,20 +207,28 @@ export function fromKysely<T extends AnySchema>(
 
     const { onQuery, ...restUowConfig } = opts.config ?? {};
 
-    return new UnitOfWork(schema, uowCompiler, executor, decoder, opts.name, {
-      ...restUowConfig,
-      onQuery: (query) => {
-        // CompiledMutation has { query: CompiledQuery, expectedAffectedRows: number | null }
-        // CompiledQuery has { query: QueryAST, sql: string, parameters: unknown[] }
-        // Check for expectedAffectedRows to distinguish CompiledMutation from CompiledQuery
-        const actualQuery =
-          query && typeof query === "object" && "expectedAffectedRows" in query
-            ? (query as CompiledMutation<CompiledQuery>).query
-            : (query as CompiledQuery);
+    return new UnitOfWork(
+      schema,
+      uowCompiler,
+      executor,
+      decoder,
+      opts.name,
+      {
+        ...restUowConfig,
+        onQuery: (query) => {
+          // CompiledMutation has { query: CompiledQuery, expectedAffectedRows: number | null }
+          // CompiledQuery has { query: QueryAST, sql: string, parameters: unknown[] }
+          // Check for expectedAffectedRows to distinguish CompiledMutation from CompiledQuery
+          const actualQuery =
+            query && typeof query === "object" && "expectedAffectedRows" in query
+              ? (query as CompiledMutation<CompiledQuery>).query
+              : (query as CompiledQuery);
 
-        opts.config?.onQuery?.(actualQuery);
+          opts.config?.onQuery?.(actualQuery);
+        },
       },
-    });
+      schemaNamespaceMap,
+    );
   }
 
   return {

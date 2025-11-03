@@ -1,5 +1,6 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { defineRoute } from "./route";
+import { defineRoute, defineRoutes, type ExtractFragmentServices } from "./route";
+import { defineFragment } from "./fragment-builder";
 import { z } from "zod";
 
 describe("defineRoute", () => {
@@ -172,5 +173,108 @@ describe("defineRoute", () => {
 
     // TODO: Once ValidPath is integrated with defineRoute, add tests for invalid paths
     // Currently defineRoute doesn't enforce ValidPath constraints
+  });
+});
+
+describe("ExtractFragmentServices", () => {
+  test("extracts services from fragment with .withServices()", () => {
+    const fragment = defineFragment<{}>("test-fragment")
+      .withDependencies(() => ({ dep: "value" }))
+      .withServices(() => ({
+        getUserById: async (id: string) => ({ id, name: "John" }),
+        createUser: async (name: string) => ({ id: "123", name }),
+      }));
+
+    type Services = ExtractFragmentServices<typeof fragment>;
+
+    expectTypeOf<Services>().toMatchObjectType<{
+      getUserById: (id: string) => Promise<{ id: string; name: string }>;
+      createUser: (name: string) => Promise<{ id: string; name: string }>;
+    }>();
+  });
+
+  test("ExtractFragmentServices returns never for fragment without services", () => {
+    const fragment = defineFragment<{}>("test-fragment").withDependencies(() => ({ dep: "value" }));
+
+    type Services = ExtractFragmentServices<typeof fragment>;
+
+    // Fragment with no services should have empty services object
+    expectTypeOf<Services>().toEqualTypeOf<{}>();
+  });
+});
+
+describe("defineRoutes", () => {
+  test("defineRoutes extracts services correctly for route factory", () => {
+    const fragment = defineFragment<{}>("test-fragment").withServices(() => ({
+      getUserById: async (id: string) => ({ id, name: "John" }),
+      createUser: async (name: string) => ({ id: "123", name }),
+    }));
+
+    const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
+      // Type check that services are properly extracted
+      expectTypeOf(services).toMatchObjectType<{
+        getUserById: (id: string) => Promise<{ id: string; name: string }>;
+        createUser: (name: string) => Promise<{ id: string; name: string }>;
+      }>();
+
+      expectTypeOf(config).toEqualTypeOf<{}>();
+      expectTypeOf(deps).toEqualTypeOf<{}>();
+
+      return [
+        defineRoute({
+          method: "GET",
+          path: "/users/:id",
+          outputSchema: z.object({ id: z.string(), name: z.string() }),
+          handler: async ({ pathParams }, { json }) => {
+            // Services should be accessible here via closure
+            const user = await services.getUserById(pathParams.id);
+            return json(user);
+          },
+        }),
+      ];
+    });
+
+    // routeFactory is a function that returns routes when called
+    expect(routeFactory).toBeDefined();
+    expect(typeof routeFactory).toBe("function");
+  });
+
+  test("defineRoutes with dependencies and services", () => {
+    const fragment = defineFragment<{ apiKey: string }>("auth-fragment")
+      .withDependencies(({ config }) => ({
+        authClient: { apiKey: config.apiKey },
+      }))
+      .withServices(({ deps }) => ({
+        validateToken: async (_token: string) => {
+          return { valid: true, apiKey: deps.authClient.apiKey };
+        },
+      }));
+
+    const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
+      // Type check all context properties
+      expectTypeOf(config).toEqualTypeOf<{ apiKey: string }>();
+      expectTypeOf(deps).toMatchObjectType<{ authClient: { apiKey: string } }>();
+      expectTypeOf(services).toMatchObjectType<{
+        validateToken: (token: string) => Promise<{ valid: boolean; apiKey: string }>;
+      }>();
+
+      return [
+        defineRoute({
+          method: "POST",
+          path: "/auth/validate",
+          inputSchema: z.object({ token: z.string() }),
+          outputSchema: z.object({ valid: z.boolean() }),
+          handler: async ({ input }, { json }) => {
+            const { token } = await input!.valid();
+            const result = await services.validateToken(token);
+            return json({ valid: result.valid });
+          },
+        }),
+      ];
+    });
+
+    // routeFactory is a function that returns routes when called
+    expect(routeFactory).toBeDefined();
+    expect(typeof routeFactory).toBe("function");
   });
 });

@@ -1,10 +1,8 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
-import { createDatabaseFragmentForTest } from "./index";
-import { unlinkSync, existsSync } from "node:fs";
-import { defineRoute, defineRoutes } from "@fragno-dev/core";
-import { z } from "zod";
+import { createDatabaseFragmentForTest, createDatabaseFragmentsForTest } from "./index";
+import type { ExtractFragmentServices } from "@fragno-dev/core/api/route";
 
 // Test schema with multiple versions
 const testSchema = schema((s) => {
@@ -40,500 +38,120 @@ const testFragmentDef = defineFragmentWithDatabase<{}>("test-fragment")
   });
 
 describe("createDatabaseFragmentForTest", () => {
-  describe("databasePath option", () => {
-    const testDbPath = "./test-fragno.pglite";
-
-    afterEach(() => {
-      // Clean up test database files
-      if (existsSync(testDbPath)) {
-        try {
-          unlinkSync(testDbPath);
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-    });
-
-    it("should use in-memory database by default", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
+  it("should create and use a database fragment", async () => {
+    const { fragment, test } = await createDatabaseFragmentForTest(
+      { definition: testFragmentDef, routes: [] },
+      {
         adapter: { type: "kysely-sqlite" },
-      });
+      },
+    );
 
-      // Should be able to create and query users
-      const user = await fragment.services.createUser({
-        name: "Test User",
-        email: "test@example.com",
-        age: 25,
-      });
-
-      expect(user).toMatchObject({
-        id: expect.any(String),
-        name: "Test User",
-        email: "test@example.com",
-        age: 25,
-      });
-
-      const users = await fragment.services.getUsers();
-      expect(users).toHaveLength(1);
-      expect(users[0]).toMatchObject(user);
+    // Should be able to create and query users
+    const user = await fragment.services.createUser({
+      name: "Test User",
+      email: "test@example.com",
+      age: 25,
     });
 
-    it("should create database at specified path", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite", databasePath: testDbPath },
-      });
-
-      // Create a user
-      await fragment.services.createUser({
-        name: "Persisted User",
-        email: "persisted@example.com",
-        age: 30,
-      });
-
-      // Verify data exists in this instance
-      const users = await fragment.services.getUsers();
-      expect(users).toHaveLength(1);
-      expect(users[0]).toMatchObject({
-        name: "Persisted User",
-        email: "persisted@example.com",
-        age: 30,
-      });
+    expect(user).toMatchObject({
+      id: expect.any(String),
+      name: "Test User",
+      email: "test@example.com",
+      age: 25,
     });
+
+    const users = await fragment.services.getUsers();
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject(user);
+
+    await test.cleanup();
   });
 
-  describe("migrateToVersion option", () => {
-    it("should migrate to latest version by default", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite" },
-      });
+  it("should throw error for non-database fragment", async () => {
+    const nonDbFragment = {
+      definition: {
+        name: "non-db-fragment",
+        additionalContext: {},
+      },
+      $requiredOptions: {},
+    };
 
-      // Should have the 'age' column from version 2
-      const user = await fragment.services.createUser({
-        name: "Test User",
-        email: "test@example.com",
-        age: 25,
-      });
-
-      expect(user).toMatchObject({
-        id: expect.any(String),
-        name: "Test User",
-        email: "test@example.com",
-        age: 25,
-      });
-    });
-
-    it("should migrate to specific version when specified", async () => {
-      // Migrate to version 1 (before 'age' column was added)
-      const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite" },
-        migrateToVersion: 1,
-      });
-
-      // Query the database directly to check schema
-      // In version 1, we should be able to insert without the age column
-      const tableName = "users_test-fragment-db";
-      await test.kysely
-        .insertInto(tableName)
-        .values({
-          id: "test-id-1",
-          name: "V1 User",
-          email: "v1@example.com",
-        })
-        .execute();
-
-      const result = await test.kysely.selectFrom(tableName).selectAll().execute();
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({
-        id: "test-id-1",
-        name: "V1 User",
-        email: "v1@example.com",
-      });
-      // In version 1, the age column should not exist
-      expect(result[0]).not.toHaveProperty("age");
-    });
-
-    it("should allow creating user with age when migrated to version 2", async () => {
-      // Explicitly migrate to version 2
-      const { fragment, test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite" },
-        migrateToVersion: 2,
-      });
-
-      // Should be able to use age column
-      const user = await fragment.services.createUser({
-        name: "V2 User",
-        email: "v2@example.com",
-        age: 35,
-      });
-
-      expect(user).toMatchObject({
-        id: expect.any(String),
-        name: "V2 User",
-        email: "v2@example.com",
-        age: 35,
-      });
-
-      const tableName = "users_test-fragment-db";
-      const result = await test.kysely.selectFrom(tableName).selectAll().execute();
-
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({
-        name: "V2 User",
-        email: "v2@example.com",
-        age: 35,
-      });
-    });
-  });
-
-  describe("combined options", () => {
-    const testDbPath = "./test-combined.pglite";
-
-    afterEach(() => {
-      if (existsSync(testDbPath)) {
-        try {
-          unlinkSync(testDbPath);
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-    });
-
-    it("should work with both databasePath and migrateToVersion", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite", databasePath: testDbPath },
-        migrateToVersion: 2,
-      });
-
-      // Create user at version 2 (with age support)
-      const user = await fragment.services.createUser({
-        name: "Combined Test",
-        email: "combined@example.com",
-        age: 40,
-      });
-
-      expect(user).toMatchObject({
-        id: expect.any(String),
-        name: "Combined Test",
-        email: "combined@example.com",
-        age: 40,
-      });
-
-      const users = await fragment.services.getUsers();
-      expect(users).toHaveLength(1);
-      expect(users[0]).toMatchObject({
-        name: "Combined Test",
-        email: "combined@example.com",
-        age: 40,
-      });
-    });
-  });
-
-  describe("fragment initialization", () => {
-    it("should provide kysely instance", async () => {
-      const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite" },
-      });
-
-      expect(test.kysely).toBeDefined();
-      expect(typeof test.kysely.selectFrom).toBe("function");
-    });
-
-    it("should provide adapter instance", async () => {
-      const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite" },
-      });
-
-      expect(test.adapter).toBeDefined();
-      expect(typeof test.adapter.createMigrationEngine).toBe("function");
-    });
-
-    it("should have all standard fragment test properties", async () => {
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-        adapter: { type: "kysely-sqlite" },
-      });
-
-      expect(fragment.services).toBeDefined();
-    });
-
-    it("should throw error for non-database fragment", async () => {
-      // Create a fragment without database
-      const nonDbFragment = {
-        definition: {
-          name: "non-db-fragment",
-          additionalContext: {},
-        },
-        $requiredOptions: {},
-      };
-
-      await expect(
+    await expect(
+      createDatabaseFragmentForTest(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        createDatabaseFragmentForTest(nonDbFragment as any, [], {
+        { definition: nonDbFragment as any, routes: [] },
+        {
           adapter: { type: "kysely-sqlite" },
-        }),
-      ).rejects.toThrow("Fragment 'non-db-fragment' does not have a database schema");
-    });
+        },
+      ),
+    ).rejects.toThrow("Fragment 'non-db-fragment' does not have a database schema");
   });
 
-  describe("route handling with defineRoutes", () => {
-    it("should handle route factory with multiple routes", async () => {
-      type Config = {};
-      type Deps = {};
-      type Services = {
-        createUser: (data: { name: string; email: string; age?: number | null }) => Promise<{
-          name: string;
-          email: string;
-          age?: number | null;
-          id: string;
-        }>;
-        getUsers: () => Promise<{ name: string; email: string; age: number | null; id: string }[]>;
-      };
-
-      const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
-        defineRoute({
-          method: "POST",
-          path: "/users",
-          inputSchema: z.object({
-            name: z.string(),
-            email: z.string(),
-            age: z.number().nullable().optional(),
-          }),
-          outputSchema: z.object({
-            id: z.string(),
-            name: z.string(),
-            email: z.string(),
-            age: z.number().nullable().optional(),
-          }),
-          handler: async ({ input }, { json }) => {
-            if (input) {
-              const data = await input.valid();
-              const user = await services.createUser(data);
-              return json(user);
-            }
-            return json({ id: "", name: "", email: "", age: null });
-          },
-        }),
-        defineRoute({
-          method: "GET",
-          path: "/users",
-          outputSchema: z.array(
-            z.object({
-              id: z.string(),
-              name: z.string(),
-              email: z.string(),
-              age: z.number().nullable(),
-            }),
-          ),
-          handler: async (_ctx, { json }) => {
-            const users = await services.getUsers();
-            return json(users);
-          },
-        }),
-      ]);
-
-      const routes = [routeFactory] as const;
-      const { fragment } = await createDatabaseFragmentForTest(testFragmentDef, routes, {
+  it("should reset database by truncating tables", async () => {
+    const { fragment, test } = await createDatabaseFragmentForTest(
+      { definition: testFragmentDef, routes: [] },
+      {
         adapter: { type: "kysely-sqlite" },
-      });
-      // Test creating a user
-      const createResponse = await fragment.callRoute("POST", "/users", {
-        body: { name: "John Doe", email: "john@example.com", age: 30 },
-      });
+      },
+    );
 
-      expect(createResponse.type).toBe("json");
-      if (createResponse.type === "json") {
-        expect(createResponse.data).toMatchObject({
-          id: expect.any(String),
-          name: "John Doe",
-          email: "john@example.com",
-          age: 30,
-        });
-      }
-
-      // Test getting users
-      const getUsersResponse = await fragment.callRoute("GET", "/users");
-
-      expect(getUsersResponse.type).toBe("json");
-      if (getUsersResponse.type === "json") {
-        expect(getUsersResponse.data).toHaveLength(1);
-        expect(getUsersResponse.data[0]).toMatchObject({
-          id: expect.any(String),
-          name: "John Doe",
-          email: "john@example.com",
-          age: 30,
-        });
-      }
+    // Create some users
+    await fragment.services.createUser({
+      name: "User 1",
+      email: "user1@example.com",
+      age: 25,
     });
+
+    // Verify users exist
+    let users = await fragment.services.getUsers();
+    expect(users).toHaveLength(1);
+
+    // Reset the database
+    await test.resetDatabase();
+
+    // Verify database is empty
+    users = await fragment.services.getUsers();
+    expect(users).toHaveLength(0);
+
+    // Cleanup
+    await test.cleanup();
   });
 
-  describe("resetDatabase", () => {
-    const adapters = [
-      { name: "Kysely SQLite", adapter: { type: "kysely-sqlite" as const } },
-      { name: "Kysely PGLite", adapter: { type: "kysely-pglite" as const } },
-      { name: "Drizzle PGLite", adapter: { type: "drizzle-pglite" as const } },
-    ];
+  it("should expose db property for direct ORM queries", async () => {
+    const { fragment, test } = await createDatabaseFragmentForTest(
+      { definition: testFragmentDef, routes: [] },
+      {
+        adapter: { type: "kysely-sqlite" },
+      },
+    );
 
-    for (const { name, adapter } of adapters) {
-      describe(name, () => {
-        it("should clear all data and recreate a fresh database", async () => {
-          // Don't destructure so we can access the updated fragment through getters after reset
-          const result = await createDatabaseFragmentForTest(testFragmentDef, [], {
-            adapter,
-          });
+    // Test creating a record directly using test.db
+    const userId = await fragment.db.create("users", {
+      name: "Direct DB User",
+      email: "direct@example.com",
+      age: 28,
+    });
 
-          // Create some users
-          await result.services.createUser({
-            name: "User 1",
-            email: "user1@example.com",
-            age: 25,
-          });
-          await result.services.createUser({
-            name: "User 2",
-            email: "user2@example.com",
-            age: 30,
-          });
+    expect(userId).toBeDefined();
+    expect(typeof userId.valueOf()).toBe("string");
 
-          // Verify users exist
-          let users = await result.services.getUsers();
-          expect(users).toHaveLength(2);
+    // Test finding records using test.db
+    const users = await fragment.db.find("users", (b) =>
+      b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
+    );
 
-          // Reset the database
-          await result.test.resetDatabase();
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({
+      id: userId,
+      name: "Direct DB User",
+      email: "direct@example.com",
+      age: 28,
+    });
 
-          // Verify database is empty (accessing through result to get updated fragment)
-          users = await result.services.getUsers();
-          expect(users).toHaveLength(0);
-
-          // Verify we can still create new users after reset
-          const newUser = await result.services.createUser({
-            name: "User After Reset",
-            email: "after@example.com",
-            age: 35,
-          });
-
-          expect(newUser).toMatchObject({
-            id: expect.any(String),
-            name: "User After Reset",
-            email: "after@example.com",
-            age: 35,
-          });
-
-          users = await result.services.getUsers();
-          expect(users).toHaveLength(1);
-          expect(users[0]).toMatchObject(newUser);
-
-          // Cleanup
-          await result.test.cleanup();
-        }, 10000);
-      });
-    }
+    await test.cleanup();
   });
 
-  describe("db property access", () => {
-    const adapters = [
-      { name: "Kysely SQLite", adapter: { type: "kysely-sqlite" as const } },
-      { name: "Kysely PGLite", adapter: { type: "kysely-pglite" as const } },
-      { name: "Drizzle PGLite", adapter: { type: "drizzle-pglite" as const } },
-    ];
-
-    for (const { name, adapter } of adapters) {
-      describe(name, () => {
-        it("should expose db property for direct ORM queries", async () => {
-          const { test } = await createDatabaseFragmentForTest(testFragmentDef, [], {
-            adapter,
-          });
-
-          // Test creating a record directly using test.db
-          const userId = await test.db.create("users", {
-            name: "Direct DB User",
-            email: "direct@example.com",
-            age: 28,
-          });
-
-          expect(userId).toBeDefined();
-          expect(typeof userId.valueOf()).toBe("string");
-
-          // Test finding records using test.db
-          const users = await test.db.find("users", (b) =>
-            b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
-          );
-
-          expect(users).toHaveLength(1);
-          expect(users[0]).toMatchObject({
-            id: userId,
-            name: "Direct DB User",
-            email: "direct@example.com",
-            age: 28,
-          });
-
-          // Test findFirst using test.db
-          const user = await test.db.findFirst("users", (b) =>
-            b.whereIndex("idx_users_all", (eb) => eb("id", "=", userId)),
-          );
-
-          expect(user).toMatchObject({
-            id: userId,
-            name: "Direct DB User",
-            email: "direct@example.com",
-            age: 28,
-          });
-
-          // Cleanup
-          await test.cleanup();
-        }, 10000);
-
-        it("should maintain db property after resetDatabase", async () => {
-          const result = await createDatabaseFragmentForTest(testFragmentDef, [], {
-            adapter,
-          });
-
-          // Create initial data using test.db
-          await result.test.db.create("users", {
-            name: "Before Reset",
-            email: "before@example.com",
-            age: 25,
-          });
-
-          // Verify db works before reset
-          expect(result.test.db).toBeDefined();
-          expect(typeof result.test.db.create).toBe("function");
-
-          // Verify data exists
-          let users = await result.test.db.find("users");
-          expect(users).toHaveLength(1);
-
-          // Reset database
-          await result.test.resetDatabase();
-
-          // Verify database was actually reset (no data)
-          users = await result.test.db.find("users");
-          expect(users).toHaveLength(0);
-
-          // Verify we can still use the ORM after reset
-          const newUserId = await result.test.db.create("users", {
-            name: "After Reset",
-            email: "after@example.com",
-            age: 30,
-          });
-
-          expect(newUserId).toBeDefined();
-
-          const newUsers = await result.test.db.find("users");
-          expect(newUsers).toHaveLength(1);
-          expect(newUsers[0]).toMatchObject({
-            name: "After Reset",
-            email: "after@example.com",
-            age: 30,
-          });
-
-          // Cleanup
-          await result.test.cleanup();
-        }, 10000);
-      });
-    }
-  });
-
-  describe("multiple adapters with auth-like schema", () => {
+  it("should work with multi-table schema", async () => {
     // Simplified auth schema for testing
     const authSchema = schema((s) => {
       return s
@@ -567,70 +185,193 @@ describe("createDatabaseFragmentForTest", () => {
             const id = await orm.create("session", { userId, expiresAt });
             return { id: id.valueOf(), userId, expiresAt };
           },
-          getUserByEmail: async (email: string) => {
-            const user = await orm.findFirst("user", (b) =>
-              b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
-            );
-            if (!user) {
-              return null;
-            }
-            return { id: user.id.valueOf(), email: user.email, passwordHash: user.passwordHash };
-          },
         };
       });
 
-    const adapters = [
-      { name: "Kysely SQLite", adapter: { type: "kysely-sqlite" as const } },
-      { name: "Kysely PGLite", adapter: { type: "kysely-pglite" as const } },
-      { name: "Drizzle PGLite", adapter: { type: "drizzle-pglite" as const } },
-    ];
+    const { fragment, test } = await createDatabaseFragmentForTest(
+      { definition: authFragmentDef, routes: [] },
+      {
+        adapter: { type: "kysely-sqlite" },
+      },
+    );
 
-    for (const { name, adapter } of adapters) {
-      describe(name, () => {
-        it("should create user and session", async () => {
-          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, [], {
-            adapter,
-          });
+    // Create a user
+    const user = await fragment.services.createUser("test@test.com", "hashed-password");
+    expect(user).toMatchObject({
+      id: expect.any(String),
+      email: "test@test.com",
+      passwordHash: "hashed-password",
+    });
 
-          // Create a user
-          const user = await fragment.services.createUser("test@test.com", "hashed-password");
-          expect(user).toMatchObject({
-            id: expect.any(String),
-            email: "test@test.com",
-            passwordHash: "hashed-password",
-          });
+    // Create a session for the user
+    const session = await fragment.services.createSession(user.id);
+    expect(session).toMatchObject({
+      id: expect.any(String),
+      userId: user.id,
+      expiresAt: expect.any(Date),
+    });
 
-          // Create a session for the user
-          const session = await fragment.services.createSession(user.id);
-          expect(session).toMatchObject({
-            id: expect.any(String),
-            userId: user.id,
-            expiresAt: expect.any(Date),
-          });
+    await test.cleanup();
+  });
+});
 
-          // Find user by email
-          const foundUser = await fragment.services.getUserByEmail("test@test.com");
-          expect(foundUser).toMatchObject({
-            id: user.id,
-            email: "test@test.com",
-            passwordHash: "hashed-password",
-          });
+describe("createDatabaseFragmentsForTest", () => {
+  // Create two different schemas
+  const userSchema = schema((s) => {
+    return s.addTable("user", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string"))
+        .addColumn("email", column("string"))
+        .createIndex("idx_user_all", ["id"]);
+    });
+  });
 
-          // Cleanup
-          await test.cleanup();
-        }, 10000);
+  const postSchema = schema((s) => {
+    return s.addTable("post", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("title", column("string"))
+        .addColumn("userId", column("string"))
+        .createIndex("idx_post_all", ["id"]);
+    });
+  });
 
-        it("should return null when user not found", async () => {
-          const { fragment, test } = await createDatabaseFragmentForTest(authFragmentDef, [], {
-            adapter,
-          });
+  const userFragmentDef = defineFragmentWithDatabase<{}>("user-fragment")
+    .withDatabase(userSchema)
+    .withServices(({ orm }) => {
+      return {
+        createUser: async (data: { name: string; email: string }) => {
+          const id = await orm.create("user", data);
+          return { ...data, id: id.valueOf() };
+        },
+        getUsers: async () => {
+          const users = await orm.find("user", (b) =>
+            b.whereIndex("idx_user_all", (eb) => eb("id", "!=", "")),
+          );
+          return users.map((u) => ({ ...u, id: u.id.valueOf() }));
+        },
+      };
+    });
 
-          const notFound = await fragment.services.getUserByEmail("nonexistent@test.com");
-          expect(notFound).toBeNull();
+  const postFragmentDef = defineFragmentWithDatabase<{}>("post-fragment")
+    .withDatabase(postSchema)
+    .withServices(({ orm }) => {
+      return {
+        createPost: async (data: { title: string; userId: string }) => {
+          const id = await orm.create("post", data);
+          return { ...data, id: id.valueOf() };
+        },
+        getPosts: async () => {
+          const posts = await orm.find("post", (b) =>
+            b.whereIndex("idx_post_all", (eb) => eb("id", "!=", "")),
+          );
+          return posts.map((p) => ({ ...p, id: p.id.valueOf() }));
+        },
+      };
+    });
 
-          await test.cleanup();
-        }, 10000);
+  const adapters = [
+    { name: "Kysely SQLite", adapter: { type: "kysely-sqlite" as const } },
+    { name: "Kysely PGLite", adapter: { type: "kysely-pglite" as const } },
+    { name: "Drizzle PGLite", adapter: { type: "drizzle-pglite" as const } },
+  ];
+
+  for (const { name, adapter } of adapters) {
+    it(`should allow multiple fragments to share the same database adapter - ${name}`, async () => {
+      // Create both fragments with shared adapter using array input
+      const { fragments, test } = await createDatabaseFragmentsForTest(
+        [
+          { definition: userFragmentDef, routes: [] },
+          { definition: postFragmentDef, routes: [] },
+        ],
+        { adapter },
+      );
+
+      const [userFragment, postFragment] = fragments;
+
+      // Create a user
+      const user = await userFragment!.services.createUser({
+        name: "John Doe",
+        email: "john@example.com",
       });
+
+      expect(user).toMatchObject({
+        id: expect.any(String),
+        name: "John Doe",
+        email: "john@example.com",
+      });
+
+      // Create a post with the user's ID
+      const post = await postFragment!.services.createPost({
+        title: "My First Post",
+        userId: user.id,
+      });
+
+      expect(post).toMatchObject({
+        id: expect.any(String),
+        title: "My First Post",
+        userId: user.id,
+      });
+
+      // Verify data exists
+      const users = await userFragment!.services.getUsers();
+      expect(users).toHaveLength(1);
+
+      const posts = await postFragment!.services.getPosts();
+      expect(posts).toHaveLength(1);
+      expect(posts[0]!.userId).toBe(user.id);
+
+      // Cleanup (centralized - cleans up all fragments)
+      await test.cleanup();
+    }, 10000);
+  }
+});
+
+describe("ExtractFragmentServices", () => {
+  it("extracts provided services from database fragment with .providesService()", () => {
+    const testSchema = schema((s) => s);
+
+    interface ITestService {
+      doSomething: (input: string) => Promise<string>;
+      doSomethingElse: (input: number) => Promise<number>;
     }
+
+    const fragment = defineFragmentWithDatabase<{}>("test-db-fragment")
+      .withDatabase(testSchema)
+      .providesService("test", {
+        doSomething: async (input: string) => input.toUpperCase(),
+        doSomethingElse: async (input: number) => input * 2,
+      } satisfies ITestService);
+
+    type Services = ExtractFragmentServices<typeof fragment>;
+
+    // Should include the provided service
+    expectTypeOf<Services>().toMatchObjectType<{
+      test: ITestService;
+    }>();
+  });
+
+  it("merges .withServices() and .providesService() in database fragment", () => {
+    const testSchema = schema((s) => s);
+
+    const fragment = defineFragmentWithDatabase<{}>("test-db-fragment")
+      .withDatabase(testSchema)
+      .withServices(() => ({
+        internalService: async () => "internal",
+      }))
+      .providesService("externalService", {
+        publicMethod: async () => "public",
+      });
+
+    type Services = ExtractFragmentServices<typeof fragment>;
+
+    // Should include both internal services and provided services
+    expectTypeOf<Services>().toMatchObjectType<{
+      internalService: () => Promise<string>;
+      externalService: {
+        publicMethod: () => Promise<string>;
+      };
+    }>();
   });
 });

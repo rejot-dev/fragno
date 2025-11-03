@@ -787,7 +787,7 @@ describe("KyselyAdapter PGLite", () => {
     });
   });
 
-  it("should handle timestamps and timezones correctly", async () => {
+  it("should handle timestamps and time zones correctly", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     // Create a user
@@ -826,7 +826,7 @@ describe("KyselyAdapter PGLite", () => {
     const specificDate = new Date("2024-06-15T14:30:00Z");
     expect(specificDate.toISOString()).toBe("2024-06-15T14:30:00.000Z");
 
-    // Verify that dates from different timezones are handled correctly
+    // Verify that dates from different time zones are handled correctly
     const localDate = new Date("2024-06-15T14:30:00");
     expect(localDate).toBeInstanceOf(Date);
     expect(typeof localDate.getTimezoneOffset()).toBe("number");

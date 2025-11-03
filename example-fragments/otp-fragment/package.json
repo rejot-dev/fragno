@@ -1,0 +1,34 @@
+{
+  "name": "@fragno-dev/otp-fragment",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/node/index.js",
+      "types": "./dist/node/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "types:check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22",
+    "kysely": "^0.28.8",
+    "vitest": "^3.2.4"
+  }
+}
