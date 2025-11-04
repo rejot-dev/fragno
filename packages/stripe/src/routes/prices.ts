@@ -27,15 +27,14 @@ export const pricesRoutesFactory = defineRoutes<
         prices: z.array(PriceResponseSchema),
         hasMore: z.boolean().describe("Whether there are more items to fetch"),
       }),
-      handler: async ({ pathParams, query, headers }, { json, error }) => {
+      handler: async ({ pathParams, query }, { json, error }) => {
+        if (!config.enableAdminRoutes) {
+          return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+        }
+
         const { productId } = pathParams;
         const limit = Number(query.get("limit")) || undefined;
         const startingAfter = query.get("startingAfter") || undefined;
-
-        const user = await config.authMiddleware.getUserData(headers);
-        if (!user || !user.isAdmin) {
-          return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
-        }
 
         const prices = await deps.stripe.prices.list({
           product: productId,

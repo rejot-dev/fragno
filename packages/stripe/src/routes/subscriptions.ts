@@ -20,9 +20,8 @@ export const subscriptionsRoutesFactory = defineRoutes<
       outputSchema: z.object({
         subscriptions: z.array(SubscriptionReponseSchema),
       }),
-      handler: async ({ headers }, { json, error }) => {
-        const user = await config.authMiddleware.getUserData(headers);
-        if (!user || !user.isAdmin) {
+      handler: async (_, { json, error }) => {
+        if (!config.enableAdminRoutes) {
           return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
         }
 
@@ -47,9 +46,9 @@ export const subscriptionsRoutesFactory = defineRoutes<
         "CUSTOMER_SUBSCRIPTION_MISMATCH",
         "UPGRADE_HAS_NO_EFFECT",
       ] as const,
-      handler: async ({ input, headers }, { json, error }) => {
-        const body = await input.valid();
-        const user = await config.authMiddleware.getUserData(headers);
+      handler: async (context, { json, error }) => {
+        const body = await context.input.valid();
+        const user = await config.resolveEntityFromRequest(context);
 
         let customerId: string | undefined = user.stripeCustomerId;
         let existingSubscription: SubscriptionResponse | null = null;
@@ -208,9 +207,9 @@ export const subscriptionsRoutesFactory = defineRoutes<
         "NO_SUBSCRIPTION_TO_CANCEL",
         "SUBSCRIPTION_ALREADY_CANCELED",
       ] as const,
-      handler: async ({ input, headers }, { json, error }) => {
-        const body = await input.valid();
-        const { subscriptionId } = await config.authMiddleware.getUserData(headers);
+      handler: async (context, { json, error }) => {
+        const body = await context.input.valid();
+        const { subscriptionId } = await config.resolveEntityFromRequest(context);
 
         if (!subscriptionId) {
           return error(

@@ -27,14 +27,13 @@ export const customersRoutesFactory = defineRoutes<
         customers: z.array(CustomerResponseSchema),
         hasMore: z.boolean().describe("Whether there are more customers to fetch"),
       }),
-      handler: async ({ query, headers }, { json, error }) => {
-        const limit = Number(query.get("limit")) || undefined;
-        const startingAfter = query.get("startingAfter") || undefined;
-
-        const user = await config.authMiddleware.getUserData(headers);
-        if (!user || !user.isAdmin) {
+      handler: async ({ query }, { json, error }) => {
+        if (!config.enableAdminRoutes) {
           return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
         }
+
+        const limit = Number(query.get("limit")) || undefined;
+        const startingAfter = query.get("startingAfter") || undefined;
 
         const customers = await deps.stripe.customers.list({
           limit,
