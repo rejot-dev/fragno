@@ -8,8 +8,9 @@ import {
   customerSubscriptionDeletedHandler,
   checkoutSessionCompletedHandler,
   eventToHandler,
+  type SupportedStripeEvent,
 } from "../webhook/handlers";
-import type Stripe from "stripe";
+
 import path from "path";
 
 import fs from "fs";
@@ -33,9 +34,31 @@ const mockSubscriptionsRetrieve = vi.fn().mockResolvedValue({
   trial_end: null,
   cancel_at: null,
   cancel_at_period_end: false,
-} as Stripe.Subscription);
+});
 
-function getEventJson(eventName: string, variant?: string): Stripe.Event {
+/* Importing the Stripe type breaks tsc, as a workaround I copied a smaller version of the type here. */
+type ShallowStripeEvent = {
+  id: string;
+  type: string;
+  object: string;
+  api_version: string | null;
+  created: number;
+  livemode: boolean;
+  pending_webhooks: number;
+  request: {
+    id: string | null;
+    idempotency_key: string | null;
+  } | null;
+  data: {
+    object: {
+      id: string;
+      subscription: string;
+      status: string;
+    };
+  };
+};
+
+function getEventJson(eventName: string, variant?: string): ShallowStripeEvent {
   const eventPath = variant
     ? path.join(__dirname, `./test-events/${eventName}_${variant}.json`)
     : path.join(__dirname, `./test-events/${eventName}.json`);
@@ -45,7 +68,7 @@ function getEventJson(eventName: string, variant?: string): Stripe.Event {
   if (event.type !== eventName) {
     throw new Error(`Event type mismatch: expected ${eventName}, got ${event.type}`);
   }
-  return event as Stripe.Event;
+  return event;
 }
 
 // Mock the Stripe module
@@ -77,9 +100,6 @@ describe("webhooks", async () => {
     config: {
       stripeSecretKey: "sk_test_mock_key",
       webhookSecret: "whsec_test_mock_secret",
-      subscriptions: {
-        enabled: true,
-      },
       authMiddleware: mockAuthMiddleware,
       onStripeCustomerCreated: vi.fn(),
     },
@@ -98,7 +118,8 @@ describe("webhooks", async () => {
 
     test("creates new subscription if missing", async () => {
       await customerSubscriptionUpdatedHandler({
-        event: event as unknown as Stripe.Event,
+        // @ts-expect-error TS2322
+        event: event,
         services: fragment.services,
         deps: fragment.deps,
         config: fragment.config,
@@ -126,7 +147,8 @@ describe("webhooks", async () => {
       };
 
       await customerSubscriptionUpdatedHandler({
-        event: updatedEvent as unknown as Stripe.Event,
+        // @ts-expect-error TS2322
+        event: updatedEvent,
         services: fragment.services,
         deps: fragment.deps,
         config: fragment.config,
@@ -146,7 +168,8 @@ describe("webhooks", async () => {
       expect(subscription).toBeNull();
 
       await customerSubscriptionDeletedHandler({
-        event: event as unknown as Stripe.Event,
+        // @ts-expect-error TS2322
+        event: event,
         services: fragment.services,
         deps: fragment.deps,
         config: fragment.config,
@@ -161,7 +184,8 @@ describe("webhooks", async () => {
       expect(subscription).toBeDefined();
 
       await customerSubscriptionDeletedHandler({
-        event: event as unknown as Stripe.Event,
+        // @ts-expect-error TS2322
+        event: event,
         services: fragment.services,
         deps: fragment.deps,
         config: fragment.config,
@@ -179,9 +203,10 @@ describe("webhooks", async () => {
       test(subEvent + " updates status", async () => {
         const eventName = `customer.subscription.${subEvent}`;
         const event = getEventJson(eventName);
-        const handler = eventToHandler[eventName];
+        const handler = eventToHandler[eventName as SupportedStripeEvent];
         await handler({
-          event: event as unknown as Stripe.Event,
+          // @ts-expect-error TS2322
+          event: event,
           services: fragment.services,
           deps: fragment.deps,
           config: fragment.config,
@@ -201,7 +226,8 @@ describe("webhooks", async () => {
     test("ignores non-subscription checkout sessions", async () => {
       const event = getEventJson("checkout.session.completed", "payment");
       await checkoutSessionCompletedHandler({
-        event: event as unknown as Stripe.Event,
+        // @ts-expect-error TS2322
+        event: event,
         services: fragment.services,
         deps: fragment.deps,
         config: fragment.config,
@@ -212,7 +238,8 @@ describe("webhooks", async () => {
     test("Creates subscription from checkout session", async () => {
       const event = getEventJson("checkout.session.completed", "subscription");
       await checkoutSessionCompletedHandler({
-        event: event as unknown as Stripe.Event,
+        // @ts-expect-error TS2322
+        event: event,
         services: fragment.services,
         deps: fragment.deps,
         config: fragment.config,

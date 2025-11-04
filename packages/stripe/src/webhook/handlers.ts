@@ -1,4 +1,4 @@
-import Stripe from "stripe";
+import type { Stripe } from "stripe";
 import type { StripeFragmentConfig, StripeFragmentDeps, StripeFragmentServices } from "../types";
 import { FragnoApiError } from "@fragno-dev/core/api";
 import { getId, stripeSubscriptionToInternalSubscription } from "../utils";
