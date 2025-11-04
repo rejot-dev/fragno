@@ -6,6 +6,5 @@
     "composite": true
   },
   "include": ["src"],
-  // Not sure why handlers.test.ts causes type checking to hang indefinitly
-  "exclude": ["node_modules", "dist", "src/webhook/handlers.test.ts"]
+  "exclude": ["node_modules", "dist"]
 }
