@@ -52,32 +52,33 @@ export const stripeFragment = createStripeFragment({
     await updateEntity(referenceId, { stripeCustomerId });
   },
 
-  // Authentication middleware, called by request handlers in order to get session context
-  // on an authenticated route
-  authMiddleware: {
-    getUserData: async (headers: Headers) => {
-      // Get session using your authentication system
-      const session = getSession(headers);
+  // Resolves the authenticated entity from the request
+  resolveEntityFromRequest: async (context) => {
+    // Get session using your authentication system
+    const session = getSession(context.headers);
 
-      return {
-        // Your application's identifier for the entity which owns the subscription
-        referenceId: session.user.id,
-        customerEmail: session.user.email,
+    return {
+      // Your application's identifier for the entity which owns the subscription
+      referenceId: session.user.id,
+      customerEmail: session.user.email,
 
-        // Only used when updating an existing subscription.
-        stripeCustomerId: session.user.stripeCustomerId || undefined,
-        subscriptionId: session.user.subscriptionId || undefined,
+      // Only used when updating an existing subscription.
+      stripeCustomerId: session.user.stripeCustomerId || undefined,
+      subscriptionId: session.user.subscriptionId || undefined,
 
-        // For administrative roles the Stripe fragment has a few convenient hooks
-        isAdmin: session.user.role === "admin",
-      };
-    },
+      // Additional metadata to attach to the Stripe customer
+      stripeMetadata: {},
+    };
   },
+
+  // Note: do not enable without configuring auth on those routes!
+  enableAdminRoutes: false,
 });
 ```
 
-For additional details on setting up the `onStripeCustomerCreated` and `authMiddleware` callbacks,
-see [Subscriptions](docs/our-fragments/stripe/subscriptions#configuration-requirements) page.
+For additional details on setting up the `onStripeCustomerCreated` and `resolveEntityFromRequest`
+callbacks, see [Subscriptions](docs/our-fragments/stripe/subscriptions#configuration-requirements)
+page.
 
 <Callout type="info">
   **What is `referenceId`?** This is your application's identifier for the entity that owns the
@@ -89,18 +90,6 @@ see [Subscriptions](docs/our-fragments/stripe/subscriptions#configuration-requir
 
 The fragment provides HTTP routes that need to be mounted in your application. How you do this
 depends on your framework. See [Frameworks](/docs/frameworks) supported frameworks.
-
-```ts tab="Generic"
-import { stripeFragment } from "@/lib/stripe";
-
-export function GET(req: Request): Response {
-  return stripeFragment.handler(req);
-}
-
-export function POST(req: Request): Response {
-  return stripeFragment.handler(req);
-}
-```
 
 ```ts title="app/routes/api/stripe.tsx" tab="React Router v7"
 import { stripeFragment } from "@/lib/stripe";
@@ -152,7 +141,7 @@ The fragment adds a `stripe_subscription` table to your database. Generate the s
 using the `fragno-cli`. For setting up Fragno DB schemas, see the
 [Fragno DB Quickstart](/docs/for-users/database-fragments/overview#quick-start).
 
-```bash npm
+```npm
 # Generate schema file
 npx fragno-cli db generate lib/stripe.ts -o db/stripe.schema.ts
 ```
@@ -161,9 +150,32 @@ npx fragno-cli db generate lib/stripe.ts -o db/stripe.schema.ts
 
 Create a client instance to use the fragment in your frontend:
 
-```typescript title="lib/stripe-client.ts"
+```typescript title="lib/stripe-client.ts" tab="React"
 import { createStripeFragmentClient } from "@fragno-dev/stripe/react";
-// or:  /vue, /solid, /svelte
+
+export const stripeClient = createStripeFragmentClient();
+```
+
+```typescript title="lib/stripe-client.ts" tab="Vue"
+import { createStripeFragmentClient } from "@fragno-dev/stripe/vue";
+
+export const stripeClient = createStripeFragmentClient();
+```
+
+```typescript title="lib/stripe-client.ts" tab="Solid JS"
+import { createStripeFragmentClient } from "@fragno-dev/stripe/solid";
+
+export const stripeClient = createStripeFragmentClient();
+```
+
+```typescript title="lib/stripe-client.ts" tab="Svelte"
+import { createStripeFragmentClient } from "@fragno-dev/stripe/svelte";
+
+export const stripeClient = createStripeFragmentClient();
+```
+
+```typescript title="lib/stripe-client.ts" tab="Vanilla"
+import { createStripeFragmentClient } from "@fragno-dev/stripe/vanilla";
 
 export const stripeClient = createStripeFragmentClient();
 ```
@@ -200,16 +212,3 @@ export function SubscribeButton() {
   );
 }
 ```
-
-## Your First Subscription
-
-With the setup complete, here's the flow when a user subscribes:
-
-1. **User clicks subscribe** → Your app calls `upgradeSubscription`
-2. **Fragment checks for customer** → Creates one if needed, triggers `onStripeCustomerCreated`
-3. **Stripe Checkout session created** → User redirects to Stripe's checkout page
-4. **User completes payment** → Stripe sends webhook to your app
-5. **Webhook processed** → Subscription saved to your database
-6. **User redirected back** → Success page shows active subscription
-
-The fragment handles all the webhook processing and database synchronization automatically!

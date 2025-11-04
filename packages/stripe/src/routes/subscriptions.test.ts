@@ -3,7 +3,6 @@ import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 import { stripeFragmentDefinition } from "..";
 import { subscriptionsRoutesFactory } from "./subscriptions";
 import type Stripe from "stripe";
-import type { AuthMiddleware } from "../types";
 
 // Mock Stripe client methods
 const mockCustomersSearch = vi.fn();
@@ -14,12 +13,8 @@ const mockBillingPortalSessionsCreate = vi.fn();
 const mockSubscriptionsList = vi.fn();
 const mockOnStripeCustomerCreated = vi.fn();
 
-// Mock auth middleware function - can be configured per test
-const mockGetUserData = vi.fn();
-
-const mockAuthMiddleware: AuthMiddleware = {
-  getUserData: mockGetUserData,
-};
+// Mock resolveEntityFromRequest function - can be configured per test
+const mockResolveEntityFromRequest = vi.fn();
 
 // Mock the Stripe module
 vi.mock("stripe", () => {
@@ -58,7 +53,8 @@ describe("subscription handlers", async () => {
         subscriptions: {
           enabled: true,
         },
-        authMiddleware: mockAuthMiddleware,
+        enableAdminRoutes: true,
+        resolveEntityFromRequest: mockResolveEntityFromRequest,
         onStripeCustomerCreated: mockOnStripeCustomerCreated,
       },
     },
@@ -71,14 +67,13 @@ describe("subscription handlers", async () => {
     // Clear all mocks before each test
     vi.clearAllMocks();
 
-    // Set default auth middleware response
-    mockGetUserData.mockResolvedValue({
+    // Set default resolveEntityFromRequest response
+    mockResolveEntityFromRequest.mockResolvedValue({
       referenceId: "test_user",
       stripeCustomerId: undefined,
       customerEmail: "test@example.com",
       subscriptionId: undefined,
       stripeMetadata: {},
-      isAdmin: true,
     });
   });
 
@@ -124,13 +119,12 @@ describe("subscription handlers", async () => {
   describe("POST /subscription/upgrade", () => {
     test("should create new subscription without existing stripe customer", async () => {
       // Mock auth middleware to return user without Stripe customer
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: undefined,
         customerEmail: "user@example.com",
         subscriptionId: undefined,
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       // Mock: No existing customer found
@@ -185,13 +179,12 @@ describe("subscription handlers", async () => {
 
     test("should create new subscription with existing linked stripe customer", async () => {
       // Mock auth middleware to return user without Stripe customer
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: undefined,
         customerEmail: undefined,
         subscriptionId: undefined,
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       // Mock: Existing customer found
@@ -236,13 +229,12 @@ describe("subscription handlers", async () => {
 
     test("should return error when missing customer info", async () => {
       // Mock auth middleware to return user without customer email
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: undefined,
         customerEmail: undefined, // Missing customer email
         subscriptionId: undefined,
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       // Mock: No existing customer found
@@ -250,7 +242,7 @@ describe("subscription handlers", async () => {
         data: [],
       });
 
-      const response = await fragment.fragment.callRoute("POST", "/subscription/upgrade", {
+      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
         body: {
           priceId: "price_123",
           quantity: 1,
@@ -284,13 +276,12 @@ describe("subscription handlers", async () => {
       });
 
       // Mock auth middleware to return user with existing subscription
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: "cus_123",
         customerEmail: "user@example.com",
         subscriptionId: subscription,
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       // Mock: Retrieve subscription from Stripe
@@ -328,13 +319,12 @@ describe("subscription handlers", async () => {
 
     test("should return error for non-existent subscription", async () => {
       // Mock auth middleware to return user with non-existent subscription
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: "cus_123",
         customerEmail: "user@example.com",
         subscriptionId: "nonexistent_id",
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       const response = await fragment.callRoute("POST", "/subscription/upgrade", {
@@ -373,13 +363,12 @@ describe("subscription handlers", async () => {
       });
 
       // Mock auth middleware to return user with active subscription
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: "cus_123",
         customerEmail: "user@example.com",
         subscriptionId: subscription,
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       // Mock: List active subscriptions
@@ -423,13 +412,12 @@ describe("subscription handlers", async () => {
 
     test("should return error when subscription not found", async () => {
       // Mock auth middleware to return user with non-existent subscription
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: "cus_123",
         customerEmail: "user@example.com",
         subscriptionId: "nonexistent_id",
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       const response = await fragment.callRoute("POST", "/subscription/cancel", {
@@ -463,13 +451,12 @@ describe("subscription handlers", async () => {
       });
 
       // Mock auth middleware to return user with canceled subscription
-      mockGetUserData.mockResolvedValue({
+      mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
         stripeCustomerId: "cus_123",
         customerEmail: "user@example.com",
         subscriptionId: subscription,
         stripeMetadata: {},
-        isAdmin: false,
       });
 
       const response = await fragment.callRoute("POST", "/subscription/cancel", {

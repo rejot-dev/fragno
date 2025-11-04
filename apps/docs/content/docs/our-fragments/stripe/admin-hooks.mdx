@@ -24,8 +24,32 @@ The fragment exposes these admin endpoints:
 
 ## Using Admin Hooks
 
-Use the `isAdmin` property in `authMiddleware` to make sure these routes are only accessible to
-admins.
+Set `enableAdminRoutes: true` in your fragment configuration to enable these admin-only routes. When
+disabled, these routes will return a 401 Unauthorized error.
+
+### Securing Admin Routes
+
+The admin routes should be behind authentication and authorization, use a
+[middleware](/docs/for-users/middleware) to make sure that they are not publically accessible!
+
+```typescript
+import { createStripeFragment } from "@fragno-dev/stripe";
+
+export const stripeFragment = createStripeFragment(
+  {
+    enableAdminRoutes: true,
+    ...config,
+  },
+  dbConfig,
+).withMiddleware(async ({ path, headers }, { error }) => {
+  const { role } = await getSession(headers);
+
+  if (path.startsWith("/admin") && role !== "admin") {
+    return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+  }
+  return undefined;
+});
+```
 
 ### Example: Listing Products
 

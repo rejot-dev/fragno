@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import type { TableToInsertValues } from "@fragno-dev/db/query";
+
 import type { stripeSchema } from "./database/schema";
 import type { SubscriptionResponse } from "./models/subscriptions";
 
@@ -11,26 +12,60 @@ export interface Logger {
   debug(...data: unknown[]): void;
 }
 
-type AuthenticatedUserData = {
-  referenceId: string;
-  stripeCustomerId: string | undefined;
-  customerEmail: string;
-  subscriptionId: string | undefined;
-  stripeMetadata: Record<string, string>;
-  isAdmin: boolean;
+export type StripeRequestContext = {
+  method: string;
+  path: string;
+  pathParams: Record<string, string>;
+  query: URLSearchParams;
+  headers: Headers;
+  rawBody: string | undefined;
+  input: {
+    schema: unknown;
+    valid: () => Promise<unknown>;
+  };
 };
 
-// TODO: figure out if this is the best way to do this
-//       We're kind of re-implementing middleware with a specific type
-export interface AuthMiddleware {
-  getUserData(headers: Headers): Promise<AuthenticatedUserData>;
-}
+export type StripeEntityData = {
+  /**
+   * The unique identifier for the entity (user, organization, etc.) in your system
+   */
+  referenceId: string;
+  /**
+   * The Stripe Customer ID associated with this entity, if one exists
+   */
+  stripeCustomerId: string | undefined;
+  /**
+   * The email address of the customer
+   */
+  customerEmail: string;
+  /**
+   * The Stripe subscription ID for this entity, if a subscription exists
+   */
+  subscriptionId: string | undefined;
+  /**
+   * Custom metadata to be attached to Stripe Customer for this entity
+   */
+  stripeMetadata: Record<string, string>;
+};
 
 export interface StripeFragmentConfig {
   stripeSecretKey: string;
   webhookSecret: string;
   stripeClientOptions?: Stripe.StripeConfig;
-  authMiddleware: AuthMiddleware;
+  enableAdminRoutes: boolean;
+  /**
+   * Resolves the authenticated entity (user, organization or something) from the request context
+   * and returns their Stripe-related data.
+   *
+   * This callback is invoked on user-specific routes (/subscription/upgrade and /subscription/cancel)
+   * to identify which entity is making the request. Extract authentication information
+   * from the request context (e.g., session cookies, JWT tokens in headers) and return
+   * the entity's Stripe customer ID, subscription ID (if exists), email, and custom metadata.
+   *
+   * @param context - Request context containing headers, query params, path params, and request body
+   * @returns Promise resolving to the entity's Stripe-related data
+   */
+  resolveEntityFromRequest: (context: StripeRequestContext) => Promise<StripeEntityData>;
   /**
    * Callback that gets called when a Stripe Customer is created.
    *

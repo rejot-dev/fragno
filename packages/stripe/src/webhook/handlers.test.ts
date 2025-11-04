@@ -1,7 +1,6 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
 import { createDatabaseFragmentForTest } from "@fragno-dev/test";
 import { stripeFragmentDefinition } from "..";
-import type { AuthMiddleware } from "../types";
 
 import {
   customerSubscriptionUpdatedHandler,
@@ -83,25 +82,27 @@ vi.mock("stripe", () => {
 });
 
 describe("webhooks", async () => {
-  // Mock auth middleware
-  const mockAuthMiddleware: AuthMiddleware = {
-    getUserData: vi.fn().mockResolvedValue({
-      referenceId: "test_user",
-      stripeCustomerId: "cus_test",
-      customerEmail: "test@example.com",
-      subscriptionId: undefined,
-      stripeMetadata: {},
-      isAdmin: true,
-    }),
-  };
+  // Mock resolveEntityFromRequest callback
+  const mockResolveEntityFromRequest = vi.fn().mockResolvedValue({
+    referenceId: "test_user",
+    stripeCustomerId: "cus_test",
+    customerEmail: "test@example.com",
+    subscriptionId: undefined,
+    stripeMetadata: {},
+  });
 
   // Create fragment with test configuration
-  const fragment = await createDatabaseFragmentForTest(stripeFragmentDefinition, [], {
-    config: {
-      stripeSecretKey: "sk_test_mock_key",
-      webhookSecret: "whsec_test_mock_secret",
-      authMiddleware: mockAuthMiddleware,
-      onStripeCustomerCreated: vi.fn(),
+  const { fragment } = await createDatabaseFragmentForTest(
+    {
+      definition: stripeFragmentDefinition,
+      routes: [],
+      config: {
+        stripeSecretKey: "sk_test_mock_key",
+        webhookSecret: "whsec_test_mock_secret",
+        enableAdminRoutes: true,
+        resolveEntityFromRequest: mockResolveEntityFromRequest,
+        onStripeCustomerCreated: vi.fn(),
+      },
     },
     {
       adapter: { type: "kysely-sqlite" },

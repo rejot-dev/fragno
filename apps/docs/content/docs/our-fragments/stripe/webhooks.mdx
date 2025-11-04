@@ -7,10 +7,8 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 ## Overview
 
-The Stripe fragment automatically handles webhook events to keep your local subscription data in
-sync with Stripe. When events occur in Stripe (like a successful payment, subscription renewal, or
-cancellation), Stripe sends webhook events to your application, and the fragment processes them to
-update your database.
+Stripe sends subscription updates through webhook events, this fragment implements a webhook handler
+for you which keeps the subscription table in sync.
 
 ### Handled Events
 
@@ -27,13 +25,6 @@ The fragment listens for these subscription-related events:
 All of these events automatically update your local `subscription` table to match the state in
 Stripe.
 
-## When not to rely on webhooks
-
-Webhooks are not guaranteed to be delivered in real-time, therefore there are cases where you may
-need to get the latest subscription information from Stripe directly. See
-[Manual Synchronization](/docs/our-fragments/stripe/subscriptions#manual-synchronization) for
-additional details.
-
 ## Webhook Endpoint URL
 
 The webhook endpoint is available under the `{mountPath}/webhook` path, for example:
@@ -42,7 +33,8 @@ The webhook endpoint is available under the `{mountPath}/webhook` path, for exam
 https://yourdomain.com/api/stripe/webhook
 ```
 
-Here `/api/stripe` is the default mount path where you have mounted the Stripe fragment.
+Here `/api/stripe` is the default mount path where you have
+[mounted](/docs/our-fragments/stripe/quickstart#2-mount-the-fragment-routes) the Stripe fragment.
 
 <Callout type="info">
   For local development, you'll need to use the Stripe CLI to forward webhooks. See [Testing
@@ -78,3 +70,10 @@ stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
 
 Then use the webhook secret provided by the CLI in your fragment config.
+
+## When not to rely on webhooks
+
+Webhooks are not guaranteed to be delivered in real-time, therefore there are cases where you may
+need to get the latest subscription information from Stripe directly. See
+[Manual Synchronization](/docs/our-fragments/stripe/subscriptions#manual-synchronization) for
+additional details.
