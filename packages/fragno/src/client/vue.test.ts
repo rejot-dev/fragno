@@ -928,7 +928,7 @@ describe("useFragno - createStore", () => {
       }),
     };
     const { useObject } = useFragno(clientObject);
-    expectTypeOf(useObject).toExtend<() => { message: string; count: number }>();
+    expectTypeOf(useObject).toEqualTypeOf<() => { message: string; count: number }>();
   });
 
   test("should work alongside existing hooks and mutators", async () => {
