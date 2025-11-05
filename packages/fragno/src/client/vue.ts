@@ -197,7 +197,7 @@ function createVueMutator<
 
 function createVueStore<const T extends object>(hook: FragnoStoreData<T>): FragnoVueStore<T> {
   if (isReadableAtom(hook.obj)) {
-    return () => useStore(hook.obj as Store);
+    return () => useStore(hook.obj as Store) as DeepReadonly<UnwrapNestedRefs<ShallowRef<StoreValue<T>>>>;
   }
 
   return () => {
