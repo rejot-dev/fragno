@@ -918,7 +918,7 @@ describe("useFragno - createStore", () => {
       useSingle: cb.createStore(stringAtom),
     };
     const { useSingle } = useFragno(clientSingle);
-    expectTypeOf(useSingle).toExtend<() => string>();
+    expectTypeOf(useSingle).toEqualTypeOf<() => string>();
 
     // Object with stores case - should infer function returning object with typed fields
     const clientObject = {
