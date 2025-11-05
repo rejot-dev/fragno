@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.7
+
+### Patch Changes
+
+- 09a1e13: Optional query parameters can now be used with reactive state
+
 ## 0.1.6
 
 ### Patch Changes
