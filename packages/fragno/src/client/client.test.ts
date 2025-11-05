@@ -445,6 +445,83 @@ describe("hook parameter reactivity", () => {
     }
   });
 
+  test("should react to optional query parameters", async () => {
+    const testFragment = defineFragment("test-fragment");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        queryParameters: ["thing"],
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string(), suffix: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John", suffix: "default" }]),
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      assert(typeof input === "string");
+
+      const url = new URL(input);
+      const thing = url.searchParams.get("thing");
+
+      const suffix = thing ? `with-${thing}` : "without-thing";
+
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John", suffix }],
+      } as Response;
+    });
+
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
+    const useUsers = cb.createHook("/users");
+
+    // This atom with string | undefined type should be accepted by the query parameter
+    const thingAtom = atom<string | undefined>("initial");
+
+    const store = useUsers.store({ query: { thing: thingAtom } });
+
+    const itt = createAsyncIteratorFromCallback(store.listen);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, name: "John", suffix: "with-initial" }],
+      });
+    }
+
+    // Change thing to another value
+    thingAtom.set(undefined);
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: true,
+        promise: expect.any(Promise),
+        data: undefined,
+        error: undefined,
+      });
+    }
+
+    {
+      const { value } = await itt.next();
+      expect(value).toEqual({
+        loading: false,
+        data: [{ id: 1, name: "John", suffix: "without-thing" }],
+      });
+    }
+  });
+
   test("should react to combined path and query parameters", async () => {
     const testFragment = defineFragment("test-fragment");
     const testRoutes = [

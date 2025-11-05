@@ -124,7 +124,7 @@ export type HasPathParams<T extends string> = ExtractPathParamNames<T> extends n
 export type QueryParamsHint<TQueryParameters extends string, ValueType = string> = Partial<
   Record<TQueryParameters, ValueType>
 > &
-  Record<string, ValueType>;
+  Record<string, ValueType | undefined>;
 
 // Runtime utilities
 
