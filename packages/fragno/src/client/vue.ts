@@ -6,11 +6,14 @@ import type { NonGetHTTPMethod } from "../api/api";
 import {
   isGetHook,
   isMutatorHook,
+  isStore,
   type FragnoClientMutatorData,
   type FragnoClientHookData,
+  type FragnoStoreData,
 } from "./client";
 import type { FragnoClientError } from "./client-error";
 import type { MaybeExtractPathParamsOrWiden, QueryParamsHint } from "../api/internal/path";
+import { isReadableAtom } from "../util/nanostores";
 import type { InferOr } from "../util/types-util";
 
 export type FragnoVueHook<
@@ -45,6 +48,17 @@ export type FragnoVueMutator<
   error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
   data: Ref<InferOr<TOutputSchema, undefined>>;
 };
+
+/**
+ * Type helper that unwraps any Store fields of the object into StoreValues for Vue
+ */
+export type FragnoVueStore<T extends object> = () => T extends Store<infer TStore>
+  ? DeepReadonly<UnwrapNestedRefs<ShallowRef<StoreValue<TStore>>>>
+  : {
+      [K in keyof T]: T[K] extends Store
+        ? DeepReadonly<UnwrapNestedRefs<ShallowRef<StoreValue<T[K]>>>>
+        : T[K];
+    };
 
 /**
  * Converts a Vue Ref to a NanoStore Atom.
@@ -181,6 +195,32 @@ function createVueMutator<
   };
 }
 
+function createVueStore<const T extends object>(hook: FragnoStoreData<T>): FragnoVueStore<T> {
+  if (isReadableAtom(hook.obj)) {
+    return () => useStore(hook.obj as Store);
+  }
+
+  return () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = {};
+
+    for (const key in hook.obj) {
+      if (!Object.prototype.hasOwnProperty.call(hook.obj, key)) {
+        continue;
+      }
+
+      const value = hook.obj[key];
+      if (isReadableAtom(value)) {
+        result[key] = useStore(value);
+      } else {
+        result[key] = value;
+      }
+    }
+
+    return result;
+  };
+}
+
 export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
@@ -201,7 +241,9 @@ export function useFragno<T extends Record<string, unknown>>(
           infer TQueryParameters
         >
       ? FragnoVueMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>
-      : T[K];
+      : T[K] extends FragnoStoreData<infer TStoreObj>
+        ? FragnoVueStore<TStoreObj>
+        : T[K];
 } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = {} as any;
@@ -216,6 +258,8 @@ export function useFragno<T extends Record<string, unknown>>(
       result[key] = createVueHook(hook);
     } else if (isMutatorHook(hook)) {
       result[key] = createVueMutator(hook);
+    } else if (isStore(hook)) {
+      result[key] = createVueStore(hook);
     } else {
       // Pass through non-hook values unchanged
       result[key] = hook;

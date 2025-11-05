@@ -8,7 +8,8 @@ import { refToAtom, useFragno } from "./vue";
 import { waitFor } from "@testing-library/vue";
 import { nextTick, ref, watch } from "vue";
 import { FragnoClientUnknownApiError } from "./client-error";
-import { atom } from "nanostores";
+import { atom, computed } from "nanostores";
+import { expectTypeOf } from "vitest";
 
 global.fetch = vi.fn();
 
@@ -750,5 +751,237 @@ describe("useFragno", () => {
     // Verify that hooks are still transformed
     expect(typeof result.useData).toBe("function");
     expect(typeof result.usePostAction).toBe("function");
+  });
+});
+
+describe("useFragno - createStore", () => {
+  const clientConfig: FragnoPublicClientConfig = {
+    baseUrl: "http://localhost:3000",
+  };
+
+  test("should convert multiple atom stores to Vue reactive refs", () => {
+    const stringAtom = atom("hello");
+    const numberAtom = atom(42);
+    const booleanAtom = atom(true);
+    const objectAtom = atom({ count: 0 });
+    const arrayAtom = atom(["a", "b", "c"]);
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useStore: cb.createStore({
+        message: stringAtom,
+        count: numberAtom,
+        isActive: booleanAtom,
+        data: objectAtom,
+        items: arrayAtom,
+      }),
+    };
+
+    const { useStore } = useFragno(client);
+    const store = useStore();
+
+    expect(store.message.value).toBe("hello");
+    expect(store.count.value).toBe(42);
+    expect(store.isActive.value).toBe(true);
+    expect(store.data.value).toEqual({ count: 0 });
+    expect(store.items.value).toEqual(["a", "b", "c"]);
+  });
+
+  test("should handle computed atoms in stores", () => {
+    const baseNumber = atom(5);
+    const doubled = computed(baseNumber, (n) => n * 2);
+    const tripled = computed(baseNumber, (n) => n * 3);
+    const combined = computed([doubled, tripled], (d, t) => ({ doubled: d, tripled: t }));
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useComputedValues: cb.createStore({
+        base: baseNumber,
+        doubled: doubled,
+        tripled: tripled,
+        combined: combined,
+      }),
+    };
+
+    const { useComputedValues } = useFragno(client);
+    const values = useComputedValues();
+
+    expect(values.base.value).toBe(5);
+    expect(values.doubled.value).toBe(10);
+    expect(values.tripled.value).toBe(15);
+    expect(values.combined.value).toEqual({ doubled: 10, tripled: 15 });
+  });
+
+  test("should preserve non-store values while converting stores", () => {
+    const messageAtom = atom("test message");
+    const regularFunction = (x: number) => x * 2;
+    const regularObject = { foo: "bar", baz: 123 };
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useMixed: cb.createStore({
+        message: messageAtom,
+        multiply: regularFunction,
+        config: regularObject,
+        constant: 42,
+      }),
+    };
+
+    const { useMixed } = useFragno(client);
+    const mixed = useMixed();
+
+    // Store should be reactive ref
+    expect(mixed.message.value).toBe("test message");
+
+    // Non-store values should be preserved unchanged
+    expect(mixed.multiply(5)).toBe(10);
+    expect(mixed.config).toEqual({ foo: "bar", baz: 123 });
+    expect(mixed.constant).toBe(42);
+  });
+
+  test("should handle single atom store", () => {
+    const singleAtom = atom("single value");
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+
+    // Single store case
+    const clientSingle = {
+      useSingle: cb.createStore(singleAtom),
+    };
+
+    const { useSingle } = useFragno(clientSingle);
+    const single = useSingle();
+
+    expect(single.value).toBe("single value");
+  });
+
+  test("should update Vue components when store values change", async () => {
+    const counterAtom = atom(0);
+    const textAtom = atom("initial");
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useReactiveStore: cb.createStore({
+        counter: counterAtom,
+        text: textAtom,
+      }),
+    };
+
+    const { useReactiveStore } = useFragno(client);
+    const store = useReactiveStore();
+
+    // Initial values
+    expect(store.counter.value).toBe(0);
+    expect(store.text.value).toBe("initial");
+
+    // Update store values
+    counterAtom.set(10);
+    textAtom.set("updated");
+
+    await waitFor(() => {
+      expect(store.counter.value).toBe(10);
+      expect(store.text.value).toBe("updated");
+    });
+  });
+
+  test("should handle complex nested store objects", () => {
+    const userAtom = atom({ id: 1, name: "John", roles: ["user"] });
+    const settingsAtom = atom({ theme: "dark", notifications: true });
+    const loadingAtom = atom(false);
+    const errorAtom = atom<string | null>(null);
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useAppState: cb.createStore({
+        user: userAtom,
+        settings: settingsAtom,
+        loading: loadingAtom,
+        error: errorAtom,
+      }),
+    };
+
+    const { useAppState } = useFragno(client);
+    const appState = useAppState();
+
+    expect(appState.user.value).toEqual({ id: 1, name: "John", roles: ["user"] });
+    expect(appState.settings.value).toEqual({ theme: "dark", notifications: true });
+    expect(appState.loading.value).toBe(false);
+    expect(appState.error.value).toBeNull();
+  });
+
+  test("should maintain correct TypeScript types", () => {
+    const stringAtom = atom("test");
+    const numberAtom = atom(42);
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+
+    // Single store case - should infer function returning string
+    const clientSingle = {
+      useSingle: cb.createStore(stringAtom),
+    };
+    const { useSingle } = useFragno(clientSingle);
+    expectTypeOf(useSingle).toExtend<() => string>();
+
+    // Object with stores case - should infer function returning object with typed fields
+    const clientObject = {
+      useObject: cb.createStore({
+        message: stringAtom,
+        count: numberAtom,
+      }),
+    };
+    const { useObject } = useFragno(clientObject);
+    expectTypeOf(useObject).toExtend<() => { message: string; count: number }>();
+  });
+
+  test("should work alongside existing hooks and mutators", async () => {
+    const testFragmentDefinition = defineFragment("test-fragment");
+    const testRoutes = [
+      defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(z.object({ id: z.number(), name: z.string() })),
+        handler: async (_ctx, { json }) => json([{ id: 1, name: "John" }]),
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/users",
+        inputSchema: z.object({ name: z.string() }),
+        outputSchema: z.object({ id: z.number(), name: z.string() }),
+        handler: async (_ctx, { json }) => json({ id: 1, name: "Jane" }),
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      assert(typeof input === "string");
+      if (input.includes("/users") && !input.includes("POST")) {
+        return {
+          headers: new Headers(),
+          ok: true,
+          json: async () => [{ id: 1, name: "John" }],
+        } as Response;
+      }
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => ({ id: 1, name: "Jane" }),
+      } as Response;
+    });
+
+    const statusAtom = atom("ready");
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
+    const clientObj = {
+      useUsers: client.createHook("/users"),
+      createUser: client.createMutator("POST", "/users"),
+      useStatus: client.createStore(statusAtom),
+    };
+
+    const { useUsers, createUser, useStatus } = useFragno(clientObj);
+
+    // All should work together
+    const users = useUsers();
+    const mutator = createUser();
+    const status = useStatus();
+
+    expect(status.value).toBe("ready");
+    expect(typeof users).toBe("function");
+    expect(typeof mutator).toBe("function");
   });
 });
