@@ -417,7 +417,7 @@ describe("FragnoClientMutatorData", () => {
       (args?: {
         body?: undefined;
         path?: Record<"id", string> | undefined;
-        query?: Record<string, string>;
+        query?: Record<string, string | undefined>;
       }) => Promise<undefined>
     >();
   });
@@ -437,7 +437,7 @@ describe("FragnoClientMutatorData", () => {
       (args?: {
         body?: undefined;
         path?: Record<"id", string> | undefined;
-        query?: Record<string, string>;
+        query?: Record<string, string | undefined>;
       }) => Promise<{
         id: number;
         name: string;
@@ -465,7 +465,7 @@ describe("FragnoClientMutatorData", () => {
             }
           | undefined;
         path?: Record<"id", string> | undefined;
-        query?: Record<string, string>;
+        query?: Record<string, string | undefined>;
       }) => Promise<undefined>
     >();
   });
@@ -486,7 +486,7 @@ describe("FragnoClientMutatorData", () => {
       (args?: {
         body?: undefined;
         path?: Record<"id", string> | undefined;
-        query?: Record<"id" | "name", string>;
+        query?: Record<"id" | "name", string | undefined>;
       }) => Promise<undefined>
     >();
   });

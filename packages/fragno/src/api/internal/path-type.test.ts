@@ -446,39 +446,39 @@ test("MaybeExtractPathParamsOrWiden type tests", () => {
 test("QueryParamsHint type tests", () => {
   // Basic usage with string union
   expectTypeOf<QueryParamsHint<"page" | "limit">>().toEqualTypeOf<
-    Partial<Record<"page" | "limit", string>> & Record<string, string>
+    Partial<Record<"page" | "limit", string>> & Record<string, string | undefined>
   >();
 
   // Single parameter hint
   expectTypeOf<QueryParamsHint<"search">>().toEqualTypeOf<
-    Partial<Record<"search", string>> & Record<string, string>
+    Partial<Record<"search", string>> & Record<string, string | undefined>
   >();
 
   // Empty hint (never) - should still allow any string keys
   expectTypeOf<QueryParamsHint<never>>().toEqualTypeOf<
-    Partial<Record<never, string>> & Record<string, string>
+    Partial<Record<never, string>> & Record<string, string | undefined>
   >();
 
   // With custom value type
   expectTypeOf<QueryParamsHint<"page" | "limit", number>>().toEqualTypeOf<
-    Partial<Record<"page" | "limit", number>> & Record<string, number>
+    Partial<Record<"page" | "limit", number>> & Record<string, number | undefined>
   >();
 
   // With boolean value type
   expectTypeOf<QueryParamsHint<"enabled" | "debug", boolean>>().toEqualTypeOf<
-    Partial<Record<"enabled" | "debug", boolean>> & Record<string, boolean>
+    Partial<Record<"enabled" | "debug", boolean>> & Record<string, boolean | undefined>
   >();
 
   // With union value type
   type StringOrNumber = string | number;
   expectTypeOf<QueryParamsHint<"value", StringOrNumber>>().toEqualTypeOf<
-    Partial<Record<"value", StringOrNumber>> & Record<string, StringOrNumber>
+    Partial<Record<"value", StringOrNumber>> & Record<string, StringOrNumber | undefined>
   >();
 
   // With custom object type
   type CustomType = { raw: string; parsed: boolean };
   expectTypeOf<QueryParamsHint<"data", CustomType>>().toEqualTypeOf<
-    Partial<Record<"data", CustomType>> & Record<string, CustomType>
+    Partial<Record<"data", CustomType>> & Record<string, CustomType | undefined>
   >();
 });
 

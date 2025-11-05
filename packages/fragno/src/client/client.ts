@@ -1,6 +1,6 @@
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { task, type ReadableAtom, type Store } from "nanostores";
+import { computed, task, type ReadableAtom, type Store } from "nanostores";
 import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
 import {
   buildPath,
@@ -252,11 +252,11 @@ export type FragnoClientHookData<
   >;
   query(args?: {
     path?: MaybeExtractPathParamsOrWiden<TPath, string>;
-    query?: Record<TQueryParameters, string>;
+    query?: Record<TQueryParameters, string | undefined>;
   }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
   store(args?: {
     path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
-    query?: Record<TQueryParameters, string | ReadableAtom<string>>;
+    query?: Record<TQueryParameters, string | undefined | ReadableAtom<string | undefined>>;
   }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>;
   [GET_HOOK_SYMBOL]: true;
 } & {
@@ -287,14 +287,14 @@ export type FragnoClientMutatorData<
   mutateQuery(args?: {
     body?: InferOr<TInputSchema, undefined>;
     path?: MaybeExtractPathParamsOrWiden<TPath, string>;
-    query?: Record<TQueryParameters, string>;
+    query?: Record<TQueryParameters, string | undefined>;
   }): Promise<InferOr<TOutputSchema, undefined>>;
 
   mutatorStore: MutatorStore<
     {
       body?: InferOr<TInputSchema, undefined>;
       path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
-      query?: Record<TQueryParameters, string | ReadableAtom<string>>;
+      query?: Record<TQueryParameters, string | undefined | ReadableAtom<string | undefined>>;
     },
     InferOr<TOutputSchema, undefined>,
     FragnoClientError<TErrorCode>
@@ -313,7 +313,7 @@ export function buildUrl<TPath extends string>(
   },
   params: {
     pathParams?: Record<string, string | ReadableAtom<string>>;
-    queryParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | undefined | ReadableAtom<string | undefined>>;
   },
 ): string {
   const { baseUrl = "", mountRoute, path } = config;
@@ -322,7 +322,12 @@ export function buildUrl<TPath extends string>(
   const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath, string>;
   const normalizedQueryParams = unwrapObject(queryParams) ?? {};
 
-  const searchParams = new URLSearchParams(normalizedQueryParams);
+  // Filter out undefined values to prevent URLSearchParams from converting them to string "undefined"
+  const filteredQueryParams = Object.fromEntries(
+    Object.entries(normalizedQueryParams).filter(([_, value]) => value !== undefined),
+  ) as Record<string, string>;
+
+  const searchParams = new URLSearchParams(filteredQueryParams);
   const builtPath = buildPath(path, normalizedPathParams ?? {});
   const search = searchParams.toString() ? `?${searchParams.toString()}` : "";
   return `${baseUrl}${mountRoute}${builtPath}${search}`;
@@ -333,6 +338,7 @@ export function buildUrl<TPath extends string>(
  *
  * The returned array is always: path, pathParams (In order they appear in the path), queryParams (In alphabetical order)
  * Missing pathParams are replaced with "<missing>".
+ * Atoms with undefined values are wrapped in computed atoms that map undefined to "" to avoid nanoquery treating the key as incomplete.
  * @param path
  * @param params
  * @returns
@@ -342,7 +348,7 @@ export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
   path: TPath,
   params?: {
     pathParams?: Record<string, string | ReadableAtom<string>>;
-    queryParams?: Record<string, string | ReadableAtom<string>>;
+    queryParams?: Record<string, string | undefined | ReadableAtom<string | undefined>>;
   },
 ): (string | ReadableAtom<string>)[] {
   if (!params) {
@@ -357,7 +363,15 @@ export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
   const queryParamValues = queryParams
     ? Object.keys(queryParams)
         .sort()
-        .map((key) => queryParams[key])
+        .map((key) => {
+          const value = queryParams[key];
+          // If it's an atom, wrap it to convert undefined to ""
+          if (value && typeof value === "object" && "get" in value) {
+            return computed(value as ReadableAtom<string | undefined>, (v) => v ?? "");
+          }
+          // Plain string value (or undefined)
+          return value ?? "";
+        })
     : [];
 
   return [method, path, ...pathParamValues, ...queryParamValues];
@@ -668,14 +682,19 @@ export class ClientBuilder<
 
     async function callServerSideHandler(params: {
       pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
+      queryParams?: Record<string, string | undefined | ReadableAtom<string | undefined>>;
     }): Promise<Response> {
       const { pathParams, queryParams } = params ?? {};
 
       const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath, string>;
       const normalizedQueryParams = unwrapObject(queryParams) ?? {};
 
-      const searchParams = new URLSearchParams(normalizedQueryParams);
+      // Filter out undefined values to prevent URLSearchParams from converting them to string "undefined"
+      const filteredQueryParams = Object.fromEntries(
+        Object.entries(normalizedQueryParams).filter(([_, value]) => value !== undefined),
+      ) as Record<string, string>;
+
+      const searchParams = new URLSearchParams(filteredQueryParams);
 
       const result = await route.handler(
         RequestInputContext.fromSSRContext({
@@ -692,7 +711,7 @@ export class ClientBuilder<
 
     async function executeQuery(params?: {
       pathParams?: Record<string, string | ReadableAtom<string>>;
-      queryParams?: Record<string, string | ReadableAtom<string>>;
+      queryParams?: Record<string, string | undefined | ReadableAtom<string | undefined>>;
     }): Promise<Response> {
       const { pathParams, queryParams } = params ?? {};
 
