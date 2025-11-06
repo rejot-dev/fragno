@@ -443,6 +443,45 @@ async function printCodeBlockById(
 }
 
 /**
+ * Print only the topic tree
+ */
+function printTopicTree(): void {
+  const subjects = getSubjects();
+  const subjectMap = new Map(subjects.map((s) => [s.id, s]));
+
+  // Helper function to recursively display tree
+  function displayNode(subjectId: string, indent: string, isLast: boolean, isRoot: boolean): void {
+    const subject = subjectMap.get(subjectId);
+    if (!subject) {
+      return;
+    }
+
+    if (isRoot) {
+      console.log(`  ${subject.id.padEnd(30)} ${subject.title}`);
+    } else {
+      const connector = isLast ? "└─" : "├─";
+      console.log(`${indent}${connector} ${subject.id.padEnd(26)} ${subject.title}`);
+    }
+
+    const children = getSubjectChildren(subjectId);
+    if (children.length > 0) {
+      const childIndent = isRoot ? "    " : indent + (isLast ? "   " : "│  ");
+      for (let i = 0; i < children.length; i++) {
+        displayNode(children[i], childIndent, i === children.length - 1, false);
+      }
+    }
+  }
+
+  // Display root subjects
+  for (const subject of subjects) {
+    const parent = getSubjectParent(subject.id);
+    if (!parent) {
+      displayNode(subject.id, "", false, true);
+    }
+  }
+}
+
+/**
  * Print information about the corpus command
  */
 function printCorpusHelp(): void {
@@ -456,9 +495,11 @@ function printCorpusHelp(): void {
   console.log("  -e, --end N                Ending line number to display to");
   console.log("  --headings                 Show only headings and code block IDs");
   console.log("  --id <id>                  Retrieve a specific code block by ID");
+  console.log("  --tree                     Show only the topic tree");
   console.log("");
   console.log("Examples:");
   console.log("  fragno-cli corpus                           # List all available topics");
+  console.log("  fragno-cli corpus --tree                    # Show only the topic tree");
   console.log("  fragno-cli corpus defining-routes           # Show route definition examples");
   console.log("  fragno-cli corpus --headings database-querying");
   console.log("                                              # Show structure overview");
@@ -470,42 +511,7 @@ function printCorpusHelp(): void {
   console.log("");
   console.log("Available topics:");
 
-  const subjects = getSubjects();
-
-  // Group subjects by their tree structure
-  const rootSubjects: Array<{
-    id: string;
-    title: string;
-    children: Array<{ id: string; title: string }>;
-  }> = [];
-  const subjectMap = new Map(subjects.map((s) => [s.id, s]));
-
-  for (const subject of subjects) {
-    const parent = getSubjectParent(subject.id);
-    if (!parent) {
-      // This is a root subject
-      const children = getSubjectChildren(subject.id);
-      rootSubjects.push({
-        id: subject.id,
-        title: subject.title,
-        children: children.map((childId) => ({
-          id: childId,
-          title: subjectMap.get(childId)?.title || childId,
-        })),
-      });
-    }
-  }
-
-  // Display in tree format
-  for (const root of rootSubjects) {
-    console.log(`  ${root.id.padEnd(30)} ${root.title}`);
-    for (let i = 0; i < root.children.length; i++) {
-      const child = root.children[i];
-      const isLast = i === root.children.length - 1;
-      const connector = isLast ? "└─" : "├─";
-      console.log(`    ${connector} ${child.id.padEnd(26)} ${child.title}`);
-    }
-  }
+  printTopicTree();
 }
 
 export const corpusCommand = define({
@@ -535,6 +541,10 @@ export const corpusCommand = define({
       type: "string",
       description: "Retrieve a specific code block by ID",
     },
+    tree: {
+      type: "boolean",
+      description: "Show only the topic tree (without help text)",
+    },
   },
   run: async (ctx) => {
     const topics = ctx.positionals;
@@ -543,10 +553,17 @@ export const corpusCommand = define({
     const endLine = ctx.values.end;
     const headingsOnly = ctx.values.headings ?? false;
     const codeBlockId = ctx.values.id;
+    const treeOnly = ctx.values.tree ?? false;
 
     // Handle --id flag
     if (codeBlockId) {
       await printCodeBlockById(codeBlockId, topics, showLineNumbers);
+      return;
+    }
+
+    // Handle --tree flag
+    if (treeOnly) {
+      printTopicTree();
       return;
     }
 

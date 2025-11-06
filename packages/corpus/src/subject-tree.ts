@@ -4,13 +4,13 @@
 
 export interface SubjectNode {
   id: string;
-  children?: string[];
+  children?: SubjectNode[];
 }
 
 /**
  * Tree structure defining subject hierarchy and ordering
  * - Root-level subjects are listed in order
- * - Children are indented under their parents
+ * - Children can be arbitrarily nested
  */
 const SUBJECT_TREE: SubjectNode[] = [
   { id: "defining-routes" },
@@ -19,8 +19,22 @@ const SUBJECT_TREE: SubjectNode[] = [
   { id: "database-querying" },
   {
     id: "database-adapters",
-    children: ["kysely-adapter", "drizzle-adapter"],
+    children: [{ id: "kysely-adapter" }, { id: "drizzle-adapter" }],
   },
+  // Example of deeper nesting - can be extended to any depth
+  // {
+  //   id: "advanced-topics",
+  //   children: [
+  //     {
+  //       id: "performance",
+  //       children: [
+  //         { id: "caching" },
+  //         { id: "optimization" },
+  //       ],
+  //     },
+  //     { id: "security" },
+  //   ],
+  // },
 ];
 
 /**
@@ -28,19 +42,29 @@ const SUBJECT_TREE: SubjectNode[] = [
  */
 const SUBJECT_PARENT_MAP = new Map<string, string | null>();
 const SUBJECT_ORDER_MAP = new Map<string, number>();
+const SUBJECT_CHILDREN_MAP = new Map<string, string[]>();
 
-// Build the parent and order maps
-let orderIndex = 0;
-for (const node of SUBJECT_TREE) {
-  SUBJECT_PARENT_MAP.set(node.id, null);
-  SUBJECT_ORDER_MAP.set(node.id, orderIndex++);
+/**
+ * Recursively processes a node and its children, building parent/order maps
+ */
+function processNode(node: SubjectNode, parent: string | null, orderIndexRef: { value: number }) {
+  SUBJECT_PARENT_MAP.set(node.id, parent);
+  SUBJECT_ORDER_MAP.set(node.id, orderIndexRef.value++);
 
   if (node.children) {
-    for (const childId of node.children) {
-      SUBJECT_PARENT_MAP.set(childId, node.id);
-      SUBJECT_ORDER_MAP.set(childId, orderIndex++);
+    const childIds = node.children.map((child) => child.id);
+    SUBJECT_CHILDREN_MAP.set(node.id, childIds);
+
+    for (const childNode of node.children) {
+      processNode(childNode, node.id, orderIndexRef);
     }
   }
+}
+
+// Build the parent and order maps
+const orderIndexRef = { value: 0 };
+for (const node of SUBJECT_TREE) {
+  processNode(node, null, orderIndexRef);
 }
 
 /**
@@ -51,11 +75,10 @@ export function getSubjectParent(subjectId: string): string | null {
 }
 
 /**
- * Gets the children of a subject
+ * Gets the direct children of a subject
  */
 export function getSubjectChildren(subjectId: string): string[] {
-  const node = SUBJECT_TREE.find((n) => n.id === subjectId);
-  return node?.children ?? [];
+  return SUBJECT_CHILDREN_MAP.get(subjectId) ?? [];
 }
 
 /**
@@ -71,27 +94,44 @@ export function orderSubjects(subjectIds: string[]): string[] {
 }
 
 /**
- * Expands a subject ID to include its children if it has any
+ * Expands a subject ID to include all its descendants recursively
  * Useful for when a user requests a parent topic and wants to see all related content
  */
 export function expandSubjectWithChildren(subjectId: string): string[] {
-  const children = getSubjectChildren(subjectId);
-  if (children.length > 0) {
-    return [subjectId, ...children];
+  const result: string[] = [subjectId];
+
+  function collectDescendants(id: string) {
+    const children = SUBJECT_CHILDREN_MAP.get(id);
+    if (children) {
+      for (const childId of children) {
+        result.push(childId);
+        collectDescendants(childId);
+      }
+    }
   }
-  return [subjectId];
+
+  collectDescendants(subjectId);
+  return result;
 }
 
 /**
- * Gets all subject IDs in tree order
+ * Gets all subject IDs in tree order (depth-first traversal)
  */
 export function getAllSubjectIdsInOrder(): string[] {
   const ids: string[] = [];
-  for (const node of SUBJECT_TREE) {
+
+  function traverse(node: SubjectNode) {
     ids.push(node.id);
     if (node.children) {
-      ids.push(...node.children);
+      for (const childNode of node.children) {
+        traverse(childNode);
+      }
     }
   }
+
+  for (const node of SUBJECT_TREE) {
+    traverse(node);
+  }
+
   return ids;
 }
