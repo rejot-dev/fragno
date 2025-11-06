@@ -253,32 +253,9 @@ export class DatabaseFragmentBuilder<
             [K in keyof TUsedServices]: { name: string; required: boolean };
           }
         | undefined,
-      // providedServices are now factory functions that need config, options, and deps
-      providedServices: (providedServices
-        ? (
-            config: TConfig,
-            options: FragnoPublicConfig,
-            deps: TDeps & BoundServices<TUsedServices>,
-          ) => {
-            const result: Record<string, unknown> = {};
-            for (const [key, value] of Object.entries(providedServices)) {
-              if (typeof value === "function") {
-                // Call the factory function to get the bound service
-                result[key] = (
-                  value as (
-                    config: TConfig,
-                    options: FragnoPublicConfig,
-                    deps: TDeps & TUsedServices,
-                  ) => unknown
-                )(config, options, deps as TDeps & TUsedServices);
-              } else {
-                // Direct value (backward compatibility)
-                result[key] = value;
-              }
-            }
-            return result as BoundServices<TProvidedServices>;
-          }
-        : undefined) as
+      // Pass providedServices as-is - let fragment-instantiation.ts handle resolution
+      // The factory functions will be called by createFragment
+      providedServices: providedServices as
         | {
             [K in keyof BoundServices<TProvidedServices>]: BoundServices<TProvidedServices>[K];
           }

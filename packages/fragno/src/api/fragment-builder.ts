@@ -241,7 +241,7 @@ export class FragmentBuilder<
   }
 
   /**
-   * Define services for this fragment (unnamed).
+   * Define services for this fragment (unnamed) using a callback.
    * Use the `defineService` function from the callback context for proper typing (optional).
    */
   providesService<TNewServices>(
@@ -262,7 +262,22 @@ export class FragmentBuilder<
   >;
 
   /**
-   * Provide a named service that other fragments can use.
+   * Define services for this fragment (unnamed) using a direct object.
+   */
+  providesService<TNewServices>(
+    services: TNewServices,
+  ): FragmentBuilder<
+    TConfig,
+    TDeps,
+    TNewServices,
+    TAdditionalContext,
+    TUsedServices,
+    TProvidedServices,
+    TThisContext
+  >;
+
+  /**
+   * Provide a named service using a callback.
    * Use the `defineService` function from the callback context for proper typing (optional).
    *
    * @example
@@ -297,24 +312,44 @@ export class FragmentBuilder<
     TThisContext
   >;
 
+  /**
+   * Provide a named service using a direct object.
+   */
+  providesService<TServiceName extends string, TService>(
+    serviceName: TServiceName,
+    service: TService,
+  ): FragmentBuilder<
+    TConfig,
+    TDeps,
+    TServices,
+    TAdditionalContext,
+    TUsedServices,
+    TProvidedServices & { [K in TServiceName]: TService },
+    TThisContext
+  >;
+
   providesService<TServiceName extends string, TService>(
     ...args:
       | [
-          fn: (context: {
-            config: TConfig;
-            fragnoConfig: FragnoPublicConfig;
-            deps: TDeps & TUsedServices;
-            defineService: <T>(services: T) => T;
-          }) => TService,
+          fnOrServices:
+            | ((context: {
+                config: TConfig;
+                fragnoConfig: FragnoPublicConfig;
+                deps: TDeps & TUsedServices;
+                defineService: <T>(services: T) => T;
+              }) => TService)
+            | TService,
         ]
       | [
           serviceName: TServiceName,
-          fn: (context: {
-            config: TConfig;
-            fragnoConfig: FragnoPublicConfig;
-            deps: TDeps & TUsedServices;
-            defineService: <T>(services: T) => T;
-          }) => TService,
+          fnOrService:
+            | ((context: {
+                config: TConfig;
+                fragnoConfig: FragnoPublicConfig;
+                deps: TDeps & TUsedServices;
+                defineService: <T>(services: T) => T;
+              }) => TService)
+            | TService,
         ]
   ):
     | FragmentBuilder<
@@ -339,8 +374,8 @@ export class FragmentBuilder<
     const defineService = <T>(services: T) => services;
 
     if (args.length === 1) {
-      // Unnamed service - replaces withServices
-      const [fn] = args;
+      // Unnamed service
+      const [fnOrServices] = args;
 
       // Create a callback that provides the full context including defineService
       const servicesCallback = (
@@ -348,12 +383,24 @@ export class FragmentBuilder<
         options: FragnoPublicConfig,
         deps: TDeps & TUsedServices,
       ): TService => {
-        return fn({
-          config,
-          fragnoConfig: options,
-          deps,
-          defineService,
-        });
+        if (typeof fnOrServices === "function") {
+          // It's a factory function - call it with context
+          const fn = fnOrServices as (context: {
+            config: TConfig;
+            fragnoConfig: FragnoPublicConfig;
+            deps: TDeps & TUsedServices;
+            defineService: <T>(services: T) => T;
+          }) => TService;
+          return fn({
+            config,
+            fragnoConfig: options,
+            deps,
+            defineService,
+          });
+        } else {
+          // It's a direct service object
+          return fnOrServices;
+        }
       };
 
       return new FragmentBuilder<
@@ -378,7 +425,7 @@ export class FragmentBuilder<
       });
     } else {
       // Named service
-      const [serviceName, fn] = args;
+      const [serviceName, fnOrService] = args;
 
       // Create a callback that provides the full context including defineService
       const createService = (
@@ -386,12 +433,24 @@ export class FragmentBuilder<
         options: FragnoPublicConfig,
         deps: TDeps & TUsedServices,
       ): TService => {
-        return fn({
-          config,
-          fragnoConfig: options,
-          deps,
-          defineService,
-        });
+        if (typeof fnOrService === "function") {
+          // It's a factory function - call it with context
+          const fn = fnOrService as (context: {
+            config: TConfig;
+            fragnoConfig: FragnoPublicConfig;
+            deps: TDeps & TUsedServices;
+            defineService: <T>(services: T) => T;
+          }) => TService;
+          return fn({
+            config,
+            fragnoConfig: options,
+            deps,
+            defineService,
+          });
+        } else {
+          // It's a direct service object
+          return fnOrService;
+        }
       };
 
       // We need to handle both function and object forms of providedServices
@@ -421,7 +480,7 @@ export class FragmentBuilder<
             }
           : // If existing is an object or undefined, spread it
             ({
-              ...(existingProvidedServices ?? {}),
+              ...existingProvidedServices,
               [serviceName]: createService,
             } as {
               [K in keyof (TProvidedServices & {

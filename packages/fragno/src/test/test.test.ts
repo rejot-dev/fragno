@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf } from "vitest";
+import { describe, it, expect, expectTypeOf, assert } from "vitest";
 import { createFragmentForTest } from "./test";
 import { defineFragment } from "../api/fragment-builder";
 import { defineRoute, defineRoutes } from "../api/route";
@@ -276,10 +276,9 @@ describe("fragment.callRoute", () => {
       pathParams: { name: "World" },
     });
 
-    expect(greetingResponse.type).toBe("json");
-    if (greetingResponse.type === "json") {
-      expect(greetingResponse.data).toEqual({ message: "Hello, World!" });
-    }
+    console.log(greetingResponse);
+    assert(greetingResponse.type === "json");
+    expect(greetingResponse.data).toEqual({ message: "Hello, World!" });
 
     // Test second route
     const countResponse = await testFragment.callRoute("GET", "/count");

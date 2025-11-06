@@ -456,7 +456,8 @@ describe("DatabaseFragmentBuilder", () => {
         .providesService("userService", ({ defineService }) => defineService(userService));
 
       expect(fragmentDef).toBeDefined();
-      expect(typeof fragmentDef.definition.providedServices).toBe("function");
+      expect(fragmentDef.definition.providedServices).toBeDefined();
+      expect(typeof fragmentDef.definition.providedServices).toBe("object");
     });
 
     test("providesService binds services correctly", async () => {
@@ -478,12 +479,217 @@ describe("DatabaseFragmentBuilder", () => {
         .withDatabase(testSchema)
         .providesService("userService", ({ defineService }) => defineService(userService));
 
-      // Verify the definition has the provided service (now it's a factory function)
+      // Verify the definition has the provided service (now it's an object with factory functions)
       expect(fragmentDef.definition.providedServices).toBeDefined();
-      expect(typeof fragmentDef.definition.providedServices).toBe("function");
+      expect(typeof fragmentDef.definition.providedServices).toBe("object");
 
       // Type checking is the main test here - if the service functions
       // don't have the correct `this` type, TypeScript will error at compile time
+    });
+
+    test("providesService with direct object (no factory)", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-direct")
+        .withDatabase(testSchema)
+        .providesService("helpers", {
+          slugify: (text: string) => text.toLowerCase().replace(/\s+/g, "-"),
+          capitalize: (text: string) => text.charAt(0).toUpperCase() + text.slice(1),
+        });
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      const fragment = createFragment(fragmentDef, {}, [], options);
+
+      expect(fragment.services.helpers).toBeDefined();
+      expect(fragment.services.helpers.slugify("Hello World")).toBe("hello-world");
+      expect(fragment.services.helpers.capitalize("hello")).toBe("Hello");
+    });
+
+    test("providesService with 0-arity factory", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-zero-arity")
+        .withDatabase(testSchema)
+        .providesService("constants", () => ({
+          MAX_USERS: 100,
+          MIN_PASSWORD_LENGTH: 8,
+        }));
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      const fragment = createFragment(fragmentDef, {}, [], options);
+
+      expect(fragment.services.constants).toBeDefined();
+      expect(fragment.services.constants.MAX_USERS).toBe(100);
+      expect(fragment.services.constants.MIN_PASSWORD_LENGTH).toBe(8);
+    });
+
+    test("chaining multiple provided services", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-chaining")
+        .withDatabase(testSchema)
+        .providesService("logger", {
+          log: (msg: string) => console.log(msg),
+        })
+        .providesService("validator", () => ({
+          validate: (value: string) => value.length > 0,
+        }))
+        .providesService("formatter", () => ({
+          format: (value: string) => value.trim(),
+        }));
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      const fragment = createFragment(fragmentDef, {}, [], options);
+
+      expect(fragment.services.logger).toBeDefined();
+      expect(fragment.services.validator).toBeDefined();
+      expect(fragment.services.formatter).toBeDefined();
+      expect(fragment.services.logger.log).toBeDefined();
+      expect(fragment.services.validator.validate).toBeDefined();
+      expect(fragment.services.formatter.format).toBeDefined();
+    });
+  });
+
+  describe("usesService", () => {
+    test("should declare required service", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      interface IEmailService {
+        sendEmail(to: string, subject: string): Promise<void>;
+      }
+
+      const fragment = defineFragmentWithDatabase("test-uses-service")
+        .withDatabase(testSchema)
+        .usesService<"email", IEmailService>("email");
+
+      expect(fragment.definition.usedServices).toBeDefined();
+      expect(fragment.definition.usedServices?.email).toEqual({ name: "email", required: true });
+    });
+
+    test("should declare optional service", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      interface ILogger {
+        log(message: string): void;
+      }
+
+      const fragment = defineFragmentWithDatabase("test-optional-service")
+        .withDatabase(testSchema)
+        .usesService<"logger", ILogger>("logger", { optional: true });
+
+      expect(fragment.definition.usedServices).toBeDefined();
+      expect(fragment.definition.usedServices?.logger).toEqual({ name: "logger", required: false });
+    });
+
+    test("should throw when required service not provided", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      interface IEmailService {
+        sendEmail(to: string, subject: string): Promise<void>;
+      }
+
+      const fragment = defineFragmentWithDatabase("test-required")
+        .withDatabase(testSchema)
+        .usesService<"email", IEmailService>("email");
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      expect(() => {
+        createFragment(fragment, {}, [], options);
+      }).toThrow("Fragment 'test-required' requires service 'email' but it was not provided");
+    });
+
+    test("should not throw when optional service not provided", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      interface ILogger {
+        log(message: string): void;
+      }
+
+      const fragment = defineFragmentWithDatabase("test-optional")
+        .withDatabase(testSchema)
+        .usesService<"logger", ILogger>("logger", { optional: true });
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      expect(() => {
+        createFragment(fragment, {}, [], options);
+      }).not.toThrow();
+    });
+
+    test("provided service can access used services", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      interface IEmailService {
+        sendEmail(to: string, subject: string): Promise<void>;
+      }
+
+      const emailImpl: IEmailService = {
+        sendEmail: async () => {},
+      };
+
+      const fragment = defineFragmentWithDatabase("test-deps")
+        .withDatabase(testSchema)
+        .usesService<"email", IEmailService>("email")
+        .providesService(({ deps }) => ({
+          notifyUser: async (userId: string) => {
+            await deps.email.sendEmail(userId, "Notification");
+          },
+        }));
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+      };
+
+      const instance = createFragment(fragment, {}, [], options, { email: emailImpl });
+
+      expect(instance.services.notifyUser).toBeDefined();
+      expect(typeof instance.services.notifyUser).toBe("function");
     });
   });
 });
