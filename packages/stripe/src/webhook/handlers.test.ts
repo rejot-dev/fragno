@@ -200,7 +200,7 @@ describe("webhooks", async () => {
   describe("customer.subscription", async () => {
     // These events are handled by the same handler and update only a few simple fields
     // TODO: missing is 'resumed', 'pending_update_applied' and 'pending_update_expired' event files
-    for (const subEvent of ["paused", "trial_will_end"]) {
+    for (const subEvent of ["created", "paused", "trial_will_end"]) {
       test(subEvent + " updates status", async () => {
         const eventName = `customer.subscription.${subEvent}`;
         const event = getEventJson(eventName);

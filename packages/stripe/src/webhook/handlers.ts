@@ -16,6 +16,7 @@ export type SupportedStripeEvent =
   | "customer.subscription.deleted"
   | "customer.subscription.updated"
   | "customer.subscription.paused"
+  | "customer.subscription.created"
   | "customer.subscription.pending_update_applied"
   | "customer.subscription.pending_update_expired"
   | "customer.subscription.resumed"
@@ -272,6 +273,7 @@ export const eventToHandler: Record<
 > = {
   "checkout.session.completed": checkoutSessionCompletedHandler,
   "customer.subscription.deleted": customerSubscriptionDeletedHandler,
+  "customer.subscription.created": customerSubscriptionUpdatedHandler,
   "customer.subscription.updated": customerSubscriptionUpdatedHandler,
   "customer.subscription.paused": customerSubscriptionPausedHandler,
   "customer.subscription.pending_update_applied": customerSubscriptionPendingUpdateAppliedHandler,

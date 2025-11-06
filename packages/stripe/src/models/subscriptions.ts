@@ -29,7 +29,7 @@ export const SubscriptionReponseSchema = z.object({
 
 export const SubscriptionUpgradeRequestSchema = z.object({
   priceId: z.string().describe("Stripe price ID to subscribe/upgrade to"),
-  quantity: z.number().positive().optional().describe("Number of seats"),
+  quantity: z.number().positive().describe("Number of seats"),
   successUrl: z.url().describe("Redirect URL after successful checkout"),
   cancelUrl: z.url().describe("Redirect URL if checkout is cancelled"),
   returnUrl: z.string().optional().describe("Return URL for billing portal"),
