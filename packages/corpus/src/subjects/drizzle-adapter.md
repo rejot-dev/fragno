@@ -4,16 +4,16 @@ The DrizzleAdapter connects Fragno's database API to your Drizzle ORM instance.
 
 ```typescript @fragno-imports
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
-import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 ```
 
 ## Basic Setup
 
 Create a DrizzleAdapter with your Drizzle database instance and provider.
 
-```typescript @fragno-test:basic-setup
-interface MyDatabase {
+```typescript @fragno-test:basic-setup types-only
+interface MyDatabase extends Record<string, unknown> {
   users: {
     id: string;
     email: string;
@@ -42,7 +42,7 @@ The adapter requires your Drizzle instance and the database provider (`"postgres
 
 For async or sync database initialization, pass a factory function instead of a direct instance.
 
-```typescript @fragno-test:factory-function
+```typescript @fragno-test:factory-function types-only
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 async function createDatabase(): Promise<PgliteDatabase> {

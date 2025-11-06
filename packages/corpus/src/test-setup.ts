@@ -20,13 +20,6 @@ export async function setup() {
 
     // Generate test files for each subject
     for (const subject of subjects) {
-      // Skip test generation if examples contain declare statements (documentation only)
-      const allCode = subject.examples.map((example) => example.code).join("\n");
-      if (allCode.includes("declare ")) {
-        console.log(`⊘ Skipped ${subject.id} (contains declare statements - documentation only)`);
-        continue;
-      }
-
       // Skip if no tests
       if (subject.examples.length === 0) {
         console.log(`⊘ Skipped ${subject.id} (no test directives found)`);
@@ -58,15 +51,33 @@ ${allInit ? `${allInit}\n` : ""}
 
       for (let i = 0; i < subject.examples.length; i++) {
         const example = subject.examples[i];
-        const testName = example.testName || `test ${i + 1}`;
+        // Priority: testName (from comment) > id (from directive) > default
+        const testName = example.testName || example.id || `test ${i + 1}`;
 
-        testFileContent += `  it("${testName}", async () => {\n`;
+        // Use it.skip for types-only tests
+        const itMethod = example.typesOnly ? "it.skip" : "it";
+        testFileContent += `  ${itMethod}("${testName}", async () => {\n`;
+
         // Indent the code and strip export statements
+        // Also transform declare statements to const with type casts
+        // Filter out import statements that can't be inside functions
         const indentedCode = example.code
           .split("\n")
+          .filter((line) => {
+            // Remove import statements from inside test blocks (they're invalid)
+            const trimmed = line.trim();
+            return !trimmed.startsWith("import ") && !trimmed.startsWith("import type ");
+          })
           .map((line) => {
             // Remove 'export ' or 'export\t' from the beginning of lines (with optional leading whitespace)
-            const stripped = line.replace(/^(\s*)export\s+/, "$1");
+            let stripped = line.replace(/^(\s*)export\s+/, "$1");
+
+            // Transform declare const X: Y; to const X = {} as Y;
+            stripped = stripped.replace(
+              /^(\s*)declare\s+(const\s+\w+):\s*(.+);/,
+              "$1$2 = {} as $3;",
+            );
+
             return `    ${stripped}`;
           })
           .join("\n");

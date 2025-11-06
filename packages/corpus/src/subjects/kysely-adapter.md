@@ -12,7 +12,7 @@ import type { Dialect } from "kysely";
 
 Create a KyselyAdapter with your Kysely database instance and provider.
 
-```typescript @fragno-test:basic-setup
+```typescript @fragno-test:basic-setup types-only
 interface MyDatabase {
   users: {
     id: string;
@@ -46,7 +46,7 @@ The adapter requires your Kysely instance and the database provider (`"postgresq
 
 For async database initialization, pass a factory function instead of a direct instance.
 
-```typescript @fragno-test:factory-function
+```typescript @fragno-test:factory-function types-only
 async function createDatabase() {
   // Async initialization logic
   return new Kysely({ dialect: {} as Dialect });

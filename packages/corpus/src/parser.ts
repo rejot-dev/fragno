@@ -21,6 +21,7 @@ export interface Example {
   explanation: string;
   testName?: string;
   id?: string;
+  typesOnly?: boolean;
 }
 
 /**
@@ -68,6 +69,7 @@ export interface ParsedMarkdown {
     explanation: string;
     testName?: string;
     id?: string;
+    typesOnly?: boolean;
   }>;
   sections: Section[];
 }
@@ -124,19 +126,22 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
   const testInit = extractCodeBlocks(content, "test-init");
 
   // Extract all test blocks with their explanations and optional IDs
+  // Pattern: ```typescript @fragno-test[:id] [types-only]
   const testBlockRegex =
-    /```typescript @fragno-test(?::(\w+(?:-\w+)*))?\n([\s\S]*?)```([\s\S]*?)(?=```typescript @fragno-test|$)/g;
+    /```typescript @fragno-test(?::(\w+(?:-\w+)*))?\s*(types-only)?\n([\s\S]*?)```([\s\S]*?)(?=```typescript @fragno-test|$)/g;
   const testBlocks: Array<{
     code: string;
     explanation: string;
     testName?: string;
     id?: string;
+    typesOnly?: boolean;
   }> = [];
 
   let match;
   while ((match = testBlockRegex.exec(content)) !== null) {
     const id = match[1] || undefined;
-    const code = match[2].trim();
+    const typesOnly = match[2] === "types-only";
+    const code = match[3].trim();
 
     // Extract test name from first line if it's a comment
     const lines = code.split("\n");
@@ -146,12 +151,12 @@ export function parseMarkdownFile(content: string): ParsedMarkdown {
     }
 
     // Get explanation text after the code block until next code block or end
-    const afterBlock = match[3];
+    const afterBlock = match[4];
     const explanation = afterBlock
       .split(/```/)[0] // Stop at next code block
       .trim();
 
-    testBlocks.push({ code, explanation, testName, id });
+    testBlocks.push({ code, explanation, testName, id, typesOnly });
   }
 
   // Extract description (everything between title and first code block or ## heading)
@@ -203,6 +208,7 @@ export function markdownToSubject(id: string, parsed: ParsedMarkdown): Subject {
     explanation: block.explanation,
     testName: block.testName,
     id: block.id,
+    typesOnly: block.typesOnly,
   }));
 
   return {

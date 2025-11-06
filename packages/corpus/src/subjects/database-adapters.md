@@ -12,7 +12,7 @@ import type { DatabaseAdapter } from "@fragno-dev/db";
 A database adapter is a bridge between Fragno's type-safe database API and your underlying ORM. It
 translates Fragno's query operations into ORM-specific syntax.
 
-```typescript @fragno-test:what-is-adapter
+```typescript @fragno-test:what-is-adapter types-only
 // Adapters implement the DatabaseAdapter interface
 declare const adapter: DatabaseAdapter;
 
@@ -34,12 +34,32 @@ Both KyselyAdapter and DrizzleAdapter support three database providers:
 
 Choose the provider that matches your database type when creating an adapter.
 
+## Factory Functions
+
+Adapters can be created from factory functions instead of direct ORM instances. This is useful for
+lazy initialization (in serverless environments).
+
+```typescript @fragno-test:factory-functions types-only
+async function createDbConnection() {
+  const db = {} as any; // Your ORM instance
+  return db;
+}
+
+declare const DrizzleAdapter: any;
+export const adapter = new DrizzleAdapter({
+  db: createDbConnection,
+  provider: "postgresql",
+});
+```
+
+The adapter calls the factory function when it needs a database connection.
+
 ## Shared Adapters
 
 Multiple fragments can share the same adapter, meaning they all use your application's single
 database connection.
 
-```typescript @fragno-test:shared-adapters
+```typescript @fragno-test:shared-adapters types-only
 declare const adapter: DatabaseAdapter;
 
 // All fragments use the same adapter
@@ -59,7 +79,7 @@ This ensures fragments integrate seamlessly with your existing database infrastr
 Adapters manage connection lifecycle automatically. Call `close()` when shutting down your
 application to properly release database connections.
 
-```typescript @fragno-test:cleanup
+```typescript @fragno-test:cleanup types-only
 declare const adapter: DatabaseAdapter;
 
 export async function cleanup() {
