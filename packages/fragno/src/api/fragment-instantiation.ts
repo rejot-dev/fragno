@@ -171,7 +171,7 @@ export function createFragment<
 ): FragnoInstantiatedFragment<
   FlattenRouteFactories<TRoutesOrFactories>,
   TDeps & TRequiredInterfaces,
-  TServices & TProvidedInterfaces,
+  TServices & TProvidedInterfaces & TRequiredInterfaces,
   TAdditionalContext
 > {
   type TRoutes = FlattenRouteFactories<TRoutesOrFactories>;
@@ -201,16 +201,38 @@ export function createFragment<
   const servicesFromWithServices =
     definition.services?.(config, options, depsWithInterfaces) ?? ({} as TServices);
 
-  // Handle providedServices - can be either a factory function or a direct object
-  const providedServicesResolved =
-    typeof definition.providedServices === "function"
-      ? definition.providedServices(config, options, depsWithInterfaces)
-      : definition.providedServices;
+  // Handle providedServices - can be:
+  // 1. A function that returns all services
+  // 2. An object where each value is a factory function
+  // 3. undefined
+  let providedServicesResolved: TProvidedInterfaces | undefined;
+
+  if (typeof definition.providedServices === "function") {
+    // Case 1: It's a function, call it to get the services
+    providedServicesResolved = definition.providedServices(config, options, depsWithInterfaces);
+  } else if (definition.providedServices && typeof definition.providedServices === "object") {
+    // Case 2: It's an object where each value might be a factory function
+    providedServicesResolved = {} as TProvidedInterfaces;
+    for (const [serviceName, serviceOrFactory] of Object.entries(definition.providedServices)) {
+      if (typeof serviceOrFactory === "function") {
+        // Call the factory function
+        (providedServicesResolved as Record<string, unknown>)[serviceName] = serviceOrFactory(
+          config,
+          options,
+          depsWithInterfaces,
+        );
+      } else {
+        // It's already a resolved service
+        (providedServicesResolved as Record<string, unknown>)[serviceName] = serviceOrFactory;
+      }
+    }
+  }
 
   const services = {
     ...servicesFromWithServices,
     ...providedServicesResolved,
-  } as TServices & TProvidedInterfaces;
+    ...interfaceImplementations,
+  } as TServices & TProvidedInterfaces & TRequiredInterfaces;
 
   const context = { config, deps: depsWithInterfaces, services };
   const routes = resolveRouteFactories(context, routesOrFactories);
@@ -237,7 +259,7 @@ export function createFragment<
     | FragnoMiddlewareCallback<
         FlattenRouteFactories<TRoutesOrFactories>,
         TDeps & TRequiredInterfaces,
-        TServices & TProvidedInterfaces
+        TServices & TProvidedInterfaces & TRequiredInterfaces
       >
     | undefined;
 
@@ -251,7 +273,7 @@ export function createFragment<
   const fragment: FragnoInstantiatedFragment<
     FlattenRouteFactories<TRoutesOrFactories>,
     TDeps & TRequiredInterfaces,
-    TServices & TProvidedInterfaces,
+    TServices & TProvidedInterfaces & TRequiredInterfaces,
     TAdditionalContext & TOptions
   > = {
     [instantiatedFragmentFakeSymbol]: instantiatedFragmentFakeSymbol,
