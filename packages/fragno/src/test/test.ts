@@ -169,10 +169,16 @@ export function createFragmentForTest<
     ? definition.services(config, fragmentOptions, deps)
     : ({} as TServices);
 
+  // Handle providedServices - can be either a factory function or a direct object
+  const providedServicesResolved =
+    typeof definition.providedServices === "function"
+      ? definition.providedServices(config, fragmentOptions, deps)
+      : definition.providedServices;
+
   // Merge services with provided services and overrides
   const services = {
     ...baseServices,
-    ...definition.providedServices,
+    ...providedServicesResolved,
     ...servicesOverride,
   } as TServices & TProvidedInterfaces;
 

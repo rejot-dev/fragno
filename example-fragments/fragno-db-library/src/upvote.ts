@@ -74,27 +74,25 @@ const ratingFragmentDef = defineFragmentWithDatabase<RatingFragmentConfig>("frag
       },
     };
   })
-  .withServices(({ deps }) => {
-    return {
-      postUpvote: (reference: string) => {
-        return deps.postUpvote({
-          reference: reference,
-          ownerReference: crypto.randomUUID(),
-          rating: 1,
-        });
-      },
-      postDownvote: (reference: string) => {
-        return deps.postUpvote({
-          reference: reference,
-          ownerReference: crypto.randomUUID(),
-          rating: -1,
-        });
-      },
-      getRating: async (reference: string) => {
-        return (await deps.getUpvoteTotal(reference))?.total ?? 0;
-      },
-    };
-  });
+  .providesService(({ deps }) => ({
+    postUpvote: (reference: string) => {
+      return deps.postUpvote({
+        reference: reference,
+        ownerReference: crypto.randomUUID(),
+        rating: 1,
+      });
+    },
+    postDownvote: (reference: string) => {
+      return deps.postUpvote({
+        reference: reference,
+        ownerReference: crypto.randomUUID(),
+        rating: -1,
+      });
+    },
+    getRating: async (reference: string) => {
+      return (await deps.getUpvoteTotal(reference))?.total ?? 0;
+    },
+  }));
 
 export function createRatingFragment(
   config: RatingFragmentConfig = {},

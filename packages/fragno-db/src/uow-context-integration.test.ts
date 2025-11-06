@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { defineFragmentWithDatabase, type DatabaseRequestThisContext } from "./fragment";
+import { defineFragmentWithDatabase } from "./fragment";
 import { createFragment } from "@fragno-dev/core";
 import { schema, column, idColumn } from "./schema/create";
 
@@ -15,13 +15,15 @@ describe("UOW Context Integration", () => {
     // Define fragment with service that uses this.getUnitOfWork()
     const fragmentDef = defineFragmentWithDatabase<{}>("test-fragment")
       .withDatabase(testSchema, "test")
-      .withServices(() => ({
-        createUser: function (this: DatabaseRequestThisContext, name: string) {
-          const uow = this.getUnitOfWork(testSchema);
-          const userId = uow.create("user", { name });
-          return { userId: userId.valueOf(), name };
-        },
-      }));
+      .providesService(({ defineService }) =>
+        defineService({
+          createUser: function (name: string) {
+            const uow = this.getUnitOfWork(testSchema);
+            const userId = uow.create("user", { name });
+            return { userId: userId.valueOf(), name };
+          },
+        }),
+      );
 
     // Mock database adapter
     const mockSchemaView = {
@@ -51,23 +53,25 @@ describe("UOW Context Integration", () => {
     expect(typeof (fragment.services as any).createUser).toBe("function");
   });
 
-  it("should bind withServices services properly", () => {
+  it("should bind providesService services properly", () => {
     const schema1 = schema((s) => {
       return s.addTable("post", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       });
     });
 
-    // Fragment with withServices
+    // Fragment with providesService
     const fragmentDef = defineFragmentWithDatabase<{}>("fragment1")
       .withDatabase(schema1, "fragment1")
-      .withServices(() => ({
-        createPost: function (this: DatabaseRequestThisContext, title: string) {
-          const uow = this.getUnitOfWork(schema1);
-          const postId = uow.create("post", { title });
-          return { postId: postId.valueOf(), title };
-        },
-      }));
+      .providesService(({ defineService }) =>
+        defineService({
+          createPost: function (title: string) {
+            const uow = this.getUnitOfWork(schema1);
+            const postId = uow.create("post", { title });
+            return { postId: postId.valueOf(), title };
+          },
+        }),
+      );
 
     // Mock adapter
     const mockSchemaView = {

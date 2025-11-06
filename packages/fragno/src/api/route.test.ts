@@ -177,13 +177,15 @@ describe("defineRoute", () => {
 });
 
 describe("ExtractFragmentServices", () => {
-  test("extracts services from fragment with .withServices()", () => {
+  test("extracts services from fragment with .providesService()", () => {
     const fragment = defineFragment<{}>("test-fragment")
       .withDependencies(() => ({ dep: "value" }))
-      .withServices(() => ({
-        getUserById: async (id: string) => ({ id, name: "John" }),
-        createUser: async (name: string) => ({ id: "123", name }),
-      }));
+      .providesService(({ defineService }) =>
+        defineService({
+          getUserById: async (id: string) => ({ id, name: "John" }),
+          createUser: async (name: string) => ({ id: "123", name }),
+        }),
+      );
 
     type Services = ExtractFragmentServices<typeof fragment>;
 
@@ -205,10 +207,12 @@ describe("ExtractFragmentServices", () => {
 
 describe("defineRoutes", () => {
   test("defineRoutes extracts services correctly for route factory", () => {
-    const fragment = defineFragment<{}>("test-fragment").withServices(() => ({
-      getUserById: async (id: string) => ({ id, name: "John" }),
-      createUser: async (name: string) => ({ id: "123", name }),
-    }));
+    const fragment = defineFragment<{}>("test-fragment").providesService(({ defineService }) =>
+      defineService({
+        getUserById: async (id: string) => ({ id, name: "John" }),
+        createUser: async (name: string) => ({ id: "123", name }),
+      }),
+    );
 
     const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
       // Type check that services are properly extracted
@@ -244,11 +248,13 @@ describe("defineRoutes", () => {
       .withDependencies(({ config }) => ({
         authClient: { apiKey: config.apiKey },
       }))
-      .withServices(({ deps }) => ({
-        validateToken: async (_token: string) => {
-          return { valid: true, apiKey: deps.authClient.apiKey };
-        },
-      }));
+      .providesService(({ deps, defineService }) =>
+        defineService({
+          validateToken: async (_token: string) => {
+            return { valid: true, apiKey: deps.authClient.apiKey };
+          },
+        }),
+      );
 
     const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
       // Type check all context properties

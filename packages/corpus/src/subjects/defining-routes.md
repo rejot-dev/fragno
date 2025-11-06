@@ -183,7 +183,7 @@ Dependencies are passed to the route factory function and can be used in route h
 
 ## Using Services
 
-Services defined in `withServices` can be used in routes for business logic.
+Services defined in `providesService` can be used in routes for business logic.
 
 ```typescript @fragno-test:using-services
 interface DataService {
@@ -242,10 +242,10 @@ const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment")
       config,
     };
   })
-  .withServices(({ deps }) => {
-    return {
+  .providesService(({ deps, defineService }) => {
+    return defineService({
       getStatus: () => `API Key: ${deps.config.apiKey.substring(0, 3)}...`,
-    };
+    });
   });
 
 const myRoutes = defineRoutes<MyFragmentConfig, MyFragmentDeps, MyFragmentServices>().create(

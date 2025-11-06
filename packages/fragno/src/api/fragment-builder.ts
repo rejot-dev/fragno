@@ -22,10 +22,10 @@ export type RouteHandler = (
 export interface FragmentDefinition<
   TConfig,
   TDeps = {},
-  TServices extends Record<string, unknown> = {},
+  TServices = {},
   TAdditionalContext extends Record<string, unknown> = {},
-  TUsedServices extends Record<string, unknown> = {},
-  TProvidedServices extends Record<string, unknown> = {},
+  TUsedServices = {},
+  TProvidedServices = {},
   TThisContext extends RequestThisContext = RequestThisContext,
 > {
   name: string;
@@ -45,19 +45,25 @@ export interface FragmentDefinition<
   usedServices?: {
     [K in keyof TUsedServices]: ServiceMetadata;
   };
-  /** Services that this fragment provides to other fragments */
-  providedServices?: {
-    [K in keyof TProvidedServices]: TProvidedServices[K];
-  };
+  /** Services that this fragment provides to other fragments (can be a factory function or direct object) */
+  providedServices?:
+    | {
+        [K in keyof TProvidedServices]: TProvidedServices[K];
+      }
+    | ((
+        config: TConfig,
+        options: FragnoPublicConfig,
+        deps: TDeps & TUsedServices,
+      ) => TProvidedServices);
 }
 
 export class FragmentBuilder<
   const TConfig,
   const TDeps = {},
-  const TServices extends Record<string, unknown> = {},
+  const TServices = {},
   const TAdditionalContext extends Record<string, unknown> = {},
-  const TUsedServices extends Record<string, unknown> = {},
-  const TProvidedServices extends Record<string, unknown> = {},
+  const TUsedServices = {},
+  const TProvidedServices = {},
   const TThisContext extends RequestThisContext = RequestThisContext,
 > {
   #definition: FragmentDefinition<
@@ -105,6 +111,18 @@ export class FragmentBuilder<
     TProvidedServices,
     TThisContext
   > {
+    // Safe cast: If providedServices is a function, we need to update its signature to use TNewDeps.
+    // This is safe because the function will be called with the new deps at runtime.
+    const providedServices = this.#definition.providedServices;
+    const recastProvidedServices =
+      typeof providedServices === "function"
+        ? (providedServices as unknown as (
+            config: TConfig,
+            options: FragnoPublicConfig,
+            deps: TNewDeps & TUsedServices,
+          ) => TProvidedServices)
+        : providedServices;
+
     return new FragmentBuilder<
       TConfig,
       TNewDeps,
@@ -124,48 +142,7 @@ export class FragmentBuilder<
       services: undefined,
       additionalContext: this.#definition.additionalContext,
       usedServices: this.#definition.usedServices,
-      providedServices: this.#definition.providedServices,
-    });
-  }
-
-  withServices<TNewServices extends Record<string, unknown>>(
-    fn: (
-      context: {
-        config: TConfig;
-        fragnoConfig: FragnoPublicConfig;
-        deps: TDeps & TUsedServices;
-      } & TAdditionalContext,
-    ) => TNewServices,
-  ): FragmentBuilder<
-    TConfig,
-    TDeps,
-    TNewServices,
-    TAdditionalContext,
-    TUsedServices,
-    TProvidedServices,
-    TThisContext
-  > {
-    return new FragmentBuilder<
-      TConfig,
-      TDeps,
-      TNewServices,
-      TAdditionalContext,
-      TUsedServices,
-      TProvidedServices,
-      TThisContext
-    >({
-      name: this.#definition.name,
-      dependencies: this.#definition.dependencies,
-      services: (config: TConfig, options: FragnoPublicConfig, deps: TDeps & TUsedServices) => {
-        return fn({ config, fragnoConfig: options, deps } as {
-          config: TConfig;
-          fragnoConfig: FragnoPublicConfig;
-          deps: TDeps & TUsedServices;
-        } & TAdditionalContext);
-      },
-      additionalContext: this.#definition.additionalContext,
-      usedServices: this.#definition.usedServices,
-      providedServices: this.#definition.providedServices,
+      providedServices: recastProvidedServices,
     });
   }
 
@@ -178,14 +155,14 @@ export class FragmentBuilder<
    * // Required service
    * defineFragment("my-fragment")
    *   .usesService<"email", IEmailService>("email")
-   *   .withServices(({ deps }) => ({
+   *   .providesService(({ deps, define }) => define({
    *     sendWelcome: () => deps.email.send(...)
    *   }))
    *
    * // Optional service
    * defineFragment("my-fragment")
    *   .usesService<"email", IEmailService>("email", { optional: true })
-   *   .withServices(({ deps }) => ({
+   *   .providesService(({ deps, define }) => define({
    *     sendWelcome: () => {
    *       if (deps.email) {
    *         deps.email.send(...)
@@ -264,7 +241,29 @@ export class FragmentBuilder<
   }
 
   /**
+   * Define services for this fragment (unnamed).
+   * Use the `defineService` function from the callback context for proper typing (optional).
+   */
+  providesService<TNewServices>(
+    fn: (context: {
+      config: TConfig;
+      fragnoConfig: FragnoPublicConfig;
+      deps: TDeps & TUsedServices;
+      defineService: <T>(services: T) => T;
+    }) => TNewServices,
+  ): FragmentBuilder<
+    TConfig,
+    TDeps,
+    TNewServices,
+    TAdditionalContext,
+    TUsedServices,
+    TProvidedServices,
+    TThisContext
+  >;
+
+  /**
    * Provide a named service that other fragments can use.
+   * Use the `defineService` function from the callback context for proper typing (optional).
    *
    * @example
    * ```ts
@@ -273,16 +272,21 @@ export class FragmentBuilder<
    * }
    *
    * defineFragment("email-fragment")
-   *   .providesService<"email", IEmailService>("email", {
+   *   .providesService<"email", IEmailService>("email", ({ defineService }) => defineService({
    *     send: async (to, subject, body) => {
    *       // implementation
    *     }
-   *   })
+   *   }))
    * ```
    */
   providesService<TServiceName extends string, TService>(
     serviceName: TServiceName,
-    implementation: TService,
+    fn: (context: {
+      config: TConfig;
+      fragnoConfig: FragnoPublicConfig;
+      deps: TDeps & TUsedServices;
+      defineService: <T>(services: T) => T;
+    }) => TService,
   ): FragmentBuilder<
     TConfig,
     TDeps,
@@ -291,30 +295,159 @@ export class FragmentBuilder<
     TUsedServices,
     TProvidedServices & { [K in TServiceName]: TService },
     TThisContext
-  > {
-    return new FragmentBuilder<
-      TConfig,
-      TDeps,
-      TServices,
-      TAdditionalContext,
-      TUsedServices,
-      TProvidedServices & { [K in TServiceName]: TService },
-      TThisContext
-    >({
-      name: this.#definition.name,
-      dependencies: this.#definition.dependencies,
-      services: this.#definition.services,
-      additionalContext: this.#definition.additionalContext,
-      usedServices: this.#definition.usedServices,
-      providedServices: {
-        ...this.#definition.providedServices,
-        [serviceName]: implementation,
-      } as {
-        [K in keyof (TProvidedServices & { [K in TServiceName]: TService })]: (TProvidedServices & {
-          [K in TServiceName]: TService;
-        })[K];
-      },
-    });
+  >;
+
+  providesService<TServiceName extends string, TService>(
+    ...args:
+      | [
+          fn: (context: {
+            config: TConfig;
+            fragnoConfig: FragnoPublicConfig;
+            deps: TDeps & TUsedServices;
+            defineService: <T>(services: T) => T;
+          }) => TService,
+        ]
+      | [
+          serviceName: TServiceName,
+          fn: (context: {
+            config: TConfig;
+            fragnoConfig: FragnoPublicConfig;
+            deps: TDeps & TUsedServices;
+            defineService: <T>(services: T) => T;
+          }) => TService,
+        ]
+  ):
+    | FragmentBuilder<
+        TConfig,
+        TDeps,
+        TService,
+        TAdditionalContext,
+        TUsedServices,
+        TProvidedServices,
+        TThisContext
+      >
+    | FragmentBuilder<
+        TConfig,
+        TDeps,
+        TServices,
+        TAdditionalContext,
+        TUsedServices,
+        TProvidedServices & { [K in TServiceName]: TService },
+        TThisContext
+      > {
+    // The defineService function is just an identity function at runtime
+    const defineService = <T>(services: T) => services;
+
+    if (args.length === 1) {
+      // Unnamed service - replaces withServices
+      const [fn] = args;
+
+      // Create a callback that provides the full context including defineService
+      const servicesCallback = (
+        config: TConfig,
+        options: FragnoPublicConfig,
+        deps: TDeps & TUsedServices,
+      ): TService => {
+        return fn({
+          config,
+          fragnoConfig: options,
+          deps,
+          defineService,
+        });
+      };
+
+      return new FragmentBuilder<
+        TConfig,
+        TDeps,
+        TService,
+        TAdditionalContext,
+        TUsedServices,
+        TProvidedServices,
+        TThisContext
+      >({
+        name: this.#definition.name,
+        dependencies: this.#definition.dependencies,
+        services: servicesCallback as (
+          config: TConfig,
+          options: FragnoPublicConfig,
+          deps: TDeps & TUsedServices,
+        ) => TService,
+        additionalContext: this.#definition.additionalContext,
+        usedServices: this.#definition.usedServices,
+        providedServices: this.#definition.providedServices,
+      });
+    } else {
+      // Named service
+      const [serviceName, fn] = args;
+
+      // Create a callback that provides the full context including defineService
+      const createService = (
+        config: TConfig,
+        options: FragnoPublicConfig,
+        deps: TDeps & TUsedServices,
+      ): TService => {
+        return fn({
+          config,
+          fragnoConfig: options,
+          deps,
+          defineService,
+        });
+      };
+
+      // We need to handle both function and object forms of providedServices
+      const existingProvidedServices = this.#definition.providedServices;
+      const newProvidedServices:
+        | {
+            [K in keyof (TProvidedServices & {
+              [K in TServiceName]: TService;
+            })]: (TProvidedServices & {
+              [K in TServiceName]: TService;
+            })[K];
+          }
+        | ((
+            config: TConfig,
+            options: FragnoPublicConfig,
+            deps: TDeps & TUsedServices,
+          ) => TProvidedServices & { [K in TServiceName]: TService }) =
+        typeof existingProvidedServices === "function"
+          ? // If existing is a function, create a new function that calls both
+            (config: TConfig, options: FragnoPublicConfig, deps: TDeps & TUsedServices) => {
+              const existing = existingProvidedServices(config, options, deps);
+              const newService = createService(config, options, deps);
+              return {
+                ...existing,
+                [serviceName]: newService,
+              } as TProvidedServices & { [K in TServiceName]: TService };
+            }
+          : // If existing is an object or undefined, spread it
+            ({
+              ...(existingProvidedServices ?? {}),
+              [serviceName]: createService,
+            } as {
+              [K in keyof (TProvidedServices & {
+                [K in TServiceName]: TService;
+              })]: (TProvidedServices & {
+                [K in TServiceName]: TService;
+              })[K];
+            });
+
+      return new FragmentBuilder<
+        TConfig,
+        TDeps,
+        TServices,
+        TAdditionalContext,
+        TUsedServices,
+        TProvidedServices & { [K in TServiceName]: TService },
+        TThisContext
+      >({
+        name: this.#definition.name,
+        dependencies: this.#definition.dependencies,
+        services: this.#definition.services,
+        additionalContext: this.#definition.additionalContext,
+        usedServices: this.#definition.usedServices,
+        providedServices: newProvidedServices,
+      });
+    }
   }
 }
 export function defineFragment<TConfig = {}>(

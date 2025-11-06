@@ -301,22 +301,44 @@ export async function createDatabaseFragmentsForTest<
 
   // Helper to create fragments with service wiring
   const createFragments = () => {
-    // First pass: collect all provided services and wrap them
+    // First pass: create fragments without dependencies to extract their provided services
     // Map from service name to { service: wrapped service, orm: ORM for that service's schema }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const providedServicesByName: Record<string, { service: any; orm: any }> = {};
 
     for (let i = 0; i < fragmentsArray.length; i++) {
       const fragmentConfig = fragmentsArray[i]!;
-      const providedServices = fragmentConfig.definition.definition.providedServices;
-      if (providedServices) {
-        const namespace = schemaConfigs[i]!.namespace;
-        const orm = testContext.getOrm(namespace);
+      const namespace = schemaConfigs[i]!.namespace;
+      const orm = testContext.getOrm(namespace);
 
-        // Collect each provided service
-        for (const [serviceName, serviceImpl] of Object.entries(providedServices)) {
-          if (serviceImpl && typeof serviceImpl === "object") {
-            providedServicesByName[serviceName] = { service: serviceImpl, orm };
+      // Create fragment without interface implementations to extract its services
+      const mergedOptions = {
+        databaseAdapter: adapter,
+      };
+
+      const tempFragment = createFragmentForTest(fragmentConfig.definition, [], {
+        config: fragmentConfig.config ?? {},
+        options: mergedOptions,
+        interfaceImplementations: {},
+      });
+
+      // Extract provided services from the created fragment
+      // Check which services this fragment provides
+      const providedServicesMetadata = fragmentConfig.definition.definition.providedServices;
+      if (providedServicesMetadata) {
+        // If providedServices is a function, it returns all services
+        // If it's an object, the keys are the service names
+        const serviceNames =
+          typeof providedServicesMetadata === "function"
+            ? Object.keys(tempFragment.services)
+            : Object.keys(providedServicesMetadata);
+
+        for (const serviceName of serviceNames) {
+          if (tempFragment.services[serviceName]) {
+            providedServicesByName[serviceName] = {
+              service: tempFragment.services[serviceName],
+              orm,
+            };
           }
         }
       }
@@ -352,7 +374,7 @@ export async function createDatabaseFragmentsForTest<
       }
 
       const fragment = createFragmentForTest(fragmentConfig.definition, fragmentConfig.routes, {
-        config: fragmentConfig.config,
+        config: (fragmentConfig.config ?? {}) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         options: mergedOptions,
         interfaceImplementations,
       });

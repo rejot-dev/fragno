@@ -6,11 +6,11 @@ import type { Node } from "@babel/types";
 const FRAGNO_PACKAGE_DEFINITIONS = {
   "@fragno-dev/core": {
     fragmentDefinitions: ["defineFragment"],
-    chainMethods: ["withDependencies", "withServices"],
+    chainMethods: ["withDependencies", "providesService"],
   },
   "@fragno-dev/db": {
     fragmentDefinitions: ["defineFragmentWithDatabase"],
-    chainMethods: ["withDependencies", "withServices", "withDatabase"],
+    chainMethods: ["withDependencies", "providesService", "withDatabase"],
     utilityFunctions: ["schema"],
   },
 } as const;

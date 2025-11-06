@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import dedent from "dedent";
 import { transform } from "./transform";
 
-describe("defineFragment withDependencies and withServices transformation", () => {
+describe("defineFragment withDependencies and providesService transformation", () => {
   const source = dedent`
     import { defineFragment } from "@fragno-dev/core";
     import { OpenAI } from "openai";
@@ -15,7 +15,7 @@ describe("defineFragment withDependencies and withServices transformation", () =
           }),
         };
       })
-      .withServices(({ config, deps }) => {
+      .providesService(({ config, deps }) => {
         return {
           messageStore: new MessageStore(),
         };
@@ -33,7 +33,7 @@ describe("defineFragment withDependencies and withServices transformation", () =
   test("ssr:false - replaces methods with no-ops", () => {
     const expected = dedent`
     import { defineFragment } from "@fragno-dev/core";
-    const chatnoDefinition = defineFragment("chatno").withDependencies(() => {}).withServices(() => {});
+    const chatnoDefinition = defineFragment("chatno").withDependencies(() => {}).providesService(() => {});
     `;
     const result = transform(source, "", { ssr: false });
     expect(result.code).toBe(expected);
@@ -54,7 +54,7 @@ describe("defineFragment with type parameters", () => {
           client: createClient(config.apiKey)
         };
       })
-      .withServices(({ config, deps }: { config: ServerConfig; deps: any }) => {
+      .providesService(({ config, deps }: { config: ServerConfig; deps: any }) => {
         return {
           service: new Service(deps.client)
         };
@@ -88,12 +88,12 @@ describe("defineFragment with only withDependencies", () => {
   });
 });
 
-describe("defineFragment with only withServices", () => {
+describe("defineFragment with only providesService", () => {
   const source = dedent`
     import { defineFragment } from "@fragno-dev/core";
     
     const lib = defineFragment("mylib")
-      .withServices(({ config, deps }) => {
+      .providesService(({ config, deps }) => {
         return {
           userService: new UserService()
         };
@@ -107,13 +107,48 @@ describe("defineFragment with only withServices", () => {
   });
 });
 
+describe("defineFragment with usesService", () => {
+  const source = dedent`
+    import { defineFragment } from "@fragno-dev/core";
+    
+    const lib = defineFragment("mylib")
+      .usesService("email", { optional: true })
+      .providesService(({ deps }) => {
+        return {
+          sendWelcome: () => {
+            if (deps.email) {
+              deps.email.send("Welcome!");
+            }
+          }
+        };
+      });
+  `;
+
+  test("ssr:false - transforms providesService callback but preserves usesService call", () => {
+    const result = transform(source, "", { ssr: false });
+    // providesService callback should be replaced with no-op
+    expect(result.code).not.toContain("deps.email.send");
+    expect(result.code).toContain("() => {}");
+    // usesService call should be preserved (it doesn't have a callback)
+    expect(result.code).toContain('usesService("email"');
+    expect(result.code).toContain("optional: true");
+  });
+
+  test("ssr:true - keeps all original code", () => {
+    const result = transform(source, "", { ssr: true });
+    expect(result.code).toContain("deps.email");
+    expect(result.code).toContain("send");
+    expect(result.code).toContain("usesService");
+  });
+});
+
 describe("defineFragment with aliased import", () => {
   const source = dedent`
     import { defineFragment as createLib } from "@fragno-dev/core";
     
     const lib = createLib("mylib")
       .withDependencies(() => ({ db: database }))
-      .withServices(() => ({ api: apiService }));
+      .providesService(() => ({ api: apiService }));
   `;
 
   test("ssr:false - handles aliased imports", () => {
@@ -130,7 +165,7 @@ describe("non-fragno defineFragment - should not transform", () => {
     
     const lib = defineFragment("mylib")
       .withDependencies(() => ({ db: database }))
-      .withServices(() => ({ api: apiService }));
+      .providesService(() => ({ api: apiService }));
   `;
 
   test("ssr:false - does not transform non-fragno defineFragment", () => {
@@ -147,10 +182,10 @@ describe("defineFragment with multiple method calls", () => {
     const lib = defineFragment("mylib")
       .withDependencies(({ config }) => ({ dep1: service1 }))
       .withOtherMethod(() => ({ other: otherService }))
-      .withServices(({ config, deps }) => ({ dep2: service2 }));
+      .providesService(({ config, deps }) => ({ dep2: service2 }));
   `;
 
-  test("ssr:false - only transforms withDependencies and withServices", () => {
+  test("ssr:false - only transforms withDependencies and providesService", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("service1");
     expect(result.code).not.toContain("service2");
@@ -169,7 +204,7 @@ describe("defineFragment with inline function expressions", () => {
           client: new Client(config)
         };
       })
-      .withServices(function({ config, deps }) {
+      .providesService(function({ config, deps }) {
         return {
           service: new Service(deps)
         };
@@ -193,7 +228,7 @@ describe("defineFragment with async functions", () => {
         const client = await createAsyncClient(config);
         return { client };
       })
-      .withServices(async ({ config, deps }) => {
+      .providesService(async ({ config, deps }) => {
         const service = await createAsyncService(deps);
         return { service };
       });
@@ -213,11 +248,11 @@ describe("multiple defineFragment calls in same file", () => {
     
     const lib1 = defineFragment("lib1")
       .withDependencies(({ config }) => ({ dep1: service1 }))
-      .withServices(({ config, deps }) => ({ svc1: serviceA }));
+      .providesService(({ config, deps }) => ({ svc1: serviceA }));
     
     const lib2 = defineFragment("lib2")
       .withDependencies(({ config }) => ({ dep2: service2 }))
-      .withServices(({ config, deps }) => ({ svc2: serviceB }));
+      .providesService(({ config, deps }) => ({ svc2: serviceB }));
   `;
 
   test("ssr:false - transforms all defineFragment calls", () => {
@@ -250,7 +285,7 @@ describe("defineFragment with complex dependency objects", () => {
           logger: console.log
         };
       })
-      .withServices(({ config, deps }) => {
+      .providesService(({ config, deps }) => {
         class CustomService {
           constructor() {
             this.ai = deps.ai;
@@ -291,7 +326,7 @@ describe("defineFragment with spread operators and destructuring", () => {
           ...rest
         };
       })
-      .withServices(({ config, deps: { base, ...restDeps } }) => {
+      .providesService(({ config, deps: { base, ...restDeps } }) => {
         return {
           service: new Service(base),
           ...restDeps
@@ -317,7 +352,7 @@ describe("defineFragment stored in variable then chained", () => {
     
     const fullLib = baseLib
       .withDependencies(({ config }) => ({ dep: dependency }))
-      .withServices(({ config, deps }) => ({ svc: service }));
+      .providesService(({ config, deps }) => ({ svc: service }));
   `;
 
   test("ssr:false - handles separated chaining", () => {
@@ -341,7 +376,7 @@ describe("defineFragment with comments", () => {
         };
       })
       /* Setup services */
-      .withServices(({ config, deps }) => {
+      .providesService(({ config, deps }) => {
         return {
           // Message service
           messages: new MessageService(deps.openai)
@@ -378,7 +413,7 @@ describe("defineFragmentWithDatabase with full database integration", () => {
     
     const lib = defineFragmentWithDatabase("mylib")
       .withDatabase(noteSchema)
-      .withServices(({ orm }) => {
+      .providesService(({ orm }) => {
         return {
           createNote: async (note: TableToInsertValues<typeof noteSchema.tables.note>) => {
             const id = await orm.create("note", note);
@@ -421,7 +456,7 @@ describe("defineFragmentWithDatabase with full database integration", () => {
       import { defineFragmentWithDatabase } from "@fragno-dev/db";
       import { z } from "zod";
       export const noteSchema = schema(s => s);
-      const lib = defineFragmentWithDatabase("mylib").withDatabase(() => {}).withServices(() => {});"
+      const lib = defineFragmentWithDatabase("mylib").withDatabase(() => {}).providesService(() => {});"
     `);
   });
 });
@@ -488,7 +523,7 @@ describe("defineFragmentWithDatabase with all three methods", () => {
       .withDependencies(({ config, orm }) => ({
         api: createApi(config.apiUrl)
       }))
-      .withServices(({ config, deps, orm }) => ({
+      .providesService(({ config, deps, orm }) => ({
         userService: new UserService(orm, deps.api)
       }));
   `;
@@ -511,7 +546,7 @@ describe("defineFragmentWithDatabase with aliased import", () => {
     
     const lib = defineDbFragment("mylib")
       .withDatabase(mySchema)
-      .withServices(({ orm }) => ({
+      .providesService(({ orm }) => ({
         getUsers: () => orm.find("users", (b) => b)
       }));
   `;
@@ -531,13 +566,13 @@ describe("multiple defineFragmentWithDatabase calls in same file", () => {
     
     const lib1 = defineFragmentWithDatabase("lib1")
       .withDatabase(schema1)
-      .withServices(({ config, deps, orm }) => ({
+      .providesService(({ config, deps, orm }) => ({
         service1: new Service1(orm)
       }));
     
     const lib2 = defineFragmentWithDatabase("lib2")
       .withDatabase(schema2)
-      .withServices(({ config, deps, orm }) => ({
+      .providesService(({ config, deps, orm }) => ({
         service2: new Service2(orm)
       }));
   `;
@@ -548,7 +583,7 @@ describe("multiple defineFragmentWithDatabase calls in same file", () => {
     expect(result.code).not.toContain("schema2");
     expect(result.code).not.toContain("Service1");
     expect(result.code).not.toContain("Service2");
-    // Should have four no-op functions (2 withDatabase + 2 withServices)
+    // Should have four no-op functions (2 withDatabase + 2 providesService)
     const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
     expect(noOpCount).toBeGreaterThanOrEqual(4);
   });
@@ -562,12 +597,12 @@ describe("mixed defineFragment and defineFragmentWithDatabase", () => {
     
     const regularLib = defineFragment("regular")
       .withDependencies(({ config }) => ({ dep: dependency1 }))
-      .withServices(({ config, deps }) => ({ svc: service1 }));
+      .providesService(({ config, deps }) => ({ svc: service1 }));
     
     const dbLib = defineFragmentWithDatabase("db")
       .withDatabase(mySchema)
       .withDependencies(({ config, orm }) => ({ dep: dependency2 }))
-      .withServices(({ config, deps, orm }) => ({ svc: service2 }));
+      .providesService(({ config, deps, orm }) => ({ svc: service2 }));
   `;
 
   test("ssr:false - transforms both types", () => {
@@ -594,7 +629,7 @@ describe("defineFragmentWithDatabase stored in variable then chained", () => {
     
     const fullLib = withDb
       .withDependencies(({ config, orm }) => ({ dep: dependency }))
-      .withServices(({ config, deps, orm }) => ({ svc: service }));
+      .providesService(({ config, deps, orm }) => ({ svc: service }));
   `;
 
   test("ssr:false - handles separated chaining", () => {

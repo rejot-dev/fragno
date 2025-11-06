@@ -391,11 +391,13 @@ describe("callRoute", () => {
       getUserName: () => string;
     };
 
-    const fragment = defineFragment<typeof config>("test-fragment").withServices(() => {
-      return {
-        getUserName: () => "Test User",
-      };
-    });
+    const fragment = defineFragment<typeof config>("test-fragment").providesService(
+      ({ defineService }) => {
+        return defineService({
+          getUserName: () => "Test User",
+        });
+      },
+    );
 
     const routesFactory = defineRoutes<typeof config, {}, Services>().create(({ services }) => {
       return [

@@ -264,11 +264,12 @@ export const authRoutesFactory = defineRoutes<AuthConfig, AuthDeps, AuthServices
 
 export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("simple-auth")
   .withDatabase(authSchema)
-  .withServices(({ orm }) => {
+  .providesService(({ db }) => {
+    // db is already an ORM instance for the fragment's schema
     return {
       createUser: async (email: string, password: string) => {
         const passwordHash = await hashPassword(password);
-        const id = await orm.create("user", {
+        const id = await db.create("user", {
           email,
           passwordHash,
         });
@@ -278,7 +279,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         };
       },
       getUserByEmail: async (email: string) => {
-        const users = await orm.findFirst("user", (b) =>
+        const users = await db.findFirst("user", (b) =>
           b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
         );
         return users
@@ -294,7 +295,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
         console.log("creating session", userId, expiresAt);
-        const id = await orm.create("session", {
+        const id = await db.create("session", {
           userId,
           expiresAt,
         });
@@ -307,7 +308,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
       },
       validateSession: async (sessionId: string) => {
         console.log("validating session", sessionId, typeof sessionId);
-        const session = await orm.findFirst("session", (b) =>
+        const session = await db.findFirst("session", (b) =>
           b
             .whereIndex("primary", (eb) => eb("id", "=", sessionId))
             .join((j) => j.sessionOwner((b) => b.select(["id", "email"]))),
@@ -321,7 +322,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
 
         // Check if session has expired
         if (session.expiresAt < new Date()) {
-          await orm.delete("session", session.id);
+          await db.delete("session", session.id);
           return null;
         }
 
@@ -339,7 +340,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         };
       },
       invalidateSession: async (sessionId: string) => {
-        const session = await orm.findFirst("session", (b) =>
+        const session = await db.findFirst("session", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
         );
 
@@ -347,7 +348,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
           return false;
         }
 
-        await orm.delete("session", session.id);
+        await db.delete("session", session.id);
         return true;
       },
     };

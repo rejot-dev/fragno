@@ -22,14 +22,14 @@ const testSchema = schema((s) => {
 // Test fragment definition
 const testFragmentDef = defineFragmentWithDatabase<{}>("test-fragment")
   .withDatabase(testSchema)
-  .withServices(({ orm }) => {
+  .providesService(({ db }) => {
     return {
       createUser: async (data: { name: string; email: string; age?: number | null }) => {
-        const id = await orm.create("users", data);
+        const id = await db.create("users", data);
         return { ...data, id: id.valueOf() };
       },
       getUsers: async () => {
-        const users = await orm.find("users", (b) =>
+        const users = await db.find("users", (b) =>
           b.whereIndex("idx_users_all", (eb) => eb("id", "!=", "")),
         );
         return users.map((u) => ({ ...u, id: u.id.valueOf() }));
@@ -173,16 +173,16 @@ describe("createDatabaseFragmentForTest", () => {
 
     const authFragmentDef = defineFragmentWithDatabase<{}>("auth-test")
       .withDatabase(authSchema)
-      .withServices(({ orm }) => {
+      .providesService(({ db }) => {
         return {
           createUser: async (email: string, passwordHash: string) => {
-            const id = await orm.create("user", { email, passwordHash });
+            const id = await db.create("user", { email, passwordHash });
             return { id: id.valueOf(), email, passwordHash };
           },
           createSession: async (userId: string) => {
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 30);
-            const id = await orm.create("session", { userId, expiresAt });
+            const id = await db.create("session", { userId, expiresAt });
             return { id: id.valueOf(), userId, expiresAt };
           },
         };
@@ -239,14 +239,14 @@ describe("createDatabaseFragmentsForTest", () => {
 
   const userFragmentDef = defineFragmentWithDatabase<{}>("user-fragment")
     .withDatabase(userSchema)
-    .withServices(({ orm }) => {
+    .providesService(({ db }) => {
       return {
         createUser: async (data: { name: string; email: string }) => {
-          const id = await orm.create("user", data);
+          const id = await db.create("user", data);
           return { ...data, id: id.valueOf() };
         },
         getUsers: async () => {
-          const users = await orm.find("user", (b) =>
+          const users = await db.find("user", (b) =>
             b.whereIndex("idx_user_all", (eb) => eb("id", "!=", "")),
           );
           return users.map((u) => ({ ...u, id: u.id.valueOf() }));
@@ -256,14 +256,14 @@ describe("createDatabaseFragmentsForTest", () => {
 
   const postFragmentDef = defineFragmentWithDatabase<{}>("post-fragment")
     .withDatabase(postSchema)
-    .withServices(({ orm }) => {
+    .providesService(({ db }) => {
       return {
         createPost: async (data: { title: string; userId: string }) => {
-          const id = await orm.create("post", data);
+          const id = await db.create("post", data);
           return { ...data, id: id.valueOf() };
         },
         getPosts: async () => {
-          const posts = await orm.find("post", (b) =>
+          const posts = await db.find("post", (b) =>
             b.whereIndex("idx_post_all", (eb) => eb("id", "!=", "")),
           );
           return posts.map((p) => ({ ...p, id: p.id.valueOf() }));
@@ -342,7 +342,7 @@ describe("ExtractFragmentServices", () => {
       .providesService("test", {
         doSomething: async (input: string) => input.toUpperCase(),
         doSomethingElse: async (input: number) => input * 2,
-      } satisfies ITestService);
+      });
 
     type Services = ExtractFragmentServices<typeof fragment>;
 
@@ -352,17 +352,17 @@ describe("ExtractFragmentServices", () => {
     }>();
   });
 
-  it("merges .withServices() and .providesService() in database fragment", () => {
+  it("merges unnamed .providesService() and named .providesService() in database fragment", () => {
     const testSchema = schema((s) => s);
 
     const fragment = defineFragmentWithDatabase<{}>("test-db-fragment")
       .withDatabase(testSchema)
-      .withServices(() => ({
+      .providesService(() => ({
         internalService: async () => "internal",
       }))
-      .providesService("externalService", {
+      .providesService("externalService", () => ({
         publicMethod: async () => "public",
-      });
+      }));
 
     type Services = ExtractFragmentServices<typeof fragment>;
 

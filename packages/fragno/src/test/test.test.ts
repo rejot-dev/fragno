@@ -46,9 +46,11 @@ describe("createFragmentForTest", () => {
       .withDependencies(({ config }) => ({
         client: { apiKey: config.apiKey },
       }))
-      .withServices(({ deps }) => ({
-        getApiKey: () => deps.client.apiKey,
-      }));
+      .providesService(({ deps, defineService }) =>
+        defineService({
+          getApiKey: () => deps.client.apiKey,
+        }),
+      );
 
     const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
@@ -62,9 +64,11 @@ describe("createFragmentForTest", () => {
       .withDependencies(({ config }) => ({
         client: { apiKey: config.apiKey },
       }))
-      .withServices(({ deps }) => ({
-        getApiKey: () => deps.client.apiKey,
-      }));
+      .providesService(({ deps, defineService }) =>
+        defineService({
+          getApiKey: () => deps.client.apiKey,
+        }),
+      );
 
     const testFragment = createFragmentForTest(fragment, [], {
       config: { apiKey: "test-key" },
@@ -81,9 +85,11 @@ describe("createFragmentForTest", () => {
 
     const fragment = defineFragment<Config>("test")
       .withDependencies(() => ({ dep: "value" }))
-      .withServices(({ config }) => ({
-        multiply: (x: number) => x * config.multiplier,
-      }));
+      .providesService(({ config, defineService }) =>
+        defineService({
+          multiply: (x: number) => x * config.multiplier,
+        }),
+      );
 
     const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
       defineRoute({
@@ -233,7 +239,7 @@ describe("fragment.callRoute", () => {
   });
 
   it("should handle route factory created with defineRoutes", async () => {
-    const fragment = defineFragment<{ apiKey: string }>("test").withServices(() => ({
+    const fragment = defineFragment<{ apiKey: string }>("test").providesService(() => ({
       getGreeting: (name: string) => `Hello, ${name}!`,
       getCount: () => 42,
     }));
