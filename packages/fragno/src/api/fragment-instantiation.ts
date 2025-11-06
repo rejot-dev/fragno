@@ -598,3 +598,169 @@ export function createFragment<
 
   return fragment;
 }
+
+/**
+ * Builder class for fluent fragment instantiation API
+ */
+export class FragmentInstantiationBuilder<
+  TConfig,
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  TAdditionalContext extends Record<string, unknown>,
+  TRequiredInterfaces extends Record<string, unknown>,
+  TProvidedInterfaces extends Record<string, unknown>,
+  TOptions extends FragnoPublicConfig,
+  TThisContext extends RequestThisContext,
+> {
+  #fragmentBuilder: {
+    definition: FragmentDefinition<
+      TConfig,
+      TDeps,
+      TServices,
+      TAdditionalContext,
+      TRequiredInterfaces,
+      TProvidedInterfaces,
+      TThisContext
+    >;
+    $requiredOptions: TOptions;
+  };
+  #config?: TConfig;
+  #routes?: TRoutesOrFactories;
+  #options?: TOptions;
+  #services?: TRequiredInterfaces;
+
+  constructor(fragmentBuilder: {
+    definition: FragmentDefinition<
+      TConfig,
+      TDeps,
+      TServices,
+      TAdditionalContext,
+      TRequiredInterfaces,
+      TProvidedInterfaces,
+      TThisContext
+    >;
+    $requiredOptions: TOptions;
+  }) {
+    this.#fragmentBuilder = fragmentBuilder;
+  }
+
+  /**
+   * Set the configuration for the fragment
+   */
+  withConfig(config: TConfig): this {
+    this.#config = config;
+    return this;
+  }
+
+  /**
+   * Set the routes for the fragment
+   */
+  withRoutes<const TNewRoutes extends readonly AnyRouteOrFactory[]>(
+    routes: TNewRoutes,
+  ): FragmentInstantiationBuilder<
+    TConfig,
+    TDeps,
+    TServices,
+    TNewRoutes,
+    TAdditionalContext,
+    TRequiredInterfaces,
+    TProvidedInterfaces,
+    TOptions,
+    TThisContext
+  > {
+    this.#routes = routes as unknown as TRoutesOrFactories;
+    // Safe cast: We're changing the route type parameter
+    return this as unknown as FragmentInstantiationBuilder<
+      TConfig,
+      TDeps,
+      TServices,
+      TNewRoutes,
+      TAdditionalContext,
+      TRequiredInterfaces,
+      TProvidedInterfaces,
+      TOptions,
+      TThisContext
+    >;
+  }
+
+  /**
+   * Set the options for the fragment (e.g., mountRoute, databaseAdapter)
+   */
+  withOptions(options: TOptions): this {
+    this.#options = options;
+    return this;
+  }
+
+  /**
+   * Provide implementations for services that this fragment uses
+   */
+  withServices(services: TRequiredInterfaces): this {
+    this.#services = services;
+    return this;
+  }
+
+  /**
+   * Build and return the instantiated fragment
+   */
+  build(): FragnoInstantiatedFragment<
+    FlattenRouteFactories<TRoutesOrFactories>,
+    TDeps & TRequiredInterfaces,
+    TServices & TProvidedInterfaces & TRequiredInterfaces,
+    TAdditionalContext
+  > {
+    return createFragment(
+      this.#fragmentBuilder,
+      this.#config ?? ({} as TConfig),
+      this.#routes ?? ([] as const as unknown as TRoutesOrFactories),
+      this.#options ?? ({} as TOptions),
+      this.#services,
+    );
+  }
+}
+
+/**
+ * Create a fluent builder for instantiating a fragment
+ *
+ * @example
+ * ```ts
+ * const fragment = instantiateFragment(myFragmentBuilder)
+ *   .withConfig({ apiKey: "key" })
+ *   .withRoutes([route1, route2])
+ *   .withOptions({ mountRoute: "/api" })
+ *   .build();
+ * ```
+ */
+export function instantiateFragment<
+  TConfig,
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TAdditionalContext extends Record<string, unknown>,
+  TRequiredInterfaces extends Record<string, unknown>,
+  TProvidedInterfaces extends Record<string, unknown>,
+  TOptions extends FragnoPublicConfig,
+  TThisContext extends RequestThisContext = RequestThisContext,
+>(fragmentBuilder: {
+  definition: FragmentDefinition<
+    TConfig,
+    TDeps,
+    TServices,
+    TAdditionalContext,
+    TRequiredInterfaces,
+    TProvidedInterfaces,
+    TThisContext
+  >;
+  $requiredOptions: TOptions;
+}): FragmentInstantiationBuilder<
+  TConfig,
+  TDeps,
+  TServices,
+  readonly [],
+  TAdditionalContext,
+  TRequiredInterfaces,
+  TProvidedInterfaces,
+  TOptions,
+  TThisContext
+> {
+  return new FragmentInstantiationBuilder(fragmentBuilder);
+}

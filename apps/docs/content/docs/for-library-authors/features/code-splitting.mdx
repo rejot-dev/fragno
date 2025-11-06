@@ -13,8 +13,8 @@ The `@fragno-dev/unplugin-fragno` plugin must be used to split the Fragment's co
 and server bundles. This plugin is only required for Fragment authors, **not** for end-users.
 
 When creating the client bundle with the plugin, calls to `defineFragment` and `defineRoute` will be
-transformed. The contents of the `withDependencies` and `withServices` methods are removed from the
-client bundle, as well as the contents of the `handler` functions in `defineRoute`. All code and
+transformed. The contents of the `withDependencies` and `providesService` methods are removed from
+the client bundle, as well as the contents of the `handler` functions in `defineRoute`. All code and
 imports that become unused after this transformation are removed from the client bundle
 (tree-shaking). At this time, there's **no** specific transformation step that happens for
 server-side code. All code is included in the final server bundle.

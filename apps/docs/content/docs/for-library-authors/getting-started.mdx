@@ -57,7 +57,7 @@ Let's build a simple todos fragment that demonstrates the core concepts.
 ### Step 1: Define Your Fragment
 
 ```typescript title="src/index.ts"
-import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
+import { defineFragment, defineRoute, instantiateFragment } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
@@ -202,18 +202,22 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, {}>().create(({ confi
 ### Step 4: Create the Server-Side Fragment
 
 To finalize the server-side Fragment, we need to export a function that creates the library
-instance. We pass the library definition, the config, and the routes to the `createFragment`
-function.
+instance. We use the `instantiateFragment` builder pattern to configure the fragment with its
+config, routes, and options.
 
 ```typescript title="src/index.ts"
 import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
-import { createFragment } from "@fragno-dev/core";
+import { instantiateFragment } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
 export function createTodos(config: TodosConfig, options: FragnoPublicConfig = {}) {
-  return createFragment(todosDefinition, config, [getTodosRoute, addTodoRoute], options);
+  return instantiateFragment(todosDefinition)
+    .withConfig(config)
+    .withRoutes([getTodosRoute, addTodoRoute])
+    .withOptions(options)
+    .build();
 }
 ```
 

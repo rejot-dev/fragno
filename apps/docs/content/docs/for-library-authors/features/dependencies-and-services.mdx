@@ -12,10 +12,10 @@ react to events happening in the Fragment by providing callback functions.
 included in the client bundle. They are private to the Fragment and cannot be used by the user
 directly.
 
-**Services**, like dependencies, are server-side only and are not included in the client bundle.
-However, unlike dependencies, they are available to the user as well as the route handlers. Users
-can access them by using the `services` object that is available as part of the instantiated
-Fragment. This means that services are part of the public-facing API of your Fragment.
+**Services** are reusable business logic that can be exposed to Fragment users or shared between
+Fragments. Like dependencies, services are server-side only and not included in the client bundle.
+Fragments can both **provide** services (using `providesService()`) and **require** services (using
+`usesService()`), enabling composition and modularity.
 
 ## Example Snippet
 
@@ -25,9 +25,9 @@ In the following snippet:
    when the text is summarized.
 2. A dependency is provided called `aiWrapper`. The `withDependencies` method has access to the
    config object. Using this to construct objects that require an API key is a common pattern.
-3. A service method called `summarizeText` is provided. The `withServices` method has access to both
-   the config object and the dependencies. This can be used to make internal methods available to
-   the user. Here, the callback function is called if it is provided.
+3. A service method called `summarizeText` is provided using `providesService()`. The service
+   factory has access to both the config object and the dependencies. This can be used to make
+   internal methods available to the user. Here, the callback function is called if it is provided.
 
 ```typescript title="src/index.ts"
 import { defineFragment } from "@fragno-dev/core";
@@ -48,7 +48,7 @@ const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment")
       }),
     };
   })
-  .withServices(({ config, deps }) => {
+  .providesService(({ config, deps }) => {
     return {
       summarizeText: (text: string) => {
         const result = deps.aiWrapper.summarizeText(text);
@@ -105,17 +105,17 @@ The `create` callback should return one or more routes. The config, dependencies
 available in the callback.
 
 The `addTodoRoute` object is a route factory that will be instantiated by a call to
-`createFragment`. At that point, the dependencies and services are passed to the route object.
+`instantiateFragment()`. At that point, the dependencies and services are passed to the route
+object.
 
-## The `createFragment` function
+## The `instantiateFragment` function
 
-The `createFragment` function is used to create the library instance. It takes the library
-definition, the config, and the routes. The `createMyFragment` function is exported to the Fragment
-user. This is the final, server-side, object that the user can interact with. It's also the object
-that contains the `services` field.
+The `instantiateFragment` function is used to create the Fragment instance. It provides a builder
+pattern that allows you to configure the Fragment with config, routes, services, and options. The
+final `build()` call creates the server-side object that contains the `services` field.
 
 ```typescript title="src/index.ts"
-import { createFragment } from "@fragno-dev/core";
+import { instantiateFragment } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
 import { getTodosRoute } from "./routes/get-todos";
@@ -126,14 +126,96 @@ import { addTodoRoute } from "./routes/post-todos";
 const routes = [getTodosRoute, addTodoRoute] as const;
 
 export function createMyFragment(config: MyFragmentConfig, options: FragnoPublicConfig = {}) {
-  return createFragment(myFragmentDefinition, config, routes, options);
+  return instantiateFragment(myFragmentDefinition)
+    .withConfig(config)
+    .withRoutes(routes)
+    .withOptions(options)
+    .build();
 }
+```
+
+## Providing and Requiring Services (Composition)
+
+Fragments can work together by requiring services from other Fragments or the user. This enables
+modular architectures where Fragments depend on shared functionality.
+
+### Providing Named Services
+
+Named services provide better organization and enable Fragments to declare what they offer:
+
+```typescript
+import { defineFragment } from "@fragno-dev/core";
+
+// A Fragment that provides email functionality
+export const emailFragment = defineFragment<{ apiKey: string }>("email-fragment")
+  .withDependencies(({ config }) => ({
+    emailClient: new EmailClient(config.apiKey),
+  }))
+  .providesService("email", ({ deps, defineService }) =>
+    defineService({
+      sendEmail: async (to: string, subject: string, body: string) => {
+        return deps.emailClient.send(to, subject, body);
+      },
+    }),
+  );
+```
+
+### Requiring Services
+
+Other Fragments can require services using `usesService()`:
+
+```typescript
+interface IEmailService {
+  sendEmail(to: string, subject: string, body: string): Promise<void>;
+}
+
+// A Fragment that requires email functionality
+export const notificationFragment = defineFragment<{}>("notification-fragment")
+  .usesService<"email", IEmailService>("email")
+  .providesService(({ deps }) => ({
+    sendWelcomeNotification: async (userId: string) => {
+      // Use the required email service
+      await deps.email.sendEmail(
+        `user-${userId}@example.com`,
+        "Welcome!",
+        "Welcome to our service!",
+      );
+    },
+  }));
+
+// When instantiating, provide the required service
+const emailInstance = instantiateFragment(emailFragment).withConfig({ apiKey: "key" }).build();
+
+const notificationInstance = instantiateFragment(notificationFragment)
+  .withConfig({})
+  .withServices({
+    email: emailInstance.services.email, // Pass the email service
+  })
+  .build();
+```
+
+### Optional Services
+
+Services can be marked as optional, making them `undefined` if not provided:
+
+```typescript
+interface ILogger {
+  log(message: string): void;
+}
+
+const fragment = defineFragment<{}>("app-fragment").usesService<"logger", ILogger>("logger", {
+  optional: true,
+});
+
+// Can instantiate without providing the optional service
+const instance = instantiateFragment(fragment).withConfig({}).build();
+// instance.services.logger will be undefined
 ```
 
 ## Database Integration
 
-Fragments with database layers have access to an additional `orm` object in both
-`withDependencies()` and `withServices()` contexts. The ORM provides type-safe database operations:
+Fragments with database layers have access to an additional `db` object in both `withDependencies()`
+and `providesService()` contexts. The `db` object provides type-safe database operations:
 
 Note that `defineFragment` is swapped out for `defineFragmentWithDatabase` when defining a fragment
 with a database layer.
@@ -143,16 +225,16 @@ import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
 
 const fragmentDef = defineFragmentWithDatabase("my-fragment")
   .withDatabase(mySchema)
-  .withDependencies(({ config, orm }) => {
-    // ORM available in dependencies
+  .withDependencies(({ config, db }) => {
+    // DB available in dependencies
     return {
       commentRepo: {
-        create: (data) => orm.create("comment", data),
+        create: (data) => db.create("comment", data),
       },
     };
   })
-  .withServices(({ config, deps, orm }) => {
-    // ORM available in services
+  .providesService(({ config, deps, db }) => {
+    // DB available in services
     return {
       createComment: async (data) => {
         const id = await deps.commentRepo.create(data);

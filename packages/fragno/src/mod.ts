@@ -7,6 +7,8 @@ export {
 
 export {
   createFragment,
+  instantiateFragment,
+  FragmentInstantiationBuilder,
   type FragnoFragmentSharedConfig,
   type FragnoPublicConfig,
   type FragnoPublicClientConfig,
