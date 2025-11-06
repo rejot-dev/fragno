@@ -61,7 +61,7 @@ const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragmen
       serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
     };
   })
-  .withServices(({ deps }) => {
+  .providesService(({ deps }) => {
     return {
       getData: () => deps.serverSideData.value,
     };

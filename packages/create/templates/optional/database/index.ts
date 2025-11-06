@@ -9,7 +9,7 @@ import {
   defineFragmentWithDatabase,
   type FragnoPublicConfigWithDatabase,
 } from "@fragno-dev/db/fragment";
-import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
+import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { noteSchema } from "./schema";
 
 // NOTE: We use zod here for defining schemas, but any StandardSchema library can be used!
@@ -46,11 +46,7 @@ type ExampleServices = {
   >;
 };
 
-type ExampleDeps = {
-  orm: AbstractQuery<typeof noteSchema>;
-};
-
-const exampleRoutesFactory = defineRoutes<ExampleConfig, ExampleDeps, ExampleServices>().create(
+const exampleRoutesFactory = defineRoutes<ExampleConfig, {}, ExampleServices>().create(
   ({ services }) => {
     return [
       defineRoute({
@@ -102,10 +98,10 @@ const exampleRoutesFactory = defineRoutes<ExampleConfig, ExampleDeps, ExampleSer
 
 const exampleFragmentDefinition = defineFragmentWithDatabase<ExampleConfig>("example-fragment")
   .withDatabase(noteSchema)
-  .withServices(({ orm }) => {
+  .providesService(({ db }) => {
     return {
       createNote: async (note: TableToInsertValues<typeof noteSchema.tables.note>) => {
-        const id = await orm.create("note", note);
+        const id = await db.create("note", note);
         return {
           ...note,
           id: id.toJSON(),
@@ -113,10 +109,10 @@ const exampleFragmentDefinition = defineFragmentWithDatabase<ExampleConfig>("exa
         };
       },
       getNotes: () => {
-        return orm.find("note", (b) => b);
+        return db.find("note", (b) => b);
       },
       getNotesByUser: (userId: string) => {
-        return orm.find("note", (b) =>
+        return db.find("note", (b) =>
           b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
         );
       },

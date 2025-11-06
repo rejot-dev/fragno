@@ -16,6 +16,7 @@ export default [
       "client/svelte": "./src/client/svelte.ts",
       "client/vanilla": "./src/client/vanilla.ts",
       "client/vue": "./src/client/vue.ts",
+      "client/solid": "./src/client/solid.ts",
     },
     output: {
       path: path.resolve(__dirname, "dist/browser"),
@@ -48,7 +49,7 @@ export default [
     },
     plugins: [unpluginFragno({ platform: "browser" })],
     devtool: "source-map",
-    externals: ["zod", "react", "vue", "svelte"],
+    externals: ["zod", "react", "vue", "svelte", "solid-js", /^@fragno-dev\/db/],
   },
   // Node build
   {
@@ -88,6 +89,6 @@ export default [
     },
     plugins: [unpluginFragno({ platform: "node" })],
     devtool: "source-map",
-    externals: ["zod"],
+    externals: ["zod", /^@fragno-dev\/core/, /^@fragno-dev\/db/],
   },
 ];

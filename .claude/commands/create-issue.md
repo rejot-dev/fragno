@@ -38,7 +38,7 @@ Use the `gh` (GitHub CLI) to create an issue in the Fragno repository.
 
 - documentation - apps/docs
 
-- examples - example-apps/, example-fragments/
+- examples - example-apps/, example-fragments/, packages/corpus/
 
 - create - packages/create, packages/create-cli
 

@@ -11,6 +11,7 @@ export default [
       "client/svelte": "./src/client/svelte.ts",
       "client/vanilla": "./src/client/vanilla.ts",
       "client/vue": "./src/client/vue.ts",
+      "client/solid": "./src/client/solid.ts",
     },
     output: {
       dir: "./dist/browser",
@@ -18,7 +19,7 @@ export default [
       sourcemap: true,
     },
     // https://rollupjs.org/tools/#peer-dependencies
-    external: ["zod", "react", "svelte", "vue"],
+    external: ["zod", "react", "svelte", "vue", "solid-js", /^@fragno-dev\/db/],
     plugins: [
       resolve({
         moduleDirectories: ["node_modules"],
@@ -41,7 +42,6 @@ export default [
       format: "es",
       sourcemap: true,
     },
-    external: ["zod"],
     plugins: [
       resolve({
         moduleDirectories: ["node_modules"],

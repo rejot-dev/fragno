@@ -12,11 +12,12 @@ export default defineConfig({
         "client/svelte": "./src/client/svelte.ts",
         "client/vanilla": "./src/client/vanilla.ts",
         "client/vue": "./src/client/vue.ts",
+        "client/solid": "./src/client/solid.ts",
       },
       formats: ["es"],
     },
     rollupOptions: {
-      external: ["react", "vue", "svelte", "zod"],
+      external: ["react", "vue", "svelte", "solid-js", "zod", /^@fragno-dev\/db/],
     },
     outDir: "./dist/browser",
     sourcemap: true,

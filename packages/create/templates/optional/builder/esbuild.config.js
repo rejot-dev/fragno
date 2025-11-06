@@ -9,6 +9,7 @@ build({
     "./src/client/svelte.ts",
     "./src/client/vanilla.ts",
     "./src/client/vue.ts",
+    "./src/client/solid.ts",
   ],
   outdir: "./dist/browser",
   bundle: true,
@@ -18,7 +19,7 @@ build({
   splitting: true,
   sourcemap: true,
   plugins: [unpluginFragno({ platform: "browser" })],
-  external: ["react", "svelte", "vue", "zod"],
+  external: ["react", "svelte", "vue", "solid-js", "@fragno-dev/db"],
 });
 
 build({
@@ -27,8 +28,7 @@ build({
   bundle: true,
   format: "esm",
   platform: "node",
-  target: "node18",
+  target: "node22",
   sourcemap: true,
   plugins: [unpluginFragno({ platform: "node" })],
-  external: ["zod"],
 });

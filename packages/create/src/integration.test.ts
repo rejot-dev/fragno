@@ -95,6 +95,9 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
         // However, the peerDependencies of @fragno-dev/core must not be included
         expect(reactBundleContent).toMatch(/from\s*['"]react['"]/);
 
+        // db should also not be included in the frontend
+        expect(reactBundleContent).not.toMatch(/import\s+.*?\s+from\s+['"]@fragno-dev\/db/);
+
         // Vite builds only the browser bundle
         if (buildTool !== "vite") {
           await expect(fs.access(path.join(tempDir, "dist", "node"))).resolves.toBeUndefined();
