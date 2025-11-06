@@ -43,8 +43,8 @@ export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
       }),
     };
   })
-  .withServices(({ deps }) => {
-    return {
+  .providesService(({ deps, defineService }) => {
+    return defineService({
       getOpenAIURL: () => deps.openaiClient.baseURL,
       generateStreamMessages: async function* () {
         for (let i = 0; i < 10; i++) {
@@ -52,7 +52,7 @@ export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
           yield { message: `Item ${i + 1}` };
         }
       },
-    };
+    });
   });
 
 const simpleStreamRoute = defineRoutes<ChatnoServerConfig, {}, SimpleStreamService>().create(

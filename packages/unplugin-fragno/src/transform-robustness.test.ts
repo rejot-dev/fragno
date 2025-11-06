@@ -44,7 +44,7 @@ describe("transform robustness and error handling", () => {
       // Valid defineFragment with withDependencies
       const lib = defineFragment("test")
         .withDependencies((config) => ({ db: createDB(config) }))
-        .withServices(() => ({ cache: new Map() }));
+        .providesService(() => ({ cache: new Map() }));
       
       // Invalid defineRoute (non-object config)
       export const route = defineRoute("invalid");
@@ -59,7 +59,7 @@ describe("transform robustness and error handling", () => {
 
     const result = transform(source, "", { ssr: false });
     expect(result.code).toContain(".withDependencies(() => {})");
-    expect(result.code).toContain(".withServices(() => {})");
+    expect(result.code).toContain(".providesService(() => {})");
     expect(result.code).toContain('defineRoute("invalid")'); // unchanged
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain("createDB");
@@ -180,7 +180,7 @@ describe("transform robustness and error handling", () => {
       
       const makeLib = () => {
         return defineFragment("arrow-lib")
-          .withServices(() => ({ service }));
+          .providesService(() => ({ service }));
       };
       
       const makeRoute = function() {
@@ -195,7 +195,7 @@ describe("transform robustness and error handling", () => {
     `;
 
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain(".withServices(() => {})");
+    expect(result.code).toContain(".providesService(() => {})");
     // The handler becomes an arrow function, not a function expression
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain("service");

@@ -1,4 +1,4 @@
-import { defineFragmentWithDatabase, defineServices } from "@fragno-dev/db/fragment";
+import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
 import { otpSchema, authSchema } from "./schema";
 import { defineFragment, defineRoute, defineRoutes } from "@fragno-dev/core";
 import z from "zod";
@@ -36,55 +36,57 @@ function generateOTPCode(): string {
 
 export const otpFragmentDefinition = defineFragmentWithDatabase<OTPConfig>("otp-fragment")
   .withDatabase(otpSchema)
-  .providesService("otp", {
-    generateOTP: function (userId: string): string {
-      const uow = this.getUnitOfWork(otpSchema);
-      const code = generateOTPCode();
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
+  .providesService("otp", ({ defineService }) =>
+    defineService({
+      generateOTP: function (userId: string): string {
+        const uow = this.getUnitOfWork(otpSchema);
+        const code = generateOTPCode();
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
 
-      uow.create("otp_code", {
-        userId,
-        code,
-        expiresAt,
-        verified: false,
-      });
+        uow.create("otp_code", {
+          userId,
+          code,
+          expiresAt,
+          verified: false,
+        });
 
-      return code;
-    },
-    verifyOTP: async function (userId: string, code: string): Promise<boolean> {
-      const uow = this.getUnitOfWork(otpSchema).find("otp_code", (b) =>
-        b
-          .whereIndex("idx_otp_user", (eb) => eb("userId", "=", userId))
-          .select(["id", "code", "expiresAt", "verified"]),
-      );
+        return code;
+      },
+      verifyOTP: async function (userId: string, code: string): Promise<boolean> {
+        const uow = this.getUnitOfWork(otpSchema).find("otp_code", (b) =>
+          b
+            .whereIndex("idx_otp_user", (eb) => eb("userId", "=", userId))
+            .select(["id", "code", "expiresAt", "verified"]),
+        );
 
-      // Wait for retrieval phase to complete and get the typed results
-      const [otpCodes] = await uow.retrievalPhase;
+        // Wait for retrieval phase to complete and get the typed results
+        const [otpCodes] = await uow.retrievalPhase;
 
-      // Find the matching OTP code
-      type OTPCode = (typeof otpCodes)[number];
-      const otpCode = otpCodes.find((otp: OTPCode) => "code" in otp && otp.code === code);
-      if (!otpCode || !("code" in otpCode)) {
-        return false;
-      }
+        // Find the matching OTP code
+        type OTPCode = (typeof otpCodes)[number];
+        const otpCode = otpCodes.find((otp: OTPCode) => "code" in otp && otp.code === code);
+        if (!otpCode || !("code" in otpCode)) {
+          return false;
+        }
 
-      // Check if the code has expired
-      if (new Date(otpCode.expiresAt) < new Date()) {
-        return false;
-      }
+        // Check if the code has expired
+        if (new Date(otpCode.expiresAt) < new Date()) {
+          return false;
+        }
 
-      // Check if the code has already been verified
-      if (otpCode.verified) {
-        return false;
-      }
+        // Check if the code has already been verified
+        if (otpCode.verified) {
+          return false;
+        }
 
-      // Mark the code as verified
-      uow.update("otp_code", otpCode.id, (b) => b.set({ verified: true }));
+        // Mark the code as verified
+        uow.update("otp_code", otpCode.id, (b) => b.set({ verified: true }));
 
-      return true;
-    },
-  });
+        return true;
+      },
+    }),
+  );
 
 const otpRoutes = defineRoutes(otpFragmentDefinition).create(({ services }) => {
   return [
@@ -129,13 +131,12 @@ export interface AuthConfig {
 export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("auth-fragment")
   .withDatabase(authSchema)
   .usesService<"otp", IOTPService>("otp", { optional: true })
-  .withServices(({ orm, deps }) => {
-    return defineServices({
+  .providesService(({ deps, defineService, db }) => {
+    return defineService({
       /**
        * Create a user with email verification using OTP
        */
       createUserWithOTP: async function (email: string, password: string) {
-        // Get UOW from context
         const uow = this.getUnitOfWork(authSchema);
 
         // Hash password (simplified - in real app use bcrypt/argon2)
@@ -152,7 +153,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("au
         if (deps.otp) {
           // Cross-schema UOW: the OTP service will use the same UOW context
           // The promise will resolve after the handler executes phases
-          otpCode = await deps.otp.generateOTP(userId.toString());
+          otpCode = deps.otp.generateOTP(userId.toString());
         }
 
         return {
@@ -181,8 +182,8 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("au
       /**
        * Get user by email
        */
-      getUserByEmail: async (email: string) => {
-        const user = await orm.findFirst("user", (b) =>
+      getUserByEmail: async function (email: string) {
+        const user = await db.findFirst("user", (b) =>
           b
             .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
             .select(["id", "email", "emailVerified"]),
@@ -203,9 +204,10 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("au
 
 export const anotherFragmentDefinition = defineFragment<{}>("another-fragment").providesService(
   "asd",
-  {
-    someMethod: () => "asd",
-  },
+  ({ defineService }) =>
+    defineService({
+      someMethod: () => "asd",
+    }),
 );
 
 const routeBasedOnType = defineRoutes<typeof authFragmentDefinition>().create(

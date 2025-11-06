@@ -38,11 +38,7 @@ type UserSchema = typeof userSchema;
 
 ```typescript @fragno-test-init
 // Create a test fragment with database
-const testFragmentDef = defineFragmentWithDatabase("test-db-fragment")
-  .withDatabase(userSchema)
-  .withServices(({ orm }) => {
-    return { orm };
-  });
+const testFragmentDef = defineFragmentWithDatabase("test-db-fragment").withDatabase(userSchema);
 
 const { fragment, test } = await createDatabaseFragmentForTest(
   { definition: testFragmentDef, routes: [] },

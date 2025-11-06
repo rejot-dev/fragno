@@ -200,9 +200,16 @@ export function createFragment<
 
   const servicesFromWithServices =
     definition.services?.(config, options, depsWithInterfaces) ?? ({} as TServices);
+
+  // Handle providedServices - can be either a factory function or a direct object
+  const providedServicesResolved =
+    typeof definition.providedServices === "function"
+      ? definition.providedServices(config, options, depsWithInterfaces)
+      : definition.providedServices;
+
   const services = {
     ...servicesFromWithServices,
-    ...definition.providedServices,
+    ...providedServicesResolved,
   } as TServices & TProvidedInterfaces;
 
   const context = { config, deps: depsWithInterfaces, services };

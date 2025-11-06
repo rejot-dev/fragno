@@ -101,7 +101,7 @@ describe("DatabaseFragmentBuilder", () => {
       expectTypeOf(_fragment.definition.name).toEqualTypeOf<string>();
     });
 
-    test("withServices has access to config, fragnoConfig, deps, and orm", () => {
+    test("providesService has access to config, fragnoConfig, deps, and db", () => {
       const _testSchema = schema((s) =>
         s.addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("name", column("string")),
@@ -115,14 +115,14 @@ describe("DatabaseFragmentBuilder", () => {
             create: (name: string) => orm.create("users", { name }),
           },
         }))
-        .withServices(({ fragnoConfig, deps, orm }) => {
+        .providesService(({ fragnoConfig, deps, db }) => {
           expectTypeOf(fragnoConfig).toEqualTypeOf<{ mountRoute?: string }>();
           expectTypeOf(deps).toEqualTypeOf<{
             userRepo: {
               create: (name: string) => ReturnType<AbstractQuery<typeof _testSchema>["create"]>;
             };
           }>();
-          expectTypeOf(orm).toEqualTypeOf<AbstractQuery<typeof _testSchema>>();
+          expectTypeOf(db).toEqualTypeOf<AbstractQuery<typeof _testSchema>>();
 
           return {
             cacheService: {
@@ -154,7 +154,9 @@ describe("DatabaseFragmentBuilder", () => {
       const builder2 = builder1.withDatabase(_testSchema1);
       const builder3 = builder2.withDatabase(_testSchema2);
       const builder4 = builder3.withDependencies(() => ({ dep1: "value1" }));
-      const builder5 = builder4.withServices(() => ({ service1: "value1" }));
+      const builder5 = builder4.providesService(({ defineService }) =>
+        defineService({ service1: "value1" }),
+      );
 
       expect(builder1).not.toBe(builder2);
       expect(builder2).not.toBe(builder3);
@@ -175,9 +177,11 @@ describe("DatabaseFragmentBuilder", () => {
           client: "test client",
           orm,
         }))
-        .withServices(({ deps }) => ({
-          service: `Service using ${deps.client}`,
-        }));
+        .providesService(({ deps, defineService }) =>
+          defineService({
+            service: `Service using ${deps.client}`,
+          }),
+        );
 
       expect(fragment.definition.name).toBe("my-db-lib");
       expect(fragment.definition.dependencies).toBeDefined();
@@ -200,9 +204,11 @@ describe("DatabaseFragmentBuilder", () => {
             createUser: (name: string) => orm.create("users", { name }),
           },
         }))
-        .withServices(() => ({
-          logger: { log: (s: string) => console.log(s) },
-        }));
+        .providesService(({ defineService }) =>
+          defineService({
+            logger: { log: (s: string) => console.log(s) },
+          }),
+        );
 
       const options: FragnoPublicConfigWithDatabase = {
         databaseAdapter: mockDatabaseAdapter,
@@ -246,9 +252,11 @@ describe("DatabaseFragmentBuilder", () => {
         .withDependencies(() => ({
           service: "test",
         }))
-        .withServices(() => ({
-          serviceValue: "test",
-        }));
+        .providesService(({ defineService }) =>
+          defineService({
+            serviceValue: "test",
+          }),
+        );
 
       const options: FragnoPublicConfigWithDatabase = {
         databaseAdapter: mockDatabaseAdapter,
@@ -289,8 +297,8 @@ describe("DatabaseFragmentBuilder", () => {
           depsOrm = orm;
           return { dep: "value" };
         })
-        .withServices(({ orm }) => {
-          servicesOrm = orm;
+        .providesService(({ db }) => {
+          servicesOrm = db;
           return { service: "value" };
         });
 
@@ -315,10 +323,12 @@ describe("DatabaseFragmentBuilder", () => {
 
       const fragmentDef = defineFragmentWithDatabase("test-db")
         .withDatabase(testSchema)
-        .withServices(({ orm }) => ({
-          getUserById: (id: string) =>
-            orm.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
-        }));
+        .providesService(({ db }) => {
+          return {
+            getUserById: (id: string) =>
+              db.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+          };
+        });
 
       const routes = [
         defineRoute({
@@ -443,10 +453,10 @@ describe("DatabaseFragmentBuilder", () => {
       // This should compile without errors because the function has the correct this type
       const fragmentDef = defineFragmentWithDatabase("test-service")
         .withDatabase(testSchema)
-        .providesService("userService", userService);
+        .providesService("userService", ({ defineService }) => defineService(userService));
 
       expect(fragmentDef).toBeDefined();
-      expect(fragmentDef.definition.providedServices).toBeDefined();
+      expect(typeof fragmentDef.definition.providedServices).toBe("function");
     });
 
     test("providesService binds services correctly", async () => {
@@ -466,11 +476,11 @@ describe("DatabaseFragmentBuilder", () => {
 
       const fragmentDef = defineFragmentWithDatabase("test-service-runtime")
         .withDatabase(testSchema)
-        .providesService("userService", userService);
+        .providesService("userService", ({ defineService }) => defineService(userService));
 
-      // Verify the definition has the provided service
+      // Verify the definition has the provided service (now it's a factory function)
       expect(fragmentDef.definition.providedServices).toBeDefined();
-      expect(fragmentDef.definition.providedServices?.userService).toBeDefined();
+      expect(typeof fragmentDef.definition.providedServices).toBe("function");
 
       // Type checking is the main test here - if the service functions
       // don't have the correct `this` type, TypeScript will error at compile time

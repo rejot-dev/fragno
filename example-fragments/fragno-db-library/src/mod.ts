@@ -51,9 +51,9 @@ export const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConf
   "fragno-db-comment",
 )
   .withDatabase(commentSchema)
-  .withServices(({ orm }) => {
+  .providesService(({ db }) => {
     return {
-      ...createFragnoDatabaseLibrary(orm),
+      ...createFragnoDatabaseLibrary(db),
     };
   });
 

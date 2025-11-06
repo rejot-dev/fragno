@@ -58,7 +58,7 @@ describe("new-fragment API", () => {
       >();
     });
 
-    test("withServices has access to dependencies and config", () => {
+    test("providesService has access to dependencies and config", () => {
       const _config = {
         apiKey: "test-key",
         baseUrl: "https://api.example.com",
@@ -73,11 +73,11 @@ describe("new-fragment API", () => {
 
           return { httpClient: { baseUrl: config.baseUrl } };
         })
-        .withServices(({ config, deps }) => {
+        .providesService(({ config, deps, defineService }) => {
           expectTypeOf(config).toEqualTypeOf<typeof _config>();
           expectTypeOf(deps).toEqualTypeOf<{ httpClient: { baseUrl: string } }>();
 
-          return {
+          return defineService({
             userService: {
               getUser: async (id: string) => ({ id, name: "Test User" }),
             },
@@ -85,7 +85,7 @@ describe("new-fragment API", () => {
               get: (_key: string): string => crypto.randomUUID(),
               set: (_key: string, _value: string) => {},
             },
-          };
+          });
         });
 
       expectTypeOf<typeof _fragment>().toEqualTypeOf<
@@ -165,7 +165,9 @@ describe("new-fragment API", () => {
       expectTypeOf(lib2).toEqualTypeOf<
         FragmentBuilder<typeof _config, { dep1: string }, Empty, Empty>
       >();
-      const lib3 = lib2.withServices(() => ({ service1: "value1" }));
+      const lib3 = lib2.providesService(({ defineService }) =>
+        defineService({ service1: "value1" }),
+      );
       expectTypeOf(lib3).toEqualTypeOf<
         FragmentBuilder<typeof _config, { dep1: string }, { service1: string }, Empty>
       >();
@@ -182,9 +184,11 @@ describe("new-fragment API", () => {
         .withDependencies(({ config }) => ({
           client: `Client for ${config.apiKey}`,
         }))
-        .withServices(({ deps }) => ({
-          service: `Service using ${deps.client}`,
-        }));
+        .providesService(({ deps, defineService }) =>
+          defineService({
+            service: `Service using ${deps.client}`,
+          }),
+        );
 
       expect(fragment.definition.name).toBe("my-lib");
       expect(fragment.definition.dependencies).toBeDefined();
@@ -220,9 +224,11 @@ describe("new-fragment API", () => {
         .withDependencies(() => ({
           formatter: (s: string) => s.toUpperCase(),
         }))
-        .withServices(() => ({
-          logger: { log: (s: string) => console.log(s) },
-        }));
+        .providesService(({ defineService }) =>
+          defineService({
+            logger: { log: (s: string) => console.log(s) },
+          }),
+        );
 
       const fragment = createFragment(fragmentDef, { prefix: "Hello" }, [routeFactory], {});
 
@@ -297,7 +303,7 @@ describe("new-fragment API", () => {
 
       const fragmentDef = defineFragment("test")
         .withDependencies(() => ({ tool: "hammer" }))
-        .withServices(() => ({ storage: "memory" }));
+        .providesService(({ defineService }) => defineService({ storage: "memory" }));
 
       createFragment(fragmentDef, { setting: "value" }, [routeFactory], {});
 
@@ -309,11 +315,13 @@ describe("new-fragment API", () => {
 
   describe("Type constraints", () => {
     test("Services must extend Record<string, unknown>", () => {
-      const fragmentDef = defineFragment("test").withServices(() => ({
-        validService: { method: () => {} },
-        anotherService: "string value",
-        numberService: 123,
-      }));
+      const fragmentDef = defineFragment("test").providesService(({ defineService }) =>
+        defineService({
+          validService: { method: () => {} },
+          anotherService: "string value",
+          numberService: 123,
+        }),
+      );
 
       const _fragment = createFragment(fragmentDef, {}, [], {});
 

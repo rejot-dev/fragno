@@ -55,16 +55,6 @@ type WithDatabaseThis<T> = {
       : T[K];
 };
 
-/**
- * Helper function for defining services with proper `this` context.
- * Ensures that all functions have access to DatabaseRequestThisContext.
- */
-export function defineServices<T extends Record<string, unknown>>(
-  services: WithDatabaseThis<T>,
-): WithDatabaseThis<T> {
-  return services;
-}
-
 // Import types from fragno package
 import type {
   FragmentDefinition,
@@ -107,9 +97,9 @@ export class DatabaseFragmentBuilder<
   const TSchema extends AnySchema,
   const TConfig,
   const TDeps = {},
-  const TServices extends Record<string, unknown> = {},
-  const TUsedServices extends Record<string, unknown> = {},
-  const TProvidedServices extends Record<string, unknown> = {},
+  const TServices = {},
+  const TUsedServices = {},
+  const TProvidedServices = {},
 > {
   // Type-only property to expose type parameters for better inference
   readonly $types!: {
@@ -135,6 +125,9 @@ export class DatabaseFragmentBuilder<
       config: TConfig;
       fragnoConfig: FragnoPublicConfig;
       deps: TDeps & TUsedServices;
+      defineService: <T extends Record<string, unknown>>(
+        services: WithDatabaseThis<T>,
+      ) => WithDatabaseThis<T>;
     } & DatabaseFragmentContext<TSchema>,
   ) => TServices;
   #usedServices?: Record<string, { name: string; required: boolean }>;
@@ -155,6 +148,9 @@ export class DatabaseFragmentBuilder<
         config: TConfig;
         fragnoConfig: FragnoPublicConfig;
         deps: TDeps & TUsedServices;
+        defineService: <T extends Record<string, unknown>>(
+          services: WithDatabaseThis<T>,
+        ) => WithDatabaseThis<T>;
       } & DatabaseFragmentContext<TSchema>,
     ) => TServices;
     usedServices?: Record<string, { name: string; required: boolean }>;
@@ -187,6 +183,7 @@ export class DatabaseFragmentBuilder<
     const name = this.#name;
     const dependencies = this.#dependencies;
     const services = this.#services;
+    const providedServices = this.#providedServices;
 
     return {
       name,
@@ -205,16 +202,26 @@ export class DatabaseFragmentBuilder<
         // 1. deps are already bound (their 'this' parameters are stripped)
         // 2. The services function expects raw types but only uses the public API
         // 3. BoundServices<T> has the same runtime shape as T (just without 'this')
+
+        // defineService provides typing for service functions
+        // It expects the input to already have proper 'this' types on functions
+        const defineService = <T extends Record<string, unknown>>(
+          services: WithDatabaseThis<T>,
+        ): WithDatabaseThis<T> => services;
+
         const rawServices =
           services?.({
             config,
             fragnoConfig: options,
             deps: deps as TDeps & TUsedServices,
+            defineService,
             ...dbContext,
           }) ?? ({} as TServices);
 
         // Bind all service methods to serviceContext
-        return bindServicesToContext(rawServices);
+        return bindServicesToContext(
+          rawServices as Record<string, unknown>,
+        ) as BoundServices<TServices>;
       },
       additionalContext: {
         databaseSchema: schema,
@@ -246,8 +253,41 @@ export class DatabaseFragmentBuilder<
             [K in keyof TUsedServices]: { name: string; required: boolean };
           }
         | undefined,
-      // providedServices are already bound when added via providesService
-      providedServices: this.#providedServices as BoundServices<TProvidedServices> | undefined,
+      // providedServices are now factory functions that need config, options, and deps
+      providedServices: (providedServices
+        ? (
+            config: TConfig,
+            options: FragnoPublicConfig,
+            deps: TDeps & BoundServices<TUsedServices>,
+          ) => {
+            const result: Record<string, unknown> = {};
+            for (const [key, value] of Object.entries(providedServices)) {
+              if (typeof value === "function") {
+                // Call the factory function to get the bound service
+                result[key] = (
+                  value as (
+                    config: TConfig,
+                    options: FragnoPublicConfig,
+                    deps: TDeps & TUsedServices,
+                  ) => unknown
+                )(config, options, deps as TDeps & TUsedServices);
+              } else {
+                // Direct value (backward compatibility)
+                result[key] = value;
+              }
+            }
+            return result as BoundServices<TProvidedServices>;
+          }
+        : undefined) as
+        | {
+            [K in keyof BoundServices<TProvidedServices>]: BoundServices<TProvidedServices>[K];
+          }
+        | ((
+            config: TConfig,
+            options: FragnoPublicConfig,
+            deps: TDeps & BoundServices<TUsedServices>,
+          ) => BoundServices<TProvidedServices>)
+        | undefined,
     };
   }
 
@@ -313,6 +353,9 @@ export class DatabaseFragmentBuilder<
               config: TConfig;
               fragnoConfig: FragnoPublicConfig;
               deps: TDeps & TUsedServices;
+              defineService: <T extends Record<string, unknown>>(
+                services: WithDatabaseThis<T>,
+              ) => WithDatabaseThis<T>;
             } & DatabaseFragmentContext<TNewSchema>,
           ) => TServices)
         | undefined,
@@ -342,48 +385,6 @@ export class DatabaseFragmentBuilder<
       namespace: this.#namespace,
       dependencies: fn,
       services: undefined,
-      usedServices: this.#usedServices,
-      providedServices: this.#providedServices,
-    });
-  }
-
-  withServices<TNewServices extends Record<string, unknown>>(
-    fn: (
-      context: {
-        config: TConfig;
-        fragnoConfig: FragnoPublicConfig;
-        deps: TDeps & TUsedServices;
-      } & DatabaseFragmentContext<TSchema>,
-    ) => WithDatabaseThis<TNewServices>,
-  ): DatabaseFragmentBuilder<
-    TSchema,
-    TConfig,
-    TDeps,
-    TNewServices,
-    TUsedServices,
-    TProvidedServices
-  > {
-    return new DatabaseFragmentBuilder<
-      TSchema,
-      TConfig,
-      TDeps,
-      TNewServices,
-      TUsedServices,
-      TProvidedServices
-    >({
-      name: this.#name,
-      schema: this.#schema,
-      namespace: this.#namespace,
-      dependencies: this.#dependencies,
-      // Safe: fn returns services with `this` parameters, but we store them as TNewServices
-      // because bindServicesToContext will strip the `this` parameters at runtime
-      services: fn as (
-        context: {
-          config: TConfig;
-          fragnoConfig: FragnoPublicConfig;
-          deps: TDeps & TUsedServices;
-        } & DatabaseFragmentContext<TSchema>,
-      ) => TNewServices,
       usedServices: this.#usedServices,
       providedServices: this.#providedServices,
     });
@@ -466,12 +467,93 @@ export class DatabaseFragmentBuilder<
   }
 
   /**
+   * Define services for this fragment (unnamed).
+   * Functions in the service will have access to DatabaseRequestThisContext via `this` if using `defineService`.
+   *
+   * @example
+   * With `this` context:
+   * ```ts
+   * .providesService(({ defineService }) => defineService({
+   *   createUser: function(name: string) {
+   *     const uow = this.getUnitOfWork(mySchema);
+   *     return uow.create('user', { name });
+   *   }
+   * }))
+   * ```
+   *
+   * Without `this` context:
+   * ```ts
+   * .providesService(({ db }) => ({
+   *   createUser: async (name: string) => {
+   *     return db.create('user', { name });
+   *   }
+   * }))
+   * ```
+   */
+  providesService<TNewServices>(
+    fn: (context: {
+      config: TConfig;
+      fragnoConfig: FragnoPublicConfig;
+      deps: TDeps & TUsedServices;
+      db: AbstractQuery<TSchema>;
+      defineService: <T extends Record<string, unknown>>(
+        services: WithDatabaseThis<T>,
+      ) => WithDatabaseThis<T>;
+    }) => TNewServices,
+  ): DatabaseFragmentBuilder<
+    TSchema,
+    TConfig,
+    TDeps,
+    TNewServices,
+    TUsedServices,
+    TProvidedServices
+  >;
+
+  /**
    * Provide a named service that other fragments can use.
-   * Functions in the service will have access to DatabaseRequestThisContext.
+   * Functions in the service will have access to DatabaseRequestThisContext via `this` if using `defineService`.
+   * You can also pass a service object directly instead of a callback.
+   *
+   * @example
+   * With callback and `this` context:
+   * ```ts
+   * .providesService("myService", ({ defineService }) => defineService({
+   *   createUser: function(name: string) {
+   *     const uow = this.getUnitOfWork(mySchema);
+   *     return uow.create('user', { name });
+   *   }
+   * }))
+   * ```
+   *
+   * With callback, no `this` context:
+   * ```ts
+   * .providesService("myService", ({ db }) => ({
+   *   createUser: async (name: string) => {
+   *     return db.create('user', { name });
+   *   }
+   * }))
+   * ```
+   *
+   * With direct object:
+   * ```ts
+   * .providesService("myService", {
+   *   createUser: async (name: string) => { ... }
+   * })
+   * ```
    */
   providesService<TServiceName extends string, TService>(
     serviceName: TServiceName,
-    implementation: WithDatabaseThis<TService>,
+    fnOrService:
+      | ((context: {
+          config: TConfig;
+          fragnoConfig: FragnoPublicConfig;
+          deps: TDeps & TUsedServices;
+          db: AbstractQuery<TSchema>;
+          defineService: <T extends Record<string, unknown>>(
+            services: WithDatabaseThis<T>,
+          ) => WithDatabaseThis<T>;
+        }) => TService)
+      | TService,
   ): DatabaseFragmentBuilder<
     TSchema,
     TConfig,
@@ -479,31 +561,183 @@ export class DatabaseFragmentBuilder<
     TServices,
     TUsedServices,
     TProvidedServices & { [K in TServiceName]: BoundServices<TService> }
-  > {
-    // Bind the service implementation so methods have access to serviceContext
-    const boundImplementation = bindServicesToContext(
-      implementation as Record<string, unknown>,
-    ) as BoundServices<TService>;
+  >;
 
-    return new DatabaseFragmentBuilder<
-      TSchema,
-      TConfig,
-      TDeps,
-      TServices,
-      TUsedServices,
-      TProvidedServices & { [K in TServiceName]: BoundServices<TService> }
-    >({
-      name: this.#name,
-      schema: this.#schema,
-      namespace: this.#namespace,
-      dependencies: this.#dependencies,
-      services: this.#services,
-      usedServices: this.#usedServices,
-      providedServices: {
-        ...this.#providedServices,
-        [serviceName]: boundImplementation,
-      },
-    });
+  providesService<TServiceName extends string, TService>(
+    ...args:
+      | [
+          fn: (context: {
+            config: TConfig;
+            fragnoConfig: FragnoPublicConfig;
+            deps: TDeps & TUsedServices;
+            db: AbstractQuery<TSchema>;
+            defineService: <T extends Record<string, unknown>>(
+              services: WithDatabaseThis<T>,
+            ) => WithDatabaseThis<T>;
+          }) => TService,
+        ]
+      | [
+          serviceName: TServiceName,
+          fnOrService:
+            | ((context: {
+                config: TConfig;
+                fragnoConfig: FragnoPublicConfig;
+                deps: TDeps & TUsedServices;
+                db: AbstractQuery<TSchema>;
+                defineService: <T extends Record<string, unknown>>(
+                  services: WithDatabaseThis<T>,
+                ) => WithDatabaseThis<T>;
+              }) => TService)
+            | TService,
+        ]
+  ):
+    | DatabaseFragmentBuilder<TSchema, TConfig, TDeps, TService, TUsedServices, TProvidedServices>
+    | DatabaseFragmentBuilder<
+        TSchema,
+        TConfig,
+        TDeps,
+        TServices,
+        TUsedServices,
+        TProvidedServices & { [K in TServiceName]: BoundServices<TService> }
+      > {
+    if (args.length === 1) {
+      // Unnamed service - replaces withServices
+      const [fn] = args;
+
+      // Create a callback that takes a single context object (matching #services signature)
+      // Note: We don't explicitly type the return to preserve the WithDatabaseThis wrapper
+      const servicesCallback = (
+        context: {
+          config: TConfig;
+          fragnoConfig: FragnoPublicConfig;
+          deps: TDeps & TUsedServices;
+        } & DatabaseFragmentContext<TSchema>,
+      ) => {
+        // defineService provides typing for service functions
+        // It expects the input to already have proper 'this' types on functions
+        const defineService = <T extends Record<string, unknown>>(
+          services: WithDatabaseThis<T>,
+        ): WithDatabaseThis<T> => services;
+
+        const services = fn({
+          config: context.config,
+          fragnoConfig: context.fragnoConfig,
+          deps: context.deps,
+          db: context.orm,
+          defineService,
+        });
+
+        // Return without casting to preserve the WithDatabaseThis wrapper
+        return services;
+      };
+
+      return new DatabaseFragmentBuilder<
+        TSchema,
+        TConfig,
+        TDeps,
+        TService,
+        TUsedServices,
+        TProvidedServices
+      >({
+        name: this.#name,
+        schema: this.#schema,
+        namespace: this.#namespace,
+        dependencies: this.#dependencies,
+        // Safe cast: servicesCallback returns WithDatabaseThis<TService> but we store it as TService.
+        // At runtime, bindServicesToContext will handle the 'this' binding properly.
+        services: servicesCallback as (
+          context: {
+            config: TConfig;
+            fragnoConfig: FragnoPublicConfig;
+            deps: TDeps & TUsedServices;
+            defineService: <T extends Record<string, unknown>>(
+              services: WithDatabaseThis<T>,
+            ) => WithDatabaseThis<T>;
+          } & DatabaseFragmentContext<TSchema>,
+        ) => TService,
+        usedServices: this.#usedServices,
+        providedServices: this.#providedServices,
+      });
+    } else {
+      // Named service
+      const [serviceName, fnOrService] = args;
+
+      // Create a callback that provides the full context
+      const createService = (
+        config: TConfig,
+        options: FragnoPublicConfig,
+        deps: TDeps & TUsedServices,
+      ): BoundServices<TService> => {
+        const dbContext = this.#createDatabaseContext(
+          options,
+          this.#schema,
+          this.#namespace ?? "",
+          this.#name,
+        );
+
+        // Check if fnOrService is a function or a direct object
+        let implementation: TService;
+        if (typeof fnOrService === "function") {
+          // It's a callback - call it with context
+          // defineService provides typing for service functions
+          // It expects the input to already have proper 'this' types on functions
+          const defineService = <T extends Record<string, unknown>>(
+            services: WithDatabaseThis<T>,
+          ): WithDatabaseThis<T> => services;
+
+          // Safe cast: we checked that fnOrService is a function
+          implementation = (
+            fnOrService as (context: {
+              config: TConfig;
+              fragnoConfig: FragnoPublicConfig;
+              deps: TDeps & TUsedServices;
+              db: AbstractQuery<TSchema>;
+              defineService: <T extends Record<string, unknown>>(
+                services: WithDatabaseThis<T>,
+              ) => WithDatabaseThis<T>;
+            }) => TService
+          )({
+            config,
+            fragnoConfig: options,
+            deps,
+            db: dbContext.orm,
+            defineService,
+          });
+        } else {
+          // It's a direct object
+          implementation = fnOrService;
+        }
+
+        // Bind the service implementation so methods have access to serviceContext
+        return bindServicesToContext(
+          implementation as Record<string, unknown>,
+        ) as BoundServices<TService>;
+      };
+
+      // We need to evaluate this immediately to store in providedServices
+      // For now, we'll create a placeholder that will be evaluated when fragment is instantiated
+      // Actually, we need to defer this until fragment instantiation
+      // Let's store a function that creates the service
+      return new DatabaseFragmentBuilder<
+        TSchema,
+        TConfig,
+        TDeps,
+        TServices,
+        TUsedServices,
+        TProvidedServices & { [K in TServiceName]: BoundServices<TService> }
+      >({
+        name: this.#name,
+        schema: this.#schema,
+        namespace: this.#namespace,
+        dependencies: this.#dependencies,
+        services: this.#services,
+        usedServices: this.#usedServices,
+        providedServices: {
+          ...this.#providedServices,
+          [serviceName]: createService,
+        } as Record<string, unknown>,
+      });
+    }
   }
 }
 

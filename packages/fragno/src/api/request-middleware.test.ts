@@ -9,9 +9,12 @@ describe("Request Middleware", () => {
   test("middleware can intercept and return early", async () => {
     const config = { apiKey: "test" };
 
-    const fragment = defineFragment<typeof config>("test-lib").withServices(() => ({
-      auth: { isAuthorized: (token?: string) => token === "valid-token" },
-    }));
+    const fragment = defineFragment<typeof config>("test-lib").providesService(
+      ({ defineService }) =>
+        defineService({
+          auth: { isAuthorized: (token?: string) => token === "valid-token" },
+        }),
+    );
 
     const routes = [
       defineRoute({
