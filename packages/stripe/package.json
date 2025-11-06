@@ -83,7 +83,7 @@
     "tsdown": "^0.11.9",
     "vitest": "^3.2.4"
   },
-  "private": true,
+  "private": false,
   "peerDependencies": {
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
