@@ -1,5 +1,13 @@
 # @fragno-dev/test
 
+## 0.1.12
+
+### Patch Changes
+
+- Updated dependencies [acb0877]
+  - @fragno-dev/core@0.1.8
+  - @fragno-dev/db@0.1.14
+
 ## 0.1.11
 
 ### Patch Changes
