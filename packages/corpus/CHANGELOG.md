@@ -1,5 +1,11 @@
 # @fragno-dev/corpus
 
+## 0.0.4
+
+### Patch Changes
+
+- acb0877: feat: add Fragment instatiation and services corpus
+
 ## 0.0.3
 
 ### Patch Changes

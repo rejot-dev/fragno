@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.8
+
+### Patch Changes
+
+- acb0877: feat: add instantiateFragment helper function
+
 ## 0.1.7
 
 ### Patch Changes
