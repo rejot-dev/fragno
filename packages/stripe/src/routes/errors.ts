@@ -38,5 +38,21 @@ export function stripeToApiError(error: unknown): FragnoApiError | unknown {
     );
   }
 
+  if (
+    isStripeError(error) &&
+    error.type === "StripeInvalidRequestError" &&
+    error.message.includes(
+      "the subscription update feature in the portal configuration is disabled",
+    )
+  ) {
+    return new FragnoApiError(
+      {
+        message: "Subscription cannot be updated to this plan",
+        code: "SUBSCRIPTION_UPDATE_NOT_ALLOWED",
+      },
+      500,
+    );
+  }
+
   return error;
 }

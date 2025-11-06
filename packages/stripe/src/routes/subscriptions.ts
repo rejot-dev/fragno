@@ -45,6 +45,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
         "SUBSCRIPTION_NOT_FOUND",
         "CUSTOMER_SUBSCRIPTION_MISMATCH",
         "UPGRADE_HAS_NO_EFFECT",
+        "SUBSCRIPTION_UPDATE_NOT_ALLOWED",
       ] as const,
       handler: async (context, { json, error }) => {
         const body = await context.input.valid();
