@@ -1,28 +1,28 @@
 ---
 title: Querying
-description: Using the ORM to query and manipulate data
+description: Using the DB to query and manipulate data
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The `orm` object provides a type-safe query interface for all CRUD operations. All methods are fully
+The `db` object provides a type-safe query interface for all CRUD operations. All methods are fully
 typed based on your schema.
 
-## Accessing the ORM
+## Accessing the DB
 
-The `orm` is available in both `withDependencies()` and `withServices()`:
+The `db` is available in both `withDependencies()` and `providesService()`:
 
 ```typescript
 const fragmentDef = defineFragmentWithDatabase("my-fragment")
   .withDatabase(mySchema)
-  .withDependencies(({ orm }) => {
+  .withDependencies(({ db }) => {
     // Use in dependencies
   })
-  .withServices(({ orm, deps }) => {
+  .providesService(({ db, deps }) => {
     // Use in services
     return {
       createComment: async (data) => {
-        return orm.create("comment", data);
+        return db.create("comment", data);
       },
     };
   });
@@ -35,12 +35,12 @@ performance and predictable query patterns.
 
 ```typescript
 // Query using the primary index (ID)
-const users = await orm.find("users", (b) =>
+const users = await db.find("users", (b) =>
   b.whereIndex("primary", (eb) => eb("id", "=", "user123")),
 );
 
 // Query using a custom index
-const users = await orm.find("users", (b) =>
+const users = await db.find("users", (b) =>
   b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
 );
 ```
@@ -55,19 +55,19 @@ const users = await orm.find("users", (b) =>
 
 ```typescript
 // Find all users (implicitly uses primary index)
-const users = await orm.find("users");
+const users = await db.find("users");
 
 // Find with filtering
-const activeUsers = await orm.find("users", (b) =>
+const activeUsers = await db.find("users", (b) =>
   b.whereIndex("idx_status", (eb) => eb("status", "=", "active")),
 );
 
 // Select specific columns
-const userNames = await orm.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
+const userNames = await db.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
 // Returns: Array<{ id: FragnoId; name: string }>
 
 // Count records
-const userCount = await orm.find("users", (b) => b.whereIndex("primary").selectCount());
+const userCount = await db.find("users", (b) => b.whereIndex("primary").selectCount());
 // Returns: number
 ```
 
@@ -78,19 +78,19 @@ Use cursor-based pagination for efficient paging through large result sets. Frag
 
 ```typescript
 // Fetch first page with automatic cursor generation
-const firstPage = await orm.findWithCursor("users", (b) =>
+const firstPage = await db.findWithCursor("users", (b) =>
   b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
 );
 // Returns: { items: User[], cursor?: Cursor }
 
 // Fetch next page using the returned cursor (simplified - cursor contains all metadata!)
 if (firstPage.cursor) {
-  const nextPage = await orm.findWithCursor("users", (b) => b.after(firstPage.cursor));
+  const nextPage = await db.findWithCursor("users", (b) => b.after(firstPage.cursor));
 }
 
 // Or be explicit with parameters (they must match the cursor):
 if (firstPage.cursor) {
-  const nextPage = await orm.findWithCursor("users", (b) =>
+  const nextPage = await db.findWithCursor("users", (b) =>
     b.whereIndex("idx_name").after(firstPage.cursor).orderByIndex("idx_name", "asc").pageSize(10),
   );
 }
@@ -112,7 +112,7 @@ If you need more control, you can manually create cursors:
 import { Cursor } from "@fragno-dev/db";
 
 // Fetch page with regular find()
-const users = await orm.find("users", (b) =>
+const users = await db.find("users", (b) =>
   b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
 );
 
@@ -137,7 +137,7 @@ Sort results using indexes:
 
 ```typescript
 // Order by an index
-const users = await orm.find("users", (b) =>
+const users = await db.find("users", (b) =>
   b
     .whereIndex("idx_created", (eb) => eb("status", "=", "active"))
     .orderByIndex("idx_created", "desc"),
@@ -150,7 +150,7 @@ Load related data using joins:
 
 ```typescript
 // Join a single relation
-const postsWithAuthor = await orm.find("posts", (b) =>
+const postsWithAuthor = await db.find("posts", (b) =>
   b.whereIndex("primary").join((j) => j.author()),
 );
 
@@ -161,7 +161,7 @@ postsWithAuthor.forEach((post) => {
 });
 
 // Join with filtering and selection
-const posts = await orm.find("posts", (b) =>
+const posts = await db.find("posts", (b) =>
   b
     .whereIndex("primary")
     .join((j) =>
@@ -174,7 +174,7 @@ const posts = await orm.find("posts", (b) =>
 );
 
 // Nested joins
-const commentsWithPostAndAuthor = await orm.find("comments", (b) =>
+const commentsWithPostAndAuthor = await db.find("comments", (b) =>
   b
     .whereIndex("primary")
     .join((j) => j.post((postBuilder) => postBuilder.join((j2) => j2.author()))),
@@ -185,7 +185,7 @@ const commentsWithPostAndAuthor = await orm.find("comments", (b) =>
 
 ```typescript
 // Create single record
-const userId = await orm.create("users", {
+const userId = await db.create("users", {
   name: "Alice",
   email: "alice@example.com",
   age: 25,
@@ -193,14 +193,14 @@ const userId = await orm.create("users", {
 // Returns: FragnoId
 
 // Create multiple records
-const userIds = await orm.createMany("users", [
+const userIds = await db.createMany("users", [
   { name: "Bob", email: "bob@example.com" },
   { name: "Carol", email: "carol@example.com" },
 ]);
 // Returns: FragnoId[]
 
 // Columns with defaultTo$() are auto-populated
-await orm.create("posts", {
+await db.create("posts", {
   title: "My Post",
   content: "Content here",
   userId: userId.toString(),
@@ -212,14 +212,14 @@ await orm.create("posts", {
 
 ```typescript
 // Update by ID
-await orm.update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
+await db.update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
 ```
 
 ## Deleting Records
 
 ```typescript
 // Delete by ID
-await orm.delete("users", userId);
+await db.delete("users", userId);
 ```
 
 ## Transactions (Unit of Work)
@@ -233,7 +233,7 @@ Fragno DB automatically tracks row versions in a hidden `_version` column. The t
 enables safe concurrent updates:
 
 ```typescript
-const uow = orm.createUnitOfWork();
+const uow = db.createUnitOfWork();
 
 // Phase 1: Retrieval - fetch data with version info
 uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
@@ -274,7 +274,7 @@ if (!success) {
 ### Getting Created IDs
 
 ```typescript
-const uow = orm.createUnitOfWork();
+const uow = db.createUnitOfWork();
 
 uow.create("users", { name: "Alice", email: "alice@example.com" });
 uow.create("users", { name: "Bob", email: "bob@example.com" });
@@ -289,13 +289,13 @@ console.log(createdIds[1].toString()); // Second user's ID
 
 ## Wrapping in Services
 
-ORM operations won't be available in services (and thus to the user) by default. You can wrap these
-operations in functions as part of the services object. You're also free to expose the `orm` object
+DB operations won't be available in services (and thus to the user) by default. You can wrap these
+operations in functions as part of the services object. You're also free to expose the `db` object
 directly to the user if you want to, but make sure to think about encapsulation and security before
 you do.
 
 ```typescript
-.withServices(({ orm }) => {
+.providesService(({ db }) => {
   return {
     createComment: async (data: { content: string; userId: string; postId: string }) => {
       // Validation
@@ -304,7 +304,7 @@ you do.
       }
 
       // Create with business logic
-      const id = await orm.create("comment", {
+      const id = await db.create("comment", {
         content: data.content,
         userId: data.userId,
         postId: data.postId,
@@ -314,7 +314,7 @@ you do.
     },
 
     getCommentsByPost: async (postId: string, limit = 20) => {
-      return orm.find("comment", (b) =>
+      return db.find("comment", (b) =>
         b
           .whereIndex("idx_post", (eb) => eb("postId", "=", postId))
           .orderByIndex("idx_created", "desc")
@@ -329,6 +329,6 @@ you do.
 
 - Learn about [Defining Schemas](/docs/for-library-authors/database-integration/defining-schemas)
 - See [Dependencies and Services](/docs/for-library-authors/features/dependencies-and-services) for
-  using ORM in context
+  using DB in context
 - Check the
   [example-fragments/fragno-db-library](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)

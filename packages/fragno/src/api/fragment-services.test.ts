@@ -1,6 +1,6 @@
 import { describe, test, expect, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-builder";
-import { createFragment } from "./fragment-instantiation";
+import { createFragment, instantiateFragment } from "./fragment-instantiation";
 
 // Test service interface definitions
 interface IEmailService {
@@ -234,6 +234,20 @@ describe("Fragment Service System", () => {
       >();
     });
 
+    test("usesService (required) - builder style", () => {
+      const fragment = defineFragment<{}>("test").usesService<"email", IEmailService>("email");
+
+      const emailImpl: IEmailService = {
+        sendEmail: async () => {},
+      };
+
+      const instance = instantiateFragment(fragment).withServices({ email: emailImpl }).build();
+
+      expectTypeOf<typeof instance.services.email.sendEmail>().toExtend<
+        (to: string, subject: string, body: string) => void
+      >();
+    });
+
     test("usesService (optional)", () => {
       const fragment = defineFragment<{}>("test").usesService<"email", IEmailService>("email", {
         optional: true,
@@ -323,6 +337,25 @@ describe("Fragment Service System", () => {
         }));
 
       const instance = createFragment(fragment, {}, [], {}, { email: emailImpl });
+
+      expect(instance.services.sendWelcomeEmail).toBeDefined();
+      expect(typeof instance.services.sendWelcomeEmail).toBe("function");
+    });
+
+    test("provided service can access used services - builder style", () => {
+      const emailImpl: IEmailService = {
+        sendEmail: async () => {},
+      };
+
+      const fragment = defineFragment<{}>("test")
+        .usesService<"email", IEmailService>("email")
+        .providesService(({ deps }) => ({
+          sendWelcomeEmail: async (to: string) => {
+            await deps.email.sendEmail(to, "Welcome", "Welcome to our service!");
+          },
+        }));
+
+      const instance = instantiateFragment(fragment).withServices({ email: emailImpl }).build();
 
       expect(instance.services.sendWelcomeEmail).toBeDefined();
       expect(typeof instance.services.sendWelcomeEmail).toBe("function");

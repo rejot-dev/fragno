@@ -47,14 +47,14 @@ export interface CommentFragmentConfig {
 
 const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>("comment-fragment")
   .withDatabase(commentSchema)
-  .withServices(({ orm }) => {
+  .providesService(({ db }) => {
     return {
       createComment: async (data) => {
-        const id = await orm.create("comment", data);
+        const id = await db.create("comment", data);
         return { id: id.toJSON(), ...data };
       },
       getComments: async (postId: string) => {
-        return orm.find("comment", (b) => b.where((eb) => eb("postId", "=", postId)));
+        return db.find("comment", (b) => b.where((eb) => eb("postId", "=", postId)));
       },
     };
   });

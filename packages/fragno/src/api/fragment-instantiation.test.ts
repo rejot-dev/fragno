@@ -1,6 +1,6 @@
 import { test, expect, describe } from "vitest";
 import { defineFragment } from "./fragment-builder";
-import { createFragment } from "./fragment-instantiation";
+import { createFragment, instantiateFragment } from "./fragment-instantiation";
 import { defineRoute, defineRoutes } from "./route";
 import { z } from "zod";
 
@@ -519,5 +519,184 @@ describe("callRoute", () => {
       expect(response.status).toBe(200);
       expect(response.data).toEqual({ hasThis: true });
     }
+  });
+});
+
+describe("FragmentInstantiationBuilder", () => {
+  describe("instantiate", () => {
+    test("basic instantiation with defaults", () => {
+      const fragment = defineFragment<{ apiKey: string }>("test");
+
+      const instance = instantiateFragment(fragment).build();
+
+      expect(instance.config.name).toBe("test");
+      expect(instance.deps).toEqual({});
+      expect(instance.services).toEqual({});
+    });
+
+    test("with config", () => {
+      const fragment = defineFragment<{ apiKey: string }>("test");
+
+      const instance = instantiateFragment(fragment).withConfig({ apiKey: "test-key" }).build();
+
+      expect(instance.config.name).toBe("test");
+    });
+
+    test("with routes", async () => {
+      const fragment = defineFragment<{}>("test");
+
+      const route = defineRoute({
+        method: "GET",
+        path: "/hello",
+        outputSchema: z.object({ message: z.string() }),
+        handler: async (_ctx, { json }) => json({ message: "hello" }),
+      });
+
+      const instance = instantiateFragment(fragment).withConfig({}).withRoutes([route]).build();
+
+      const response = await instance.callRoute("GET", "/hello");
+
+      expect(response.type).toBe("json");
+      if (response.type === "json") {
+        expect(response.data).toEqual({ message: "hello" });
+      }
+    });
+
+    test("with options", () => {
+      const fragment = defineFragment<{}>("test");
+
+      const instance = instantiateFragment(fragment)
+        .withConfig({})
+        .withOptions({ mountRoute: "/custom" })
+        .build();
+
+      expect(instance.mountRoute).toBe("/custom");
+    });
+
+    test("with services (used services)", () => {
+      interface IEmailService {
+        sendEmail(to: string, subject: string): Promise<void>;
+      }
+
+      const emailImpl: IEmailService = {
+        sendEmail: async () => {},
+      };
+
+      const fragment = defineFragment<{}>("test").usesService<"email", IEmailService>("email");
+
+      const instance = instantiateFragment(fragment)
+        .withConfig({})
+        .withServices({ email: emailImpl })
+        .build();
+
+      expect(instance.services.email).toBeDefined();
+      expect(instance.services.email.sendEmail).toBeDefined();
+    });
+
+    test("all options together", async () => {
+      interface ILogger {
+        log(message: string): void;
+      }
+
+      const loggerImpl: ILogger = {
+        log: () => {},
+      };
+
+      const fragment = defineFragment<{ apiKey: string }>("test")
+        .withDependencies(({ config }) => ({
+          client: { key: config.apiKey },
+        }))
+        .usesService<"logger", ILogger>("logger");
+
+      const route = defineRoute({
+        method: "GET",
+        path: "/test",
+        outputSchema: z.object({ success: z.boolean() }),
+        handler: async (_ctx, { json }) => json({ success: true }),
+      });
+
+      const instance = instantiateFragment(fragment)
+        .withConfig({ apiKey: "my-key" })
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .withServices({ logger: loggerImpl })
+        .build();
+
+      expect(instance.config.name).toBe("test");
+      expect(instance.mountRoute).toBe("/api");
+      expect(instance.deps.client.key).toBe("my-key");
+      expect(instance.services.logger).toBeDefined();
+
+      const response = await instance.callRoute("GET", "/test");
+      expect(response.type).toBe("json");
+      if (response.type === "json") {
+        expect(response.data).toEqual({ success: true });
+      }
+    });
+
+    test("method chaining is fluent", () => {
+      const fragment = defineFragment<{ apiKey: string }>("test");
+
+      // Should be chainable
+      const builder = instantiateFragment(fragment)
+        .withConfig({ apiKey: "key" })
+        .withRoutes([])
+        .withOptions({});
+
+      expect(builder).toBeDefined();
+      expect(typeof builder.build).toBe("function");
+    });
+
+    test("config defaults to empty object", () => {
+      const fragment = defineFragment<{}>("test");
+
+      const instance = instantiateFragment(fragment).build();
+
+      expect(instance).toBeDefined();
+    });
+
+    test("routes defaults to empty array", () => {
+      const fragment = defineFragment<{}>("test");
+
+      const instance = instantiateFragment(fragment).withConfig({}).build();
+
+      expect(instance.config.routes).toEqual([]);
+    });
+
+    test("options defaults to empty object", () => {
+      const fragment = defineFragment<{}>("test");
+
+      const instance = instantiateFragment(fragment).withConfig({}).build();
+
+      // Default mountRoute is generated
+      expect(instance.mountRoute).toContain("/test");
+    });
+
+    test("services are optional if not required", () => {
+      interface ILogger {
+        log(message: string): void;
+      }
+
+      const fragment = defineFragment<{}>("test").usesService<"logger", ILogger>("logger", {
+        optional: true,
+      });
+
+      // Should not throw even without providing the service
+      const instance = instantiateFragment(fragment).withConfig({}).build();
+
+      expect(instance).toBeDefined();
+    });
+
+    test("throws when required service not provided", () => {
+      interface IEmailService {
+        sendEmail(to: string): Promise<void>;
+      }
+
+      const fragment = defineFragment<{}>("test").usesService<"email", IEmailService>("email");
+
+      expect(() => {
+        instantiateFragment(fragment).withConfig({}).build();
+      }).toThrow("Fragment 'test' requires service 'email' but it was not provided");
+    });
   });
 });

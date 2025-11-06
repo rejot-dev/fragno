@@ -14,6 +14,8 @@ export interface SubjectNode {
  */
 const SUBJECT_TREE: SubjectNode[] = [
   { id: "defining-routes" },
+  { id: "fragment-services" },
+  { id: "fragment-instantiation" },
   { id: "database-querying" },
   {
     id: "database-adapters",

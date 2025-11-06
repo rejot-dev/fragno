@@ -2,6 +2,7 @@ import { test, expect, describe, expectTypeOf } from "vitest";
 import { defineFragmentWithDatabase, type FragnoPublicConfigWithDatabase } from "./fragment";
 import {
   createFragment,
+  instantiateFragment,
   type FragnoPublicClientConfig,
   defineRoute,
   defineRoutes,
@@ -690,6 +691,110 @@ describe("DatabaseFragmentBuilder", () => {
 
       expect(instance.services.notifyUser).toBeDefined();
       expect(typeof instance.services.notifyUser).toBe("function");
+    });
+  });
+
+  describe("FragmentInstantiationBuilder with database fragments", () => {
+    test("works with database fragments using builder API", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-builder")
+        .withDatabase(testSchema)
+        .withDependencies(({ orm }) => ({
+          userService: {
+            createUser: (name: string) => orm.create("users", { name }),
+          },
+        }))
+        .providesService(({ defineService }) =>
+          defineService({
+            logger: { log: (s: string) => console.log(s) },
+          }),
+        );
+
+      const fragment = instantiateFragment(fragmentDef)
+        .withConfig({})
+        .withOptions({ databaseAdapter: mockDatabaseAdapter })
+        .build();
+
+      expect(fragment.config.name).toBe("test-builder");
+      expect(fragment.deps).toHaveProperty("userService");
+      expect(fragment.services).toHaveProperty("logger");
+    });
+
+    test("builder works with routes and database adapter", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-routes")
+        .withDatabase(testSchema)
+        .providesService(({ db }) => ({
+          getUserById: (id: string) =>
+            db.findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+        }));
+
+      const route = defineRoute({
+        method: "GET",
+        path: "/users",
+        outputSchema: z.array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+          }),
+        ),
+        handler: async (_ctx, { json }) => json([]),
+      });
+
+      const fragment = instantiateFragment(fragmentDef)
+        .withConfig({})
+        .withRoutes([route])
+        .withOptions({ databaseAdapter: mockDatabaseAdapter })
+        .build();
+
+      expect(fragment.config.name).toBe("test-routes");
+      expect(fragment.services).toHaveProperty("getUserById");
+      expect(fragment.config.routes).toHaveLength(1);
+      expect(fragment.config.routes[0].path).toBe("/users");
+    });
+
+    test("builder works with used services in database fragments", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      interface IEmailService {
+        sendEmail(to: string, subject: string): Promise<void>;
+      }
+
+      const emailImpl: IEmailService = {
+        sendEmail: async () => {},
+      };
+
+      const fragmentDef = defineFragmentWithDatabase("test-services")
+        .withDatabase(testSchema)
+        .usesService<"email", IEmailService>("email")
+        .providesService(({ deps }) => ({
+          notifyUser: async (userId: string) => {
+            await deps.email.sendEmail(userId, "Notification");
+          },
+        }));
+
+      const fragment = instantiateFragment(fragmentDef)
+        .withConfig({})
+        .withOptions({ databaseAdapter: mockDatabaseAdapter })
+        .withServices({ email: emailImpl })
+        .build();
+
+      expect(fragment.services.notifyUser).toBeDefined();
+      expect(fragment.services.email).toBeDefined();
     });
   });
 });
