@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # Required for OIDC
 
 concurrency: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
 
