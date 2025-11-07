@@ -1,5 +1,12 @@
 # @fragno-dev/unplugin-fragno
 
+## 0.0.4
+
+### Patch Changes
+
+- 5e8c3c0: Client builds now replace `defineFragmentWithDatabase` with `defineFragment` and remove
+  `.withDatabase()` calls, reducing bundle size by eliminating server-only database code.
+
 ## 0.0.3
 
 ### Patch Changes

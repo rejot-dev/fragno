@@ -1,5 +1,15 @@
 # @fragno-dev/corpus
 
+## 0.0.5
+
+### Patch Changes
+
+- 2e4be36: feat: always type check corpus entries
+- efb6428: Fix corpus command failing when run outside monorepo due to missing subjects directory in
+  published package
+- be14041: feat: allow arbitrary nesting in corpus tree
+- 4eaedb3: feat: reorganize corpus subject tree
+
 ## 0.0.4
 
 ### Patch Changes

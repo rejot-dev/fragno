@@ -1,5 +1,19 @@
 # @fragno-dev/cli
 
+## 0.1.18
+
+### Patch Changes
+
+- efb6428: Fix corpus command failing when run outside monorepo due to missing subjects directory in
+  published package
+- be14041: feat: allow arbitrary nesting in corpus tree
+- 4eaedb3: feat: reorganize corpus subject tree
+- Updated dependencies [2e4be36]
+- Updated dependencies [efb6428]
+- Updated dependencies [be14041]
+- Updated dependencies [4eaedb3]
+  - @fragno-dev/corpus@0.0.5
+
 ## 0.1.17
 
 ### Patch Changes

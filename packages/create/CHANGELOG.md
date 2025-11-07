@@ -1,5 +1,11 @@
 # @fragno-dev/create
 
+## 0.1.2
+
+### Patch Changes
+
+- b34e9e8: feat: bring Fragment template to latest versions
+
 ## 0.1.1
 
 ### Patch Changes
