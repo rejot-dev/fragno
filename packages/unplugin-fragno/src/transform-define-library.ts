@@ -101,12 +101,16 @@ const isDefineLibraryCall = (node: t.CallExpression, scope: Scope): boolean => {
   if (!t.isIdentifier(node.callee)) {
     return false;
   }
+
   const binding = scope.getBinding(node.callee.name);
 
   if (!binding) {
-    return false;
+    // After transformation, we might have created a defineFragment identifier
+    // that doesn't have a binding yet. Check by name as a fallback.
+    return node.callee.name === "defineFragment";
   }
-  return isDefineLibraryBinding(binding);
+
+  return isDefineLibraryBinding(binding) || isDefineFragmentWithDatabaseBinding(binding);
 };
 
 const createNoOpArrowFunction = (): t.ArrowFunctionExpression => {
@@ -147,12 +151,90 @@ const isDefineLibraryChain = (node: t.Node, scope: Scope): boolean => {
   return false;
 };
 
+/**
+ * Ensures that 'defineFragment' from '@fragno-dev/core' is imported in the AST.
+ * If it's not imported, adds the import statement.
+ */
+const ensureDefineFragmentImport = (ast: Node): void => {
+  let hasDefineFragmentImport = false;
+  let foundCoreImport = false;
+
+  const newImportSpecifier = t.importSpecifier(
+    t.identifier("defineFragment"),
+    t.identifier("defineFragment"),
+  );
+
+  // Check if defineFragment is already imported, and add it if not
+  traverse(ast, {
+    ImportDeclaration(path) {
+      const source = path.node.source.value;
+      if (source === "@fragno-dev/core" || source.startsWith("@fragno-dev/core/")) {
+        foundCoreImport = true;
+        for (const specifier of path.node.specifiers) {
+          if (
+            t.isImportSpecifier(specifier) &&
+            t.isIdentifier(specifier.imported) &&
+            specifier.imported.name === "defineFragment"
+          ) {
+            hasDefineFragmentImport = true;
+            return;
+          }
+        }
+
+        // If we found the core import but not defineFragment, add it
+        if (!hasDefineFragmentImport) {
+          path.node.specifiers.push(newImportSpecifier);
+          hasDefineFragmentImport = true;
+        }
+      }
+    },
+  });
+
+  // If no @fragno-dev/core import exists, create one
+  if (!foundCoreImport && !hasDefineFragmentImport) {
+    const newImport = t.importDeclaration(
+      [newImportSpecifier],
+      t.stringLiteral("@fragno-dev/core"),
+    );
+
+    // Add at the beginning of the file
+    if (t.isProgram(ast)) {
+      ast.body.unshift(newImport);
+    } else if (t.isFile(ast)) {
+      ast.program.body.unshift(newImport);
+    }
+  }
+};
+
+const isDefineFragmentWithDatabaseBinding = (binding: Binding): boolean => {
+  if (!t.isImportDeclaration(binding?.path.parent)) {
+    return false;
+  }
+
+  const source = binding.path.parent.source.value;
+  if (source !== "@fragno-dev/db" && !source.startsWith("@fragno-dev/db/")) {
+    return false;
+  }
+
+  if (!t.isImportSpecifier(binding?.path.node)) {
+    return false;
+  }
+
+  const { imported } = binding.path.node;
+  if (!t.isIdentifier(imported)) {
+    return false;
+  }
+
+  return imported.name === "defineFragmentWithDatabase";
+};
+
 export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): void {
   if (options.ssr) {
     return;
   }
 
   const chainMethods = getAllChainMethods();
+  let needsDefineFragmentImport = false;
 
   traverse(ast, {
     CallExpression(path) {
@@ -166,6 +248,14 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
           // This prevents errors like "Cannot read properties of undefined (reading 'build')"
           // when schema(() => {}) would return undefined
           path.node.arguments = [createPassThroughArrowFunction()];
+          return;
+        }
+
+        // Check if this is a defineFragmentWithDatabase call
+        if (binding && isDefineFragmentWithDatabaseBinding(binding)) {
+          // Replace with defineFragment
+          path.node.callee = t.identifier("defineFragment");
+          needsDefineFragmentImport = true;
           return;
         }
       }
@@ -183,6 +273,14 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
       }
 
       const methodName = property.name;
+
+      // Check if this is a withDatabase call - remove it entirely
+      if (methodName === "withDatabase" && isDefineLibraryChain(object, path.scope)) {
+        // Replace the entire call expression with just the object (removes .withDatabase(...))
+        path.replaceWith(object);
+        return;
+      }
+
       if (!chainMethods.has(methodName)) {
         return;
       }
@@ -196,4 +294,9 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
       path.node.arguments = [createNoOpArrowFunction()];
     },
   });
+
+  // Add defineFragment import if needed
+  if (needsDefineFragmentImport) {
+    ensureDefineFragmentImport(ast);
+  }
 }

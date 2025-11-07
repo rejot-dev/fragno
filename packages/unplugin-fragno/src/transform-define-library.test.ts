@@ -451,12 +451,12 @@ describe("defineFragmentWithDatabase with full database integration", () => {
     expect(result.code).toContain("() => {}");
 
     expect(result.code).toMatchInlineSnapshot(`
-      "import { schema } from "@fragno-dev/db/schema";
+      "import { defineFragment } from "@fragno-dev/core";
+      import { schema } from "@fragno-dev/db/schema";
       import type { TableToInsertValues } from "@fragno-dev/db/query";
-      import { defineFragmentWithDatabase } from "@fragno-dev/db";
       import { z } from "zod";
       export const noteSchema = schema(s => s);
-      const lib = defineFragmentWithDatabase("mylib").withDatabase(() => {}).providesService(() => {});"
+      const lib = defineFragment("mylib").providesService(() => {});"
     `);
   });
 });
@@ -473,11 +473,11 @@ describe("defineFragmentWithDatabase with only withDatabase", () => {
   test("ssr:false - transforms withDatabase", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("mySchema");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).not.toContain("withDatabase");
 
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineFragmentWithDatabase } from "@fragno-dev/db";
-      const lib = defineFragmentWithDatabase("mylib").withDatabase(() => {});"
+      "import { defineFragment } from "@fragno-dev/core";
+      const lib = defineFragment("mylib");"
     `);
   });
 });
@@ -502,13 +502,14 @@ describe("defineFragmentWithDatabase with withDatabase and withDependencies", ()
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("createApiClient");
     expect(result.code).not.toContain("externalApi");
-    // Should have two no-op functions
+    expect(result.code).not.toContain("withDatabase");
+    // Should have one no-op function (withDependencies)
     const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBe(2);
+    expect(noOpCount).toBe(1);
 
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineFragmentWithDatabase } from "@fragno-dev/db";
-      const lib = defineFragmentWithDatabase("mylib").withDatabase(() => {}).withDependencies(() => {});"
+      "import { defineFragment } from "@fragno-dev/core";
+      const lib = defineFragment("mylib").withDependencies(() => {});"
     `);
   });
 });
@@ -533,9 +534,10 @@ describe("defineFragmentWithDatabase with all three methods", () => {
     expect(result.code).not.toContain("mySchema");
     expect(result.code).not.toContain("createApi");
     expect(result.code).not.toContain("UserService");
-    // Should have three no-op functions
+    expect(result.code).not.toContain("withDatabase");
+    // Should have two no-op functions (withDependencies and providesService)
     const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBe(3);
+    expect(noOpCount).toBe(2);
   });
 });
 
@@ -555,7 +557,9 @@ describe("defineFragmentWithDatabase with aliased import", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("mySchema");
     expect(result.code).not.toContain("orm.find");
+    expect(result.code).not.toContain("withDatabase");
     expect(result.code).toContain("() => {}");
+    expect(result.code).toContain('defineFragment("mylib")');
   });
 });
 
@@ -583,9 +587,12 @@ describe("multiple defineFragmentWithDatabase calls in same file", () => {
     expect(result.code).not.toContain("schema2");
     expect(result.code).not.toContain("Service1");
     expect(result.code).not.toContain("Service2");
-    // Should have four no-op functions (2 withDatabase + 2 providesService)
+    expect(result.code).not.toContain("withDatabase");
+    // Should have two no-op functions (2 providesService)
     const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBeGreaterThanOrEqual(4);
+    expect(noOpCount).toBe(2);
+    expect(result.code).toContain('defineFragment("lib1")');
+    expect(result.code).toContain('defineFragment("lib2")');
   });
 });
 
@@ -612,9 +619,12 @@ describe("mixed defineFragment and defineFragmentWithDatabase", () => {
     expect(result.code).not.toContain("service1");
     expect(result.code).not.toContain("service2");
     expect(result.code).not.toContain("mySchema");
-    // Should have five no-op functions (2 for regular + 3 for db)
+    expect(result.code).not.toContain("withDatabase");
+    // Should have four no-op functions (2 for regular + 2 for db, no withDatabase)
     const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBeGreaterThanOrEqual(5);
+    expect(noOpCount).toBe(4);
+    expect(result.code).toContain('defineFragment("regular")');
+    expect(result.code).toContain('defineFragment("db")');
   });
 });
 
@@ -634,10 +644,12 @@ describe("defineFragmentWithDatabase stored in variable then chained", () => {
 
   test("ssr:false - handles separated chaining", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).not.toContain("mySchema");
+    // mySchema import will still be there, just not used in withDatabase
     expect(result.code).not.toContain("dependency");
     expect(result.code).not.toContain("service");
+    expect(result.code).not.toContain("withDatabase");
     expect(result.code).toContain("() => {}");
+    expect(result.code).toContain('defineFragment("mylib")');
   });
 });
 
@@ -667,6 +679,8 @@ describe("schema utility function transformation", () => {
     expect(result.code).not.toContain("addTable");
     expect(result.code).not.toContain("addColumn");
     expect(result.code).not.toContain("createIndex");
+    expect(result.code).not.toContain("withDatabase");
+    expect(result.code).toContain('defineFragment("mylib")');
   });
 
   test("ssr:true - keeps schema implementation", () => {
@@ -772,5 +786,261 @@ describe("schema in separate file scenario", () => {
       // @ts-expect-error - intentionally testing wrong type
       mockSchema(() => {});
     }).toThrow();
+  });
+});
+
+describe("defineFragmentWithDatabase replacement with defineFragment", () => {
+  describe("basic replacement without existing defineFragment import", () => {
+    const source = dedent`
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const lib = defineFragmentWithDatabase("mylib")
+        .withDatabase(mySchema)
+        .providesService(({ orm }) => ({
+          getUsers: () => orm.find("users", (b) => b)
+        }));
+    `;
+
+    test("ssr:false - replaces with defineFragment and removes withDatabase", () => {
+      const result = transform(source, "", { ssr: false });
+
+      // Should import defineFragment from @fragno-dev/core
+      expect(result.code).toContain('import { defineFragment } from "@fragno-dev/core"');
+
+      // Should replace defineFragmentWithDatabase with defineFragment
+      expect(result.code).toContain('defineFragment("mylib")');
+
+      // Should NOT have withDatabase call
+      expect(result.code).not.toContain("withDatabase");
+
+      // Should have providesService with no-op
+      expect(result.code).toContain("providesService(() => {})");
+
+      // Should not have orm.find
+      expect(result.code).not.toContain("orm.find");
+    });
+
+    test("ssr:true - keeps original code", () => {
+      const result = transform(source, "", { ssr: true });
+      expect(result.code).toContain("defineFragmentWithDatabase");
+      expect(result.code).toContain("withDatabase");
+      expect(result.code).toContain("mySchema");
+      expect(result.code).toContain("orm.find");
+    });
+  });
+
+  describe("with existing defineFragment import", () => {
+    const source = dedent`
+      import { defineFragment } from "@fragno-dev/core";
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const lib1 = defineFragment("lib1")
+        .providesService(() => ({ svc: service1 }));
+      
+      const lib2 = defineFragmentWithDatabase("lib2")
+        .withDatabase(mySchema)
+        .providesService(({ orm }) => ({ svc: service2 }));
+    `;
+
+    test("ssr:false - reuses existing defineFragment import", () => {
+      const result = transform(source, "", { ssr: false });
+
+      // Should have defineFragment import (only once)
+      const importCount = (result.code.match(/import { defineFragment }/g) || []).length;
+      expect(importCount).toBe(1);
+
+      // Both should use defineFragment
+      expect(result.code).toContain('defineFragment("lib1")');
+      expect(result.code).toContain('defineFragment("lib2")');
+
+      // Should not have withDatabase
+      expect(result.code).not.toContain("withDatabase");
+    });
+  });
+
+  describe("withDatabase followed by withDependencies", () => {
+    const source = dedent`
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const lib = defineFragmentWithDatabase("mylib")
+        .withDatabase(mySchema)
+        .withDependencies(({ config, orm }) => ({
+          api: createApi(config.apiUrl)
+        }))
+        .providesService(({ config, deps, orm }) => ({
+          userService: new UserService(orm, deps.api)
+        }));
+    `;
+
+    test("ssr:false - removes withDatabase and transforms other methods", () => {
+      const result = transform(source, "", { ssr: false });
+
+      expect(result.code).toContain('defineFragment("mylib")');
+      expect(result.code).not.toContain("withDatabase");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain("providesService(() => {})");
+      expect(result.code).not.toContain("createApi");
+      expect(result.code).not.toContain("UserService");
+    });
+  });
+
+  describe("withDatabase only", () => {
+    const source = dedent`
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const lib = defineFragmentWithDatabase("mylib")
+        .withDatabase(mySchema);
+    `;
+
+    test("ssr:false - removes withDatabase entirely", () => {
+      const result = transform(source, "", { ssr: false });
+
+      expect(result.code).toContain('defineFragment("mylib")');
+      expect(result.code).not.toContain("withDatabase");
+      expect(result.code).not.toContain("mySchema");
+
+      // Should not have any method calls after defineFragment
+      expect(result.code).toMatch(/defineFragment\("mylib"\);?$/m);
+    });
+  });
+
+  describe("aliased defineFragmentWithDatabase import", () => {
+    const source = dedent`
+      import { defineFragmentWithDatabase as defineDbFrag } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const lib = defineDbFrag("mylib")
+        .withDatabase(mySchema)
+        .providesService(({ orm }) => ({ svc: service }));
+    `;
+
+    test("ssr:false - handles aliased imports", () => {
+      const result = transform(source, "", { ssr: false });
+
+      expect(result.code).toContain('import { defineFragment } from "@fragno-dev/core"');
+      expect(result.code).toContain('defineFragment("mylib")');
+      expect(result.code).not.toContain("withDatabase");
+    });
+  });
+
+  describe("multiple defineFragmentWithDatabase calls", () => {
+    const source = dedent`
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { schema1, schema2 } from "./schemas";
+      
+      const lib1 = defineFragmentWithDatabase("lib1")
+        .withDatabase(schema1)
+        .providesService(({ orm }) => ({ svc1: service1 }));
+      
+      const lib2 = defineFragmentWithDatabase("lib2")
+        .withDatabase(schema2)
+        .providesService(({ orm }) => ({ svc2: service2 }));
+    `;
+
+    test("ssr:false - transforms all calls", () => {
+      const result = transform(source, "", { ssr: false });
+
+      expect(result.code).toContain('defineFragment("lib1")');
+      expect(result.code).toContain('defineFragment("lib2")');
+      expect(result.code).not.toContain("withDatabase");
+      expect(result.code).not.toContain("schema1");
+      expect(result.code).not.toContain("schema2");
+    });
+  });
+
+  describe("stored in variable then chained", () => {
+    const source = dedent`
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const baseLib = defineFragmentWithDatabase("mylib");
+      const withDb = baseLib.withDatabase(mySchema);
+      const fullLib = withDb.providesService(({ orm }) => ({ svc: service }));
+    `;
+
+    test("ssr:false - handles separated chaining", () => {
+      const result = transform(source, "", { ssr: false });
+
+      expect(result.code).toContain('defineFragment("mylib")');
+      expect(result.code).not.toContain("withDatabase");
+      // mySchema import will still be there, just not used in withDatabase
+    });
+  });
+
+  describe("combined with schema transformation", () => {
+    const source = dedent`
+      import { schema } from "@fragno-dev/db/schema";
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+
+      export const noteSchema = schema((s) => {
+        return s.addTable("note", (t) => {
+          return t.addColumn("id", { type: "string" });
+        });
+      });
+      
+      const lib = defineFragmentWithDatabase("mylib")
+        .withDatabase(noteSchema)
+        .providesService(({ orm }) => ({
+          createNote: async (note) => {
+            const id = await orm.create("note", note);
+            return { ...note, id };
+          },
+        }));
+    `;
+
+    test("ssr:false - transforms both schema and defineFragmentWithDatabase", () => {
+      const result = transform(source, "", { ssr: false });
+
+      // Schema should be transformed
+      expect(result.code).toContain("schema(s => s)");
+      expect(result.code).not.toContain("addTable");
+
+      // defineFragmentWithDatabase should be replaced
+      expect(result.code).toContain('defineFragment("mylib")');
+      expect(result.code).not.toContain("withDatabase");
+      // noteSchema variable declaration will still be there, just transformed
+      expect(result.code).toContain("noteSchema");
+
+      // providesService should be transformed
+      expect(result.code).toContain("providesService(() => {})");
+      expect(result.code).not.toContain("orm.create");
+    });
+  });
+
+  describe("mixed defineFragment and defineFragmentWithDatabase", () => {
+    const source = dedent`
+      import { defineFragment } from "@fragno-dev/core";
+      import { defineFragmentWithDatabase } from "@fragno-dev/db";
+      import { mySchema } from "./schema";
+      
+      const regularLib = defineFragment("regular")
+        .withDependencies(({ config }) => ({ dep: dependency1 }))
+        .providesService(({ deps }) => ({ svc: service1 }));
+      
+      const dbLib = defineFragmentWithDatabase("db")
+        .withDatabase(mySchema)
+        .withDependencies(({ config, orm }) => ({ dep: dependency2 }))
+        .providesService(({ deps, orm }) => ({ svc: service2 }));
+    `;
+
+    test("ssr:false - transforms both correctly", () => {
+      const result = transform(source, "", { ssr: false });
+
+      // Both should use defineFragment
+      expect(result.code).toContain('defineFragment("regular")');
+      expect(result.code).toContain('defineFragment("db")');
+
+      // withDatabase should be removed from dbLib
+      expect(result.code).not.toContain("withDatabase");
+      expect(result.code).not.toContain("mySchema");
+
+      // Both should have transformed methods
+      const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
+      expect(noOpCount).toBeGreaterThanOrEqual(4);
+    });
   });
 });
