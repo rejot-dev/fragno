@@ -14,13 +14,18 @@ import { orderSubjects } from "./subject-tree";
  */
 export function getSubjects(): SubjectInfo[] {
   const ids = getAvailableSubjectIds();
-  return ids.map((id) => {
-    const subject = loadSubject(id);
-    return {
-      id: subject.id,
-      title: subject.title,
-    };
-  });
+  return ids
+    .map((id) => {
+      const subject = loadSubject(id);
+      if (!subject) {
+        return null;
+      }
+      return {
+        id: subject.id,
+        title: subject.title,
+      };
+    })
+    .filter((s): s is SubjectInfo => s !== null);
 }
 
 /**
@@ -60,4 +65,6 @@ export {
   getSubjectChildren,
   expandSubjectWithChildren,
   getAllSubjectIdsInOrder,
+  isCategory,
+  getCategoryTitle,
 } from "./subject-tree.js";

@@ -5,36 +5,40 @@
 export interface SubjectNode {
   id: string;
   children?: SubjectNode[];
+  /** If true, this is a category node without a markdown file */
+  category?: boolean;
 }
 
 /**
  * Tree structure defining subject hierarchy and ordering
  * - Root-level subjects are listed in order
  * - Children can be arbitrarily nested
+ * - Organized by audience: users, fragment authors, and general topics
  */
 const SUBJECT_TREE: SubjectNode[] = [
-  { id: "defining-routes" },
-  { id: "fragment-services" },
-  { id: "fragment-instantiation" },
-  { id: "database-querying" },
   {
-    id: "database-adapters",
-    children: [{ id: "kysely-adapter" }, { id: "drizzle-adapter" }],
+    id: "for-users",
+    category: true,
+    children: [{ id: "fragment-instantiation" }, { id: "client-state-management" }],
   },
-  // Example of deeper nesting - can be extended to any depth
-  // {
-  //   id: "advanced-topics",
-  //   children: [
-  //     {
-  //       id: "performance",
-  //       children: [
-  //         { id: "caching" },
-  //         { id: "optimization" },
-  //       ],
-  //     },
-  //     { id: "security" },
-  //   ],
-  // },
+  {
+    id: "for-fragment-authors",
+    category: true,
+    children: [
+      { id: "defining-routes" },
+      { id: "fragment-services" },
+      { id: "database-querying" },
+      {
+        id: "database-adapters",
+        children: [{ id: "kysely-adapter" }, { id: "drizzle-adapter" }],
+      },
+    ],
+  },
+  {
+    id: "general",
+    category: true,
+    children: [],
+  },
 ];
 
 /**
@@ -43,13 +47,18 @@ const SUBJECT_TREE: SubjectNode[] = [
 const SUBJECT_PARENT_MAP = new Map<string, string | null>();
 const SUBJECT_ORDER_MAP = new Map<string, number>();
 const SUBJECT_CHILDREN_MAP = new Map<string, string[]>();
+const SUBJECT_CATEGORY_MAP = new Map<string, boolean>();
 
 /**
- * Recursively processes a node and its children, building parent/order maps
+ * Recursively processes a node and its children, building parent/order/category maps
  */
 function processNode(node: SubjectNode, parent: string | null, orderIndexRef: { value: number }) {
   SUBJECT_PARENT_MAP.set(node.id, parent);
   SUBJECT_ORDER_MAP.set(node.id, orderIndexRef.value++);
+
+  if (node.category) {
+    SUBJECT_CATEGORY_MAP.set(node.id, true);
+  }
 
   if (node.children) {
     const childIds = node.children.map((child) => child.id);
@@ -134,4 +143,23 @@ export function getAllSubjectIdsInOrder(): string[] {
   }
 
   return ids;
+}
+
+/**
+ * Checks if a subject ID is a category (has no markdown file)
+ */
+export function isCategory(subjectId: string): boolean {
+  return SUBJECT_CATEGORY_MAP.get(subjectId) ?? false;
+}
+
+/**
+ * Gets the category title for display purposes
+ */
+export function getCategoryTitle(categoryId: string): string {
+  const titles: Record<string, string> = {
+    "for-users": "For Users",
+    "for-fragment-authors": "For Fragment Authors",
+    general: "General",
+  };
+  return titles[categoryId] ?? categoryId;
 }

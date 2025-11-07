@@ -10,9 +10,16 @@ import {
 describe("subject-tree", () => {
   describe("getSubjectParent", () => {
     it("should return null for root subjects", () => {
-      expect(getSubjectParent("defining-routes")).toBe(null);
-      expect(getSubjectParent("fragment-services")).toBe(null);
-      expect(getSubjectParent("database-adapters")).toBe(null);
+      expect(getSubjectParent("for-users")).toBe(null);
+      expect(getSubjectParent("for-fragment-authors")).toBe(null);
+      expect(getSubjectParent("general")).toBe(null);
+    });
+
+    it("should return parent for category children", () => {
+      expect(getSubjectParent("defining-routes")).toBe("for-fragment-authors");
+      expect(getSubjectParent("fragment-services")).toBe("for-fragment-authors");
+      expect(getSubjectParent("fragment-instantiation")).toBe("for-users");
+      expect(getSubjectParent("client-state-management")).toBe("for-users");
     });
 
     it("should return parent for nested subjects", () => {
@@ -29,6 +36,21 @@ describe("subject-tree", () => {
     it("should return empty array for subjects with no children", () => {
       expect(getSubjectChildren("defining-routes")).toEqual([]);
       expect(getSubjectChildren("kysely-adapter")).toEqual([]);
+      expect(getSubjectChildren("general")).toEqual([]);
+    });
+
+    it("should return direct children for categories", () => {
+      const usersChildren = getSubjectChildren("for-users");
+      expect(usersChildren).toContain("fragment-instantiation");
+      expect(usersChildren).toContain("client-state-management");
+      expect(usersChildren).toHaveLength(2);
+
+      const authorsChildren = getSubjectChildren("for-fragment-authors");
+      expect(authorsChildren).toContain("defining-routes");
+      expect(authorsChildren).toContain("fragment-services");
+      expect(authorsChildren).toContain("database-querying");
+      expect(authorsChildren).toContain("database-adapters");
+      expect(authorsChildren).toHaveLength(4);
     });
 
     it("should return direct children only", () => {
@@ -83,12 +105,29 @@ describe("subject-tree", () => {
       expect(expanded).toEqual(["defining-routes"]);
     });
 
+    it("should include direct children for categories", () => {
+      const expanded = expandSubjectWithChildren("for-users");
+      expect(expanded).toContain("for-users");
+      expect(expanded).toContain("fragment-instantiation");
+      expect(expanded).toContain("client-state-management");
+      expect(expanded).toHaveLength(3);
+    });
+
     it("should include direct children", () => {
       const expanded = expandSubjectWithChildren("database-adapters");
       expect(expanded).toContain("database-adapters");
       expect(expanded).toContain("kysely-adapter");
       expect(expanded).toContain("drizzle-adapter");
       expect(expanded).toHaveLength(3);
+    });
+
+    it("should recursively expand all descendants", () => {
+      const expanded = expandSubjectWithChildren("for-fragment-authors");
+      expect(expanded).toContain("for-fragment-authors");
+      expect(expanded).toContain("defining-routes");
+      expect(expanded).toContain("database-adapters");
+      expect(expanded).toContain("kysely-adapter");
+      expect(expanded).toContain("drizzle-adapter");
     });
 
     it("should maintain tree order in expansion", () => {

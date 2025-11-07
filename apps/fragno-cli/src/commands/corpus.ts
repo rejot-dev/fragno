@@ -5,6 +5,9 @@ import {
   getAllSubjects,
   getSubjectParent,
   getSubjectChildren,
+  getAllSubjectIdsInOrder,
+  isCategory,
+  getCategoryTitle,
 } from "@fragno-dev/corpus";
 import type { Subject, Example } from "@fragno-dev/corpus";
 import { marked } from "marked";
@@ -25,7 +28,7 @@ interface PrintOptions {
 /**
  * Build markdown content for multiple subjects
  */
-function buildSubjectsMarkdown(subjects: Subject[]): string {
+export function buildSubjectsMarkdown(subjects: Subject[]): string {
   let fullMarkdown = "";
 
   for (const subject of subjects) {
@@ -61,7 +64,7 @@ function buildSubjectsMarkdown(subjects: Subject[]): string {
 /**
  * Add line numbers to content
  */
-function addLineNumbers(content: string, startFrom: number = 1): string {
+export function addLineNumbers(content: string, startFrom: number = 1): string {
   const lines = content.split("\n");
   const maxDigits = String(startFrom + lines.length - 1).length;
 
@@ -77,7 +80,7 @@ function addLineNumbers(content: string, startFrom: number = 1): string {
 /**
  * Filter content by line range
  */
-function filterByLineRange(content: string, startLine: number, endLine: number): string {
+export function filterByLineRange(content: string, startLine: number, endLine: number): string {
   const lines = content.split("\n");
   // Convert to 0-based index
   const start = Math.max(0, startLine - 1);
@@ -88,7 +91,7 @@ function filterByLineRange(content: string, startLine: number, endLine: number):
 /**
  * Extract headings and code block information with line numbers
  */
-function extractHeadingsAndBlocks(subjects: Subject[]): string {
+export function extractHeadingsAndBlocks(subjects: Subject[]): string {
   let output = "";
   let currentLine = 1;
   let lastOutputLine = 0;
@@ -449,18 +452,24 @@ function printTopicTree(): void {
   const subjects = getSubjects();
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
 
+  // Helper function to get title for any subject ID (including categories)
+  function getTitle(subjectId: string): string {
+    if (isCategory(subjectId)) {
+      return getCategoryTitle(subjectId);
+    }
+    const subject = subjectMap.get(subjectId);
+    return subject ? subject.title : subjectId;
+  }
+
   // Helper function to recursively display tree
   function displayNode(subjectId: string, indent: string, isLast: boolean, isRoot: boolean): void {
-    const subject = subjectMap.get(subjectId);
-    if (!subject) {
-      return;
-    }
+    const title = getTitle(subjectId);
 
     if (isRoot) {
-      console.log(`  ${subject.id.padEnd(30)} ${subject.title}`);
+      console.log(`  ${subjectId.padEnd(30)} ${title}`);
     } else {
       const connector = isLast ? "└─" : "├─";
-      console.log(`${indent}${connector} ${subject.id.padEnd(26)} ${subject.title}`);
+      console.log(`${indent}${connector} ${subjectId.padEnd(26)} ${title}`);
     }
 
     const children = getSubjectChildren(subjectId);
@@ -472,12 +481,13 @@ function printTopicTree(): void {
     }
   }
 
+  // Get all root subject IDs (including categories)
+  const allIds = getAllSubjectIdsInOrder();
+  const rootIds = allIds.filter((id) => !getSubjectParent(id));
+
   // Display root subjects
-  for (const subject of subjects) {
-    const parent = getSubjectParent(subject.id);
-    if (!parent) {
-      displayNode(subject.id, "", false, true);
-    }
+  for (const subjectId of rootIds) {
+    displayNode(subjectId, "", false, true);
   }
 }
 
@@ -590,8 +600,32 @@ export const corpusCommand = define({
         headingsOnly,
       });
     } catch (error) {
-      console.error("Error loading topics:", error instanceof Error ? error.message : error);
-      console.log("\nRun 'fragno-cli corpus' to see available topics.");
+      if (error instanceof Error && error.message.includes("ENOENT")) {
+        // Extract the subject name from the error message or use the topics array
+        const missingTopics = topics.filter((topic) => {
+          try {
+            getSubject(topic);
+            return false;
+          } catch {
+            return true;
+          }
+        });
+
+        if (missingTopics.length === 1) {
+          console.error(`Error: Subject '${missingTopics[0]}' not found.`);
+        } else if (missingTopics.length > 1) {
+          console.error(
+            `Error: Subjects not found: ${missingTopics.map((t) => `'${t}'`).join(", ")}`,
+          );
+        } else {
+          console.error("Error: One or more subjects not found.");
+        }
+        console.log("\nAvailable topics:");
+        printTopicTree();
+      } else {
+        console.error("Error loading topics:", error instanceof Error ? error.message : error);
+        console.log("\nRun 'fragno-cli corpus' to see available topics.");
+      }
       process.exit(1);
     }
   },

@@ -1,6 +1,7 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isCategory } from "./subject-tree.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -225,9 +226,21 @@ export function markdownToSubject(id: string, parsed: ParsedMarkdown): Subject {
 
 /**
  * Loads and parses a subject file by ID
+ * Returns null for category nodes (which have no markdown file)
  */
-export function loadSubject(id: string): Subject {
+export function loadSubject(id: string): Subject | null {
+  // Categories don't have markdown files
+  if (isCategory(id)) {
+    return null;
+  }
+
   const filePath = join(SUBJECTS_DIR, `${id}.md`);
+
+  // Check if file exists before trying to read
+  if (!existsSync(filePath)) {
+    throw new Error(`Subject file not found: ${filePath}`);
+  }
+
   const content = readFileSync(filePath, "utf-8");
   const parsed = parseMarkdownFile(content);
   return markdownToSubject(id, parsed);
@@ -243,9 +256,10 @@ export function getAvailableSubjectIds(): string[] {
 
 /**
  * Loads multiple subjects by their IDs
+ * Skips category nodes (which have no markdown files)
  */
 export function loadSubjects(ids: string[]): Subject[] {
-  return ids.map((id) => loadSubject(id));
+  return ids.map((id) => loadSubject(id)).filter((s): s is Subject => s !== null);
 }
 
 /**
