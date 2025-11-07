@@ -33,5 +33,12 @@
     "drizzle-orm": "^0.44.7",
     "kysely": "^0.28.0",
     "zod": "^4.0.5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/corpus"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

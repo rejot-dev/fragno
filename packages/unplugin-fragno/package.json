@@ -144,5 +144,12 @@
     "vite": "^6.3.5",
     "vitest": "^3.2.4",
     "webpack": "^5.99.9"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/unplugin-fragno"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

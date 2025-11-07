@@ -91,5 +91,12 @@
     "typescript": "^5",
     "vue": ">=3.0.0",
     "@fragno-dev/db": "^0.1.13"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/stripe"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

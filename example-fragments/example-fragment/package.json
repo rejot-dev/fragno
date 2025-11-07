@@ -76,5 +76,12 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/node": "^22"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "example-fragments/example-fragment"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

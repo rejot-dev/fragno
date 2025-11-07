@@ -32,5 +32,12 @@
   "private": false,
   "peerDependencies": {
     "typescript": "^5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/create"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

@@ -36,5 +36,12 @@
   },
   "main": "./dist/fragno-node.js",
   "module": "./dist/fragno-node.js",
-  "types": "./dist/fragno-node.d.ts"
+  "types": "./dist/fragno-node.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/fragno-node"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }

@@ -38,5 +38,12 @@
   },
   "main": "./dist/cli.js",
   "module": "./dist/cli.js",
-  "types": "./dist/cli.d.ts"
+  "types": "./dist/cli.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/fragno-cli"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
 }
