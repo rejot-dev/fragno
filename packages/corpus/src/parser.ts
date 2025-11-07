@@ -3,6 +3,9 @@ import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isCategory } from "./subject-tree.js";
 
+// __filename will be:
+// - In development: /path/to/packages/corpus/src/parser.ts
+// - In production: /path/to/node_modules/@fragno-dev/corpus/dist/parser.js
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -75,18 +78,12 @@ export interface ParsedMarkdown {
   sections: Section[];
 }
 
-// Look for subjects directory in source or relative to built dist
-const SUBJECTS_DIR = (() => {
-  // Try dist/../src/subjects (when running from built code)
-  const distRelative = join(__dirname, "..", "src", "subjects");
-  try {
-    readdirSync(distRelative);
-    return distRelative;
-  } catch {
-    // Fall back to ./subjects (when running from source)
-    return join(__dirname, "subjects");
-  }
-})();
+// SUBJECTS_DIR resolution:
+// - In development: join(__dirname, "subjects") = /path/to/packages/corpus/src/subjects
+// - In production: join(__dirname, "subjects") = /path/to/node_modules/@fragno-dev/corpus/dist/subjects
+//
+// The tsdown build copies src/subjects/ to dist/subjects/, ensuring the directory exists in both cases.
+const SUBJECTS_DIR = join(__dirname, "subjects");
 
 /**
  * Helper function to extract code blocks with optional IDs from a directive

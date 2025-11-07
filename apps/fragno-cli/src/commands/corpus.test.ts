@@ -1,11 +1,56 @@
 import { describe, it, expect } from "vitest";
 import type { Subject } from "@fragno-dev/corpus";
+import { getSubjects, getSubject } from "@fragno-dev/corpus";
 import {
   addLineNumbers,
   filterByLineRange,
   buildSubjectsMarkdown,
   extractHeadingsAndBlocks,
 } from "./corpus.js";
+
+describe("corpus package integration", () => {
+  it("should be able to find and load subjects directory from published package", () => {
+    // This test verifies that the subjects directory is correctly included in the
+    // published package and can be found when the code runs from dist/
+    const subjects = getSubjects();
+
+    // Should find at least one subject
+    expect(subjects.length).toBeGreaterThan(0);
+
+    // Each subject should have an id and title
+    for (const subject of subjects) {
+      expect(subject.id).toBeDefined();
+      expect(subject.id.length).toBeGreaterThan(0);
+      expect(subject.title).toBeDefined();
+      expect(subject.title.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("should be able to load a specific subject file", () => {
+    // Verify we can actually load a subject's content (not just list them)
+    const subjects = getSubject("defining-routes");
+
+    expect(subjects).toHaveLength(1);
+    const subject = subjects[0];
+
+    expect(subject.id).toBe("defining-routes");
+    expect(subject.title).toBeDefined();
+    expect(subject.title.length).toBeGreaterThan(0);
+
+    // Subject should have sections (the actual markdown content)
+    expect(subject.sections.length).toBeGreaterThan(0);
+  });
+
+  it("should handle loading multiple subjects at once", () => {
+    const subjects = getSubject("defining-routes", "client-state-management");
+
+    expect(subjects).toHaveLength(2);
+
+    const ids = subjects.map((s) => s.id);
+    expect(ids).toContain("defining-routes");
+    expect(ids).toContain("client-state-management");
+  });
+});
 
 describe("addLineNumbers", () => {
   it("should add line numbers with proper padding", () => {

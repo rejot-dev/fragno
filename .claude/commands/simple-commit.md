@@ -72,3 +72,9 @@ session.
 
 The goal is a git history that tells a clear story and allows easy debugging, reverting, and
 cherry-picking.
+
+## Pre-commit
+
+When you try to commit, `lefthook` will run. All errors should be fixed before committing. Note that
+when `lefthook` fails on formatting, the files will automatically be formatted by `prettier`, and
+can thus by re-committed immediately (no need to take action, besides `git add`ing the files again).
