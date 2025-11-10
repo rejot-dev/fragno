@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { signOut, useSession } from "@/lib/auth/client";
 import { useState } from "react";
 import { stripeClient } from "@/lib/stripe.client";
@@ -16,6 +17,7 @@ function ProfilePage() {
   const navigate = useNavigate();
 
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
+  const [promotionCode, setPromotionCode] = useState<string>("");
   const {
     mutate: upgrade,
     error: upgradeError,
@@ -40,6 +42,7 @@ function ProfilePage() {
         successUrl: `${baseUrl}/checkout?checkoutType=subscribe`,
         cancelUrl: window.location.href,
         quantity: 1,
+        ...(promotionCode && { promotionCode }),
       },
     });
 
@@ -157,6 +160,24 @@ function ProfilePage() {
             <CardDescription>Choose the plan that works best for you</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Promotion Code Input */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="promotion-code" className="text-sm font-medium">
+                Promotion Code (Optional)
+              </label>
+              <Input
+                id="promotion-code"
+                type="text"
+                placeholder="Enter promotion code"
+                value={promotionCode}
+                onChange={(e) => setPromotionCode(e.target.value)}
+                className="max-w-xs"
+              />
+              <p className="text-muted-foreground text-xs">
+                Enter a promotion code to apply a discount to your subscription
+              </p>
+            </div>
+
             {/* Billing Cycle Toggle */}
             <div className="flex items-center justify-center gap-4">
               <Button

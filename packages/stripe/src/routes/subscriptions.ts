@@ -46,6 +46,8 @@ export const subscriptionsRoutesFactory = defineRoutes<
         "CUSTOMER_SUBSCRIPTION_MISMATCH",
         "UPGRADE_HAS_NO_EFFECT",
         "SUBSCRIPTION_UPDATE_NOT_ALLOWED",
+        "SUBSCRIPTION_UPDATE_PROMO_CODE_NOT_ALLOWED",
+        "PROMOTION_CODE_CUSTOMER_NOT_FIRST_TIME",
       ] as const,
       handler: async (context, { json, error }) => {
         const body = await context.input.valid();
@@ -126,6 +128,19 @@ export const subscriptionsRoutesFactory = defineRoutes<
           }
         }
 
+        // Step 3: Resolve promotion code to ID if provided
+        let promotionCodeId: string | undefined = undefined;
+        if (body.promotionCode) {
+          const promotionCodes = await deps.stripe.promotionCodes.list({
+            code: body.promotionCode,
+            active: true,
+            limit: 1,
+          });
+          if (promotionCodes.data.length > 0) {
+            promotionCodeId = promotionCodes.data[0].id;
+          }
+        }
+
         // Step 4: If existing subscription is active, modify using billing portal
         if (
           existingSubscription?.status === "active" ||
@@ -157,6 +172,9 @@ export const subscriptionsRoutesFactory = defineRoutes<
                       price: body.priceId,
                     },
                   ],
+                  ...(promotionCodeId && {
+                    discounts: [{ promotion_code: promotionCodeId }],
+                  }),
                 },
               },
             });
@@ -184,6 +202,9 @@ export const subscriptionsRoutesFactory = defineRoutes<
           metadata: {
             referenceId: user.referenceId,
           },
+          ...(promotionCodeId && {
+            discounts: [{ promotion_code: promotionCodeId }],
+          }),
         });
 
         return json({
