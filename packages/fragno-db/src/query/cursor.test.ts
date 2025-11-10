@@ -314,6 +314,125 @@ describe("Cursor utilities", () => {
       expect(serialized["createdAt"]).toBe(1234567890);
     });
 
+    it("should handle Date objects in cursors for PostgreSQL", () => {
+      const testSchema = schema((s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("createdAt", column("timestamp"))
+            .createIndex("created", ["createdAt"]),
+        ),
+      );
+
+      const table = testSchema.tables.posts;
+      const createdAtDate = new Date("2025-11-07T09:36:57.959Z");
+      const record = {
+        id: "post123",
+        createdAt: createdAtDate,
+      };
+
+      const index = table.indexes.created;
+      const indexColumns = index.columns;
+
+      // Create cursor from record (has Date object)
+      const cursor = createCursorFromRecord(record, indexColumns, {
+        indexName: "created",
+        orderDirection: "asc",
+        pageSize: 10,
+      });
+
+      // Encode and decode (Date becomes string in JSON)
+      const encoded = cursor.encode();
+      const decoded = decodeCursor(encoded);
+
+      // After decode, the value is a string (from JSON.parse)
+      expect(typeof decoded.indexValues["createdAt"]).toBe("string");
+      expect(decoded.indexValues["createdAt"]).toBe("2025-11-07T09:36:57.959Z");
+
+      // Serialize should convert it back to Date for the database
+      const serialized = serializeCursorValues(decoded, indexColumns, "postgresql");
+
+      // For PostgreSQL, Date objects should be passed through as-is
+      expect(serialized["createdAt"]).toBeInstanceOf(Date);
+      expect((serialized["createdAt"] as Date).toISOString()).toBe("2025-11-07T09:36:57.959Z");
+    });
+
+    it("should handle Date objects in cursors for SQLite", () => {
+      const testSchema = schema((s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("createdAt", column("timestamp"))
+            .createIndex("created", ["createdAt"]),
+        ),
+      );
+
+      const table = testSchema.tables.posts;
+      const createdAtDate = new Date("2025-11-07T09:36:57.959Z");
+      const record = {
+        id: "post123",
+        createdAt: createdAtDate,
+      };
+
+      const index = table.indexes.created;
+      const indexColumns = index.columns;
+
+      // Create cursor from record
+      const cursor = createCursorFromRecord(record, indexColumns, {
+        indexName: "created",
+        orderDirection: "asc",
+        pageSize: 10,
+      });
+
+      // Encode and decode
+      const decoded = decodeCursor(cursor.encode());
+
+      // Serialize should convert string back to Date, then to timestamp number for SQLite
+      const serialized = serializeCursorValues(decoded, indexColumns, "sqlite");
+
+      // For SQLite, Date should be converted to timestamp number
+      expect(typeof serialized["createdAt"]).toBe("number");
+      expect(serialized["createdAt"]).toBe(createdAtDate.getTime());
+    });
+
+    it("should handle Date objects in cursors for MySQL", () => {
+      const testSchema = schema((s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("createdAt", column("timestamp"))
+            .createIndex("created", ["createdAt"]),
+        ),
+      );
+
+      const table = testSchema.tables.posts;
+      const createdAtDate = new Date("2025-11-07T09:36:57.959Z");
+      const record = {
+        id: "post123",
+        createdAt: createdAtDate,
+      };
+
+      const index = table.indexes.created;
+      const indexColumns = index.columns;
+
+      // Create cursor from record
+      const cursor = createCursorFromRecord(record, indexColumns, {
+        indexName: "created",
+        orderDirection: "asc",
+        pageSize: 10,
+      });
+
+      // Encode and decode
+      const decoded = decodeCursor(cursor.encode());
+
+      // Serialize for MySQL
+      const serialized = serializeCursorValues(decoded, indexColumns, "mysql");
+
+      // For MySQL, Date objects should be passed through as-is
+      expect(serialized["createdAt"]).toBeInstanceOf(Date);
+      expect((serialized["createdAt"] as Date).toISOString()).toBe("2025-11-07T09:36:57.959Z");
+    });
+
     it("should handle different order directions correctly", () => {
       const cursorAsc = new Cursor({
         indexName: "_primary",

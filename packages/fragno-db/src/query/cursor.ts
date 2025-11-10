@@ -1,5 +1,5 @@
 import type { AnyColumn } from "../schema/create";
-import { serialize } from "../schema/serialize";
+import { deserialize, serialize } from "../schema/serialize";
 import type { SQLProvider } from "../shared/providers";
 
 /**
@@ -203,8 +203,12 @@ export function createCursorFromRecord(
 /**
  * Serialize cursor values for database queries
  *
- * Converts cursor values (which are in application format) to database format
- * using the column serialization rules.
+ * Converts cursor values (which are in JSON-compatible format after decode)
+ * to database format using the column serialization rules.
+ *
+ * This function performs a two-step process:
+ * 1. Deserialize from JSON format to application format (e.g., ISO string → Date)
+ * 2. Serialize from application format to database format (e.g., Date → driver format)
  *
  * @param cursor - The cursor object
  * @param indexColumns - The columns that make up the index
@@ -230,7 +234,12 @@ export function serializeCursorValues(
   for (const col of indexColumns) {
     const value = cursor.indexValues[col.ormName];
     if (value !== undefined) {
-      serialized[col.ormName] = serialize(value, col, provider);
+      // First deserialize from JSON format to application format
+      // (e.g., "2025-11-07T09:36:57.959Z" string → Date object)
+      const deserialized = deserialize(value, col, provider);
+      // Then serialize to database format
+      // (e.g., Date → database driver format)
+      serialized[col.ormName] = serialize(deserialized, col, provider);
     }
   }
 
