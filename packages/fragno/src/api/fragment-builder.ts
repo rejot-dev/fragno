@@ -41,6 +41,10 @@ export interface FragmentDefinition<
   ) => (
     handler: (this: TThisContext, ...args: Parameters<RouteHandler>) => ReturnType<RouteHandler>,
   ) => RouteHandler;
+  /** Optional wrapper for the entire request context (both middleware and handler) */
+  createRequestContextWrapper?: (
+    options: FragnoPublicConfig,
+  ) => <T>(callback: () => Promise<T>) => Promise<T>;
   /** Services that this fragment uses (can be required or optional) */
   usedServices?: {
     [K in keyof TUsedServices]: ServiceMetadata;

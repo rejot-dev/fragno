@@ -1,4 +1,4 @@
-import { test, expect, describe, expectTypeOf } from "vitest";
+import { test, expect, describe, expectTypeOf, assert } from "vitest";
 import { defineFragmentWithDatabase, type FragnoPublicConfigWithDatabase } from "./fragment";
 import {
   createFragment,
@@ -25,8 +25,10 @@ const mockDatabaseAdapter: DatabaseAdapter = {
   [fragnoDatabaseAdapterVersionFakeSymbol]: 0,
   close: () => Promise.resolve(),
   createQueryEngine: () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return {} as any;
+    return {
+      createUnitOfWork: () => ({}),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
   },
   getSchemaVersion: () => Promise.resolve("0"),
   createMigrationEngine: () => {
@@ -691,6 +693,126 @@ describe("DatabaseFragmentBuilder", () => {
 
       expect(instance.services.notifyUser).toBeDefined();
       expect(typeof instance.services.notifyUser).toBe("function");
+    });
+  });
+
+  describe("Middleware with database fragments", () => {
+    test("middleware works with database fragments", async () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-middleware")
+        .withDatabase(testSchema)
+        .providesService(({ defineService }) =>
+          defineService({
+            auth: {
+              isAuthorized: function (token?: string) {
+                const uow = this.getUnitOfWork();
+                expect(uow).toBeDefined();
+
+                return token === "valid-token";
+              },
+            },
+          }),
+        );
+
+      const routes = [
+        defineRoute({
+          method: "GET",
+          path: "/protected",
+          outputSchema: z.object({ message: z.string() }),
+          handler: async (_ctx, { json }) => {
+            return json({ message: "You accessed protected resource" });
+          },
+        }),
+      ] as const;
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+        mountRoute: "/api",
+      };
+
+      const instance = createFragment(fragmentDef, {}, routes, options).withMiddleware(
+        async ({ queryParams }, { services, error }) => {
+          const token = queryParams.get("token");
+
+          if (services.auth.isAuthorized(token ?? undefined)) {
+            return undefined;
+          }
+
+          return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+        },
+      );
+
+      // Test unauthorized request
+      const unauthorizedReq = new Request("http://localhost/api/protected", {
+        method: "GET",
+      });
+      const unauthorizedRes = await instance.handler(unauthorizedReq);
+      expect(unauthorizedRes.status).toBe(401);
+      const unauthorizedBody = await unauthorizedRes.json();
+      expect(unauthorizedBody).toEqual({
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+
+      // Test authorized request
+      const authorizedReq = new Request("http://localhost/api/protected?token=valid-token", {
+        method: "GET",
+      });
+      const authorizedRes = await instance.handler(authorizedReq);
+      expect(authorizedRes.status).toBe(200);
+      const authorizedBody = await authorizedRes.json();
+      expect(authorizedBody).toEqual({
+        message: "You accessed protected resource",
+      });
+    });
+
+    test("callRoute creates UnitOfWork for database fragments", async () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-callroute").withDatabase(testSchema);
+
+      const routesFactory = defineRoutes(fragmentDef).create(({ defineRoute }) => {
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/users/:id",
+            outputSchema: z.object({ id: z.string(), name: z.string() }),
+            handler: async function (ctx, { json }) {
+              // Handler should have access to UnitOfWork when called via callRoute
+              const uow = this.getUnitOfWork();
+              expect(uow).toBeDefined();
+
+              return json({ id: ctx.pathParams.id, name: "Test User" });
+            },
+          }),
+        ] as const;
+      });
+
+      const options: FragnoPublicConfigWithDatabase = {
+        databaseAdapter: mockDatabaseAdapter,
+        mountRoute: "/api",
+      };
+
+      const instance = createFragment(fragmentDef, {}, [routesFactory], options);
+
+      // Test callRoute
+      const response = await instance.callRoute("GET", "/users/:id", {
+        pathParams: { id: "123" },
+      });
+
+      expect(response.type).toBe("json");
+      expect(response.status).toBe(200);
+      assert(response.type === "json");
+      expect(response.data).toEqual({ id: "123", name: "Test User" });
     });
   });
 

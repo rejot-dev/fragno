@@ -266,6 +266,9 @@ export function createFragment<
   // Store the handler wrapper if provided (e.g., for database support)
   const handlerWrapper = definition.createHandlerWrapper?.(options);
 
+  // Store the request context wrapper if provided (e.g., for database UnitOfWork)
+  const requestContextWrapper = definition.createRequestContextWrapper?.(options);
+
   for (const routeConfig of routes) {
     addRoute(router, routeConfig.method.toUpperCase(), routeConfig.path, routeConfig);
   }
@@ -370,38 +373,47 @@ export function createFragment<
       // Construct RequestOutputContext
       const outputContext = new RequestOutputContext(route.outputSchema);
 
-      // Call the route handler (wrap with handlerWrapper if provided)
-      try {
-        let response: Response;
-        const thisContext: RequestThisContext = {};
+      // Function that executes the handler
+      const executeHandler = async (): Promise<Response> => {
+        try {
+          let response: Response;
+          const thisContext: RequestThisContext = {};
 
-        if (handlerWrapper) {
-          // Wrapper handles binding the this context internally for database fragments
-          // Safe: wrapper knows how to handle the specific this type (DatabaseRequestThisContext)
-          const wrappedHandler = handlerWrapper(route.handler as unknown as RouteHandler);
-          response = await wrappedHandler.call(thisContext, inputContext, outputContext);
-        } else {
-          // For standard fragments, bind to an empty RequestThisContext
-          // Safe: we know route.handler expects RequestThisContext for standard fragments
-          response = await (route.handler as RouteHandler).call(
-            thisContext,
-            inputContext,
-            outputContext,
+          if (handlerWrapper) {
+            // Wrapper handles binding the this context internally for database fragments
+            // Safe: wrapper knows how to handle the specific this type (DatabaseRequestThisContext)
+            const wrappedHandler = handlerWrapper(route.handler as unknown as RouteHandler);
+            response = await wrappedHandler.call(thisContext, inputContext, outputContext);
+          } else {
+            // For standard fragments, bind to an empty RequestThisContext
+            // Safe: we know route.handler expects RequestThisContext for standard fragments
+            response = await (route.handler as RouteHandler).call(
+              thisContext,
+              inputContext,
+              outputContext,
+            );
+          }
+          return response;
+        } catch (error) {
+          console.error("Error in callRoute handler", error);
+
+          if (error instanceof FragnoApiError) {
+            return error.toResponse();
+          }
+
+          return Response.json(
+            { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
+            { status: 500 },
           );
         }
-        return response;
-      } catch (error) {
-        console.error("Error in callRoute handler", error);
+      };
 
-        if (error instanceof FragnoApiError) {
-          return error.toResponse();
-        }
-
-        return Response.json(
-          { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
-          { status: 500 },
-        );
+      // Wrap handler execution in context wrapper if provided (e.g., for database UnitOfWork)
+      if (requestContextWrapper) {
+        return requestContextWrapper(executeHandler);
       }
+
+      return executeHandler();
     },
     handlersFor: <T extends FullstackFrameworks>(framework: T): HandlersByFramework[T] => {
       const handler = fragment.handler;
@@ -521,34 +533,72 @@ export function createFragment<
         headers: new Headers(req.headers),
       });
 
-      if (middlewareHandler) {
-        const middlewareInputContext = new RequestMiddlewareInputContext(routes, {
-          method: req.method as HTTPMethod,
-          path,
+      // Function that executes both middleware and handler
+      const executeRequest = async (): Promise<Response> => {
+        if (middlewareHandler) {
+          const middlewareInputContext = new RequestMiddlewareInputContext(routes, {
+            method: req.method as HTTPMethod,
+            path,
+            request: req,
+            state: requestState,
+          });
+
+          const middlewareOutputContext = new RequestMiddlewareOutputContext(
+            depsWithInterfaces,
+            services,
+          );
+
+          try {
+            const middlewareResult = await middlewareHandler(
+              middlewareInputContext,
+              middlewareOutputContext,
+            );
+            if (middlewareResult !== undefined) {
+              return middlewareResult;
+            }
+          } catch (error) {
+            console.error("Error in middleware", error);
+
+            if (error instanceof FragnoApiError) {
+              // TODO: If a validation error occurs in middleware (when calling `await input.valid()`)
+              //       the processing is short-circuited and a potential `catch` block around the call
+              //       to `input.valid()` in the actual handler will not be executed.
+              return error.toResponse();
+            }
+
+            return Response.json(
+              { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
+              { status: 500 },
+            );
+          }
+        }
+
+        const inputContext = await RequestInputContext.fromRequest({
           request: req,
+          method: req.method,
+          path,
+          pathParams: (route.params ?? {}) as ExtractPathParams<typeof path>,
+          inputSchema,
           state: requestState,
+          rawBody,
         });
 
-        const middlewareOutputContext = new RequestMiddlewareOutputContext(
-          depsWithInterfaces,
-          services,
-        );
-
         try {
-          const middlewareResult = await middlewareHandler(
-            middlewareInputContext,
-            middlewareOutputContext,
-          );
-          if (middlewareResult !== undefined) {
-            return middlewareResult;
-          }
+          // Apply handler wrapper if provided (e.g., for database support)
+          // Safe cast: handler wrapper preserves handler signature
+          const actualHandler = handlerWrapper
+            ? (handlerWrapper(handler as RouteHandler) as typeof handler)
+            : handler;
+
+          // Create base this context (empty object for standard fragments)
+          // Database fragments will provide their own context via handler wrapper
+          const thisContext = {} as RequestThisContext;
+          const result = await actualHandler.call(thisContext, inputContext, outputContext);
+          return result;
         } catch (error) {
-          console.error("Error in middleware", error);
+          console.error("Error in handler", error);
 
           if (error instanceof FragnoApiError) {
-            // TODO: If a validation error occurs in middleware (when calling `await input.valid()`)
-            //       the processing is short-circuited and a potential `catch` block around the call
-            //       to `input.valid()` in the actual handler will not be executed.
             return error.toResponse();
           }
 
@@ -557,42 +607,14 @@ export function createFragment<
             { status: 500 },
           );
         }
+      };
+
+      // Wrap request execution in context wrapper if provided (e.g., for database UnitOfWork)
+      if (requestContextWrapper) {
+        return requestContextWrapper(executeRequest);
       }
 
-      const inputContext = await RequestInputContext.fromRequest({
-        request: req,
-        method: req.method,
-        path,
-        pathParams: (route.params ?? {}) as ExtractPathParams<typeof path>,
-        inputSchema,
-        state: requestState,
-        rawBody,
-      });
-
-      try {
-        // Apply handler wrapper if provided (e.g., for database support)
-        // Safe cast: handler wrapper preserves handler signature
-        const actualHandler = handlerWrapper
-          ? (handlerWrapper(handler as RouteHandler) as typeof handler)
-          : handler;
-
-        // Create base this context (empty object for standard fragments)
-        // Database fragments will provide their own context via handler wrapper
-        const thisContext = {} as RequestThisContext;
-        const result = await actualHandler.call(thisContext, inputContext, outputContext);
-        return result;
-      } catch (error) {
-        console.error("Error in handler", error);
-
-        if (error instanceof FragnoApiError) {
-          return error.toResponse();
-        }
-
-        return Response.json(
-          { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
-          { status: 500 },
-        );
-      }
+      return executeRequest();
     },
   };
 

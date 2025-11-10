@@ -227,24 +227,74 @@ export class DatabaseFragmentBuilder<
         databaseSchema: schema,
         databaseNamespace: namespace,
       },
+      /**
+       * Handler wrapper: Binds route handlers to serviceContext
+       *
+       * Purpose: Allows route handlers to use `this.getUnitOfWork()` directly
+       * in their function body by binding them to the DatabaseRequestThisContext.
+       *
+       * Example:
+       * ```ts
+       * handler: async function(ctx, { json }) {
+       *   const uow = this.getUnitOfWork();  // ✓ Works because handler is bound
+       *   // ...
+       * }
+       * ```
+       *
+       * Note: This only handles the `this` binding. The actual UnitOfWork instance
+       * is created and made available by createRequestContextWrapper.
+       */
       createHandlerWrapper: schema
+        ? (_options: FragnoPublicConfig) => {
+            // Return handler wrapper function
+            return (handler: DatabaseRouteHandler): RouteHandler => {
+              return async (inputContext, outputContext) => {
+                // Bind handler to serviceContext so it has access to getUnitOfWork via 'this'
+                const boundHandler = handler.bind(serviceContext);
+                return boundHandler(inputContext, outputContext);
+              };
+            };
+          }
+        : undefined,
+      /**
+       * Request context wrapper: Creates and manages the UnitOfWork lifecycle
+       *
+       * Purpose: Creates a UnitOfWork at the start of each request and makes it
+       * available throughout the entire request lifecycle (both middleware and handler)
+       * via AsyncLocalStorage. This ensures:
+       *
+       * 1. The same transaction spans middleware and handler execution
+       * 2. Services called from middleware can access the UnitOfWork
+       * 3. The UnitOfWork is properly scoped to the request
+       *
+       * Example flow:
+       * ```
+       * Request arrives
+       *   ↓
+       * createRequestContextWrapper creates UnitOfWork
+       *   ↓
+       * withUnitOfWork() stores it in AsyncLocalStorage
+       *   ↓
+       * Middleware executes (services can call this.getUnitOfWork())
+       *   ↓
+       * Handler executes (can call this.getUnitOfWork())
+       *   ↓
+       * Response returned, UnitOfWork context cleaned up
+       * ```
+       *
+       * This works together with createHandlerWrapper:
+       * - createRequestContextWrapper: Makes UnitOfWork available (AsyncLocalStorage)
+       * - createHandlerWrapper: Binds handlers so `this.getUnitOfWork()` works
+       */
+      createRequestContextWrapper: schema
         ? (options: FragnoPublicConfig) => {
             const dbContext = this.#createDatabaseContext(options, schema, namespace, name);
             const { orm } = dbContext;
 
-            // Return handler wrapper function
-            return (handler: DatabaseRouteHandler): RouteHandler => {
-              return async (inputContext, outputContext) => {
-                // Create UOW for this request
-                const uow = orm.createUnitOfWork();
-
-                // Execute handler within AsyncLocalStorage context
-                return withUnitOfWork(uow, async () => {
-                  // Bind handler to serviceContext so it has access to getUnitOfWork via 'this'
-                  const boundHandler = handler.bind(serviceContext);
-                  return boundHandler(inputContext, outputContext);
-                });
-              };
+            // Return wrapper function that creates UnitOfWork and wraps execution
+            return async <T>(callback: () => Promise<T>): Promise<T> => {
+              const uow = orm.createUnitOfWork();
+              return withUnitOfWork(uow, callback);
             };
           }
         : undefined,
