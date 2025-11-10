@@ -179,35 +179,45 @@ export function createDrizzleUOWDecoder(provider: SQLProvider): UOWDecoder<Drizz
       // If cursor generation is requested, wrap in CursorResult
       if (op.withCursor) {
         let cursor: Cursor | undefined;
+        let hasNextPage = false;
+        let items = decodedRows;
 
-        // Generate cursor from last item if results exist
-        if (decodedRows.length > 0 && op.options.orderByIndex && op.options.pageSize) {
-          const lastItem = decodedRows[decodedRows.length - 1];
-          const indexName = op.options.orderByIndex.indexName;
+        // Check if there are more results (we fetched pageSize + 1)
+        if (op.options.pageSize && decodedRows.length > op.options.pageSize) {
+          hasNextPage = true;
+          // Trim to requested pageSize
+          items = decodedRows.slice(0, op.options.pageSize);
 
-          // Get index columns
-          let indexColumns;
-          if (indexName === "_primary") {
-            indexColumns = [op.table.getIdColumn()];
-          } else {
-            const index = op.table.indexes[indexName];
-            if (index) {
-              indexColumns = index.columns;
+          // Generate cursor from the last item we're returning
+          if (op.options.orderByIndex) {
+            const lastItem = items[items.length - 1];
+            const indexName = op.options.orderByIndex.indexName;
+
+            // Get index columns
+            let indexColumns;
+            if (indexName === "_primary") {
+              indexColumns = [op.table.getIdColumn()];
+            } else {
+              const index = op.table.indexes[indexName];
+              if (index) {
+                indexColumns = index.columns;
+              }
             }
-          }
 
-          if (indexColumns && lastItem) {
-            cursor = createCursorFromRecord(lastItem as Record<string, unknown>, indexColumns, {
-              indexName: op.options.orderByIndex.indexName,
-              orderDirection: op.options.orderByIndex.direction,
-              pageSize: op.options.pageSize,
-            });
+            if (indexColumns && lastItem) {
+              cursor = createCursorFromRecord(lastItem as Record<string, unknown>, indexColumns, {
+                indexName: op.options.orderByIndex.indexName,
+                orderDirection: op.options.orderByIndex.direction,
+                pageSize: op.options.pageSize,
+              });
+            }
           }
         }
 
         const cursorResult: CursorResult<unknown> = {
-          items: decodedRows,
+          items,
           cursor,
+          hasNextPage,
         };
         return cursorResult;
       }

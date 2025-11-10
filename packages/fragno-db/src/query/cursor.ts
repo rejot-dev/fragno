@@ -78,6 +78,10 @@ export interface CursorResult<T> {
    * Cursor to fetch the next page (undefined if no more results)
    */
   cursor?: Cursor;
+  /**
+   * Whether there are more results available after this page
+   */
+  hasNextPage: boolean;
 }
 
 /**

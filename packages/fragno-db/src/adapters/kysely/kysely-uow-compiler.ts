@@ -193,6 +193,10 @@ export function createKyselyUOWCompiler(
             }
           }
 
+          // For cursor pagination, fetch one extra item to determine if there's a next page
+          // Only apply this when using the high-level findWithCursor() API (op.withCursor === true)
+          const effectiveLimit = pageSize && op.withCursor ? pageSize + 1 : pageSize;
+
           // When we have joins or need to bypass buildFindOptions, use operation-specific queryBuilder
           if (join && join.length > 0) {
             const queryBuilder = getQueryBuilder(op.namespace);
@@ -201,7 +205,7 @@ export function createKyselyUOWCompiler(
               select: (findManyOptions.select ?? true) as AnySelectClause,
               where: combinedWhere,
               orderBy,
-              limit: pageSize,
+              limit: effectiveLimit,
               join,
             });
           }
@@ -210,7 +214,7 @@ export function createKyselyUOWCompiler(
             ...findManyOptions,
             where: combinedWhere ? () => combinedWhere! : undefined,
             orderBy: orderBy?.map(([col, dir]) => [col.ormName, dir]),
-            limit: pageSize,
+            limit: effectiveLimit,
           });
         }
       }

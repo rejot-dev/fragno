@@ -878,10 +878,11 @@ describe("KyselyAdapter PGLite", () => {
   it("should support cursor-based pagination with findWithCursor()", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
-    // Create multiple users for pagination testing with unique prefix
+    // Create exactly 15 users for precise pagination testing with unique prefix
     const prefix = "CursorPagTest";
+
     const userIds: FragnoId[] = [];
-    for (let i = 1; i <= 25; i++) {
+    for (let i = 1; i <= 15; i++) {
       const userId = await queryEngine.create("users", {
         name: `${prefix} ${i.toString().padStart(2, "0")}`,
         age: 20 + i,
@@ -889,29 +890,35 @@ describe("KyselyAdapter PGLite", () => {
       userIds.push(userId);
     }
 
-    // Fetch first page with cursor (filter by prefix to avoid other test data)
+    // Fetch first page with cursor (pageSize=10, total=15 items)
     const firstPage = await queryEngine.findWithCursor("users", (b) =>
-      b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(10),
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
     );
 
-    // Check structure
+    // Check structure and hasNextPage
     expect(firstPage).toHaveProperty("items");
     expect(firstPage).toHaveProperty("cursor");
+    expect(firstPage).toHaveProperty("hasNextPage");
     expect(Array.isArray(firstPage.items)).toBe(true);
-    expect(firstPage.items.length).toBeGreaterThan(0);
+    expect(firstPage.items).toHaveLength(10);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
-    assert(firstPage.cursor instanceof Cursor);
-
-    // Fetch second page using cursor
+    // Fetch second page using cursor (last page with 5 remaining items)
     const secondPage = await queryEngine.findWithCursor("users", (b) =>
       b
-        .whereIndex("name_idx")
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
         .after(firstPage.cursor!)
         .orderByIndex("name_idx", "asc")
         .pageSize(10),
     );
 
-    expect(secondPage.items.length).toBeGreaterThan(0);
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.hasNextPage).toBe(false);
+    expect(secondPage.cursor).toBeUndefined();
 
     // Verify no overlap - all names in second page should be different from first page
     const firstPageNames = new Set(firstPage.items.map((u) => u.name));
@@ -926,12 +933,16 @@ describe("KyselyAdapter PGLite", () => {
     const secondPageFirst = secondPage.items[0].name;
     expect(firstPageLast < secondPageFirst).toBe(true);
 
-    // Verify our test data is present
-    const testUsers = await queryEngine.find("users", (b) =>
-      b.whereIndex("name_idx").pageSize(100),
+    // Test empty results
+    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
     );
-    const testUserNames = testUsers.filter((u) => u.name.startsWith(prefix)).map((u) => u.name);
-    expect(testUserNames).toHaveLength(25);
+    expect(emptyPage.items).toHaveLength(0);
+    expect(emptyPage.hasNextPage).toBe(false);
+    expect(emptyPage.cursor).toBeUndefined();
   });
 
   it("should support findWithCursor() in Unit of Work", async () => {
@@ -960,14 +971,13 @@ describe("KyselyAdapter PGLite", () => {
 
     const [result] = await uow.executeRetrieve();
 
-    // Verify result structure
+    // Verify result structure including hasNextPage
     expect(result).toHaveProperty("items");
     expect(result).toHaveProperty("cursor");
+    expect(result).toHaveProperty("hasNextPage");
     expect(Array.isArray(result.items)).toBe(true);
     expect(result.items.length).toBeGreaterThan(0);
-
-    if (result.items.length === 3) {
-      expect(result.cursor).toBeInstanceOf(Cursor);
-    }
+    expect(typeof result.hasNextPage).toBe("boolean");
+    expect(result.cursor).toBeInstanceOf(Cursor);
   });
 });

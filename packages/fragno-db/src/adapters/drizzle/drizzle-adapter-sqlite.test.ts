@@ -764,4 +764,55 @@ describe("DrizzleAdapter SQLite", () => {
       price: 200,
     });
   });
+
+  it("should verify hasNextPage in cursor pagination", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create exactly 15 users for precise pagination testing
+    const prefix = "HasNextPageTest";
+
+    for (let i = 1; i <= 15; i++) {
+      await queryEngine.create("users", {
+        name: `${prefix} ${i.toString().padStart(2, "0")}`,
+        age: 20 + i,
+      });
+    }
+
+    // Test 1: First page with more results available (pageSize=10, total=15)
+    const firstPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(firstPage.items).toHaveLength(10);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeInstanceOf(Cursor);
+
+    // Test 2: Second page (last page, partial results: 5 items remaining)
+    const secondPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .after(firstPage.cursor!)
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.hasNextPage).toBe(false);
+    expect(secondPage.cursor).toBeUndefined();
+
+    // Test 3: Empty results
+    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(emptyPage.items).toHaveLength(0);
+    expect(emptyPage.hasNextPage).toBe(false);
+    expect(emptyPage.cursor).toBeUndefined();
+  });
 });

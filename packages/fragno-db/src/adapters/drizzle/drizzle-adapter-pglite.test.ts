@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/pglite";
 import { DrizzleAdapter } from "./drizzle-adapter";
-import { assert, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import type { DBType } from "./shared";
 import { createRequire } from "node:module";
@@ -740,46 +740,61 @@ describe("DrizzleAdapter PGLite", () => {
   it("should support cursor-based pagination with findWithCursor()", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
-    // Create multiple users for pagination testing
-    for (let i = 1; i <= 25; i++) {
+    // Create exactly 15 users for precise pagination testing
+    const prefix = "CursorPagTest";
+
+    for (let i = 1; i <= 15; i++) {
       await queryEngine.create("users", {
-        name: `Cursor User ${i.toString().padStart(2, "0")}`,
+        name: `${prefix} ${i.toString().padStart(2, "0")}`,
         age: 20 + i,
       });
     }
 
-    // Fetch first page with cursor
+    // Fetch first page with cursor (pageSize=10, total=15 items)
     const firstPage = await queryEngine.findWithCursor("users", (b) =>
-      b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(10),
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
     );
 
-    // Check structure
+    // Check structure and hasNextPage
     expect(firstPage).toHaveProperty("items");
     expect(firstPage).toHaveProperty("cursor");
+    expect(firstPage).toHaveProperty("hasNextPage");
     expect(Array.isArray(firstPage.items)).toBe(true);
-    expect(firstPage.items.length).toBeGreaterThan(0);
-    expect(firstPage.items.length).toBeLessThanOrEqual(10);
-
-    assert(firstPage.cursor instanceof Cursor);
     expect(firstPage.items).toHaveLength(10);
+    expect(firstPage.hasNextPage).toBe(true);
     expect(firstPage.cursor).toBeInstanceOf(Cursor);
 
-    // Fetch second page using cursor
+    // Fetch second page using cursor (last page with 5 remaining items)
     const secondPage = await queryEngine.findWithCursor("users", (b) =>
       b
-        .whereIndex("name_idx")
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
         .after(firstPage.cursor!)
         .orderByIndex("name_idx", "asc")
         .pageSize(10),
     );
 
-    expect(secondPage.items.length).toBeGreaterThan(0);
-    expect(secondPage.items.length).toBeLessThanOrEqual(10);
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.hasNextPage).toBe(false);
+    expect(secondPage.cursor).toBeUndefined();
 
     // Verify no overlap - first item of second page should come after last item of first page
     const firstPageLastName = firstPage.items[firstPage.items.length - 1].name;
     const secondPageFirstName = secondPage.items[0].name;
     expect(secondPageFirstName > firstPageLastName).toBe(true);
+
+    // Test empty results
+    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+    expect(emptyPage.items).toHaveLength(0);
+    expect(emptyPage.hasNextPage).toBe(false);
+    expect(emptyPage.cursor).toBeUndefined();
   });
 
   it("should support findWithCursor() in Unit of Work", async () => {
@@ -794,11 +809,13 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [result] = await uow.executeRetrieve();
 
-    // Verify result structure
+    // Verify result structure including hasNextPage
     expect(result).toHaveProperty("items");
     expect(result).toHaveProperty("cursor");
+    expect(result).toHaveProperty("hasNextPage");
     expect(Array.isArray(result.items)).toBe(true);
     expect(result.items).toHaveLength(5);
+    expect(typeof result.hasNextPage).toBe("boolean");
     expect(result.cursor).toBeInstanceOf(Cursor);
   });
 });

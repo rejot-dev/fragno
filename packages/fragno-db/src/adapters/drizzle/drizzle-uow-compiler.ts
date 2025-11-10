@@ -483,9 +483,13 @@ export function createDrizzleUOWCompiler(
 
           const whereClause = whereClauses.length > 0 ? Drizzle.and(...whereClauses) : undefined;
 
+          // For cursor pagination, fetch one extra item to determine if there's a next page
+          // Only apply this when using the high-level findWithCursor() API (op.withCursor === true)
+          const effectiveLimit = pageSize && op.withCursor ? pageSize + 1 : pageSize;
+
           const queryConfig: Drizzle.DBQueryConfig<"many", boolean> = {
             columns,
-            limit: pageSize,
+            limit: effectiveLimit,
             where: whereClause,
             orderBy,
             with: {},
