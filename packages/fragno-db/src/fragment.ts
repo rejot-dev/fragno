@@ -2,7 +2,7 @@ import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import { bindServicesToContext, type BoundServices } from "./bind-services";
-import { AsyncLocalStorage } from "async_hooks";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { IUnitOfWorkBase, UnitOfWorkSchemaView } from "./query/unit-of-work";
 import type { RequestThisContext } from "@fragno-dev/core/api";
 

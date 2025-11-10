@@ -6,6 +6,7 @@ import type { GeneratorResult } from "@babel/generator";
 import { deadCodeElimination, findReferencedIdentifiers } from "babel-dead-code-elimination";
 import { transformMacros } from "./transform-macros";
 import { transformDefineRoute } from "./transform-define-route";
+import { transformIdentifierReplacements } from "./transform-identifier-replacements";
 import { transformDefineLibrary } from "./transform-define-library";
 
 export const transform = (code: string, id: string, options: { ssr: boolean }): GeneratorResult => {
@@ -20,6 +21,7 @@ export const transform = (code: string, id: string, options: { ssr: boolean }): 
 
   transformMacros(ast, options);
   transformDefineRoute(ast, options);
+  transformIdentifierReplacements(ast, options);
   transformDefineLibrary(ast, options);
 
   deadCodeElimination(ast, refs);
