@@ -21,7 +21,7 @@ export function stripeSubscriptionToInternalSubscription(
   stripeSubscription: Stripe.Subscription,
 ): Omit<
   TableToInsertValues<typeof stripeSchema.tables.subscription>,
-  "id" | "createdAt" | "updatedAt" | "referenceId"
+  "id" | "updatedAt" | "referenceId"
 > {
   const firstItem = stripeSubscription.items.data[0];
 
@@ -44,6 +44,7 @@ export function stripeSubscriptionToInternalSubscription(
     trialEnd: toDate(stripeSubscription.trial_end),
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end ?? false,
     cancelAt: toDate(stripeSubscription.cancel_at),
+    createdAt: toDate(stripeSubscription.created),
     seats: firstItem.quantity ?? null,
   };
 }
