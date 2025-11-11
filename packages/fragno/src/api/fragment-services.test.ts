@@ -300,6 +300,34 @@ describe("Fragment Service System", () => {
       expect(instance.services.email.sendEmail).toBeDefined();
       expectTypeOf<typeof instance.services.email.sendEmail>().toExtend<() => Promise<void>>();
     });
+
+    test("Type mismatch when using a service", () => {
+      interface ExpectedService {
+        throwDice: () => 1 | 2 | 3 | 4 | 5 | 6;
+      }
+
+      const fragment = defineFragment<{}>("test").usesService<"expected", ExpectedService>(
+        "expected",
+      );
+
+      interface ActualService {
+        throwDice: () => number;
+      }
+
+      const actualService: ActualService = {
+        throwDice: () => 1,
+      };
+
+      const instance = instantiateFragment(fragment)
+        // @ts-expect-error - Type mismatch
+        .withServices({ expected: actualService })
+        .build();
+
+      // on the instance, it still has the correct type
+      expectTypeOf<typeof instance.services.expected.throwDice>().toExtend<
+        () => 1 | 2 | 3 | 4 | 5 | 6
+      >();
+    });
   });
 
   describe("Error handling", () => {
