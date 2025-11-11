@@ -572,6 +572,92 @@ describe("DatabaseFragmentBuilder", () => {
       expect(fragment.services.validator.validate).toBeDefined();
       expect(fragment.services.formatter.format).toBeDefined();
     });
+
+    test("providesServices that uses `this` without defineService should have correct this context", async () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-this-context")
+        .withDatabase(testSchema)
+        .providesService(() => ({
+          doThing: function () {
+            // oxlint-disable-next-line no-explicit-any
+            const uow = (this as any).getUnitOfWork();
+            return { hasUow: !!uow };
+          },
+        }));
+
+      const fragment = createFragment(fragmentDef, {}, [], {
+        databaseAdapter: mockDatabaseAdapter,
+      });
+
+      expect(() => {
+        fragment.services.doThing();
+      }).toThrow(
+        "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
+      );
+
+      // Test implicit dependencies - withUnitOfWork is automatically available
+      const { hasUow } = fragment.deps.withUnitOfWork(() => {
+        return fragment.services.doThing();
+      });
+
+      expect(hasUow).toBe(true);
+    });
+
+    test("implicit dependencies are automatically available", () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-implicit-deps").withDatabase(testSchema);
+
+      const fragment = createFragment(fragmentDef, {}, [], {
+        databaseAdapter: mockDatabaseAdapter,
+      });
+
+      // All implicit dependencies should be available
+      expect(fragment.deps.createUnitOfWork).toBeDefined();
+      expect(fragment.deps.db).toBeDefined();
+      expect(fragment.deps.withUnitOfWork).toBeDefined();
+
+      // Verify types
+      expectTypeOf(fragment.deps.createUnitOfWork).toBeFunction();
+      expectTypeOf(fragment.deps.db).toExtend<AbstractQuery<typeof testSchema>>();
+      expectTypeOf(fragment.deps.withUnitOfWork).toBeFunction();
+    });
+
+    test("withUnitOfWork supports both sync and async callbacks", async () => {
+      const testSchema = schema((s) =>
+        s.addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("name", column("string")),
+        ),
+      );
+
+      const fragmentDef = defineFragmentWithDatabase("test-sync-async").withDatabase(testSchema);
+
+      const fragment = createFragment(fragmentDef, {}, [], {
+        databaseAdapter: mockDatabaseAdapter,
+      });
+
+      // Test synchronous callback
+      const syncResult = fragment.deps.withUnitOfWork(() => {
+        return "sync-value";
+      });
+      expect(syncResult).toBe("sync-value");
+
+      // Test asynchronous callback
+      const asyncResult = await fragment.deps.withUnitOfWork(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return "async-value";
+      });
+      expect(asyncResult).toBe("async-value");
+    });
   });
 
   describe("usesService", () => {

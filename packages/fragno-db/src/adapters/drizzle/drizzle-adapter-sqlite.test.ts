@@ -271,7 +271,6 @@ describe("DrizzleAdapter SQLite", () => {
   it("should support count operations", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
-    // Create some users
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "User1", age: 20 });
     createUow.create("users", { name: "User2", age: 30 });

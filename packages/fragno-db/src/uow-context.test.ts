@@ -15,7 +15,7 @@ describe("UOW Context", () => {
     it("should throw error when called outside context", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect(() => serviceContext.getUnitOfWork(testSchema as any)).toThrow(
-        "No UnitOfWork in context. Service must be called within a route handler.",
+        "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
       );
     });
 

@@ -21,8 +21,7 @@ describe("bindServicesToContext", () => {
 
     const services = {
       testMethod: function (this: DatabaseRequestThisContext) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.getUnitOfWork(testSchema as any);
+        return this.getUnitOfWork(testSchema);
       },
     };
 
@@ -42,12 +41,10 @@ describe("bindServicesToContext", () => {
 
     const services = {
       method1: function (this: DatabaseRequestThisContext) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.getUnitOfWork(testSchema as any);
+        return this.getUnitOfWork(testSchema);
       },
       method2: function (this: DatabaseRequestThisContext) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.getUnitOfWork(testSchema as any);
+        return this.getUnitOfWork(testSchema);
       },
     };
 
@@ -69,8 +66,7 @@ describe("bindServicesToContext", () => {
     const services = {
       nested: {
         method: function (this: DatabaseRequestThisContext) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return this.getUnitOfWork(testSchema as any);
+          return this.getUnitOfWork(testSchema);
         },
       },
     };
@@ -107,8 +103,7 @@ describe("bindServicesToContext", () => {
 
     const services = {
       testMethod: function (this: DatabaseRequestThisContext, param1: string, param2: number) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const uow = this.getUnitOfWork(testSchema as any);
+        const uow = this.getUnitOfWork(testSchema);
         return { uow, param1, param2 };
       },
     };
@@ -132,8 +127,7 @@ describe("bindServicesToContext", () => {
     const services = {
       asyncMethod: async function (this: DatabaseRequestThisContext) {
         await new Promise((resolve) => setTimeout(resolve, 10));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.getUnitOfWork(testSchema as any);
+        return this.getUnitOfWork(testSchema);
       },
     };
 
@@ -170,8 +164,7 @@ describe("bindServicesToContext", () => {
         level2: {
           level3: {
             method: function (this: DatabaseRequestThisContext) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              return this.getUnitOfWork(testSchema as any);
+              return this.getUnitOfWork(testSchema);
             },
           },
         },
@@ -194,13 +187,11 @@ describe("bindServicesToContext", () => {
 
     const services = {
       getUow: function (this: DatabaseRequestThisContext) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.getUnitOfWork(testSchema as any);
+        return this.getUnitOfWork(testSchema);
       },
       callOther: function (this: DatabaseRequestThisContext) {
         // Both methods can access UOW via their own `this` context
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return this.getUnitOfWork(testSchema as any);
+        return this.getUnitOfWork(testSchema);
       },
     };
 

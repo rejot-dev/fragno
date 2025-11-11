@@ -132,6 +132,7 @@ export {
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
   type DatabaseRouteHandler,
+  type ImplicitDependencies,
 } from "./fragment";
 
 export { decodeCursor, type CursorData } from "./query/cursor";

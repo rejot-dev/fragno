@@ -18,30 +18,41 @@ export interface DatabaseRequestThisContext extends RequestThisContext {
    * @returns IUnitOfWorkBase if no schema provided, or typed UnitOfWorkSchemaView if schema provided.
    */
   getUnitOfWork(): IUnitOfWorkBase;
-  getUnitOfWork<TSchema extends AnySchema>(
-    schema: TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): UnitOfWorkSchemaView<TSchema, [], any>;
+  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
+}
+
+// Create overloaded function implementation
+function getUnitOfWork(): IUnitOfWorkBase;
+function getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
+function getUnitOfWork<TSchema extends AnySchema>(
+  schema?: TSchema,
+): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
+  const uow = uowStorage.getStore();
+  if (!uow) {
+    throw new Error(
+      "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
+    );
+  }
+  if (schema) {
+    return uow.forSchema(schema);
+  }
+  return uow;
 }
 
 export const serviceContext: DatabaseRequestThisContext = {
-  getUnitOfWork<TSchema extends AnySchema>(
-    schema?: TSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): any {
-    const uow = uowStorage.getStore();
-    if (!uow) {
-      throw new Error("No UnitOfWork in context. Service must be called within a route handler.");
-    }
-    if (schema) {
-      return uow.forSchema(schema);
-    }
-    return uow;
-  },
+  getUnitOfWork,
 };
 
-export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => T): Promise<T> {
-  return Promise.resolve(uowStorage.run(uow, callback));
+// Overload for synchronous callbacks
+export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => T): T;
+// Overload for asynchronous callbacks
+export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => Promise<T>): Promise<T>;
+// Implementation
+export function withUnitOfWork<T>(
+  uow: IUnitOfWorkBase,
+  callback: () => T | Promise<T>,
+): T | Promise<T> {
+  return uowStorage.run(uow, callback);
 }
 
 /**
@@ -53,6 +64,27 @@ type WithDatabaseThis<T> = {
     : T[K] extends Record<string, unknown>
       ? WithDatabaseThis<T[K]>
       : T[K];
+};
+
+/**
+ * Identity function that preserves WithDatabaseThis wrapper for type inference.
+ * Used in service definitions to ensure proper 'this' typing.
+ */
+const defineService = <T extends Record<string, unknown>>(
+  services: WithDatabaseThis<T>,
+): WithDatabaseThis<T> => services;
+
+/**
+ * Context type for service callbacks with database access.
+ */
+type ServiceContext<TConfig, TDeps, TUsedServices, TSchema extends AnySchema> = {
+  config: TConfig;
+  fragnoConfig: FragnoPublicConfig;
+  deps: TDeps & TUsedServices;
+  db: AbstractQuery<TSchema>;
+  defineService: <T extends Record<string, unknown>>(
+    services: WithDatabaseThis<T>,
+  ) => WithDatabaseThis<T>;
 };
 
 // Import types from fragno package
@@ -91,6 +123,30 @@ export type DatabaseFragmentContext<TSchema extends AnySchema> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter: DatabaseAdapter<any>;
   orm: AbstractQuery<TSchema>;
+};
+
+/**
+ * Implicit dependencies that are automatically available in all database fragments.
+ * These are injected without requiring explicit configuration.
+ */
+export type ImplicitDependencies<TSchema extends AnySchema> = {
+  /**
+   * Create a new Unit of Work for database operations.
+   */
+  createUnitOfWork: () => IUnitOfWorkBase;
+  /**
+   * Database query engine for the fragment's schema.
+   */
+  db: AbstractQuery<TSchema>;
+  /**
+   * Execute a callback within a Unit of Work context.
+   * The UnitOfWork is automatically created and made available via AsyncLocalStorage.
+   * Supports both synchronous and asynchronous callbacks.
+   */
+  withUnitOfWork: {
+    <T>(callback: () => T): T;
+    <T>(callback: () => Promise<T>): Promise<T>;
+  };
 };
 
 export class DatabaseFragmentBuilder<
@@ -171,7 +227,7 @@ export class DatabaseFragmentBuilder<
 
   get definition(): FragmentDefinition<
     TConfig,
-    TDeps,
+    TDeps & ImplicitDependencies<TSchema>,
     BoundServices<TServices>,
     { databaseSchema?: TSchema; databaseNamespace: string },
     BoundServices<TUsedServices>,
@@ -189,7 +245,31 @@ export class DatabaseFragmentBuilder<
       name,
       dependencies: (config: TConfig, options: FragnoPublicConfig) => {
         const dbContext = this.#createDatabaseContext(options, schema, namespace, name);
-        return dependencies?.({ config, fragnoConfig: options, ...dbContext }) ?? ({} as TDeps);
+
+        // Create implicit dependencies
+        const createUow = () => dbContext.orm.createUnitOfWork();
+        const implicitDeps: ImplicitDependencies<TSchema> = {
+          createUnitOfWork: createUow,
+          db: dbContext.orm,
+          withUnitOfWork: (<T>(callback: () => T | Promise<T>) => {
+            const uow = createUow();
+            return withUnitOfWork(uow, callback);
+          }) as ImplicitDependencies<TSchema>["withUnitOfWork"],
+        };
+
+        // Get user-defined dependencies
+        const userDeps =
+          dependencies?.({
+            config,
+            fragnoConfig: options,
+            ...dbContext,
+          }) ?? {};
+
+        // Merge user deps with implicit deps
+        return {
+          ...userDeps,
+          ...implicitDeps,
+        } as TDeps & ImplicitDependencies<TSchema>;
       },
       services: (
         config: TConfig,
@@ -202,12 +282,6 @@ export class DatabaseFragmentBuilder<
         // 1. deps are already bound (their 'this' parameters are stripped)
         // 2. The services function expects raw types but only uses the public API
         // 3. BoundServices<T> has the same runtime shape as T (just without 'this')
-
-        // defineService provides typing for service functions
-        // It expects the input to already have proper 'this' types on functions
-        const defineService = <T extends Record<string, unknown>>(
-          services: WithDatabaseThis<T>,
-        ): WithDatabaseThis<T> => services;
 
         const rawServices =
           services?.({
@@ -335,11 +409,7 @@ export class DatabaseFragmentBuilder<
       throw new Error(`Fragment '${name}' requires a schema. Use withDatabase() to provide one.`);
     }
 
-    // Safe cast: we create a query engine for TSchema and know it will be AbstractQuery<TSchema>
-    const orm = databaseAdapter.createQueryEngine(
-      schema,
-      namespace,
-    ) as unknown as AbstractQuery<TSchema>;
+    const orm = databaseAdapter.createQueryEngine(schema, namespace);
 
     return { databaseAdapter, orm };
   }
@@ -416,7 +486,6 @@ export class DatabaseFragmentBuilder<
       providedServices: this.#providedServices,
     });
   }
-
   /**
    * Declare that this fragment uses a service.
    * @param serviceName - The name of the service to use
@@ -452,7 +521,7 @@ export class DatabaseFragmentBuilder<
     TConfig,
     TDeps,
     TServices,
-    TUsedServices & { [K in TServiceName]: TService | TService | undefined },
+    TUsedServices & { [K in TServiceName]: TService | undefined },
     TProvidedServices
   > {
     const isOptional = options?.optional ?? false;
@@ -518,15 +587,7 @@ export class DatabaseFragmentBuilder<
    * ```
    */
   providesService<TNewServices>(
-    fn: (context: {
-      config: TConfig;
-      fragnoConfig: FragnoPublicConfig;
-      deps: TDeps & TUsedServices;
-      db: AbstractQuery<TSchema>;
-      defineService: <T extends Record<string, unknown>>(
-        services: WithDatabaseThis<T>,
-      ) => WithDatabaseThis<T>;
-    }) => TNewServices,
+    fn: (context: ServiceContext<TConfig, TDeps, TUsedServices, TSchema>) => TNewServices,
   ): DatabaseFragmentBuilder<
     TSchema,
     TConfig,
@@ -571,15 +632,7 @@ export class DatabaseFragmentBuilder<
   providesService<TServiceName extends string, TService>(
     serviceName: TServiceName,
     fnOrService:
-      | ((context: {
-          config: TConfig;
-          fragnoConfig: FragnoPublicConfig;
-          deps: TDeps & TUsedServices;
-          db: AbstractQuery<TSchema>;
-          defineService: <T extends Record<string, unknown>>(
-            services: WithDatabaseThis<T>,
-          ) => WithDatabaseThis<T>;
-        }) => TService)
+      | ((context: ServiceContext<TConfig, TDeps, TUsedServices, TSchema>) => TService)
       | TService,
   ): DatabaseFragmentBuilder<
     TSchema,
@@ -592,29 +645,11 @@ export class DatabaseFragmentBuilder<
 
   providesService<TServiceName extends string, TService>(
     ...args:
-      | [
-          fn: (context: {
-            config: TConfig;
-            fragnoConfig: FragnoPublicConfig;
-            deps: TDeps & TUsedServices;
-            db: AbstractQuery<TSchema>;
-            defineService: <T extends Record<string, unknown>>(
-              services: WithDatabaseThis<T>,
-            ) => WithDatabaseThis<T>;
-          }) => TService,
-        ]
+      | [fn: (context: ServiceContext<TConfig, TDeps, TUsedServices, TSchema>) => TService]
       | [
           serviceName: TServiceName,
           fnOrService:
-            | ((context: {
-                config: TConfig;
-                fragnoConfig: FragnoPublicConfig;
-                deps: TDeps & TUsedServices;
-                db: AbstractQuery<TSchema>;
-                defineService: <T extends Record<string, unknown>>(
-                  services: WithDatabaseThis<T>,
-                ) => WithDatabaseThis<T>;
-              }) => TService)
+            | ((context: ServiceContext<TConfig, TDeps, TUsedServices, TSchema>) => TService)
             | TService,
         ]
   ):
@@ -632,7 +667,6 @@ export class DatabaseFragmentBuilder<
       const [fn] = args;
 
       // Create a callback that takes a single context object (matching #services signature)
-      // Note: We don't explicitly type the return to preserve the WithDatabaseThis wrapper
       const servicesCallback = (
         context: {
           config: TConfig;
@@ -640,22 +674,13 @@ export class DatabaseFragmentBuilder<
           deps: TDeps & TUsedServices;
         } & DatabaseFragmentContext<TSchema>,
       ) => {
-        // defineService provides typing for service functions
-        // It expects the input to already have proper 'this' types on functions
-        const defineService = <T extends Record<string, unknown>>(
-          services: WithDatabaseThis<T>,
-        ): WithDatabaseThis<T> => services;
-
-        const services = fn({
+        return fn({
           config: context.config,
           fragnoConfig: context.fragnoConfig,
           deps: context.deps,
           db: context.orm,
           defineService,
         });
-
-        // Return without casting to preserve the WithDatabaseThis wrapper
-        return services;
       };
 
       return new DatabaseFragmentBuilder<
@@ -689,7 +714,7 @@ export class DatabaseFragmentBuilder<
       // Named service
       const [serviceName, fnOrService] = args;
 
-      // Create a callback that provides the full context
+      // Create a factory function that will be called during fragment instantiation
       const createService = (
         config: TConfig,
         options: FragnoPublicConfig,
@@ -706,23 +731,11 @@ export class DatabaseFragmentBuilder<
         let implementation: TService;
         if (typeof fnOrService === "function") {
           // It's a callback - call it with context
-          // defineService provides typing for service functions
-          // It expects the input to already have proper 'this' types on functions
-          const defineService = <T extends Record<string, unknown>>(
-            services: WithDatabaseThis<T>,
-          ): WithDatabaseThis<T> => services;
-
           // Safe cast: we checked that fnOrService is a function
           implementation = (
-            fnOrService as (context: {
-              config: TConfig;
-              fragnoConfig: FragnoPublicConfig;
-              deps: TDeps & TUsedServices;
-              db: AbstractQuery<TSchema>;
-              defineService: <T extends Record<string, unknown>>(
-                services: WithDatabaseThis<T>,
-              ) => WithDatabaseThis<T>;
-            }) => TService
+            fnOrService as (
+              context: ServiceContext<TConfig, TDeps, TUsedServices, TSchema>,
+            ) => TService
           )({
             config,
             fragnoConfig: options,
@@ -741,10 +754,6 @@ export class DatabaseFragmentBuilder<
         ) as BoundServices<TService>;
       };
 
-      // We need to evaluate this immediately to store in providedServices
-      // For now, we'll create a placeholder that will be evaluated when fragment is instantiated
-      // Actually, we need to defer this until fragment instantiation
-      // Let's store a function that creates the service
       return new DatabaseFragmentBuilder<
         TSchema,
         TConfig,
