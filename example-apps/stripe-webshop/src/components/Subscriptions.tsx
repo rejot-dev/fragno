@@ -35,7 +35,7 @@ export function Subscriptions() {
     <Card>
       <CardHeader>
         <CardTitle>Subscriptions</CardTitle>
-        <CardDescription>View all subscriptions as they are the DB</CardDescription>
+        <CardDescription>View all subscriptions as they are in the DB</CardDescription>
       </CardHeader>
       <CardContent>
         {loading ? (

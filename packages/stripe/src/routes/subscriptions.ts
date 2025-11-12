@@ -105,7 +105,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
             if (!user.customerEmail || !user.referenceId) {
               return error({
                 message:
-                  "New Stripe Customer must be created, but customerEmail or referenceID has not been provide",
+                  "New Stripe Customer must be created, but customerEmail or referenceID has not been provided",
                 code: "MISSING_CUSTOMER_INFO",
               });
             }
@@ -151,6 +151,21 @@ export const subscriptionsRoutesFactory = defineRoutes<
           );
 
           try {
+            // when /upgrade is called on a subscription scheduled to cancel at the end of the billing period,
+            // it is still "active" but it's not possible to renew it using a billing portal.
+            if (existingSubscription.cancelAt != null) {
+              deps.log.info("un-cancelling subscription", stripeSubscription.id);
+
+              await deps.stripe.subscriptions.update(stripeSubscription.id, {
+                cancel_at_period_end: false,
+              });
+
+              return json({
+                url: body.returnUrl || body.successUrl,
+                redirect: true,
+              });
+            }
+            // Portal session to confirm subscription changes
             const portalSession = await deps.stripe.billingPortal.sessions.create({
               customer: customerId,
               return_url: body.returnUrl || body.successUrl,
