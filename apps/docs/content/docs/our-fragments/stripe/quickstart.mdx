@@ -180,10 +180,12 @@ import { createStripeFragmentClient } from "@fragno-dev/stripe/vanilla";
 export const stripeClient = createStripeFragmentClient();
 ```
 
-This client exposes two mutators for managing subscriptions:
+This client exposes several mutators for managing subscriptions:
 
 - `upgradeSubscription`: create or update a subscription
 - `cancelSubscription`: cancel a subscription
+- `useBillingPortal`: redirect to Stripe's billing portal for managing payment methods and billing
+  details
 
 ```typescript title="components/subscribe.tsx"
 import { stripeClient } from "@/lib/stripe-client";
