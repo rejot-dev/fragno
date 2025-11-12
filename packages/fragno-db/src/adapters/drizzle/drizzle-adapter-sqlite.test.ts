@@ -1,12 +1,14 @@
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { DrizzleAdapter } from "./drizzle-adapter";
-import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, it, assert } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import type { DBType } from "./shared";
 import { createRequire } from "node:module";
 import { writeAndLoadSchema } from "./test-utils";
 import { Cursor } from "../../query/cursor";
+import { executeUnitOfWork } from "../../query/execute-unit-of-work";
+import { ExponentialBackoffRetryPolicy } from "../../query/retry-policy";
 
 // Import drizzle-kit for migrations
 const require = createRequire(import.meta.url);
@@ -813,5 +815,63 @@ describe("DrizzleAdapter SQLite", () => {
     expect(emptyPage.items).toHaveLength(0);
     expect(emptyPage.hasNextPage).toBe(false);
     expect(emptyPage.cursor).toBeUndefined();
+  });
+
+  it("should support executeUnitOfWork with retry logic", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create a test user
+    const createUow = queryEngine.createUnitOfWork("create-user-for-execute-uow");
+    createUow.create("users", { name: "Execute UOW User", age: 42 });
+    await createUow.executeMutations();
+
+    // Fetch the user to get their ID
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-execute-uow")
+      .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Execute UOW User")))
+      .executeRetrieve();
+
+    // Use executeUnitOfWork to increment age with optimistic locking
+    const result = await executeUnitOfWork(
+      {
+        retrieve: (uow) =>
+          uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id))),
+        mutate: (uow, [users]) => {
+          const foundUser = users[0];
+          const newAge = foundUser.age! + 1;
+          uow.update("users", foundUser.id, (b) => b.set({ age: newAge }).check());
+          return { previousAge: foundUser.age, newAge };
+        },
+        onSuccess: async ({ mutationResult }) => {
+          // Verify the age was incremented correctly
+          expect(mutationResult.newAge).toBe(mutationResult.previousAge! + 1);
+        },
+      },
+      {
+        createUnitOfWork: () => queryEngine.createUnitOfWork("execute-uow-update"),
+        retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+      },
+    );
+
+    // Verify the operation succeeded
+    assert(result.success);
+    expect(result.mutationResult).toEqual({
+      previousAge: 42,
+      newAge: 43,
+    });
+
+    // Verify the user was actually updated in the database
+    const updatedUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", user.id)),
+    );
+
+    expect(updatedUser).toMatchObject({
+      id: expect.objectContaining({
+        externalId: user.id.externalId,
+        version: 1, // Version incremented due to check()
+      }),
+      name: "Execute UOW User",
+      age: 43,
+    });
   });
 });

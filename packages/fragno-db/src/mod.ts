@@ -148,6 +148,20 @@ export {
 } from "./query/unit-of-work";
 
 export {
+  type RetryPolicy,
+  NoRetryPolicy,
+  ExponentialBackoffRetryPolicy,
+  LinearBackoffRetryPolicy,
+} from "./query/retry-policy";
+
+export {
+  executeUnitOfWork,
+  type ExecuteUnitOfWorkResult,
+  type ExecuteUnitOfWorkCallbacks,
+  type ExecuteUnitOfWorkOptions,
+} from "./query/execute-unit-of-work";
+
+export {
   withUnitOfWork,
   serviceContext,
   uowStorage,
