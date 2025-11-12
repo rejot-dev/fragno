@@ -29,6 +29,13 @@ import { createStripeFragmentClient } from "@fragno-dev/stripe/react";
 export const stripeClient = createStripeFragmentClient();
 ```
 
+The client provides the following hooks:
+
+- `upgradeSubscription()`: Create or update a subscription
+- `cancelSubscription()`: Cancel an existing subscription
+- `useBillingPortal()`: Redirect to Stripe's billing portal for managing payment methods and billing
+  details
+
 ## Build
 
 ```bash

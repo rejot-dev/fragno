@@ -30,6 +30,12 @@ function ProfilePage() {
     loading: isCanceling,
   } = stripeClient.cancelSubscription();
 
+  const {
+    mutate: createPortal,
+    error: portalError,
+    loading: isCreatingPortal,
+  } = stripeClient.useBillingPortal();
+
   const baseUrl = window.location.origin;
 
   const handleUpgradeSubscription = async (priceId: string) => {
@@ -43,6 +49,21 @@ function ProfilePage() {
         cancelUrl: window.location.href,
         quantity: 1,
         ...(promotionCode && { promotionCode }),
+      },
+    });
+
+    if (result?.redirect) {
+      window.location.href = result.url;
+    }
+  };
+
+  const handleBillingPortal = async () => {
+    if (!session?.user.id) {
+      return;
+    }
+    const result = await createPortal({
+      body: {
+        returnUrl: `${baseUrl}/checkout?checkoutType=subscribe`,
       },
     });
 
@@ -135,6 +156,24 @@ function ProfilePage() {
                   <label className="text-muted-foreground text-sm font-medium">Current Plan</label>
                   <p className="text-lg font-semibold">
                     {session.subscription.product.displayName}
+                  </p>
+                </div>
+              )}
+
+              {session.subscription && (
+                <div>
+                  <span className="text-muted-foreground text-sm font-medium">
+                    Change Billing Details
+                  </span>
+                  {portalError && <p className="text-sm text-red-500">{portalError.message}</p>}
+                  <p>
+                    <Button
+                      variant="secondary"
+                      onClick={handleBillingPortal}
+                      disabled={isCreatingPortal}
+                    >
+                      Manage Billing
+                    </Button>
                   </p>
                 </div>
               )}

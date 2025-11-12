@@ -2,6 +2,7 @@ import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import { z } from "zod";
 import type { StripeFragmentConfig, StripeFragmentDeps, StripeFragmentServices } from "../types";
 import { CustomerResponseSchema } from "../models/customers";
+import { stripeToApiError } from "./errors";
 
 export const customersRoutesFactory = defineRoutes<
   StripeFragmentConfig,
@@ -43,6 +44,46 @@ export const customersRoutesFactory = defineRoutes<
           customers: customers.data,
           hasMore: customers.has_more,
         });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/portal",
+      inputSchema: z.object({
+        returnUrl: z.url().describe("URL to redirect to after completing billing portal"),
+      }),
+      outputSchema: z.object({
+        url: z.url().describe("URL to redirect to after cancellation"),
+        redirect: z.boolean().describe("Whether to redirect to the URL"),
+      }),
+      errorCodes: ["NO_STRIPE_CUSTOMER_FOR_ENTITY"] as const,
+      handler: async (context, { json, error }) => {
+        const body = await context.input.valid();
+        const { stripeCustomerId } = await config.resolveEntityFromRequest(context);
+
+        if (!stripeCustomerId) {
+          return error(
+            {
+              message: "No stripe customer to create billing portal for",
+              code: "NO_STRIPE_CUSTOMER_FOR_ENTITY",
+            },
+            400,
+          );
+        }
+
+        try {
+          const portalSession = await deps.stripe.billingPortal.sessions.create({
+            customer: stripeCustomerId,
+            return_url: body.returnUrl,
+          });
+
+          return json({
+            url: portalSession.url,
+            redirect: true,
+          });
+        } catch (err: unknown) {
+          throw stripeToApiError(err);
+        }
       },
     }),
   ];

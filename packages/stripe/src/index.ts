@@ -236,6 +236,8 @@ export function createStripeFragmentClients(fragnoConfig: FragnoPublicClientConf
     useProducts: builder.createHook("/admin/products"),
     usePrices: builder.createHook("/admin/products/:productId/prices"),
     useSubscription: builder.createHook("/admin/subscriptions"),
+    // Billing Portal for stripe customer
+    useBillingPortal: builder.createMutator("POST", "/portal"),
     // These clients are for end-users to create/update/cancel their subscriptions
     upgradeSubscription: builder.createMutator("POST", "/subscription/upgrade"),
     cancelSubscription: builder.createMutator("POST", "/subscription/cancel"),

@@ -213,6 +213,29 @@ await mutate({
 });
 ```
 
+## Managing Billing Details
+
+The Stripe fragment provides a `useBillingPortal` mutator that generates a redirect URL for users to
+Stripe's hosted billing portal. This portal can be used to:
+
+- Update payment methods
+- View invoices and payment history
+- Update billing information
+
+```typescript
+const { mutate, error, loading } = stripeClient.useBillingPortal();
+
+const response = await mutate({
+  body: {
+    returnUrl: `${window.location.origin}/account`,
+  },
+});
+
+if (response?.redirect) {
+  window.location.href = response.url; // Redirect to Stripe Billing Portal
+}
+```
+
 ## Manual Synchronization
 
 The subscription table is automatically kept in sync with Stripe through webhook events. However,
