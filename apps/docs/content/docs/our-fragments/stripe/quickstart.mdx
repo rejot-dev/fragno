@@ -64,7 +64,6 @@ export const stripeFragment = createStripeFragment({
 
       // Only used when updating an existing subscription.
       stripeCustomerId: session.user.stripeCustomerId || undefined,
-      subscriptionId: session.user.subscriptionId || undefined,
 
       // Additional metadata to attach to the Stripe customer
       stripeMetadata: {},

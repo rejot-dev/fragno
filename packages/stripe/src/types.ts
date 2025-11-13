@@ -39,10 +39,6 @@ export type StripeEntityData = {
    */
   customerEmail: string;
   /**
-   * The Stripe subscription ID for this entity, if a subscription exists
-   */
-  subscriptionId: string | undefined;
-  /**
    * Custom metadata to be attached to Stripe Customer for this entity
    */
   stripeMetadata: Record<string, string>;
@@ -118,13 +114,13 @@ export interface StripeFragmentServices {
   /**
    * Find all subscriptions for a Stripe customer ID
    */
-  getSubscriptionByStripeCustomerId(stripeCustomerId: string): Promise<SubscriptionResponse[]>;
+  getSubscriptionsByStripeCustomerId(stripeCustomerId: string): Promise<SubscriptionResponse[]>;
   /**
    * Delete a subscription record
    */
   deleteSubscription(id: string): Promise<void>;
 
-  deleteSubscriptionByReferenceId(referenceId: string): Promise<boolean>;
+  deleteSubscriptionsByReferenceId(referenceId: string): Promise<{ success: boolean }>;
   /**
    * Get all subscriptions
    */
@@ -133,7 +129,7 @@ export interface StripeFragmentServices {
    * Get subscriptions by id (internal)
    */
   getSubscriptionById(id: string): Promise<SubscriptionResponse | null>;
-  getSubscriptionByReferenceId(referenceId: string): Promise<SubscriptionResponse | null>;
+  getSubscriptionsByReferenceId(referenceId: string): Promise<SubscriptionResponse[]>;
 
-  syncStripeSubscription(referenceId: string, customerId: string): Promise<void>;
+  syncStripeSubscriptions(referenceId: string, customerId: string): Promise<{ success: boolean }>;
 }

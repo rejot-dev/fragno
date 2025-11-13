@@ -16,6 +16,12 @@ In Stripe's model:
 - A **Subscription** connects a **Customer** (identified by your `referenceId`) to a **Price**
 - A **Product** can have multiple **Prices** (e.g., monthly vs annual)
 
+We assume that 1 reference id is mapped to 1 Stripe Customer, which can have N subscriptions. Note
+that this is required even if you only want a single subscription per customer because cancelling a
+subscription and renewing causes multiple subscription to be created by Stripe. In our API's we
+often make the assumption of a single 'active' subscription, but multiple active subscriptions are
+supported by providing the specific subscription id for a given action like `upgrade` or `cancel`.
+
 <Callout type="info">
   Stripe also has a concept of "plans" but this API is superseded by the more flexible [Prices
   API](https://docs.stripe.com/api/prices). This fragment uses the latter.
@@ -27,7 +33,7 @@ Stripe is the source of truth for subscription state. Never modify subscription 
 tables. All subscription changes (create, update, cancel) should be performed through either this
 fragments `/subscription/upgrade` or `/subscription/cancel` hooks or directly through the Stripe
 API. The database table is updated automatically via webhooks or manually through the
-`syncStripeSubscription` service.
+`syncStripeSubscriptions` service.
 
 ### Security
 
@@ -94,7 +100,7 @@ export function PricingCard({ priceId, planName }: { priceId: string; planName: 
 The Stripe Checkout portal will redirect the user back to `successUrl` after a successful payment,
 at this point the webhook event that registers this payment may not (yet) have arrived. Therefore
 you can create a dedicated success page which fetches the latest subscription status from using the
-`syncStripeSubscription` service to ensure the end-user sees the right result. See
+`syncStripeSubscriptions` service to ensure the end-user sees the right result. See
 [Manual Synchronization](#manual-synchronization) for details.
 
 ### Configuration Requirements
@@ -140,7 +146,6 @@ export const stripeFragment = createStripeFragment({
       referenceId: session.user.id,
       customerEmail: session.user.email,
       stripeCustomerId: session.user.stripeCustomerId || undefined,
-      subscriptionId: session.user.subscriptionId || undefined,
       stripeMetadata: {
         // Additional metadata you want to attach
       },
@@ -151,17 +156,38 @@ export const stripeFragment = createStripeFragment({
 
 ## Retrieving Subscriptions
 
-The fragment exposes a couple of service functions that can be used server-side to query data from
-the subscription table:
+The fragment exposes service functions that can be used server-side to query data from the
+subscription table:
 
 ```typescript
 import { stripeFragment } from "@/lib/stripe";
 
-const subscription = await stripeFragment.services.getSubscriptionByReferenceId(user.id);
-// or
+// Get all subscriptions for a reference ID (e.g., user ID)
+const subscriptions = await stripeFragment.services.getSubscriptionsByReferenceId(user.id);
+
+// Get a specific subscription by ID
 const subscription = await stripeFragment.services.getSubscriptionById(subscriptionId);
-// or
-const subscription = await stripeFragment.services.getSubscriptionByStripeCustomer(customerId);
+
+// Get all subscriptions for a Stripe customer
+const subscriptions = await stripeFragment.services.getSubscriptionsByStripeCustomerId(customerId);
+```
+
+## Handling Multiple Subscriptions
+
+When users have multiple subscriptions, you need to specify which subscription to upgrade or cancel
+using the subscription ID, this is the identifier of the fragments subscription table.
+
+```typescript
+const { mutate } = stripeClient.upgradeSubscription();
+
+await mutate({
+  body: {
+    priceId: "price_new_plan",
+    subscriptionId: subscriptionId,
+    successUrl: `${window.location.origin}/success`,
+    cancelUrl: window.location.href,
+  },
+});
 ```
 
 ## Canceling Subscriptions
@@ -172,7 +198,7 @@ handled through Stripe's Billing Portal, where users confirm their cancellation.
 ```typescript title="components/CancelSubscriptionButton.tsx"
 import { stripeClient } from "@/lib/stripe-client";
 
-export function CancelSubscriptionButton({ subscriptionId }: { subscriptionId: string }) {
+export function CancelSubscriptionButton() {
   const { mutate, loading, error } = stripeClient.cancelSubscription();
 
   const handleCancel = async () => {
@@ -247,10 +273,10 @@ Checkout. They should see their subscription status reflected in your UI immedia
 could arrive a few seconds later, it would be better to get the latest info from Stripe directly on
 the checkout success page.
 
-### Using `syncStripeSubscription`
+### Using `syncStripeSubscriptions`
 
-The fragment provides the `syncStripeSubscription` method as a fragment service. This method will
-fetch the latest subscription from Stripe and write it to your database. If no subscriptions are
+The fragment provides the `syncStripeSubscriptions` method as a fragment service. This method will
+fetch the latest subscriptions from Stripe and write it to your database. If no subscriptions are
 found for a customer, then the subscription will be dropped from the database.
 
 ```typescript
@@ -262,7 +288,7 @@ import { getSession } from "@/lib/auth";
 const session = await getSession();
 
 // Fetch latest subscription data from Stripe and sync to database
-await stripeFragment.services.syncStripeSubscription(
+await stripeFragment.services.syncStripeSubscriptions(
   session.user.id, // referenceId
   session.user.stripeCustomerId, // stripeCustomerId
 );

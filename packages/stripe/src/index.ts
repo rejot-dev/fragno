@@ -47,6 +47,14 @@ export const stripeFragmentDefinition = defineFragmentWithDatabase<StripeFragmen
     });
   });
 
+const asExternalSubscription = <T extends { id: { externalId: string }; status: string }>(
+  subscription: T,
+) => ({
+  ...subscription,
+  id: subscription.id.externalId,
+  status: subscription.status as Stripe.Subscription.Status,
+});
+
 function createStripeServices(
   deps: StripeFragmentDeps,
   db: AbstractQuery<typeof stripeSchema>,
@@ -80,24 +88,16 @@ function createStripeServices(
         return null;
       }
 
-      return {
-        ...result,
-        id: result.id.externalId,
-        status: result.status as Stripe.Subscription.Status,
-      };
+      return asExternalSubscription(result);
     },
-    getSubscriptionByStripeCustomerId: async (stripeCustomerId: string) => {
+    getSubscriptionsByStripeCustomerId: async (stripeCustomerId: string) => {
       return (
         await db.find("subscription", (b) =>
           b.whereIndex("idx_stripe_customer_id", (eb) =>
             eb("stripeCustomerId", "=", stripeCustomerId),
           ),
         )
-      ).map((subscription) => ({
-        ...subscription,
-        id: subscription.id.externalId,
-        status: subscription.status as Stripe.Subscription.Status,
-      }));
+      ).map(asExternalSubscription);
     },
     getSubscriptionById: async (id: string) => {
       const result = await db.findFirst("subscription", (b) =>
@@ -106,31 +106,23 @@ function createStripeServices(
       if (!result) {
         return null;
       }
-      return {
-        ...result,
-        id: result.id.externalId,
-        status: result.status as Stripe.Subscription.Status,
-      };
+      return asExternalSubscription(result);
     },
-    getSubscriptionByReferenceId: async (referenceId: string) => {
-      const result = await db.findFirst("subscription", (b) =>
+    getSubscriptionsByReferenceId: async (referenceId: string) => {
+      const result = await db.find("subscription", (b) =>
         b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
       );
-      if (!result) {
-        return null;
+      if (result.length == 0) {
+        return [];
       }
-      return {
-        ...result,
-        id: result.id.externalId,
-        status: result.status as Stripe.Subscription.Status,
-      };
+      return result.map(asExternalSubscription);
     },
 
     deleteSubscription: async (id: string) => {
       await db.delete("subscription", id);
     },
 
-    deleteSubscriptionByReferenceId: async (referenceId: string) => {
+    deleteSubscriptionsByReferenceId: async (referenceId: string) => {
       const uow = db
         .createUnitOfWork()
         .find("subscription", (b) =>
@@ -138,66 +130,65 @@ function createStripeServices(
         );
 
       const [subscriptions] = await uow.executeRetrieve();
-      const subscription = subscriptions[0];
+      subscriptions.forEach((sub) => sub && uow.delete("subscription", sub.id));
 
-      if (subscription) {
-        uow.delete("subscription", subscription.id);
-
-        const success = await uow.executeMutations();
-        if (!success) {
-          throw new Error("Failed to deleted subscription, conflict on subscription resource");
-        }
-        return true;
-      }
-      return false;
+      return await uow.executeMutations();
     },
 
     getAllSubscriptions: async () => {
       return (await db.find("subscription", (b) => b.whereIndex("primary"))).map(
-        (subscription) => ({
-          ...subscription,
-          id: subscription.id.externalId,
-          status: subscription.status as Stripe.Subscription.Status,
-        }),
+        asExternalSubscription,
       );
     },
 
     /* Retrieve Stripe Subscription and create/update/delete internal entity */
-    syncStripeSubscription: async (referenceId: string, stripeCustomerId: string) => {
+    syncStripeSubscriptions: async (referenceId: string, stripeCustomerId: string) => {
       const stripeSubscriptions = await deps.stripe.subscriptions.list({
         customer: stripeCustomerId,
-        limit: 1,
         status: "all",
       });
 
       if (stripeSubscriptions.data.length === 0) {
-        // No active subscriptions for this customer
-        await services.deleteSubscriptionByReferenceId(referenceId);
-        return;
+        await services.deleteSubscriptionsByReferenceId(referenceId);
+        return { success: true };
       }
 
-      const stripeSubscription = stripeSubscriptions.data[0];
-
-      const existingSubscription = await db.findFirst("subscription", (b) =>
-        b.whereIndex("idx_stripe_subscription_id", (eb) =>
-          eb("stripeSubscriptionId", "=", stripeSubscription.id),
-        ),
-      );
-      if (existingSubscription) {
-        await db.update("subscription", existingSubscription.id, (b) =>
-          b.set({
-            ...stripeSubscriptionToInternalSubscription(stripeSubscription),
-            updatedAt: new Date(),
-          }),
+      const uow = db
+        .createUnitOfWork()
+        .find("subscription", (b) =>
+          b.whereIndex("idx_reference_id", (eb) => eb("referenceId", "=", referenceId)),
         );
-      } else {
-        const subscriptionData = {
-          ...stripeSubscriptionToInternalSubscription(stripeSubscription),
-          referenceId: referenceId ?? null,
-        };
-        await services.createSubscription(subscriptionData);
+
+      const [existingSubscriptions] = await uow.executeRetrieve();
+
+      // Mutation phase: process all Stripe subscriptions (including canceled)
+      for (const stripeSubscription of stripeSubscriptions.data) {
+        const existingSubscription = existingSubscriptions.find(
+          (sub) => sub.stripeSubscriptionId === stripeSubscription.id,
+        );
+
+        if (existingSubscription) {
+          // Update existing subscription with optimistic concurrency control
+          uow.update("subscription", existingSubscription.id, (b) =>
+            b
+              .set({
+                ...stripeSubscriptionToInternalSubscription(stripeSubscription),
+                updatedAt: new Date(),
+              })
+              .check(),
+          );
+        } else {
+          // Create new subscription
+          uow.create("subscription", {
+            ...stripeSubscriptionToInternalSubscription(stripeSubscription),
+            referenceId: referenceId ?? null,
+            updatedAt: new Date(),
+          });
+        }
       }
-      return;
+
+      // Execute all mutations and return result
+      return uow.executeMutations();
     },
   };
   return services;

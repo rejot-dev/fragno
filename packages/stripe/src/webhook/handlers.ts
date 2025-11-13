@@ -194,7 +194,7 @@ export async function customerSubscriptionUpdatedHandler({
 
   // If not found by Stripe ID, try to find by customer ID
   if (!subscription) {
-    const customerSubs = await services.getSubscriptionByStripeCustomerId(customerId);
+    const customerSubs = await services.getSubscriptionsByStripeCustomerId(customerId);
 
     if (customerSubs.length > 1) {
       subscription =
