@@ -21,7 +21,7 @@ export default function DatabaseIntegration() {
       content: (
         <FragnoCodeBlock
           lang="typescript"
-          code={`import { schema, idColumn, column } 
+          code={`import { schema, idColumn, column }
   from "@fragno-dev/db/schema";
 
 export const commentSchema = schema((s) => {
@@ -160,7 +160,7 @@ describe("auth fragment", async () => {
         }
       }
     );
-    
+
     expect(response.data).toMatchObject({
       sessionId: expect.any(String),
       userId: expect.any(String)
@@ -259,7 +259,7 @@ describe("auth fragment", async () => {
           </div>
         </div>
         <Link
-          href="/docs/for-library-authors/database-integration/overview"
+          href="/docs/fragno/for-library-authors/database-integration/overview"
           className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
           Learn More

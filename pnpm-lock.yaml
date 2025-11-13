@@ -83,9 +83,6 @@ importers:
 
   apps/docs:
     dependencies:
-      '@fragno-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/fragno
       '@opennextjs/cloudflare':
         specifier: ^1.9.1
         version: 1.11.0(wrangler@4.45.0)

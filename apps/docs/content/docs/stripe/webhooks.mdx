@@ -34,7 +34,7 @@ https://yourdomain.com/api/stripe/webhook
 ```
 
 Here `/api/stripe` is the default mount path where you have
-[mounted](/docs/our-fragments/stripe/quickstart#2-mount-the-fragment-routes) the Stripe fragment.
+[mounted](/docs/stripe/quickstart#2-mount-the-fragment-routes) the Stripe fragment.
 
 <Callout type="info">
   For local development, you'll need to use the Stripe CLI to forward webhooks. See [Testing
@@ -75,5 +75,4 @@ Then use the webhook secret provided by the CLI in your fragment config.
 
 Webhooks are not guaranteed to be delivered in real-time, therefore there are cases where you may
 need to get the latest subscription information from Stripe directly. See
-[Manual Synchronization](/docs/our-fragments/stripe/subscriptions#manual-synchronization) for
-additional details.
+[Manual Synchronization](/docs/stripe/subscriptions#manual-synchronization) for additional details.

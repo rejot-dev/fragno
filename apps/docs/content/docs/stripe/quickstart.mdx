@@ -1,6 +1,7 @@
 ---
 title: Quick Start
 description: Install and configure the Stripe fragment
+icon: Album
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
@@ -76,8 +77,7 @@ export const stripeFragment = createStripeFragment({
 ```
 
 For additional details on setting up the `onStripeCustomerCreated` and `resolveEntityFromRequest`
-callbacks, see [Subscriptions](docs/our-fragments/stripe/subscriptions#configuration-requirements)
-page.
+callbacks, see [Subscriptions](docs/stripe/subscriptions#configuration-requirements) page.
 
 <Callout type="info">
   **What is `referenceId`?** This is your application's identifier for the entity that owns the
@@ -138,7 +138,7 @@ app.all("/api/stripe/*", (c) => stripeFragment.handler(c.req.raw));
 
 The fragment adds a `stripe_subscription` table to your database. Generate the schema for this table
 using the `fragno-cli`. For setting up Fragno DB schemas, see the
-[Fragno DB Quickstart](/docs/for-users/database-fragments/overview#quick-start).
+[Fragno DB Quickstart](/docs/fragno/for-users/database-fragments/overview#quick-start).
 
 ```npm
 # Generate schema file

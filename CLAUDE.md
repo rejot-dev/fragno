@@ -110,7 +110,7 @@ as a monorepo manager.
 ### Documentation & Examples
 
 - `apps/docs/` - Documentation site (Next.js + Fumadocs)
-  - `content/docs/for-library-authors/` - Building fragments
-  - `content/docs/for-users/` - Integrating fragments
+  - `content/docs/fragno/for-library-authors/` - Building fragments
+  - `content/docs/fragno/for-users/` - Integrating fragments
 - `examples-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
   Vue SPA)

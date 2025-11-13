@@ -79,7 +79,7 @@ function Footer() {
               </li>
               <li>
                 <Link
-                  href="/docs"
+                  href="/docs/fragno"
                   className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                 >
                   Docs

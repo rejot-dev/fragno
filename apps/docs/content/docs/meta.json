@@ -1,15 +1,3 @@
 {
-  "pages": [
-    "---Introduction---",
-    "index",
-    "user-quick-start",
-    "---Reference---",
-    "...reference",
-    "---For Users---",
-    "...for-users",
-    "---For Library Authors---",
-    "...for-library-authors",
-    "---Our Fragments---",
-    "...our-fragments"
-  ]
+  "pages": ["fragno", "stripe"]
 }

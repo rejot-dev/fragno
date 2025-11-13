@@ -1,6 +1,7 @@
-export function FragnoCircle({ className }: { className?: string }) {
+import type { SVGProps } from "react";
+export function FragnoCircle(props: SVGProps<SVGSVGElement>): React.ReactElement {
   return (
-    <svg width="823" height="819" viewBox="0 0 823 819" className={className}>
+    <svg width="823" height="819" viewBox="0 0 823 819" {...props}>
       <clipPath id="cl_4">
         <rect width="823" height="819" />
       </clipPath>
