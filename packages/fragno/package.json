@@ -27,6 +27,16 @@
       "types": "./dist/api/fragment-instantiation.d.ts",
       "default": "./dist/api/fragment-instantiation.js"
     },
+    "./api/fragment-definition-builder": {
+      "development": "./src/api/fragment-definition-builder.ts",
+      "types": "./dist/api/fragment-definition-builder.d.ts",
+      "default": "./dist/api/fragment-definition-builder.js"
+    },
+    "./api/fragment-instantiator": {
+      "development": "./src/api/fragment-instantiator.ts",
+      "types": "./dist/api/fragment-instantiator.d.ts",
+      "default": "./dist/api/fragment-instantiator.js"
+    },
     "./api/route": {
       "development": "./src/api/route.ts",
       "types": "./dist/api/route.d.ts",

@@ -842,7 +842,7 @@ describe("DrizzleAdapter SQLite", () => {
           uow.update("users", foundUser.id, (b) => b.set({ age: newAge }).check());
           return { previousAge: foundUser.age, newAge };
         },
-        onSuccess: async ({ mutationResult }) => {
+        onSuccess: ({ mutationResult }) => {
           // Verify the age was incremented correctly
           expect(mutationResult.newAge).toBe(mutationResult.previousAge! + 1);
         },

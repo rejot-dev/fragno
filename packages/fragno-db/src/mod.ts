@@ -161,10 +161,5 @@ export {
   type ExecuteUnitOfWorkOptions,
 } from "./query/execute-unit-of-work";
 
-export {
-  withUnitOfWork,
-  serviceContext,
-  uowStorage,
-  type DatabaseRequestThisContext,
-} from "./fragment";
+export { withUnitOfWork, serviceContext, type DatabaseRequestThisContext } from "./fragment";
 export { type BoundServices } from "./bind-services";

@@ -6,6 +6,8 @@ export default defineConfig({
     "./src/api/api.ts",
     "./src/api/fragment-builder.ts",
     "./src/api/fragment-instantiation.ts",
+    "./src/api/fragment-definition-builder.ts",
+    "./src/api/fragment-instantiator.ts",
     "./src/api/route.ts",
     "./src/client/client.ts",
     "./src/client/vanilla.ts",
