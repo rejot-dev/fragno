@@ -48,27 +48,50 @@ export const subscriptionsRoutesFactory = defineRoutes<
         "SUBSCRIPTION_UPDATE_NOT_ALLOWED",
         "SUBSCRIPTION_UPDATE_PROMO_CODE_NOT_ALLOWED",
         "PROMOTION_CODE_CUSTOMER_NOT_FIRST_TIME",
+        "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
+        "NO_ACTIVE_SUBSCRIPTIONS",
       ] as const,
       handler: async (context, { json, error }) => {
         const body = await context.input.valid();
-        const user = await config.resolveEntityFromRequest(context);
+        const entity = await config.resolveEntityFromRequest(context);
 
-        let customerId: string | undefined = user.stripeCustomerId;
+        let customerId: string | undefined = entity.stripeCustomerId;
         let existingSubscription: SubscriptionResponse | null = null;
 
-        // Step 1: Check if upgrading or creating subscription
-        if (user.subscriptionId) {
-          existingSubscription = await services.getSubscriptionById(user.subscriptionId);
+        // Step 1: Get active subscriptions
+        if (entity.stripeCustomerId) {
+          const existingSubscriptions = await services.getSubscriptionsByStripeCustomerId(
+            entity.stripeCustomerId,
+          );
 
-          if (!existingSubscription) {
+          // Cannot upgrade cancelled subscriptions
+          let activeSubscriptions = existingSubscriptions.filter((s) => s.status !== "canceled");
+
+          // A specific subscription has been specified
+          if (body.subscriptionId) {
+            activeSubscriptions = activeSubscriptions.filter((s) => s.id === body.subscriptionId);
+          }
+
+          if (activeSubscriptions.length > 1) {
             return error(
               {
-                message: "Could not retrieve existing subscription",
-                code: "SUBSCRIPTION_NOT_FOUND",
+                message:
+                  "Multiple active subscriptions found for customer, please specify which subscription to upgrade",
+                code: "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
               },
-              404,
+              400,
             );
           }
+          if (activeSubscriptions.length === 0) {
+            return error(
+              {
+                message: "No active subscriptions found for customer",
+                code: "NO_ACTIVE_SUBSCRIPTIONS",
+              },
+              400,
+            );
+          }
+          existingSubscription = activeSubscriptions[0];
 
           if (
             customerId &&
@@ -91,7 +114,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
         // Step 2: Get or Create customer if not found
         if (!customerId) {
           const existingLinkedCustomer = await deps.stripe.customers.search({
-            query: `metadata['referenceId']:'${user.referenceId}'`,
+            query: `metadata['referenceId']:'${entity.referenceId}'`,
             limit: 1,
           });
 
@@ -102,7 +125,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
             // Create new Stripe Customer
 
             // Check if sufficient data is provided for this scenario
-            if (!user.customerEmail || !user.referenceId) {
+            if (!entity.customerEmail || !entity.referenceId) {
               return error({
                 message:
                   "New Stripe Customer must be created, but customerEmail or referenceID has not been provided",
@@ -111,10 +134,10 @@ export const subscriptionsRoutesFactory = defineRoutes<
             }
 
             const newCustomer = await deps.stripe.customers.create({
-              email: user.customerEmail,
+              email: entity.customerEmail,
               metadata: {
-                referenceId: user.referenceId,
-                ...user.stripeMetadata,
+                referenceId: entity.referenceId,
+                ...entity.stripeMetadata,
               },
             });
             customerId = newCustomer.id;
@@ -122,7 +145,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
 
           // Communicate back to the user that a customer has been created/linked
           try {
-            await config.onStripeCustomerCreated(customerId, user.referenceId);
+            await config.onStripeCustomerCreated(customerId, entity.referenceId);
           } catch (error) {
             deps.log.error("onStripeCustomerCreated failed!", error);
           }
@@ -215,7 +238,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
           ],
           mode: "subscription",
           metadata: {
-            referenceId: user.referenceId,
+            referenceId: entity.referenceId,
           },
           ...(promotionCodeId && {
             discounts: [{ promotion_code: promotionCodeId }],
@@ -234,6 +257,10 @@ export const subscriptionsRoutesFactory = defineRoutes<
       path: "/subscription/cancel",
       inputSchema: z.object({
         returnUrl: z.url().describe("URL to redirect to after cancellation is complete"),
+        subscriptionId: z
+          .string()
+          .optional()
+          .describe("Which subscription to cancel, if there are multiple active subscriptions"),
       }),
       outputSchema: z.object({
         url: z.url().describe("URL to redirect to after cancellation"),
@@ -243,52 +270,52 @@ export const subscriptionsRoutesFactory = defineRoutes<
         "SUBSCRIPTION_NOT_FOUND",
         "NO_SUBSCRIPTION_TO_CANCEL",
         "SUBSCRIPTION_ALREADY_CANCELED",
+        "NO_STRIPE_CUSTOMER_LINKED",
+        "MULTIPLE_SUBSCRIPTIONS_FOUND",
       ] as const,
       handler: async (context, { json, error }) => {
         const body = await context.input.valid();
-        const { subscriptionId } = await config.resolveEntityFromRequest(context);
+        const { stripeCustomerId } = await config.resolveEntityFromRequest(context);
 
-        if (!subscriptionId) {
+        if (!stripeCustomerId) {
           return error(
-            { message: "No subscription to cancel", code: "NO_SUBSCRIPTION_TO_CANCEL" },
+            { message: "No stripe customer linked to entity", code: "NO_STRIPE_CUSTOMER_LINKED" },
+            400,
+          );
+        }
+
+        let activeSubscriptions = (
+          await services.getSubscriptionsByStripeCustomerId(stripeCustomerId)
+        ).filter((s) => s.status === "active");
+
+        // A specific active subscription was requested
+        if (body.subscriptionId) {
+          activeSubscriptions = activeSubscriptions.filter((s) => s.id === body.subscriptionId);
+        }
+
+        if (activeSubscriptions.length === 0) {
+          return error(
+            { message: "No active subscription to cancel", code: "NO_SUBSCRIPTION_TO_CANCEL" },
             404,
           );
         }
 
-        // Get the subscription from our database
-        const subscription = await services.getSubscriptionById(subscriptionId);
-
-        if (!subscription) {
+        if (activeSubscriptions.length > 1) {
           return error(
             {
-              message: "Subscription not found",
-              code: "SUBSCRIPTION_NOT_FOUND",
-            },
-            404,
-          );
-        }
-
-        // Check if already canceled
-        if (subscription.status === "canceled") {
-          return error(
-            {
-              message: "Subscription is already canceled",
-              code: "SUBSCRIPTION_ALREADY_CANCELED",
+              message: "Multiple active subscriptions found",
+              code: "MULTIPLE_SUBSCRIPTIONS_FOUND",
             },
             400,
           );
         }
 
+        const activeSubscription = activeSubscriptions[0];
+
         try {
           // Get active subscriptions from Stripe for this customer
-          const activeSubscriptions = await deps.stripe.subscriptions.list({
-            customer: subscription.stripeCustomerId,
-            status: "active",
-          });
-
-          // Find the specific subscription in Stripe
-          const stripeSubscription = activeSubscriptions.data.find(
-            (sub) => sub.id === subscription.stripeSubscriptionId,
+          const stripeSubscription = await deps.stripe.subscriptions.retrieve(
+            activeSubscription.stripeSubscriptionId,
           );
 
           if (!stripeSubscription) {
@@ -304,7 +331,6 @@ export const subscriptionsRoutesFactory = defineRoutes<
           // Check if subscription is already set to cancel at period end
           if (stripeSubscription.cancel_at_period_end) {
             // Already scheduled for cancellation, just return success
-            // Optionally update our database to reflect this state
             return json({
               url: "", // No redirect needed
               redirect: false,
@@ -313,7 +339,7 @@ export const subscriptionsRoutesFactory = defineRoutes<
 
           // Create billing portal session for cancellation
           const portalSession = await deps.stripe.billingPortal.sessions.create({
-            customer: subscription.stripeCustomerId!,
+            customer: activeSubscription.stripeCustomerId!,
             return_url: body.returnUrl,
             flow_data: {
               type: "subscription_cancel",

@@ -34,6 +34,12 @@ export const SubscriptionUpgradeRequestSchema = z.object({
   cancelUrl: z.url().describe("Redirect URL if checkout is cancelled"),
   returnUrl: z.string().optional().describe("Return URL for billing portal"),
   promotionCode: z.string().optional().describe("Promotion code to apply"),
+  subscriptionId: z
+    .string()
+    .optional()
+    .describe(
+      "Subscription ID to upgrade, if none provided assume the active subscription of the user.",
+    ),
 });
 
 export type SubscriptionResponse = z.infer<typeof SubscriptionReponseSchema>;

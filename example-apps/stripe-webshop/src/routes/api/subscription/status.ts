@@ -12,7 +12,7 @@ export const Route = createFileRoute("/api/subscription/status")({
 
         if (session?.user?.id && session?.user?.stripeCustomerId) {
           // Sync subscription from Stripe to ensure database is up-to-date
-          await stripeFragment.services.syncStripeSubscription(
+          await stripeFragment.services.syncStripeSubscriptions(
             session.user.id,
             session.user.stripeCustomerId,
           );

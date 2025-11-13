@@ -10,7 +10,6 @@ const mockCustomersCreate = vi.fn();
 const mockCheckoutSessionsCreate = vi.fn();
 const mockSubscriptionsRetrieve = vi.fn();
 const mockBillingPortalSessionsCreate = vi.fn();
-const mockSubscriptionsList = vi.fn();
 const mockOnStripeCustomerCreated = vi.fn();
 
 // Mock resolveEntityFromRequest function - can be configured per test
@@ -31,7 +30,6 @@ vi.mock("stripe", () => {
       },
       subscriptions: {
         retrieve: mockSubscriptionsRetrieve,
-        list: mockSubscriptionsList,
       },
       billingPortal: {
         sessions: {
@@ -321,9 +319,8 @@ describe("subscription handlers", async () => {
       // Mock auth middleware to return user with non-existent subscription
       mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
-        stripeCustomerId: "cus_123",
+        stripeCustomerId: "this_customer_does_not_exist",
         customerEmail: "user@example.com",
-        subscriptionId: "nonexistent_id",
         stripeMetadata: {},
       });
 
@@ -338,8 +335,8 @@ describe("subscription handlers", async () => {
 
       expect(response.type).toBe("error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("SUBSCRIPTION_NOT_FOUND");
-        expect(response.status).toBe(404);
+        expect(response.error.code).toBe("NO_ACTIVE_SUBSCRIPTIONS");
+        expect(response.status).toBe(400);
       }
     });
   });
@@ -347,10 +344,10 @@ describe("subscription handlers", async () => {
   describe("POST /subscription/cancel", () => {
     test("should cancel active subscription", async () => {
       // Create active subscription
-      const subscription = await fragment.services.createSubscription({
+      await fragment.services.createSubscription({
         referenceId: "user_123",
         stripePriceId: "price_123",
-        stripeCustomerId: "cus_123",
+        stripeCustomerId: "cust_active_1",
         stripeSubscriptionId: "sub_123",
         status: "active",
         periodStart: new Date(),
@@ -365,22 +362,17 @@ describe("subscription handlers", async () => {
       // Mock auth middleware to return user with active subscription
       mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
-        stripeCustomerId: "cus_123",
+        stripeCustomerId: "cust_active_1",
         customerEmail: "user@example.com",
-        subscriptionId: subscription,
         stripeMetadata: {},
       });
 
-      // Mock: List active subscriptions
-      mockSubscriptionsList.mockResolvedValue({
-        data: [
-          {
-            id: "sub_123",
-            status: "active",
-            cancel_at_period_end: false,
-          } as Stripe.Subscription,
-        ],
-      });
+      // Mock: Retrieve subscription from Stripe
+      mockSubscriptionsRetrieve.mockResolvedValue({
+        id: "sub_123",
+        status: "active",
+        cancel_at_period_end: false,
+      } as Stripe.Subscription);
 
       // Mock: Create billing portal session for cancellation
       mockBillingPortalSessionsCreate.mockResolvedValue({
@@ -402,7 +394,7 @@ describe("subscription handlers", async () => {
       }
 
       expect(mockBillingPortalSessionsCreate).toHaveBeenCalledWith({
-        customer: "cus_123",
+        customer: "cust_active_1",
         return_url: "https://example.com/return",
         flow_data: expect.objectContaining({
           type: "subscription_cancel",
@@ -414,9 +406,8 @@ describe("subscription handlers", async () => {
       // Mock auth middleware to return user with non-existent subscription
       mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
-        stripeCustomerId: "cus_123",
+        stripeCustomerId: "this_customer_does_not_exist",
         customerEmail: "user@example.com",
-        subscriptionId: "nonexistent_id",
         stripeMetadata: {},
       });
 
@@ -428,17 +419,17 @@ describe("subscription handlers", async () => {
 
       expect(response.type).toBe("error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("SUBSCRIPTION_NOT_FOUND");
+        expect(response.error.code).toBe("NO_SUBSCRIPTION_TO_CANCEL");
         expect(response.status).toBe(404);
       }
     });
 
     test("should return error when subscription already canceled", async () => {
       // Create canceled subscription
-      const subscription = await fragment.services.createSubscription({
+      await fragment.services.createSubscription({
         referenceId: "user_123",
         stripePriceId: "price_123",
-        stripeCustomerId: "cus_123",
+        stripeCustomerId: "cus_of_cancelled_sub",
         stripeSubscriptionId: "sub_123",
         status: "canceled",
         periodStart: new Date(),
@@ -453,9 +444,8 @@ describe("subscription handlers", async () => {
       // Mock auth middleware to return user with canceled subscription
       mockResolveEntityFromRequest.mockResolvedValue({
         referenceId: "user_123",
-        stripeCustomerId: "cus_123",
+        stripeCustomerId: "cus_of_cancelled_sub",
         customerEmail: "user@example.com",
-        subscriptionId: subscription,
         stripeMetadata: {},
       });
 
@@ -467,8 +457,64 @@ describe("subscription handlers", async () => {
 
       expect(response.type).toBe("error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("SUBSCRIPTION_ALREADY_CANCELED");
+        expect(response.error.code).toBe("NO_SUBSCRIPTION_TO_CANCEL");
+        expect(response.status).toBe(404);
+      }
+    });
+
+    test("should handle multiple active subscriptions", async () => {
+      const subscriptionData = {
+        referenceId: "user_123",
+        stripePriceId: "price_123",
+        stripeCustomerId: "customer_of_multiple_subscriptions",
+        stripeSubscriptionId: "sub_123",
+        status: "active",
+        periodStart: new Date(),
+        periodEnd: new Date(),
+        trialStart: null,
+        trialEnd: null,
+        cancelAtPeriodEnd: false,
+        cancelAt: null,
+        seats: 1,
+      };
+      const sub1 = await fragment.services.createSubscription(subscriptionData);
+      const _sub2 = await fragment.services.createSubscription({
+        ...subscriptionData,
+        stripeSubscriptionId: "sub_456",
+      });
+
+      mockResolveEntityFromRequest.mockResolvedValue({
+        referenceId: "user_123",
+        stripeCustomerId: "customer_of_multiple_subscriptions",
+        customerEmail: "user@example.com",
+        stripeMetadata: {},
+      });
+
+      const response = await fragment.callRoute("POST", "/subscription/cancel", {
+        body: {
+          returnUrl: "https://example.com/return",
+        },
+      });
+
+      expect(response.type).toBe("error");
+      if (response.type === "error") {
+        expect(response.error.code).toBe("MULTIPLE_SUBSCRIPTIONS_FOUND");
         expect(response.status).toBe(400);
+      }
+
+      const response2 = await fragment.callRoute("POST", "/subscription/cancel", {
+        body: {
+          returnUrl: "https://example.com/return",
+          subscriptionId: sub1,
+        },
+      });
+
+      expect(response2.type).toBe("json");
+      if (response2.type === "json") {
+        expect(response2.data).toEqual({
+          url: "https://billing.stripe.com/cancel",
+          redirect: true,
+        });
       }
     });
   });

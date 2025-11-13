@@ -135,7 +135,7 @@ describe("Stripe Fragment Services", async () => {
     });
   });
 
-  describe("getSubscriptionByStripeCustomerId", () => {
+  describe("getSubscriptionsByStripeCustomerId", () => {
     test("should retrieve subscriptions by Stripe customer ID", async () => {
       await fragment.services.createSubscription({
         referenceId: "user_123",
@@ -167,7 +167,7 @@ describe("Stripe Fragment Services", async () => {
         seats: 2,
       });
 
-      const results = await fragment.services.getSubscriptionByStripeCustomerId("cus_shared_123");
+      const results = await fragment.services.getSubscriptionsByStripeCustomerId("cus_shared_123");
 
       expect(results).toHaveLength(2);
       expect(results[0].stripeCustomerId).toBe("cus_shared_123");
@@ -175,7 +175,7 @@ describe("Stripe Fragment Services", async () => {
     });
 
     test("should return empty array for non-existent customer", async () => {
-      const results = await fragment.services.getSubscriptionByStripeCustomerId("cus_nonexistent");
+      const results = await fragment.services.getSubscriptionsByStripeCustomerId("cus_nonexistent");
 
       expect(results).toEqual([]);
     });
@@ -212,7 +212,7 @@ describe("Stripe Fragment Services", async () => {
     });
   });
 
-  describe("getSubscriptionByReferenceId", () => {
+  describe("getSubscriptionsByReferenceId", () => {
     test("should retrieve subscription by reference ID", async () => {
       await fragment.services.createSubscription({
         referenceId: "user_unique_789",
@@ -229,16 +229,16 @@ describe("Stripe Fragment Services", async () => {
         seats: 1,
       });
 
-      const result = await fragment.services.getSubscriptionByReferenceId("user_unique_789");
+      const result = await fragment.services.getSubscriptionsByReferenceId("user_unique_789");
 
-      expect(result).not.toBeNull();
-      expect(result?.referenceId).toBe("user_unique_789");
+      expect(result).toHaveLength(1);
+      expect(result[0].referenceId).toBe("user_unique_789");
     });
 
-    test("should return null for non-existent reference ID", async () => {
-      const result = await fragment.services.getSubscriptionByReferenceId("user_nonexistent");
+    test("should return empty array for non-existent reference ID", async () => {
+      const result = await fragment.services.getSubscriptionsByReferenceId("user_nonexistent");
 
-      expect(result).toBeNull();
+      expect(result).toEqual([]);
     });
   });
 
@@ -325,36 +325,59 @@ describe("Stripe Fragment Services", async () => {
     });
   });
 
-  describe("deleteSubscriptionByReferenceId", () => {
+  describe("deleteSubscriptionsByReferenceId", () => {
+    const testingSub = {
+      stripePriceId: "price_123",
+      stripeCustomerId: "cus_123",
+      stripeSubscriptionId: "sub_123",
+      status: "active" as Stripe.Subscription.Status,
+      periodStart: new Date(),
+      periodEnd: new Date(),
+      trialStart: null,
+      trialEnd: null,
+      cancelAtPeriodEnd: false,
+      cancelAt: null,
+      seats: 1,
+    };
+
     test("should delete subscription by reference ID", async () => {
       await fragment.services.createSubscription({
+        ...testingSub,
         referenceId: "user_ref_delete_123",
-        stripePriceId: "price_123",
-        stripeCustomerId: "cus_123",
-        stripeSubscriptionId: "sub_123",
-        status: "active" as Stripe.Subscription.Status,
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        trialStart: null,
-        trialEnd: null,
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-        seats: 1,
       });
 
-      const deleted =
-        await fragment.services.deleteSubscriptionByReferenceId("user_ref_delete_123");
-      expect(deleted).toBe(true);
+      const { success } =
+        await fragment.services.deleteSubscriptionsByReferenceId("user_ref_delete_123");
+      expect(success).toBe(true);
 
-      const result = await fragment.services.getSubscriptionByReferenceId("user_ref_delete_123");
+      const result = await fragment.services.getSubscriptionsByReferenceId("user_ref_delete_123");
 
-      expect(result).toBeNull();
+      expect(result).toEqual([]);
     });
 
-    test("should not throw error when deleting non-existent reference ID", async () => {
-      await expect(
-        fragment.services.deleteSubscriptionByReferenceId("user_nonexistent_ref"),
-      ).resolves.not.toThrow();
+    test("should delete all subscriptions for one reference ID", async () => {
+      const referenceId = "user_ref_delete_123";
+      await fragment.services.createSubscription({
+        ...testingSub,
+        referenceId,
+      });
+      await fragment.services.createSubscription({
+        ...testingSub,
+        referenceId,
+        stripeSubscriptionId: "sub_456",
+      });
+      const { success } = await fragment.services.deleteSubscriptionsByReferenceId(referenceId);
+      expect(success).toBe(true);
+
+      const result = await fragment.services.getSubscriptionsByReferenceId(referenceId);
+
+      expect(result).toEqual([]);
+    });
+
+    test("should return true when deleting non-existent reference ID", async () => {
+      const { success } =
+        await fragment.services.deleteSubscriptionsByReferenceId("user_nonexistent_ref");
+      expect(success).toBe(true);
     });
   });
 
