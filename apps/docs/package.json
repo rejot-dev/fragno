@@ -12,7 +12,6 @@
     "cf-typegen": "pnpm run types:generate"
   },
   "dependencies": {
-    "@fragno-dev/core": "workspace:*",
     "@opennextjs/cloudflare": "^1.9.1",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.13",

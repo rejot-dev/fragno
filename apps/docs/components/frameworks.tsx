@@ -59,7 +59,7 @@ export default function Frameworks({ className }: { className?: string }) {
         name: "Go to Docs",
         element: (
           <a
-            href="/docs/reference/frameworks"
+            href="/docs/fragno/reference/frameworks"
             className="flex size-12 items-center justify-center rounded-md border border-dashed border-gray-300 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
           >
             More
@@ -128,7 +128,7 @@ export default function Frameworks({ className }: { className?: string }) {
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Frameworks</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
           These frameworks{" "}
-          <a href="/docs/reference/frameworks" className="text-blue-500 hover:underline">
+          <a href="/docs/fragno/reference/frameworks" className="text-blue-500 hover:underline">
             and more
           </a>{" "}
           are already supported

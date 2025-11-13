@@ -73,7 +73,7 @@ function Hero() {
 
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
         <Link
-          href="/docs"
+          href="/docs/fragno"
           className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
         >
           View Docs
@@ -394,7 +394,7 @@ function DocsSection() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <Link
-          href="/docs/user-quick-start"
+          href="/docs/fragno/user-quick-start"
           className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
         >
           <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-gray-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-gray-400/15" />
@@ -415,7 +415,7 @@ function DocsSection() {
         </Link>
 
         <Link
-          href="/docs/for-library-authors/getting-started"
+          href="/docs/fragno/for-library-authors/getting-started"
           className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
         >
           <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-gray-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-gray-400/15" />

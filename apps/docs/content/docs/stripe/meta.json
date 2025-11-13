@@ -1,0 +1,15 @@
+{
+  "title": "Stripe",
+  "description": "The Stripe Fragment",
+  "icon": "Stripe",
+  "root": true,
+  "pages": [
+    "---Introduction---",
+    "index",
+    "quickstart",
+    "---Routes---",
+    "subscriptions",
+    "webhooks",
+    "admin-hooks"
+  ]
+}

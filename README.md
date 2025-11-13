@@ -34,7 +34,7 @@ pnpm add @fragno-dev/core
 Full documentation is available at [fragno.dev](https://fragno.dev/docs).
 
 - If you're looking to build a Fragment, see the
-  [For Library Authors](https://fragno.dev/docs/for-library-authors/getting-started) section.
+  [For Library Authors](https://fragno.dev/docs/fragno/for-library-authors/getting-started) section.
 - If you're looking to integrate a Fragment into your project, see the
   [User Quick Start](https://fragno.dev/docs/user-quick-start) section.
 

@@ -40,7 +40,7 @@ export function createMyFragment(
 ```
 
 For complete database documentation, see:
-https://fragno.dev/docs/for-library-authors/database-integration/overview.md
+https://fragno.dev/docs/fragno/for-library-authors/database-integration/overview.md
 
 ## File Structure & Core Concepts
 
