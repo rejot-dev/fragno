@@ -267,12 +267,23 @@ export type ExtractThisContext<T> =
 // ============================================================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyNewFragmentDefinition = NewFragmentDefinition<any, any, any, any, any, any, any>;
+export type AnyNewFragmentDefinition = NewFragmentDefinition<
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any // eslint-disable-line @typescript-eslint/no-explicit-any
+>;
 
 // Extract config from NewFragmentDefinition
 export type ExtractNewFragmentConfig<T> =
   T extends NewFragmentDefinition<
     infer TConfig,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -304,6 +315,8 @@ export type ExtractNewFragmentDeps<T> =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any
   >
     ? TDeps
@@ -320,6 +333,8 @@ export type ExtractNewFragmentServices<T> =
     any,
     infer TBaseServices,
     infer TServices,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -343,7 +358,9 @@ export type ExtractNewFragmentThisContext<T> =
     any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
-    infer TThisContext
+    infer TThisContext,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any
   >
     ? TThisContext
     : RequestThisContext;
@@ -673,7 +690,9 @@ export function defineRoutesNew<
         StandardSchemaV1 | undefined,
         string,
         string,
-        RequestThisContext
+        TDefinition extends AnyNewFragmentDefinition
+          ? ExtractNewFragmentThisContext<TDefinition>
+          : RequestThisContext
       >[],
     >(
       fn: (
@@ -684,7 +703,36 @@ export function defineRoutesNew<
             ? ExtractNewFragmentServices<TDefinition>
             : {}
         > & {
-          defineRoute: typeof defineRoute;
+          defineRoute: <
+            const TMethod extends HTTPMethod,
+            const TPath extends string,
+            const TInputSchema extends StandardSchemaV1 | undefined,
+            const TOutputSchema extends StandardSchemaV1 | undefined,
+            const TErrorCode extends string = string,
+            const TQueryParameters extends string = string,
+          >(
+            config: FragnoRouteConfig<
+              TMethod,
+              TPath,
+              TInputSchema,
+              TOutputSchema,
+              TErrorCode,
+              TQueryParameters,
+              TDefinition extends AnyNewFragmentDefinition
+                ? ExtractNewFragmentThisContext<TDefinition>
+                : RequestThisContext
+            >,
+          ) => FragnoRouteConfig<
+            TMethod,
+            TPath,
+            TInputSchema,
+            TOutputSchema,
+            TErrorCode,
+            TQueryParameters,
+            TDefinition extends AnyNewFragmentDefinition
+              ? ExtractNewFragmentThisContext<TDefinition>
+              : RequestThisContext
+          >;
         },
       ) => TRoutes,
     ): RouteFactory<

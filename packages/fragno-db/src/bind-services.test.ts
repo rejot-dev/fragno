@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { bindServicesToContext } from "./bind-services";
 import { withUnitOfWork, type DatabaseRequestThisContext } from "./fragment";
-import type { IUnitOfWorkBase } from "./query/unit-of-work";
-import { schema, idColumn } from "./schema/create";
+import type { IUnitOfWorkBase, UnitOfWorkSchemaView } from "./query/unit-of-work";
+import { schema, idColumn, type AnySchema } from "./schema/create";
 
 // Create a simple test schema for tests
 const testSchema = schema((s) => {
@@ -10,6 +10,25 @@ const testSchema = schema((s) => {
     return t.addColumn("id", idColumn());
   });
 });
+
+// Helper to create a mock context with getUnitOfWork
+function createMockContext(mockUow: IUnitOfWorkBase): DatabaseRequestThisContext {
+  // Create properly overloaded function
+  function getUnitOfWork(): IUnitOfWorkBase;
+  function getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
+  function getUnitOfWork<TSchema extends AnySchema>(
+    schema?: TSchema,
+  ): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
+    if (schema) {
+      return mockUow.forSchema(schema);
+    }
+    return mockUow;
+  }
+
+  return {
+    getUnitOfWork,
+  };
+}
 
 describe("bindServicesToContext", () => {
   it("should bind simple function to context", async () => {
@@ -25,7 +44,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     const result = await withUnitOfWork(mockUow, () => bound.testMethod());
 
@@ -48,7 +68,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     await withUnitOfWork(mockUow, () => {
       expect(bound.method1()).toBe(mockSchemaView);
@@ -71,7 +92,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     const result = await withUnitOfWork(mockUow, () => bound.nested.method());
 
@@ -108,7 +130,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     const result = await withUnitOfWork(mockUow, () => bound.testMethod("hello", 123));
 
@@ -131,7 +154,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     const result = await withUnitOfWork(mockUow, async () => await bound.asyncMethod());
 
@@ -171,7 +195,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     const result = await withUnitOfWork(mockUow, () => bound.level1.level2.level3.method());
 
@@ -195,7 +220,8 @@ describe("bindServicesToContext", () => {
       },
     };
 
-    const bound = bindServicesToContext(services);
+    const context = createMockContext(mockUow);
+    const bound = bindServicesToContext(services, context);
 
     await withUnitOfWork(mockUow, () => {
       expect(bound.getUow()).toBe(mockSchemaView);

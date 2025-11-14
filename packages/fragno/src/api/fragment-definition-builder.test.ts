@@ -111,33 +111,6 @@ describe("FragmentDefinitionBuilder", () => {
 
       expect(definition.baseServices).toBeDefined();
     });
-
-    it("should allow setting request context with withRequestContext", () => {
-      const definition = defineFragment("test-fragment")
-        .withRequestContext(() => ({
-          thisContext: { myThisNumber: 0, myThisString: "test" },
-          wrapRequest: <T>(cb: () => Promise<T>) => cb(),
-        }))
-        .providesBaseService(({ defineService }) =>
-          defineService({
-            increment: function () {
-              expectTypeOf(this).toMatchObjectType<{
-                myThisNumber: number;
-                myThisString: string;
-              }>();
-
-              this.myThisNumber++;
-              return this.myThisNumber;
-            },
-          }),
-        )
-        .build();
-
-      expect(definition.createRequestContext).toBeDefined();
-      const context = definition.createRequestContext!({});
-      expect(context.thisContext.myThisNumber).toBe(0);
-      expect(context.thisContext.myThisString).toBe("test");
-    });
   });
 
   describe("providesService", () => {

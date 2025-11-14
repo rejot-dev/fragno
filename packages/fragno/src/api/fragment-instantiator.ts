@@ -24,6 +24,8 @@ import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
 import type { InferOrUnknown } from "../util/types-util";
 import type { NewFragmentDefinition } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./fragment-instantiation";
+import { RequestContextStorage } from "./request-context-storage";
+import { bindServicesToContext, type BoundServices } from "./bind-services";
 
 type AstroHandlers = {
   ALL: (req: Request) => Promise<Response>;
@@ -93,6 +95,7 @@ export class NewFragnoInstantiatedFragment<
   TDeps,
   TServices extends Record<string, unknown>,
   TThisContext extends RequestThisContext,
+  TRequestStorage = {},
 > {
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
@@ -104,10 +107,9 @@ export class NewFragnoInstantiatedFragment<
   #mountRoute: string;
   #router: ReturnType<typeof createRouter>;
   #middlewareHandler?: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>;
-  #requestContext?: {
-    thisContext: TThisContext;
-    wrapRequest: <T>(cb: () => Promise<T>) => Promise<T>;
-  };
+  #thisContext?: TThisContext;
+  #contextStorage: RequestContextStorage<TRequestStorage>;
+  #createRequestStorage?: () => TRequestStorage;
 
   constructor(params: {
     name: string;
@@ -115,17 +117,18 @@ export class NewFragnoInstantiatedFragment<
     deps: TDeps;
     services: TServices;
     mountRoute: string;
-    requestContext?: {
-      thisContext: TThisContext;
-      wrapRequest: <T>(cb: () => Promise<T>) => Promise<T>;
-    };
+    thisContext?: TThisContext;
+    storage: RequestContextStorage<TRequestStorage>;
+    createRequestStorage?: () => TRequestStorage;
   }) {
     this.#name = params.name;
     this.#routes = params.routes;
     this.#deps = params.deps;
     this.#services = params.services;
     this.#mountRoute = params.mountRoute;
-    this.#requestContext = params.requestContext;
+    this.#thisContext = params.thisContext;
+    this.#contextStorage = params.storage;
+    this.#createRequestStorage = params.createRequestStorage;
 
     // Build router
     this.#router =
@@ -182,6 +185,47 @@ export class NewFragnoInstantiatedFragment<
     }
     this.#middlewareHandler = handler;
     return this;
+  }
+
+  /**
+   * Run a callback within the fragment's request context with initialized storage.
+   * This is a shared helper used by inContext(), handler(), and callRouteRaw().
+   * @private
+   */
+  #withRequestStorage<T>(callback: () => T): T;
+  #withRequestStorage<T>(callback: () => Promise<T>): Promise<T>;
+  #withRequestStorage<T>(callback: () => T | Promise<T>): T | Promise<T> {
+    if (!this.#thisContext) {
+      // No request context configured - just run callback directly
+      return callback();
+    }
+
+    // Initialize storage with fresh data for this request
+    const storageData = this.#createRequestStorage
+      ? this.#createRequestStorage()
+      : ({} as TRequestStorage);
+    return this.#contextStorage.run(storageData, callback);
+  }
+
+  /**
+   * Execute a callback within a request context.
+   * Establishes an async context for the duration of the callback, allowing services
+   * to access the `this` context. Useful for calling services outside of route handlers
+   * (e.g., in tests, background jobs).
+   *
+   * @param callback - The callback to run within the context
+   *
+   * @example
+   * ```typescript
+   * const result = await fragment.inContext(() => {
+   *   return fragment.services.someMethod();
+   * });
+   * ```
+   */
+  inContext<T>(callback: () => T): T;
+  inContext<T>(callback: () => Promise<T>): Promise<T>;
+  inContext<T>(callback: () => T | Promise<T>): T | Promise<T> {
+    return this.#withRequestStorage(callback);
   }
 
   /**
@@ -324,12 +368,8 @@ export class NewFragnoInstantiatedFragment<
       return this.#executeHandler(req, route, requestState, rawBody);
     };
 
-    // Wrap with request context if provided
-    if (this.#requestContext?.wrapRequest) {
-      return this.#requestContext.wrapRequest(executeRequest);
-    }
-
-    return executeRequest();
+    // Wrap with request storage context if provided
+    return this.#withRequestStorage(executeRequest);
   }
 
   /**
@@ -409,7 +449,7 @@ export class NewFragnoInstantiatedFragment<
     // Execute handler
     const executeHandler = async (): Promise<Response> => {
       try {
-        const thisContext = this.#requestContext?.thisContext ?? ({} as RequestThisContext);
+        const thisContext = this.#thisContext ?? ({} as RequestThisContext);
         return await route.handler.call(thisContext, inputContext, outputContext);
       } catch (error) {
         console.error("Error in callRoute handler", error);
@@ -425,12 +465,8 @@ export class NewFragnoInstantiatedFragment<
       }
     };
 
-    // Wrap with request context if provided
-    if (this.#requestContext?.wrapRequest) {
-      return this.#requestContext.wrapRequest(executeHandler);
-    }
-
-    return executeHandler();
+    // Wrap with request storage context if provided
+    return this.#withRequestStorage(executeHandler);
   }
 
   /**
@@ -509,10 +545,17 @@ export class NewFragnoInstantiatedFragment<
     const outputContext = new RequestOutputContext(outputSchema);
 
     try {
-      // Use request context's thisContext if available
-      const thisContext = this.#requestContext?.thisContext ?? ({} as RequestThisContext);
-      const result = await handler.call(thisContext, inputContext, outputContext);
-      return result;
+      // Note: We don't call .run() here because the storage should already be initialized
+      // by the handler() method or inContext() method before this point
+      if (this.#thisContext) {
+        const result = await handler.call(this.#thisContext!, inputContext, outputContext);
+        return result;
+      } else {
+        // No request context - use empty context
+        const thisContext = {} as RequestThisContext;
+        const result = await handler.call(thisContext, inputContext, outputContext);
+        return result;
+      }
     } catch (error) {
       console.error("Error in handler", error);
 
@@ -540,6 +583,7 @@ export function instantiateNewFragment<
   const TServices extends Record<string, unknown>,
   const TServiceDependencies,
   const TThisContext extends RequestThisContext,
+  const TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
   definition: NewFragmentDefinition<
@@ -549,7 +593,8 @@ export function instantiateNewFragment<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext
+    TThisContext,
+    TRequestStorage
   >,
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
@@ -558,8 +603,9 @@ export function instantiateNewFragment<
 ): NewFragnoInstantiatedFragment<
   FlattenRouteFactories<TRoutesOrFactories>,
   TDeps,
-  TBaseServices & TServices,
-  TThisContext
+  BoundServices<TBaseServices & TServices>,
+  TThisContext,
+  TRequestStorage
 > {
   // 1. Validate service dependencies
   const serviceDependencies = definition.serviceDependencies;
@@ -579,7 +625,7 @@ export function instantiateNewFragment<
   const deps = definition.dependencies?.({ config, options }) ?? ({} as TDeps);
 
   // Identity function for service definition (used to set 'this' context)
-  const defineService = <T>(services: T) => services;
+  const defineService = <T>(services: T & ThisType<TThisContext>): T => services;
 
   // 3. Call baseServices callback
   const baseServices =
@@ -600,7 +646,7 @@ export function instantiateNewFragment<
         options: TOptions;
         deps: TDeps;
         serviceDeps: TServiceDependencies;
-        defineService: <T>(svc: T) => T;
+        defineService: <T>(svc: T & ThisType<TThisContext>) => T;
       }) => unknown;
       (namedServices as Record<string, unknown>)[serviceName] = serviceFactory({
         config,
@@ -616,29 +662,49 @@ export function instantiateNewFragment<
   const services = {
     ...baseServices,
     ...namedServices,
-  } as TBaseServices & TServices;
+  };
 
-  // 6. Resolve routes
-  const context = { config, deps, services };
+  // 6. Create request context storage and thisContext if provided
+  const storage = new RequestContextStorage<TRequestStorage>();
+  const thisContext = definition.createRequestContext?.({
+    config,
+    options,
+    deps,
+    storage,
+  });
+
+  // 7. Bind services to thisContext
+  // The thisContext contains getters/methods that read from storage for per-request isolation
+  const boundServices = thisContext ? bindServicesToContext(services, thisContext) : services;
+
+  // 8. Resolve routes with bound services
+  const context = { config, deps, services: boundServices };
   const routes = resolveRouteFactories(context, routesOrFactories);
 
-  // 7. Create request context if provided
-  const requestContext = definition.createRequestContext?.(options);
-
-  // 8. Calculate mount route
+  // 9. Calculate mount route
   const mountRoute = getMountRoute({
     name: definition.name,
     mountRoute: options.mountRoute,
   });
 
-  // 9. Create and return fragment instance
+  // 10. Wrap createRequestStorage to capture context
+  const createRequestStorageWithContext = definition.createRequestStorage
+    ? () => definition.createRequestStorage!({ config, options, deps })
+    : undefined;
+
+  // 11. Create and return fragment instance
+  // Pass bound services so they have access to thisContext via 'this'
+  // Safe cast: boundServices is either BoundServices<T> or T (when no thisContext).
+  // Both are compatible at runtime, and the return type reflects BoundServices<T>.
   return new NewFragnoInstantiatedFragment({
     name: definition.name,
     routes,
     deps,
-    services,
+    services: boundServices as BoundServices<TBaseServices & TServices>,
     mountRoute,
-    requestContext,
+    thisContext,
+    storage,
+    createRequestStorage: createRequestStorageWithContext,
   });
 }
 
@@ -654,6 +720,7 @@ export class NewFragmentInstantiationBuilder<
   TServices extends Record<string, unknown>,
   TServiceDependencies,
   TThisContext extends RequestThisContext,
+  TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 > {
   #definition: NewFragmentDefinition<
@@ -663,7 +730,8 @@ export class NewFragmentInstantiationBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext
+    TThisContext,
+    TRequestStorage
   >;
   #config?: TConfig;
   #routes?: TRoutesOrFactories;
@@ -678,7 +746,8 @@ export class NewFragmentInstantiationBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
-      TThisContext
+      TThisContext,
+      TRequestStorage
     >,
     routes?: TRoutesOrFactories,
   ) {
@@ -707,6 +776,7 @@ export class NewFragmentInstantiationBuilder<
     TServices,
     TServiceDependencies,
     TThisContext,
+    TRequestStorage,
     TNewRoutes
   > {
     return new NewFragmentInstantiationBuilder(this.#definition, routes);
@@ -734,8 +804,9 @@ export class NewFragmentInstantiationBuilder<
   build(): NewFragnoInstantiatedFragment<
     FlattenRouteFactories<TRoutesOrFactories>,
     TDeps,
-    TBaseServices & TServices,
-    TThisContext
+    BoundServices<TBaseServices & TServices>,
+    TThisContext,
+    TRequestStorage
   > {
     return instantiateNewFragment(
       this.#definition,
@@ -767,6 +838,7 @@ export function instantiate<
   TServices extends Record<string, unknown>,
   TServiceDependencies,
   TThisContext extends RequestThisContext,
+  TRequestStorage,
 >(
   definition: NewFragmentDefinition<
     TConfig,
@@ -775,7 +847,8 @@ export function instantiate<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext
+    TThisContext,
+    TRequestStorage
   >,
 ): NewFragmentInstantiationBuilder<
   TConfig,
@@ -785,6 +858,7 @@ export function instantiate<
   TServices,
   TServiceDependencies,
   TThisContext,
+  TRequestStorage,
   readonly []
 > {
   return new NewFragmentInstantiationBuilder(definition);

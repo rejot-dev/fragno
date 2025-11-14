@@ -23,10 +23,6 @@ export type ValidPath<T extends string = string> = T extends `/${infer Rest}`
       : T
   : PathError<T, "Path must start with '/'.">; // Excludes paths not starting with "/"
 
-/**
- * Base ServiceContext interface. Can be augmented by packages like @fragno-dev/db.
- */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface RequestThisContext {}
 
 export interface FragnoRouteConfig<

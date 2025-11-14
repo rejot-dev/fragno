@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-definition-builder";
 import { instantiate, NewFragnoInstantiatedFragment } from "./fragment-instantiator";
-import { defineRoute, defineRoutesNew } from "./route";
+import { defineRoute, defineRoutesNew, type AnyNewFragmentDefinition } from "./route";
 import type { FragnoPublicConfig } from "./fragment-instantiation";
+import type { RequestThisContext } from "./api";
 import { z } from "zod";
 
 describe("fragment-instantiator", () => {
@@ -716,13 +717,9 @@ describe("fragment-instantiator", () => {
 
   describe("request context", () => {
     it("should use custom thisContext from createRequestContext", async () => {
-      interface CustomThisContext {
+      interface CustomThisContext extends RequestThisContext {
         customMethod: () => string;
       }
-
-      const customContext: CustomThisContext = {
-        customMethod: () => "custom value",
-      };
 
       const definition = defineFragment("test-fragment").build();
 
@@ -730,10 +727,9 @@ describe("fragment-instantiator", () => {
       const definitionWithContext = {
         ...definition,
         createRequestContext: () => ({
-          thisContext: customContext,
-          wrapRequest: <T>(cb: () => Promise<T>) => cb(),
+          customMethod: () => "custom value",
         }),
-      };
+      } satisfies AnyNewFragmentDefinition;
 
       const route = defineRoute({
         method: "GET",
@@ -755,60 +751,186 @@ describe("fragment-instantiator", () => {
       expect(data).toEqual({ value: "custom value" });
     });
 
-    it("should use wrapRequest from createRequestContext", async () => {
-      const wrapperSpy = vi.fn();
+    it("should create fresh context per request", async () => {
+      const contextCreationSpy = vi.fn();
 
-      const definition = defineFragment("test-fragment").build();
-
-      const definitionWithContext = {
-        ...definition,
-        createRequestContext: () => ({
-          thisContext: {},
-          wrapRequest: async <T>(cb: () => Promise<T>) => {
-            wrapperSpy();
-            return cb();
+      const definition = defineFragment("test-fragment")
+        .withRequestStorage(() => ({ counter: 0 }))
+        .withRequestThisContext(({ storage }) => ({
+          get requestId() {
+            contextCreationSpy();
+            return { text: "default", counter: ++storage.getStore().counter };
           },
-        }),
-      };
+        }))
+        .build();
 
-      const route = defineRoute({
-        method: "GET",
-        path: "/test",
-        handler: async (_input, { json }) => {
-          return json({ message: "test" });
-        },
+      const routes = defineRoutesNew(definition).create(({ defineRoute }) => {
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/test",
+            handler: async function (_input, { json }) {
+              return json({ requestId: this.requestId });
+            },
+          }),
+        ];
       });
 
-      const fragment = instantiate(definitionWithContext)
-        .withRoutes([route])
+      const fragment = instantiate(definition)
+        .withRoutes([routes])
         .withOptions({ mountRoute: "/api" })
         .build();
 
       const request = new Request("http://localhost/api/test");
-      await fragment.handler(request);
+      const response = await fragment.handler(request);
+      expect(contextCreationSpy).toHaveBeenCalled();
+      const data = await response.json();
+      expect(data).toEqual({ requestId: { text: "default", counter: 1 } });
 
-      expect(wrapperSpy).toHaveBeenCalled();
+      const response2 = await fragment.handler(request);
+      const data2 = await response2.json();
+      expect(data2).toEqual({ requestId: { text: "default", counter: 1 } });
+
+      expect(contextCreationSpy).toHaveBeenCalledTimes(2);
     });
   });
 
   describe("defineService with custom this context", () => {
-    it("should allow services to use custom this context at runtime", async () => {
+    it("withRequestThisContext types", () => {
       const definition = defineFragment("test-fragment")
-        .withDependencies(() => ({ apiKey: "key" }))
-        .withRequestContext(() => ({
-          thisContext: { myThisNumber: 0, myThisString: "hello" },
-          wrapRequest: <T>(cb: () => Promise<T>) => cb(),
+        .withDependencies(() => ({ apiKey: "key", number: 5 }))
+        .withRequestThisContext(() => ({
+          x: 3,
+          y: "hello",
+          get someNumber() {
+            return 5;
+          },
         }))
         .providesBaseService(({ deps, defineService }) =>
           defineService({
             method1: function () {
               expectTypeOf(this).toMatchObjectType<{
-                myThisNumber: number;
-                myThisString: string;
+                x: number;
+                y: string;
+                readonly someNumber: number;
               }>();
 
-              this.myThisNumber++;
-              return `${deps.apiKey}-${this.myThisNumber}`;
+              return `${deps.apiKey}-${this.someNumber}`;
+            },
+          }),
+        )
+        .build();
+
+      expectTypeOf(definition.$thisContext!).toMatchObjectType<{
+        x: number;
+        y: string;
+        readonly someNumber: number;
+      }>();
+
+      expect(definition.createRequestContext).toBeDefined();
+    });
+
+    it("withRequestStorage allows mutating stored data", async () => {
+      const definition = defineFragment("test-fragment")
+        .withDependencies(() => ({ startingCounter: 5 }))
+        .withRequestStorage(({ deps }) => ({ counter: deps.startingCounter }))
+        .withRequestThisContext(({ storage }) => ({
+          // Getter to access current counter value from storage
+          get counter() {
+            return storage.getStore().counter;
+          },
+          // Method to increment the counter in storage
+          incrementCounter() {
+            storage.getStore().counter++;
+          },
+        }))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            // Service that reads the counter
+            getCounter: function () {
+              return this.counter;
+            },
+            // Service that increments the stored counter
+            incrementCounter: function () {
+              this.incrementCounter();
+              return this.counter;
+            },
+          }),
+        )
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/test-counter",
+          handler: async function (_input, { json }) {
+            // Type check: this should have counter property and incrementCounter method
+            expectTypeOf(this).toMatchObjectType<{
+              readonly counter: number;
+              incrementCounter: () => void;
+            }>();
+
+            // Read initial counter (starts at 0)
+            const initial = services.getCounter();
+
+            // Increment through service - this mutates the storage
+            const afterFirst = services.incrementCounter();
+            const afterSecond = services.incrementCounter();
+
+            // Direct access via this also shows the mutated value
+            const thisCounter = this.counter;
+
+            // Increment via this context directly
+            this.incrementCounter();
+            const afterDirect = this.counter;
+
+            return json({
+              initial,
+              afterFirst,
+              afterSecond,
+              thisCounter,
+              afterDirect,
+            });
+          },
+        }),
+      ]);
+
+      const fragment = instantiate(definition)
+        .withRoutes([routes])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const response = await fragment.handler(new Request("http://localhost/api/test-counter"));
+      const data = await response.json();
+
+      // The counter increments are persisted in storage throughout the request
+      expect(data).toEqual({
+        initial: 5,
+        afterFirst: 6,
+        afterSecond: 7,
+        thisCounter: 7,
+        afterDirect: 8,
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow services to use custom this context at runtime", async () => {
+      const definition = defineFragment("test-fragment")
+        .withDependencies(() => ({ apiKey: "key", number: 5 }))
+        .withRequestThisContext(({ deps }) => ({
+          get someNumber() {
+            return deps.number;
+          },
+        }))
+        .providesBaseService(({ deps, defineService }) =>
+          defineService({
+            method1: function () {
+              expectTypeOf(this).toMatchObjectType<{
+                readonly someNumber: number;
+              }>();
+
+              return `${deps.apiKey}-${this.someNumber}`;
             },
           }),
         )
@@ -820,7 +942,7 @@ describe("fragment-instantiator", () => {
 
       // Calling the service method outside of a request context will not work properly
       const result1 = fragment.services.method1();
-      expect(result1).toBe("key-NaN");
+      expect(result1).toBe("key-5");
 
       // Now let's use defineRoutesNew to access services properly in routes
       const routesFactory = defineRoutesNew(definition).create(({ services, defineRoute }) => {
@@ -830,18 +952,16 @@ describe("fragment-instantiator", () => {
             path: "/test-service",
             handler: async function (_input, { json }) {
               expectTypeOf(this).toMatchObjectType<{
-                myThisNumber: number;
-                myThisString: string;
+                readonly someNumber: number;
               }>();
 
               expect(this).toMatchObject({
-                myThisNumber: 0,
-                myThisString: "hello",
+                someNumber: 5,
               });
 
               // Services are available from the route factory context!
               const serviceResult = services.method1();
-              return json({ result: serviceResult });
+              return json({ result: serviceResult + "-" + (this.someNumber + 1) });
             },
           }),
         ];
@@ -858,47 +978,38 @@ describe("fragment-instantiator", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      // The service is called with the bound context, so it gets NaN again
-      // This demonstrates the problem with binding at instantiation time
-      expect(data).toEqual({ result: "key-NaN" });
+      expect(data).toEqual({ result: "key-5-6" });
     });
 
-    it("should work with defineRoutesNew using type-only", async () => {
+    it("should be able to call services with bound context using inContext", async () => {
       const definition = defineFragment("test-fragment")
-        .withDependencies(() => ({ apiKey: "test-key" }))
-        .providesBaseService(() => ({
-          greet: (name: string) => `Hello, ${name}`,
+        .withDependencies(() => ({ apiKey: "key" }))
+        .withRequestThisContext(() => ({
+          myThisNumber: 0,
+          myThisString: "hello",
         }))
+        .providesBaseService(({ deps, defineService }) =>
+          defineService({
+            method1: function () {
+              expectTypeOf(this).toMatchObjectType<{
+                myThisNumber: number;
+                myThisString: string;
+              }>();
+
+              console.log("this", this);
+
+              this.myThisNumber++;
+              return `${deps.apiKey}-${++this.myThisNumber}`;
+            },
+          }),
+        )
         .build();
 
-      // Use defineRoutesNew with type-only (without passing the value)
-      const routesFactory = defineRoutesNew<typeof definition>().create(
-        ({ services, deps, defineRoute }) => {
-          return [
-            defineRoute({
-              method: "GET",
-              path: "/greet/:name",
-              handler: async (input, { json }) => {
-                // Services and deps are properly typed!
-                const greeting = services.greet(input.pathParams.name);
-                const key = deps.apiKey;
-                return json({ greeting, key });
-              },
-            }),
-          ];
-        },
-      );
+      const fragment = instantiate(definition).withOptions({}).build();
 
-      const fragment = instantiate(definition)
-        .withRoutes([routesFactory])
-        .withOptions({ mountRoute: "/api" })
-        .build();
-
-      const response = await fragment.handler(new Request("http://localhost/api/greet/World"));
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data).toEqual({ greeting: "Hello, World", key: "test-key" });
+      expect(fragment.services.method1).toBeDefined();
+      const result2 = fragment.inContext(() => fragment.services.method1());
+      expect(result2).toBe("key-2");
     });
   });
 

@@ -1,47 +1,17 @@
 import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import { bindServicesToContext, type BoundServices } from "./bind-services";
-import { AsyncLocalStorage } from "node:async_hooks";
-import type { IUnitOfWorkBase, UnitOfWorkSchemaView } from "./query/unit-of-work";
-import type { RequestThisContext } from "@fragno-dev/core/api";
+import {
+  bindServicesToContext,
+  type BoundServices,
+  uowStorage,
+  serviceContext,
+  type DatabaseRequestThisContext,
+} from "./bind-services";
+import type { IUnitOfWorkBase } from "./query/unit-of-work";
 
-export const uowStorage = new AsyncLocalStorage<IUnitOfWorkBase>();
-
-/**
- * Service context for database fragments, providing access to the Unit of Work.
- */
-export interface DatabaseRequestThisContext extends RequestThisContext {
-  /**
-   * Get the Unit of Work from the current context.
-   * @param schema - Optional schema to get a typed view. If not provided, returns the base UOW.
-   * @returns IUnitOfWorkBase if no schema provided, or typed UnitOfWorkSchemaView if schema provided.
-   */
-  getUnitOfWork(): IUnitOfWorkBase;
-  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
-}
-
-// Create overloaded function implementation
-function getUnitOfWork(): IUnitOfWorkBase;
-function getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
-function getUnitOfWork<TSchema extends AnySchema>(
-  schema?: TSchema,
-): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
-  const uow = uowStorage.getStore();
-  if (!uow) {
-    throw new Error(
-      "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
-    );
-  }
-  if (schema) {
-    return uow.forSchema(schema);
-  }
-  return uow;
-}
-
-export const serviceContext: DatabaseRequestThisContext = {
-  getUnitOfWork,
-};
+// Re-export for backward compatibility
+export { uowStorage, serviceContext, type DatabaseRequestThisContext };
 
 // Overload for synchronous callbacks
 export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => T): T;

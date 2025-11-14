@@ -482,7 +482,6 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps.db).toBeDefined();
       expect(deps.schema).toBeDefined();
       expect(deps.createUnitOfWork).toBeDefined();
-      expect(deps.withUnitOfWork).toBeDefined();
 
       const baseServices = definition.baseServices!({
         config: {},
@@ -539,7 +538,6 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps).toHaveProperty("db");
       expect(deps).toHaveProperty("schema");
       expect(deps).toHaveProperty("createUnitOfWork");
-      expect(deps).toHaveProperty("withUnitOfWork");
       expect(deps).toHaveProperty("customDep");
       expect(deps.customDep).toBe("test");
     });
@@ -561,7 +559,6 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps.db).toBeDefined();
       expect(deps.schema).toBeDefined();
       expect(typeof deps.createUnitOfWork).toBe("function");
-      expect(typeof deps.withUnitOfWork).toBe("function");
     });
   });
 
@@ -668,21 +665,24 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
-  describe("createRequestContext", () => {
-    it("should create request context with database features", () => {
+  describe("createRequestStorage and createRequestContext", () => {
+    it("should create request storage with UnitOfWork", () => {
       const mockAdapter = createMockAdapter();
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
 
+      expect(definition.createRequestStorage).toBeDefined();
       expect(definition.createRequestContext).toBeDefined();
 
-      const requestContext = definition.createRequestContext!({
-        databaseAdapter: mockAdapter,
+      // Create storage
+      const storage = definition.createRequestStorage!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps: {} as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       });
 
-      expect(requestContext.thisContext).toBeDefined();
-      expect(requestContext.wrapRequest).toBeDefined();
-      expect(typeof requestContext.wrapRequest).toBe("function");
+      expect(storage).toBeDefined();
+      expect(storage.uow).toBeDefined();
     });
 
     it("should provide DatabaseRequestContext with getUnitOfWork", () => {
@@ -690,13 +690,23 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
 
+      // Create a mock storage
+      const mockStorage = {
+        getStore: () => ({
+          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+        }),
+      } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
       const requestContext = definition.createRequestContext!({
-        databaseAdapter: mockAdapter,
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps: {} as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        storage: mockStorage,
       });
 
       // thisContext should have getUnitOfWork
-      expect(requestContext.thisContext).toHaveProperty("getUnitOfWork");
-      expect(typeof requestContext.thisContext.getUnitOfWork).toBe("function");
+      expect(requestContext).toHaveProperty("getUnitOfWork");
+      expect(typeof requestContext.getUnitOfWork).toBe("function");
     });
   });
 

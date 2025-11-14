@@ -9,7 +9,7 @@ import {
   type NewFragmentDefinition,
   type ServiceConstructorFn,
 } from "@fragno-dev/core/api/fragment-definition-builder";
-import { withUnitOfWork, serviceContext, type FragnoPublicConfigWithDatabase } from "./fragment";
+import { type FragnoPublicConfigWithDatabase } from "./fragment";
 
 /**
  * Implicit dependencies that database fragments get automatically.
@@ -28,14 +28,6 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    * Create a new Unit of Work for database operations.
    */
   createUnitOfWork: () => IUnitOfWorkBase;
-  /**
-   * Execute a callback within a Unit of Work context.
-   * The UnitOfWork is automatically created and made available via AsyncLocalStorage.
-   */
-  withUnitOfWork: {
-    <T>(callback: () => T): T;
-    <T>(callback: () => Promise<T>): Promise<T>;
-  };
 };
 
 /**
@@ -88,6 +80,13 @@ function createDatabaseContext<TSchema extends AnySchema>(
 }
 
 /**
+ * Storage type for database fragments - stores the Unit of Work.
+ */
+export type DatabaseRequestStorage = {
+  uow: IUnitOfWorkBase;
+};
+
+/**
  * Builder for database fragments that wraps the core fragment builder
  * and provides database-specific functionality.
  *
@@ -100,9 +99,9 @@ export class DatabaseFragmentDefinitionBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
-  TThisContext extends RequestThisContext = RequestThisContext,
+  TThisContext extends RequestThisContext = DatabaseRequestContext,
 > {
-  // Store the base builder - we'll replace its createRequestContext when building
+  // Store the base builder - we'll replace its storage and context setup when building
   #baseBuilder: FragmentDefinitionBuilder<
     TConfig,
     FragnoPublicConfigWithDatabase,
@@ -110,7 +109,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext
+    TThisContext,
+    DatabaseRequestStorage
   >;
   #schema: TSchema;
   #namespace: string;
@@ -123,7 +123,8 @@ export class DatabaseFragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
-      TThisContext
+      TThisContext,
+      DatabaseRequestStorage
     >,
     schema: TSchema,
     namespace?: string,
@@ -171,10 +172,6 @@ export class DatabaseFragmentDefinitionBuilder<
         db: dbContext.db,
         schema: this.#schema,
         createUnitOfWork: createUow,
-        withUnitOfWork: <T>(callback: () => T | Promise<T>) => {
-          const uow = createUow();
-          return withUnitOfWork(uow, callback);
-        },
       };
 
       return {
@@ -294,16 +291,16 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    DatabaseRequestContext
+    DatabaseRequestContext,
+    DatabaseRequestStorage
   > {
-    const baseDef = this.#baseBuilder.build();
-
     // Ensure dependencies callback always exists for database fragments
     // If no user dependencies were defined, create a minimal one that only adds implicit deps
     const dependencies = (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
     }) => {
+      const baseDef = this.#baseBuilder.build();
       const userDeps = baseDef.dependencies?.(context);
 
       const { db } = createDatabaseContext(context.options, this.#schema, this.#namespace);
@@ -312,10 +309,6 @@ export class DatabaseFragmentDefinitionBuilder<
         db,
         schema: this.#schema,
         createUnitOfWork: () => db.createUnitOfWork(),
-        withUnitOfWork: <T>(callback: () => T | Promise<T>) => {
-          const uow = db.createUnitOfWork();
-          return withUnitOfWork(uow, callback);
-        },
       };
 
       return {
@@ -324,23 +317,60 @@ export class DatabaseFragmentDefinitionBuilder<
       } as TDeps;
     };
 
-    return {
-      ...baseDef,
-      dependencies,
-      // Add database-specific request context management
-      createRequestContext: (options: FragnoPublicConfigWithDatabase) => {
-        const dbContext = createDatabaseContext(options, this.#schema, this.#namespace);
+    // Set up request storage to store the Unit of Work
+    const builderWithStorage = this.#baseBuilder.withRequestStorage(
+      ({ options }): DatabaseRequestStorage => {
+        // Create database context - needed here to create the UOW
+        const dbContextForStorage = createDatabaseContext(options, this.#schema, this.#namespace);
 
-        return {
-          // Provide the database service context with getUnitOfWork
-          thisContext: serviceContext as DatabaseRequestContext,
-          // Wrap request execution to create and manage UnitOfWork
-          wrapRequest: async <T>(callback: () => Promise<T>): Promise<T> => {
-            const uow = dbContext.db.createUnitOfWork();
-            return withUnitOfWork(uow, callback);
-          },
-        };
+        // Create a new Unit of Work for this request
+        const uow: IUnitOfWorkBase = dbContextForStorage.db.createUnitOfWork();
+
+        return { uow };
       },
+    );
+
+    // Set up request context with getUnitOfWork method
+    const builderWithContext = builderWithStorage.withRequestThisContext(
+      ({ storage }): DatabaseRequestContext => {
+        // Define getUnitOfWork with proper overload signatures
+        function getUnitOfWork(): IUnitOfWorkBase;
+        function getUnitOfWork<TSchema extends AnySchema>(
+          schema: TSchema,
+        ): UnitOfWorkSchemaView<TSchema>;
+        function getUnitOfWork<TSchema extends AnySchema>(
+          schema?: TSchema,
+        ): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
+          // Try to get UOW from new storage system first
+          // let uow: IUnitOfWorkBase | undefined;
+          // const store = storage.getStore();
+          // uow = store?.uow;
+
+          const uow = storage.getStore()?.uow;
+
+          if (!uow) {
+            throw new Error(
+              "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
+            );
+          }
+
+          if (schema) {
+            return uow.forSchema(schema);
+          }
+          return uow;
+        }
+
+        return { getUnitOfWork };
+      },
+    );
+
+    // Build the final definition
+    const finalDef = builderWithContext.build();
+
+    // Return the complete definition with proper typing and dependencies
+    return {
+      ...finalDef,
+      dependencies,
     };
   }
 }
@@ -366,7 +396,7 @@ export class DatabaseFragmentDefinitionBuilder<
 export function withDatabase<TSchema extends AnySchema>(
   schema: TSchema,
   namespace?: string,
-): <TConfig, TDeps, TBaseServices, TServices, TServiceDeps>(
+): <TConfig, TDeps, TBaseServices, TServices, TServiceDeps, TRequestStorage>(
   builder: FragmentDefinitionBuilder<
     TConfig,
     FragnoPublicConfig,
@@ -374,7 +404,8 @@ export function withDatabase<TSchema extends AnySchema>(
     TBaseServices,
     TServices,
     TServiceDeps,
-    RequestThisContext
+    RequestThisContext,
+    TRequestStorage
   >,
 ) => DatabaseFragmentDefinitionBuilder<
   TSchema,
@@ -383,9 +414,9 @@ export function withDatabase<TSchema extends AnySchema>(
   TBaseServices,
   TServices,
   TServiceDeps,
-  RequestThisContext
+  DatabaseRequestContext
 > {
-  return <TConfig, TDeps, TBaseServices, TServices, TServiceDeps>(
+  return <TConfig, TDeps, TBaseServices, TServices, TServiceDeps, TRequestStorage>(
     builder: FragmentDefinitionBuilder<
       TConfig,
       FragnoPublicConfig,
@@ -393,13 +424,16 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
-      RequestThisContext
+      RequestThisContext,
+      TRequestStorage
     >,
   ) => {
     // Cast is safe: we're creating a DatabaseFragmentDefinitionBuilder which internally uses
     // FragnoPublicConfigWithDatabase, but the input builder uses FragnoPublicConfig.
     // The database builder's build() method will enforce FragnoPublicConfigWithDatabase at the end.
     // We also add ImplicitDatabaseDependencies to TDeps so they're available in service constructors.
+    // Note: We discard TRequestStorage here because database fragments manage their own storage (DatabaseRequestStorage).
+    // We also set TThisContext to DatabaseRequestContext so services have access to getUnitOfWork.
     return new DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
@@ -407,7 +441,7 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
-      RequestThisContext
+      DatabaseRequestContext
     >(
       builder as unknown as FragmentDefinitionBuilder<
         TConfig,
@@ -416,7 +450,8 @@ export function withDatabase<TSchema extends AnySchema>(
         TBaseServices,
         TServices,
         TServiceDeps,
-        RequestThisContext
+        DatabaseRequestContext,
+        DatabaseRequestStorage
       >,
       schema,
       namespace,
