@@ -143,6 +143,22 @@ export interface NewFragmentDefinition<
     context: RequestContextFactoryContext<TConfig, TOptions, TDeps, TRequestStorage>,
   ) => TThisContext;
 
+  /**
+   * Optional factory function to get an external RequestContextStorage instance.
+   * When provided, this storage will be used instead of creating a new one.
+   * This allows multiple fragments to share the same storage (e.g., database fragments sharing adapter storage).
+   *
+   * @example
+   * ```ts
+   * getExternalStorage: ({ options }) => options.databaseAdapter.contextStorage
+   * ```
+   */
+  getExternalStorage?: (context: {
+    config: TConfig;
+    options: TOptions;
+    deps: TDeps;
+  }) => RequestContextStorage<TRequestStorage>;
+
   $thisContext?: TThisContext;
   $requestStorage?: TRequestStorage;
 }
@@ -192,6 +208,11 @@ export class FragmentDefinitionBuilder<
   #createRequestContext?: (
     context: RequestContextFactoryContext<TConfig, TOptions, TDeps, TRequestStorage>,
   ) => TThisContext;
+  #getExternalStorage?: (context: {
+    config: TConfig;
+    options: TOptions;
+    deps: TDeps;
+  }) => RequestContextStorage<TRequestStorage>;
 
   constructor(
     name: string,
@@ -226,6 +247,11 @@ export class FragmentDefinitionBuilder<
       createRequestContext?: (
         context: RequestContextFactoryContext<TConfig, TOptions, TDeps, TRequestStorage>,
       ) => TThisContext;
+      getExternalStorage?: (context: {
+        config: TConfig;
+        options: TOptions;
+        deps: TDeps;
+      }) => RequestContextStorage<TRequestStorage>;
     },
   ) {
     this.#name = name;
@@ -236,6 +262,7 @@ export class FragmentDefinitionBuilder<
       this.#serviceDependencies = state.serviceDependencies;
       this.#createRequestStorage = state.createRequestStorage;
       this.#createRequestContext = state.createRequestContext;
+      this.#getExternalStorage = state.getExternalStorage;
     }
   }
 
@@ -246,6 +273,24 @@ export class FragmentDefinitionBuilder<
   /**
    * Define dependencies for this fragment.
    * Dependencies are available to services and handlers.
+   *
+   * **IMPORTANT**: This method resets all services, storage, and context configurations.
+   * Always call `withDependencies` early in the builder chain, before defining services
+   * or request storage/context.
+   *
+   * @example
+   * ```typescript
+   * // ✅ GOOD: Dependencies set first
+   * defineFragment("my-fragment")
+   *   .withDependencies(() => ({ apiKey: "..." }))
+   *   .withRequestStorage(({ deps }) => ({ userId: deps.apiKey }))
+   *   .providesService("myService", ...)
+   *
+   * // ❌ BAD: Dependencies set late (erases storage setup)
+   * defineFragment("my-fragment")
+   *   .withRequestStorage(() => ({ userId: "..." }))  // This gets erased!
+   *   .withDependencies(() => ({ apiKey: "..." }))
+   * ```
    */
   withDependencies<TNewDeps>(
     fn: (context: { config: TConfig; options: TOptions }) => TNewDeps,
@@ -259,6 +304,20 @@ export class FragmentDefinitionBuilder<
     TThisContext,
     TRequestStorage
   > {
+    // Warn if we're discarding existing configuration
+    if (
+      this.#baseServices ||
+      this.#namedServices ||
+      this.#createRequestStorage ||
+      this.#createRequestContext ||
+      this.#getExternalStorage
+    ) {
+      console.warn(
+        `[Fragno] Warning: withDependencies() on fragment "${this.#name}" is resetting previously configured services, request storage, or request context. ` +
+          `To avoid this, call withDependencies() earlier in the builder chain, before configuring services or storage.`,
+      );
+    }
+
     return new FragmentDefinitionBuilder<
       TConfig,
       TOptions,
@@ -273,15 +332,10 @@ export class FragmentDefinitionBuilder<
       baseServices: undefined,
       namedServices: undefined,
       serviceDependencies: this.#serviceDependencies,
-      // Safe cast: deps type changed, but createRequestStorage and createRequestContext functions are compatible
-      createRequestStorage: this.#createRequestStorage as
-        | ((context: { config: TConfig; options: TOptions; deps: TNewDeps }) => TRequestStorage)
-        | undefined,
-      createRequestContext: this.#createRequestContext as
-        | ((
-            context: RequestContextFactoryContext<TConfig, TOptions, TNewDeps, TRequestStorage>,
-          ) => TThisContext)
-        | undefined,
+      // Reset storage/context functions since deps type changed - they must be reconfigured
+      createRequestStorage: undefined,
+      createRequestContext: undefined,
+      getExternalStorage: undefined,
     });
   }
 
@@ -504,6 +558,16 @@ export class FragmentDefinitionBuilder<
     TThisContext,
     TNewRequestStorage
   > {
+    // getExternalStorage can coexist with createRequestStorage (they work together)
+    // Cast is safe when storage type changes: the external storage container adapts to hold the new type
+    const preservedExternalStorage = this.#getExternalStorage
+      ? (this.#getExternalStorage as unknown as (context: {
+          config: TConfig;
+          options: TOptions;
+          deps: TDeps;
+        }) => RequestContextStorage<TNewRequestStorage>)
+      : undefined;
+
     return new FragmentDefinitionBuilder<
       TConfig,
       TOptions,
@@ -519,11 +583,62 @@ export class FragmentDefinitionBuilder<
       namedServices: this.#namedServices,
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: initializer,
-      createRequestContext: this.#createRequestContext as
-        | ((
-            context: RequestContextFactoryContext<TConfig, TOptions, TDeps, TNewRequestStorage>,
-          ) => TThisContext)
-        | undefined,
+      // Reset context function since storage type changed - it must be reconfigured
+      createRequestContext: undefined,
+      getExternalStorage: preservedExternalStorage,
+    });
+  }
+
+  /**
+   * Use an externally-provided RequestContextStorage instance.
+   * This allows multiple fragments to share the same storage instance.
+   * Useful when fragments need to coordinate (e.g., database fragments sharing adapter storage).
+   * Note: You must still call withRequestStorage to provide the initial storage data.
+   *
+   * @example
+   * ```typescript
+   * .withExternalRequestStorage(({ options }) =>
+   *   options.databaseAdapter.contextStorage
+   * )
+   * .withRequestStorage(({ options }) => ({
+   *   uow: options.databaseAdapter.db.createUnitOfWork()
+   * }))
+   * ```
+   */
+  withExternalRequestStorage<TNewStorage>(
+    getStorage: (context: {
+      config: TConfig;
+      options: TOptions;
+      deps: TDeps;
+    }) => RequestContextStorage<TNewStorage>,
+  ): FragmentDefinitionBuilder<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TThisContext,
+    TNewStorage
+  > {
+    return new FragmentDefinitionBuilder<
+      TConfig,
+      TOptions,
+      TDeps,
+      TBaseServices,
+      TServices,
+      TServiceDependencies,
+      TThisContext,
+      TNewStorage
+    >(this.#name, {
+      dependencies: this.#dependencies,
+      baseServices: this.#baseServices,
+      namedServices: this.#namedServices,
+      serviceDependencies: this.#serviceDependencies,
+      // Reset storage/context functions since storage type changed - they must be reconfigured
+      createRequestStorage: undefined,
+      createRequestContext: undefined,
+      getExternalStorage: getStorage,
     });
   }
 
@@ -570,6 +685,7 @@ export class FragmentDefinitionBuilder<
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createRequestContext: fn,
+      getExternalStorage: this.#getExternalStorage,
     });
   }
 
@@ -602,6 +718,7 @@ export class FragmentDefinitionBuilder<
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createRequestContext: this.#createRequestContext,
+      getExternalStorage: this.#getExternalStorage,
     };
   }
 }

@@ -299,7 +299,7 @@ export class DatabaseFragmentDefinitionBuilder<
     const dependencies = (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
-    }) => {
+    }): TDeps => {
       const baseDef = this.#baseBuilder.build();
       const userDeps = baseDef.dependencies?.(context);
 
@@ -317,8 +317,16 @@ export class DatabaseFragmentDefinitionBuilder<
       } as TDeps;
     };
 
-    // Set up request storage to store the Unit of Work
-    const builderWithStorage = this.#baseBuilder.withRequestStorage(
+    // Use the adapter's shared context storage (all fragments using the same adapter share this storage)
+    const builderWithExternalStorage = this.#baseBuilder.withExternalRequestStorage(
+      ({ options }) => {
+        const dbContext = createDatabaseContext(options, this.#schema, this.#namespace);
+        return dbContext.databaseAdapter.contextStorage;
+      },
+    );
+
+    // Set up request storage to initialize the Unit of Work
+    const builderWithStorage = builderWithExternalStorage.withRequestStorage(
       ({ options }): DatabaseRequestStorage => {
         // Create database context - needed here to create the UOW
         const dbContextForStorage = createDatabaseContext(options, this.#schema, this.#namespace);
@@ -341,11 +349,6 @@ export class DatabaseFragmentDefinitionBuilder<
         function getUnitOfWork<TSchema extends AnySchema>(
           schema?: TSchema,
         ): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
-          // Try to get UOW from new storage system first
-          // let uow: IUnitOfWorkBase | undefined;
-          // const store = storage.getStore();
-          // uow = store?.uow;
-
           const uow = storage.getStore()?.uow;
 
           if (!uow) {

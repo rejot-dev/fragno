@@ -42,6 +42,11 @@
       "types": "./dist/api/route.d.ts",
       "default": "./dist/api/route.js"
     },
+    "./api/request-context-storage": {
+      "development": "./src/api/request-context-storage.ts",
+      "types": "./dist/api/request-context-storage.d.ts",
+      "default": "./dist/api/request-context-storage.js"
+    },
     "./client": {
       "development": "./src/client/client.ts",
       "types": "./dist/client/client.d.ts",

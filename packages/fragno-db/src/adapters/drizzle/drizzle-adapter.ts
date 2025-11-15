@@ -1,4 +1,4 @@
-import type { DatabaseAdapter } from "../adapters";
+import type { DatabaseAdapter, DatabaseContextStorage } from "../adapters";
 import { type AnySchema } from "../../schema/create";
 import type { AbstractQuery } from "../../query/query";
 import type { SchemaGenerator } from "../../schema-generator/schema-generator";
@@ -13,6 +13,7 @@ import {
 } from "../adapters";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import { createDrizzleConnectionPool } from "./drizzle-connection-pool";
+import { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
 
 export interface DrizzleConfig {
   db: unknown | (() => unknown | Promise<unknown>);
@@ -23,12 +24,14 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   #connectionPool: ConnectionPool<DBType>;
   #provider: "sqlite" | "mysql" | "postgresql";
   #schemaNamespaceMap = new WeakMap<AnySchema, string>();
+  #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   constructor(config: DrizzleConfig) {
     this.#connectionPool = createDrizzleConnectionPool(
       config.db as DBType | (() => DBType | Promise<DBType>),
     );
     this.#provider = config.provider;
+    this.#contextStorage = new RequestContextStorage();
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {
@@ -37,6 +40,10 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
 
   get [fragnoDatabaseAdapterVersionFakeSymbol](): number {
     return 0;
+  }
+
+  get contextStorage(): RequestContextStorage<DatabaseContextStorage> {
+    return this.#contextStorage;
   }
 
   async close(): Promise<void> {

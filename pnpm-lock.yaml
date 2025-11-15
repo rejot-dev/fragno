@@ -1089,6 +1089,9 @@ importers:
       kysely-pglite:
         specifier: ^0.6.1
         version: 0.6.1(@electric-sql/pglite@0.3.11)(better-sqlite3@12.4.1)(kysely@0.28.8)
+      sqlocal:
+        specifier: ^0.15.2
+        version: 0.15.2(drizzle-orm@0.44.7(@electric-sql/pglite@0.3.11)(@libsql/client@0.15.15)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.4.1)(gel@2.1.1)(kysely@0.28.8))(kysely@0.28.8)
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.18.12)(@vitest/ui@3.2.4)(happy-dom@20.0.8)(jiti@2.6.1)(jsdom@27.0.1(postcss@8.5.6))(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)

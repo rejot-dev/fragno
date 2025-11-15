@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf } from "vitest";
+import { describe, it, expect, expectTypeOf, vi } from "vitest";
 import { defineFragment, type NewFragmentDefinition } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./fragment-instantiation";
 import type { RequestThisContext } from "./api";
@@ -59,6 +59,87 @@ describe("FragmentDefinitionBuilder", () => {
       // Base services should be reset
       expect(definition.baseServices).toBeUndefined();
       expect(definition.dependencies).toBeDefined();
+    });
+
+    it("should reset request storage and context when called late in chain", () => {
+      // This demonstrates that calling withDependencies late erases earlier storage/context setup
+      const definition = defineFragment("test-fragment")
+        .withRequestStorage(() => ({
+          counter: 0,
+          userId: "user-123",
+        }))
+        .withRequestThisContext(({ storage }) => ({
+          get counter() {
+            return storage.getStore()?.counter ?? 0;
+          },
+          get userId() {
+            return storage.getStore()?.userId;
+          },
+        }))
+        // Calling withDependencies here will erase the storage and context configuration!
+        .withDependencies(() => ({
+          apiKey: "secret",
+        }))
+        .build();
+
+      // Storage and context should be reset (undefined)
+      expect(definition.createRequestStorage).toBeUndefined();
+      expect(definition.createRequestContext).toBeUndefined();
+      expect(definition.getExternalStorage).toBeUndefined();
+      expect(definition.dependencies).toBeDefined();
+    });
+
+    it("should preserve storage and context when dependencies set early", () => {
+      // This is the recommended pattern: set dependencies first
+      const definition = defineFragment("test-fragment")
+        .withDependencies(() => ({
+          apiKey: "secret",
+        }))
+        .withRequestStorage(({ deps }) => ({
+          counter: 0,
+          apiKey: deps.apiKey,
+        }))
+        .withRequestThisContext(({ storage }) => ({
+          get counter() {
+            return storage.getStore()?.counter ?? 0;
+          },
+        }))
+        .build();
+
+      // Everything should be preserved
+      expect(definition.createRequestStorage).toBeDefined();
+      expect(definition.createRequestContext).toBeDefined();
+      expect(definition.dependencies).toBeDefined();
+    });
+
+    it("should warn when withDependencies is called after storage/services are configured", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      defineFragment("test-fragment")
+        .withRequestStorage(() => ({ counter: 0 }))
+        .providesService("myService", () => ({ test: () => "hi" }))
+        .withDependencies(() => ({ apiKey: "secret" }));
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '[Fragno] Warning: withDependencies() on fragment "test-fragment" is resetting',
+        ),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("should not warn when withDependencies is called early", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      defineFragment("test-fragment")
+        .withDependencies(() => ({ apiKey: "secret" }))
+        .withRequestStorage(() => ({ counter: 0 }))
+        .providesService("myService", () => ({ test: () => "hi" }));
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
     });
   });
 

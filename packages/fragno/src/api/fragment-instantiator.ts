@@ -210,21 +210,28 @@ export class NewFragnoInstantiatedFragment<
   /**
    * Execute a callback within a request context.
    * Establishes an async context for the duration of the callback, allowing services
-   * to access the `this` context. Useful for calling services outside of route handlers
+   * to access the `this` context. The callback's `this` will be bound to the fragment's
+   * request context. Useful for calling services outside of route handlers
    * (e.g., in tests, background jobs).
    *
    * @param callback - The callback to run within the context
    *
    * @example
    * ```typescript
-   * const result = await fragment.inContext(() => {
-   *   return fragment.services.someMethod();
+   * const result = await fragment.inContext(function () {
+   *   // `this` is bound to the request context
+   *   return this.someContextMethod();
    * });
    * ```
    */
-  inContext<T>(callback: () => T): T;
-  inContext<T>(callback: () => Promise<T>): Promise<T>;
-  inContext<T>(callback: () => T | Promise<T>): T | Promise<T> {
+  inContext<T>(callback: (this: TThisContext) => T): T;
+  inContext<T>(callback: (this: TThisContext) => Promise<T>): Promise<T>;
+  inContext<T>(callback: (this: TThisContext) => T | Promise<T>): T | Promise<T> {
+    // Bind the callback to thisContext if available
+    if (this.#thisContext) {
+      const boundCallback = callback.bind(this.#thisContext);
+      return this.#withRequestStorage(boundCallback);
+    }
     return this.#withRequestStorage(callback);
   }
 
@@ -665,7 +672,10 @@ export function instantiateNewFragment<
   };
 
   // 6. Create request context storage and thisContext if provided
-  const storage = new RequestContextStorage<TRequestStorage>();
+  // Use external storage if provided, otherwise create new storage
+  const storage = definition.getExternalStorage
+    ? definition.getExternalStorage({ config, options, deps })
+    : new RequestContextStorage<TRequestStorage>();
   const thisContext = definition.createRequestContext?.({
     config,
     options,

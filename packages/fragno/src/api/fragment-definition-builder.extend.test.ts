@@ -569,8 +569,9 @@ describe("FragmentDefinitionBuilder.extend()", () => {
       expect(services.math.add(5, 3)).toBe(8);
     });
 
-    it("should allow extending to modify request storage and context", () => {
-      const addRequestFeatures = () => {
+    it("should allow extending to add request storage configuration", () => {
+      // This test shows a practical extend() pattern: adding storage after deps are set
+      const withRequestId = () => {
         return <
           TConfig,
           TOptions extends FragnoPublicConfig,
@@ -579,7 +580,6 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TServices,
           TServiceDeps,
           TThisContext extends RequestThisContext,
-          TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
             TConfig,
@@ -589,38 +589,20 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TServices,
             TServiceDeps,
             TThisContext,
-            TRequestStorage
+            {}
           >,
-        ): FragmentDefinitionBuilder<
-          TConfig,
-          TOptions,
-          TDeps,
-          TBaseServices,
-          TServices,
-          TServiceDeps,
-          TThisContext,
-          TRequestStorage & { requestId: string }
-        > => {
-          const currentDef = builder.build();
-
-          return new FragmentDefinitionBuilder(builder.name, {
-            ...currentDef,
-            createRequestStorage: (context) => {
-              const existing = currentDef.createRequestStorage
-                ? currentDef.createRequestStorage(context)
-                : ({} as TRequestStorage);
-              return {
-                ...existing,
-                requestId: Math.random().toString(36),
-              } as TRequestStorage & { requestId: string };
-            },
-          });
+        ) => {
+          // Simple approach: use the builder's own methods which handle types correctly
+          return builder.withRequestStorage(() => ({
+            requestId: Math.random().toString(36),
+            timestamp: Date.now(),
+          }));
         };
       };
 
       const definition = defineFragment("request-extend")
         .withDependencies(() => ({ value: 42 }))
-        .extend(addRequestFeatures())
+        .extend(withRequestId())
         .build();
 
       expect(definition.createRequestStorage).toBeDefined();
@@ -630,7 +612,9 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         deps: { value: 42 },
       });
       expect(storage).toHaveProperty("requestId");
+      expect(storage).toHaveProperty("timestamp");
       expect(typeof storage.requestId).toBe("string");
+      expect(typeof storage.timestamp).toBe("number");
     });
   });
 

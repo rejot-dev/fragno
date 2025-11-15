@@ -4,6 +4,7 @@ import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
   type DatabaseAdapter,
+  type DatabaseContextStorage,
 } from "../adapters";
 import { createMigrator, type Migrator } from "../../migration-engine/create";
 import type { AnySchema } from "../../schema/create";
@@ -16,6 +17,7 @@ import { createHash } from "node:crypto";
 import { SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import { createKyselyConnectionPool } from "./kysely-connection-pool";
+import { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
@@ -29,10 +31,12 @@ export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
   #connectionPool: ConnectionPool<KyselyAny>;
   #provider: SQLProvider;
   #schemaNamespaceMap = new WeakMap<AnySchema, string>();
+  #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   constructor(config: KyselyConfig) {
     this.#connectionPool = createKyselyConnectionPool(config.db);
     this.#provider = config.provider;
+    this.#contextStorage = new RequestContextStorage();
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {
@@ -41,6 +45,10 @@ export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
 
   get [fragnoDatabaseAdapterVersionFakeSymbol](): number {
     return 0;
+  }
+
+  get contextStorage(): RequestContextStorage<DatabaseContextStorage> {
+    return this.#contextStorage;
   }
 
   async close(): Promise<void> {

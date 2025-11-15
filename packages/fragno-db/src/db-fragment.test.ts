@@ -17,6 +17,7 @@ import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "./adapters/adapters";
+import { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
 
 type Empty = Record<never, never>;
 
@@ -42,6 +43,7 @@ const mockDatabaseAdapter: DatabaseAdapter = {
     toLogical: (physicalName: string) => physicalName.replace(`_${namespace}`, ""),
   }),
   isConnectionHealthy: () => Promise.resolve(true),
+  contextStorage: new RequestContextStorage(),
 };
 
 describe("DatabaseFragmentBuilder", () => {

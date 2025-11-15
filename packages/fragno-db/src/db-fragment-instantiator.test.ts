@@ -6,6 +6,7 @@ import { withDatabase } from "./db-fragment-definition-builder";
 import { schema, idColumn, column } from "./schema/create";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AbstractQuery } from "./query/query";
+import { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
 import { z } from "zod";
 
 // Create a test schema
@@ -43,6 +44,7 @@ function createMockAdapter(): DatabaseAdapter {
     migrate: vi.fn(),
     close: vi.fn(),
     type: "mock",
+    contextStorage: new RequestContextStorage(),
   } as unknown as DatabaseAdapter;
 }
 

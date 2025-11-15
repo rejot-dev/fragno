@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/api/fragment-definition-builder.ts",
     "./src/api/fragment-instantiator.ts",
     "./src/api/route.ts",
+    "./src/api/request-context-storage.ts",
     "./src/client/client.ts",
     "./src/client/vanilla.ts",
     "./src/client/client.svelte.ts",

@@ -83,7 +83,8 @@
     "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4",
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "sqlocal": "^0.15.2"
   },
   "repository": {
     "type": "git",
