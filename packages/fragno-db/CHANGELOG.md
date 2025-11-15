@@ -1,5 +1,18 @@
 # @fragno-dev/db
 
+## 0.1.15
+
+### Patch Changes
+
+- 5e185bc: feat: add `withUnitOfWork` helper method to `deps` on Fragment instance
+- ec622bc: fix: problem with serialization of cursor values
+- b34917f: feat: add `executeUnitOfWork` utility of retrying transactions, including support for
+  retry policies.
+- 462004f: Add `hasNextPage` field to cursor pagination results. The `CursorResult` interface now
+  includes an explicit `hasNextPage: boolean` field that accurately indicates whether more results
+  are available.
+- f22c503: fix: make unit of work available in middleware
+
 ## 0.1.14
 
 ### Patch Changes

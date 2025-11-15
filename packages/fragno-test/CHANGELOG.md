@@ -1,5 +1,18 @@
 # @fragno-dev/test
 
+## 0.1.13
+
+### Patch Changes
+
+- 0f4c9fe: fix: move core/db dependencies to peerDependencies
+- Updated dependencies [5e185bc]
+- Updated dependencies [ec622bc]
+- Updated dependencies [b34917f]
+- Updated dependencies [462004f]
+- Updated dependencies [f22c503]
+  - @fragno-dev/db@0.1.15
+  - @fragno-dev/core@0.1.9
+
 ## 0.1.12
 
 ### Patch Changes
