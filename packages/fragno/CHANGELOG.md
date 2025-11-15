@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.9
+
+### Patch Changes
+
+- f22c503: fix: make unit of work available in middleware
+
 ## 0.1.8
 
 ### Patch Changes
