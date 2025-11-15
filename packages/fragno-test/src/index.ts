@@ -36,6 +36,9 @@ export type {
   AdapterContext,
 } from "./adapters";
 
+// Re-export new builder-based database test utilities
+export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-test";
+
 /**
  * Base test context with common functionality across all adapters
  */

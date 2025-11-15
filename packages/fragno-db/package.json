@@ -58,6 +58,11 @@
       "types": "./dist/fragment.d.ts",
       "default": "./dist/fragment.js"
     },
+    "./fragment-definition-builder": {
+      "development": "./src/db-fragment-definition-builder.ts",
+      "types": "./dist/db-fragment-definition-builder.d.ts",
+      "default": "./dist/db-fragment-definition-builder.js"
+    },
     "./generation-engine": {
       "development": "./src/migration-engine/generation-engine.ts",
       "types": "./dist/migration-engine/generation-engine.d.ts",

@@ -13,6 +13,7 @@ export default defineConfig({
     "./src/query/unit-of-work.ts",
     "./src/query/cursor.ts",
     "./src/fragment.ts",
+    "./src/db-fragment-definition-builder.ts",
     "./src/migration-engine/generation-engine.ts",
   ],
   dts: true,
