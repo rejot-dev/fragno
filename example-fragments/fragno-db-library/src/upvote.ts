@@ -1,10 +1,9 @@
-import { createFragment } from "@fragno-dev/core";
 import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import {
-  defineFragmentWithDatabase,
-  type FragnoPublicConfigWithDatabase,
-} from "@fragno-dev/db/fragment";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
 
 export const upvoteSchema = schema((s) => {
   return s
@@ -34,9 +33,9 @@ export interface RatingFragmentConfig {
   // Add any server-side configuration here if needed
 }
 
-const ratingFragmentDef = defineFragmentWithDatabase<RatingFragmentConfig>("fragno-db-rating")
-  .withDatabase(upvoteSchema)
-  .withDependencies(({ orm }) => {
+export const ratingFragmentDef = defineFragment<RatingFragmentConfig>("fragno-db-rating")
+  .extend(withDatabase(upvoteSchema))
+  .withDependencies(({ db }) => {
     return {
       /**
        * @throws {Error} If the upvote fails due to a race condition or unique constraint violation.
@@ -44,7 +43,7 @@ const ratingFragmentDef = defineFragmentWithDatabase<RatingFragmentConfig>("frag
        * @returns
        */
       postUpvote: async (upvote: TableToInsertValues<typeof upvoteSchema.tables.upvote>) => {
-        const uow = orm
+        const uow = db
           .createUnitOfWork()
           .find("upvote_total", (b) =>
             b.whereIndex("idx_upvote_total_reference", (eb) =>
@@ -68,13 +67,13 @@ const ratingFragmentDef = defineFragmentWithDatabase<RatingFragmentConfig>("frag
         return uow.executeMutations();
       },
       getUpvoteTotal: (reference: string) => {
-        return orm.findFirst("upvote_total", (b) =>
+        return db.findFirst("upvote_total", (b) =>
           b.whereIndex("idx_upvote_total_reference", (eb) => eb("reference", "=", reference)),
         );
       },
     };
   })
-  .providesService(({ deps }) => ({
+  .providesBaseService(({ deps }) => ({
     postUpvote: (reference: string) => {
       return deps.postUpvote({
         reference: reference,
@@ -92,11 +91,16 @@ const ratingFragmentDef = defineFragmentWithDatabase<RatingFragmentConfig>("frag
     getRating: async (reference: string) => {
       return (await deps.getUpvoteTotal(reference))?.total ?? 0;
     },
-  }));
+  }))
+  .build();
 
 export function createRatingFragment(
   config: RatingFragmentConfig = {},
   options: FragnoPublicConfigWithDatabase,
 ) {
-  return createFragment(ratingFragmentDef, config, [], options);
+  return instantiate(ratingFragmentDef)
+    .withConfig(config)
+    .withRoutes([])
+    .withOptions(options)
+    .build();
 }

@@ -1,12 +1,13 @@
-import { createFragment, defineRoutes, type FragnoPublicClientConfig } from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import { createClientBuilderNew } from "@fragno-dev/core/client";
 import { z } from "zod";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
-import {
-  defineFragmentWithDatabase,
-  type FragnoPublicConfigWithDatabase,
-} from "@fragno-dev/db/fragment";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
 import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { defineRoutesNew } from "@fragno-dev/core/api/route";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -42,15 +43,14 @@ export interface CommentFragmentConfig {
   // Add any server-side configuration here if needed
 }
 
-export const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>(
-  "fragno-db-comment",
-)
-  .withDatabase(commentSchema)
-  .providesService(({ db }) => {
+export const commentFragmentDef = defineFragment<CommentFragmentConfig>("fragno-db-comment")
+  .extend(withDatabase(commentSchema))
+  .providesBaseService(({ deps }) => {
     return {
-      ...createFragnoDatabaseLibrary(db),
+      ...createFragnoDatabaseLibrary(deps.db),
     };
-  });
+  })
+  .build();
 
 export function createFragnoDatabaseLibrary(db: AbstractQuery<typeof commentSchema>) {
   const internal = {
@@ -81,7 +81,7 @@ export function createFragnoDatabaseLibrary(db: AbstractQuery<typeof commentSche
   };
 }
 
-const commentRoutesFactory = defineRoutes(commentFragmentDef).create(
+const commentRoutesFactory = defineRoutesNew(commentFragmentDef).create(
   ({ services, defineRoute }) => {
     return [
       defineRoute({
@@ -133,11 +133,15 @@ export function createCommentFragment(
   config: CommentFragmentConfig = {},
   options: FragnoPublicConfigWithDatabase,
 ) {
-  return createFragment(commentFragmentDef, config, routes, options);
+  return instantiate(commentFragmentDef)
+    .withConfig(config)
+    .withRoutes(routes)
+    .withOptions(options)
+    .build();
 }
 
 export function createCommentFragmentClient(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilder(commentFragmentDef, fragnoConfig, routes);
+  const b = createClientBuilderNew(commentFragmentDef, fragnoConfig, routes);
 
   return {
     useGetComments: b.createHook("/comments"),

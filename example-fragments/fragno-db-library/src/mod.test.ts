@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { commentFragmentDef } from "./mod";
-import { createDatabaseFragmentForTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
-describe("comment-fragment", async () => {
-  const { fragment } = await createDatabaseFragmentForTest(
-    { definition: commentFragmentDef, routes: [] },
-    {
-      adapter: { type: "kysely-sqlite" },
-    },
-  );
-
+describe("comment-fragment", () => {
   it("should run queries", async () => {
-    const query = await fragment.services.createComment({
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("comment", instantiate(commentFragmentDef).withConfig({}).withRoutes([]), {
+        definition: commentFragmentDef,
+      })
+      .build();
+
+    const query = await fragments.comment.services.createComment({
       title: "Test comment",
       content: "Test content",
       postReference: "123",
@@ -26,7 +27,9 @@ describe("comment-fragment", async () => {
       userReference: "456",
     });
 
-    const comments = await fragment.services.getComments("123");
+    const comments = await fragments.comment.services.getComments("123");
     expect(comments).toMatchObject([query]);
+
+    await test.cleanup();
   });
 });
