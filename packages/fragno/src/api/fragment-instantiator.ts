@@ -27,6 +27,9 @@ import type { FragnoPublicConfig } from "./fragment-instantiation";
 import { RequestContextStorage } from "./request-context-storage";
 import { bindServicesToContext, type BoundServices } from "./bind-services";
 
+// Re-export types needed by consumers
+export type { BoundServices };
+
 type AstroHandlers = {
   ALL: (req: Request) => Promise<Response>;
 };
@@ -85,6 +88,7 @@ export interface FragnoFragmentSharedConfig<
 
 // Not actually a symbol, since we might be dealing with multiple instances of this code.
 export const instantiatedFragmentFakeSymbol = "$fragno-instantiated-fragment" as const;
+export const newInstantiatedFragmentFakeSymbol = "$fragno-new-instantiated-fragment" as const;
 
 /**
  * New instantiated fragment class with encapsulated state.
@@ -96,8 +100,9 @@ export class NewFragnoInstantiatedFragment<
   TServices extends Record<string, unknown>,
   TThisContext extends RequestThisContext,
   TRequestStorage = {},
+  TOptions extends FragnoPublicConfig = FragnoPublicConfig,
 > {
-  readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
+  readonly [newInstantiatedFragmentFakeSymbol] = newInstantiatedFragmentFakeSymbol;
 
   // Private fields
   #name: string;
@@ -110,6 +115,7 @@ export class NewFragnoInstantiatedFragment<
   #thisContext?: TThisContext;
   #contextStorage: RequestContextStorage<TRequestStorage>;
   #createRequestStorage?: () => TRequestStorage;
+  #options: TOptions;
 
   constructor(params: {
     name: string;
@@ -120,6 +126,7 @@ export class NewFragnoInstantiatedFragment<
     thisContext?: TThisContext;
     storage: RequestContextStorage<TRequestStorage>;
     createRequestStorage?: () => TRequestStorage;
+    options: TOptions;
   }) {
     this.#name = params.name;
     this.#routes = params.routes;
@@ -129,6 +136,7 @@ export class NewFragnoInstantiatedFragment<
     this.#thisContext = params.thisContext;
     this.#contextStorage = params.storage;
     this.#createRequestStorage = params.createRequestStorage;
+    this.#options = params.options;
 
     // Build router
     this.#router =
@@ -172,6 +180,7 @@ export class NewFragnoInstantiatedFragment<
   get $internal() {
     return {
       deps: this.#deps,
+      options: this.#options,
     };
   }
 
@@ -612,7 +621,8 @@ export function instantiateNewFragment<
   TDeps,
   BoundServices<TBaseServices & TServices>,
   TThisContext,
-  TRequestStorage
+  TRequestStorage,
+  TOptions
 > {
   // 1. Validate service dependencies
   const serviceDependencies = definition.serviceDependencies;
@@ -715,6 +725,7 @@ export function instantiateNewFragment<
     thisContext,
     storage,
     createRequestStorage: createRequestStorageWithContext,
+    options,
   });
 }
 
@@ -816,7 +827,8 @@ export class NewFragmentInstantiationBuilder<
     TDeps,
     BoundServices<TBaseServices & TServices>,
     TThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TOptions
   > {
     return instantiateNewFragment(
       this.#definition,

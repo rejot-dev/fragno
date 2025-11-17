@@ -8,6 +8,10 @@ import {
   instantiatedFragmentFakeSymbol,
   type FragnoInstantiatedFragment,
 } from "@fragno-dev/core/api/fragment-instantiation";
+import {
+  newInstantiatedFragmentFakeSymbol,
+  type NewFragnoInstantiatedFragment,
+} from "@fragno-dev/core/api/fragment-instantiator";
 import { loadConfig } from "c12";
 import { relative } from "node:path";
 
@@ -137,6 +141,24 @@ function isFragnoInstantiatedFragment(
   );
 }
 
+function isNewFragnoInstantiatedFragment(
+  value: unknown,
+): value is NewFragnoInstantiatedFragment<
+  [],
+  unknown,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  unknown,
+  Record<string, unknown>
+> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    newInstantiatedFragmentFakeSymbol in value &&
+    value[newInstantiatedFragmentFakeSymbol] === newInstantiatedFragmentFakeSymbol
+  );
+}
+
 function additionalContextIsDatabaseContext(additionalContext: unknown): additionalContext is {
   databaseSchema: AnySchema;
   databaseNamespace: string;
@@ -163,7 +185,39 @@ export function findFragnoDatabases(
   for (const [_key, value] of Object.entries(targetModule)) {
     if (isFragnoDatabase(value)) {
       fragnoDatabases.push(value);
+    } else if (isNewFragnoInstantiatedFragment(value)) {
+      // Handle new fragment API
+      const internal = value.$internal;
+      const deps = internal.deps as Record<string, unknown>;
+      const options = internal.options as Record<string, unknown>;
+
+      // Check if this is a database fragment by looking for implicit database dependencies
+      if (!deps["db"] || !deps["schema"]) {
+        continue;
+      }
+
+      const schema = deps["schema"] as AnySchema;
+      const databaseAdapter = options["databaseAdapter"] as DatabaseAdapter | undefined;
+
+      if (!databaseAdapter) {
+        console.warn(
+          `Warning: Fragment '${value.name}' appears to be a database fragment but no databaseAdapter found in options.`,
+        );
+        continue;
+      }
+
+      // Derive namespace from fragment name (follows convention: fragmentName + "-db")
+      const namespace = value.name + "-db";
+
+      fragnoDatabases.push(
+        new FragnoDatabase({
+          namespace,
+          schema,
+          adapter: databaseAdapter,
+        }),
+      );
     } else if (isFragnoInstantiatedFragment(value)) {
+      // Handle old fragment API
       const additionalContext = value.additionalContext;
 
       if (!additionalContext || !additionalContextIsDatabaseContext(additionalContext)) {

@@ -1,7 +1,12 @@
 import { nanoquery, type FetcherStore, type MutatorStore } from "@nanostores/query";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { computed, task, type ReadableAtom, type Store } from "nanostores";
-import type { FragnoRouteConfig, HTTPMethod, NonGetHTTPMethod } from "../api/api";
+import type {
+  FragnoRouteConfig,
+  HTTPMethod,
+  NonGetHTTPMethod,
+  RequestThisContext,
+} from "../api/api";
 import {
   buildPath,
   extractPathParams,
@@ -16,6 +21,7 @@ import type {
   FetcherConfig,
   FragnoFragmentSharedConfig,
   FragnoPublicClientConfig,
+  FragnoPublicConfig,
 } from "../api/fragment-instantiation";
 import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
 import type { InferOr } from "../util/types-util";
@@ -27,6 +33,7 @@ import {
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
 import type { FragmentDefinition } from "../api/fragment-builder";
+import type { NewFragmentDefinition } from "../api/fragment-definition-builder";
 import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
@@ -1098,6 +1105,64 @@ export function createClientBuilder<
     config: {} as TConfig,
     deps: {} as TDeps,
     services: {} as TServices,
+  };
+
+  const routes = resolveRouteFactories(dummyContext, routesOrFactories);
+
+  const fragmentConfig: FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>> = {
+    name: definition.name,
+    routes,
+  };
+
+  const mountRoute = publicConfig.mountRoute ?? `/${definition.name}`;
+  const mergedFetcherConfig = mergeFetcherConfigs(authorFetcherConfig, publicConfig.fetcherConfig);
+  const fullPublicConfig = {
+    ...publicConfig,
+    mountRoute,
+    fetcherConfig: mergedFetcherConfig,
+  };
+
+  return new ClientBuilder(fullPublicConfig, fragmentConfig);
+}
+
+/**
+ * Create a client builder for fragments using the new fragment definition API.
+ * This is the same as createClientBuilder but works with NewFragmentDefinition.
+ */
+export function createClientBuilderNew<
+  TConfig,
+  TOptions extends FragnoPublicConfig,
+  TDeps,
+  TBaseServices,
+  TServices,
+  TServiceDependencies,
+  TThisContext extends RequestThisContext,
+  TRequestStorage,
+  const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+>(
+  definition: NewFragmentDefinition<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TThisContext,
+    TRequestStorage
+  >,
+  publicConfig: FragnoPublicClientConfig,
+  routesOrFactories: TRoutesOrFactories,
+  authorFetcherConfig?: FetcherConfig,
+): ClientBuilder<
+  FlattenRouteFactories<TRoutesOrFactories>,
+  FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
+> {
+  // For client-side, we resolve route factories with dummy context
+  // This will be removed by the bundle plugin anyway
+  const dummyContext = {
+    config: {} as TConfig,
+    deps: {} as TDeps,
+    services: {} as TBaseServices & TServices,
   };
 
   const routes = resolveRouteFactories(dummyContext, routesOrFactories);

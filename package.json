@@ -41,6 +41,7 @@
     "clean:install": "pnpm run clean && pnpm install",
     "build": "turbo run build",
     "build:watch": "turbo watch build --filter='!./apps/**'",
+    "build:watch:10m": "bash -c \"while true; do pnpm run build:watch & pid=$!; (sleep 600 && kill \\\"$pid\\\" 2>/dev/null) & wait $pid; echo 'Restarting...'; done\"",
     "build:ui": "turbo watch --ui tui build",
     "build:clean": "turbo run build --force",
     "types:check": "turbo run types:check",
