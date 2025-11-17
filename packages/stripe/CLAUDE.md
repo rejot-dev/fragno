@@ -78,9 +78,9 @@ client builder.
 
 Each framework requires a separate client file that wraps the generic client builder with the
 framework-specific `useFragno` hook. Check the `src/client/` directory for existing framework
-implementations. Use the frameworks page on https://fragno.dev/docs/frameworks to see if all clients
-have their stubs defined. Make sure to include new frameworks in the exports section of
-package.json.
+implementations. Use the frameworks page on https://fragno.dev/docs/fragno/reference/frameworks to
+see if all clients have their stubs defined. Make sure to include new frameworks in the exports
+section of package.json.
 
 ### `package.json` - Package Configuration
 

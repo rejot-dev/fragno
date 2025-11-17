@@ -16,6 +16,7 @@ const REDIRECTS: Record<string, string> = {
   "/docs/our-fragments/stripe/webhooks": "/docs/stripe/webhooks",
 
   // Framework docs: /docs/* -> /docs/fragno/*
+  "/docs/frameworks": "/docs/fragno/reference/frameworks",
   "/docs/user-quick-start": "/docs/fragno/user-quick-start",
   "/docs/for-library-authors/faq": "/docs/fragno/for-library-authors/faq",
   "/docs/for-library-authors/getting-started": "/docs/fragno/for-library-authors/getting-started",
