@@ -5,13 +5,15 @@ import type { Node } from "@babel/types";
 
 const FRAGNO_PACKAGE_DEFINITIONS = {
   "@fragno-dev/core": {
-    fragmentDefinitions: ["defineFragment"],
-    chainMethods: ["withDependencies", "providesService"],
+    fragmentDefinitions: ["defineFragment"] as const,
+    chainMethods: ["withDependencies", "providesService"] as const,
+    // Exclude the new builder API from this transform
+    excludePaths: ["api/fragment-definition-builder"] as const,
   },
   "@fragno-dev/db": {
-    fragmentDefinitions: ["defineFragmentWithDatabase"],
-    chainMethods: ["withDependencies", "providesService", "withDatabase"],
-    utilityFunctions: ["schema"],
+    fragmentDefinitions: ["defineFragmentWithDatabase"] as const,
+    chainMethods: ["withDependencies", "providesService", "withDatabase"] as const,
+    utilityFunctions: ["schema"] as const,
   },
 } as const;
 
@@ -49,6 +51,15 @@ const isDefineLibraryBinding = (binding: Binding): boolean => {
 
   if (!definition || !("fragmentDefinitions" in definition)) {
     return false;
+  }
+
+  // Check if this import is from an excluded path (new builder API)
+  if ("excludePaths" in definition) {
+    for (const excludePath of definition.excludePaths) {
+      if (source.includes(excludePath)) {
+        return false;
+      }
+    }
   }
 
   if (!t.isImportSpecifier(binding?.path.node)) {
