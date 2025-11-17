@@ -1,6 +1,6 @@
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { type FragnoPublicClientConfig, type FragnoPublicConfig } from "@fragno-dev/core";
-import { createClientBuilderNew } from "@fragno-dev/core/client";
+import { createClientBuilder } from "@fragno-dev/core/client";
 import OpenAI from "openai";
 import { z } from "zod";
 import { defineRoutesNew } from "@fragno-dev/core/api/route";
@@ -13,10 +13,6 @@ export interface ChatnoServerConfig {
   model?: "gpt-5-mini" | "4o-mini" | "gpt-5-nano";
   systemPrompt?: string;
 }
-
-// Note: healthRoute will be created inside the routes factory to have access to defineRoute
-
-const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
 export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
   .withDependencies(({ config }) => {
@@ -79,13 +75,8 @@ export function createChatno(
   chatnoConfig: ChatnoServerConfig,
   fragnoConfig: FragnoPublicConfig = {},
 ) {
-  const config = {
-    model: chatnoConfig.model ?? "gpt-5-nano",
-    systemPrompt: chatnoConfig.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-  };
-
   return instantiate(chatnoDefinition)
-    .withConfig({ ...chatnoConfig, ...config })
+    .withConfig(chatnoConfig)
     .withRoutes(routes)
     .withOptions(fragnoConfig)
     .build();
@@ -93,7 +84,7 @@ export function createChatno(
 
 // Generic client-side factory
 export function createChatnoClients(fragnoConfig: FragnoPublicClientConfig) {
-  const cb = createClientBuilderNew(chatnoDefinition, fragnoConfig, routes);
+  const cb = createClientBuilder(chatnoDefinition, fragnoConfig, routes);
 
   const chatStream = cb.createMutator("POST", "/chat/stream");
 

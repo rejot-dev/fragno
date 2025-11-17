@@ -7,7 +7,8 @@ Note that if the goal is to make your user provide certain functionality, it usu
 sense to add a required property to the fragment's config.
 
 ```typescript @fragno-imports
-import { defineFragment, instantiateFragment } from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 ```
 
@@ -17,23 +18,27 @@ Fragments provide services using `providesService()`. Services can be passed as 
 via a factory function that receives context (`config`, `deps`, `fragnoConfig`, `defineService`).
 
 ```typescript @fragno-test:provide-direct-object
-// Object syntax is the simplest way to provide services.
-const fragment = defineFragment<{}>("email-fragment").providesService({
-  sendEmail: async (to: string, subject: string) => {
-    // Email sending logic here
-  },
-});
+// Object syntax is the simplest way to provide base services.
+const fragmentDefinition = defineFragment("email-fragment")
+  .providesBaseService(() => ({
+    sendEmail: async (to: string, subject: string) => {
+      // Email sending logic here
+    },
+  }))
+  .build();
 ```
 
 ```typescript @fragno-test:provide-factory-function
 // The factory function receives the fragment's `config`, and `deps` (dependencies).
-const fragment = defineFragment<{}>("api-fragment").providesService(({ config }) => ({
-  makeRequest: async (endpoint: string) => {
-    return { data: "response" };
-  },
-}));
+const fragmentDefinition = defineFragment("api-fragment")
+  .providesBaseService(({ config }) => ({
+    makeRequest: async (endpoint: string) => {
+      return { data: "response" };
+    },
+  }))
+  .build();
 
-const instance = instantiateFragment(fragment).withConfig({}).build();
+const instance = instantiate(fragmentDefinition).withOptions({}).build();
 expect(instance.services.makeRequest).toBeInstanceOf(Function);
 ```
 
@@ -45,16 +50,14 @@ required services.
 
 ```typescript @fragno-test:provide-named-services
 // should provide named services
-const fragment = defineFragment<{}>("logger-fragment").providesService(
-  "logger",
-  ({ defineService }) =>
-    defineService({
-      log: (message: string) => console.log(message),
-      error: (message: string) => console.error(message),
-    }),
-);
+const fragmentDefinition = defineFragment("logger-fragment")
+  .providesService("logger", () => ({
+    log: (message: string) => console.log(message),
+    error: (message: string) => console.error(message),
+  }))
+  .build();
 
-const instance = instantiateFragment(fragment).withConfig({}).build();
+const instance = instantiate(fragmentDefinition).withOptions({}).build();
 expect(instance.services.logger.log).toBeDefined();
 expect(instance.services.logger.error).toBeDefined();
 ```
@@ -66,7 +69,7 @@ for database fragments where methods need access to the current unit of work.
 
 ```typescript @fragno-test:chaining-services
 // should chain multiple service definitions
-const fragment = defineFragment<{}>("multi-service-fragment")
+const fragmentDefinition = defineFragment("multi-service-fragment")
   .providesService("logger", ({ defineService }) =>
     defineService({
       log: (msg: string) => console.log(msg),
@@ -76,13 +79,14 @@ const fragment = defineFragment<{}>("multi-service-fragment")
     defineService({
       validate: (input: string) => input.length > 0,
     }),
-  );
+  )
+  .build();
 ```
 
 ## Using Services
 
-Fragments specify required services using `usesService`. Services can be marked as optional with
-`{ optional: true }`, making them `undefined` if not provided.
+Fragments specify required services using `usesService`. Services can be marked as optional using
+`usesOptionalService`, making them `undefined` if not provided.
 
 ```typescript @fragno-test:declaring-required-service
 // should require a service from the user
@@ -90,9 +94,13 @@ interface IEmailService {
   sendEmail(to: string, subject: string, body: string): Promise<void>;
 }
 
-const fragment = defineFragment<{}>("notification-fragment").usesService<"email", IEmailService>(
-  "email",
-);
+const fragmentDefinition = defineFragment("notification-fragment")
+  .usesService<"email", IEmailService>("email")
+  .providesBaseService(({ serviceDeps }) => ({
+    sendNotification: (to: string, subject: string, body: string) =>
+      serviceDeps.email.sendEmail(to, subject, body),
+  }))
+  .build();
 
 const emailImpl: IEmailService = {
   sendEmail: async (to, subject, body) => {
@@ -100,13 +108,12 @@ const emailImpl: IEmailService = {
   },
 };
 
-const instance = instantiateFragment(fragment)
-  .withConfig({})
+const instance = instantiate(fragmentDefinition)
   .withServices({ email: emailImpl })
+  .withOptions({})
   .build();
 
-expect(instance.services.email).toBeDefined();
-expect(instance.services.email.sendEmail).toBeDefined();
+expect(instance.services.sendNotification).toBeDefined();
 ```
 
 ### Optional Services
@@ -117,21 +124,27 @@ interface ILogger {
   log(message: string): void;
 }
 
-const fragment = defineFragment<{}>("app-fragment").usesService<"logger", ILogger>("logger", {
-  optional: true,
-});
+const fragmentDefinition = defineFragment("app-fragment")
+  .usesOptionalService<"logger", ILogger>("logger")
+  .providesBaseService(({ serviceDeps }) => ({
+    maybeLog: (message: string) => {
+      if (serviceDeps.logger) {
+        serviceDeps.logger.log(message);
+      }
+    },
+  }))
+  .build();
 
 // Can instantiate without providing the service
-const instance = instantiateFragment(fragment).withConfig({}).build();
+const instance = instantiate(fragmentDefinition).withOptions({}).build();
 
 expect(instance).toBeDefined();
-// logger will be undefined
-expect(instance.services.logger).toBeUndefined();
+expect(instance.services.maybeLog).toBeDefined();
 ```
 
 ### Using Services in Provided Services
 
-Used services are available via `deps` in the factory function context, enabling composition.
+Used services are available via `serviceDeps` in the factory function context, enabling composition.
 
 ```typescript @fragno-test:using-in-provided
 // should use external services in provided services
@@ -139,25 +152,25 @@ interface IEmailService {
   sendEmail(to: string, subject: string, body: string): Promise<void>;
 }
 
-const fragment = defineFragment<{}>("welcome-fragment")
+const fragmentDefinition = defineFragment("welcome-fragment")
   .usesService<"email", IEmailService>("email")
-  .providesService(({ deps }) => ({
+  .providesBaseService(({ serviceDeps }) => ({
     sendWelcomeEmail: async (to: string) => {
-      await deps.email.sendEmail(to, "Welcome!", "Welcome to our service!");
+      await serviceDeps.email.sendEmail(to, "Welcome!", "Welcome to our service!");
     },
-  }));
+  }))
+  .build();
 
 const emailImpl: IEmailService = {
   sendEmail: async () => {},
 };
 
-const instance = instantiateFragment(fragment)
-  .withConfig({})
+const instance = instantiate(fragmentDefinition)
   .withServices({ email: emailImpl })
+  .withOptions({})
   .build();
 
 expect(instance.services.sendWelcomeEmail).toBeDefined();
-expect(instance.services.email).toBeDefined();
 ```
 
 ### Missing Required Services
@@ -168,11 +181,11 @@ interface IStorageService {
   save(key: string, value: string): Promise<void>;
 }
 
-const fragment = defineFragment<{}>("storage-fragment").usesService<"storage", IStorageService>(
-  "storage",
-);
+const fragmentDefinition = defineFragment("storage-fragment")
+  .usesService<"storage", IStorageService>("storage")
+  .build();
 
 expect(() => {
-  instantiateFragment(fragment).withConfig({}).build();
+  instantiate(fragmentDefinition).withOptions({}).build();
 }).toThrow("Fragment 'storage-fragment' requires service 'storage' but it was not provided");
 ```

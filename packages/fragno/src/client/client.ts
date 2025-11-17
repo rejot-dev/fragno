@@ -22,7 +22,7 @@ import type {
   FragnoFragmentSharedConfig,
   FragnoPublicClientConfig,
   FragnoPublicConfig,
-} from "../api/fragment-instantiation";
+} from "../api/shared-types";
 import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
 import type { InferOr } from "../util/types-util";
 import { parseContentType } from "../util/content-type";
@@ -32,7 +32,6 @@ import {
 } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
-import type { FragmentDefinition } from "../api/fragment-builder";
 import type { NewFragmentDefinition } from "../api/fragment-definition-builder";
 import {
   type AnyRouteOrFactory,
@@ -1080,57 +1079,11 @@ export class ClientBuilder<
   }
 }
 
-export function createClientBuilder<
-  TConfig,
-  TDeps,
-  TServices extends Record<string, unknown>,
-  const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
-  const TAdditionalContext extends Record<string, unknown>,
->(
-  fragmentBuilder: {
-    definition: FragmentDefinition<TConfig, TDeps, TServices, TAdditionalContext>;
-  },
-  publicConfig: FragnoPublicClientConfig,
-  routesOrFactories: TRoutesOrFactories,
-  authorFetcherConfig?: FetcherConfig,
-): ClientBuilder<
-  FlattenRouteFactories<TRoutesOrFactories>,
-  FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>>
-> {
-  const definition = fragmentBuilder.definition;
-
-  // For client-side, we resolve route factories with dummy context
-  // This will be removed by the bundle plugin anyway
-  const dummyContext = {
-    config: {} as TConfig,
-    deps: {} as TDeps,
-    services: {} as TServices,
-    serviceDeps: {},
-  };
-
-  const routes = resolveRouteFactories(dummyContext, routesOrFactories);
-
-  const fragmentConfig: FragnoFragmentSharedConfig<FlattenRouteFactories<TRoutesOrFactories>> = {
-    name: definition.name,
-    routes,
-  };
-
-  const mountRoute = publicConfig.mountRoute ?? `/${definition.name}`;
-  const mergedFetcherConfig = mergeFetcherConfigs(authorFetcherConfig, publicConfig.fetcherConfig);
-  const fullPublicConfig = {
-    ...publicConfig,
-    mountRoute,
-    fetcherConfig: mergedFetcherConfig,
-  };
-
-  return new ClientBuilder(fullPublicConfig, fragmentConfig);
-}
-
 /**
  * Create a client builder for fragments using the new fragment definition API.
  * This is the same as createClientBuilder but works with NewFragmentDefinition.
  */
-export function createClientBuilderNew<
+export function createClientBuilder<
   TConfig,
   TOptions extends FragnoPublicConfig,
   TDeps,
@@ -1187,3 +1140,4 @@ export function createClientBuilderNew<
 
 export * from "./client-error";
 export type { FetcherConfig };
+export type { FragnoPublicClientConfig } from "../api/shared-types";

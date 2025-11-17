@@ -4,10 +4,12 @@ Fragno provides a unified database query API that works across different ORMs. T
 CRUD operations and querying with conditions.
 
 ```typescript @fragno-imports
-import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { schema, idColumn, column } from "@fragno-dev/db/schema";
 import type { AbstractQuery } from "@fragno-dev/db/query";
-import { createDatabaseFragmentForTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 ```
 
 ```typescript @fragno-prelude:schema
@@ -38,16 +40,19 @@ type UserSchema = typeof userSchema;
 
 ```typescript @fragno-test-init
 // Create a test fragment with database
-const testFragmentDef = defineFragmentWithDatabase("test-db-fragment").withDatabase(userSchema);
+const testFragmentDef = defineFragment<{}>("test-db-fragment")
+  .extend(withDatabase(userSchema))
+  .providesBaseService(() => ({}))
+  .build();
 
-const { fragment, test } = await createDatabaseFragmentForTest(
-  { definition: testFragmentDef, routes: [] },
-  {
-    adapter: { type: "kysely-sqlite" },
-  },
-);
+const { fragments, test } = await buildDatabaseFragmentsTest()
+  .withTestAdapter({ type: "kysely-sqlite" })
+  .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]), {
+    definition: testFragmentDef,
+  })
+  .build();
 
-const db = fragment.db;
+const db = fragments.test.db;
 ```
 
 ## Create

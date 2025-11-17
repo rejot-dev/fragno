@@ -1,6 +1,6 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { defineRoute, defineRoutes, type ExtractFragmentServices } from "./route";
-import { defineFragment } from "./fragment-builder";
+import { defineRoute, defineRoutesNew } from "./route";
+import { defineFragment } from "./fragment-definition-builder";
 import { z } from "zod";
 
 describe("defineRoute", () => {
@@ -176,45 +176,20 @@ describe("defineRoute", () => {
   });
 });
 
-describe("ExtractFragmentServices", () => {
-  test("extracts services from fragment with .providesService()", () => {
+// ExtractFragmentServices tests removed - use ExtractNewFragmentServices instead
+
+describe("defineRoutesNew", () => {
+  test("defineRoutesNew extracts services correctly for route factory", () => {
     const fragment = defineFragment<{}>("test-fragment")
-      .withDependencies(() => ({ dep: "value" }))
-      .providesService(({ defineService }) =>
+      .providesBaseService(({ defineService }) =>
         defineService({
           getUserById: async (id: string) => ({ id, name: "John" }),
           createUser: async (name: string) => ({ id: "123", name }),
         }),
-      );
+      )
+      .build();
 
-    type Services = ExtractFragmentServices<typeof fragment>;
-
-    expectTypeOf<Services>().toMatchObjectType<{
-      getUserById: (id: string) => Promise<{ id: string; name: string }>;
-      createUser: (name: string) => Promise<{ id: string; name: string }>;
-    }>();
-  });
-
-  test("ExtractFragmentServices returns never for fragment without services", () => {
-    const fragment = defineFragment<{}>("test-fragment").withDependencies(() => ({ dep: "value" }));
-
-    type Services = ExtractFragmentServices<typeof fragment>;
-
-    // Fragment with no services should have empty services object
-    expectTypeOf<Services>().toEqualTypeOf<{}>();
-  });
-});
-
-describe("defineRoutes", () => {
-  test("defineRoutes extracts services correctly for route factory", () => {
-    const fragment = defineFragment<{}>("test-fragment").providesService(({ defineService }) =>
-      defineService({
-        getUserById: async (id: string) => ({ id, name: "John" }),
-        createUser: async (name: string) => ({ id: "123", name }),
-      }),
-    );
-
-    const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
+    const routeFactory = defineRoutesNew(fragment).create(({ services, config, deps }) => {
       // Type check that services are properly extracted
       expectTypeOf(services).toMatchObjectType<{
         getUserById: (id: string) => Promise<{ id: string; name: string }>;
@@ -243,20 +218,21 @@ describe("defineRoutes", () => {
     expect(typeof routeFactory).toBe("function");
   });
 
-  test("defineRoutes with dependencies and services", () => {
+  test("defineRoutesNew with dependencies and services", () => {
     const fragment = defineFragment<{ apiKey: string }>("auth-fragment")
       .withDependencies(({ config }) => ({
         authClient: { apiKey: config.apiKey },
       }))
-      .providesService(({ deps, defineService }) =>
+      .providesBaseService(({ deps, defineService }) =>
         defineService({
           validateToken: async (_token: string) => {
             return { valid: true, apiKey: deps.authClient.apiKey };
           },
         }),
-      );
+      )
+      .build();
 
-    const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
+    const routeFactory = defineRoutesNew(fragment).create(({ services, config, deps }) => {
       // Type check all context properties
       expectTypeOf(config).toEqualTypeOf<{ apiKey: string }>();
       expectTypeOf(deps).toMatchObjectType<{ authClient: { apiKey: string } }>();

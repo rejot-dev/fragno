@@ -53,8 +53,10 @@ Optional ID syntax (`:schema`) helps identify code blocks for agent references.
 
 Test-only initialization code (not shown to users, only used in generated tests):
 
-\`\`\`typescript @fragno-test-init const { fragment } = await
-createDatabaseFragmentForTest(testFragmentDef, []); const orm = fragment.services.orm; \`\`\`
+\`\`\`typescript @fragno-test-init const { fragments } = await buildDatabaseFragmentsTest()
+.withTestAdapter({ type: "kysely-sqlite" }) .withFragment("test",
+instantiate(testFragmentDef).withRoutes([]), { definition: testFragmentDef }) .build(); const db =
+fragments.test.db; \`\`\`
 
 ### @fragno-test
 

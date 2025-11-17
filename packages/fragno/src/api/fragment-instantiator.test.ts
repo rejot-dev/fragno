@@ -2,7 +2,7 @@ import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-definition-builder";
 import { instantiate, NewFragnoInstantiatedFragment } from "./fragment-instantiator";
 import { defineRoute, defineRoutesNew, type AnyNewFragmentDefinition } from "./route";
-import type { FragnoPublicConfig } from "./fragment-instantiation";
+import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestThisContext } from "./api";
 import { z } from "zod";
 

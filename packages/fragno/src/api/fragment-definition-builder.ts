@@ -1,5 +1,5 @@
 import type { RequestThisContext } from "./api";
-import type { FragnoPublicConfig } from "./fragment-instantiation";
+import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestContextStorage } from "./request-context-storage";
 
 /**

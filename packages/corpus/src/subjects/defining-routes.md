@@ -4,7 +4,9 @@ Routes are the core of a Fragno fragment, defining HTTP endpoints that handle re
 responses. This guide covers the essential patterns for defining routes.
 
 ```typescript @fragno-imports
-import { defineRoute, defineRoutes, defineFragment, createFragment } from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineRoute, defineRoutes } from "@fragno-dev/core/api/route";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 import { z } from "zod";
 ```
@@ -151,15 +153,14 @@ Routes can access dependencies defined in `withDependencies` through route facto
 
 ```typescript @fragno-test:using-dependencies
 interface AppConfig {
-  apiKey: string;
+  apiKey?: string;
 }
 
-interface AppDeps {
-  config: AppConfig;
-  timestamp: number;
-}
+const definition = defineFragment<AppConfig>("test")
+  .withDependencies(({ config }) => ({ timestamp: Date.now() }))
+  .build();
 
-export const routesWithDeps = defineRoutes<AppConfig, AppDeps>().create(({ deps }) => {
+export const routesWithDeps = defineRoutes<typeof definition>().create(({ config, deps }) => {
   return [
     defineRoute({
       method: "GET",
@@ -170,7 +171,7 @@ export const routesWithDeps = defineRoutes<AppConfig, AppDeps>().create(({ deps 
       }),
       handler: async (_, { json }) => {
         return json({
-          hasApiKey: !!deps.config.apiKey,
+          hasApiKey: !!config.apiKey,
           timestamp: deps.timestamp,
         });
       },
@@ -186,12 +187,17 @@ Dependencies are passed to the route factory function and can be used in route h
 Services defined in `providesService` can be used in routes for business logic.
 
 ```typescript @fragno-test:using-services
-interface DataService {
-  getData: () => string;
-  processData: (input: string) => Promise<string>;
-}
+const definition = defineFragment("test")
+  .withDependencies(({ config }) => ({ timestamp: Date.now() }))
+  .providesBaseService(({ defineService }) =>
+    defineService({
+      getData: () => "Hello, World!",
+      processData: async (input: string) => input,
+    }),
+  )
+  .build();
 
-export const routesWithServices = defineRoutes<{}, {}, DataService>().create(({ services }) => {
+export const routesWithServices = defineRoutes<typeof definition>().create(({ services }) => {
   return [
     defineRoute({
       method: "GET",
@@ -218,55 +224,3 @@ export const routesWithServices = defineRoutes<{}, {}, DataService>().create(({ 
 ```
 
 Services provide reusable business logic that can be shared across multiple routes.
-
-## Complete Fragment Example
-
-A complete example showing how routes integrate with fragment definition.
-
-```typescript @fragno-test:complete-fragment
-interface MyFragmentConfig {
-  apiKey: string;
-}
-
-interface MyFragmentDeps {
-  config: MyFragmentConfig;
-}
-
-interface MyFragmentServices {
-  getStatus: () => string;
-}
-
-const myFragmentDefinition = defineFragment<MyFragmentConfig>("my-fragment")
-  .withDependencies(({ config }) => {
-    return {
-      config,
-    };
-  })
-  .providesService(({ deps, defineService }) => {
-    return defineService({
-      getStatus: () => `API Key: ${deps.config.apiKey.substring(0, 3)}...`,
-    });
-  });
-
-const myRoutes = defineRoutes<MyFragmentConfig, MyFragmentDeps, MyFragmentServices>().create(
-  ({ services }) => {
-    return [
-      defineRoute({
-        method: "GET",
-        path: "/status",
-        outputSchema: z.string(),
-        handler: async (_, { json }) => {
-          return json(services.getStatus());
-        },
-      }),
-    ];
-  },
-);
-
-export function createMyFragment(config: MyFragmentConfig, options: FragnoPublicConfig = {}) {
-  return createFragment(myFragmentDefinition, config, [myRoutes], options);
-}
-```
-
-This example shows the complete flow: fragment definition with dependencies and services, route
-factory using those services, and the fragment creation function.

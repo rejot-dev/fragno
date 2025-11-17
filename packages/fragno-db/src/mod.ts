@@ -31,40 +31,6 @@ export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySch
 }
 
 /**
- * Definition of a Fragno database schema and namespace.
- * Created by library authors using defineFragnoDatabase().
- * Apps instantiate it by calling .create(adapter).
- */
-export class FragnoDatabaseDefinition<const T extends AnySchema> {
-  #namespace: string;
-  #schema: T;
-
-  constructor(options: CreateFragnoDatabaseDefinitionOptions<T>) {
-    this.#namespace = options.namespace;
-    this.#schema = options.schema;
-  }
-
-  get namespace() {
-    return this.#namespace;
-  }
-
-  get schema() {
-    return this.#schema;
-  }
-
-  /**
-   * Creates a FragnoDatabase instance by binding an adapter to this definition.
-   */
-  create<TUOWConfig = void>(adapter: DatabaseAdapter<TUOWConfig>): FragnoDatabase<T, TUOWConfig> {
-    return new FragnoDatabase({
-      namespace: this.#namespace,
-      schema: this.#schema,
-      adapter,
-    });
-  }
-}
-
-/**
  * A Fragno database instance with a bound adapter.
  * Created from a FragnoDatabaseDefinition by calling .create(adapter).
  */
@@ -120,20 +86,14 @@ export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
   }
 }
 
-export function defineFragnoDatabase<const TSchema extends AnySchema>(
-  options: CreateFragnoDatabaseDefinitionOptions<TSchema>,
-): FragnoDatabaseDefinition<TSchema> {
-  return new FragnoDatabaseDefinition(options);
-}
-
 export {
-  defineFragmentWithDatabase,
-  DatabaseFragmentBuilder,
+  withDatabase,
+  DatabaseFragmentDefinitionBuilder,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
-  type DatabaseRouteHandler,
-  type ImplicitDependencies,
-} from "./fragment";
+  type DatabaseRequestContext,
+  type ImplicitDatabaseDependencies,
+} from "./db-fragment-definition-builder";
 
 export { decodeCursor, type CursorData } from "./query/cursor";
 
@@ -161,5 +121,12 @@ export {
   type ExecuteUnitOfWorkOptions,
 } from "./query/execute-unit-of-work";
 
-export { withUnitOfWork, serviceContext, type DatabaseRequestThisContext } from "./fragment";
-export { type BoundServices } from "./bind-services";
+export {
+  withUnitOfWork,
+  serviceContext,
+  uowStorage,
+  type DatabaseRequestThisContext,
+} from "./db-fragment-definition-builder";
+
+// Re-export BoundServices from core
+export { type BoundServices } from "@fragno-dev/core/api/fragment-instantiator";

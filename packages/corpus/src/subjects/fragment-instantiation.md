@@ -1,16 +1,13 @@
 # Fragment Instantiation
 
-Fragno provides the `instantiateFragment` function, which uses a builder pattern to help you and
-your user create Fragments.
+Fragno provides the `instantiate` function, which uses a builder pattern to help you and your user
+create Fragments.
 
 ```typescript @fragno-imports
-import {
-  defineFragment,
-  createFragment,
-  instantiateFragment,
-  defineRoute,
-  type FragnoPublicConfig,
-} from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { defineRoute } from "@fragno-dev/core/api/route";
+import type { FragnoPublicConfig } from "@fragno-dev/core";
 import { z } from "zod";
 ```
 
@@ -22,12 +19,12 @@ interface AppConfig {
   apiKey: string;
 }
 
-const fragment = defineFragment<AppConfig>("api-fragment");
+const fragmentDefinition = defineFragment<AppConfig>("api-fragment").build();
 
 // User-facing fragment creator function. This is the main integration point for users of your fragment.
 export function createMyFragment(config: AppConfig, options: FragnoPublicConfig = {}) {
   return (
-    instantiateFragment(fragment)
+    instantiate(fragmentDefinition)
       .withConfig(config)
       /** Options are passed to Fragno internally */
       .withOptions(options)
@@ -38,7 +35,7 @@ export function createMyFragment(config: AppConfig, options: FragnoPublicConfig 
 // What your user will call to instantiate the fragment:
 const instance = createMyFragment({ apiKey: "my-secret-key" }, { mountRoute: "/api/v1" });
 
-expect(instance.config.name).toBe("api-fragment");
+expect(instance.name).toBe("api-fragment");
 expect(instance.mountRoute).toBe("/api/v1");
 ```
 
@@ -51,7 +48,7 @@ Also see the `defining-routes` subject.
 
 ```typescript @fragno-test:builder-with-routes
 // should add routes using withRoutes
-const fragment = defineFragment<{}>("routes-fragment");
+const fragmentDefinition = defineFragment("routes-fragment").build();
 
 const route1 = defineRoute({
   method: "GET",
@@ -67,11 +64,14 @@ const route2 = defineRoute({
   handler: async (_, { json }) => json("Goodbye"),
 });
 
-const instance = instantiateFragment(fragment).withConfig({}).withRoutes([route1, route2]).build();
+const instance = instantiate(fragmentDefinition)
+  .withRoutes([route1, route2])
+  .withOptions({})
+  .build();
 
-expect(instance.config.routes).toHaveLength(2);
-expect(instance.config.routes[0].path).toBe("/hello");
-expect(instance.config.routes[1].path).toBe("/goodbye");
+expect(instance.routes).toHaveLength(2);
+expect(instance.routes[0].path).toBe("/hello");
+expect(instance.routes[1].path).toBe("/goodbye");
 ```
 
 Routes can be added as an array using `withRoutes`.
@@ -94,19 +94,20 @@ const fragment = defineFragment<AppConfig>("service-fragment")
   .withDependencies(({ config }) => ({
     client: { key: config.apiKey },
   }))
-  .usesService<"logger", ILogger>("logger");
+  .usesService<"logger", ILogger>("logger")
+  .build();
 
 const loggerImpl: ILogger = {
   log: (msg) => console.log(msg),
 };
 
-const instance = instantiateFragment(fragment)
+const instance = instantiate(fragment)
   .withConfig({ apiKey: "my-key" })
   .withServices({ logger: loggerImpl })
+  .withOptions({})
   .build();
 
-expect(instance.deps.client.key).toBe("my-key");
-expect(instance.services.logger).toBeDefined();
+expect(instance.$internal.deps.client.key).toBe("my-key");
 ```
 
 Use `withDependencies` to create dependencies from config, and `withServices` to provide required

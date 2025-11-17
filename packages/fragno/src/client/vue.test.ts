@@ -2,7 +2,7 @@ import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vites
 import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
 import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment-builder";
+import { defineFragment } from "../api/fragment-definition-builder";
 import { z } from "zod";
 import { refToAtom, useFragno } from "./vue";
 import { waitFor } from "@testing-library/vue";

@@ -1,5 +1,5 @@
 import { describe, it, expect, assert } from "vitest";
-import { createFragmentForTest } from "@fragno-dev/core/test/new-test";
+import { createFragmentForTest } from "@fragno-dev/core/test";
 import { chatnoDefinition, routes } from "./index";
 
 describe("chatno", () => {

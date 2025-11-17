@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { defineFragmentWithDatabase } from "./fragment";
-import { createFragment } from "@fragno-dev/core";
+import { defineFragment, instantiate } from "@fragno-dev/core";
 import { schema, column, idColumn } from "./schema/create";
+import { withDatabase } from "./db-fragment-definition-builder";
 
 describe("UOW Context Integration", () => {
   it("should bind services to use serviceContext", () => {
@@ -13,9 +13,9 @@ describe("UOW Context Integration", () => {
     });
 
     // Define fragment with service that uses this.getUnitOfWork()
-    const fragmentDef = defineFragmentWithDatabase<{}>("test-fragment")
-      .withDatabase(testSchema, "test")
-      .providesService(({ defineService }) =>
+    const fragmentDef = defineFragment<{}>("test-fragment")
+      .extend(withDatabase(testSchema))
+      .providesBaseService(({ defineService }) =>
         defineService({
           createUser: function (name: string) {
             const uow = this.getUnitOfWork(testSchema);
@@ -23,7 +23,8 @@ describe("UOW Context Integration", () => {
             return { userId: userId.valueOf(), name };
           },
         }),
-      );
+      )
+      .build();
 
     // Mock database adapter
     const mockSchemaView = {
@@ -39,11 +40,14 @@ describe("UOW Context Integration", () => {
     };
 
     // Create fragment instance - services should be bound
-    const fragment = createFragment(fragmentDef, {}, [], {
-      mountRoute: "/api/test",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      databaseAdapter: mockAdapter as any,
-    });
+    const fragment = instantiate(fragmentDef)
+      .withConfig({})
+      .withOptions({
+        mountRoute: "/api/test",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        databaseAdapter: mockAdapter as any,
+      })
+      .build();
 
     // Verify services are defined
     expect(fragment.services).toBeDefined();
@@ -61,9 +65,9 @@ describe("UOW Context Integration", () => {
     });
 
     // Fragment with providesService
-    const fragmentDef = defineFragmentWithDatabase<{}>("fragment1")
-      .withDatabase(schema1, "fragment1")
-      .providesService(({ defineService }) =>
+    const fragmentDef = defineFragment<{}>("fragment1")
+      .extend(withDatabase(schema1))
+      .providesBaseService(({ defineService }) =>
         defineService({
           createPost: function (title: string) {
             const uow = this.getUnitOfWork(schema1);
@@ -71,7 +75,8 @@ describe("UOW Context Integration", () => {
             return { postId: postId.valueOf(), title };
           },
         }),
-      );
+      )
+      .build();
 
     // Mock adapter
     const mockSchemaView = {
@@ -87,16 +92,17 @@ describe("UOW Context Integration", () => {
     };
 
     // Create fragment
-    const fragment = createFragment(fragmentDef, {}, [], {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      databaseAdapter: mockAdapter as any,
-    });
+    const fragment = instantiate(fragmentDef)
+      .withConfig({})
+      .withOptions({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        databaseAdapter: mockAdapter as any,
+      })
+      .build();
 
     // Verify service is properly bound
     expect(fragment.services).toBeDefined();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((fragment.services as any).createPost).toBeDefined();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(typeof (fragment.services as any).createPost).toBe("function");
+    expect(fragment.services.createPost).toBeDefined();
+    expect(typeof fragment.services.createPost).toBe("function");
   });
 });

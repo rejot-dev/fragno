@@ -663,9 +663,6 @@ importers:
 
   example-apps/vue-spa-example:
     dependencies:
-      '@fragno-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/fragno
       '@fragno-dev/example-fragment':
         specifier: workspace:*
         version: link:../../example-fragments/example-fragment

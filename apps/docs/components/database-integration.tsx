@@ -136,23 +136,28 @@ if (!success) {
       content: (
         <FragnoCodeBlock
           lang="typescript"
-          code={`import { createDatabaseFragmentForTest }
+          code={`import { buildDatabaseFragmentsTest }
   from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
 describe("auth fragment", async () => {
-  const { fragment, test } =
-    await createDatabaseFragmentForTest(
-      authFragmentDefinition,
-      { adapter: { type: "drizzle-sqlite" } }
-    );
+  const { fragments, test } =
+    await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-sqlite" })
+      .withFragment("auth",
+        instantiate(authFragmentDefinition).withRoutes(routes).withConfig({}),
+        { definition: authFragmentDefinition }
+      )
+      .build();
 
   afterAll(async () => {
     await test.cleanup();
   });
 
   it("creates user and session", async () => {
-    const response = await fragment.handler(
-      signUpRoute,
+    const response = await fragments.auth.callRoute(
+      "POST",
+      "/signup",
       {
         body: {
           email: "test@test.com",

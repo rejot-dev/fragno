@@ -6,7 +6,7 @@ import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
 import type { FragnoPublicClientConfig } from "../mod";
 import { atom, computed, effect } from "nanostores";
-import { defineFragment } from "../api/fragment-builder";
+import { defineFragment } from "../api/fragment-definition-builder";
 import { RequestOutputContext } from "../api/request-output-context";
 import { FragnoClientUnknownApiError } from "./client-error";
 
@@ -112,7 +112,7 @@ describe("getCacheKey", () => {
 });
 
 describe("invalidation", () => {
-  const testFragment = defineFragment("test-fragment");
+  const testFragment = defineFragment("test-fragment").build();
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -269,7 +269,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to path parameters", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -343,7 +343,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to query parameters", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -446,7 +446,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to optional query parameters", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -523,7 +523,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should react to combined path and query parameters", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -632,7 +632,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should handle mixed atoms and non-atoms in parameters", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -752,7 +752,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should not refetch when non-atom parameters remain unchanged", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -859,7 +859,7 @@ describe("hook parameter reactivity", () => {
   });
 
   test("should handle multiple reactive query parameters independently", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -1039,7 +1039,7 @@ describe("createHook - streaming", () => {
   });
 
   test("Should be able to stream data and receive updates in store (store.listen)", async () => {
-    const streamFragmentDefinition = defineFragment("stream-fragment");
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -1112,7 +1112,7 @@ describe("createHook - streaming", () => {
   });
 
   test("throws FragnoClientUnknownApiError when the stream is not valid JSON", async () => {
-    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment");
+    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment").build();
     const streamErrorRoutes = [
       defineRoute({
         method: "GET",
@@ -1152,7 +1152,7 @@ describe("createHook - streaming", () => {
   });
 
   test("throws FragnoClientUnknownApiError when the stream is new lines only", async () => {
-    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment");
+    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment").build();
     const streamErrorRoutes = [
       defineRoute({
         method: "GET",
@@ -1192,7 +1192,7 @@ describe("createHook - streaming", () => {
   });
 
   test("throws FragnoClientUnknownApiError with cause SyntaxError when the stream is not valid JSON (multiple empty lines)", async () => {
-    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment");
+    const streamErrorFragmentDefinition = defineFragment("stream-error-fragment").build();
     const streamErrorRoutes = [
       defineRoute({
         method: "GET",
@@ -1249,7 +1249,7 @@ describe("createMutator", () => {
   });
 
   test("body is optional when no inputSchema in route", async () => {
-    const testFragment = defineFragment("test-fragment");
+    const testFragment = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "DELETE",
@@ -1288,7 +1288,7 @@ describe("createMutator - streaming", () => {
   });
 
   test("should support streaming responses for mutations", async () => {
-    const mutationStreamFragmentDefinition = defineFragment("mutation-stream-fragment");
+    const mutationStreamFragmentDefinition = defineFragment("mutation-stream-fragment").build();
     const mutationStreamRoutes = [
       defineRoute({
         method: "POST",
@@ -1354,7 +1354,7 @@ describe("createMutator - streaming", () => {
   });
 
   test("Should be able to mutate data and receive updates in store (store.subscribe)", async () => {
-    const streamFragmentDefinition = defineFragment("stream-fragment");
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [
       defineRoute({
         method: "POST",
@@ -1459,7 +1459,7 @@ describe("createMutator - streaming", () => {
   });
 
   test("Should be able to mutate data and receive updates in store (store.listen)", async () => {
-    const streamFragmentDefinition = defineFragment("stream-fragment");
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [
       defineRoute({
         method: "POST",
@@ -1570,7 +1570,7 @@ describe("computed", () => {
   });
 
   test("Derived from streaming route", async () => {
-    const streamFragmentDefinition = defineFragment("stream-fragment");
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -1617,7 +1617,7 @@ describe("computed", () => {
   });
 
   test("Derived from streaming route with atom usage", async () => {
-    const streamFragmentDefinition = defineFragment("stream-fragment");
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [
       defineRoute({
         method: "GET",
@@ -1694,7 +1694,7 @@ describe("computed", () => {
 });
 
 describe("type guards", () => {
-  const testFragment = defineFragment("test-fragment");
+  const testFragment = defineFragment("test-fragment").build();
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -1767,7 +1767,7 @@ describe("type guards", () => {
 });
 
 describe("Custom Fetcher Configuration", () => {
-  const testFragment = defineFragment("test-fragment");
+  const testFragment = defineFragment("test-fragment").build();
   const testRoutes = [
     defineRoute({
       method: "GET",

@@ -13,12 +13,12 @@ typed based on your schema.
 The `db` is available in both `withDependencies()` and `providesService()`:
 
 ```typescript
-const fragmentDef = defineFragmentWithDatabase("my-fragment")
-  .withDatabase(mySchema)
+const fragmentDef = defineFragment("my-fragment")
+  .extend(withDatabase(mySchema))
   .withDependencies(({ db }) => {
     // Use in dependencies
   })
-  .providesService(({ db, deps }) => {
+  .providesBaseService(({ db, deps }) => {
     // Use in services
     return {
       createComment: async (data) => {

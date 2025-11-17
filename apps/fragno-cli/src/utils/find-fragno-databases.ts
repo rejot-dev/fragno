@@ -5,10 +5,6 @@ import {
 } from "@fragno-dev/db/adapters";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import {
-  instantiatedFragmentFakeSymbol,
-  type FragnoInstantiatedFragment,
-} from "@fragno-dev/core/api/fragment-instantiation";
-import {
   newInstantiatedFragmentFakeSymbol,
   type NewFragnoInstantiatedFragment,
 } from "@fragno-dev/core/api/fragment-instantiator";
@@ -130,17 +126,6 @@ export async function importFragmentFiles(paths: string[]): Promise<{
   };
 }
 
-function isFragnoInstantiatedFragment(
-  value: unknown,
-): value is FragnoInstantiatedFragment<[], {}, {}, {}> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    instantiatedFragmentFakeSymbol in value &&
-    value[instantiatedFragmentFakeSymbol] === instantiatedFragmentFakeSymbol
-  );
-}
-
 function isNewFragnoInstantiatedFragment(
   value: unknown,
 ): value is NewFragnoInstantiatedFragment<
@@ -156,20 +141,6 @@ function isNewFragnoInstantiatedFragment(
     value !== null &&
     newInstantiatedFragmentFakeSymbol in value &&
     value[newInstantiatedFragmentFakeSymbol] === newInstantiatedFragmentFakeSymbol
-  );
-}
-
-function additionalContextIsDatabaseContext(additionalContext: unknown): additionalContext is {
-  databaseSchema: AnySchema;
-  databaseNamespace: string;
-  databaseAdapter: DatabaseAdapter;
-} {
-  return (
-    typeof additionalContext === "object" &&
-    additionalContext !== null &&
-    "databaseSchema" in additionalContext &&
-    "databaseNamespace" in additionalContext &&
-    "databaseAdapter" in additionalContext
   );
 }
 
@@ -213,24 +184,6 @@ export function findFragnoDatabases(
         new FragnoDatabase({
           namespace,
           schema,
-          adapter: databaseAdapter,
-        }),
-      );
-    } else if (isFragnoInstantiatedFragment(value)) {
-      // Handle old fragment API
-      const additionalContext = value.additionalContext;
-
-      if (!additionalContext || !additionalContextIsDatabaseContext(additionalContext)) {
-        continue;
-      }
-
-      // Extract database schema, namespace, and adapter from instantiated fragment's additionalContext
-      const { databaseSchema, databaseNamespace, databaseAdapter } = additionalContext;
-
-      fragnoDatabases.push(
-        new FragnoDatabase({
-          namespace: databaseNamespace,
-          schema: databaseSchema,
           adapter: databaseAdapter,
         }),
       );

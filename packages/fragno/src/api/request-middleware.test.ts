@@ -1,6 +1,6 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
-import { defineFragment } from "./fragment-builder";
-import { createFragment } from "./fragment-instantiation";
+import { defineFragment } from "./fragment-definition-builder";
+import { instantiate } from "./fragment-instantiator";
 import { defineRoute } from "./route";
 import { z } from "zod";
 import { FragnoApiValidationError } from "./error";
@@ -9,12 +9,11 @@ describe("Request Middleware", () => {
   test("middleware can intercept and return early", async () => {
     const config = { apiKey: "test" };
 
-    const fragment = defineFragment<typeof config>("test-lib").providesService(
-      ({ defineService }) =>
-        defineService({
-          auth: { isAuthorized: (token?: string) => token === "valid-token" },
-        }),
-    );
+    const fragment = defineFragment<typeof config>("test-lib")
+      .providesBaseService(() => ({
+        auth: { isAuthorized: (token?: string) => token === "valid-token" },
+      }))
+      .build();
 
     const routes = [
       defineRoute({
@@ -26,9 +25,11 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    });
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({ mountRoute: "/api" })
+      .build();
 
     // Add middleware that checks authorization
     const withAuth = instance.withMiddleware(async ({ queryParams }, { services, error }) => {
@@ -68,7 +69,7 @@ describe("Request Middleware", () => {
   test("ifMatchesRoute - middleware has access to matched route information", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -97,35 +98,38 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      const result = await ifMatchesRoute(
-        "POST",
-        "/users/:id",
-        async ({ path, pathParams, input }, { error }) => {
-          expectTypeOf(path).toEqualTypeOf<"/users/:id">();
-          expectTypeOf(pathParams).toEqualTypeOf<{ id: string }>();
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({ mountRoute: "/api" })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        const result = await ifMatchesRoute(
+          "POST",
+          "/users/:id",
+          async ({ path, pathParams, input }, { error }) => {
+            expectTypeOf(path).toEqualTypeOf<"/users/:id">();
+            expectTypeOf(pathParams).toEqualTypeOf<{ id: string }>();
 
-          expectTypeOf(input.schema).toEqualTypeOf<z.ZodObject<{ name: z.ZodString }>>();
+            expectTypeOf(input.schema).toEqualTypeOf<z.ZodObject<{ name: z.ZodString }>>();
 
-          return error(
-            {
-              message: "Creating users has been disabled.",
-              code: "CREATE_USERS_DISABLED",
-            },
-            403,
-          );
-        },
-      );
+            return error(
+              {
+                message: "Creating users has been disabled.",
+                code: "CREATE_USERS_DISABLED",
+              },
+              403,
+            );
+          },
+        );
 
-      if (result) {
-        return result;
-      }
+        if (result) {
+          return result;
+        }
 
-      // This was a request to any other route
-      return undefined;
-    });
+        // This was a request to any other route
+        return undefined;
+      });
 
     // Request to POST, should be disabled.
     const req = new Request("http://localhost/api/users/123", {
@@ -157,7 +161,7 @@ describe("Request Middleware", () => {
   test("ifMatchesRoute - not called for other routes", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -188,13 +192,18 @@ describe("Request Middleware", () => {
 
     let middlewareCalled = false;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      return ifMatchesRoute("GET", "/users", () => {
-        middlewareCalled = true;
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        return ifMatchesRoute("GET", "/users", () => {
+          middlewareCalled = true;
+        });
       });
-    });
 
     // Request to POST, should be disabled.
     const req = new Request("http://localhost/api/users/123", {
@@ -217,7 +226,7 @@ describe("Request Middleware", () => {
   test("ifMatchesRoute - can return undefined", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -234,21 +243,26 @@ describe("Request Middleware", () => {
 
     let middlewareCalled = false;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      await ifMatchesRoute("GET", "/users", async ({ path, pathParams, input }) => {
-        expectTypeOf(path).toEqualTypeOf<"/users">();
-        expectTypeOf(pathParams).toEqualTypeOf<{ [x: string]: never }>();
-        expectTypeOf(input).toEqualTypeOf<undefined>();
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        await ifMatchesRoute("GET", "/users", async ({ path, pathParams, input }) => {
+          expectTypeOf(path).toEqualTypeOf<"/users">();
+          expectTypeOf(pathParams).toEqualTypeOf<{ [x: string]: never }>();
+          expectTypeOf(input).toEqualTypeOf<undefined>();
 
-        middlewareCalled = true;
+          middlewareCalled = true;
+
+          return undefined;
+        });
 
         return undefined;
       });
-
-      return undefined;
-    });
 
     const getReq = new Request("http://localhost/api/users", {
       method: "GET",
@@ -265,7 +279,7 @@ describe("Request Middleware", () => {
   test("only one middleware is supported", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -277,7 +291,11 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes, {});
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({})
+      .build();
 
     const withMiddleware = instance.withMiddleware(async () => {
       return undefined;
@@ -294,7 +312,7 @@ describe("Request Middleware", () => {
   test("middleware and handler can both consume request body without double consumption", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -312,19 +330,24 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      // Middleware consumes the request body
-      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
-        const body = await input.valid();
-        // Middleware can read the body
-        expect(body).toEqual({ name: "John Doe" });
-        return undefined; // Continue to handler
-      });
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        // Middleware consumes the request body
+        const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+          const body = await input.valid();
+          // Middleware can read the body
+          expect(body).toEqual({ name: "John Doe" });
+          return undefined; // Continue to handler
+        });
 
-      return result;
-    });
+        return result;
+      });
 
     const req = new Request("http://localhost/api/users", {
       method: "POST",
@@ -341,7 +364,7 @@ describe("Request Middleware", () => {
   });
 
   test("middleware can modify path parameters", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -358,16 +381,21 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      // Middleware can read path and query parameters
-      const result = await ifMatchesRoute("GET", "/users/:id", async ({ pathParams }) => {
-        pathParams.id = "9999";
-      });
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        // Middleware can read path and query parameters
+        const result = await ifMatchesRoute("GET", "/users/:id", async ({ pathParams }) => {
+          pathParams.id = "9999";
+        });
 
-      return result;
-    });
+        return result;
+      });
 
     // Test with admin role
     const adminReq = new Request("http://localhost/api/users/123?role=admin", {
@@ -385,7 +413,7 @@ describe("Request Middleware", () => {
   test("middleware calling input.valid() can catch validation error", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -407,29 +435,34 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      // Middleware tries to validate the input
-      const result = await ifMatchesRoute("POST", "/users", async ({ input }, { error }) => {
-        try {
-          await input.valid();
-          return undefined; // Continue to handler if valid
-        } catch (validationError) {
-          expect(validationError).toBeInstanceOf(FragnoApiValidationError);
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        // Middleware tries to validate the input
+        const result = await ifMatchesRoute("POST", "/users", async ({ input }, { error }) => {
+          try {
+            await input.valid();
+            return undefined; // Continue to handler if valid
+          } catch (validationError) {
+            expect(validationError).toBeInstanceOf(FragnoApiValidationError);
 
-          return error(
-            {
-              message: "Request validation failed in middleware",
-              code: "MIDDLEWARE_VALIDATION_ERROR",
-            },
-            400,
-          );
-        }
+            return error(
+              {
+                message: "Request validation failed in middleware",
+                code: "MIDDLEWARE_VALIDATION_ERROR",
+              },
+              400,
+            );
+          }
+        });
+
+        return result;
       });
-
-      return result;
-    });
 
     // Test with invalid request (missing required fields)
     const invalidReq = new Request("http://localhost/api/users", {
@@ -451,7 +484,7 @@ describe("Request Middleware", () => {
   test("middleware calling input.valid() can ignore validation error", async () => {
     const config = {};
 
-    const fragment = defineFragment<typeof config>("test-lib");
+    const fragment = defineFragment<typeof config>("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -474,16 +507,21 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, config, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      // Middleware tries to validate the input
-      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
-        await input.valid();
-      });
+    const instance = instantiate(fragment)
+      .withConfig(config)
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        // Middleware tries to validate the input
+        const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+          await input.valid();
+        });
 
-      return result;
-    });
+        return result;
+      });
 
     // Test with invalid request (missing required fields)
     const invalidReq = new Request("http://localhost/api/users", {
@@ -504,7 +542,7 @@ describe("Request Middleware", () => {
   });
 
   test("middleware can modify query parameters", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -521,16 +559,21 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      // Middleware can read path and query parameters
-      const result = await ifMatchesRoute("GET", "/users/:id", async ({ query }) => {
-        query.set("role", "some-other-role-defined-in-middleware");
-      });
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        // Middleware can read path and query parameters
+        const result = await ifMatchesRoute("GET", "/users/:id", async ({ query }) => {
+          query.set("role", "some-other-role-defined-in-middleware");
+        });
 
-      return result;
-    });
+        return result;
+      });
 
     // Test with admin role
     const adminReq = new Request("http://localhost/api/users/123?role=admin", {
@@ -546,7 +589,7 @@ describe("Request Middleware", () => {
   });
 
   test("middleware can modify request body", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -564,21 +607,26 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute, requestState }) => {
-      // Middleware modifies the request body
-      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
-        const body = await input.valid();
-        // Modify the body by adding a role field
-        requestState.setBody({
-          ...body,
-          role: "admin-from-middleware",
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute, requestState }) => {
+        // Middleware modifies the request body
+        const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+          const body = await input.valid();
+          // Modify the body by adding a role field
+          requestState.setBody({
+            ...body,
+            role: "admin-from-middleware",
+          });
         });
-      });
 
-      return result;
-    });
+        return result;
+      });
 
     const req = new Request("http://localhost/api/users", {
       method: "POST",
@@ -595,7 +643,7 @@ describe("Request Middleware", () => {
   });
 
   test("middleware can modify request headers", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -611,14 +659,19 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ headers }) => {
-      // Middleware modifies headers
-      headers.set("Authorization", "Bearer middleware-token");
-      headers.set("X-Custom-Header", "middleware-value");
-      return undefined;
-    });
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ headers }) => {
+        // Middleware modifies headers
+        headers.set("Authorization", "Bearer middleware-token");
+        headers.set("X-Custom-Header", "middleware-value");
+        return undefined;
+      });
 
     const req = new Request("http://localhost/api/data", {
       method: "GET",
@@ -633,7 +686,7 @@ describe("Request Middleware", () => {
   });
 
   test("ifMatchesRoute properly awaits async handlers", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -654,33 +707,38 @@ describe("Request Middleware", () => {
 
     let asyncOperationCompleted = false;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
-        // Simulate async operation (e.g., database lookup)
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        const body = await input.valid();
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        const result = await ifMatchesRoute("POST", "/users", async ({ input }) => {
+          // Simulate async operation (e.g., database lookup)
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          const body = await input.valid();
 
-        // Verify the async operation completed
-        asyncOperationCompleted = true;
+          // Verify the async operation completed
+          asyncOperationCompleted = true;
 
-        // Check if user exists
-        if (body.name === "existing-user") {
-          return new Response(
-            JSON.stringify({
-              message: "User already exists",
-              code: "USER_EXISTS",
-            }),
-            { status: 409, headers: { "Content-Type": "application/json" } },
-          );
-        }
+          // Check if user exists
+          if (body.name === "existing-user") {
+            return new Response(
+              JSON.stringify({
+                message: "User already exists",
+                code: "USER_EXISTS",
+              }),
+              { status: 409, headers: { "Content-Type": "application/json" } },
+            );
+          }
 
-        return undefined;
+          return undefined;
+        });
+
+        return result;
       });
-
-      return result;
-    });
 
     // Test with existing user
     const existingUserReq = new Request("http://localhost/api/users", {
@@ -718,7 +776,7 @@ describe("Request Middleware", () => {
   });
 
   test("ifMatchesRoute handles async errors properly", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -731,25 +789,30 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      const result = await ifMatchesRoute("GET", "/data", async (_, { error }) => {
-        // Simulate async operation that fails
-        await new Promise((resolve) => setTimeout(resolve, 5));
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        const result = await ifMatchesRoute("GET", "/data", async (_, { error }) => {
+          // Simulate async operation that fails
+          await new Promise((resolve) => setTimeout(resolve, 5));
 
-        // Simulate an error condition (e.g., database unavailable)
-        return error(
-          {
-            message: "Service temporarily unavailable",
-            code: "SERVICE_UNAVAILABLE",
-          },
-          503,
-        );
+          // Simulate an error condition (e.g., database unavailable)
+          return error(
+            {
+              message: "Service temporarily unavailable",
+              code: "SERVICE_UNAVAILABLE",
+            },
+            503,
+          );
+        });
+
+        return result;
       });
-
-      return result;
-    });
 
     const req = new Request("http://localhost/api/data", {
       method: "GET",
@@ -764,7 +827,7 @@ describe("Request Middleware", () => {
   });
 
   test("ifMatchesRoute with async body modification", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -789,26 +852,31 @@ describe("Request Middleware", () => {
       }),
     ] as const;
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute, requestState }) => {
-      const result = await ifMatchesRoute("POST", "/posts", async ({ input }) => {
-        // Simulate async operation to enrich the body (e.g., fetching user data)
-        await new Promise((resolve) => setTimeout(resolve, 5));
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute, requestState }) => {
+        const result = await ifMatchesRoute("POST", "/posts", async ({ input }) => {
+          // Simulate async operation to enrich the body (e.g., fetching user data)
+          await new Promise((resolve) => setTimeout(resolve, 5));
 
-        const body = await input.valid();
+          const body = await input.valid();
 
-        // Enrich the body with additional data
-        requestState.setBody({
-          ...body,
-          content: `${body.content}\n\n[Enhanced by middleware]`,
+          // Enrich the body with additional data
+          requestState.setBody({
+            ...body,
+            content: `${body.content}\n\n[Enhanced by middleware]`,
+          });
+
+          return undefined;
         });
 
-        return undefined;
+        return result;
       });
-
-      return result;
-    });
 
     const req = new Request("http://localhost/api/posts", {
       method: "POST",
@@ -832,7 +900,7 @@ describe("Request Middleware", () => {
   });
 
   test("multiple async operations in ifMatchesRoute complete in order", async () => {
-    const fragment = defineFragment("test-lib");
+    const fragment = defineFragment("test-lib").build();
 
     const routes = [
       defineRoute({
@@ -847,26 +915,31 @@ describe("Request Middleware", () => {
 
     const executionOrder: string[] = [];
 
-    const instance = createFragment(fragment, {}, routes, {
-      mountRoute: "/api",
-    }).withMiddleware(async ({ ifMatchesRoute }) => {
-      executionOrder.push("start");
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        executionOrder.push("start");
 
-      const result = await ifMatchesRoute("GET", "/status", async () => {
-        executionOrder.push("before-first-async");
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        executionOrder.push("after-first-async");
+        const result = await ifMatchesRoute("GET", "/status", async () => {
+          executionOrder.push("before-first-async");
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          executionOrder.push("after-first-async");
 
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        executionOrder.push("after-second-async");
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          executionOrder.push("after-second-async");
 
-        return undefined;
+          return undefined;
+        });
+
+        executionOrder.push("end");
+
+        return result;
       });
-
-      executionOrder.push("end");
-
-      return result;
-    });
 
     const req = new Request("http://localhost/api/status", {
       method: "GET",

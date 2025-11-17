@@ -102,7 +102,7 @@ describe("corpus API", () => {
       const [subject] = getSubject("database-querying");
 
       expect(subject.title).toBe("Database Querying");
-      expect(subject.imports).toContain("defineFragmentWithDatabase");
+      expect(subject.imports).toContain("withDatabase");
       expect(subject.examples.length).toBeGreaterThan(0);
     });
 

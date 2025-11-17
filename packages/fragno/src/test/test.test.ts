@@ -1,454 +1,262 @@
-import { describe, it, expect, expectTypeOf, assert } from "vitest";
-import { createFragmentForTest } from "./test";
-import { defineFragment } from "../api/fragment-builder";
-import { defineRoute, defineRoutes } from "../api/route";
+import { describe, it, expect } from "vitest";
+import { createFragmentForTest, withTestUtils } from "./test";
+import { defineFragment } from "../api/fragment-definition-builder";
+import { defineRoutesNew } from "../api/route";
 import { z } from "zod";
 
-describe("createFragmentForTest", () => {
-  it("should create a test fragment with config only", () => {
-    const fragment = defineFragment<{ apiKey: string }>("test");
-    const testFragment = createFragmentForTest(fragment, [], {
-      config: { apiKey: "test-key" },
-    });
-
-    expect(testFragment.config).toEqual({ apiKey: "test-key" });
-    expect(testFragment.deps).toEqual({});
-    expect(testFragment.services).toEqual({});
-  });
-
-  it("should create deps from fragment definition", () => {
-    const fragment = defineFragment<{ apiKey: string }>("test").withDependencies(({ config }) => ({
-      client: { apiKey: config.apiKey },
-    }));
-
-    const testFragment = createFragmentForTest(fragment, [], {
-      config: { apiKey: "test-key" },
-    });
-
-    expect(testFragment.deps).toEqual({ client: { apiKey: "test-key" } });
-  });
-
-  it("should override deps when provided", () => {
-    const fragment = defineFragment<{ apiKey: string }>("test").withDependencies(({ config }) => ({
-      client: { apiKey: config.apiKey },
-    }));
-
-    const testFragment = createFragmentForTest(fragment, [], {
-      config: { apiKey: "test-key" },
-      deps: { client: { apiKey: "override-key" } },
-    });
-
-    expect(testFragment.deps).toEqual({ client: { apiKey: "override-key" } });
-  });
-
-  it("should create services from fragment definition", () => {
-    const fragment = defineFragment<{ apiKey: string }>("test")
+describe("withTestUtils extension", () => {
+  it("should expose deps via services.deps", () => {
+    const definition = defineFragment<{ apiKey: string }>("test")
       .withDependencies(({ config }) => ({
         client: { apiKey: config.apiKey },
       }))
-      .providesService(({ deps, defineService }) =>
-        defineService({
-          getApiKey: () => deps.client.apiKey,
-        }),
-      );
+      .extend(withTestUtils())
+      .build();
 
-    const testFragment = createFragmentForTest(fragment, [], {
+    const fragment = createFragmentForTest(definition, [], {
       config: { apiKey: "test-key" },
     });
 
-    expect(testFragment.services.getApiKey()).toBe("test-key");
+    expect(fragment.services.deps).toEqual({ client: { apiKey: "test-key" } });
   });
 
-  it("should override services when provided", () => {
-    const fragment = defineFragment<{ apiKey: string }>("test")
+  it("should work with empty deps", () => {
+    const definition = defineFragment<{ value: number }>("test").extend(withTestUtils()).build();
+
+    const fragment = createFragmentForTest(definition, [], {
+      config: { value: 5 },
+    });
+
+    expect(fragment.services.deps).toEqual({});
+  });
+
+  it("should preserve existing base services", () => {
+    const definition = defineFragment<{ x: number; y: number }>("test")
       .withDependencies(({ config }) => ({
-        client: { apiKey: config.apiKey },
+        x: config.x,
+        y: config.y,
       }))
-      .providesService(({ deps, defineService }) =>
+      .providesBaseService(({ deps, defineService }) =>
         defineService({
-          getApiKey: () => deps.client.apiKey,
+          add: () => deps.x + deps.y,
+          multiply: () => deps.x * deps.y,
         }),
-      );
+      )
+      .extend(withTestUtils())
+      .build();
 
-    const testFragment = createFragmentForTest(fragment, [], {
-      config: { apiKey: "test-key" },
-      services: { getApiKey: () => "override-key" },
+    const fragment = createFragmentForTest(definition, [], {
+      config: { x: 3, y: 4 },
     });
 
-    expect(testFragment.services.getApiKey()).toBe("override-key");
+    // Both existing services and deps should be available
+    expect(fragment.services.add()).toBe(7);
+    expect(fragment.services.multiply()).toBe(12);
+    expect(fragment.services.deps).toEqual({ x: 3, y: 4 });
   });
 
-  it("should initialize route factories with fragment context", async () => {
-    type Config = { multiplier: number };
-    type Deps = { dep: string };
-    type Services = { multiply: (x: number) => number };
-
-    const fragment = defineFragment<Config>("test")
-      .withDependencies(() => ({ dep: "value" }))
-      .providesService(({ config, defineService }) =>
+  it("should work with named services", () => {
+    const definition = defineFragment<{ value: number }>("test")
+      .withDependencies(({ config }) => ({
+        value: config.value,
+      }))
+      .providesService("math", ({ deps, defineService }) =>
         defineService({
-          multiply: (x: number) => x * config.multiplier,
+          double: () => deps.value * 2,
         }),
-      );
+      )
+      .extend(withTestUtils())
+      .build();
 
-    const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
-      defineRoute({
-        method: "GET",
-        path: "/multiply/:num",
-        outputSchema: z.object({ result: z.number() }),
-        handler: async ({ pathParams }, { json }) => {
-          const { num } = pathParams;
-          return json({ result: services.multiply(Number(num)) });
-        },
-      }),
-    ]);
-
-    const routes = [routeFactory] as const;
-
-    const testFragment = createFragmentForTest(fragment, routes, {
-      config: { multiplier: 3 },
+    const fragment = createFragmentForTest(definition, [], {
+      config: { value: 21 },
     });
 
-    // Test that the route was initialized with the correct services
-    const response = await testFragment.callRoute("GET", "/multiply/:num", {
-      //       ^?
-      pathParams: { num: "5" },
+    expect(fragment.services.deps).toEqual({ value: 21 });
+    expect(fragment.services.math.double()).toBe(42);
+  });
+
+  it("should work with service dependencies", () => {
+    type Logger = { log: (msg: string) => void };
+
+    const logs: string[] = [];
+    const mockLogger: Logger = {
+      log: (msg: string) => logs.push(msg),
+    };
+
+    const definition = defineFragment<{ name: string }>("test")
+      .withDependencies(({ config }) => ({
+        name: config.name,
+      }))
+      .usesService<"logger", Logger>("logger")
+      .providesBaseService(({ deps, serviceDeps, defineService }) =>
+        defineService({
+          greet: () => {
+            serviceDeps.logger.log(`Hello, ${deps.name}!`);
+          },
+        }),
+      )
+      .extend(withTestUtils())
+      .build();
+
+    const fragment = createFragmentForTest(definition, [], {
+      config: { name: "World" },
+      serviceImplementations: {
+        logger: mockLogger,
+      },
     });
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual({ result: 15 }); // 5 * 3
-      expectTypeOf(response.data).toMatchObjectType<{ result: number }>();
-    }
+
+    expect(fragment.services.deps).toEqual({ name: "World" });
+    fragment.services.greet();
+    expect(logs).toEqual(["Hello, World!"]);
+  });
+
+  it("should work with request storage and context", () => {
+    type RequestStorage = { counter: number };
+
+    const definition = defineFragment<{ initialValue: number }>("test")
+      .withDependencies(({ config }) => ({
+        initialValue: config.initialValue,
+      }))
+      .withRequestStorage(
+        ({ deps }): RequestStorage => ({
+          counter: deps.initialValue,
+        }),
+      )
+      .withRequestThisContext(({ storage }) => ({
+        getCounter: () => storage.getStore()?.counter ?? 0,
+      }))
+      .extend(withTestUtils())
+      .build();
+
+    const fragment = createFragmentForTest(definition, [], {
+      config: { initialValue: 10 },
+    });
+
+    expect(fragment.services.deps).toEqual({ initialValue: 10 });
   });
 });
 
-describe("fragment.callRoute", () => {
-  it("should handle JSON response", async () => {
-    const fragment = defineFragment<{ apiKey: string }>("test");
+describe("createFragmentForTest", () => {
+  it("should instantiate fragments with routes", async () => {
+    type Config = { multiplier: number };
 
-    const route = defineRoute({
-      method: "GET",
-      path: "/test",
-      outputSchema: z.object({ message: z.string() }),
-      handler: async (_ctx, { json }) => {
-        return json({ message: "hello" });
-      },
-    });
+    const definition = defineFragment<Config>("test")
+      .withDependencies(({ config }) => ({ multiplier: config.multiplier }))
+      .providesService("math", ({ deps, defineService }) =>
+        defineService({
+          multiply: (x: number) => x * deps.multiplier,
+        }),
+      )
+      .extend(withTestUtils())
+      .build();
 
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: { apiKey: "test-key" },
-    });
-
-    const response = await testFragment.callRoute("GET", "/test");
-
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.status).toBe(200);
-      expect(response.data).toEqual({ message: "hello" });
-      expect(response.headers).toBeInstanceOf(Headers);
-      expectTypeOf(response.data).toMatchObjectType<{ message: string }>();
-    }
-  });
-
-  it("should handle empty response", async () => {
-    const fragment = defineFragment<{ apiKey: string }>("test");
-
-    const route = defineRoute({
-      method: "DELETE",
-      path: "/test",
-      handler: async (_ctx, { empty }) => {
-        return empty(204);
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: { apiKey: "test-key" },
-    });
-
-    const response = await testFragment.callRoute("DELETE", "/test");
-
-    expect(response.type).toBe("empty");
-    if (response.type === "empty") {
-      expect(response.status).toBe(204);
-      expect(response.headers).toBeInstanceOf(Headers);
-    }
-  });
-
-  it("should handle error response", async () => {
-    const fragment = defineFragment<{ apiKey: string }>("test");
-
-    const route = defineRoute({
-      method: "GET",
-      path: "/test",
-      errorCodes: ["NOT_FOUND"] as const,
-      handler: async (_ctx, { error }) => {
-        return error({ message: "Not found", code: "NOT_FOUND" }, 404);
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: { apiKey: "test-key" },
-    });
-
-    const response = await testFragment.callRoute("GET", "/test");
-
-    expect(response.type).toBe("error");
-    if (response.type === "error") {
-      expect(response.status).toBe(404);
-      expect(response.error).toEqual({ message: "Not found", code: "NOT_FOUND" });
-      expect(response.headers).toBeInstanceOf(Headers);
-    }
-  });
-
-  it("should handle JSON stream response", async () => {
-    const fragment = defineFragment<{ apiKey: string }>("test");
-
-    const route = defineRoute({
-      method: "GET",
-      path: "/test/stream",
-      outputSchema: z.array(z.object({ value: z.number() })),
-      handler: async (_ctx, { jsonStream }) => {
-        return jsonStream(async (stream) => {
-          for (let i = 1; i <= 5; i++) {
-            await stream.write({ value: i });
-          }
-        });
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: { apiKey: "test-key" },
-    });
-
-    const response = await testFragment.callRoute("GET", "/test/stream");
-
-    expect(response.type).toBe("jsonStream");
-    if (response.type === "jsonStream") {
-      expect(response.status).toBe(200);
-      expect(response.headers).toBeInstanceOf(Headers);
-      expect(response.headers.get("content-type")).toContain("application/x-ndjson");
-
-      const items = [];
-      for await (const item of response.stream) {
-        items.push(item);
-      }
-
-      expect(items).toEqual([{ value: 1 }, { value: 2 }, { value: 3 }, { value: 4 }, { value: 5 }]);
-      expectTypeOf(items[0]).toMatchObjectType<{ value: number }>();
-    }
-  });
-
-  it("should handle route factory created with defineRoutes", async () => {
-    const fragment = defineFragment<{ apiKey: string }>("test").providesService(() => ({
-      getGreeting: (name: string) => `Hello, ${name}!`,
-      getCount: () => 42,
-    }));
-
-    type Config = { apiKey: string };
-    type Deps = {};
-    type Services = { getGreeting: (name: string) => string; getCount: () => number };
-
-    const routeFactory = defineRoutes<Config, Deps, Services>().create(({ services }) => [
+    const routeFactory = defineRoutesNew(definition).create(({ services, defineRoute }) => [
       defineRoute({
         method: "GET",
-        path: "/greeting/:name",
-        outputSchema: z.object({ message: z.string() }),
+        path: "/multiply/:num",
+        outputSchema: z.object({ result: z.number(), deps: z.object({ multiplier: z.number() }) }),
         handler: async ({ pathParams }, { json }) => {
-          return json({ message: services.getGreeting(pathParams.name) });
-        },
-      }),
-      defineRoute({
-        method: "GET",
-        path: "/count",
-        outputSchema: z.object({ count: z.number() }),
-        handler: async (_ctx, { json }) => {
-          return json({ count: services.getCount() });
+          const { num } = pathParams;
+          return json({
+            result: services.math.multiply(Number(num)),
+            deps: services.deps,
+          });
         },
       }),
     ]);
 
-    const testFragment = createFragmentForTest(fragment, [routeFactory], {
-      config: { apiKey: "test-key" },
+    const fragment = createFragmentForTest(definition, [routeFactory], {
+      config: { multiplier: 3 },
     });
 
-    // Test first route
-    const greetingResponse = await testFragment.callRoute("GET", "/greeting/:name", {
-      pathParams: { name: "World" },
-    });
-
-    console.log(greetingResponse);
-    assert(greetingResponse.type === "json");
-    expect(greetingResponse.data).toEqual({ message: "Hello, World!" });
-
-    // Test second route
-    const countResponse = await testFragment.callRoute("GET", "/count");
-
-    expect(countResponse.type).toBe("json");
-    if (countResponse.type === "json") {
-      expect(countResponse.data).toEqual({ count: 42 });
-    }
-  });
-
-  it("should handle path parameters", async () => {
-    const fragment = defineFragment<{}>("test");
-
-    const route = defineRoute({
-      method: "GET",
-      path: "/users/:id",
-      outputSchema: z.object({ userId: z.string() }),
-      handler: async ({ pathParams }, { json }) => {
-        return json({ userId: pathParams.id });
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: {},
-    });
-
-    const response = await testFragment.callRoute("GET", "/users/:id", {
-      pathParams: { id: "123" },
+    const response = await fragment.callRoute("GET", "/multiply/:num", {
+      pathParams: { num: "5" },
     });
 
     expect(response.type).toBe("json");
     if (response.type === "json") {
-      expect(response.data).toEqual({ userId: "123" });
+      expect(response.data).toEqual({
+        result: 15,
+        deps: { multiplier: 3 },
+      });
     }
   });
 
-  it("should handle query parameters", async () => {
-    const fragment = defineFragment<{}>("test");
+  it("should support request context in routes", async () => {
+    type RequestStorage = { counter: number };
 
-    const route = defineRoute({
-      method: "GET",
-      path: "/search",
-      outputSchema: z.object({ query: z.string() }),
-      handler: async ({ query }, { json }) => {
-        return json({ query: query.get("q") || "" });
-      },
+    const definition = defineFragment<{ initialValue: number }>("test")
+      .withDependencies(({ config }) => ({
+        initialValue: config.initialValue,
+      }))
+      .extend(withTestUtils())
+      .withRequestStorage(
+        ({ deps }): RequestStorage => ({
+          counter: deps.initialValue,
+        }),
+      )
+      .withRequestThisContext(({ storage }) => ({
+        getCounter: () => storage.getStore()?.counter ?? 0,
+        incrementCounter: () => {
+          const store = storage.getStore();
+          if (store) {
+            store.counter++;
+          }
+        },
+      }))
+      .build();
+
+    const routeFactory = defineRoutesNew(definition).create(({ defineRoute }) => [
+      defineRoute({
+        method: "POST",
+        path: "/increment",
+        outputSchema: z.object({ count: z.number() }),
+        handler: async function (_ctx, { json }) {
+          this.incrementCounter();
+          return json({ count: this.getCounter() });
+        },
+      }),
+    ]);
+
+    const fragment = createFragmentForTest(definition, [routeFactory], {
+      config: { initialValue: 10 },
     });
 
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: {},
-    });
+    // Each request should have its own isolated storage
+    const response1 = await fragment.callRoute("POST", "/increment");
+    expect(response1.type).toBe("json");
+    if (response1.type === "json") {
+      expect(response1.data).toEqual({ count: 11 });
+    }
 
-    const response = await testFragment.callRoute("GET", "/search", {
-      query: { q: "test" },
-    });
-
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual({ query: "test" });
+    // New request should start fresh
+    const response2 = await fragment.callRoute("POST", "/increment");
+    expect(response2.type).toBe("json");
+    if (response2.type === "json") {
+      expect(response2.data).toEqual({ count: 11 }); // Not 12!
     }
   });
 
-  it("should handle request body", async () => {
-    const fragment = defineFragment<{}>("test");
+  it("should work without withTestUtils (no deps exposed)", () => {
+    const definition = defineFragment<{ value: number }>("test")
+      .withDependencies(({ config }) => ({
+        value: config.value,
+      }))
+      .providesBaseService(({ deps, defineService }) =>
+        defineService({
+          getValue: () => deps.value,
+        }),
+      )
+      .build();
 
-    const route = defineRoute({
-      method: "POST",
-      path: "/users",
-      inputSchema: z.object({ name: z.string(), email: z.string() }),
-      outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-      handler: async ({ input }, { json }) => {
-        if (input) {
-          const data = await input.valid();
-          return json({ id: 1, name: data.name, email: data.email });
-        }
-        return json({ id: 1, name: "", email: "" });
-      },
+    const fragment = createFragmentForTest(definition, [], {
+      config: { value: 42 },
     });
 
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: {},
-    });
-
-    const response = await testFragment.callRoute("POST", "/users", {
-      body: { name: "John", email: "john@example.com" },
-    });
-
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual({ id: 1, name: "John", email: "john@example.com" });
-    }
-  });
-
-  it("should have the right types", () => {
-    const fragment = defineFragment<{}>("test");
-
-    const route = defineRoute({
-      method: "POST",
-      path: "/users",
-      inputSchema: z.object({ name: z.string(), email: z.string() }),
-      outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
-      handler: async ({ input }, { json }) => {
-        if (input) {
-          const data = await input.valid();
-          return json({ id: 1, name: data.name, email: data.email });
-        }
-        return json({ id: 1, name: "", email: "" });
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: {},
-    });
-
-    // Check what type body is expected to have
-    type InputOptions = Parameters<typeof testFragment.callRoute<"POST", "/users">>[2];
-    type BodyType = NonNullable<NonNullable<InputOptions>["body"]>;
-
-    expectTypeOf<BodyType>().toMatchObjectType<{ name: string; email: string }>();
-  });
-
-  it("should handle custom headers", async () => {
-    const fragment = defineFragment<{}>("test");
-
-    const route = defineRoute({
-      method: "GET",
-      path: "/test",
-      outputSchema: z.object({ authHeader: z.string() }),
-      handler: async ({ headers }, { json }) => {
-        return json({ authHeader: headers.get("authorization") || "" });
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: {},
-    });
-
-    const response = await testFragment.callRoute("GET", "/test", {
-      headers: { authorization: "Bearer token" },
-    });
-
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual({ authHeader: "Bearer token" });
-    }
-  });
-
-  it("should properly type path params", async () => {
-    const fragment = defineFragment<{}>("test");
-
-    const route = defineRoute({
-      method: "GET",
-      path: "/orgs/:orgId/users/:userId",
-      outputSchema: z.object({ orgId: z.string(), userId: z.string() }),
-      handler: async ({ pathParams }, { json }) => {
-        return json({ orgId: pathParams.orgId, userId: pathParams.userId });
-      },
-    });
-
-    const testFragment = createFragmentForTest(fragment, [route], {
-      config: {},
-    });
-
-    const response = await testFragment.callRoute("GET", "/orgs/:orgId/users/:userId", {
-      pathParams: { orgId: "123", userId: "456" },
-    });
-
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual({ orgId: "123", userId: "456" });
-    }
+    // Services should work
+    expect(fragment.services.getValue()).toBe(42);
+    // But deps should not be exposed
+    expect(fragment.services).not.toHaveProperty("deps");
   });
 });

@@ -1,7 +1,7 @@
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { defineRoute, defineRoutesNew } from "@fragno-dev/core/api/route";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { otpSchema, authSchema } from "./schema";
 import z from "zod";

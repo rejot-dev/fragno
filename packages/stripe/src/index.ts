@@ -1,6 +1,6 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
-import { createClientBuilderNew } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { StripeFragmentConfig } from "./types";
 import { stripeFragmentDefinition } from "./definition";
 import { webhookRoutesFactory } from "./routes/webhooks";
@@ -30,7 +30,7 @@ export function createStripeFragment(
 }
 
 export function createStripeFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
-  const builder = createClientBuilderNew(stripeFragmentDefinition, fragnoConfig, routes);
+  const builder = createClientBuilder(stripeFragmentDefinition, fragnoConfig, routes);
 
   return {
     // These hooks are for building internal administrative interfaces

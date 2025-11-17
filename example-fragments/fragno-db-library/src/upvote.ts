@@ -3,7 +3,7 @@ import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 export const upvoteSchema = schema((s) => {
   return s

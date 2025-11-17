@@ -4,6 +4,7 @@
   "exports": {
     ".": {
       "development": "./src/mod.ts",
+      "browser": "./dist/client/client.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
@@ -16,21 +17,6 @@
       "development": "./src/test/test.ts",
       "types": "./dist/test/test.d.ts",
       "default": "./dist/test/test.js"
-    },
-    "./test/new-test": {
-      "development": "./src/test/new-test.ts",
-      "types": "./dist/test/new-test.d.ts",
-      "default": "./dist/test/new-test.js"
-    },
-    "./api/fragment-builder": {
-      "development": "./src/api/fragment-builder.ts",
-      "types": "./dist/api/fragment-builder.d.ts",
-      "default": "./dist/api/fragment-builder.js"
-    },
-    "./api/fragment-instantiation": {
-      "development": "./src/api/fragment-instantiation.ts",
-      "types": "./dist/api/fragment-instantiation.d.ts",
-      "default": "./dist/api/fragment-instantiation.js"
     },
     "./api/fragment-definition-builder": {
       "development": "./src/api/fragment-definition-builder.ts",
@@ -100,6 +86,7 @@
     "test:watch": "vitest --watch"
   },
   "type": "module",
+  "sideEffects": false,
   "dependencies": {
     "@nanostores/query": "^0.3.4",
     "@nanostores/solid": "^1.1.1",

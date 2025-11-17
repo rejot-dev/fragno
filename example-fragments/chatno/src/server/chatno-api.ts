@@ -1,11 +1,11 @@
-import OpenAI from "openai";
 import { z } from "zod";
 import type {
   EasyInputMessage,
   ResponseFunctionToolCall,
   ResponseInputItem,
 } from "openai/resources/responses/responses.mjs";
-import { defineRoute, defineRoutes } from "@fragno-dev/core";
+import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import type { chatnoDefinition } from "../index";
 
 export const ChatMessageSchema = z.object({
   type: z.literal("chat"),
@@ -64,19 +64,13 @@ export const ResponseEventSchema = z.discriminatedUnion("type", [
   ResponseTextDoneEventSchema,
 ]);
 
-type ChatRouteConfig = {
-  model: "gpt-5-mini" | "4o-mini";
-  systemPrompt: string;
-};
+const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
-type ChatRouteDeps = {
-  openaiClient: OpenAI;
-};
-
-export const chatRouteFactory = defineRoutes<ChatRouteConfig, ChatRouteDeps>().create(
-  ({ config, deps }) => {
+// Export function to create the chat route factory with the definition
+export const chatRouteFactory = defineRoutesNew<typeof chatnoDefinition>().create(
+  ({ config, deps, defineRoute }) => {
     const { openaiClient } = deps;
-    const { model, systemPrompt } = config;
+    const { model = "gpt-5-nano", systemPrompt = DEFAULT_SYSTEM_PROMPT } = config;
 
     return [
       defineRoute({
