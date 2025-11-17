@@ -1,6 +1,7 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
-import { createDatabaseFragmentForTest } from "@fragno-dev/test";
-import { stripeFragmentDefinition } from "./index";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { stripeFragmentDefinition } from "./definition";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import type Stripe from "stripe";
 
 describe("Stripe Fragment Services", async () => {
@@ -14,27 +15,24 @@ describe("Stripe Fragment Services", async () => {
   });
 
   // Create fragment with test configuration
-  const { fragment, test: testContext } = await createDatabaseFragmentForTest(
-    {
-      definition: stripeFragmentDefinition,
-      routes: [],
-      config: {
+  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "stripe",
+      instantiate(stripeFragmentDefinition).withConfig({
         stripeSecretKey: "sk_test_mock_key",
         webhookSecret: "whsec_test_mock_secret",
-        subscriptions: {
-          enabled: true,
-        },
         enableAdminRoutes: true,
         resolveEntityFromRequest: mockResolveEntityFromRequest,
         onStripeCustomerCreated: async () => {
           // Mock callback for tests
         },
-      },
-    },
-    {
-      adapter: { type: "kysely-sqlite" },
-    },
-  );
+      }),
+      { definition: stripeFragmentDefinition },
+    )
+    .build();
+
+  const fragment = fragments.stripe;
 
   // Reset database before each test for isolation
   beforeEach(async () => {

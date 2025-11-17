@@ -1,6 +1,7 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
-import { createDatabaseFragmentForTest } from "@fragno-dev/test";
-import { stripeFragmentDefinition } from "..";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { stripeFragmentDefinition } from "../definition";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
 import {
   customerSubscriptionUpdatedHandler,
@@ -91,23 +92,23 @@ describe("webhooks", async () => {
     stripeMetadata: {},
   });
 
+  const config = {
+    stripeSecretKey: "sk_test_mock_key",
+    webhookSecret: "whsec_test_mock_secret",
+    enableAdminRoutes: true,
+    resolveEntityFromRequest: mockResolveEntityFromRequest,
+    onStripeCustomerCreated: vi.fn(),
+  };
+
   // Create fragment with test configuration
-  const { fragment } = await createDatabaseFragmentForTest(
-    {
+  const { fragments } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment("stripe", instantiate(stripeFragmentDefinition).withConfig(config), {
       definition: stripeFragmentDefinition,
-      routes: [],
-      config: {
-        stripeSecretKey: "sk_test_mock_key",
-        webhookSecret: "whsec_test_mock_secret",
-        enableAdminRoutes: true,
-        resolveEntityFromRequest: mockResolveEntityFromRequest,
-        onStripeCustomerCreated: vi.fn(),
-      },
-    },
-    {
-      adapter: { type: "kysely-sqlite" },
-    },
-  );
+    })
+    .build();
+
+  const fragment = fragments.stripe;
 
   beforeEach(() => {
     mockSubscriptionsRetrieve.mockClear();
@@ -123,7 +124,7 @@ describe("webhooks", async () => {
         event: event,
         services: fragment.services,
         deps: fragment.deps,
-        config: fragment.config,
+        config,
       });
 
       const subscription = await fragment.services.getAllSubscriptions();
@@ -152,7 +153,7 @@ describe("webhooks", async () => {
         event: updatedEvent,
         services: fragment.services,
         deps: fragment.deps,
-        config: fragment.config,
+        config,
       });
 
       subscriptions = await fragment.services.getAllSubscriptions();
@@ -173,7 +174,7 @@ describe("webhooks", async () => {
         event: event,
         services: fragment.services,
         deps: fragment.deps,
-        config: fragment.config,
+        config,
       });
       // Still not there
       subscription = await fragment.services.getSubscriptionByStripeId(event.data.object.id);
@@ -189,7 +190,7 @@ describe("webhooks", async () => {
         event: event,
         services: fragment.services,
         deps: fragment.deps,
-        config: fragment.config,
+        config,
       });
 
       subscription = await fragment.services.getSubscriptionByStripeId(event.data.object.id);
@@ -210,7 +211,7 @@ describe("webhooks", async () => {
           event: event,
           services: fragment.services,
           deps: fragment.deps,
-          config: fragment.config,
+          config,
         });
 
         const subscription = await fragment.services.getSubscriptionByStripeId(
@@ -231,7 +232,7 @@ describe("webhooks", async () => {
         event: event,
         services: fragment.services,
         deps: fragment.deps,
-        config: fragment.config,
+        config,
       });
       expect(true);
     });
@@ -243,7 +244,7 @@ describe("webhooks", async () => {
         event: event,
         services: fragment.services,
         deps: fragment.deps,
-        config: fragment.config,
+        config,
       });
 
       const subscription = await fragment.services.getSubscriptionByStripeId(
