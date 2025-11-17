@@ -234,7 +234,7 @@ export function createFragment<
     ...interfaceImplementations,
   } as TServices & TProvidedInterfaces & TRequiredInterfaces;
 
-  const context = { config, deps: depsWithInterfaces, services };
+  const context = { config, deps: depsWithInterfaces, services, serviceDeps: {} };
   const routes = resolveRouteFactories(context, routesOrFactories);
 
   const mountRoute = getMountRoute({

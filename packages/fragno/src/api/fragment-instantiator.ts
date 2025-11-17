@@ -698,7 +698,12 @@ export function instantiateNewFragment<
   const boundServices = thisContext ? bindServicesToContext(services, thisContext) : services;
 
   // 8. Resolve routes with bound services
-  const context = { config, deps, services: boundServices };
+  const context = {
+    config,
+    deps,
+    services: boundServices,
+    serviceDeps: serviceImplementations ?? ({} as TServiceDependencies),
+  };
   const routes = resolveRouteFactories(context, routesOrFactories);
 
   // 9. Calculate mount route
@@ -777,6 +782,43 @@ export class NewFragmentInstantiationBuilder<
   }
 
   /**
+   * Get the fragment definition
+   */
+  get definition(): NewFragmentDefinition<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TThisContext,
+    TRequestStorage
+  > {
+    return this.#definition;
+  }
+
+  /**
+   * Get the configured routes
+   */
+  get routes(): TRoutesOrFactories {
+    return this.#routes ?? ([] as const as unknown as TRoutesOrFactories);
+  }
+
+  /**
+   * Get the configuration
+   */
+  get config(): TConfig | undefined {
+    return this.#config;
+  }
+
+  /**
+   * Get the options
+   */
+  get options(): TOptions | undefined {
+    return this.#options;
+  }
+
+  /**
    * Set the configuration for the fragment
    */
   withConfig(config: TConfig): this {
@@ -800,7 +842,12 @@ export class NewFragmentInstantiationBuilder<
     TRequestStorage,
     TNewRoutes
   > {
-    return new NewFragmentInstantiationBuilder(this.#definition, routes);
+    const newBuilder = new NewFragmentInstantiationBuilder(this.#definition, routes);
+    // Preserve config, options, and services from the current instance
+    newBuilder.#config = this.#config;
+    newBuilder.#options = this.#options;
+    newBuilder.#services = this.#services;
+    return newBuilder;
   }
 
   /**

@@ -1013,6 +1013,227 @@ describe("fragment-instantiator", () => {
     });
   });
 
+  describe("defineRoutesNew with services", () => {
+    it("should provide base services in route factory context", () => {
+      const definition = defineFragment("test-fragment")
+        .providesBaseService(() => ({
+          greet: (name: string) => `Hello, ${name}!`,
+        }))
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+        // Verify base service is accessible
+        expectTypeOf(services).toMatchObjectType<{
+          greet: (name: string) => string;
+        }>();
+
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/greet",
+            handler: async (_input, { json }) => {
+              const message = services.greet("World");
+              return json({ message });
+            },
+          }),
+        ];
+      });
+
+      expect(routes).toBeDefined();
+      expect(typeof routes).toBe("function");
+    });
+
+    it("should provide named services in route factory context", () => {
+      const definition = defineFragment("test-fragment")
+        .providesService("mathService", () => ({
+          add: (a: number, b: number) => a + b,
+          multiply: (a: number, b: number) => a * b,
+        }))
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+        // Verify named service is accessible
+        expectTypeOf(services).toMatchObjectType<{
+          mathService: {
+            add: (a: number, b: number) => number;
+            multiply: (a: number, b: number) => number;
+          };
+        }>();
+
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/math",
+            handler: async (_input, { json }) => {
+              const sum = services.mathService.add(2, 3);
+              const product = services.mathService.multiply(4, 5);
+              return json({ sum, product });
+            },
+          }),
+        ];
+      });
+
+      expect(routes).toBeDefined();
+    });
+
+    it("should provide both base and named services in route factory context", () => {
+      const definition = defineFragment("test-fragment")
+        .providesBaseService(() => ({
+          baseMethod: () => "base",
+        }))
+        .providesService("namedService", () => ({
+          namedMethod: () => "named",
+        }))
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+        // Verify both base and named services are accessible
+        expectTypeOf(services.baseMethod).toBeFunction();
+        expectTypeOf(services.namedService).toBeObject();
+        expectTypeOf(services.namedService.namedMethod).toBeFunction();
+
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/combined",
+            handler: async (_input, { json }) => {
+              const base = services.baseMethod();
+              const named = services.namedService.namedMethod();
+              return json({ base, named });
+            },
+          }),
+        ];
+      });
+
+      expect(routes).toBeDefined();
+    });
+
+    it("should have services in route context match fragment.services at runtime", async () => {
+      const definition = defineFragment("test-fragment")
+        .providesBaseService(() => ({
+          baseMethod: () => "base-value",
+        }))
+        .providesService("namedService", () => ({
+          namedMethod: () => "named-value",
+        }))
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/test",
+          handler: async (_input, { json }) => {
+            return json({
+              base: services.baseMethod(),
+              named: services.namedService.namedMethod(),
+            });
+          },
+        }),
+      ]);
+
+      const fragment = instantiate(definition)
+        .withRoutes([routes])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      // Verify fragment.services has the same structure
+      expect(fragment.services.baseMethod()).toBe("base-value");
+      expect(fragment.services.namedService.namedMethod()).toBe("named-value");
+
+      // Verify route can access services with the same structure
+      const response = await fragment.handler(new Request("http://localhost/api/test"));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({
+        base: "base-value",
+        named: "named-value",
+      });
+    });
+
+    it("should allow multiple named services in route factory context", () => {
+      const definition = defineFragment("test-fragment")
+        .providesService("service1", () => ({
+          method1: () => "value1",
+        }))
+        .providesService("service2", () => ({
+          method2: () => "value2",
+        }))
+        .providesService("service3", () => ({
+          method3: () => "value3",
+        }))
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+        // Verify all named services are accessible
+        expectTypeOf(services.service1).toBeObject();
+        expectTypeOf(services.service1.method1).toBeFunction();
+        expectTypeOf(services.service2).toBeObject();
+        expectTypeOf(services.service2.method2).toBeFunction();
+        expectTypeOf(services.service3).toBeObject();
+        expectTypeOf(services.service3.method3).toBeFunction();
+
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/multi",
+            handler: async (_input, { json }) => {
+              return json({
+                v1: services.service1.method1(),
+                v2: services.service2.method2(),
+                v3: services.service3.method3(),
+              });
+            },
+          }),
+        ];
+      });
+
+      expect(routes).toBeDefined();
+    });
+
+    it("should provide services with dependencies in route factory context", () => {
+      interface Config {
+        prefix: string;
+      }
+
+      const definition = defineFragment<Config>("test-fragment")
+        .withDependencies(({ config }) => ({
+          prefix: config.prefix,
+        }))
+        .providesBaseService(({ deps }) => ({
+          greet: (name: string) => `${deps.prefix} ${name}`,
+        }))
+        .providesService("formatter", ({ deps }) => ({
+          format: (text: string) => `[${deps.prefix}] ${text}`,
+        }))
+        .build();
+
+      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+        // Verify services are accessible
+        expectTypeOf(services).toMatchObjectType<{
+          greet: (name: string) => string;
+          formatter: {
+            format: (text: string) => string;
+          };
+        }>();
+
+        return [
+          defineRoute({
+            method: "GET",
+            path: "/format",
+            handler: async (_input, { json }) => {
+              return json({
+                greeting: services.greet("World"),
+                formatted: services.formatter.format("Hello"),
+              });
+            },
+          }),
+        ];
+      });
+
+      expect(routes).toBeDefined();
+    });
+  });
+
   describe("error handling", () => {
     it("should handle errors in route handlers", async () => {
       const definition = defineFragment("test-fragment").build();

@@ -12,16 +12,18 @@ export type AnyFragmentBuilder = {
   readonly definition: FragmentDefinition<any, any, any, any, any, any, any>;
 };
 
-export interface RouteFactoryContext<TConfig, TDeps, TServices> {
+export interface RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps = {}> {
   config: TConfig;
   deps: TDeps;
   services: TServices;
+  serviceDeps: TServiceDeps;
 }
 
 export type RouteFactory<
   TConfig,
   TDeps,
   TServices,
+  TServiceDeps,
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
     string,
@@ -31,17 +33,17 @@ export type RouteFactory<
     string,
     RequestThisContext
   >[],
-> = (context: RouteFactoryContext<TConfig, TDeps, TServices>) => TRoutes;
+> = (context: RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps>) => TRoutes;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyRouteOrFactory = AnyFragnoRouteConfig | RouteFactory<any, any, any, any>;
+export type AnyRouteOrFactory = AnyFragnoRouteConfig | RouteFactory<any, any, any, any, any>;
 
 export type FlattenRouteFactories<T extends readonly AnyRouteOrFactory[]> = T extends readonly [
   infer First,
   ...infer Rest extends readonly AnyRouteOrFactory[],
 ]
   ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    First extends RouteFactory<any, any, any, infer TRoutes>
+    First extends RouteFactory<any, any, any, any, infer TRoutes>
     ? [...TRoutes, ...FlattenRouteFactories<Rest>]
     : [First, ...FlattenRouteFactories<Rest>]
   : [];
@@ -51,9 +53,10 @@ export function resolveRouteFactories<
   TConfig,
   TDeps,
   TServices,
+  TServiceDeps,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  context: RouteFactoryContext<TConfig, TDeps, TServices>,
+  context: RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps>,
   routesOrFactories: TRoutesOrFactories,
 ): FlattenRouteFactories<TRoutesOrFactories> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -322,7 +325,9 @@ export type ExtractNewFragmentDeps<T> =
     ? TDeps
     : never;
 
-// Extract services from NewFragmentDefinition (BoundServices since that's what's exposed)
+// Extract services from NewFragmentDefinition
+// This extracts both base services (flat) and named services (nested)
+// The result matches the structure of fragment.services at runtime
 export type ExtractNewFragmentServices<T> =
   T extends NewFragmentDefinition<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -341,6 +346,28 @@ export type ExtractNewFragmentServices<T> =
     any
   >
     ? BoundServices<TBaseServices & TServices>
+    : never;
+
+// Extract service dependencies from NewFragmentDefinition
+export type ExtractNewFragmentServiceDeps<T> =
+  T extends NewFragmentDefinition<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    infer TServiceDependencies,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any
+  >
+    ? TServiceDependencies
     : never;
 
 // Extract this context from NewFragmentDefinition
@@ -418,6 +445,7 @@ export function defineRoutes<const TFragmentBuilder extends AnyFragmentBuilder>(
     ExtractFragmentConfig<TFragmentBuilder>,
     ExtractFragmentDeps<TFragmentBuilder>,
     ExtractFragmentServices<TFragmentBuilder>,
+    {},
     TRoutes
   >;
 };
@@ -473,6 +501,7 @@ export function defineRoutes<const TFragmentBuilder extends AnyFragmentBuilder>(
     ExtractFragmentConfig<TFragmentBuilder>,
     ExtractFragmentDeps<TFragmentBuilder>,
     ExtractFragmentServices<TFragmentBuilder>,
+    {},
     TRoutes
   >;
 };
@@ -495,7 +524,7 @@ export function defineRoutes<TConfig = {}, TDeps = {}, TServices = {}>(): {
         defineRoute: typeof defineRoute;
       },
     ) => TRoutes,
-  ) => RouteFactory<TConfig, TDeps, TServices, TRoutes>;
+  ) => RouteFactory<TConfig, TDeps, TServices, {}, TRoutes>;
 };
 
 // Implementation
@@ -543,10 +572,11 @@ export function defineRoutes<
       TFragmentBuilder extends AnyFragmentBuilder
         ? ExtractFragmentServices<TFragmentBuilder>
         : TServices,
+      {},
       TRoutes
     > => {
       // Create a wrapper around the callback that adds the defineRoute function
-      return (ctx: RouteFactoryContext<unknown, unknown, unknown>) => {
+      return (ctx: RouteFactoryContext<unknown, unknown, unknown, unknown>) => {
         const extendedCtx = {
           ...ctx,
           defineRoute,
@@ -581,7 +611,8 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
       context: RouteFactoryContext<
         ExtractNewFragmentConfig<TDefinition>,
         ExtractNewFragmentDeps<TDefinition>,
-        ExtractNewFragmentServices<TDefinition>
+        ExtractNewFragmentServices<TDefinition>,
+        ExtractNewFragmentServiceDeps<TDefinition>
       > & {
         defineRoute: <
           const TMethod extends HTTPMethod,
@@ -615,6 +646,7 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
     ExtractNewFragmentConfig<TDefinition>,
     ExtractNewFragmentDeps<TDefinition>,
     ExtractNewFragmentServices<TDefinition>,
+    ExtractNewFragmentServiceDeps<TDefinition>,
     TRoutes
   >;
 };
@@ -636,7 +668,8 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
       context: RouteFactoryContext<
         ExtractNewFragmentConfig<TDefinition>,
         ExtractNewFragmentDeps<TDefinition>,
-        ExtractNewFragmentServices<TDefinition>
+        ExtractNewFragmentServices<TDefinition>,
+        ExtractNewFragmentServiceDeps<TDefinition>
       > & {
         defineRoute: <
           const TMethod extends HTTPMethod,
@@ -670,6 +703,7 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
     ExtractNewFragmentConfig<TDefinition>,
     ExtractNewFragmentDeps<TDefinition>,
     ExtractNewFragmentServices<TDefinition>,
+    ExtractNewFragmentServiceDeps<TDefinition>,
     TRoutes
   >;
 };
@@ -701,6 +735,9 @@ export function defineRoutesNew<
           TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentDeps<TDefinition> : {},
           TDefinition extends AnyNewFragmentDefinition
             ? ExtractNewFragmentServices<TDefinition>
+            : {},
+          TDefinition extends AnyNewFragmentDefinition
+            ? ExtractNewFragmentServiceDeps<TDefinition>
             : {}
         > & {
           defineRoute: <
@@ -739,10 +776,13 @@ export function defineRoutesNew<
       TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentConfig<TDefinition> : {},
       TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentDeps<TDefinition> : {},
       TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentServices<TDefinition> : {},
+      TDefinition extends AnyNewFragmentDefinition
+        ? ExtractNewFragmentServiceDeps<TDefinition>
+        : {},
       TRoutes
     > => {
       // Create a wrapper around the callback that adds the defineRoute function
-      return (ctx: RouteFactoryContext<unknown, unknown, unknown>) => {
+      return (ctx: RouteFactoryContext<unknown, unknown, unknown, unknown>) => {
         const extendedCtx = {
           ...ctx,
           defineRoute,

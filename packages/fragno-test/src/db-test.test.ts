@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { defineRoute } from "@fragno-dev/core/api/route";
+import { z } from "zod";
 import { buildDatabaseFragmentsTest } from "./db-test";
 
 // Test schema with users table
@@ -218,6 +220,58 @@ describe("buildDatabaseFragmentsTest", () => {
     // Test that adapter is accessible
     expect(test.adapter).toBeDefined();
     expect(test.adapter.createQueryEngine).toBeDefined();
+
+    await test.cleanup();
+  });
+
+  it("should support callRoute with database operations", async () => {
+    // This is a simpler test that verifies callRoute exists and can be called.
+    // For now, we just verify that the method exists and is callable.
+    const userFragmentDef = defineFragment<{}>("user-fragment")
+      .extend(withDatabase(userSchema))
+      .providesBaseService(() => ({}))
+      .build();
+
+    const createUserRoute = defineRoute({
+      method: "POST",
+      path: "/users",
+      inputSchema: z.object({
+        name: z.string(),
+        email: z.string(),
+      }),
+      outputSchema: z.object({
+        id: z.string(),
+        name: z.string(),
+        email: z.string(),
+      }),
+      handler: async ({ input }, { json }) => {
+        const body = await input.valid();
+        return json({ ...body, id: "123" });
+      },
+    });
+
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "user",
+        instantiate(userFragmentDef).withConfig({}).withRoutes([createUserRoute]),
+        {
+          definition: userFragmentDef,
+        },
+      )
+      .build();
+
+    const response = await fragments.user.callRoute("POST", "/users", {
+      body: { name: "Test User", email: "test@example.com" },
+    });
+
+    console.log("response", response);
+    assert(response.type === "json");
+    expect(response.data).toMatchObject({
+      id: "123",
+      name: "Test User",
+      email: "test@example.com",
+    });
 
     await test.cleanup();
   });

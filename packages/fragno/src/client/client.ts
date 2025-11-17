@@ -1105,6 +1105,7 @@ export function createClientBuilder<
     config: {} as TConfig,
     deps: {} as TDeps,
     services: {} as TServices,
+    serviceDeps: {},
   };
 
   const routes = resolveRouteFactories(dummyContext, routesOrFactories);
@@ -1163,6 +1164,7 @@ export function createClientBuilderNew<
     config: {} as TConfig,
     deps: {} as TDeps,
     services: {} as TBaseServices & TServices,
+    serviceDeps: {},
   };
 
   const routes = resolveRouteFactories(dummyContext, routesOrFactories);

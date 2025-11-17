@@ -1,6 +1,9 @@
-import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { defineRoute, defineRoutesNew } from "@fragno-dev/core/api/route";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { otpSchema, authSchema } from "./schema";
-import { defineFragment, defineRoute, defineRoutes } from "@fragno-dev/core";
 import z from "zod";
 
 /**
@@ -34,8 +37,8 @@ function generateOTPCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-export const otpFragmentDefinition = defineFragmentWithDatabase<OTPConfig>("otp-fragment")
-  .withDatabase(otpSchema)
+export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
+  .extend(withDatabase(otpSchema))
   .providesService("otp", ({ defineService }) =>
     defineService({
       generateOTP: function (userId: string): string {
@@ -86,40 +89,51 @@ export const otpFragmentDefinition = defineFragmentWithDatabase<OTPConfig>("otp-
         return true;
       },
     }),
-  );
+  )
+  .build();
 
-const otpRoutes = defineRoutes(otpFragmentDefinition).create(({ services }) => {
-  return [
-    defineRoute({
-      method: "POST",
-      path: "/otp/verify",
-      inputSchema: z.object({
-        userId: z.string(),
-        code: z.string(),
+const otpRoutesFactory = defineRoutesNew(otpFragmentDefinition).create(
+  ({ services, defineRoute }) => {
+    return [
+      defineRoute({
+        method: "POST",
+        path: "/otp/verify",
+        inputSchema: z.object({
+          userId: z.string(),
+          code: z.string(),
+        }),
+        outputSchema: z.object({
+          verified: z.boolean(),
+        }),
+        handler: async function ({ input }, { json }) {
+          const { userId, code } = await input.valid();
+
+          // Schedule the verification operation (returns immediately)
+          const verifyPromise = services.otp.verifyOTP(userId, code);
+
+          // Execute UOW phases
+          const uow = this.getUnitOfWork(otpSchema);
+          await uow.executeRetrieve();
+          await uow.executeMutations();
+
+          // Now await the result
+          const verified = await verifyPromise;
+          return json({ verified });
+        },
       }),
-      outputSchema: z.object({
-        verified: z.boolean(),
-      }),
-      handler: async function ({ input }, { json }) {
-        const { userId, code } = await input.valid();
+    ];
+  },
+);
 
-        // Schedule the verification operation (returns immediately)
-        const verifyPromise = services.otp.verifyOTP(userId, code);
+export const otpFragmentRoutes = [otpRoutesFactory] as const;
 
-        // Execute UOW phases
-        const uow = this.getUnitOfWork(otpSchema);
-        await uow.executeRetrieve();
-        await uow.executeMutations();
-
-        // Now await the result
-        const verified = await verifyPromise;
-        return json({ verified });
-      },
-    }),
-  ];
-});
-
-export const otpFragmentRoutes = [otpRoutes] as const;
+export function createOTPFragment(config: OTPConfig = {}, options: FragnoPublicConfigWithDatabase) {
+  return instantiate(otpFragmentDefinition)
+    .withConfig(config)
+    .withRoutes(otpFragmentRoutes)
+    .withOptions(options)
+    .build();
+}
 
 export interface AuthConfig {
   shouldValidateEmail?: boolean;
@@ -128,10 +142,10 @@ export interface AuthConfig {
 /**
  * Auth fragment that uses the OTP service for email verification
  */
-export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("auth-fragment")
-  .withDatabase(authSchema)
-  .usesService<"otp", IOTPService>("otp", { optional: true })
-  .providesService(({ deps, defineService, db }) => {
+export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment")
+  .extend(withDatabase(authSchema))
+  .usesOptionalService<"otp", IOTPService>("otp")
+  .providesBaseService(({ serviceDeps, deps, defineService }) => {
     return defineService({
       /**
        * Create a user with email verification using OTP
@@ -150,10 +164,10 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("au
 
         // Generate OTP if service is available
         let otpCode: string | null = null;
-        if (deps.otp) {
+        if (serviceDeps.otp) {
           // Cross-schema UOW: the OTP service will use the same UOW context
           // The promise will resolve after the handler executes phases
-          otpCode = deps.otp.generateOTP(userId.toString());
+          otpCode = serviceDeps.otp.generateOTP(userId.toString());
         }
 
         return {
@@ -183,7 +197,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("au
        * Get user by email
        */
       getUserByEmail: async function (email: string) {
-        const user = await db.findFirst("user", (b) =>
+        const user = await deps.db.findFirst("user", (b) =>
           b
             .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
             .select(["id", "email", "emailVerified"]),
@@ -200,18 +214,19 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("au
         };
       },
     });
-  });
+  })
+  .build();
 
-export const anotherFragmentDefinition = defineFragment<{}>("another-fragment").providesService(
-  "asd",
-  ({ defineService }) =>
+export const anotherFragmentDefinition = defineFragment<Record<string, never>>("another-fragment")
+  .providesService("asd", ({ defineService }) =>
     defineService({
       someMethod: () => "asd",
     }),
-);
+  )
+  .build();
 
-const routeBasedOnType = defineRoutes<typeof authFragmentDefinition>().create(
-  ({ config, deps }) => {
+const routeBasedOnTypeFactory = defineRoutesNew(authFragmentDefinition).create(
+  ({ config, serviceDeps, defineRoute }) => {
     return [
       defineRoute({
         method: "GET",
@@ -220,10 +235,10 @@ const routeBasedOnType = defineRoutes<typeof authFragmentDefinition>().create(
           shouldValidateEmail: z.boolean(),
           otpEnabled: z.boolean(),
         }),
-        handler: async function (_, { json }) {
+        handler: async (_, { json }) => {
           return json({
             shouldValidateEmail: config.shouldValidateEmail ?? false,
-            otpEnabled: deps.otp !== undefined,
+            otpEnabled: serviceDeps.otp !== undefined,
           });
         },
       }),
@@ -231,78 +246,77 @@ const routeBasedOnType = defineRoutes<typeof authFragmentDefinition>().create(
   },
 );
 
-const authRoutes = defineRoutes(authFragmentDefinition).create(({ services, deps }) => {
-  return [
-    defineRoute({
-      method: "GET",
-      path: "/auth/user",
-      queryParameters: ["email"],
-      outputSchema: z
-        .object({
-          id: z.string(),
+const authRoutesFactory = defineRoutesNew(authFragmentDefinition).create(
+  ({ services, serviceDeps, defineRoute }) => {
+    return [
+      defineRoute({
+        method: "GET",
+        path: "/auth/user",
+        queryParameters: ["email"] as const,
+        outputSchema: z
+          .object({
+            id: z.string(),
+            email: z.string(),
+            emailVerified: z.boolean(),
+          })
+          .nullable(),
+        handler: async ({ query }, { json, error }) => {
+          const email = query.get("email");
+          if (!email) {
+            return error({ message: "Email required", code: "email_required" }, 400);
+          }
+
+          const user = await services.getUserByEmail(email);
+
+          if (!user) {
+            return error({ message: "User not found", code: "user_not_found" }, 404);
+          }
+
+          return json({
+            id: user.id,
+            email: user.email,
+            emailVerified: user.emailVerified,
+          });
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/auth/sign-up",
+        inputSchema: z.object({
+          email: z.string(),
+          password: z.string(),
+        }),
+        outputSchema: z.object({
+          userId: z.string(),
           email: z.string(),
           emailVerified: z.boolean(),
-        })
-        .nullable(),
-      handler: async ({ query }, { json, error }) => {
-        const email = query.get("email");
-        if (!email) {
-          return error({ message: "Email required", code: "email_required" }, 400);
-        }
+          otpCode: z.string().nullable(),
+        }),
+        handler: async function ({ input }, { json }) {
+          const { email, password } = await input.valid();
 
-        const user = await services.getUserByEmail(email);
+          // Schedule operations (don't await yet)
+          const user = services.createUser(email, password);
+          const otpCode = serviceDeps.otp?.generateOTP(user.id) ?? null;
 
-        if (!user) {
-          return error({ message: "User not found", code: "user_not_found" }, 404);
-        }
+          // Execute UOW phases once - the UOW handles all schemas together
+          const uow = this.getUnitOfWork();
+          await uow.executeRetrieve();
+          await uow.executeMutations();
 
-        return json({
-          id: user.id,
-          email: user.email,
-          emailVerified: user.emailVerified,
-        });
-      },
-    }),
-    defineRoute({
-      method: "POST",
-      path: "/auth/sign-up",
-      inputSchema: z.object({
-        email: z.string(),
-        password: z.string(),
+          console.log("otpCode", otpCode);
+
+          return json({
+            userId: user.id,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            otpCode,
+          });
+        },
       }),
-      outputSchema: z.object({
-        userId: z.string(),
-        email: z.string(),
-        emailVerified: z.boolean(),
-        otpCode: z.string().nullable(),
-      }),
-      handler: async function ({ input }, { json }) {
-        const { email, password } = await input.valid();
-
-        // Schedule operations (don't await yet)
-        const user = services.createUser(email, password);
-        const otpCode = deps.otp?.generateOTP(user.id) ?? null;
-
-        // Execute UOW phases once - the UOW handles all schemas together
-        const uow = this.getUnitOfWork();
-        await uow.executeRetrieve();
-        await uow.executeMutations();
-
-        // Now await the results
-        // const otpCode = (await otpCodePromise) ?? null;
-
-        console.log("otpCode", otpCode);
-
-        return json({
-          userId: user.id,
-          email: user.email,
-          emailVerified: user.emailVerified,
-          otpCode,
-        });
-      },
-    }),
-  ];
-});
+    ];
+  },
+);
 
 const randomRoute = defineRoute({
   method: "GET",
@@ -316,6 +330,21 @@ const randomRoute = defineRoute({
   },
 });
 
-export const authFragmentRoutes = [authRoutes, randomRoute, routeBasedOnType] as const;
+export const authFragmentRoutes = [
+  authRoutesFactory,
+  randomRoute,
+  routeBasedOnTypeFactory,
+] as const;
+
+export function createAuthFragmentWithOTP(
+  config: AuthConfig = {},
+  options: FragnoPublicConfigWithDatabase,
+) {
+  return instantiate(authFragmentDefinition)
+    .withConfig(config)
+    .withRoutes(authFragmentRoutes)
+    .withOptions(options)
+    .build();
+}
 
 export { otpSchema, authSchema };

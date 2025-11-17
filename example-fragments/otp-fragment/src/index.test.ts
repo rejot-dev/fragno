@@ -1,31 +1,35 @@
-import { describe, test, expect, afterAll, assert } from "vitest";
+import { describe, test, expect, afterAll, assert, expectTypeOf } from "vitest";
 import {
   otpFragmentDefinition,
   authFragmentDefinition,
   authFragmentRoutes,
   otpFragmentRoutes,
+  otpSchema,
 } from "./index";
-import { createDatabaseFragmentForTest, createDatabaseFragmentsForTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import type { FragnoId } from "@fragno-dev/db/schema";
 
 describe("OTP Fragment", () => {
   describe("Integration with UnitOfWork", async () => {
-    const result = await createDatabaseFragmentForTest(
-      { definition: otpFragmentDefinition, routes: [] },
-      {
-        adapter: { type: "kysely-sqlite" },
-      },
-    );
+    const { fragments, test: testCtx } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]), {
+        definition: otpFragmentDefinition,
+      })
+      .build();
 
     afterAll(async () => {
-      await result.test.cleanup();
+      await testCtx.cleanup();
     });
 
     test("should work with multi-phase UOW pattern", async () => {
-      const otpService = result.fragment.services.otp;
+      const otpService = fragments.otp.services.otp;
 
-      const code = await result.test.withUnitOfWork(async (uow) => {
+      const code = await testCtx.inContext(async function () {
+        const uow = this.getUnitOfWork(otpSchema);
+
         const code = otpService.generateOTP("user-123");
-        expect(code).toMatch(/^\d{6}$/);
 
         await uow.executeRetrieve();
         await uow.executeMutations();
@@ -36,8 +40,16 @@ describe("OTP Fragment", () => {
         return code;
       });
 
+      expect(code).toMatch(/^\d{6}$/);
+
       // Verify OTP in a separate UOW context with automatic phase execution
-      const isValid = await result.test.callService(() => otpService.verifyOTP("user-123", code));
+      const isValid = await testCtx.inContext(async function () {
+        const uow = this.getUnitOfWork(otpSchema);
+        const isValid = otpService.verifyOTP("user-123", code);
+        await uow.executeRetrieve();
+        await uow.executeMutations();
+        return isValid;
+      });
       expect(isValid).toBe(true);
     });
   });
@@ -45,19 +57,23 @@ describe("OTP Fragment", () => {
 
 describe("Auth Fragment", () => {
   describe("random route", async () => {
-    const result = await createDatabaseFragmentForTest(
-      { definition: authFragmentDefinition, routes: authFragmentRoutes },
-      {
-        adapter: { type: "kysely-sqlite" },
-      },
-    );
+    const { fragments, test: testCtx } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "auth",
+        instantiate(authFragmentDefinition).withConfig({}).withRoutes(authFragmentRoutes),
+        {
+          definition: authFragmentDefinition,
+        },
+      )
+      .build();
 
     afterAll(async () => {
-      await result.test.cleanup();
+      await testCtx.cleanup();
     });
 
     test("retrieve random number", async () => {
-      const response = await result.fragment.callRoute("GET", "/random");
+      const response = await fragments.auth.callRoute("GET", "/random");
       assert(response.type === "json");
       expect(response.data).toMatchObject({
         random: expect.any(Number),
@@ -69,50 +85,55 @@ describe("Auth Fragment", () => {
   });
 });
 
-describe("OTP Fragment with Database (createDatabaseFragmentForTest)", () => {
+describe("OTP Fragment with Database (buildDatabaseFragmentsTest)", () => {
   describe("OTP Fragment - providesService", () => {
     test("should instantiate fragment that provides OTP service", async () => {
-      const fragment = await createDatabaseFragmentForTest(
-        { definition: otpFragmentDefinition, routes: [] },
-        {
-          adapter: { type: "kysely-sqlite" },
-        },
-      );
+      const { test: testCtx } = await buildDatabaseFragmentsTest()
+        .withTestAdapter({ type: "kysely-sqlite" })
+        .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]), {
+          definition: otpFragmentDefinition,
+        })
+        .build();
 
       // Verify the fragment definition provides the service
-      expect(otpFragmentDefinition.definition.providedServices).toBeDefined();
-      // expect(otpFragmentDefinition.definition.providedServices?.otp).toBeDefined();
+      expect(otpFragmentDefinition.namedServices?.otp).toBeDefined();
 
-      await fragment.test.cleanup();
+      await testCtx.cleanup();
     });
 
     test("provided OTP service should be accessible", async () => {
-      const { test } = await createDatabaseFragmentForTest(
-        { definition: otpFragmentDefinition, routes: [] },
-        {
-          adapter: { type: "kysely-sqlite" },
-        },
-      );
+      const { test: testCtx } = await buildDatabaseFragmentsTest()
+        .withTestAdapter({ type: "kysely-sqlite" })
+        .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]), {
+          definition: otpFragmentDefinition,
+        })
+        .build();
 
-      // const providedService = otpFragmentDefinition.definition.providedServices?.otp;
-      // expect(providedService).toBeDefined();
-      // expect(typeof providedService?.generateOTP).toBe("function");
-      // expect(typeof providedService?.verifyOTP).toBe("function");
-
-      await test.cleanup();
+      await testCtx.cleanup();
     });
   });
 
   describe.sequential("Inter-Fragment Integration", async () => {
-    const { test: testCtx, fragments } = await createDatabaseFragmentsForTest(
-      [
-        { definition: otpFragmentDefinition, routes: otpFragmentRoutes },
-        { definition: authFragmentDefinition, routes: authFragmentRoutes },
-      ],
-      { adapter: { type: "kysely-sqlite" } },
-    );
+    const { test: testCtx, fragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "otp",
+        instantiate(otpFragmentDefinition).withConfig({}).withRoutes(otpFragmentRoutes),
+        {
+          definition: otpFragmentDefinition,
+        },
+      )
+      .withFragment(
+        "auth",
+        instantiate(authFragmentDefinition).withConfig({}).withRoutes(authFragmentRoutes),
+        {
+          definition: authFragmentDefinition,
+        },
+      )
+      .build();
 
-    const [otpFragment, authFragment] = fragments;
+    const otpFragment = fragments.otp;
+    const authFragment = fragments.auth;
 
     let otpCode: string | null = null;
     let userId: string | null = null;
@@ -139,13 +160,32 @@ describe("OTP Fragment with Database (createDatabaseFragmentForTest)", () => {
       userId = response.data.userId;
 
       const otpCodes = await otpFragment.db.find("otp_code", (b) =>
-        b.whereIndex("idx_otp_user", (eb) => eb("userId", "=", response.data.userId)),
+        b.whereIndex("idx_otp_user", (eb) => eb("userId", "=", response.data.userId)).select(true),
       );
       expect(otpCodes).toHaveLength(1);
+      const firstCode = otpCodes[0];
+
+      expectTypeOf(firstCode).toMatchObjectType<{
+        id: FragnoId;
+        userId: string;
+        code: string;
+        expiresAt: Date;
+        verified: boolean;
+        createdAt: Date;
+      }>();
 
       const user = await authFragment.db.findFirst("user", (b) =>
-        b.whereIndex("idx_user_email", (eb) => eb("email", "=", "test@example.com")),
+        b
+          .whereIndex("idx_user_email", (eb) => eb("email", "=", "test@example.com"))
+          .select(["id", "email", "emailVerified", "passwordHash"]),
       );
+      expectTypeOf(user!).toMatchObjectType<{
+        id: FragnoId;
+        email: string;
+        emailVerified: boolean;
+        passwordHash: string;
+      }>();
+
       expect(user?.id.externalId).toBe(response.data.userId);
       expect(user).toMatchObject({
         email: "test@example.com",

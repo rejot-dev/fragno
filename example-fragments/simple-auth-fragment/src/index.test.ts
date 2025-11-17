@@ -1,14 +1,17 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
-import { authFragmentDefinition, authRoutesFactory } from ".";
-import { createDatabaseFragmentForTest } from "@fragno-dev/test";
+import { authFragmentDef, routes } from ".";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
-describe("simple-auth-fragment", async () => {
-  const { fragment, test } = await createDatabaseFragmentForTest(
-    { definition: authFragmentDefinition, routes: [authRoutesFactory] },
-    {
-      adapter: { type: "kysely-sqlite" },
-    },
-  );
+describe.sequential("simple-auth-fragment", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment("auth", instantiate(authFragmentDef).withConfig({}).withRoutes(routes), {
+      definition: authFragmentDef,
+    })
+    .build();
+
+  const fragment = fragments.auth;
 
   afterAll(async () => {
     await test.cleanup();

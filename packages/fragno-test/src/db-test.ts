@@ -28,6 +28,12 @@ type BoundServices<T> = {
       : T[K];
 };
 
+// Extract the schema type from database fragment dependencies
+// Database fragments have ImplicitDatabaseDependencies<TSchema> which includes `schema: TSchema`
+type ExtractSchemaFromDeps<TDeps> = TDeps extends { schema: infer TSchema extends AnySchema }
+  ? TSchema
+  : AnySchema;
+
 /**
  * Configuration for a single fragment in the test builder
  */
@@ -93,10 +99,21 @@ interface FragmentResult<
 /**
  * Test context combining base and adapter-specific functionality
  */
-type TestContext<T extends SupportedAdapter> = BaseTestContext &
+type TestContext<
+  T extends SupportedAdapter,
+  TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
+> = BaseTestContext &
   AdapterContext<T> & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     adapter: DatabaseAdapter<any>;
+    /**
+     * Execute a callback within the first fragment's request context.
+     * This is useful for calling services outside of route handlers in tests.
+     */
+    inContext<TResult>(callback: (this: TFirstFragmentThisContext) => TResult): TResult;
+    inContext<TResult>(
+      callback: (this: TFirstFragmentThisContext) => Promise<TResult>,
+    ): Promise<TResult>;
   };
 
 /**
@@ -105,9 +122,10 @@ type TestContext<T extends SupportedAdapter> = BaseTestContext &
 interface DatabaseFragmentsTestResult<
   TFragments extends Record<string, FragmentResult<any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
   TAdapter extends SupportedAdapter,
+  TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
   fragments: TFragments;
-  test: TestContext<TAdapter>;
+  test: TestContext<TAdapter, TFirstFragmentThisContext>;
 }
 
 /**
@@ -124,6 +142,7 @@ type FragmentConfigMap = Map<
 export class DatabaseFragmentsTestBuilder<
   TFragments extends Record<string, FragmentResult<any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
   TAdapter extends SupportedAdapter | undefined = undefined,
+  TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
   #adapter?: SupportedAdapter;
   #fragments: FragmentConfigMap = new Map();
@@ -133,7 +152,7 @@ export class DatabaseFragmentsTestBuilder<
    */
   withTestAdapter<TNewAdapter extends SupportedAdapter>(
     adapter: TNewAdapter,
-  ): DatabaseFragmentsTestBuilder<TFragments, TNewAdapter> {
+  ): DatabaseFragmentsTestBuilder<TFragments, TNewAdapter, TFirstFragmentThisContext> {
     this.#adapter = adapter;
     return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
@@ -190,10 +209,12 @@ export class DatabaseFragmentsTestBuilder<
         TThisContext,
         TRequestStorage,
         FlattenRouteFactories<TRoutesOrFactories>,
-        AnySchema // Schema type - extracted at build time
+        ExtractSchemaFromDeps<TDeps> // Extract actual schema type from deps
       >;
     },
-    TAdapter
+    TAdapter,
+    // If this is the first fragment (TFragments is empty {}), use TThisContext; otherwise keep existing
+    keyof TFragments extends never ? TThisContext : TFirstFragmentThisContext
   > {
     this.#fragments.set(name, {
       definition: options.definition,
@@ -207,7 +228,9 @@ export class DatabaseFragmentsTestBuilder<
    * Build the test setup and return fragments and test context
    */
   async build(): Promise<
-    TAdapter extends SupportedAdapter ? DatabaseFragmentsTestResult<TFragments, TAdapter> : never
+    TAdapter extends SupportedAdapter
+      ? DatabaseFragmentsTestResult<TFragments, TAdapter, TFirstFragmentThisContext>
+      : never
   > {
     if (!this.#adapter) {
       throw new Error("Test adapter must be set using withTestAdapter()");
@@ -229,7 +252,8 @@ export class DatabaseFragmentsTestBuilder<
     const builderConfigs: Array<{ config: any; routes: any; options: any }> = [];
 
     for (const fragmentConfig of fragmentConfigs) {
-      const definition = fragmentConfig.definition;
+      const builder = fragmentConfig.builder;
+      const definition = builder.definition;
 
       // Extract schema from definition by calling dependencies with a mock adapter
       let schema: AnySchema | undefined;
@@ -276,15 +300,11 @@ export class DatabaseFragmentsTestBuilder<
         migrateToVersion: fragmentConfig.migrateToVersion,
       });
 
-      // Extract config, routes, and options from builder
-      // NOTE: These are private fields, so we access them at runtime using any type
-      // This is a limitation of the current builder API
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const builderInternal = fragmentConfig.builder as any;
+      // Extract config, routes, and options from builder using public getters
       builderConfigs.push({
-        config: builderInternal["#config"] ?? {},
-        routes: builderInternal["#routes"] ?? [],
-        options: builderInternal["#options"] ?? {},
+        config: builder.config ?? {},
+        routes: builder.routes ?? [],
+        options: builder.options ?? {},
       });
     }
 
@@ -300,7 +320,7 @@ export class DatabaseFragmentsTestBuilder<
 
       for (let i = 0; i < fragmentConfigs.length; i++) {
         const fragmentConfig = fragmentConfigs[i]!;
-        const definition = fragmentConfig.definition;
+        const definition = fragmentConfig.builder.definition;
         const builderConfig = builderConfigs[i]!;
         const namespace = schemaConfigs[i]!.namespace;
         const schema = schemaConfigs[i]!.schema;
@@ -353,7 +373,7 @@ export class DatabaseFragmentsTestBuilder<
       // Second pass: rebuild fragments with service dependencies wired up
       for (let i = 0; i < fragmentConfigs.length; i++) {
         const fragmentConfig = fragmentConfigs[i]!;
-        const definition = fragmentConfig.definition;
+        const definition = fragmentConfig.builder.definition;
         const builderConfig = builderConfigs[i]!;
         const namespace = schemaConfigs[i]!.namespace;
         const schema = schemaConfigs[i]!.schema;
@@ -428,10 +448,17 @@ export class DatabaseFragmentsTestBuilder<
       });
     };
 
+    // Get the first fragment's inContext method
+    const firstFragment = fragmentResults[0]?.fragment;
+    if (!firstFragment) {
+      throw new Error("At least one fragment must be added");
+    }
+
     const finalTestContext = {
       ...testContext,
       resetDatabase,
       adapter,
+      inContext: firstFragment.inContext.bind(firstFragment),
     };
 
     // Build result object with named fragments
@@ -492,6 +519,10 @@ export class DatabaseFragmentsTestBuilder<
  * const adapter = test.adapter; // Access the database adapter
  * ```
  */
-export function buildDatabaseFragmentsTest(): DatabaseFragmentsTestBuilder<{}, undefined> {
+export function buildDatabaseFragmentsTest(): DatabaseFragmentsTestBuilder<
+  {},
+  undefined,
+  RequestThisContext
+> {
   return new DatabaseFragmentsTestBuilder();
 }

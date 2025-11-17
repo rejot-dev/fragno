@@ -1,15 +1,10 @@
-import {
-  defineRoute,
-  defineRoutes,
-  createFragment,
-  type FragnoPublicClientConfig,
-} from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
-import {
-  defineFragmentWithDatabase,
-  type FragnoPublicConfigWithDatabase,
-} from "@fragno-dev/db/fragment";
-import type { AbstractQuery } from "@fragno-dev/db/query";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import { createClientBuilderNew } from "@fragno-dev/core/client";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { authSchema } from "./schema";
 import { z } from "zod";
 
@@ -92,184 +87,15 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
   return isEqual;
 }
 
-type AuthServices = {
-  createUser: (
-    email: string,
-    password: string,
-  ) => Promise<{
-    id: string;
-    email: string;
-  }>;
-  getUserByEmail: (email: string) => Promise<{
-    id: string;
-    email: string;
-    passwordHash: string;
-  } | null>;
-  createSession: (userId: string) => Promise<{
-    id: string;
-    userId: string;
-    expiresAt: Date;
-  }>;
-  validateSession: (sessionId: string) => Promise<{
-    id: string;
-    userId: string;
-    user: {
-      id: string;
-      email: string;
-    };
-  } | null>;
-  invalidateSession: (sessionId: string) => Promise<boolean>;
-};
-
-type AuthDeps = {
-  orm: AbstractQuery<typeof authSchema>;
-};
-
-export const authRoutesFactory = defineRoutes<AuthConfig, AuthDeps, AuthServices>().create(
-  ({ services }) => {
-    return [
-      defineRoute({
-        method: "POST",
-        path: "/sign-up",
-        inputSchema: z.object({
-          email: z.email(),
-          password: z.string().min(8).max(100),
-        }),
-        outputSchema: z.object({
-          sessionId: z.string(),
-          userId: z.string(),
-          email: z.string(),
-        }),
-        errorCodes: ["email_already_exists", "invalid_input"],
-        handler: async ({ input }, { json, error }) => {
-          const { email, password } = await input.valid();
-          console.log("sign-up", email, password);
-
-          // Check if user already exists
-          const existingUser = await services.getUserByEmail(email);
-          if (existingUser) {
-            return error({ message: "Email already exists", code: "email_already_exists" }, 400);
-          }
-
-          // Create user
-          const user = await services.createUser(email, password);
-          console.log("user created", user);
-          // Create session
-          const session = await services.createSession(user.id);
-          console.log("session created", session);
-
-          return json({
-            sessionId: session.id,
-            userId: user.id,
-            email: user.email,
-          });
-        },
-      }),
-
-      defineRoute({
-        method: "POST",
-        path: "/sign-in",
-        inputSchema: z.object({
-          email: z.email(),
-          password: z.string().min(8).max(100),
-        }),
-        outputSchema: z.object({
-          sessionId: z.string(),
-          userId: z.string(),
-          email: z.string(),
-        }),
-        errorCodes: ["invalid_credentials"],
-        handler: async ({ input }, { json, error }) => {
-          const { email, password } = await input.valid();
-
-          // Get user by email
-          const user = await services.getUserByEmail(email);
-          if (!user) {
-            return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
-          }
-
-          // Verify password
-          const isValid = await verifyPassword(password, user.passwordHash);
-          if (!isValid) {
-            return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
-          }
-
-          // Create session
-          const session = await services.createSession(user.id);
-
-          return json({
-            sessionId: session.id,
-            userId: user.id,
-            email: user.email,
-          });
-        },
-      }),
-
-      defineRoute({
-        method: "POST",
-        path: "/sign-out",
-        inputSchema: z.object({
-          sessionId: z.string(),
-        }),
-        outputSchema: z.object({
-          success: z.boolean(),
-        }),
-        errorCodes: ["session_not_found"],
-        handler: async ({ input }, { json, error }) => {
-          const { sessionId } = await input.valid();
-
-          const success = await services.invalidateSession(sessionId);
-
-          if (!success) {
-            return error({ message: "Session not found", code: "session_not_found" }, 404);
-          }
-
-          return json({ success: true });
-        },
-      }),
-
-      defineRoute({
-        method: "GET",
-        path: "/me",
-        queryParameters: ["sessionId"],
-        outputSchema: z
-          .object({
-            userId: z.string(),
-            email: z.string(),
-          })
-          .nullable(),
-        errorCodes: ["session_invalid"],
-        handler: async ({ query }, { json, error }) => {
-          const sessionId = query.get("sessionId");
-
-          if (!sessionId) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
-          }
-
-          const session = await services.validateSession(sessionId);
-
-          if (!session) {
-            return error({ message: "Session ID required", code: "session_invalid" }, 400);
-          }
-
-          return json({
-            userId: session.user.id,
-            email: session.user.email,
-          });
-        },
-      }),
-    ];
-  },
-);
-
-export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("simple-auth")
-  .withDatabase(authSchema)
-  .providesService(({ db }) => {
+export const authFragmentDef = defineFragment<AuthConfig>("simple-auth")
+  .extend(withDatabase(authSchema))
+  .withDependencies(({ db }) => ({ db }))
+  .providesBaseService(({ deps }) => {
     // db is already an ORM instance for the fragment's schema
     return {
       createUser: async (email: string, password: string) => {
         const passwordHash = await hashPassword(password);
-        const id = await db.create("user", {
+        const id = await deps.db.create("user", {
           email,
           passwordHash,
         });
@@ -279,7 +105,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         };
       },
       getUserByEmail: async (email: string) => {
-        const users = await db.findFirst("user", (b) =>
+        const users = await deps.db.findFirst("user", (b) =>
           b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
         );
         return users
@@ -294,12 +120,11 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
-        console.log("creating session", userId, expiresAt);
-        const id = await db.create("session", {
+        const id = await deps.db.create("session", {
           userId,
           expiresAt,
         });
-        console.log("session created", id);
+
         return {
           id: id.valueOf(),
           userId,
@@ -307,14 +132,11 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         };
       },
       validateSession: async (sessionId: string) => {
-        console.log("validating session", sessionId, typeof sessionId);
-        const session = await db.findFirst("session", (b) =>
+        const session = await deps.db.findFirst("session", (b) =>
           b
             .whereIndex("primary", (eb) => eb("id", "=", sessionId))
             .join((j) => j.sessionOwner((b) => b.select(["id", "email"]))),
         );
-
-        console.log("session", session);
 
         if (!session) {
           return null;
@@ -322,7 +144,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
 
         // Check if session has expired
         if (session.expiresAt < new Date()) {
-          await db.delete("session", session.id);
+          await deps.db.delete("session", session.id);
           return null;
         }
 
@@ -340,7 +162,7 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
         };
       },
       invalidateSession: async (sessionId: string) => {
-        const session = await db.findFirst("session", (b) =>
+        const session = await deps.db.findFirst("session", (b) =>
           b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
         );
 
@@ -348,21 +170,158 @@ export const authFragmentDefinition = defineFragmentWithDatabase<AuthConfig>("si
           return false;
         }
 
-        await db.delete("session", session.id);
+        await deps.db.delete("session", session.id);
         return true;
       },
     };
-  });
+  })
+  .build();
+
+export const routesFactory = defineRoutesNew(authFragmentDef).create(
+  ({ services, defineRoute }) => [
+    defineRoute({
+      method: "POST",
+      path: "/sign-up",
+      inputSchema: z.object({
+        email: z.string().email(),
+        password: z.string().min(8).max(100),
+      }),
+      outputSchema: z.object({
+        sessionId: z.string(),
+        userId: z.string(),
+        email: z.string(),
+      }),
+      errorCodes: ["email_already_exists", "invalid_input"] as const,
+      handler: async ({ input }, { json, error }) => {
+        const { email, password } = await input.valid();
+
+        // Check if user already exists
+        const existingUser = await services.getUserByEmail(email);
+        if (existingUser) {
+          return error({ message: "Email already exists", code: "email_already_exists" }, 400);
+        }
+
+        // Create user
+        const user = await services.createUser(email, password);
+
+        // Create session
+        const session = await services.createSession(user.id);
+
+        return json({
+          sessionId: session.id,
+          userId: user.id,
+          email: user.email,
+        });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/sign-in",
+      inputSchema: z.object({
+        email: z.string().email(),
+        password: z.string().min(8).max(100),
+      }),
+      outputSchema: z.object({
+        sessionId: z.string(),
+        userId: z.string(),
+        email: z.string(),
+      }),
+      errorCodes: ["invalid_credentials"] as const,
+      handler: async ({ input }, { json, error }) => {
+        const { email, password } = await input.valid();
+
+        // Get user by email
+        const user = await services.getUserByEmail(email);
+        if (!user) {
+          return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
+        }
+
+        // Verify password
+        const isValid = await verifyPassword(password, user.passwordHash);
+        if (!isValid) {
+          return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
+        }
+
+        // Create session
+        const session = await services.createSession(user.id);
+
+        return json({
+          sessionId: session.id,
+          userId: user.id,
+          email: user.email,
+        });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/sign-out",
+      inputSchema: z.object({
+        sessionId: z.string(),
+      }),
+      outputSchema: z.object({
+        success: z.boolean(),
+      }),
+      errorCodes: ["session_not_found"] as const,
+      handler: async ({ input }, { json, error }) => {
+        const { sessionId } = await input.valid();
+
+        const success = await services.invalidateSession(sessionId);
+
+        if (!success) {
+          return error({ message: "Session not found", code: "session_not_found" }, 404);
+        }
+
+        return json({ success: true });
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/me",
+      queryParameters: ["sessionId"] as const,
+      outputSchema: z
+        .object({
+          userId: z.string(),
+          email: z.string(),
+        })
+        .nullable(),
+      errorCodes: ["session_invalid"] as const,
+      handler: async ({ query }, { json, error }) => {
+        const sessionId = query.get("sessionId");
+
+        if (!sessionId) {
+          return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        }
+
+        const session = await services.validateSession(sessionId);
+
+        if (!session) {
+          return error({ message: "Session ID required", code: "session_invalid" }, 400);
+        }
+
+        return json({
+          userId: session.user.id,
+          email: session.user.email,
+        });
+      },
+    }),
+  ],
+);
+
+export const routes = [routesFactory] as const;
 
 export function createAuthFragment(
   config: AuthConfig = {},
   fragnoConfig: FragnoPublicConfigWithDatabase,
 ) {
-  return createFragment(authFragmentDefinition, config, [authRoutesFactory], fragnoConfig);
+  return instantiate(authFragmentDef)
+    .withConfig(config)
+    .withRoutes(routes)
+    .withOptions(fragnoConfig)
+    .build();
 }
 
 export function createAuthFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilder(authFragmentDefinition, fragnoConfig, [authRoutesFactory]);
+  const b = createClientBuilderNew(authFragmentDef, fragnoConfig, routes);
 
   return {
     useSignUp: b.createMutator("POST", "/sign-up"),
@@ -371,4 +330,5 @@ export function createAuthFragmentClients(fragnoConfig: FragnoPublicClientConfig
     useMe: b.createHook("/me"),
   };
 }
+
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";

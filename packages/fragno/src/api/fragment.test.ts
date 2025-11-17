@@ -150,6 +150,7 @@ describe("new-fragment API", () => {
         config: Config;
         deps: Deps;
         services: Services;
+        serviceDeps: {};
       }>();
     });
   });
@@ -390,7 +391,13 @@ describe("new-fragment API", () => {
       });
 
       type RouteFactoryRoutes =
-        typeof routeFactory extends RouteFactory<infer _T1, infer _T2, infer _T3, infer TRoutes>
+        typeof routeFactory extends RouteFactory<
+          infer _T1,
+          infer _T2,
+          infer _T3,
+          infer _T4,
+          infer TRoutes
+        >
           ? TRoutes
           : never;
 
@@ -417,6 +424,7 @@ describe("new-fragment API", () => {
           config: {},
           deps: {},
           services: {},
+          serviceDeps: {},
         },
         [routeFactory],
       );
@@ -494,7 +502,13 @@ describe("new-fragment API", () => {
       );
 
       type RouteFactoryRoutes =
-        typeof routeFactory extends RouteFactory<infer _T1, infer _T2, infer _T3, infer TRoutes>
+        typeof routeFactory extends RouteFactory<
+          infer _T1,
+          infer _T2,
+          infer _T3,
+          infer _T4,
+          infer TRoutes
+        >
           ? TRoutes
           : never;
 
@@ -512,6 +526,7 @@ describe("new-fragment API", () => {
           config: { apiKey: "test", model: "gpt-4" as const },
           deps: { openai: { complete: async () => "result" } },
           services: { cache: new Map() },
+          serviceDeps: {},
         },
         [routeFactory],
       );
