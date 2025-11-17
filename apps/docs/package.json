@@ -9,7 +9,8 @@
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "types:check": "tsc --noEmit",
     "types:generate": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "cf-typegen": "pnpm run types:generate"
+    "cf-typegen": "pnpm run types:generate",
+    "check:links": "echo 'Run together with preview script, gives false positives on href that start with ./' && lychee '.next/**/*.html' --base-url http://localhost:8787 --include '^http://localhost:8787/.*'"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.9.1",
