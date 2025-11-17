@@ -1,7 +1,8 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
-import { createDatabaseFragmentForTest } from "@fragno-dev/test";
-import { stripeFragmentDefinition } from "..";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { stripeFragmentDefinition } from "../definition";
 import { subscriptionsRoutesFactory } from "./subscriptions";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import type Stripe from "stripe";
 
 // Mock Stripe client methods
@@ -41,25 +42,24 @@ vi.mock("stripe", () => {
 });
 
 describe("subscription handlers", async () => {
-  const { fragment } = await createDatabaseFragmentForTest(
-    {
-      definition: stripeFragmentDefinition,
-      routes: [subscriptionsRoutesFactory],
-      config: {
-        stripeSecretKey: "sk_test_mock_key",
-        webhookSecret: "whsec_test_mock_secret",
-        subscriptions: {
-          enabled: true,
-        },
-        enableAdminRoutes: true,
-        resolveEntityFromRequest: mockResolveEntityFromRequest,
-        onStripeCustomerCreated: mockOnStripeCustomerCreated,
-      },
-    },
-    {
-      adapter: { type: "kysely-sqlite" },
-    },
-  );
+  const { fragments } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "stripe",
+      instantiate(stripeFragmentDefinition)
+        .withConfig({
+          stripeSecretKey: "sk_test_mock_key",
+          webhookSecret: "whsec_test_mock_secret",
+          enableAdminRoutes: true,
+          resolveEntityFromRequest: mockResolveEntityFromRequest,
+          onStripeCustomerCreated: mockOnStripeCustomerCreated,
+        })
+        .withRoutes([subscriptionsRoutesFactory]),
+      { definition: stripeFragmentDefinition },
+    )
+    .build();
+
+  const fragment = fragments.stripe;
 
   beforeEach(() => {
     // Clear all mocks before each test
