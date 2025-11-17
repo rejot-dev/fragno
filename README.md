@@ -2,7 +2,7 @@
 
 Fragno is the <ins>fr</ins>amework-<ins>agno</ins>stic toolkit for building full-stack TypeScript
 libraries that work seamlessly across different frameworks such as Next.js, Nuxt, and
-[way more](https://fragno.dev/docs/frameworks).
+[way more](https://fragno.dev/docs/fragno/reference/frameworks).
 
 With Fragno:
 
@@ -18,7 +18,7 @@ A **Fragment** is a full-stack **library** that:
 
 - Contains both server-side API logic and client-side integration code
 - Works across multiple frameworks (React, Vue, Next.js, Nuxt,
-  [etc.](https://fragno.dev/docs/frameworks))
+  [etc.](https://fragno.dev/docs/fragno/reference/frameworks))
 - Provides end-to-end functionality: type-safe & reactive
 
 ## Quick Start
@@ -199,8 +199,8 @@ export function createTodosClient(fragnoConfig = {}) {
 |                        |         |     | SolidStart              | ✅      |
 |                        |         |     | TanStack Start          | ✅      |
 
-See the [Framework Support](https://fragno.dev/docs/frameworks) page for the full list of supported
-frameworks.
+See the [Framework Support](https://fragno.dev/docs/fragno/reference/frameworks) page for the full
+list of supported frameworks.
 
 ## Examples
 
