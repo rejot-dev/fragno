@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "vue": "^3.5.18",
-    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/example-fragment": "workspace:*",
     "@fragno-dev/node": "workspace:*"
   },

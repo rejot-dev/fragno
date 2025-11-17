@@ -8,7 +8,7 @@ import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder
 import { withDatabase } from "./db-fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { defineRoutesNew } from "@fragno-dev/core/api/route";
-import type { FragnoPublicConfigWithDatabase } from "./fragment";
+import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
 
 describe.sequential("Database Fragment Integration", () => {
   // Schema 1: Users fragment

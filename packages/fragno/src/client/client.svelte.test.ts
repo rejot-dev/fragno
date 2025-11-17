@@ -3,7 +3,7 @@ import { type FragnoPublicClientConfig } from "../mod";
 import { createClientBuilder } from "./client";
 import { render } from "@testing-library/svelte";
 import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment-builder";
+import { defineFragment } from "../api/fragment-definition-builder";
 import { z } from "zod";
 import { readableToAtom, useFragno } from "./client.svelte";
 import { writable, readable, get, derived } from "svelte/store";
@@ -89,7 +89,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Hook should function", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -124,7 +124,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should support path parameters and update reactively when Svelte store changes", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     type TestData = {
       id: number;
       name: string;
@@ -183,7 +183,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should support path parameters and update reactively when Nanostores Atom changes", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     type TestData = { id: number; name: string };
     const testRoutes = [
       defineRoute({
@@ -239,7 +239,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle errors gracefully", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -277,7 +277,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should track loading states correctly", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -322,7 +322,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle query parameters", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -376,7 +376,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle multiple hooks together", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -432,7 +432,7 @@ describe("createSvelteHook", () => {
   });
 
   test("Should handle mixed reactive parameters - writable path param, atom and writable query params, with reactive updates", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "GET",
@@ -561,7 +561,7 @@ describe("createSvelteMutator", () => {
   });
 
   test("Should handle mutator hooks", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "POST",
@@ -605,7 +605,7 @@ describe("createSvelteMutator", () => {
   });
 
   test("Should handle mutator with path parameters", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     const testRoutes = [
       defineRoute({
         method: "PUT",
@@ -663,7 +663,7 @@ describe("useFragno", () => {
     baseUrl: "http://localhost:3000",
   };
 
-  const testFragmentDefinition = defineFragment("test-fragment");
+  const testFragmentDefinition = defineFragment("test-fragment").build();
   const testRoutes = [
     defineRoute({
       method: "GET",
@@ -711,7 +711,7 @@ describe("useFragno", () => {
   });
 
   test("Should support path parameters and update reactively when using Svelte runes", async () => {
-    const testFragmentDefinition = defineFragment("test-fragment");
+    const testFragmentDefinition = defineFragment("test-fragment").build();
     type TestData = {
       id: number;
       name: string;
@@ -785,7 +785,7 @@ describe("createSvelteStore", () => {
   });
 
   test("streaming routes", async () => {
-    const streamFragmentDefinition = defineFragment("stream-fragment");
+    const streamFragmentDefinition = defineFragment("stream-fragment").build();
     const streamRoutes = [
       defineRoute({
         method: "GET",

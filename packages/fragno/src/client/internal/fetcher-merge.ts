@@ -1,4 +1,4 @@
-import type { FetcherConfig } from "../../api/fragment-instantiation";
+import type { FetcherConfig } from "../../api/shared-types";
 
 /**
  * Merge two fetcher configurations, with user config taking precedence.

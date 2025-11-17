@@ -4,8 +4,7 @@ import { z } from "zod";
 import {
   defineFragment,
   defineRoute,
-  createFragment,
-  type FragnoInstantiatedFragment,
+  instantiate,
   type FragnoPublicClientConfig,
 } from "@fragno-dev/core";
 import { toNodeHandler } from "./fragno-node";
@@ -23,13 +22,21 @@ describe("Fragno Express integration", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost",
   };
-  let testFragment: FragnoInstantiatedFragment<[typeof usersRoute]>;
+
+  function instantiateTestFragment() {
+    return instantiate(testFragmentDefinition)
+      .withRoutes([usersRoute])
+      .withOptions(clientConfig)
+      .build();
+  }
+
+  let testFragment: ReturnType<typeof instantiateTestFragment>;
   let app: Application;
   let server: ReturnType<typeof app.listen>;
   let port: number;
 
   function createExpressServerForTest() {
-    testFragment = createFragment(testFragmentDefinition, {}, [usersRoute], clientConfig);
+    testFragment = instantiateTestFragment();
     app = express();
 
     app.all("/api/test-fragment/{*any}", toNodeHandler(testFragment.handler));

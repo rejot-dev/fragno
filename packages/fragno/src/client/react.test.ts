@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createClientBuilder } from "./client";
 import { useFragno, useStore, type FragnoReactStore } from "./react";
 import { defineRoute } from "../api/route";
-import { defineFragment } from "../api/fragment-builder";
+import { defineFragment } from "../api/fragment-definition-builder";
 import type { FragnoPublicClientConfig } from "../mod";
 import { FragnoClientFetchNetworkError, type FragnoClientError } from "./client-error";
 import { RequestOutputContext } from "../api/request-output-context";

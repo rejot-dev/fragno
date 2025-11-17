@@ -2,8 +2,8 @@ import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { defineRoutesNew } from "@fragno-dev/core/api/route";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
-import { createClientBuilderNew } from "@fragno-dev/core/client";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { authSchema } from "./schema";
 import { z } from "zod";
@@ -321,7 +321,7 @@ export function createAuthFragment(
 }
 
 export function createAuthFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilderNew(authFragmentDef, fragnoConfig, routes);
+  const b = createClientBuilder(authFragmentDef, fragnoConfig, routes);
 
   return {
     useSignUp: b.createMutator("POST", "/sign-up"),

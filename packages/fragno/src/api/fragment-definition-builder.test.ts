@@ -1,6 +1,6 @@
 import { describe, it, expect, expectTypeOf, vi } from "vitest";
 import { defineFragment, type NewFragmentDefinition } from "./fragment-definition-builder";
-import type { FragnoPublicConfig } from "./fragment-instantiation";
+import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestThisContext } from "./api";
 
 describe("FragmentDefinitionBuilder", () => {

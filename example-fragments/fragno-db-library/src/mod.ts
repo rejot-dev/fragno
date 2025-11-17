@@ -1,8 +1,8 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
-import { createClientBuilderNew } from "@fragno-dev/core/client";
+import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db/fragment";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
@@ -141,7 +141,7 @@ export function createCommentFragment(
 }
 
 export function createCommentFragmentClient(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilderNew(commentFragmentDef, fragnoConfig, routes);
+  const b = createClientBuilder(commentFragmentDef, fragnoConfig, routes);
 
   return {
     useGetComments: b.createHook("/comments"),

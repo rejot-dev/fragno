@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { uowStorage, serviceContext, withUnitOfWork } from "./fragment";
+import { uowStorage, serviceContext, withUnitOfWork } from "./db-fragment-definition-builder";
 import type { IUnitOfWorkBase } from "./query/unit-of-work";
 import { schema, idColumn } from "./schema/create";
 

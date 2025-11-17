@@ -1,98 +1,173 @@
-import type { FragmentDefinition } from "../api/fragment-builder";
-import type { FragnoRouteConfig, HTTPMethod } from "../api/api";
+import type { RequestThisContext } from "../api/api";
 import type { AnyRouteOrFactory, FlattenRouteFactories } from "../api/route";
-import type { FragnoPublicConfig } from "../api/fragment-instantiation";
-import { createFragment } from "../api/fragment-instantiation";
-import type { RouteHandlerInputOptions } from "../api/route-handler-input-options";
-import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
-import type { InferOrUnknown } from "../util/types-util";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { FragnoResponse } from "../api/fragno-response";
+import type { FragnoPublicConfig } from "../api/shared-types";
+import {
+  FragmentDefinitionBuilder,
+  type NewFragmentDefinition,
+} from "../api/fragment-definition-builder";
+import {
+  instantiateNewFragment,
+  type NewFragnoInstantiatedFragment,
+} from "../api/fragment-instantiator";
+import type { BoundServices } from "../api/bind-services";
 
 // Re-export for convenience
-export type { RouteHandlerInputOptions };
+export type { RouteHandlerInputOptions } from "../api/route-handler-input-options";
+export type { FragnoResponse } from "../api/fragno-response";
 
-export type { FragnoResponse };
-
-/**
- * Options for creating a test fragment
- */
-export interface CreateFragmentForTestOptions<
-  TConfig,
-  TDeps,
-  TServices,
-  TAdditionalContext extends Record<string, unknown>,
-  TOptions extends FragnoPublicConfig,
-  TRequiredInterfaces extends Record<string, unknown> = {},
-> {
-  config: TConfig;
-  options?: Partial<TOptions>;
-  deps?: Partial<TDeps>;
-  services?: Partial<TServices>;
-  additionalContext?: Partial<TAdditionalContext>;
-  interfaceImplementations?: TRequiredInterfaces;
-}
-
-/**
- * Fragment test instance with type-safe callRoute method
- */
-export interface FragmentForTest<
-  TConfig,
-  TDeps,
-  TServices,
-  TAdditionalContext extends Record<string, unknown>,
-  TOptions extends FragnoPublicConfig,
-  TRoutes extends readonly FragnoRouteConfig<
-    HTTPMethod,
-    string,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
-  >[],
-> {
-  config: TConfig;
+export type TestBaseServices<TDeps> = {
+  /**
+   * Access to fragment dependencies for testing purposes.
+   */
   deps: TDeps;
-  services: TServices;
-  additionalContext: TAdditionalContext & TOptions;
-  callRoute: <
-    const TMethod extends HTTPMethod,
-    const TPath extends ExtractRoutePath<TRoutes, TMethod>,
-  >(
-    method: TMethod,
-    path: TPath,
-    inputOptions?: RouteHandlerInputOptions<
-      TPath,
-      ExtractRouteByPath<TRoutes, TPath, TMethod>["inputSchema"]
-    >,
-  ) => Promise<
-    FragnoResponse<
-      InferOrUnknown<NonNullable<ExtractRouteByPath<TRoutes, TPath, TMethod>["outputSchema"]>>
-    >
-  >;
-}
+};
 
 /**
- * Create a fragment instance for testing with optional dependency and service overrides
- *
- * @param fragmentBuilder - The fragment builder with definition and required options
- * @param routesOrFactories - Route configurations or route factories
- * @param options - Configuration and optional overrides for deps/services
- * @returns A fragment test instance with a type-safe callRoute method
+ * Extension function that adds test utilities to a fragment definition.
+ * This adds a `test` service to base services with access to deps.
  *
  * @example
  * ```typescript
+ * const definition = defineFragment("my-fragment")
+ *   .withDependencies(({ config }) => ({ client: createClient(config) }))
+ *   .extend(withTestUtils())
+ *   .build();
+ *
+ * const fragment = createFragmentForTest(definition, [], { config: {...} });
+ * expect(fragment.services.test.deps.client).toBeDefined();
+ * ```
+ */
+export function withTestUtils() {
+  return <
+    TConfig,
+    TOptions extends FragnoPublicConfig,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDeps,
+    TThisContext extends RequestThisContext,
+    TRequestStorage,
+  >(
+    builder: FragmentDefinitionBuilder<
+      TConfig,
+      TOptions,
+      TDeps,
+      TBaseServices,
+      TServices,
+      TServiceDeps,
+      TThisContext,
+      TRequestStorage
+    >,
+  ): FragmentDefinitionBuilder<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices & TestBaseServices<TDeps>,
+    TServices,
+    TServiceDeps,
+    TThisContext,
+    TRequestStorage
+  > => {
+    // Get the current base services factory
+    const currentBaseDef = builder.build();
+    const currentBaseServices = currentBaseDef.baseServices;
+
+    // Create new base services factory that merges test utilities
+    const newBaseServices = (context: {
+      config: TConfig;
+      options: TOptions;
+      deps: TDeps;
+      serviceDeps: TServiceDeps;
+      defineService: <T>(svc: T & ThisType<TThisContext>) => T;
+    }) => {
+      // Call existing base services if they exist
+      const existingServices = currentBaseServices
+        ? currentBaseServices(context)
+        : ({} as TBaseServices);
+
+      // Add test utilities
+      const testUtils: TestBaseServices<TDeps> = {
+        deps: context.deps,
+      };
+
+      return {
+        ...existingServices,
+        ...testUtils,
+      } as TBaseServices & TestBaseServices<TDeps>;
+    };
+
+    // Create new builder with updated base services
+    return new FragmentDefinitionBuilder<
+      TConfig,
+      TOptions,
+      TDeps,
+      TBaseServices & TestBaseServices<TDeps>,
+      TServices,
+      TServiceDeps,
+      TThisContext,
+      TRequestStorage
+    >(builder.name, {
+      dependencies: currentBaseDef.dependencies,
+      baseServices: newBaseServices,
+      namedServices: currentBaseDef.namedServices,
+      serviceDependencies: currentBaseDef.serviceDependencies,
+      createRequestStorage: currentBaseDef.createRequestStorage,
+      createRequestContext: currentBaseDef.createRequestContext,
+    });
+  };
+}
+
+/**
+ * Options for creating a test fragment with the new architecture
+ */
+export interface CreateFragmentForTestOptions<
+  TConfig,
+  TOptions extends FragnoPublicConfig,
+  TServiceDependencies,
+> {
+  config: TConfig;
+  options?: Partial<TOptions>;
+  serviceImplementations?: TServiceDependencies;
+}
+
+/**
+ * Create a fragment instance for testing with optional service dependency overrides.
+ * This uses the new fragment definition and instantiation architecture.
+ *
+ * **Important:** Use `.extend(withTestUtils())` before `.build()` to expose deps via `services.test.deps`.
+ *
+ * Returns an instantiated fragment with:
+ * - `services` - Services (base + named) from the fragment definition
+ * - `services.test.deps` - Dependencies (only if you used .extend(withTestUtils()))
+ * - `callRoute()` - Type-safe method to call routes directly
+ * - `handler()` - Request handler for integration
+ * - `inContext()` - Run code within request context
+ *
+ * @param definition - The fragment definition from builder.build()
+ * @param routesOrFactories - Route configurations or route factories
+ * @param options - Configuration and optional overrides
+ * @returns An instantiated fragment ready for testing
+ *
+ * @example
+ * ```typescript
+ * const definition = defineFragment<{ apiKey: string }>("test")
+ *   .withDependencies(({ config }) => ({ client: createClient(config.apiKey) }))
+ *   .providesService("api", ({ deps }) => ({ call: () => deps.client.call() }))
+ *   .extend(withTestUtils())  // <- Add test utilities
+ *   .build();
+ *
  * const fragment = createFragmentForTest(
- *   chatnoDefinition,
- *   [routesFactory],
+ *   definition,
+ *   [route1, route2],
  *   {
- *     config: { openaiApiKey: "test-key" },
- *     options: { mountRoute: "/api/chatno" },
- *     services: {
- *       generateStreamMessages: mockGenerator
- *     }
+ *     config: { apiKey: "test-key" },
+ *     options: { mountRoute: "/api/test" }
  *   }
  * );
+ *
+ * // Access deps via test utilities
+ * expect(fragment.services.test.deps.client).toBeDefined();
+ * expect(fragment.services.api.call()).toBeDefined();
  *
  * // Call routes directly by method and path
  * const response = await fragment.callRoute("POST", "/login", {
@@ -106,103 +181,48 @@ export interface FragmentForTest<
  */
 export function createFragmentForTest<
   TConfig,
-  TDeps,
-  TServices extends Record<string, unknown>,
-  TAdditionalContext extends Record<string, unknown>,
   TOptions extends FragnoPublicConfig,
-  TRequiredInterfaces extends Record<string, unknown>,
-  TProvidedInterfaces extends Record<string, unknown>,
+  TDeps,
+  TBaseServices extends Record<string, unknown>,
+  TServices extends Record<string, unknown>,
+  TServiceDependencies,
+  TThisContext extends RequestThisContext,
+  TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  fragmentBuilder: {
-    definition: FragmentDefinition<
-      TConfig,
-      TDeps,
-      TServices,
-      TAdditionalContext,
-      TRequiredInterfaces,
-      TProvidedInterfaces
-    >;
-    $requiredOptions: TOptions;
-  },
-  routesOrFactories: TRoutesOrFactories,
-  options: CreateFragmentForTestOptions<
+  definition: NewFragmentDefinition<
     TConfig,
-    TDeps,
-    TServices,
-    TAdditionalContext,
     TOptions,
-    TRequiredInterfaces
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TThisContext,
+    TRequestStorage
   >,
-): FragmentForTest<
-  TConfig,
-  TDeps & TRequiredInterfaces,
-  TServices & TProvidedInterfaces,
-  TAdditionalContext,
-  TOptions,
-  FlattenRouteFactories<TRoutesOrFactories>
+  routesOrFactories: TRoutesOrFactories,
+  options: CreateFragmentForTestOptions<TConfig, TOptions, TServiceDependencies>,
+): NewFragnoInstantiatedFragment<
+  FlattenRouteFactories<TRoutesOrFactories>,
+  TDeps,
+  BoundServices<TBaseServices & TServices>,
+  TThisContext,
+  TRequestStorage
 > {
-  const {
-    config,
-    options: fragmentOptions = {} as TOptions,
-    deps: depsOverride,
-    services: servicesOverride,
-    additionalContext: additionalContextOverride,
-    interfaceImplementations,
-  } = options;
+  const { config, options: fragmentOptions = {} as TOptions, serviceImplementations } = options;
 
-  // Create deps from definition or use empty object
-  const definition = fragmentBuilder.definition;
-  const baseDeps = definition.dependencies
-    ? definition.dependencies(config, fragmentOptions)
-    : ({} as TDeps);
-
-  // Merge deps with overrides and interface implementations
-  const deps = {
-    ...baseDeps,
-    ...interfaceImplementations,
-    ...depsOverride,
-  } as TDeps & TRequiredInterfaces;
-
-  // Create services from definition or use empty object
-  const baseServices = definition.services
-    ? definition.services(config, fragmentOptions, deps)
-    : ({} as TServices);
-
-  // Handle providedServices - can be either a factory function or a direct object
-  const providedServicesResolved =
-    typeof definition.providedServices === "function"
-      ? definition.providedServices(config, fragmentOptions, deps)
-      : definition.providedServices;
-
-  // Merge services with provided services and overrides
-  const services = {
-    ...baseServices,
-    ...providedServicesResolved,
-    ...servicesOverride,
-  } as TServices & TProvidedInterfaces;
-
-  // Merge additional context with options
-  const additionalContext = {
-    ...definition.additionalContext,
+  // Use default mountRoute for testing if not provided
+  const fullOptions = {
+    mountRoute: "/api/test",
     ...fragmentOptions,
-    ...additionalContextOverride,
-  } as TAdditionalContext & TOptions;
+  } as TOptions;
 
-  // Create the actual fragment using createFragment
-  const fragment = createFragment(
-    fragmentBuilder,
+  // Instantiate and return the fragment directly
+  return instantiateNewFragment(
+    definition,
     config,
     routesOrFactories,
-    fragmentOptions,
-    interfaceImplementations,
+    fullOptions,
+    serviceImplementations,
   );
-
-  return {
-    config,
-    deps,
-    services,
-    additionalContext,
-    callRoute: (method, path, inputOptions) => fragment.callRoute(method, path, inputOptions),
-  };
 }

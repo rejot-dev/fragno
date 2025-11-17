@@ -2,14 +2,75 @@ import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { IUnitOfWorkBase, UnitOfWorkSchemaView } from "./query/unit-of-work";
-import type { RequestThisContext } from "@fragno-dev/core/api";
-import type { FragnoPublicConfig } from "@fragno-dev/core/api/fragment-instantiation";
+import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
   type NewFragmentDefinition,
   type ServiceConstructorFn,
 } from "@fragno-dev/core/api/fragment-definition-builder";
-import { type FragnoPublicConfigWithDatabase } from "./fragment";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+// AsyncLocalStorage for Unit of Work
+export const uowStorage = new AsyncLocalStorage<IUnitOfWorkBase>();
+
+// Overload for synchronous callbacks
+export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => T): T;
+// Overload for asynchronous callbacks
+export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => Promise<T>): Promise<T>;
+// Implementation
+export function withUnitOfWork<T>(
+  uow: IUnitOfWorkBase,
+  callback: () => T | Promise<T>,
+): T | Promise<T> {
+  return uowStorage.run(uow, callback);
+}
+
+/**
+ * Service context for database fragments, providing access to the Unit of Work.
+ * This reads from AsyncLocalStorage.
+ */
+export interface DatabaseRequestThisContext extends RequestThisContext {
+  getUnitOfWork(): IUnitOfWorkBase;
+  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
+}
+
+/**
+ * Implementation function for getUnitOfWork
+ */
+function getUnitOfWorkImpl(): IUnitOfWorkBase;
+function getUnitOfWorkImpl<TSchema extends AnySchema>(
+  schema: TSchema,
+): UnitOfWorkSchemaView<TSchema>;
+function getUnitOfWorkImpl<TSchema extends AnySchema>(
+  schema?: TSchema,
+): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
+  const uow = uowStorage.getStore();
+  if (!uow) {
+    throw new Error(
+      "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
+    );
+  }
+  if (schema) {
+    return uow.forSchema(schema);
+  }
+  return uow;
+}
+
+/**
+ * Global service context that reads from AsyncLocalStorage.
+ */
+export const serviceContext: DatabaseRequestThisContext = {
+  getUnitOfWork: getUnitOfWorkImpl,
+};
+
+/**
+ * Extended FragnoPublicConfig that includes a database adapter.
+ * Use this type when creating fragments with database support.
+ */
+export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  databaseAdapter: DatabaseAdapter<any>;
+};
 
 /**
  * Implicit dependencies that database fragments get automatically.

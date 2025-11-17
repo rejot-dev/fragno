@@ -5,12 +5,9 @@ that integrate with React, Vue, Svelte, and vanilla JavaScript. The `ClientBuild
 hooks and mutators for your routes.
 
 ```typescript @fragno-imports
-import {
-  defineFragment,
-  defineRoute,
-  defineRoutes,
-  type FragnoPublicClientConfig,
-} from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineRoute, defineRoutesNew } from "@fragno-dev/core/api/route";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { computed } from "nanostores";
 import { z } from "zod";
@@ -23,7 +20,7 @@ interface TodoConfig {
 
 const todoFragment = defineFragment<TodoConfig>("todos");
 
-const routes = defineRoutes<TodoConfig>().create(() => [
+const routes = defineRoutesNew(todoFragment).create(({ defineRoute }) => [
   defineRoute({
     method: "GET",
     path: "/todos",

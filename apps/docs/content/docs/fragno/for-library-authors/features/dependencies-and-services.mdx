@@ -217,14 +217,14 @@ const instance = instantiateFragment(fragment).withConfig({}).build();
 Fragments with database layers have access to an additional `db` object in both `withDependencies()`
 and `providesService()` contexts. The `db` object provides type-safe database operations:
 
-Note that `defineFragment` is swapped out for `defineFragmentWithDatabase` when defining a fragment
-with a database layer.
+Note that when using `withDatabase`, the database context is available in dependencies and services.
 
 ```typescript
-import { defineFragmentWithDatabase } from "@fragno-dev/db/fragment";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 
-const fragmentDef = defineFragmentWithDatabase("my-fragment")
-  .withDatabase(mySchema)
+const fragmentDef = defineFragment("my-fragment")
+  .extend(withDatabase(mySchema))
   .withDependencies(({ config, db }) => {
     // DB available in dependencies
     return {
@@ -233,7 +233,7 @@ const fragmentDef = defineFragmentWithDatabase("my-fragment")
       },
     };
   })
-  .providesService(({ config, deps, db }) => {
+  .providesBaseService(({ config, deps, db }) => {
     // DB available in services
     return {
       createComment: async (data) => {

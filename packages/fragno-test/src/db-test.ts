@@ -1,6 +1,5 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
-import type { FragnoPublicConfig } from "@fragno-dev/core/api/fragment-instantiation";
-import type { RequestThisContext } from "@fragno-dev/core/api";
+import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core/api";
 import {
   type NewFragmentInstantiationBuilder,
   type NewFragnoInstantiatedFragment,

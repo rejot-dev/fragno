@@ -4,8 +4,7 @@ export default defineConfig({
   entry: [
     "./src/mod.ts",
     "./src/api/api.ts",
-    "./src/api/fragment-builder.ts",
-    "./src/api/fragment-instantiation.ts",
+    "./src/api/shared-types.ts",
     "./src/api/fragment-definition-builder.ts",
     "./src/api/fragment-instantiator.ts",
     "./src/api/route.ts",
@@ -21,10 +20,7 @@ export default defineConfig({
     "./src/integrations/react-ssr.ts",
     "./src/integrations/svelte-kit.ts",
     "./src/test/test.ts",
-    "./src/test/new-test.ts",
   ],
   dts: true,
-  // TODO: This should be true, but we need some additional type exports in chatno/src/index.ts
-  // to make it work.
-  unbundle: false,
+  unbundle: true,
 });

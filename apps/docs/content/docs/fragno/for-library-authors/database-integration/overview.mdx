@@ -31,23 +31,22 @@ npm install @fragno-dev/db
 
 ## Creating a Database Fragment
 
-Use `defineFragmentWithDatabase()` from the `@fragno-dev/db` package instead of `defineFragment()`
-from the `@fragno-dev/core` package.
-
-You can then use the `.withDatabase(schema)` method to attach your schema to the Fragment.
+Use `defineFragment()` from the `@fragno-dev/core` package and extend it with `withDatabase(schema)`
+from `@fragno-dev/db`.
 
 ```typescript title="src/index.ts"
-import { createFragment } from "@fragno-dev/core";
-import { defineFragmentWithDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { commentSchema } from "./schema";
 
 export interface CommentFragmentConfig {
   maxCommentsPerPost?: number;
 }
 
-const commentFragmentDef = defineFragmentWithDatabase<CommentFragmentConfig>("comment-fragment")
-  .withDatabase(commentSchema)
-  .providesService(({ db }) => {
+const commentFragmentDef = defineFragment<CommentFragmentConfig>("comment-fragment")
+  .extend(withDatabase(commentSchema))
+  .providesBaseService(({ db }) => {
     return {
       createComment: async (data) => {
         const id = await db.create("comment", data);

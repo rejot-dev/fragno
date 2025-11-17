@@ -23,7 +23,7 @@ import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
 import type { InferOrUnknown } from "../util/types-util";
 import type { NewFragmentDefinition } from "./fragment-definition-builder";
-import type { FragnoPublicConfig } from "./fragment-instantiation";
+import type { FragnoPublicConfig } from "./shared-types";
 import { RequestContextStorage } from "./request-context-storage";
 import { bindServicesToContext, type BoundServices } from "./bind-services";
 
@@ -155,6 +155,9 @@ export class NewFragnoInstantiatedFragment<
     for (const routeConfig of this.#routes) {
       addRoute(this.#router, routeConfig.method.toUpperCase(), routeConfig.path, routeConfig);
     }
+
+    // Bind handler method to maintain 'this' context
+    this.handler = this.handler.bind(this);
   }
 
   // Public getters

@@ -1,25 +1,38 @@
+// ============================================================================
+// Fragment Definition and Instantiation
+// ============================================================================
 export {
   defineFragment,
-  FragmentBuilder,
-  type FragmentDefinition,
-  type RouteHandler,
-} from "./api/fragment-builder";
+  FragmentDefinitionBuilder,
+  type NewFragmentDefinition,
+  type ServiceContext,
+  type ServiceConstructorFn,
+} from "./api/fragment-definition-builder";
 
 export {
-  createFragment,
-  instantiateFragment,
-  FragmentInstantiationBuilder,
+  instantiate,
+  type NewFragmentInstantiationBuilder,
+  type NewFragnoInstantiatedFragment,
+} from "./api/fragment-instantiator";
+
+// ============================================================================
+// Shared types
+// ============================================================================
+export {
   type FragnoFragmentSharedConfig,
   type FragnoPublicConfig,
   type FragnoPublicClientConfig,
-  type FragnoInstantiatedFragment,
-} from "./api/fragment-instantiation";
+  type FetcherConfig,
+} from "./api/shared-types";
 
-export { type FragnoRouteConfig } from "./api/api";
+export { type FragnoRouteConfig, type RequestThisContext } from "./api/api";
 
+// ============================================================================
+// Route Definition
+// ============================================================================
 export {
   defineRoute,
-  defineRoutes,
+  defineRoutesNew,
   type RouteFactory,
   type RouteFactoryContext,
   type AnyRouteOrFactory,

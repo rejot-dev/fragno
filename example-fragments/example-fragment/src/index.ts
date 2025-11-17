@@ -1,7 +1,7 @@
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 
-import { type FragnoPublicClientConfig, type FragnoPublicConfig } from "@fragno-dev/core";
-import { createClientBuilderNew } from "@fragno-dev/core/client";
+import type { FragnoPublicConfig } from "@fragno-dev/core";
+import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { z } from "zod";
 
 import { readFile } from "node:fs/promises";
@@ -121,7 +121,7 @@ export function createExampleFragment(
 }
 
 export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilderNew(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
+  const b = createClientBuilder(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
 
   return {
     useHash: b.createHook("/hash"),
