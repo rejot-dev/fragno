@@ -1,17 +1,14 @@
-import {
-  defineFragment,
-  defineRoute,
-  defineRoutes,
-  createFragment,
-  type FragnoPublicClientConfig,
-  type FragnoPublicConfig,
-} from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+
+import { type FragnoPublicClientConfig, type FragnoPublicConfig } from "@fragno-dev/core";
+import { createClientBuilderNew } from "@fragno-dev/core/client";
 import { z } from "zod";
 
 import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { createHash } from "node:crypto";
+import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
 export interface ExampleFragmentServerConfig {
   initialData?: string;
@@ -19,10 +16,6 @@ export interface ExampleFragmentServerConfig {
 
 type ExampleRouteConfig = {
   initialData: string;
-};
-
-type ExampleRouteDeps = {
-  serverSideData: { value: string };
 };
 
 const getHashFromHostsFileData = async () => {
@@ -37,8 +30,22 @@ const getHashFromHostsFileData = async () => {
   }
 };
 
-const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>().create(
-  ({ deps }) => {
+const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("example-fragment")
+  .withDependencies(({ config }) => {
+    return {
+      serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
+    };
+  })
+  .providesBaseService(({ deps }) => {
+    return {
+      getData: () => deps.serverSideData.value,
+      getHashFromHostsFileData,
+    };
+  })
+  .build();
+
+const exampleRoutesFactory = defineRoutesNew(exampleFragmentDefinition).create(
+  ({ defineRoute, deps }) => {
     const { serverSideData } = deps;
 
     return [
@@ -98,19 +105,6 @@ const exampleRoutesFactory = defineRoutes<ExampleRouteConfig, ExampleRouteDeps>(
   },
 );
 
-const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("example-fragment")
-  .withDependencies(({ config }) => {
-    return {
-      serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
-    };
-  })
-  .providesService(({ deps }) => {
-    return {
-      getData: () => deps.serverSideData.value,
-      getHashFromHostsFileData,
-    };
-  });
-
 export function createExampleFragment(
   serverConfig: ExampleFragmentServerConfig = {},
   options: FragnoPublicConfig = {},
@@ -119,16 +113,15 @@ export function createExampleFragment(
     initialData: serverConfig.initialData ?? "Hello World! This is a server-side data.",
   };
 
-  return createFragment(
-    exampleFragmentDefinition,
-    { ...serverConfig, ...config },
-    [exampleRoutesFactory],
-    options,
-  );
+  return instantiate(exampleFragmentDefinition)
+    .withConfig(config)
+    .withRoutes([exampleRoutesFactory]) //
+    .withOptions(options)
+    .build();
 }
 
 export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilder(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
+  const b = createClientBuilderNew(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
 
   return {
     useHash: b.createHook("/hash"),

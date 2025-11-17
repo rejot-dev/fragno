@@ -1,33 +1,20 @@
 import { describe, it, expect, assert } from "vitest";
-import { createFragmentForTest } from "@fragno-dev/core/test";
-import { chatnoDefinition, healthRoute, simpleStreamRoute } from "./index";
-import { chatRouteFactory } from "./server/chatno-api";
+import { createFragmentForTest } from "@fragno-dev/core/test/new-test";
+import { chatnoDefinition, routes } from "./index";
 
 describe("chatno", () => {
-  const routes = [chatRouteFactory, healthRoute, simpleStreamRoute] as const;
   const fragment = createFragmentForTest(chatnoDefinition, routes, {
     config: {
       openaiApiKey: "test-key",
     },
   });
 
-  // Test with just healthRoute
-  const fragmentJustHealth = createFragmentForTest(chatnoDefinition, [healthRoute] as const, {
+  // Test with just the factory (which includes both health and simple-stream routes)
+  const fragmentJustFactory = createFragmentForTest(chatnoDefinition, [routes[1]!] as const, {
     config: {
       openaiApiKey: "test-key",
     },
   });
-
-  // Test with just a factory
-  const fragmentJustFactory = createFragmentForTest(
-    chatnoDefinition,
-    [simpleStreamRoute] as const,
-    {
-      config: {
-        openaiApiKey: "test-key",
-      },
-    },
-  );
 
   it("services - should return OpenAI URL from getOpenAIURL service", () => {
     const openaiURL = fragment.services.getOpenAIURL();
@@ -82,18 +69,31 @@ describe("chatno", () => {
     expect(response.data).toEqual({ status: "ok" });
   });
 
-  it("routes - should test health route with simple fragment", async () => {
-    const response = await fragmentJustHealth.callRoute("GET", "/health");
-
-    assert(response.type === "json");
-    expect(response.status).toBe(200);
-    expect(response.data).toEqual({ status: "ok" });
-  });
-
   it("routes - should test simple stream with factory fragment", async () => {
     const response = await fragmentJustFactory.callRoute("GET", "/simple-stream");
 
     assert(response.type === "jsonStream");
     expect(response.status).toBe(200);
+    const data = await Array.fromAsync(response.stream);
+    expect(data).toEqual([
+      { message: "Item 1" },
+      { message: "Item 2" },
+      { message: "Item 3" },
+      { message: "Item 4" },
+      { message: "Item 5" },
+      { message: "Item 6" },
+      { message: "Item 7" },
+      { message: "Item 8" },
+      { message: "Item 9" },
+      { message: "Item 10" },
+    ]);
+  });
+
+  it("routes - should test health route with factory fragment", async () => {
+    const response = await fragmentJustFactory.callRoute("GET", "/health");
+
+    assert(response.type === "json");
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ status: "ok" });
   });
 });

@@ -9,7 +9,7 @@ server.listen(8080, undefined, () => {
   console.log("Server is running on:", `${host}${fragment.mountRoute}`);
 
   console.log("GET Routes:");
-  fragment.config.routes.forEach((route) => {
+  fragment.routes.forEach((route) => {
     if (route.method !== "GET") {
       return;
     }

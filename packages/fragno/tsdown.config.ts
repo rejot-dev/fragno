@@ -21,6 +21,7 @@ export default defineConfig({
     "./src/integrations/react-ssr.ts",
     "./src/integrations/svelte-kit.ts",
     "./src/test/test.ts",
+    "./src/test/new-test.ts",
   ],
   dts: true,
   // TODO: This should be true, but we need some additional type exports in chatno/src/index.ts

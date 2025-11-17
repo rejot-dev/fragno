@@ -1,14 +1,10 @@
-import {
-  defineFragment,
-  defineRoute,
-  createFragment,
-  type FragnoPublicClientConfig,
-  type FragnoPublicConfig,
-  defineRoutes,
-} from "@fragno-dev/core";
+import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { type FragnoPublicClientConfig, type FragnoPublicConfig } from "@fragno-dev/core";
+import { createClientBuilderNew } from "@fragno-dev/core/client";
 import OpenAI from "openai";
 import { z } from "zod";
-import { createClientBuilder } from "@fragno-dev/core/client";
+import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { chatRouteFactory } from "./server/chatno-api";
 import { computed } from "nanostores";
 
@@ -18,22 +14,9 @@ export interface ChatnoServerConfig {
   systemPrompt?: string;
 }
 
-const healthRoute = defineRoute({
-  method: "GET",
-  path: "/health",
-  outputSchema: z.object({
-    status: z.literal("ok"),
-  }),
-  handler: async (_ctx, { json }) => {
-    return json({ status: "ok" });
-  },
-});
+// Note: healthRoute will be created inside the routes factory to have access to defineRoute
 
 const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
-
-interface SimpleStreamService {
-  generateStreamMessages: () => AsyncGenerator<{ message: string }>;
-}
 
 export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
   .withDependencies(({ config }) => {
@@ -43,8 +26,8 @@ export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
       }),
     };
   })
-  .providesService(({ deps, defineService }) => {
-    return defineService({
+  .providesBaseService(({ deps }) => {
+    return {
       getOpenAIURL: () => deps.openaiClient.baseURL,
       generateStreamMessages: async function* () {
         for (let i = 0; i < 10; i++) {
@@ -52,12 +35,23 @@ export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
           yield { message: `Item ${i + 1}` };
         }
       },
-    });
-  });
+    };
+  })
+  .build();
 
-const simpleStreamRoute = defineRoutes<ChatnoServerConfig, {}, SimpleStreamService>().create(
-  ({ services }) => {
+const healthAndStreamRoutesFactory = defineRoutesNew(chatnoDefinition).create(
+  ({ defineRoute, services }) => {
     return [
+      defineRoute({
+        method: "GET",
+        path: "/health",
+        outputSchema: z.object({
+          status: z.literal("ok"),
+        }),
+        handler: async (_ctx, { json }) => {
+          return json({ status: "ok" });
+        },
+      }),
       defineRoute({
         method: "GET",
         path: "/simple-stream",
@@ -78,8 +72,7 @@ const simpleStreamRoute = defineRoutes<ChatnoServerConfig, {}, SimpleStreamServi
   },
 );
 
-export { healthRoute, simpleStreamRoute };
-export const routes = [chatRouteFactory, healthRoute, simpleStreamRoute] as const;
+export const routes = [chatRouteFactory, healthAndStreamRoutesFactory] as const;
 
 // Server-side factory
 export function createChatno(
@@ -91,12 +84,16 @@ export function createChatno(
     systemPrompt: chatnoConfig.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
   };
 
-  return createFragment(chatnoDefinition, { ...chatnoConfig, ...config }, routes, fragnoConfig);
+  return instantiate(chatnoDefinition)
+    .withConfig({ ...chatnoConfig, ...config })
+    .withRoutes(routes)
+    .withOptions(fragnoConfig)
+    .build();
 }
 
 // Generic client-side factory
 export function createChatnoClients(fragnoConfig: FragnoPublicClientConfig) {
-  const cb = createClientBuilder(chatnoDefinition, fragnoConfig, routes);
+  const cb = createClientBuilderNew(chatnoDefinition, fragnoConfig, routes);
 
   const chatStream = cb.createMutator("POST", "/chat/stream");
 
