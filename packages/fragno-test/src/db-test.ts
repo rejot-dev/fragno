@@ -267,8 +267,12 @@ export class DatabaseFragmentsTestBuilder<
             contextStorage: { run: (_data: unknown, fn: () => unknown) => fn() },
           };
 
+          // Use the actual config from the builder instead of an empty mock
+          // This ensures dependencies can be properly initialized (e.g., Stripe with API keys)
+          const actualConfig = builder.config ?? {};
+
           const deps = definition.dependencies({
-            config: {} as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+            config: actualConfig,
             options: {
               databaseAdapter: mockAdapter as any, // eslint-disable-line @typescript-eslint/no-explicit-any
             } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -278,11 +282,19 @@ export class DatabaseFragmentsTestBuilder<
           if (deps && typeof deps === "object" && "schema" in deps) {
             schema = (deps as any).schema; // eslint-disable-line @typescript-eslint/no-explicit-any
           }
-        } catch {
-          // If extraction fails, the fragment might not be a database fragment
+        } catch (error) {
+          // If extraction fails, provide a helpful error message
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "Unknown error";
+
           throw new Error(
-            `Fragment '${definition.name}' does not appear to be a database fragment. ` +
-              `Make sure you're using defineFragment().extend(withDatabase(schema)).`,
+            `Failed to extract schema from fragment '${definition.name}'.\n` +
+              `Original error: ${errorMessage}\n\n` +
+              `Make sure the fragment is a database fragment using defineFragment().extend(withDatabase(schema)).`,
           );
         }
       }

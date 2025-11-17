@@ -275,4 +275,98 @@ describe("buildDatabaseFragmentsTest", () => {
 
     await test.cleanup();
   });
+
+  it("should use actual config during schema extraction", async () => {
+    // Test that the builder uses the actual config provided via .withConfig()
+    // This is important for fragments like Stripe that need API keys to initialize dependencies
+    interface RequiredConfigFragmentConfig {
+      apiKey: string;
+      apiSecret: string;
+    }
+
+    const requiredConfigFragmentDef = defineFragment<RequiredConfigFragmentConfig>(
+      "required-config-fragment",
+    )
+      .extend(withDatabase(userSchema))
+      .withDependencies(({ config }) => {
+        // This should receive the actual config, not an empty mock
+        return {
+          client: { key: config.apiKey, secret: config.apiSecret },
+          apiKey: config.apiKey,
+        };
+      })
+      .providesBaseService(({ deps }) => ({
+        getApiKey: () => deps.apiKey,
+        createUser: async (data: { name: string; email: string }) => {
+          const id = await deps.db.create("users", data);
+          return { ...data, id: id.valueOf() };
+        },
+      }))
+      .build();
+
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "requiredConfig",
+        instantiate(requiredConfigFragmentDef)
+          .withConfig({
+            apiKey: "test-key",
+            apiSecret: "test-secret",
+          })
+          .withRoutes([]),
+        {
+          definition: requiredConfigFragmentDef,
+        },
+      )
+      .build();
+
+    // Verify the fragment was created with actual config
+    expect(fragments.requiredConfig.deps.apiKey).toBe("test-key");
+    expect(fragments.requiredConfig.deps.client).toEqual({
+      key: "test-key",
+      secret: "test-secret",
+    });
+
+    // Verify database operations work
+    const user = await fragments.requiredConfig.services.createUser({
+      name: "Config Test User",
+      email: "config@example.com",
+    });
+
+    expect(user).toMatchObject({
+      id: expect.any(String),
+      name: "Config Test User",
+      email: "config@example.com",
+    });
+
+    await test.cleanup();
+  });
+
+  it("should provide helpful error when config is missing", async () => {
+    // Test that we get a helpful error when required config is not provided
+    const badFragmentDef = defineFragment<{ apiKey: string }>("bad-fragment")
+      .extend(withDatabase(userSchema))
+      .withDependencies(({ config }) => {
+        // This will throw if apiKey is undefined
+        if (!config.apiKey) {
+          throw new Error("API key is required");
+        }
+        return {
+          apiKey: config.apiKey,
+        };
+      })
+      .providesBaseService(() => ({}))
+      .build();
+
+    // Intentionally omit the required config to test error handling
+    const buildPromise = buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("bad", instantiate(badFragmentDef).withRoutes([]), {
+        definition: badFragmentDef,
+      })
+      .build();
+
+    await expect(buildPromise).rejects.toThrow(/Failed to extract schema from fragment/);
+    await expect(buildPromise).rejects.toThrow(/API key is required/);
+  });
 });
