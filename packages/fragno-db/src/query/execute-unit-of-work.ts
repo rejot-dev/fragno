@@ -129,7 +129,6 @@ export async function executeUnitOfWork<
   const signal = options.signal;
   let attempt = 0;
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     // Check if aborted before starting attempt
     if (signal?.aborted) {

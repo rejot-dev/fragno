@@ -67,7 +67,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         .build();
 
       expect(dbDefinition.dependencies).toBeDefined();
-      expect(dbDefinition.createRequestContext).toBeDefined();
+      expect(dbDefinition.createThisContext).toBeDefined();
     });
   });
 
@@ -665,14 +665,14 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
-  describe("createRequestStorage and createRequestContext", () => {
+  describe("createRequestStorage and createThisContext", () => {
     it("should create request storage with UnitOfWork", () => {
       const mockAdapter = createMockAdapter();
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
 
       expect(definition.createRequestStorage).toBeDefined();
-      expect(definition.createRequestContext).toBeDefined();
+      expect(definition.createThisContext).toBeDefined();
 
       // Create storage
       const storage = definition.createRequestStorage!({
@@ -697,16 +697,18 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         }),
       } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      const requestContext = definition.createRequestContext!({
+      const contexts = definition.createThisContext!({
         config: {},
         options: { databaseAdapter: mockAdapter },
         deps: {} as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         storage: mockStorage,
       });
 
-      // thisContext should have getUnitOfWork
-      expect(requestContext).toHaveProperty("getUnitOfWork");
-      expect(typeof requestContext.getUnitOfWork).toBe("function");
+      // Both service and handler contexts should have getUnitOfWork
+      expect(contexts.serviceContext).toHaveProperty("getUnitOfWork");
+      expect(typeof contexts.serviceContext.getUnitOfWork).toBe("function");
+      expect(contexts.handlerContext).toHaveProperty("getUnitOfWork");
+      expect(typeof contexts.handlerContext.getUnitOfWork).toBe("function");
     });
   });
 
@@ -751,7 +753,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(definition.baseServices).toBeDefined();
       expect(definition.namedServices).toBeDefined();
       expect(definition.serviceDependencies).toBeDefined();
-      expect(definition.createRequestContext).toBeDefined();
+      expect(definition.createThisContext).toBeDefined();
 
       // Test execution
       const logs: string[] = [];

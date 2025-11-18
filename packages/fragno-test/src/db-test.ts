@@ -43,7 +43,8 @@ interface FragmentBuilderConfig<
   TBaseServices extends Record<string, unknown>,
   TServices extends Record<string, unknown>,
   TServiceDependencies,
-  TThisContext extends RequestThisContext,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 > {
@@ -54,7 +55,8 @@ interface FragmentBuilderConfig<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage
   >;
   builder: FragmentInstantiationBuilder<
@@ -64,7 +66,8 @@ interface FragmentBuilderConfig<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage,
     TRoutesOrFactories
   >;
@@ -77,19 +80,28 @@ interface FragmentBuilderConfig<
 interface FragmentResult<
   TDeps,
   TServices extends Record<string, unknown>,
-  TThisContext extends RequestThisContext,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
   TSchema extends AnySchema,
 > {
-  fragment: FragnoInstantiatedFragment<TRoutes, TDeps, TServices, TThisContext, TRequestStorage>;
+  fragment: FragnoInstantiatedFragment<
+    TRoutes,
+    TDeps,
+    TServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage
+  >;
   services: TServices;
   deps: TDeps;
   callRoute: FragnoInstantiatedFragment<
     TRoutes,
     TDeps,
     TServices,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage
   >["callRoute"];
   db: AbstractQuery<TSchema>;
@@ -119,7 +131,7 @@ type TestContext<
  * Result of building the database fragments test
  */
 interface DatabaseFragmentsTestResult<
-  TFragments extends Record<string, FragmentResult<any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TFragments extends Record<string, FragmentResult<any, any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
   TAdapter extends SupportedAdapter,
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
@@ -132,14 +144,14 @@ interface DatabaseFragmentsTestResult<
  */
 type FragmentConfigMap = Map<
   string,
-  FragmentBuilderConfig<any, any, any, any, any, any, any, any, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  FragmentBuilderConfig<any, any, any, any, any, any, any, any, any, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 >;
 
 /**
  * Builder for creating multiple database fragments for testing
  */
 export class DatabaseFragmentsTestBuilder<
-  TFragments extends Record<string, FragmentResult<any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TFragments extends Record<string, FragmentResult<any, any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
   TAdapter extends SupportedAdapter | undefined = undefined,
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
@@ -171,7 +183,8 @@ export class DatabaseFragmentsTestBuilder<
     TBaseServices extends Record<string, unknown>,
     TServices extends Record<string, unknown>,
     TServiceDependencies,
-    TThisContext extends RequestThisContext,
+    TServiceThisContext extends RequestThisContext,
+    THandlerThisContext extends RequestThisContext,
     TRequestStorage,
     TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   >(
@@ -183,7 +196,8 @@ export class DatabaseFragmentsTestBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
-      TThisContext,
+      TServiceThisContext,
+      THandlerThisContext,
       TRequestStorage,
       TRoutesOrFactories
     >,
@@ -195,15 +209,16 @@ export class DatabaseFragmentsTestBuilder<
       [K in TName]: FragmentResult<
         TDeps,
         BoundServices<TBaseServices & TServices>,
-        TThisContext,
+        TServiceThisContext,
+        THandlerThisContext,
         TRequestStorage,
         FlattenRouteFactories<TRoutesOrFactories>,
         ExtractSchemaFromDeps<TDeps> // Extract actual schema type from deps
       >;
     },
     TAdapter,
-    // If this is the first fragment (TFragments is empty {}), use TThisContext; otherwise keep existing
-    keyof TFragments extends never ? TThisContext : TFirstFragmentThisContext
+    // If this is the first fragment (TFragments is empty {}), use THandlerThisContext; otherwise keep existing
+    keyof TFragments extends never ? THandlerThisContext : TFirstFragmentThisContext
   > {
     this.#fragments.set(name, {
       definition: builder.definition,

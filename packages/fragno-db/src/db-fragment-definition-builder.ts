@@ -1,7 +1,13 @@
-import type { AnySchema } from "./schema/create";
+import type { AnySchema, FragnoId } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type { IUnitOfWorkBase, UnitOfWorkSchemaView } from "./query/unit-of-work";
+import type {
+  IUnitOfWorkBase,
+  UnitOfWorkSchemaView,
+  UOWState,
+  RetrievalOperation,
+  MutationOperation,
+} from "./query/unit-of-work";
 import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
@@ -92,7 +98,51 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
 };
 
 /**
- * Extended request context for database fragments with access to Unit of Work.
+ * Restricted UOW schema view for service methods - only includes read operations, no execute methods.
+ * This is a subset of UnitOfWorkSchemaView that excludes execute* methods.
+ */
+export type UnitOfWorkServiceSchemaView<TSchema extends AnySchema> = Omit<
+  UnitOfWorkSchemaView<TSchema>,
+  "executeRetrieve" | "executeMutations"
+>;
+
+/**
+ * Restricted UOW interface for service methods - only includes read operations, no execute methods.
+ * Services should not be able to execute UOW directly; only handlers can.
+ */
+export interface IUnitOfWorkServiceBase {
+  // Getters (schema-agnostic)
+  readonly state: UOWState;
+  readonly name: string | undefined;
+  readonly retrievalPhase: Promise<unknown[]>;
+  readonly mutationPhase: Promise<void>;
+
+  // Inspection (schema-agnostic)
+  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<AnySchema>>;
+  getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>>;
+  getCreatedIds(): FragnoId[];
+
+  // Schema-specific view (for cross-schema operations) - returns restricted view
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+  ): UnitOfWorkServiceSchemaView<TOtherSchema>;
+}
+
+/**
+ * Service request context for database fragments - provides restricted UOW access without execute methods.
+ */
+export type DatabaseServiceContext = RequestThisContext & {
+  /**
+   * Get the Unit of Work from the current context (restricted version without execute methods).
+   * @param schema - Optional schema to get a typed view. If not provided, returns the base UOW.
+   * @returns IUnitOfWorkServiceBase if no schema provided, or UnitOfWorkServiceSchemaView if schema provided.
+   */
+  getUnitOfWork(): IUnitOfWorkServiceBase;
+  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkServiceSchemaView<TSchema>;
+};
+
+/**
+ * Handler request context for database fragments - provides full UOW access including execute methods.
  */
 export type DatabaseRequestContext = RequestThisContext & {
   /**
@@ -160,7 +210,8 @@ export class DatabaseFragmentDefinitionBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
-  TThisContext extends RequestThisContext = DatabaseRequestContext,
+  TServiceThisContext extends RequestThisContext = DatabaseRequestContext,
+  THandlerThisContext extends RequestThisContext = DatabaseRequestContext,
 > {
   // Store the base builder - we'll replace its storage and context setup when building
   #baseBuilder: FragmentDefinitionBuilder<
@@ -170,7 +221,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     DatabaseRequestStorage
   >;
   #schema: TSchema;
@@ -184,7 +236,8 @@ export class DatabaseFragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
-      TThisContext,
+      TServiceThisContext,
+      THandlerThisContext,
       DatabaseRequestStorage
     >,
     schema: TSchema,
@@ -213,7 +266,8 @@ export class DatabaseFragmentDefinitionBuilder<
     {},
     {},
     TServiceDependencies,
-    TThisContext
+    TServiceThisContext,
+    THandlerThisContext
   > {
     // Wrap user function to inject DB context
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
@@ -255,7 +309,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TDeps,
       TServiceDependencies,
       TNewService,
-      TThisContext
+      TServiceThisContext
     >,
   ): DatabaseFragmentDefinitionBuilder<
     TSchema,
@@ -264,7 +318,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TNewService,
     TServices,
     TServiceDependencies,
-    TThisContext
+    TServiceThisContext,
+    THandlerThisContext
   > {
     const newBaseBuilder = this.#baseBuilder.providesBaseService<TNewService>(fn);
 
@@ -279,7 +334,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TDeps,
       TServiceDependencies,
       TService,
-      TThisContext
+      TServiceThisContext
     >,
   ): DatabaseFragmentDefinitionBuilder<
     TSchema,
@@ -288,7 +343,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices & { [K in TServiceName]: TService },
     TServiceDependencies,
-    TThisContext
+    TServiceThisContext,
+    THandlerThisContext
   > {
     const newBaseBuilder = this.#baseBuilder.providesService<TServiceName, TService>(
       serviceName,
@@ -311,7 +367,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService },
-    TThisContext
+    TServiceThisContext,
+    THandlerThisContext
   > {
     const newBaseBuilder = this.#baseBuilder.usesService<TServiceName, TService>(serviceName);
 
@@ -331,7 +388,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService | undefined },
-    TThisContext
+    TServiceThisContext,
+    THandlerThisContext
   > {
     const newBaseBuilder = this.#baseBuilder.usesOptionalService<TServiceName, TService>(
       serviceName,
@@ -352,6 +410,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    DatabaseRequestContext,
     DatabaseRequestContext,
     DatabaseRequestStorage
   > {
@@ -399,34 +458,28 @@ export class DatabaseFragmentDefinitionBuilder<
       },
     );
 
-    // Set up request context with getUnitOfWork method
-    const builderWithContext = builderWithStorage.withRequestThisContext(
-      ({ storage }): DatabaseRequestContext => {
-        // Define getUnitOfWork with proper overload signatures
-        function getUnitOfWork(): IUnitOfWorkBase;
-        function getUnitOfWork<TSchema extends AnySchema>(
-          schema: TSchema,
-        ): UnitOfWorkSchemaView<TSchema>;
-        function getUnitOfWork<TSchema extends AnySchema>(
-          schema?: TSchema,
-        ): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
+    // TODO: Services should get restricted context (no execute methods), handlers get full context
+    const builderWithContext = builderWithStorage.withThisContext(({ storage }) => {
+      const fullContext: DatabaseRequestContext = {
+        getUnitOfWork: ((...args: [AnySchema?]) => {
           const uow = storage.getStore()?.uow;
-
           if (!uow) {
             throw new Error(
               "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
             );
           }
 
+          const [schema] = args;
           if (schema) {
             return uow.forSchema(schema);
           }
           return uow;
-        }
+        }) as DatabaseRequestContext["getUnitOfWork"],
+      };
 
-        return { getUnitOfWork };
-      },
-    );
+      // Both service and handler contexts are the same for now
+      return { serviceContext: fullContext, handlerContext: fullContext };
+    });
 
     // Build the final definition
     const finalDef = builderWithContext.build();
@@ -460,7 +513,16 @@ export class DatabaseFragmentDefinitionBuilder<
 export function withDatabase<TSchema extends AnySchema>(
   schema: TSchema,
   namespace?: string,
-): <TConfig, TDeps, TBaseServices, TServices, TServiceDeps, TRequestStorage>(
+): <
+  TConfig,
+  TDeps,
+  TBaseServices,
+  TServices,
+  TServiceDeps,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
+  TRequestStorage,
+>(
   builder: FragmentDefinitionBuilder<
     TConfig,
     FragnoPublicConfig,
@@ -468,7 +530,8 @@ export function withDatabase<TSchema extends AnySchema>(
     TBaseServices,
     TServices,
     TServiceDeps,
-    RequestThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage
   >,
 ) => DatabaseFragmentDefinitionBuilder<
@@ -478,9 +541,19 @@ export function withDatabase<TSchema extends AnySchema>(
   TBaseServices,
   TServices,
   TServiceDeps,
+  DatabaseRequestContext,
   DatabaseRequestContext
 > {
-  return <TConfig, TDeps, TBaseServices, TServices, TServiceDeps, TRequestStorage>(
+  return <
+    TConfig,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDeps,
+    TServiceThisContext extends RequestThisContext,
+    THandlerThisContext extends RequestThisContext,
+    TRequestStorage,
+  >(
     builder: FragmentDefinitionBuilder<
       TConfig,
       FragnoPublicConfig,
@@ -488,7 +561,8 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
-      RequestThisContext,
+      TServiceThisContext,
+      THandlerThisContext,
       TRequestStorage
     >,
   ) => {
@@ -497,7 +571,7 @@ export function withDatabase<TSchema extends AnySchema>(
     // The database builder's build() method will enforce FragnoPublicConfigWithDatabase at the end.
     // We also add ImplicitDatabaseDependencies to TDeps so they're available in service constructors.
     // Note: We discard TRequestStorage here because database fragments manage their own storage (DatabaseRequestStorage).
-    // We also set TThisContext to DatabaseRequestContext so services have access to getUnitOfWork.
+    // We set TThisContext to DatabaseRequestContext so handlers/inContext have full UOW access (with execute methods).
     return new DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
@@ -505,6 +579,7 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
+      DatabaseRequestContext,
       DatabaseRequestContext
     >(
       builder as unknown as FragmentDefinitionBuilder<
@@ -514,6 +589,7 @@ export function withDatabase<TSchema extends AnySchema>(
         TBaseServices,
         TServices,
         TServiceDeps,
+        DatabaseRequestContext,
         DatabaseRequestContext,
         DatabaseRequestStorage
       >,

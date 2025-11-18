@@ -172,35 +172,56 @@ export function defineRoute<
 // Type extractors for FragmentDefinition
 // ============================================================================
 
-export type AnyFragmentDefinition = FragmentDefinition<any, any, any, any, any, any, any, any>;
+export type AnyFragmentDefinition = FragmentDefinition<any, any, any, any, any, any, any, any, any>;
 
 // Extract config from FragmentDefinition
 export type ExtractFragmentConfig<T> =
-  T extends FragmentDefinition<infer TConfig, any, any, any, any, any, any, any> ? TConfig : never;
+  T extends FragmentDefinition<infer TConfig, any, any, any, any, any, any, any, any>
+    ? TConfig
+    : never;
 
 // Extract deps from FragmentDefinition
 export type ExtractFragmentDeps<T> =
-  T extends FragmentDefinition<any, any, infer TDeps, any, any, any, any, any> ? TDeps : never;
+  T extends FragmentDefinition<any, any, infer TDeps, any, any, any, any, any, any> ? TDeps : never;
 
 // Extract services from FragmentDefinition
 // This extracts both base services (flat) and named services (nested)
 // The result matches the structure of fragment.services at runtime
 export type ExtractFragmentServices<T> =
-  T extends FragmentDefinition<any, any, any, infer TBaseServices, infer TServices, any, any, any>
+  T extends FragmentDefinition<
+    any,
+    any,
+    any,
+    infer TBaseServices,
+    infer TServices,
+    any,
+    any,
+    any,
+    any
+  >
     ? BoundServices<TBaseServices & TServices>
     : never;
 
 // Extract service dependencies from FragmentDefinition
 export type ExtractFragmentServiceDeps<T> =
-  T extends FragmentDefinition<any, any, any, any, any, infer TServiceDependencies, any, any>
+  T extends FragmentDefinition<any, any, any, any, any, infer TServiceDependencies, any, any, any>
     ? TServiceDependencies
     : never;
 
-// Extract this context from FragmentDefinition
-export type ExtractFragmentThisContext<T> =
-  T extends FragmentDefinition<any, any, any, any, any, any, infer TThisContext, any>
-    ? TThisContext
+// Extract service this context from FragmentDefinition (used by services)
+export type ExtractFragmentServiceThisContext<T> =
+  T extends FragmentDefinition<any, any, any, any, any, any, infer TServiceThisContext, any, any>
+    ? TServiceThisContext
     : RequestThisContext;
+
+// Extract handler this context from FragmentDefinition (used by route handlers)
+export type ExtractFragmentHandlerThisContext<T> =
+  T extends FragmentDefinition<any, any, any, any, any, any, any, infer THandlerThisContext, any>
+    ? THandlerThisContext
+    : RequestThisContext;
+
+// Legacy: Extract this context from FragmentDefinition (defaults to service context for backwards compatibility)
+export type ExtractFragmentThisContext<T> = ExtractFragmentServiceThisContext<T>;
 
 // Overload that infers types from FragmentDefinition (runtime value)
 export function defineRoutes<const TDefinition extends AnyFragmentDefinition>(

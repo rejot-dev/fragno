@@ -123,9 +123,12 @@ describe("withTestUtils extension", () => {
           counter: deps.initialValue,
         }),
       )
-      .withRequestThisContext(({ storage }) => ({
-        getCounter: () => storage.getStore()?.counter ?? 0,
-      }))
+      .withThisContext(({ storage }) => {
+        const ctx = {
+          getCounter: () => storage.getStore()?.counter ?? 0,
+        };
+        return { serviceContext: ctx, handlerContext: ctx };
+      })
       .extend(withTestUtils())
       .build();
 
@@ -196,15 +199,18 @@ describe("createFragmentForTest", () => {
           counter: deps.initialValue,
         }),
       )
-      .withRequestThisContext(({ storage }) => ({
-        getCounter: () => storage.getStore()?.counter ?? 0,
-        incrementCounter: () => {
-          const store = storage.getStore();
-          if (store) {
-            store.counter++;
-          }
-        },
-      }))
+      .withThisContext(({ storage }) => {
+        const ctx = {
+          getCounter: () => storage.getStore()?.counter ?? 0,
+          incrementCounter: () => {
+            const store = storage.getStore();
+            if (store) {
+              store.counter++;
+            }
+          },
+        };
+        return { serviceContext: ctx, handlerContext: ctx };
+      })
       .build();
 
     const routeFactory = defineRoutes(definition).create(({ defineRoute }) => [

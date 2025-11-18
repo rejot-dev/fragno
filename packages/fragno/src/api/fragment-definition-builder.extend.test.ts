@@ -14,7 +14,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -24,7 +25,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -34,7 +36,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { timestamp: () => number },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -74,7 +77,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -84,7 +88,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -94,7 +99,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { counter: { value: number; increment: () => void } },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -129,7 +135,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -139,7 +146,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -149,7 +157,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { logger: { log: (msg: string) => void } },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -211,7 +220,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -221,7 +231,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -231,7 +242,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { baseValue: number },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -261,7 +273,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices extends { baseValue: number },
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -271,7 +284,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -281,7 +295,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { derivedValue: number },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -326,7 +341,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -336,7 +352,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -346,7 +363,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { utility: { helper: () => string } },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -389,7 +407,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -399,7 +418,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -409,7 +429,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { formatter: { format: (s: string) => string } },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -484,7 +505,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -494,7 +516,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -504,7 +527,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { math: { add: (a: number, b: number) => number } },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -628,7 +652,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -638,7 +663,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -648,7 +674,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices & { simple: string },
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           const currentDef = builder.build();
@@ -695,7 +722,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext extends RequestThisContext,
+          TServiceThisContext extends RequestThisContext,
+          THandlerThisContext extends RequestThisContext,
           TRequestStorage,
         >(
           builder: FragmentDefinitionBuilder<
@@ -705,7 +733,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
             TBaseServices,
             TServices,
             TServiceDeps,
-            TThisContext,
+            TServiceThisContext,
+            THandlerThisContext,
             TRequestStorage
           >,
         ): FragmentDefinitionBuilder<
@@ -715,7 +744,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
           TBaseServices,
           TServices,
           TServiceDeps,
-          TThisContext,
+          TServiceThisContext,
+          THandlerThisContext,
           TRequestStorage
         > => {
           // Just return the builder unchanged

@@ -131,6 +131,7 @@ function isNewFragnoInstantiatedFragment(
   unknown,
   Record<string, unknown>,
   Record<string, unknown>,
+  Record<string, unknown>,
   unknown,
   Record<string, unknown>
 > {

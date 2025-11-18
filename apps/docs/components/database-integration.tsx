@@ -145,8 +145,9 @@ describe("auth fragment", async () => {
     await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-sqlite" })
       .withFragment("auth",
-        instantiate(authFragmentDefinition).withRoutes(routes).withConfig({}),
-        { definition: authFragmentDefinition }
+        instantiate(authFragmentDefinition)
+          .withRoutes(routes)
+          .withConfig({}),
       )
       .build();
 

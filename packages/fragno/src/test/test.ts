@@ -42,7 +42,8 @@ export function withTestUtils() {
     TBaseServices,
     TServices,
     TServiceDeps,
-    TThisContext extends RequestThisContext,
+    TServiceThisContext extends RequestThisContext,
+    THandlerThisContext extends RequestThisContext,
     TRequestStorage,
   >(
     builder: FragmentDefinitionBuilder<
@@ -52,7 +53,8 @@ export function withTestUtils() {
       TBaseServices,
       TServices,
       TServiceDeps,
-      TThisContext,
+      TServiceThisContext,
+      THandlerThisContext,
       TRequestStorage
     >,
   ): FragmentDefinitionBuilder<
@@ -62,7 +64,8 @@ export function withTestUtils() {
     TBaseServices & TestBaseServices<TDeps>,
     TServices,
     TServiceDeps,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage
   > => {
     // Get the current base services factory
@@ -75,7 +78,7 @@ export function withTestUtils() {
       options: TOptions;
       deps: TDeps;
       serviceDeps: TServiceDeps;
-      defineService: <T>(svc: T & ThisType<TThisContext>) => T;
+      defineService: <T>(svc: T & ThisType<TServiceThisContext>) => T;
     }) => {
       // Call existing base services if they exist
       const existingServices = currentBaseServices
@@ -101,7 +104,8 @@ export function withTestUtils() {
       TBaseServices & TestBaseServices<TDeps>,
       TServices,
       TServiceDeps,
-      TThisContext,
+      TServiceThisContext,
+      THandlerThisContext,
       TRequestStorage
     >(builder.name, {
       dependencies: currentBaseDef.dependencies,
@@ -109,7 +113,7 @@ export function withTestUtils() {
       namedServices: currentBaseDef.namedServices,
       serviceDependencies: currentBaseDef.serviceDependencies,
       createRequestStorage: currentBaseDef.createRequestStorage,
-      createRequestContext: currentBaseDef.createRequestContext,
+      createThisContext: currentBaseDef.createThisContext,
     });
   };
 }
@@ -183,7 +187,8 @@ export function createFragmentForTest<
   TBaseServices extends Record<string, unknown>,
   TServices extends Record<string, unknown>,
   TServiceDependencies,
-  TThisContext extends RequestThisContext,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
@@ -194,7 +199,8 @@ export function createFragmentForTest<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage
   >,
   routesOrFactories: TRoutesOrFactories,
@@ -203,7 +209,8 @@ export function createFragmentForTest<
   FlattenRouteFactories<TRoutesOrFactories>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
-  TThisContext,
+  TServiceThisContext,
+  THandlerThisContext,
   TRequestStorage
 > {
   const { config, options: fragmentOptions = {} as TOptions, serviceImplementations } = options;

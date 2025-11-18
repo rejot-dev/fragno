@@ -53,7 +53,6 @@ describe.sequential("Database Fragment Integration", () => {
     .providesService("userService", ({ defineService }) => {
       return defineService({
         createUser(name: string, email: string): FragnoId {
-          // TODO(Wilco): Should make it so that we cannot execute UOW from here
           const uow = this.getUnitOfWork(usersSchema);
           return uow.create("users", { name, email });
         },

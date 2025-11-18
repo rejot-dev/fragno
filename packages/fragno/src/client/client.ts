@@ -1125,7 +1125,8 @@ export function createClientBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
-  TThisContext extends RequestThisContext,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
@@ -1136,7 +1137,8 @@ export function createClientBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TThisContext,
+    TServiceThisContext,
+    THandlerThisContext,
     TRequestStorage
   >,
   publicConfig: FragnoPublicClientConfig,

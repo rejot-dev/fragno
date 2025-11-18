@@ -68,14 +68,17 @@ describe("FragmentDefinitionBuilder", () => {
           counter: 0,
           userId: "user-123",
         }))
-        .withRequestThisContext(({ storage }) => ({
-          get counter() {
-            return storage.getStore()?.counter ?? 0;
-          },
-          get userId() {
-            return storage.getStore()?.userId;
-          },
-        }))
+        .withThisContext(({ storage }) => {
+          const ctx = {
+            get counter() {
+              return storage.getStore()?.counter ?? 0;
+            },
+            get userId() {
+              return storage.getStore()?.userId;
+            },
+          };
+          return { serviceContext: ctx, handlerContext: ctx };
+        })
         // Calling withDependencies here will erase the storage and context configuration!
         .withDependencies(() => ({
           apiKey: "secret",
@@ -84,7 +87,7 @@ describe("FragmentDefinitionBuilder", () => {
 
       // Storage and context should be reset (undefined)
       expect(definition.createRequestStorage).toBeUndefined();
-      expect(definition.createRequestContext).toBeUndefined();
+      expect(definition.createThisContext).toBeUndefined();
       expect(definition.getExternalStorage).toBeUndefined();
       expect(definition.dependencies).toBeDefined();
     });
@@ -99,16 +102,19 @@ describe("FragmentDefinitionBuilder", () => {
           counter: 0,
           apiKey: deps.apiKey,
         }))
-        .withRequestThisContext(({ storage }) => ({
-          get counter() {
-            return storage.getStore()?.counter ?? 0;
-          },
-        }))
+        .withThisContext(({ storage }) => {
+          const ctx = {
+            get counter() {
+              return storage.getStore()?.counter ?? 0;
+            },
+          };
+          return { serviceContext: ctx, handlerContext: ctx };
+        })
         .build();
 
       // Everything should be preserved
       expect(definition.createRequestStorage).toBeDefined();
-      expect(definition.createRequestContext).toBeDefined();
+      expect(definition.createThisContext).toBeDefined();
       expect(definition.dependencies).toBeDefined();
     });
 
@@ -435,6 +441,7 @@ describe("FragmentDefinitionBuilder", () => {
         {},
         { server: { start: () => string } },
         {},
+        RequestThisContext,
         RequestThisContext
       >
         ? true
