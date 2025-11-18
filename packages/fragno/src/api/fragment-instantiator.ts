@@ -22,7 +22,7 @@ import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
 import type { InferOrUnknown } from "../util/types-util";
-import type { NewFragmentDefinition } from "./fragment-definition-builder";
+import type { FragmentDefinition } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./shared-types";
 import { RequestContextStorage } from "./request-context-storage";
 import { bindServicesToContext, type BoundServices } from "./bind-services";
@@ -88,13 +88,12 @@ export interface FragnoFragmentSharedConfig<
 
 // Not actually a symbol, since we might be dealing with multiple instances of this code.
 export const instantiatedFragmentFakeSymbol = "$fragno-instantiated-fragment" as const;
-export const newInstantiatedFragmentFakeSymbol = "$fragno-new-instantiated-fragment" as const;
 
 /**
- * New instantiated fragment class with encapsulated state.
+ * Instantiated fragment class with encapsulated state.
  * Provides the same public API as the old FragnoInstantiatedFragment but with better encapsulation.
  */
-export class NewFragnoInstantiatedFragment<
+export class FragnoInstantiatedFragment<
   TRoutes extends readonly AnyFragnoRouteConfig[],
   TDeps,
   TServices extends Record<string, unknown>,
@@ -102,7 +101,7 @@ export class NewFragnoInstantiatedFragment<
   TRequestStorage = {},
   TOptions extends FragnoPublicConfig = FragnoPublicConfig,
 > {
-  readonly [newInstantiatedFragmentFakeSymbol] = newInstantiatedFragmentFakeSymbol;
+  readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
   // Private fields
   #name: string;
@@ -594,7 +593,7 @@ export class NewFragnoInstantiatedFragment<
  * Core instantiation function that creates a fragment instance from a definition.
  * This function validates dependencies, calls all callbacks, and wires everything together.
  */
-export function instantiateNewFragment<
+export function instantiateFragment<
   const TConfig,
   const TOptions extends FragnoPublicConfig,
   const TDeps,
@@ -605,7 +604,7 @@ export function instantiateNewFragment<
   const TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  definition: NewFragmentDefinition<
+  definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -619,7 +618,7 @@ export function instantiateNewFragment<
   routesOrFactories: TRoutesOrFactories,
   options: TOptions,
   serviceImplementations?: TServiceDependencies,
-): NewFragnoInstantiatedFragment<
+): FragnoInstantiatedFragment<
   FlattenRouteFactories<TRoutesOrFactories>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
@@ -724,7 +723,7 @@ export function instantiateNewFragment<
   // Pass bound services so they have access to thisContext via 'this'
   // Safe cast: boundServices is either BoundServices<T> or T (when no thisContext).
   // Both are compatible at runtime, and the return type reflects BoundServices<T>.
-  return new NewFragnoInstantiatedFragment({
+  return new FragnoInstantiatedFragment({
     name: definition.name,
     routes,
     deps,
@@ -741,7 +740,7 @@ export function instantiateNewFragment<
  * Fluent builder for instantiating fragments.
  * Provides a type-safe API for configuring and building fragment instances.
  */
-export class NewFragmentInstantiationBuilder<
+export class FragmentInstantiationBuilder<
   TConfig,
   TOptions extends FragnoPublicConfig,
   TDeps,
@@ -752,7 +751,7 @@ export class NewFragmentInstantiationBuilder<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 > {
-  #definition: NewFragmentDefinition<
+  #definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -768,7 +767,7 @@ export class NewFragmentInstantiationBuilder<
   #services?: TServiceDependencies;
 
   constructor(
-    definition: NewFragmentDefinition<
+    definition: FragmentDefinition<
       TConfig,
       TOptions,
       TDeps,
@@ -787,7 +786,7 @@ export class NewFragmentInstantiationBuilder<
   /**
    * Get the fragment definition
    */
-  get definition(): NewFragmentDefinition<
+  get definition(): FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -834,7 +833,7 @@ export class NewFragmentInstantiationBuilder<
    */
   withRoutes<const TNewRoutes extends readonly AnyRouteOrFactory[]>(
     routes: TNewRoutes,
-  ): NewFragmentInstantiationBuilder<
+  ): FragmentInstantiationBuilder<
     TConfig,
     TOptions,
     TDeps,
@@ -845,7 +844,7 @@ export class NewFragmentInstantiationBuilder<
     TRequestStorage,
     TNewRoutes
   > {
-    const newBuilder = new NewFragmentInstantiationBuilder(this.#definition, routes);
+    const newBuilder = new FragmentInstantiationBuilder(this.#definition, routes);
     // Preserve config, options, and services from the current instance
     newBuilder.#config = this.#config;
     newBuilder.#options = this.#options;
@@ -872,7 +871,7 @@ export class NewFragmentInstantiationBuilder<
   /**
    * Build and return the instantiated fragment
    */
-  build(): NewFragnoInstantiatedFragment<
+  build(): FragnoInstantiatedFragment<
     FlattenRouteFactories<TRoutesOrFactories>,
     TDeps,
     BoundServices<TBaseServices & TServices>,
@@ -880,7 +879,7 @@ export class NewFragmentInstantiationBuilder<
     TRequestStorage,
     TOptions
   > {
-    return instantiateNewFragment(
+    return instantiateFragment(
       this.#definition,
       this.#config ?? ({} as TConfig),
       this.#routes ?? ([] as const as unknown as TRoutesOrFactories),
@@ -912,7 +911,7 @@ export function instantiate<
   TThisContext extends RequestThisContext,
   TRequestStorage,
 >(
-  definition: NewFragmentDefinition<
+  definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -922,7 +921,7 @@ export function instantiate<
     TThisContext,
     TRequestStorage
   >,
-): NewFragmentInstantiationBuilder<
+): FragmentInstantiationBuilder<
   TConfig,
   TOptions,
   TDeps,
@@ -933,5 +932,5 @@ export function instantiate<
   TRequestStorage,
   readonly []
 > {
-  return new NewFragmentInstantiationBuilder(definition);
+  return new FragmentInstantiationBuilder(definition);
 }

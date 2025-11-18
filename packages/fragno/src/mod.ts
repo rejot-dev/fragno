@@ -4,15 +4,15 @@
 export {
   defineFragment,
   FragmentDefinitionBuilder,
-  type NewFragmentDefinition,
+  type FragmentDefinition,
   type ServiceContext,
   type ServiceConstructorFn,
 } from "./api/fragment-definition-builder";
 
 export {
   instantiate,
-  type NewFragmentInstantiationBuilder,
-  type NewFragnoInstantiatedFragment,
+  type FragmentInstantiationBuilder as NewFragmentInstantiationBuilder,
+  type FragnoInstantiatedFragment as NewFragnoInstantiatedFragment,
 } from "./api/fragment-instantiator";
 
 // ============================================================================
@@ -32,7 +32,7 @@ export { type FragnoRouteConfig, type RequestThisContext } from "./api/api";
 // ============================================================================
 export {
   defineRoute,
-  defineRoutesNew,
+  defineRoutes,
   type RouteFactory,
   type RouteFactoryContext,
   type AnyRouteOrFactory,

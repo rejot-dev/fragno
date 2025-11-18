@@ -527,9 +527,9 @@ describe("defineRoute edge cases and potential breaking scenarios", () => {
 
   test("defineRoute from callback parameter with destructuring", () => {
     const source = dedent`
-      import { defineRoutesNew } from "@fragno-dev/core/api/route";
+      import { defineRoutes } from "@fragno-dev/core/api/route";
       
-      const routes = defineRoutesNew(fragment).create(({ defineRoute }) => [
+      const routes = defineRoutes(fragment).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test",
@@ -544,8 +544,8 @@ describe("defineRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain('message: "hello"');
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineRoutesNew } from "@fragno-dev/core/api/route";
-      const routes = defineRoutesNew(fragment).create(({
+      "import { defineRoutes } from "@fragno-dev/core/api/route";
+      const routes = defineRoutes(fragment).create(({
         defineRoute
       }) => [defineRoute({
         method: "GET",
@@ -557,9 +557,9 @@ describe("defineRoute edge cases and potential breaking scenarios", () => {
 
   test("defineRoute from callback parameter with member access", () => {
     const source = dedent`
-      import { defineRoutesNew } from "@fragno-dev/core/api/route";
+      import { defineRoutes } from "@fragno-dev/core/api/route";
       
-      const routes = defineRoutesNew(fragment).create((context) => [
+      const routes = defineRoutes(fragment).create((context) => [
         context.defineRoute({
           method: "GET",
           path: "/test",
@@ -574,8 +574,8 @@ describe("defineRoute edge cases and potential breaking scenarios", () => {
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain('message: "hello"');
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineRoutesNew } from "@fragno-dev/core/api/route";
-      const routes = defineRoutesNew(fragment).create(context => [context.defineRoute({
+      "import { defineRoutes } from "@fragno-dev/core/api/route";
+      const routes = defineRoutes(fragment).create(context => [context.defineRoute({
         method: "GET",
         path: "/test",
         handler: () => {}
@@ -689,12 +689,12 @@ describe("defineRoute edge cases and potential breaking scenarios", () => {
   });
 });
 
-describe("defineRoutesNew with callback - Fragno API", () => {
-  test("defineRoutesNew().create with destructured defineRoute IS transformed", () => {
+describe("defineRoutes with callback - Fragno API", () => {
+  test("defineRoutes().create with destructured defineRoute IS transformed", () => {
     const source = dedent`
-      import { defineRoutesNew } from "@fragno-dev/core/api/route";
+      import { defineRoutes } from "@fragno-dev/core/api/route";
       
-      const routes = defineRoutesNew(fragment).create(({ defineRoute }) => [
+      const routes = defineRoutes(fragment).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test",
@@ -709,8 +709,8 @@ describe("defineRoutesNew with callback - Fragno API", () => {
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain('message: "hello"');
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineRoutesNew } from "@fragno-dev/core/api/route";
-      const routes = defineRoutesNew(fragment).create(({
+      "import { defineRoutes } from "@fragno-dev/core/api/route";
+      const routes = defineRoutes(fragment).create(({
         defineRoute
       }) => [defineRoute({
         method: "GET",
@@ -720,11 +720,11 @@ describe("defineRoutesNew with callback - Fragno API", () => {
     `);
   });
 
-  test("defineRoutesNew().create with member access defineRoute IS transformed", () => {
+  test("defineRoutes().create with member access defineRoute IS transformed", () => {
     const source = dedent`
-      import { defineRoutesNew } from "@fragno-dev/core/api/route";
+      import { defineRoutes } from "@fragno-dev/core/api/route";
       
-      const routes = defineRoutesNew(fragment).create((context) => [
+      const routes = defineRoutes(fragment).create((context) => [
         context.defineRoute({
           method: "GET",
           path: "/test",
@@ -739,8 +739,8 @@ describe("defineRoutesNew with callback - Fragno API", () => {
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain('message: "hello"');
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineRoutesNew } from "@fragno-dev/core/api/route";
-      const routes = defineRoutesNew(fragment).create(context => [context.defineRoute({
+      "import { defineRoutes } from "@fragno-dev/core/api/route";
+      const routes = defineRoutes(fragment).create(context => [context.defineRoute({
         method: "GET",
         path: "/test",
         handler: () => {}
@@ -748,11 +748,11 @@ describe("defineRoutesNew with callback - Fragno API", () => {
     `);
   });
 
-  test("defineRoutesNew from @fragno-dev/core IS transformed", () => {
+  test("defineRoutes from @fragno-dev/core IS transformed", () => {
     const source = dedent`
-      import { defineRoutesNew } from "@fragno-dev/core";
+      import { defineRoutes } from "@fragno-dev/core";
       
-      const routes = defineRoutesNew(definition).create(({ defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
         defineRoute({
           method: "POST",
           path: "/api/data",
@@ -768,8 +768,8 @@ describe("defineRoutesNew with callback - Fragno API", () => {
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain("processData");
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineRoutesNew } from "@fragno-dev/core";
-      const routes = defineRoutesNew(definition).create(({
+      "import { defineRoutes } from "@fragno-dev/core";
+      const routes = defineRoutes(definition).create(({
         defineRoute
       }) => [defineRoute({
         method: "POST",
@@ -880,10 +880,10 @@ describe("defineRoutes with callback - Fragno API", () => {
 describe("mixed Fragno and non-Fragno callbacks", () => {
   test("only Fragno callbacks are transformed", () => {
     const source = dedent`
-      import { defineRoutesNew } from "@fragno-dev/core/api/route";
+      import { defineRoutes } from "@fragno-dev/core/api/route";
       import { someOtherLibrary } from "some-library";
       
-      const fragnoRoutes = defineRoutesNew(fragment).create(({ defineRoute }) => [
+      const fragnoRoutes = defineRoutes(fragment).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/fragno",
@@ -903,9 +903,9 @@ describe("mixed Fragno and non-Fragno callbacks", () => {
     const result = transform(source, "", { ssr: false });
 
     expect(result.code).toMatchInlineSnapshot(`
-      "import { defineRoutesNew } from "@fragno-dev/core/api/route";
+      "import { defineRoutes } from "@fragno-dev/core/api/route";
       import { someOtherLibrary } from "some-library";
-      const fragnoRoutes = defineRoutesNew(fragment).create(({
+      const fragnoRoutes = defineRoutes(fragment).create(({
         defineRoute
       }) => [defineRoute({
         method: "GET",

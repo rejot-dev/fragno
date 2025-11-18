@@ -4,7 +4,7 @@ import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { defineFragment } from "@fragno-dev/core";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { buildDatabaseFragmentsTest } from "./db-test";
-import type { ExtractNewFragmentServices } from "@fragno-dev/core/api/route";
+import type { ExtractFragmentServices } from "@fragno-dev/core/api/route";
 
 // Test schema with multiple versions
 const testSchema = schema((s) => {
@@ -337,7 +337,7 @@ describe("multi-fragment tests", () => {
   }
 });
 
-describe("ExtractNewFragmentServices", () => {
+describe("ExtractFragmentServices", () => {
   it("extracts provided services from database fragment with new API", () => {
     const testSchema = schema((s) => s);
 
@@ -357,7 +357,7 @@ describe("ExtractNewFragmentServices", () => {
       )
       .build();
 
-    type Services = ExtractNewFragmentServices<typeof fragment>;
+    type Services = ExtractFragmentServices<typeof fragment>;
 
     // Should include the provided service
     expectTypeOf<Services>().toMatchObjectType<{
@@ -378,7 +378,7 @@ describe("ExtractNewFragmentServices", () => {
       }))
       .build();
 
-    type Services = ExtractNewFragmentServices<typeof fragment>;
+    type Services = ExtractFragmentServices<typeof fragment>;
 
     // Should include both base services and provided services
     expectTypeOf<Services>().toMatchObjectType<{

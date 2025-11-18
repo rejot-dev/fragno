@@ -7,7 +7,7 @@ import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -81,7 +81,7 @@ export function createFragnoDatabaseLibrary(db: AbstractQuery<typeof commentSche
   };
 }
 
-const commentRoutesFactory = defineRoutesNew(commentFragmentDef).create(
+const commentRoutesFactory = defineRoutes(commentFragmentDef).create(
   ({ services, defineRoute }) => {
     return [
       defineRoute({

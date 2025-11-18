@@ -6,7 +6,7 @@ hooks and mutators for your routes.
 
 ```typescript @fragno-imports
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { defineRoute, defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoute, defineRoutes } from "@fragno-dev/core/api/route";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { computed } from "nanostores";
@@ -20,7 +20,7 @@ interface TodoConfig {
 
 const todoFragment = defineFragment<TodoConfig>("todos");
 
-const routes = defineRoutesNew(todoFragment).create(({ defineRoute }) => [
+const routes = defineRoutes(todoFragment).create(({ defineRoute }) => [
   defineRoute({
     method: "GET",
     path: "/todos",

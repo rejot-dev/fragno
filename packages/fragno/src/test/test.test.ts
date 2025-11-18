@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createFragmentForTest, withTestUtils } from "./test";
 import { defineFragment } from "../api/fragment-definition-builder";
-import { defineRoutesNew } from "../api/route";
+import { defineRoutes } from "../api/route";
 import { z } from "zod";
 
 describe("withTestUtils extension", () => {
@@ -151,7 +151,7 @@ describe("createFragmentForTest", () => {
       .extend(withTestUtils())
       .build();
 
-    const routeFactory = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+    const routeFactory = defineRoutes(definition).create(({ services, defineRoute }) => [
       defineRoute({
         method: "GET",
         path: "/multiply/:num",
@@ -207,7 +207,7 @@ describe("createFragmentForTest", () => {
       }))
       .build();
 
-    const routeFactory = defineRoutesNew(definition).create(({ defineRoute }) => [
+    const routeFactory = defineRoutes(definition).create(({ defineRoute }) => [
       defineRoute({
         method: "POST",
         path: "/increment",

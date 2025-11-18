@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, assert } from "vitest";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import { withDatabase } from "./db-fragment-definition-builder";
 import { schema, idColumn, column } from "./schema/create";
 import type { DatabaseAdapter } from "./adapters/adapters";
@@ -55,7 +55,7 @@ describe("db-fragment-instantiator", () => {
         .extend(withDatabase(testSchema))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test",
@@ -86,7 +86,7 @@ describe("db-fragment-instantiator", () => {
         .extend(withDatabase(testSchema))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test",
@@ -179,7 +179,7 @@ describe("db-fragment-instantiator", () => {
         .extend(withDatabase(testSchemaWithCounter))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/counters",
@@ -223,7 +223,7 @@ describe("db-fragment-instantiator", () => {
         )
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/check",
@@ -267,7 +267,7 @@ describe("db-fragment-instantiator", () => {
         )
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/nested",
@@ -341,7 +341,7 @@ describe("db-fragment-instantiator", () => {
         .extend(withDatabase(testSchema))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test",

@@ -3,7 +3,7 @@ import { type FragnoPublicClientConfig, type FragnoPublicConfig } from "@fragno-
 import { createClientBuilder } from "@fragno-dev/core/client";
 import OpenAI from "openai";
 import { z } from "zod";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { chatRouteFactory } from "./server/chatno-api";
 import { computed } from "nanostores";
@@ -35,7 +35,7 @@ export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
   })
   .build();
 
-const healthAndStreamRoutesFactory = defineRoutesNew(chatnoDefinition).create(
+const healthAndStreamRoutesFactory = defineRoutes(chatnoDefinition).create(
   ({ defineRoute, services }) => {
     return [
       defineRoute({

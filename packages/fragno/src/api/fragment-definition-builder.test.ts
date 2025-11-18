@@ -1,5 +1,5 @@
 import { describe, it, expect, expectTypeOf, vi } from "vitest";
-import { defineFragment, type NewFragmentDefinition } from "./fragment-definition-builder";
+import { defineFragment, type FragmentDefinition } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestThisContext } from "./api";
 
@@ -428,7 +428,7 @@ describe("FragmentDefinitionBuilder", () => {
 
       // Type check: definition should have correct structure
       type DefType = typeof definition;
-      const _typeCheck: DefType extends NewFragmentDefinition<
+      const _typeCheck: DefType extends FragmentDefinition<
         Config,
         FragnoPublicConfig,
         { port: number },

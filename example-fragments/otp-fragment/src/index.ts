@@ -1,6 +1,6 @@
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoute, defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoute, defineRoutes } from "@fragno-dev/core/api/route";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { otpSchema, authSchema } from "./schema";
@@ -92,38 +92,36 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
   )
   .build();
 
-const otpRoutesFactory = defineRoutesNew(otpFragmentDefinition).create(
-  ({ services, defineRoute }) => {
-    return [
-      defineRoute({
-        method: "POST",
-        path: "/otp/verify",
-        inputSchema: z.object({
-          userId: z.string(),
-          code: z.string(),
-        }),
-        outputSchema: z.object({
-          verified: z.boolean(),
-        }),
-        handler: async function ({ input }, { json }) {
-          const { userId, code } = await input.valid();
-
-          // Schedule the verification operation (returns immediately)
-          const verifyPromise = services.otp.verifyOTP(userId, code);
-
-          // Execute UOW phases
-          const uow = this.getUnitOfWork(otpSchema);
-          await uow.executeRetrieve();
-          await uow.executeMutations();
-
-          // Now await the result
-          const verified = await verifyPromise;
-          return json({ verified });
-        },
+const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(({ services, defineRoute }) => {
+  return [
+    defineRoute({
+      method: "POST",
+      path: "/otp/verify",
+      inputSchema: z.object({
+        userId: z.string(),
+        code: z.string(),
       }),
-    ];
-  },
-);
+      outputSchema: z.object({
+        verified: z.boolean(),
+      }),
+      handler: async function ({ input }, { json }) {
+        const { userId, code } = await input.valid();
+
+        // Schedule the verification operation (returns immediately)
+        const verifyPromise = services.otp.verifyOTP(userId, code);
+
+        // Execute UOW phases
+        const uow = this.getUnitOfWork(otpSchema);
+        await uow.executeRetrieve();
+        await uow.executeMutations();
+
+        // Now await the result
+        const verified = await verifyPromise;
+        return json({ verified });
+      },
+    }),
+  ];
+});
 
 export const otpFragmentRoutes = [otpRoutesFactory] as const;
 
@@ -225,7 +223,7 @@ export const anotherFragmentDefinition = defineFragment<Record<string, never>>("
   )
   .build();
 
-const routeBasedOnTypeFactory = defineRoutesNew(authFragmentDefinition).create(
+const routeBasedOnTypeFactory = defineRoutes(authFragmentDefinition).create(
   ({ config, serviceDeps, defineRoute }) => {
     return [
       defineRoute({
@@ -246,7 +244,7 @@ const routeBasedOnTypeFactory = defineRoutesNew(authFragmentDefinition).create(
   },
 );
 
-const authRoutesFactory = defineRoutesNew(authFragmentDefinition).create(
+const authRoutesFactory = defineRoutes(authFragmentDefinition).create(
   ({ services, serviceDeps, defineRoute }) => {
     return [
       defineRoute({

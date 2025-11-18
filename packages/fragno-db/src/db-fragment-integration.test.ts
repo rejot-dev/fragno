@@ -7,7 +7,7 @@ import { column, idColumn, referenceColumn, schema, type FragnoId } from "./sche
 import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
 import { withDatabase } from "./db-fragment-definition-builder";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
 
 describe.sequential("Database Fragment Integration", () => {
@@ -78,7 +78,7 @@ describe.sequential("Database Fragment Integration", () => {
     .build();
 
   // Define routes for Users Fragment
-  const usersRoutes = defineRoutesNew(usersFragmentDef).create(({ services, defineRoute }) => [
+  const usersRoutes = defineRoutes(usersFragmentDef).create(({ services, defineRoute }) => [
     defineRoute({
       method: "POST",
       path: "/users",
@@ -145,7 +145,7 @@ describe.sequential("Database Fragment Integration", () => {
     .build();
 
   // Define routes for Orders Fragment
-  const ordersRoutes = defineRoutesNew(ordersFragmentDef).create(({ services, defineRoute }) => [
+  const ordersRoutes = defineRoutes(ordersFragmentDef).create(({ services, defineRoute }) => [
     defineRoute({
       method: "POST",
       path: "/orders",

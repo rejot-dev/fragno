@@ -5,7 +5,7 @@ import type { IUnitOfWorkBase, UnitOfWorkSchemaView } from "./query/unit-of-work
 import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
-  type NewFragmentDefinition,
+  type FragmentDefinition,
   type ServiceConstructorFn,
 } from "@fragno-dev/core/api/fragment-definition-builder";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -345,7 +345,7 @@ export class DatabaseFragmentDefinitionBuilder<
    * This includes the request context setup for UnitOfWork management.
    * Note: TDeps already includes ImplicitDatabaseDependencies from withDatabase().
    */
-  build(): NewFragmentDefinition<
+  build(): FragmentDefinition<
     TConfig,
     FragnoPublicConfigWithDatabase,
     TDeps,

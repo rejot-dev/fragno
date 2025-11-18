@@ -3,12 +3,9 @@ import type { AnyRouteOrFactory, FlattenRouteFactories } from "../api/route";
 import type { FragnoPublicConfig } from "../api/shared-types";
 import {
   FragmentDefinitionBuilder,
-  type NewFragmentDefinition,
+  type FragmentDefinition,
 } from "../api/fragment-definition-builder";
-import {
-  instantiateNewFragment,
-  type NewFragnoInstantiatedFragment,
-} from "../api/fragment-instantiator";
+import { instantiateFragment, type FragnoInstantiatedFragment } from "../api/fragment-instantiator";
 import type { BoundServices } from "../api/bind-services";
 
 // Re-export for convenience
@@ -190,7 +187,7 @@ export function createFragmentForTest<
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  definition: NewFragmentDefinition<
+  definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -202,7 +199,7 @@ export function createFragmentForTest<
   >,
   routesOrFactories: TRoutesOrFactories,
   options: CreateFragmentForTestOptions<TConfig, TOptions, TServiceDependencies>,
-): NewFragnoInstantiatedFragment<
+): FragnoInstantiatedFragment<
   FlattenRouteFactories<TRoutesOrFactories>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
@@ -218,7 +215,7 @@ export function createFragmentForTest<
   } as TOptions;
 
   // Instantiate and return the fragment directly
-  return instantiateNewFragment(
+  return instantiateFragment(
     definition,
     config,
     routesOrFactories,
