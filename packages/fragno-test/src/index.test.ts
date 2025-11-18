@@ -2,9 +2,9 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { defineFragment } from "@fragno-dev/core";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "./db-test";
-import type { ExtractFragmentServices } from "@fragno-dev/core/api/route";
+import type { ExtractFragmentServices } from "@fragno-dev/core/route";
 
 // Test schema with multiple versions
 const testSchema = schema((s) => {
@@ -44,9 +44,7 @@ describe("buildDatabaseFragmentsTest", () => {
   it("should create and use a database fragment", async () => {
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]), {
-        definition: testFragmentDef,
-      })
+      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     const fragment = fragments.test;
@@ -80,9 +78,7 @@ describe("buildDatabaseFragmentsTest", () => {
     await expect(
       buildDatabaseFragmentsTest()
         .withTestAdapter({ type: "kysely-sqlite" })
-        .withFragment("nonDb", instantiate(nonDbFragmentDef).withConfig({}).withRoutes([]), {
-          definition: nonDbFragmentDef,
-        })
+        .withFragment("nonDb", instantiate(nonDbFragmentDef).withConfig({}).withRoutes([]))
         .build(),
     ).rejects.toThrow("Fragment 'non-db-fragment' does not have a database schema");
   });
@@ -90,9 +86,7 @@ describe("buildDatabaseFragmentsTest", () => {
   it("should reset database by truncating tables", async () => {
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]), {
-        definition: testFragmentDef,
-      })
+      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     const fragment = fragments.test;
@@ -122,9 +116,7 @@ describe("buildDatabaseFragmentsTest", () => {
   it("should expose db property for direct ORM queries", async () => {
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]), {
-        definition: testFragmentDef,
-      })
+      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     const fragment = fragments.test;
@@ -195,9 +187,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("auth", instantiate(authFragmentDef).withConfig({}).withRoutes([]), {
-        definition: authFragmentDef,
-      })
+      .withFragment("auth", instantiate(authFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     const fragment = fragments.auth;
@@ -291,12 +281,8 @@ describe("multi-fragment tests", () => {
       // Create both fragments with shared adapter
       const { fragments, test } = await buildDatabaseFragmentsTest()
         .withTestAdapter(adapter)
-        .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]), {
-          definition: userFragmentDef,
-        })
-        .withFragment("post", instantiate(postFragmentDef).withConfig({}).withRoutes([]), {
-          definition: postFragmentDef,
-        })
+        .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]))
+        .withFragment("post", instantiate(postFragmentDef).withConfig({}).withRoutes([]))
         .build();
 
       // Create a user

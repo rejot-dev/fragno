@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, assert } from "vitest";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { defineRoutes } from "@fragno-dev/core/api/route";
+import { instantiate, defineFragment } from "@fragno-dev/core";
+import { defineRoutes } from "@fragno-dev/core/route";
 import { withDatabase } from "./db-fragment-definition-builder";
 import { schema, idColumn, column } from "./schema/create";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AbstractQuery } from "./query/query";
-import { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
+import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import { z } from "zod";
 
 // Create a test schema

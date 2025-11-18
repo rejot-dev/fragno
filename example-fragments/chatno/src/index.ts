@@ -1,10 +1,13 @@
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { type FragnoPublicClientConfig, type FragnoPublicConfig } from "@fragno-dev/core";
+import {
+  defineFragment,
+  instantiate,
+  defineRoutes,
+  type FragnoPublicConfig,
+} from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import OpenAI from "openai";
 import { z } from "zod";
-import { defineRoutes } from "@fragno-dev/core/api/route";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 import { chatRouteFactory } from "./server/chatno-api";
 import { computed } from "nanostores";
 

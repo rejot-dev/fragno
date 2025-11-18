@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineFragment } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
   withDatabase,

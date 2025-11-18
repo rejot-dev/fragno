@@ -1,7 +1,7 @@
 import { test, describe, expect, beforeEach, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { stripeFragmentDefinition } from "../definition";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiate } from "@fragno-dev/core";
 
 import {
   customerSubscriptionUpdatedHandler,
@@ -103,9 +103,7 @@ describe("webhooks", async () => {
   // Create fragment with test configuration
   const { fragments } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
-    .withFragment("stripe", instantiate(stripeFragmentDefinition).withConfig(config), {
-      definition: stripeFragmentDefinition,
-    })
+    .withFragment("stripe", instantiate(stripeFragmentDefinition).withConfig(config))
     .build();
 
   const fragment = fragments.stripe;

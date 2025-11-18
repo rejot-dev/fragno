@@ -1,11 +1,12 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
-import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core/api";
-import {
-  type FragmentInstantiationBuilder,
-  type FragnoInstantiatedFragment,
-  instantiateFragment,
-} from "@fragno-dev/core/api/fragment-instantiator";
-import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/api/route";
+import type {
+  RequestThisContext,
+  FragnoPublicConfig,
+  FragmentInstantiationBuilder,
+  FragnoInstantiatedFragment,
+  FragmentDefinition,
+} from "@fragno-dev/core";
+import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/route";
 import {
   createAdapter,
   type SupportedAdapter,
@@ -15,7 +16,6 @@ import {
 import type { DatabaseAdapter } from "@fragno-dev/db";
 import type { AbstractQuery } from "@fragno-dev/db/query";
 import type { BaseTestContext } from ".";
-import type { FragmentDefinition } from "@fragno-dev/core/api/fragment-definition-builder";
 
 // BoundServices is an internal type that strips 'this' parameters from service methods
 // It's used to represent services after they've been bound to a context
@@ -161,7 +161,7 @@ export class DatabaseFragmentsTestBuilder<
    *
    * @param name - Unique name for the fragment
    * @param builder - Pre-configured instantiation builder
-   * @param options - Additional options including the fragment definition (required for schema extraction)
+   * @param options - Additional options (optional)
    */
   withFragment<
     TName extends string,
@@ -187,17 +187,7 @@ export class DatabaseFragmentsTestBuilder<
       TRequestStorage,
       TRoutesOrFactories
     >,
-    options: {
-      definition: FragmentDefinition<
-        TConfig,
-        TOptions,
-        TDeps,
-        TBaseServices,
-        TServices,
-        TServiceDependencies,
-        TThisContext,
-        TRequestStorage
-      >;
+    options?: {
       migrateToVersion?: number;
     },
   ): DatabaseFragmentsTestBuilder<
@@ -216,9 +206,9 @@ export class DatabaseFragmentsTestBuilder<
     keyof TFragments extends never ? TThisContext : TFirstFragmentThisContext
   > {
     this.#fragments.set(name, {
-      definition: options.definition,
+      definition: builder.definition,
       builder,
-      migrateToVersion: options.migrateToVersion,
+      migrateToVersion: options?.migrateToVersion,
     });
     return this as any; // eslint-disable-line @typescript-eslint/no-explicit-any
   }
@@ -331,7 +321,6 @@ export class DatabaseFragmentsTestBuilder<
 
       for (let i = 0; i < fragmentConfigs.length; i++) {
         const fragmentConfig = fragmentConfigs[i]!;
-        const definition = fragmentConfig.builder.definition;
         const builderConfig = builderConfigs[i]!;
         const namespace = schemaConfigs[i]!.namespace;
         const schema = schemaConfigs[i]!.schema;
@@ -343,14 +332,8 @@ export class DatabaseFragmentsTestBuilder<
           databaseAdapter: adapter,
         };
 
-        // Instantiate fragment
-        const fragment = instantiateFragment(
-          definition,
-          builderConfig.config,
-          builderConfig.routes,
-          mergedOptions,
-          undefined, // No service implementations yet
-        );
+        // Instantiate fragment using the builder
+        const fragment = fragmentConfig.builder.withOptions(mergedOptions).build();
 
         // Extract provided services based on serviceDependencies metadata
         // Note: serviceDependencies lists services this fragment USES, not provides
@@ -409,14 +392,11 @@ export class DatabaseFragmentsTestBuilder<
           databaseAdapter: adapter,
         };
 
-        // Rebuild the fragment with service implementations
-        const fragment = instantiateFragment(
-          definition,
-          builderConfig.config,
-          builderConfig.routes,
-          mergedOptions,
-          serviceImplementations,
-        );
+        // Rebuild the fragment with service implementations using the builder
+        const fragment = fragmentConfig.builder
+          .withOptions(mergedOptions)
+          .withServices(serviceImplementations as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+          .build();
 
         // Update the result
         // Access deps from the internal property
@@ -507,13 +487,11 @@ export class DatabaseFragmentsTestBuilder<
  *   .withFragment("user",
  *     instantiate(userFragmentDef)
  *       .withConfig({ ... })
- *       .withRoutes([...]),
- *     { definition: userFragmentDef }
+ *       .withRoutes([...])
  *   )
  *   .withFragment("post",
  *     instantiate(postFragmentDef)
- *       .withRoutes([...]),
- *     { definition: postFragmentDef }
+ *       .withRoutes([...])
  *   )
  *   .build();
  *

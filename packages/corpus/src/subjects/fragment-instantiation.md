@@ -4,10 +4,12 @@ Fragno provides the `instantiate` function, which uses a builder pattern to help
 create Fragments.
 
 ```typescript @fragno-imports
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoute } from "@fragno-dev/core/api/route";
-import type { FragnoPublicConfig } from "@fragno-dev/core";
+import {
+  defineFragment,
+  defineRoute,
+  instantiate,
+  type FragnoPublicConfig,
+} from "@fragno-dev/core";
 import { z } from "zod";
 ```
 

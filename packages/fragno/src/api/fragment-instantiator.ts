@@ -26,6 +26,7 @@ import type { FragmentDefinition } from "./fragment-definition-builder";
 import type { FragnoPublicConfig } from "./shared-types";
 import { RequestContextStorage } from "./request-context-storage";
 import { bindServicesToContext, type BoundServices } from "./bind-services";
+import { instantiatedFragmentFakeSymbol } from "../internal/symbols";
 
 // Re-export types needed by consumers
 export type { BoundServices };
@@ -85,9 +86,6 @@ export interface FragnoFragmentSharedConfig<
   name: string;
   routes: TRoutes;
 }
-
-// Not actually a symbol, since we might be dealing with multiple instances of this code.
-export const instantiatedFragmentFakeSymbol = "$fragno-instantiated-fragment" as const;
 
 /**
  * Instantiated fragment class with encapsulated state.

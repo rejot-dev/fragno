@@ -1,5 +1,5 @@
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { StripeFragmentConfig } from "./types";
 import { stripeFragmentDefinition } from "./definition";
@@ -8,7 +8,7 @@ import { customersRoutesFactory } from "./routes/customers";
 import { subscriptionsRoutesFactory } from "./routes/subscriptions";
 import { productsRoutesFactory } from "./routes/products";
 import { pricesRoutesFactory } from "./routes/prices";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiate } from "@fragno-dev/core";
 
 const routes = [
   webhookRoutesFactory,
@@ -53,4 +53,4 @@ export type {
   StripeFragmentServices,
   Logger,
 } from "./types";
-export type { FragnoRouteConfig } from "@fragno-dev/core/api";
+export type { FragnoRouteConfig } from "@fragno-dev/core";

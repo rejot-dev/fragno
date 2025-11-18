@@ -1,5 +1,5 @@
 import { test, expect, describe, vi, beforeEach, afterEach, assert } from "vitest";
-import { type FragnoPublicClientConfig } from "../mod";
+import { type FragnoPublicClientConfig } from "./client";
 import { createClientBuilder } from "./client";
 import { defineRoute } from "../api/route";
 import { defineFragment } from "../api/fragment-definition-builder";

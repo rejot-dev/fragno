@@ -8,6 +8,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *
  * Note: The data stored should be an object that can be mutated during the request lifecycle.
  * For example, you can store { uow: UnitOfWork } and modify properties on that object.
+ *
+ * @internal - Used by @fragno-dev/db, not part of public API
  */
 export class RequestContextStorage<TRequestStorage> {
   #storage: AsyncLocalStorage<TRequestStorage>;

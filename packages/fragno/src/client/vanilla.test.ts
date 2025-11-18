@@ -5,7 +5,7 @@ import { createClientBuilder } from "./client";
 import { useFragno } from "./vanilla";
 import { defineRoute } from "../api/route";
 import { defineFragment } from "../api/fragment-definition-builder";
-import type { FragnoPublicClientConfig } from "../mod";
+import type { FragnoPublicClientConfig } from "./client";
 import { FragnoClientFetchNetworkError } from "./client-error";
 import { waitForAsyncIterator } from "../util/async";
 

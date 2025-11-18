@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { type FragnoPublicClientConfig } from "../mod";
+import { type FragnoPublicClientConfig } from "./client";
 import { createClientBuilder } from "./client";
 import { defineRoute } from "../api/route";
 import { defineFragment } from "../api/fragment-definition-builder";

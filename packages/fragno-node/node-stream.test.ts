@@ -1,12 +1,8 @@
 import express, { type Application } from "express";
 import { test, expect, describe, beforeAll, afterAll, assert } from "vitest";
 import { z } from "zod";
-import {
-  defineFragment,
-  defineRoute,
-  instantiate,
-  type FragnoPublicClientConfig,
-} from "@fragno-dev/core";
+import { defineFragment, defineRoute, instantiate } from "@fragno-dev/core";
+import { type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Node.js Streaming", () => {

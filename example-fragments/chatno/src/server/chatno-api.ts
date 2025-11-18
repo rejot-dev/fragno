@@ -4,8 +4,8 @@ import type {
   ResponseFunctionToolCall,
   ResponseInputItem,
 } from "openai/resources/responses/responses.mjs";
-import { defineRoutes } from "@fragno-dev/core/api/route";
 import type { chatnoDefinition } from "../index";
+import { defineRoutes } from "@fragno-dev/core";
 
 export const ChatMessageSchema = z.object({
   type: z.literal("chat"),

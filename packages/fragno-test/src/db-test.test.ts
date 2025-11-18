@@ -1,9 +1,8 @@
 import { assert, describe, expect, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoute } from "@fragno-dev/core/api/route";
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { defineRoute } from "@fragno-dev/core/route";
 import { z } from "zod";
 import { buildDatabaseFragmentsTest } from "./db-test";
 
@@ -67,12 +66,8 @@ describe("buildDatabaseFragmentsTest", () => {
     // Build test setup with new builder API
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]), {
-        definition: userFragmentDef,
-      })
-      .withFragment("post", instantiate(postFragmentDef).withConfig({}).withRoutes([]), {
-        definition: postFragmentDef,
-      })
+      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]))
+      .withFragment("post", instantiate(postFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     // Test user fragment
@@ -130,9 +125,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]), {
-        definition: userFragmentDef,
-      })
+      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     // Create a user
@@ -164,9 +157,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]), {
-        definition: userFragmentDef,
-      })
+      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     // Use db directly
@@ -206,9 +197,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
     const { fragments, test } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]), {
-        definition: userFragmentDef,
-      })
+      .withFragment("user", instantiate(userFragmentDef).withConfig({}).withRoutes([]))
       .build();
 
     // Test that deps are accessible
@@ -255,9 +244,6 @@ describe("buildDatabaseFragmentsTest", () => {
       .withFragment(
         "user",
         instantiate(userFragmentDef).withConfig({}).withRoutes([createUserRoute]),
-        {
-          definition: userFragmentDef,
-        },
       )
       .build();
 
@@ -314,9 +300,6 @@ describe("buildDatabaseFragmentsTest", () => {
             apiSecret: "test-secret",
           })
           .withRoutes([]),
-        {
-          definition: requiredConfigFragmentDef,
-        },
       )
       .build();
 
@@ -361,9 +344,7 @@ describe("buildDatabaseFragmentsTest", () => {
     // Intentionally omit the required config to test error handling
     const buildPromise = buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("bad", instantiate(badFragmentDef).withRoutes([]), {
-        definition: badFragmentDef,
-      })
+      .withFragment("bad", instantiate(badFragmentDef).withRoutes([]))
       .build();
 
     await expect(buildPromise).rejects.toThrow(/Failed to extract schema from fragment/);

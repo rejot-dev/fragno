@@ -4,10 +4,9 @@ import { assert, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { KyselyAdapter } from "./adapters/kysely/kysely-adapter";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "./schema/create";
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { defineRoutes } from "@fragno-dev/core/route";
 import { withDatabase } from "./db-fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoutes } from "@fragno-dev/core/api/route";
 import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
 
 describe.sequential("Database Fragment Integration", () => {

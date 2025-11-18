@@ -49,6 +49,7 @@ const STORE_SYMBOL = Symbol("fragno-store");
 
 /**
  * Extract only GET routes from a library config's routes array
+ * @internal
  */
 export type ExtractGetRoutes<
   T extends readonly FragnoRouteConfig<
@@ -76,6 +77,7 @@ export type ExtractGetRoutes<
 
 /**
  * Extract the path from a route configuration for a given method
+ * @internal
  */
 export type ExtractRoutePath<
   T extends readonly FragnoRouteConfig<
@@ -102,6 +104,9 @@ export type ExtractRoutePath<
     : never;
 }[number];
 
+/**
+ * @internal
+ */
 export type ExtractGetRoutePaths<
   T extends readonly FragnoRouteConfig<
     HTTPMethod,
@@ -113,6 +118,9 @@ export type ExtractGetRoutePaths<
   >[],
 > = ExtractRoutePath<T, "GET">;
 
+/**
+ * @internal
+ */
 export type ExtractNonGetRoutePaths<
   T extends readonly FragnoRouteConfig<
     HTTPMethod,
@@ -130,6 +138,7 @@ export type ExtractNonGetRoutePaths<
  *
  * Defaults to extracting all methods for the matching path, producing a union
  * if multiple methods exist for the same path.
+ * @internal
  */
 export type ExtractRouteByPath<
   TRoutes extends readonly FragnoRouteConfig<
@@ -159,6 +168,7 @@ export type ExtractRouteByPath<
 
 /**
  * Extract the output schema type for a specific route path from a routes array
+ * @internal
  */
 export type ExtractOutputSchemaForPath<
   TRoutes extends readonly FragnoRouteConfig<
@@ -183,6 +193,7 @@ export type ExtractOutputSchemaForPath<
 
 /**
  * Check if a path exists as a GET route in the routes array
+ * @internal
  */
 export type IsValidGetRoutePath<
   TRoutes extends readonly FragnoRouteConfig<
@@ -198,6 +209,7 @@ export type IsValidGetRoutePath<
 
 /**
  * Utility type to ensure only valid GET route paths can be used
+ * @internal
  */
 export type ValidateGetRoutePath<
   TRoutes extends readonly FragnoRouteConfig<
@@ -216,6 +228,7 @@ export type ValidateGetRoutePath<
 
 /**
  * Helper type to check if a routes array has any GET routes
+ * @internal
  */
 export type HasGetRoutes<
   T extends readonly FragnoRouteConfig<
@@ -228,6 +241,9 @@ export type HasGetRoutes<
   >[],
 > = ExtractGetRoutePaths<T> extends never ? false : true;
 
+/**
+ * @internal
+ */
 export type ObjectContainingStoreField<T extends object> = T extends Store
   ? T
   : {
@@ -236,6 +252,9 @@ export type ObjectContainingStoreField<T extends object> = T extends Store
     ? never
     : T;
 
+/**
+ * @internal
+ */
 export type FragnoStoreData<T extends object> = {
   obj: T;
   [STORE_SYMBOL]: true;
@@ -311,6 +330,9 @@ export type FragnoClientMutatorData<
   readonly _outputSchema?: TOutputSchema;
 };
 
+/**
+ * @internal
+ */
 export function buildUrl<TPath extends string>(
   config: {
     baseUrl?: string;
@@ -348,6 +370,7 @@ export function buildUrl<TPath extends string>(
  * @param path
  * @param params
  * @returns
+ * @internal
  */
 export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
   method: TMethod,
@@ -410,6 +433,9 @@ function isStreamingResponse(response: Response): false | "ndjson" | "octet-stre
 }
 
 // Type guard to check if a hook is a GET hook
+/**
+ * @internal
+ */
 export function isGetHook<
   TPath extends string,
   TOutputSchema extends StandardSchemaV1,
@@ -427,6 +453,9 @@ export function isGetHook<
 }
 
 // Type guard to check if a hook is a mutator
+/**
+ * @internal
+ */
 export function isMutatorHook<
   TMethod extends NonGetHTTPMethod,
   TPath extends string,
@@ -452,6 +481,9 @@ export function isMutatorHook<
   );
 }
 
+/**
+ * @internal
+ */
 export function isStore<TStore extends Store>(obj: unknown): obj is FragnoStoreData<TStore> {
   return (
     typeof obj === "object" && obj !== null && STORE_SYMBOL in obj && obj[STORE_SYMBOL] === true
@@ -488,6 +520,9 @@ type OnInvalidateFn<TPath extends string> = (
   },
 ) => void;
 
+/**
+ * @internal
+ */
 export type CacheLine = {
   data: unknown;
   error: unknown;
@@ -1139,5 +1174,5 @@ export function createClientBuilder<
 }
 
 export * from "./client-error";
-export type { FetcherConfig };
-export type { FragnoPublicClientConfig } from "../api/shared-types";
+export type { FetcherConfig, FragnoPublicClientConfig } from "../api/shared-types";
+export type { FragnoFragmentSharedConfig } from "../api/fragment-instantiator";

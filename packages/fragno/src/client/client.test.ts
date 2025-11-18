@@ -4,7 +4,7 @@ import { defineRoute } from "../api/route";
 import { buildUrl, createClientBuilder, getCacheKey, isGetHook, isMutatorHook } from "./client";
 import { useFragno } from "./vanilla";
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "../util/async";
-import type { FragnoPublicClientConfig } from "../mod";
+import type { FragnoPublicClientConfig } from "./client";
 import { atom, computed, effect } from "nanostores";
 import { defineFragment } from "../api/fragment-definition-builder";
 import { RequestOutputContext } from "../api/request-output-context";

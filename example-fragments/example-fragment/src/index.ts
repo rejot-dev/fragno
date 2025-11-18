@@ -1,14 +1,11 @@
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-
-import type { FragnoPublicConfig } from "@fragno-dev/core";
+import { defineFragment, instantiate, type FragnoPublicConfig } from "@fragno-dev/core";
+import { defineRoutes } from "@fragno-dev/core/route";
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { z } from "zod";
 
 import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { createHash } from "node:crypto";
-import { defineRoutes } from "@fragno-dev/core/api/route";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
 export interface ExampleFragmentServerConfig {
   initialData?: string;
@@ -129,4 +126,4 @@ export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientCon
     useSampleMutator: b.createMutator("POST", "/sample"),
   };
 }
-export type { FragnoRouteConfig } from "@fragno-dev/core/api";
+export type { FragnoRouteConfig } from "@fragno-dev/core";

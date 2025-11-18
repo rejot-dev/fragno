@@ -16,8 +16,8 @@ instantiated with the library definition, the public config, and the routes. It 
 your Fragment's export.
 
 ```typescript title="src/index.ts"
-import { type FragnoPublicClientConfig } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
+import { type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(myFragmentDefinition, fragnoConfig, routes);
