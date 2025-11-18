@@ -3,7 +3,11 @@
 import { User } from "lucide-react";
 import { Stripe } from "./logos/stripe";
 
-export function StripeDataFlow() {
+export function StripeDataFlow({
+  mode = "with-fragment",
+}: {
+  mode?: "with-fragment" | "without-fragment";
+} = {}) {
   return (
     <div className="not-prose mx-auto my-8 w-full max-w-4xl">
       <svg
@@ -155,20 +159,9 @@ export function StripeDataFlow() {
               strokeWidth="0.5"
               strokeLinejoin="round"
               width="37.337727"
-              height="32.292088"
+              height="24.292088"
               x="114.23689"
-              y="16.611847"
-              rx="0.99999994"
-              ry="0.99999994"
-            />
-            <rect
-              className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
-              strokeWidth="0.5"
-              strokeLinejoin="round"
-              width="37.337723"
-              height="16.236961"
-              x="114.23689"
-              y="32.666973"
+              y="24.611847"
               rx="0.99999994"
               ry="0.99999994"
             />
@@ -178,35 +171,50 @@ export function StripeDataFlow() {
               style={{ fontSize: "3.5px" }}
               textAnchor="middle"
               x="132.427"
-              y="21.5"
+              y="29.5"
             >
               Backend
             </text>
-            <text
-              xmlSpace="preserve"
-              className="fill-fd-foreground dark:fill-blue-300"
-              style={{ fontSize: "2.82223px" }}
-              textAnchor="middle"
-              x="132.51332"
-              y="37.060215"
-            >
-              Stripe Fragment Server
-            </text>
-            <text
-              xmlSpace="preserve"
-              className="fill-fd-foreground font-mono dark:fill-blue-300"
-              style={{ fontSize: "2.82223px" }}
-              textAnchor="middle"
-              x="132.83841"
-              y="42.156647"
-            >
-              <tspan x="132.83841" y="42.156647">
-                /api/stripe/upgrade
-              </tspan>
-              <tspan x="132.83841" y="45.684433">
-                /api/stripe/webhook
-              </tspan>
-            </text>
+            {mode === "with-fragment" && (
+              <>
+                <rect
+                  className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  strokeWidth="0.5"
+                  strokeLinejoin="round"
+                  width="37.337723"
+                  height="16.236961"
+                  x="114.23689"
+                  y="32.666973"
+                  rx="0.99999994"
+                  ry="0.99999994"
+                />
+                <text
+                  xmlSpace="preserve"
+                  className="fill-fd-foreground dark:fill-blue-300"
+                  style={{ fontSize: "2.82223px" }}
+                  textAnchor="middle"
+                  x="132.51332"
+                  y="37.060215"
+                >
+                  Stripe Fragment Server
+                </text>
+                <text
+                  xmlSpace="preserve"
+                  className="fill-fd-foreground font-mono dark:fill-blue-300"
+                  style={{ fontSize: "2.82223px" }}
+                  textAnchor="middle"
+                  x="132.83841"
+                  y="42.156647"
+                >
+                  <tspan x="132.83841" y="42.156647">
+                    /api/stripe/upgrade
+                  </tspan>
+                  <tspan x="132.83841" y="45.684433">
+                    /api/stripe/webhook
+                  </tspan>
+                </text>
+              </>
+            )}
           </g>
 
           {/* User icon */}
@@ -225,20 +233,9 @@ export function StripeDataFlow() {
               strokeWidth="0.5"
               strokeLinejoin="round"
               width="37.337727"
-              height="32.292088"
+              height="24.292088"
               x="114.23689"
-              y="16.611847"
-              rx="0.99999994"
-              ry="0.99999994"
-            />
-            <rect
-              className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
-              strokeWidth="0.5"
-              strokeLinejoin="round"
-              width="37.337723"
-              height="16.236961"
-              x="114.23689"
-              y="32.666973"
+              y="24.611847"
               rx="0.99999994"
               ry="0.99999994"
             />
@@ -248,35 +245,50 @@ export function StripeDataFlow() {
               style={{ fontSize: "3.5px" }}
               textAnchor="middle"
               x="132.427"
-              y="21.5"
+              y="29.5"
             >
               Frontend
             </text>
-            <text
-              xmlSpace="preserve"
-              className="fill-fd-foreground dark:fill-blue-300"
-              style={{ fontSize: "2.82223px" }}
-              textAnchor="middle"
-              x="132.51332"
-              y="37.060215"
-            >
-              Stripe Fragment Client
-            </text>
-            <text
-              xmlSpace="preserve"
-              className="fill-fd-foreground font-mono dark:fill-blue-300"
-              style={{ fontSize: "2.82223px" }}
-              textAnchor="middle"
-              x="132.83841"
-              y="42.156647"
-            >
-              <tspan x="132.83841" y="42.156647">
-                upgradeSubscription()
-              </tspan>
-              <tspan x="132.83841" y="45.684433">
-                cancelSubscription()
-              </tspan>
-            </text>
+            {mode === "with-fragment" && (
+              <>
+                <rect
+                  className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  strokeWidth="0.5"
+                  strokeLinejoin="round"
+                  width="37.337723"
+                  height="16.236961"
+                  x="114.23689"
+                  y="32.666973"
+                  rx="0.99999994"
+                  ry="0.99999994"
+                />
+                <text
+                  xmlSpace="preserve"
+                  className="fill-fd-foreground dark:fill-blue-300"
+                  style={{ fontSize: "2.82223px" }}
+                  textAnchor="middle"
+                  x="132.51332"
+                  y="37.060215"
+                >
+                  Stripe Fragment Client
+                </text>
+                <text
+                  xmlSpace="preserve"
+                  className="fill-fd-foreground font-mono dark:fill-blue-300"
+                  style={{ fontSize: "2.82223px" }}
+                  textAnchor="middle"
+                  x="132.83841"
+                  y="42.156647"
+                >
+                  <tspan x="132.83841" y="42.156647">
+                    upgradeSubscription()
+                  </tspan>
+                  <tspan x="132.83841" y="45.684433">
+                    cancelSubscription()
+                  </tspan>
+                </text>
+              </>
+            )}
           </g>
 
           {/* Stripe API section */}
@@ -310,16 +322,24 @@ export function StripeDataFlow() {
           </g>
 
           {/* Database */}
-          <g transform="matrix(0.78462349,0,0,0.78462349,32.48633,16.827496)">
+          <g transform="matrix(0.78462349,0,0,0.78462349,32.48633,20.827496)">
             <path
-              className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+              className={
+                mode === "with-fragment"
+                  ? "fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  : "fill-emerald-300 stroke-emerald-500 dark:fill-emerald-900/30"
+              }
               strokeWidth="0.6"
               d="m 162.5245,34.962788 v 18.057371 a 15.522482,3.869437 0 0 0 31.04495,0 V 34.962788"
             />
             <text
               xmlSpace="preserve"
-              className="fill-fd-foreground font-mono dark:fill-blue-300"
-              style={{ fontSize: "2.82223px" }}
+              className={
+                mode === "with-fragment"
+                  ? "fill-fd-foreground font-mono dark:fill-blue-300"
+                  : "fill-fd-foreground font-mono"
+              }
+              style={{ fontSize: "3px" }}
               textAnchor="middle"
               x="178.29018"
               y="52.833584"
@@ -446,25 +466,29 @@ export function StripeDataFlow() {
             </text>
 
             {/* Blue - Stripe Fragment */}
-            <rect
-              className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
-              strokeWidth="0.5"
-              width="4"
-              height="3"
-              x="0"
-              y="4"
-              rx="0.5"
-              ry="0.5"
-            />
-            <text
-              xmlSpace="preserve"
-              className="fill-fd-foreground"
-              style={{ fontSize: "2.5px" }}
-              x="5"
-              y="6.2"
-            >
-              Stripe Fragment
-            </text>
+            {mode === "with-fragment" && (
+              <>
+                <rect
+                  className="fill-blue-200 stroke-blue-400 dark:fill-blue-900/30"
+                  strokeWidth="0.5"
+                  width="4"
+                  height="3"
+                  x="0"
+                  y="4"
+                  rx="0.5"
+                  ry="0.5"
+                />
+                <text
+                  xmlSpace="preserve"
+                  className="fill-fd-foreground"
+                  style={{ fontSize: "2.5px" }}
+                  x="5"
+                  y="6.2"
+                >
+                  Stripe Fragment
+                </text>
+              </>
+            )}
 
             {/* Purple - Stripe */}
             <rect
