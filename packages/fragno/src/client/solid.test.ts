@@ -5,7 +5,7 @@ import { createClientBuilder } from "./client";
 import { useFragno, accessorToAtom, isAccessor } from "./solid";
 import { defineRoute } from "../api/route";
 import { defineFragment } from "../api/fragment-definition-builder";
-import type { FragnoPublicClientConfig } from "../mod";
+import type { FragnoPublicClientConfig } from "./client";
 import { FragnoClientUnknownApiError } from "./client-error";
 import { createSignal, createRoot } from "solid-js";
 

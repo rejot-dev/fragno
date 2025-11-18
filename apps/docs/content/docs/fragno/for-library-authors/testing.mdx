@@ -92,7 +92,7 @@ automatically set up an in-memory database with migrations:
 
 ```typescript
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiate } from "@fragno-dev/core";
 
 const { fragments, test } = await buildDatabaseFragmentsTest()
   .withTestAdapter({ type: "kysely-sqlite" })
@@ -100,7 +100,6 @@ const { fragments, test } = await buildDatabaseFragmentsTest()
     "myFragment",
     instantiate(myDatabaseFragmentDefinition).withConfig({ apiKey: "test-key" }).withRoutes(routes),
     {
-      definition: myDatabaseFragmentDefinition,
       // Optional: migrate to specific schema version (defaults to latest)
       migrateToVersion: 2,
     },
@@ -125,9 +124,7 @@ during testing. This is useful in `afterAll` hooks to clean up resources:
 describe("User tests", () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
-    .withFragment("auth", instantiate(authFragmentDefinition).withRoutes(routes).withConfig({}), {
-      definition: authFragmentDefinition,
-    })
+    .withFragment("auth", instantiate(authFragmentDefinition).withRoutes(routes).withConfig({}))
     .build();
 
   afterAll(async () => {

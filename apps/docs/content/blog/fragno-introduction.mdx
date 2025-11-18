@@ -147,7 +147,7 @@ import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
 import { createClientBuilder } from "@fragno-dev/core/client";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createClient() {
   const cb = createClientBuilder(todosDefinition, {}, [getTodosRoute, addTodoRoute]);

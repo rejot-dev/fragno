@@ -1,12 +1,8 @@
 import { createServer, type RequestListener, type Server } from "node:http";
 import { test, expect, describe } from "vitest";
 import { z } from "zod";
-import {
-  defineFragment,
-  defineRoute,
-  instantiate,
-  type FragnoPublicClientConfig,
-} from "@fragno-dev/core";
+import { defineFragment, defineRoute, instantiate } from "@fragno-dev/core";
+import { type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { toNodeHandler } from "./fragno-node";
 
 describe("Fragno Node.js integration", () => {

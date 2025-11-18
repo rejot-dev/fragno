@@ -4,12 +4,11 @@ Fragno provides a unified database query API that works across different ORMs. T
 CRUD operations and querying with conditions.
 
 ```typescript @fragno-imports
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { schema, idColumn, column } from "@fragno-dev/db/schema";
 import type { AbstractQuery } from "@fragno-dev/db/query";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 ```
 
 ```typescript @fragno-prelude:schema
@@ -47,9 +46,7 @@ const testFragmentDef = defineFragment<{}>("test-db-fragment")
 
 const { fragments, test } = await buildDatabaseFragmentsTest()
   .withTestAdapter({ type: "kysely-sqlite" })
-  .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]), {
-    definition: testFragmentDef,
-  })
+  .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
   .build();
 
 const db = fragments.test.db;

@@ -234,7 +234,7 @@ import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
 import { createClientBuilder } from "@fragno-dev/core/client";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createTodosClients(fragnoConfig: FragnoPublicClientConfig) {
   const cb = createClientBuilder(todosDefinition, fragnoConfig, [getTodosRoute, addTodoRoute]);
@@ -251,7 +251,7 @@ Then, create a client entrypoint file for each frontend framework.
 import { createTodosClients } from "../fragment";
 
 import { useFragno } from "@fragno-dev/core/react";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
   return useFragno(createTodosClients(config));
@@ -262,7 +262,7 @@ export function createTodosClient(config: FragnoPublicClientConfig = {}) {
 import { createTodosClients } from "../fragment";
 
 import { useFragno } from "@fragno-dev/core/vue";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
   return useFragno(createTodosClients(config));
@@ -273,7 +273,7 @@ export function createTodosClient(config: FragnoPublicClientConfig = {}) {
 import { createTodosClients } from "../fragment";
 
 import { useFragno } from "@fragno-dev/core/svelte";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
   return useFragno(createTodosClients(config));
@@ -284,7 +284,7 @@ export function createTodosClient(config: FragnoPublicClientConfig = {}) {
 import { createTodosClients } from "../fragment";
 
 import { useFragno } from "@fragno-dev/core/vanilla";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
   return useFragno(createTodosClients(config));

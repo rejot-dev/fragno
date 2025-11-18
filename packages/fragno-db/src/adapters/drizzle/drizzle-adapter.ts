@@ -13,7 +13,7 @@ import {
 } from "../adapters";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import { createDrizzleConnectionPool } from "./drizzle-connection-pool";
-import { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
+import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
 export interface DrizzleConfig {
   db: unknown | (() => unknown | Promise<unknown>);

@@ -4,10 +4,8 @@ import {
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "@fragno-dev/db/adapters";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import {
-  instantiatedFragmentFakeSymbol,
-  type FragnoInstantiatedFragment,
-} from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiatedFragmentFakeSymbol } from "@fragno-dev/core/internal/symbols";
+import { type FragnoInstantiatedFragment } from "@fragno-dev/core";
 import { loadConfig } from "c12";
 import { relative } from "node:path";
 

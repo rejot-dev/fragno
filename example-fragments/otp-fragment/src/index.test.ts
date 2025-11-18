@@ -7,16 +7,14 @@ import {
   otpSchema,
 } from "./index";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiate } from "@fragno-dev/core";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
 describe("OTP Fragment", () => {
   describe("Integration with UnitOfWork", async () => {
     const { fragments, test: testCtx } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
-      .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]), {
-        definition: otpFragmentDefinition,
-      })
+      .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]))
       .build();
 
     afterAll(async () => {
@@ -62,9 +60,6 @@ describe("Auth Fragment", () => {
       .withFragment(
         "auth",
         instantiate(authFragmentDefinition).withConfig({}).withRoutes(authFragmentRoutes),
-        {
-          definition: authFragmentDefinition,
-        },
       )
       .build();
 
@@ -90,9 +85,7 @@ describe("OTP Fragment with Database (buildDatabaseFragmentsTest)", () => {
     test("should instantiate fragment that provides OTP service", async () => {
       const { test: testCtx } = await buildDatabaseFragmentsTest()
         .withTestAdapter({ type: "kysely-sqlite" })
-        .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]), {
-          definition: otpFragmentDefinition,
-        })
+        .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]))
         .build();
 
       // Verify the fragment definition provides the service
@@ -104,9 +97,7 @@ describe("OTP Fragment with Database (buildDatabaseFragmentsTest)", () => {
     test("provided OTP service should be accessible", async () => {
       const { test: testCtx } = await buildDatabaseFragmentsTest()
         .withTestAdapter({ type: "kysely-sqlite" })
-        .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]), {
-          definition: otpFragmentDefinition,
-        })
+        .withFragment("otp", instantiate(otpFragmentDefinition).withConfig({}).withRoutes([]))
         .build();
 
       await testCtx.cleanup();
@@ -119,16 +110,10 @@ describe("OTP Fragment with Database (buildDatabaseFragmentsTest)", () => {
       .withFragment(
         "otp",
         instantiate(otpFragmentDefinition).withConfig({}).withRoutes(otpFragmentRoutes),
-        {
-          definition: otpFragmentDefinition,
-        },
       )
       .withFragment(
         "auth",
         instantiate(authFragmentDefinition).withConfig({}).withRoutes(authFragmentRoutes),
-        {
-          definition: authFragmentDefinition,
-        },
       )
       .build();
 

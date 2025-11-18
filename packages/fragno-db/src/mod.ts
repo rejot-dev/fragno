@@ -129,4 +129,4 @@ export {
 } from "./db-fragment-definition-builder";
 
 // Re-export BoundServices from core
-export { type BoundServices } from "@fragno-dev/core/api/fragment-instantiator";
+export { type BoundServices } from "@fragno-dev/core";

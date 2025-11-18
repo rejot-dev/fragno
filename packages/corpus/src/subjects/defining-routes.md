@@ -4,10 +4,13 @@ Routes are the core of a Fragno fragment, defining HTTP endpoints that handle re
 responses. This guide covers the essential patterns for defining routes.
 
 ```typescript @fragno-imports
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { defineRoute, defineRoutes } from "@fragno-dev/core/api/route";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import type { FragnoPublicConfig } from "@fragno-dev/core";
+import {
+  defineFragment,
+  defineRoute,
+  defineRoutes,
+  instantiate,
+  type FragnoPublicConfig,
+} from "@fragno-dev/core";
 import { z } from "zod";
 ```
 

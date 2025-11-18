@@ -11,21 +11,15 @@ export {
 
 export {
   instantiate,
-  type FragmentInstantiationBuilder as NewFragmentInstantiationBuilder,
-  type FragnoInstantiatedFragment as NewFragnoInstantiatedFragment,
+  type FragmentInstantiationBuilder,
+  type FragnoInstantiatedFragment,
+  type BoundServices,
 } from "./api/fragment-instantiator";
 
 // ============================================================================
-// Shared types
+// Core Configuration
 // ============================================================================
-export {
-  type FragnoFragmentSharedConfig,
-  type FragnoPublicConfig,
-  type FragnoPublicClientConfig,
-  type FetcherConfig,
-} from "./api/shared-types";
-
-export { type FragnoRouteConfig, type RequestThisContext } from "./api/api";
+export type { FragnoPublicConfig } from "./api/shared-types";
 
 // ============================================================================
 // Route Definition
@@ -35,9 +29,6 @@ export {
   defineRoutes,
   type RouteFactory,
   type RouteFactoryContext,
-  type AnyRouteOrFactory,
-  type FlattenRouteFactories,
 } from "./api/route";
 
-export { RequestInputContext } from "./api/request-input-context";
-export { RequestOutputContext } from "./api/request-output-context";
+export { type FragnoRouteConfig, type RequestThisContext } from "./api/api";

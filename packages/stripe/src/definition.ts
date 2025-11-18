@@ -7,7 +7,7 @@ import type {
   StripeFragmentServices,
 } from "./types";
 import { stripeSchema } from "./database/schema";
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { stripeSubscriptionToInternalSubscription } from "./utils";
 

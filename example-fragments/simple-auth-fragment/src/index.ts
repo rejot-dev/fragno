@@ -1,8 +1,5 @@
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoutes } from "@fragno-dev/core/api/route";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
+import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
 import { authSchema } from "./schema";
@@ -329,4 +326,4 @@ export function createAuthFragmentClients(fragnoConfig: FragnoPublicClientConfig
   };
 }
 
-export type { FragnoRouteConfig } from "@fragno-dev/core/api";
+export type { FragnoRouteConfig } from "@fragno-dev/core";

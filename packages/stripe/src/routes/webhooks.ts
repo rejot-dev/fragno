@@ -1,7 +1,7 @@
 import { z } from "zod";
 import Stripe from "stripe";
 import { eventToHandler, type SupportedStripeEvent } from "../webhook/handlers";
-import { defineRoutes } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core";
 import { stripeFragmentDefinition } from "../definition";
 
 export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).create(

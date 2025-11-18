@@ -2,7 +2,7 @@ import type { Migrator } from "../migration-engine/create";
 import type { AbstractQuery } from "../query/query";
 import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
-import type { RequestContextStorage } from "@fragno-dev/core/api/request-context-storage";
+import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import type { IUnitOfWorkBase } from "../query/unit-of-work";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;

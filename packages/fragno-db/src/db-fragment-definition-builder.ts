@@ -7,7 +7,7 @@ import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
   type ServiceConstructorFn,
-} from "@fragno-dev/core/api/fragment-definition-builder";
+} from "@fragno-dev/core";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 // AsyncLocalStorage for Unit of Work

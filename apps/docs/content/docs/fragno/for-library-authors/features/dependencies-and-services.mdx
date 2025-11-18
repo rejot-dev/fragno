@@ -220,7 +220,7 @@ and `providesService()` contexts. The `db` object provides type-safe database op
 Note that when using `withDatabase`, the database context is available in dependencies and services.
 
 ```typescript
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
 const fragmentDef = defineFragment("my-fragment")

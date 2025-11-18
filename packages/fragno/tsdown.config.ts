@@ -3,12 +3,14 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   entry: [
     "./src/mod.ts",
+    "./src/mod-client.ts",
     "./src/api/api.ts",
     "./src/api/shared-types.ts",
     "./src/api/fragment-definition-builder.ts",
     "./src/api/fragment-instantiator.ts",
     "./src/api/route.ts",
     "./src/api/request-context-storage.ts",
+    "./src/request/request.ts",
     "./src/client/client.ts",
     "./src/client/vanilla.ts",
     "./src/client/client.svelte.ts",
@@ -20,6 +22,7 @@ export default defineConfig({
     "./src/integrations/react-ssr.ts",
     "./src/integrations/svelte-kit.ts",
     "./src/test/test.ts",
+    "./src/internal/symbols.ts",
   ],
   dts: true,
   unbundle: true,

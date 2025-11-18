@@ -1,13 +1,11 @@
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { z } from "zod";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import { defineRoutes } from "@fragno-dev/core/api/route";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];

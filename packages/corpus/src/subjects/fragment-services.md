@@ -7,9 +7,7 @@ Note that if the goal is to make your user provide certain functionality, it usu
 sense to add a required property to the fragment's config.
 
 ```typescript @fragno-imports
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
-import type { FragnoPublicConfig } from "@fragno-dev/core";
+import { defineFragment, instantiate, type FragnoPublicConfig } from "@fragno-dev/core";
 ```
 
 ## Providing Services

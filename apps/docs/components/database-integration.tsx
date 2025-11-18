@@ -138,7 +138,7 @@ if (!success) {
           lang="typescript"
           code={`import { buildDatabaseFragmentsTest }
   from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { instantiate } from "@fragno-dev/core";
 
 describe("auth fragment", async () => {
   const { fragments, test } =

@@ -35,8 +35,7 @@ Use `defineFragment()` from the `@fragno-dev/core` package and extend it with `w
 from `@fragno-dev/db`.
 
 ```typescript title="src/index.ts"
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
+import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { commentSchema } from "./schema";
 

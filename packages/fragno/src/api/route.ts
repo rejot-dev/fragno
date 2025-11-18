@@ -30,8 +30,14 @@ export type RouteFactory<
   >[],
 > = (context: RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps>) => TRoutes;
 
+/**
+ * @internal
+ */
 export type AnyRouteOrFactory = AnyFragnoRouteConfig | RouteFactory<any, any, any, any, any>;
 
+/**
+ * @internal
+ */
 export type FlattenRouteFactories<T extends readonly AnyRouteOrFactory[]> = T extends readonly [
   infer First,
   ...infer Rest extends readonly AnyRouteOrFactory[],
@@ -41,7 +47,10 @@ export type FlattenRouteFactories<T extends readonly AnyRouteOrFactory[]> = T ex
     : [First, ...FlattenRouteFactories<Rest>]
   : [];
 
-// Helper to resolve route factories into routes
+/**
+ * Helper to resolve route factories into routes
+ * @internal
+ */
 export function resolveRouteFactories<
   TConfig,
   TDeps,

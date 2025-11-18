@@ -5,9 +5,8 @@ that integrate with React, Vue, Svelte, and vanilla JavaScript. The `ClientBuild
 hooks and mutators for your routes.
 
 ```typescript @fragno-imports
-import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-import { defineRoute, defineRoutes } from "@fragno-dev/core/api/route";
-import type { FragnoPublicClientConfig } from "@fragno-dev/core";
+import { defineFragment, defineRoute, defineRoutes } from "@fragno-dev/core";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { computed } from "nanostores";
 import { z } from "zod";
