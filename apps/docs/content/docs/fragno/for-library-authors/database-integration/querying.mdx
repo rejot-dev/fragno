@@ -54,8 +54,8 @@ const users = await db.find("users", (b) =>
 ### Basic Queries
 
 ```typescript
-// Find all users (implicitly uses primary index)
-const users = await db.find("users");
+// Find all users (using primary index)
+const users = await db.find("users", (b) => b.whereIndex("primary"));
 
 // Find with filtering
 const activeUsers = await db.find("users", (b) =>

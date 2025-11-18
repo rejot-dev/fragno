@@ -57,7 +57,7 @@ Let's build a simple todos fragment that demonstrates the core concepts.
 ### Step 1: Define Your Fragment
 
 ```typescript title="src/index.ts"
-import { defineFragment, defineRoute, instantiateFragment } from "@fragno-dev/core";
+import { defineFragment, defineRoute, instantiate } from "@fragno-dev/core";
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { z } from "zod";
 
@@ -76,7 +76,7 @@ const TodoSchema = z.object({
   createdAt: z.string(),
 });
 
-const todosDefinition = defineFragment<TodosConfig>("todos-fragment");
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment").build();
 ```
 
 ### Step 2: Add Dependencies and Services (Optional)
@@ -89,15 +89,15 @@ method, which has access to the config object.
 import { defineFragment } from "@fragno-dev/core";
 import { MyOpenAIWrapper } from "./lib/my-openai-wrapper";
 
-const todosDefinition = defineFragment<TodosConfig>("todos-fragment").withDependencies(
-  ({ config }) => {
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment")
+  .withDependencies(({ config }) => {
     return {
       aiWrapper: new MyOpenAIWrapper({
         apiKey: config.openaiApiKey,
       }),
     };
-  },
-);
+  })
+  .build();
 ```
 
 We'll skip over services for now, but you can read more about them in the
@@ -203,18 +203,18 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, {}>().create(({ confi
 ### Step 4: Create the Server-Side Fragment
 
 To finalize the server-side Fragment, we need to export a function that creates the library
-instance. We use the `instantiateFragment` builder pattern to configure the fragment with its
-config, routes, and options.
+instance. We use the `instantiate` builder pattern to configure the fragment with its config,
+routes, and options.
 
 ```typescript title="src/index.ts"
 import { getTodosRoute } from "./routes/get-todos";
 import { addTodoRoute } from "./routes/post-todos";
 
-import { instantiateFragment } from "@fragno-dev/core";
+import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
 export function createTodos(config: TodosConfig, options: FragnoPublicConfig = {}) {
-  return instantiateFragment(todosDefinition)
+  return instantiate(todosDefinition)
     .withConfig(config)
     .withRoutes([getTodosRoute, addTodoRoute])
     .withOptions(options)

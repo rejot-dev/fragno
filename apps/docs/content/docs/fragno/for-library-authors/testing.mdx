@@ -10,16 +10,19 @@ and response parsing.
 ## Creating a Test Fragment
 
 ```typescript
-import { createFragmentForTest } from "@fragno-dev/core/test";
+import { createFragmentForTest, withTestUtils } from "@fragno-dev/core/test";
 import { routes } from "./fragment-definition";
 
-const fragment = createFragmentForTest(myFragmentDefinition, routes, {
-  config: { apiKey: "test-key" },
-  // Optional: override dependencies
-  deps: { httpClient: mockHttpClient },
-  // Optional: override services
-  services: { getUserById: mockGetUserById },
-});
+// Important: Use .extend(withTestUtils()) to expose deps via services.test.deps
+const fragment = createFragmentForTest(
+  myFragmentDefinition.extend(withTestUtils()).build(),
+  routes,
+  {
+    config: { apiKey: "test-key" },
+    // Optional: override service implementations
+    serviceImplementations: { emailService: mockEmailService },
+  },
+);
 ```
 
 ## Testing Route Handlers
@@ -124,7 +127,7 @@ during testing. This is useful in `afterAll` hooks to clean up resources:
 describe("User tests", () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
-    .withFragment("auth", instantiate(authFragmentDefinition).withRoutes(routes).withConfig({}))
+    .withFragment("auth", instantiate(authFragmentDefinition).withConfig({}).withRoutes(routes))
     .build();
 
   afterAll(async () => {

@@ -52,17 +52,24 @@ const commentFragmentDef = defineFragment<CommentFragmentConfig>("comment-fragme
         return { id: id.toJSON(), ...data };
       },
       getComments: async (postId: string) => {
-        return db.find("comment", (b) => b.where((eb) => eb("postId", "=", postId)));
+        return db.find("comment", (b) =>
+          b.whereIndex("idx_post", (eb) => eb("postId", "=", postId)),
+        );
       },
     };
-  });
+  })
+  .build();
 
 // Make sure to allow your users to provide their database adapter
 export function createCommentFragment(
   config: CommentFragmentConfig = {},
   options: FragnoPublicConfigWithDatabase,
 ) {
-  return createFragment(commentFragmentDef, config, [], options);
+  return instantiate(commentFragmentDef)
+    .withConfig(config)
+    .withRoutes([])
+    .withOptions(options)
+    .build();
 }
 ```
 

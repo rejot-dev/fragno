@@ -104,18 +104,17 @@ export const addTodoRoute = defineRoutes<AddTodoRouteDeps, AddTodoRouteServices>
 The `create` callback should return one or more routes. The config, dependencies, and services are
 available in the callback.
 
-The `addTodoRoute` object is a route factory that will be instantiated by a call to
-`instantiateFragment()`. At that point, the dependencies and services are passed to the route
-object.
+The `addTodoRoute` object is a route factory that will be instantiated by a call to `instantiate()`.
+At that point, the dependencies and services are passed to the route object.
 
-## The `instantiateFragment` function
+## The `instantiate` function
 
-The `instantiateFragment` function is used to create the Fragment instance. It provides a builder
-pattern that allows you to configure the Fragment with config, routes, services, and options. The
-final `build()` call creates the server-side object that contains the `services` field.
+The `instantiate` function is used to create the Fragment instance. It provides a builder pattern
+that allows you to configure the Fragment with config, routes, services, and options. The final
+`build()` call creates the server-side object that contains the `services` field.
 
 ```typescript title="src/index.ts"
-import { instantiateFragment } from "@fragno-dev/core";
+import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfig } from "@fragno-dev/core";
 
 import { getTodosRoute } from "./routes/get-todos";
@@ -126,7 +125,7 @@ import { addTodoRoute } from "./routes/post-todos";
 const routes = [getTodosRoute, addTodoRoute] as const;
 
 export function createMyFragment(config: MyFragmentConfig, options: FragnoPublicConfig = {}) {
-  return instantiateFragment(myFragmentDefinition)
+  return instantiate(myFragmentDefinition)
     .withConfig(config)
     .withRoutes(routes)
     .withOptions(options)
@@ -184,9 +183,9 @@ export const notificationFragment = defineFragment<{}>("notification-fragment")
   }));
 
 // When instantiating, provide the required service
-const emailInstance = instantiateFragment(emailFragment).withConfig({ apiKey: "key" }).build();
+const emailInstance = instantiate(emailFragment).withConfig({ apiKey: "key" }).build();
 
-const notificationInstance = instantiateFragment(notificationFragment)
+const notificationInstance = instantiate(notificationFragment)
   .withConfig({})
   .withServices({
     email: emailInstance.services.email, // Pass the email service
@@ -208,7 +207,7 @@ const fragment = defineFragment<{}>("app-fragment").usesService<"logger", ILogge
 });
 
 // Can instantiate without providing the optional service
-const instance = instantiateFragment(fragment).withConfig({}).build();
+const instance = instantiate(fragment).withConfig({}).build();
 // instance.services.logger will be undefined
 ```
 
