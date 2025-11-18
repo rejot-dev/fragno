@@ -63,10 +63,10 @@ export type ServiceConstructorFn<
 ) => TService;
 
 /**
- * New fragment definition interface that supports both regular and database fragments.
+ * Fragment definition interface that supports both regular and database fragments.
  * This is the core definition that will be used for fragment instantiation.
  */
-export interface NewFragmentDefinition<
+export interface FragmentDefinition<
   TConfig,
   TOptions extends FragnoPublicConfig,
   TDeps,
@@ -700,7 +700,7 @@ export class FragmentDefinitionBuilder<
   /**
    * Build the final fragment definition
    */
-  build(): NewFragmentDefinition<
+  build(): FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,

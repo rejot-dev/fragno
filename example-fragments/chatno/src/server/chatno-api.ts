@@ -4,7 +4,7 @@ import type {
   ResponseFunctionToolCall,
   ResponseInputItem,
 } from "openai/resources/responses/responses.mjs";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import type { chatnoDefinition } from "../index";
 
 export const ChatMessageSchema = z.object({
@@ -67,7 +67,7 @@ export const ResponseEventSchema = z.discriminatedUnion("type", [
 const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant integrated into a dashboard.`;
 
 // Export function to create the chat route factory with the definition
-export const chatRouteFactory = defineRoutesNew<typeof chatnoDefinition>().create(
+export const chatRouteFactory = defineRoutes<typeof chatnoDefinition>().create(
   ({ config, deps, defineRoute }) => {
     const { openaiClient } = deps;
     const { model = "gpt-5-nano", systemPrompt = DEFAULT_SYSTEM_PROMPT } = config;

@@ -1,5 +1,5 @@
 import { test, expect, expectTypeOf, describe } from "vitest";
-import { defineRoute, defineRoutesNew } from "./route";
+import { defineRoute, defineRoutes } from "./route";
 import { defineFragment } from "./fragment-definition-builder";
 import { z } from "zod";
 
@@ -176,10 +176,10 @@ describe("defineRoute", () => {
   });
 });
 
-// ExtractFragmentServices tests removed - use ExtractNewFragmentServices instead
+// ExtractFragmentServices tests removed - use ExtractFragmentServices instead
 
-describe("defineRoutesNew", () => {
-  test("defineRoutesNew extracts services correctly for route factory", () => {
+describe("defineRoutes", () => {
+  test("defineRoutes extracts services correctly for route factory", () => {
     const fragment = defineFragment<{}>("test-fragment")
       .providesBaseService(({ defineService }) =>
         defineService({
@@ -189,7 +189,7 @@ describe("defineRoutesNew", () => {
       )
       .build();
 
-    const routeFactory = defineRoutesNew(fragment).create(({ services, config, deps }) => {
+    const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
       // Type check that services are properly extracted
       expectTypeOf(services).toMatchObjectType<{
         getUserById: (id: string) => Promise<{ id: string; name: string }>;
@@ -218,7 +218,7 @@ describe("defineRoutesNew", () => {
     expect(typeof routeFactory).toBe("function");
   });
 
-  test("defineRoutesNew with dependencies and services", () => {
+  test("defineRoutes with dependencies and services", () => {
     const fragment = defineFragment<{ apiKey: string }>("auth-fragment")
       .withDependencies(({ config }) => ({
         authClient: { apiKey: config.apiKey },
@@ -232,7 +232,7 @@ describe("defineRoutesNew", () => {
       )
       .build();
 
-    const routeFactory = defineRoutesNew(fragment).create(({ services, config, deps }) => {
+    const routeFactory = defineRoutes(fragment).create(({ services, config, deps }) => {
       // Type check all context properties
       expectTypeOf(config).toEqualTypeOf<{ apiKey: string }>();
       expectTypeOf(deps).toMatchObjectType<{ authClient: { apiKey: string } }>();

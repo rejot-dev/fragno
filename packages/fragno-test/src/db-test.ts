@@ -1,9 +1,9 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core/api";
 import {
-  type NewFragmentInstantiationBuilder,
-  type NewFragnoInstantiatedFragment,
-  instantiateNewFragment,
+  type FragmentInstantiationBuilder,
+  type FragnoInstantiatedFragment,
+  instantiateFragment,
 } from "@fragno-dev/core/api/fragment-instantiator";
 import type { AnyRouteOrFactory, FlattenRouteFactories } from "@fragno-dev/core/api/route";
 import {
@@ -15,7 +15,7 @@ import {
 import type { DatabaseAdapter } from "@fragno-dev/db";
 import type { AbstractQuery } from "@fragno-dev/db/query";
 import type { BaseTestContext } from ".";
-import type { NewFragmentDefinition } from "@fragno-dev/core/api/fragment-definition-builder";
+import type { FragmentDefinition } from "@fragno-dev/core/api/fragment-definition-builder";
 
 // BoundServices is an internal type that strips 'this' parameters from service methods
 // It's used to represent services after they've been bound to a context
@@ -47,7 +47,7 @@ interface FragmentBuilderConfig<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 > {
-  definition: NewFragmentDefinition<
+  definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -57,7 +57,7 @@ interface FragmentBuilderConfig<
     TThisContext,
     TRequestStorage
   >;
-  builder: NewFragmentInstantiationBuilder<
+  builder: FragmentInstantiationBuilder<
     TConfig,
     TOptions,
     TDeps,
@@ -82,10 +82,10 @@ interface FragmentResult<
   TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
   TSchema extends AnySchema,
 > {
-  fragment: NewFragnoInstantiatedFragment<TRoutes, TDeps, TServices, TThisContext, TRequestStorage>;
+  fragment: FragnoInstantiatedFragment<TRoutes, TDeps, TServices, TThisContext, TRequestStorage>;
   services: TServices;
   deps: TDeps;
-  callRoute: NewFragnoInstantiatedFragment<
+  callRoute: FragnoInstantiatedFragment<
     TRoutes,
     TDeps,
     TServices,
@@ -176,7 +176,7 @@ export class DatabaseFragmentsTestBuilder<
     TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   >(
     name: TName,
-    builder: NewFragmentInstantiationBuilder<
+    builder: FragmentInstantiationBuilder<
       TConfig,
       TOptions,
       TDeps,
@@ -188,7 +188,7 @@ export class DatabaseFragmentsTestBuilder<
       TRoutesOrFactories
     >,
     options: {
-      definition: NewFragmentDefinition<
+      definition: FragmentDefinition<
         TConfig,
         TOptions,
         TDeps,
@@ -344,7 +344,7 @@ export class DatabaseFragmentsTestBuilder<
         };
 
         // Instantiate fragment
-        const fragment = instantiateNewFragment(
+        const fragment = instantiateFragment(
           definition,
           builderConfig.config,
           builderConfig.routes,
@@ -410,7 +410,7 @@ export class DatabaseFragmentsTestBuilder<
         };
 
         // Rebuild the fragment with service implementations
-        const fragment = instantiateNewFragment(
+        const fragment = instantiateFragment(
           definition,
           builderConfig.config,
           builderConfig.routes,

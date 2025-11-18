@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { CustomerResponseSchema } from "../models/customers";
 import { stripeToApiError } from "./errors";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import { stripeFragmentDefinition } from "../definition";
 
-export const customersRoutesFactory = defineRoutesNew(stripeFragmentDefinition).create(
+export const customersRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
   ({ deps, config, defineRoute }) => {
     return [
       defineRoute({

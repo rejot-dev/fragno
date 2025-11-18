@@ -5,8 +5,8 @@ import {
 } from "@fragno-dev/db/adapters";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import {
-  newInstantiatedFragmentFakeSymbol,
-  type NewFragnoInstantiatedFragment,
+  instantiatedFragmentFakeSymbol,
+  type FragnoInstantiatedFragment,
 } from "@fragno-dev/core/api/fragment-instantiator";
 import { loadConfig } from "c12";
 import { relative } from "node:path";
@@ -128,7 +128,7 @@ export async function importFragmentFiles(paths: string[]): Promise<{
 
 function isNewFragnoInstantiatedFragment(
   value: unknown,
-): value is NewFragnoInstantiatedFragment<
+): value is FragnoInstantiatedFragment<
   [],
   unknown,
   Record<string, unknown>,
@@ -139,8 +139,8 @@ function isNewFragnoInstantiatedFragment(
   return (
     typeof value === "object" &&
     value !== null &&
-    newInstantiatedFragmentFakeSymbol in value &&
-    value[newInstantiatedFragmentFakeSymbol] === newInstantiatedFragmentFakeSymbol
+    instantiatedFragmentFakeSymbol in value &&
+    value[instantiatedFragmentFakeSymbol] === instantiatedFragmentFakeSymbol
   );
 }
 

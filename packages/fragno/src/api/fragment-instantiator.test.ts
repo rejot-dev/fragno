@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-definition-builder";
-import { instantiate, NewFragnoInstantiatedFragment } from "./fragment-instantiator";
-import { defineRoute, defineRoutesNew, type AnyNewFragmentDefinition } from "./route";
+import { instantiate, FragnoInstantiatedFragment } from "./fragment-instantiator";
+import { defineRoute, defineRoutes, type AnyFragmentDefinition } from "./route";
 import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestThisContext } from "./api";
 import { z } from "zod";
@@ -29,7 +29,7 @@ describe("fragment-instantiator", () => {
         .withOptions({ mountRoute: "/api" })
         .build();
 
-      expect(fragment).toBeInstanceOf(NewFragnoInstantiatedFragment);
+      expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
       expect(fragment.name).toBe("test-fragment");
       expect(fragment.routes).toHaveLength(1);
       expect(fragment.mountRoute).toBe("/api");
@@ -40,7 +40,7 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition).build();
 
-      expect(fragment).toBeInstanceOf(NewFragnoInstantiatedFragment);
+      expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
       expect(fragment.name).toBe("minimal-fragment");
       expect(fragment.routes).toHaveLength(0);
     });
@@ -729,7 +729,7 @@ describe("fragment-instantiator", () => {
         createRequestContext: () => ({
           customMethod: () => "custom value",
         }),
-      } satisfies AnyNewFragmentDefinition;
+      } satisfies AnyFragmentDefinition;
 
       const route = defineRoute({
         method: "GET",
@@ -764,7 +764,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ defineRoute }) => {
+      const routes = defineRoutes(definition).create(({ defineRoute }) => {
         return [
           defineRoute({
             method: "GET",
@@ -859,7 +859,7 @@ describe("fragment-instantiator", () => {
         )
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test-counter",
@@ -944,8 +944,8 @@ describe("fragment-instantiator", () => {
       const result1 = fragment.services.method1();
       expect(result1).toBe("key-5");
 
-      // Now let's use defineRoutesNew to access services properly in routes
-      const routesFactory = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+      // Now let's use defineRoutes to access services properly in routes
+      const routesFactory = defineRoutes(definition).create(({ services, defineRoute }) => {
         return [
           defineRoute({
             method: "GET",
@@ -1013,7 +1013,7 @@ describe("fragment-instantiator", () => {
     });
   });
 
-  describe("defineRoutesNew with services", () => {
+  describe("defineRoutes with services", () => {
     it("should provide base services in route factory context", () => {
       const definition = defineFragment("test-fragment")
         .providesBaseService(() => ({
@@ -1021,7 +1021,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => {
         // Verify base service is accessible
         expectTypeOf(services).toMatchObjectType<{
           greet: (name: string) => string;
@@ -1051,7 +1051,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => {
         // Verify named service is accessible
         expectTypeOf(services).toMatchObjectType<{
           mathService: {
@@ -1086,7 +1086,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => {
         // Verify both base and named services are accessible
         expectTypeOf(services.baseMethod).toBeFunction();
         expectTypeOf(services.namedService).toBeObject();
@@ -1118,7 +1118,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => [
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => [
         defineRoute({
           method: "GET",
           path: "/test",
@@ -1163,7 +1163,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => {
         // Verify all named services are accessible
         expectTypeOf(services.service1).toBeObject();
         expectTypeOf(services.service1.method1).toBeFunction();
@@ -1207,7 +1207,7 @@ describe("fragment-instantiator", () => {
         }))
         .build();
 
-      const routes = defineRoutesNew(definition).create(({ services, defineRoute }) => {
+      const routes = defineRoutes(definition).create(({ services, defineRoute }) => {
         // Verify services are accessible
         expectTypeOf(services).toMatchObjectType<{
           greet: (name: string) => string;

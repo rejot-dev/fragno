@@ -1,15 +1,11 @@
+// oxlint-disable no-explicit-any
+
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { FragnoRouteConfig, HTTPMethod, RequestThisContext } from "./api";
-import type { NewFragmentDefinition } from "./fragment-definition-builder";
+import type { FragmentDefinition } from "./fragment-definition-builder";
 import type { BoundServices } from "./bind-services";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyFragnoRouteConfig = FragnoRouteConfig<HTTPMethod, string, any, any, any, any, any>;
-
-export type AnyFragmentBuilder = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly definition: NewFragmentDefinition<any, any, any, any, any, any, any, any>;
-};
 
 export interface RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps = {}> {
   config: TConfig;
@@ -34,15 +30,13 @@ export type RouteFactory<
   >[],
 > = (context: RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps>) => TRoutes;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyRouteOrFactory = AnyFragnoRouteConfig | RouteFactory<any, any, any, any, any>;
 
 export type FlattenRouteFactories<T extends readonly AnyRouteOrFactory[]> = T extends readonly [
   infer First,
   ...infer Rest extends readonly AnyRouteOrFactory[],
 ]
-  ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    First extends RouteFactory<any, any, any, any, infer TRoutes>
+  ? First extends RouteFactory<any, any, any, any, infer TRoutes>
     ? [...TRoutes, ...FlattenRouteFactories<Rest>]
     : [First, ...FlattenRouteFactories<Rest>]
   : [];
@@ -58,7 +52,6 @@ export function resolveRouteFactories<
   context: RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps>,
   routesOrFactories: TRoutesOrFactories,
 ): FlattenRouteFactories<TRoutesOrFactories> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const routes: any[] = [];
 
   for (const item of routesOrFactories) {
@@ -166,164 +159,42 @@ export function defineRoute<
   return config;
 }
 
-// Type helpers to extract types from FragmentBuilder or DatabaseFragmentBuilder
-// DatabaseFragmentBuilder has 6 type parameters: TSchema, TConfig, TDeps, TServices, TUsedServices, TProvidedServices
-// FragmentBuilder has 6 type parameters: TConfig, TDeps, TServices, TAdditionalContext, TUsedServices, TProvidedServices
-
-// Helper to get the return type of the definition getter
-// Use T['definition'] to access the property type
-type GetDefinition<T> = T extends { definition: unknown } ? T["definition"] : never;
-
-// Extract config - deprecated, use ExtractNewFragmentConfig instead
-export type ExtractFragmentConfig<T> = ExtractNewFragmentConfig<GetDefinition<T>>;
-
-// Extract deps - deprecated, use ExtractNewFragmentDeps instead
-export type ExtractFragmentDeps<T> = ExtractNewFragmentDeps<GetDefinition<T>>;
-
-// Extract services - deprecated, use ExtractNewFragmentServices instead
-export type ExtractFragmentServices<T> = ExtractNewFragmentServices<GetDefinition<T>>;
-
-// Extract the this context type from the fragment builder - deprecated, use ExtractNewFragmentThisContext instead
-export type ExtractThisContext<T> = ExtractNewFragmentThisContext<GetDefinition<T>>;
-
 // ============================================================================
-// Type extractors for NewFragmentDefinition
+// Type extractors for FragmentDefinition
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyNewFragmentDefinition = NewFragmentDefinition<
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
-  any // eslint-disable-line @typescript-eslint/no-explicit-any
->;
+export type AnyFragmentDefinition = FragmentDefinition<any, any, any, any, any, any, any, any>;
 
-// Extract config from NewFragmentDefinition
-export type ExtractNewFragmentConfig<T> =
-  T extends NewFragmentDefinition<
-    infer TConfig,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
-  >
-    ? TConfig
-    : never;
+// Extract config from FragmentDefinition
+export type ExtractFragmentConfig<T> =
+  T extends FragmentDefinition<infer TConfig, any, any, any, any, any, any, any> ? TConfig : never;
 
-// Extract deps from NewFragmentDefinition
-export type ExtractNewFragmentDeps<T> =
-  T extends NewFragmentDefinition<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    infer TDeps,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
-  >
-    ? TDeps
-    : never;
+// Extract deps from FragmentDefinition
+export type ExtractFragmentDeps<T> =
+  T extends FragmentDefinition<any, any, infer TDeps, any, any, any, any, any> ? TDeps : never;
 
-// Extract services from NewFragmentDefinition
+// Extract services from FragmentDefinition
 // This extracts both base services (flat) and named services (nested)
 // The result matches the structure of fragment.services at runtime
-export type ExtractNewFragmentServices<T> =
-  T extends NewFragmentDefinition<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    infer TBaseServices,
-    infer TServices,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
-  >
+export type ExtractFragmentServices<T> =
+  T extends FragmentDefinition<any, any, any, infer TBaseServices, infer TServices, any, any, any>
     ? BoundServices<TBaseServices & TServices>
     : never;
 
-// Extract service dependencies from NewFragmentDefinition
-export type ExtractNewFragmentServiceDeps<T> =
-  T extends NewFragmentDefinition<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    infer TServiceDependencies,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
-  >
+// Extract service dependencies from FragmentDefinition
+export type ExtractFragmentServiceDeps<T> =
+  T extends FragmentDefinition<any, any, any, any, any, infer TServiceDependencies, any, any>
     ? TServiceDependencies
     : never;
 
-// Extract this context from NewFragmentDefinition
-export type ExtractNewFragmentThisContext<T> =
-  T extends NewFragmentDefinition<
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
-    infer TThisContext,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
-  >
+// Extract this context from FragmentDefinition
+export type ExtractFragmentThisContext<T> =
+  T extends FragmentDefinition<any, any, any, any, any, any, infer TThisContext, any>
     ? TThisContext
     : RequestThisContext;
 
-// Old defineRoutes - DEPRECATED, use defineRoutesNew instead
-// Kept for backwards compatibility during migration
-/** @deprecated Use defineRoutesNew instead */
-export const defineRoutes = defineRoutesNew;
-
-// ============================================================================
-// defineRoutesNew - for NewFragmentDefinition
-// ============================================================================
-
-// Overload that infers types from NewFragmentDefinition (runtime value)
-export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefinition>(
+// Overload that infers types from FragmentDefinition (runtime value)
+export function defineRoutes<const TDefinition extends AnyFragmentDefinition>(
   definition: TDefinition,
 ): {
   create: <
@@ -334,15 +205,15 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
       StandardSchemaV1 | undefined,
       string,
       string,
-      ExtractNewFragmentThisContext<TDefinition>
+      ExtractFragmentThisContext<TDefinition>
     >[],
   >(
     fn: (
       context: RouteFactoryContext<
-        ExtractNewFragmentConfig<TDefinition>,
-        ExtractNewFragmentDeps<TDefinition>,
-        ExtractNewFragmentServices<TDefinition>,
-        ExtractNewFragmentServiceDeps<TDefinition>
+        ExtractFragmentConfig<TDefinition>,
+        ExtractFragmentDeps<TDefinition>,
+        ExtractFragmentServices<TDefinition>,
+        ExtractFragmentServiceDeps<TDefinition>
       > & {
         defineRoute: <
           const TMethod extends HTTPMethod,
@@ -359,7 +230,7 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
             TOutputSchema,
             TErrorCode,
             TQueryParameters,
-            ExtractNewFragmentThisContext<TDefinition>
+            ExtractFragmentThisContext<TDefinition>
           >,
         ) => FragnoRouteConfig<
           TMethod,
@@ -368,21 +239,21 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
           TOutputSchema,
           TErrorCode,
           TQueryParameters,
-          ExtractNewFragmentThisContext<TDefinition>
+          ExtractFragmentThisContext<TDefinition>
         >;
       },
     ) => TRoutes,
   ) => RouteFactory<
-    ExtractNewFragmentConfig<TDefinition>,
-    ExtractNewFragmentDeps<TDefinition>,
-    ExtractNewFragmentServices<TDefinition>,
-    ExtractNewFragmentServiceDeps<TDefinition>,
+    ExtractFragmentConfig<TDefinition>,
+    ExtractFragmentDeps<TDefinition>,
+    ExtractFragmentServices<TDefinition>,
+    ExtractFragmentServiceDeps<TDefinition>,
     TRoutes
   >;
 };
 
-// Overload that infers types from NewFragmentDefinition (type parameter only)
-export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefinition>(): {
+// Overload that infers types from FragmentDefinition (type parameter only)
+export function defineRoutes<const TDefinition extends AnyFragmentDefinition>(): {
   create: <
     const TRoutes extends readonly FragnoRouteConfig<
       HTTPMethod,
@@ -391,15 +262,15 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
       StandardSchemaV1 | undefined,
       string,
       string,
-      ExtractNewFragmentThisContext<TDefinition>
+      ExtractFragmentThisContext<TDefinition>
     >[],
   >(
     fn: (
       context: RouteFactoryContext<
-        ExtractNewFragmentConfig<TDefinition>,
-        ExtractNewFragmentDeps<TDefinition>,
-        ExtractNewFragmentServices<TDefinition>,
-        ExtractNewFragmentServiceDeps<TDefinition>
+        ExtractFragmentConfig<TDefinition>,
+        ExtractFragmentDeps<TDefinition>,
+        ExtractFragmentServices<TDefinition>,
+        ExtractFragmentServiceDeps<TDefinition>
       > & {
         defineRoute: <
           const TMethod extends HTTPMethod,
@@ -416,7 +287,7 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
             TOutputSchema,
             TErrorCode,
             TQueryParameters,
-            ExtractNewFragmentThisContext<TDefinition>
+            ExtractFragmentThisContext<TDefinition>
           >,
         ) => FragnoRouteConfig<
           TMethod,
@@ -425,22 +296,22 @@ export function defineRoutesNew<const TDefinition extends AnyNewFragmentDefiniti
           TOutputSchema,
           TErrorCode,
           TQueryParameters,
-          ExtractNewFragmentThisContext<TDefinition>
+          ExtractFragmentThisContext<TDefinition>
         >;
       },
     ) => TRoutes,
   ) => RouteFactory<
-    ExtractNewFragmentConfig<TDefinition>,
-    ExtractNewFragmentDeps<TDefinition>,
-    ExtractNewFragmentServices<TDefinition>,
-    ExtractNewFragmentServiceDeps<TDefinition>,
+    ExtractFragmentConfig<TDefinition>,
+    ExtractFragmentDeps<TDefinition>,
+    ExtractFragmentServices<TDefinition>,
+    ExtractFragmentServiceDeps<TDefinition>,
     TRoutes
   >;
 };
 
 // Implementation
-export function defineRoutesNew<
-  const TDefinition extends AnyNewFragmentDefinition | undefined = undefined,
+export function defineRoutes<
+  const TDefinition extends AnyFragmentDefinition | undefined = undefined,
 >(
   // Parameter is only used for type inference, not runtime
   _definition?: TDefinition,
@@ -454,21 +325,17 @@ export function defineRoutesNew<
         StandardSchemaV1 | undefined,
         string,
         string,
-        TDefinition extends AnyNewFragmentDefinition
-          ? ExtractNewFragmentThisContext<TDefinition>
+        TDefinition extends AnyFragmentDefinition
+          ? ExtractFragmentThisContext<TDefinition>
           : RequestThisContext
       >[],
     >(
       fn: (
         context: RouteFactoryContext<
-          TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentConfig<TDefinition> : {},
-          TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentDeps<TDefinition> : {},
-          TDefinition extends AnyNewFragmentDefinition
-            ? ExtractNewFragmentServices<TDefinition>
-            : {},
-          TDefinition extends AnyNewFragmentDefinition
-            ? ExtractNewFragmentServiceDeps<TDefinition>
-            : {}
+          TDefinition extends AnyFragmentDefinition ? ExtractFragmentConfig<TDefinition> : {},
+          TDefinition extends AnyFragmentDefinition ? ExtractFragmentDeps<TDefinition> : {},
+          TDefinition extends AnyFragmentDefinition ? ExtractFragmentServices<TDefinition> : {},
+          TDefinition extends AnyFragmentDefinition ? ExtractFragmentServiceDeps<TDefinition> : {}
         > & {
           defineRoute: <
             const TMethod extends HTTPMethod,
@@ -485,8 +352,8 @@ export function defineRoutesNew<
               TOutputSchema,
               TErrorCode,
               TQueryParameters,
-              TDefinition extends AnyNewFragmentDefinition
-                ? ExtractNewFragmentThisContext<TDefinition>
+              TDefinition extends AnyFragmentDefinition
+                ? ExtractFragmentThisContext<TDefinition>
                 : RequestThisContext
             >,
           ) => FragnoRouteConfig<
@@ -496,19 +363,17 @@ export function defineRoutesNew<
             TOutputSchema,
             TErrorCode,
             TQueryParameters,
-            TDefinition extends AnyNewFragmentDefinition
-              ? ExtractNewFragmentThisContext<TDefinition>
+            TDefinition extends AnyFragmentDefinition
+              ? ExtractFragmentThisContext<TDefinition>
               : RequestThisContext
           >;
         },
       ) => TRoutes,
     ): RouteFactory<
-      TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentConfig<TDefinition> : {},
-      TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentDeps<TDefinition> : {},
-      TDefinition extends AnyNewFragmentDefinition ? ExtractNewFragmentServices<TDefinition> : {},
-      TDefinition extends AnyNewFragmentDefinition
-        ? ExtractNewFragmentServiceDeps<TDefinition>
-        : {},
+      TDefinition extends AnyFragmentDefinition ? ExtractFragmentConfig<TDefinition> : {},
+      TDefinition extends AnyFragmentDefinition ? ExtractFragmentDeps<TDefinition> : {},
+      TDefinition extends AnyFragmentDefinition ? ExtractFragmentServices<TDefinition> : {},
+      TDefinition extends AnyFragmentDefinition ? ExtractFragmentServiceDeps<TDefinition> : {},
       TRoutes
     > => {
       // Create a wrapper around the callback that adds the defineRoute function
@@ -517,7 +382,6 @@ export function defineRoutesNew<
           ...ctx,
           defineRoute,
         };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return fn(extendedCtx as any);
       };
     },

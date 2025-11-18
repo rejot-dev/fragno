@@ -32,7 +32,7 @@ import {
 } from "./internal/ndjson-streaming";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
-import type { NewFragmentDefinition } from "../api/fragment-definition-builder";
+import type { FragmentDefinition } from "../api/fragment-definition-builder";
 import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
@@ -1081,7 +1081,7 @@ export class ClientBuilder<
 
 /**
  * Create a client builder for fragments using the new fragment definition API.
- * This is the same as createClientBuilder but works with NewFragmentDefinition.
+ * This is the same as createClientBuilder but works with FragmentDefinition.
  */
 export function createClientBuilder<
   TConfig,
@@ -1094,7 +1094,7 @@ export function createClientBuilder<
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
 >(
-  definition: NewFragmentDefinition<
+  definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,

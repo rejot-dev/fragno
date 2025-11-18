@@ -492,7 +492,7 @@ describe("Fragment builder transformation", () => {
     test("strips builder callbacks and route handlers with destructuring", () => {
       const source = dedent`
         import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        import { defineRoutesNew } from "@fragno-dev/core/api/route";
+        import { defineRoutes } from "@fragno-dev/core/api/route";
         
         const fragment = defineFragment("test")
           .withDependencies(() => ({ data: "test" }))
@@ -501,7 +501,7 @@ describe("Fragment builder transformation", () => {
           }))
           .build();
         
-        const routes = defineRoutesNew(fragment).create(({ defineRoute }) => [
+        const routes = defineRoutes(fragment).create(({ defineRoute }) => [
           defineRoute({
             method: "GET",
             path: "/test",
@@ -521,9 +521,9 @@ describe("Fragment builder transformation", () => {
       expect(result.code).not.toContain('message: "hello"');
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        import { defineRoutesNew } from "@fragno-dev/core/api/route";
+        import { defineRoutes } from "@fragno-dev/core/api/route";
         const fragment = defineFragment("test").withDependencies().providesBaseService().build();
-        const routes = defineRoutesNew(fragment).create(({
+        const routes = defineRoutes(fragment).create(({
           defineRoute
         }) => [defineRoute({
           method: "GET",
@@ -536,7 +536,7 @@ describe("Fragment builder transformation", () => {
     test("strips builder callbacks and route handlers with member access", () => {
       const source = dedent`
         import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        import { defineRoutesNew } from "@fragno-dev/core/api/route";
+        import { defineRoutes } from "@fragno-dev/core/api/route";
         
         const fragment = defineFragment("test")
           .withDependencies(() => ({ data: "test" }))
@@ -545,7 +545,7 @@ describe("Fragment builder transformation", () => {
           }))
           .build();
         
-        const routes = defineRoutesNew(fragment).create((context) => [
+        const routes = defineRoutes(fragment).create((context) => [
           context.defineRoute({
             method: "GET",
             path: "/test",
@@ -565,9 +565,9 @@ describe("Fragment builder transformation", () => {
       expect(result.code).not.toContain('message: "hello"');
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        import { defineRoutesNew } from "@fragno-dev/core/api/route";
+        import { defineRoutes } from "@fragno-dev/core/api/route";
         const fragment = defineFragment("test").withDependencies().providesBaseService().build();
-        const routes = defineRoutesNew(fragment).create(context => [context.defineRoute({
+        const routes = defineRoutes(fragment).create(context => [context.defineRoute({
           method: "GET",
           path: "/test",
           handler: () => {}

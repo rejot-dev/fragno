@@ -5,10 +5,10 @@ import {
   type SubscriptionResponse,
 } from "../models/subscriptions";
 import { stripeToApiError } from "./errors";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import { stripeFragmentDefinition } from "../definition";
 
-export const subscriptionsRoutesFactory = defineRoutesNew(stripeFragmentDefinition).create(
+export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition).create(
   ({ deps, services, config, defineRoute }) => {
     return [
       defineRoute({

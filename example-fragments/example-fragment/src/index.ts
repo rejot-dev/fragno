@@ -7,7 +7,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
 import { createHash } from "node:crypto";
-import { defineRoutesNew } from "@fragno-dev/core/api/route";
+import { defineRoutes } from "@fragno-dev/core/api/route";
 import { instantiate } from "@fragno-dev/core/api/fragment-instantiator";
 
 export interface ExampleFragmentServerConfig {
@@ -44,7 +44,7 @@ const exampleFragmentDefinition = defineFragment<ExampleFragmentServerConfig>("e
   })
   .build();
 
-const exampleRoutesFactory = defineRoutesNew(exampleFragmentDefinition).create(
+const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
   ({ defineRoute, deps }) => {
     const { serverSideData } = deps;
 

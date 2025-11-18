@@ -32,7 +32,7 @@ const isAddRouteBinding = (binding: Binding): boolean => {
 };
 
 /**
- * Check if a binding is an import of defineRoutes or defineRoutesNew from Fragno
+ * Check if a binding is an import of defineRoutes or defineRoutes from Fragno
  */
 const isRouteBuilderBinding = (binding: Binding): boolean => {
   if (!t.isImportDeclaration(binding?.path.parent)) {
@@ -53,7 +53,7 @@ const isRouteBuilderBinding = (binding: Binding): boolean => {
     return false;
   }
 
-  if (imported.name !== "defineRoutes" && imported.name !== "defineRoutesNew") {
+  if (imported.name !== "defineRoutes" && imported.name !== "defineRoutes") {
     return false;
   }
 
@@ -62,8 +62,8 @@ const isRouteBuilderBinding = (binding: Binding): boolean => {
 
 /**
  * Check if a binding comes from a callback parameter that provides defineRoute
- * from a Fragno API (defineRoutes or defineRoutesNew).
- * Example: defineRoutesNew(fragment).create(({ defineRoute }) => [...])
+ * from a Fragno API (defineRoutes or defineRoutes).
+ * Example: defineRoutes(fragment).create(({ defineRoute }) => [...])
  */
 const isDefineRouteFromCallbackParam = (
   binding: Binding,
@@ -109,7 +109,7 @@ const isDefineRouteFromCallbackParam = (
 
 /**
  * Check if a member expression is accessing defineRoute from a callback parameter
- * from a Fragno API (defineRoutes or defineRoutesNew).
+ * from a Fragno API (defineRoutes or defineRoutes).
  * Example: context.defineRoute(...)
  */
 const isDefineRouteMemberAccess = (
@@ -199,7 +199,7 @@ function replaceHandlerWithNoop(routeConfig: t.Expression) {
 
 /**
  * Collect all callback functions that are passed to .create() on Fragno route builders
- * (defineRoutes or defineRoutesNew)
+ * (defineRoutes or defineRoutes)
  */
 function collectFragnoCallbacks(ast: Node): Set<NodePath<t.Function>> {
   const fragnoCallbacks = new Set<NodePath<t.Function>>();
@@ -222,7 +222,7 @@ function collectFragnoCallbacks(ast: Node): Set<NodePath<t.Function>> {
       // Try to resolve the object to a Fragno route builder
       let isFragnoBuilder = false;
 
-      // Case 1: Direct identifier - defineRoutes.create() or defineRoutesNew.create()
+      // Case 1: Direct identifier - defineRoutes.create() or defineRoutes.create()
       if (t.isIdentifier(callee.object)) {
         const binding = path.scope.getBinding(callee.object.name);
         if (binding && isRouteBuilderBinding(binding)) {
@@ -230,7 +230,7 @@ function collectFragnoCallbacks(ast: Node): Set<NodePath<t.Function>> {
         }
       }
 
-      // Case 2: Call expression - defineRoutes().create() or defineRoutesNew().create()
+      // Case 2: Call expression - defineRoutes().create() or defineRoutes().create()
       if (t.isCallExpression(callee.object)) {
         const innerCallee = callee.object.callee;
         if (t.isIdentifier(innerCallee)) {
