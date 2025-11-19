@@ -4,7 +4,6 @@ import {
   authFragmentDefinition,
   authFragmentRoutes,
   otpFragmentRoutes,
-  otpSchema,
 } from "./index";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
@@ -25,28 +24,24 @@ describe("OTP Fragment", () => {
       const otpService = fragments.otp.services.otp;
 
       const code = await testCtx.inContext(async function () {
-        const uow = this.getUnitOfWork(otpSchema);
+        return this.uow(async ({ executeMutate }) => {
+          const code = otpService.generateOTP("user-123");
 
-        const code = otpService.generateOTP("user-123");
+          await executeMutate();
 
-        await uow.executeRetrieve();
-        await uow.executeMutations();
-
-        // Verify we have a mutation operation
-        expect(uow.getMutationOperations()).toHaveLength(1);
-
-        return code;
+          return code;
+        });
       });
 
       expect(code).toMatch(/^\d{6}$/);
 
       // Verify OTP in a separate UOW context with automatic phase execution
       const isValid = await testCtx.inContext(async function () {
-        const uow = this.getUnitOfWork(otpSchema);
-        const isValid = otpService.verifyOTP("user-123", code);
-        await uow.executeRetrieve();
-        await uow.executeMutations();
-        return isValid;
+        return this.uow(async ({ executeMutate }) => {
+          const isValidPromise = otpService.verifyOTP("user-123", code);
+          await executeMutate();
+          return isValidPromise;
+        });
       });
       expect(isValid).toBe(true);
     });

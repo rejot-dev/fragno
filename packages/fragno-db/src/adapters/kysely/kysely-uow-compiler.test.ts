@@ -126,7 +126,7 @@ describe("kysely-uow-compiler", () => {
       return rawResults;
     };
     // Pass undefined for decoder since we're only testing compilation, not execution
-    return new UnitOfWork(testSchema, mockCompiler, mockExecutor, mockDecoder, name);
+    return new UnitOfWork(mockCompiler, mockExecutor, mockDecoder, name).forSchema(testSchema);
   }
 
   describe("compileRetrievalOperation", () => {

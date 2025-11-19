@@ -53,11 +53,11 @@ describe.sequential("Database Fragment Integration", () => {
     .providesService("userService", ({ defineService }) => {
       return defineService({
         createUser(name: string, email: string): FragnoId {
-          const uow = this.getUnitOfWork(usersSchema);
+          const uow = this.uow(usersSchema);
           return uow.create("users", { name, email });
         },
         async getUserById(userId: FragnoId | string) {
-          const uow = this.getUnitOfWork(usersSchema).find("users", (b) =>
+          const uow = this.uow(usersSchema).find("users", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "=", userId)),
           );
           // Note: executeRetrieve() should be called by the caller before awaiting retrievalPhase
@@ -65,7 +65,7 @@ describe.sequential("Database Fragment Integration", () => {
           return users?.[0] ?? null;
         },
         createProfile(userId: FragnoId | string, bio: string): FragnoId {
-          const uow = this.getUnitOfWork(usersSchema);
+          const uow = this.uow(usersSchema);
           return uow.create("profiles", {
             user_id: userId,
             bio,
@@ -82,10 +82,12 @@ describe.sequential("Database Fragment Integration", () => {
       path: "/users",
       outputSchema: z.object({ userId: z.string(), profileId: z.string() }),
       handler: async function (_input, { json }) {
-        const userId = services.userService.createUser("John Doe", "john@example.com");
-        const profileId = services.userService.createProfile(userId, "Software engineer");
-
-        await this.execute();
+        const { userId, profileId } = await this.uow(async ({ executeMutate }) => {
+          const userId = services.userService.createUser("John Doe", "john@example.com");
+          const profileId = services.userService.createProfile(userId, "Software engineer");
+          await executeMutate();
+          return { userId, profileId };
+        });
 
         return json(
           { userId: userId.externalId, profileId: profileId.externalId },
@@ -115,22 +117,25 @@ describe.sequential("Database Fragment Integration", () => {
           total: number,
         ) {
           // Verify user exists by calling the userService from the other fragment
-          // Phase execution is handled by the handler, not the service
           const user = await serviceDeps.userService.getUserById(userExternalId);
+
           if (!user) {
             throw new Error("User not found");
           }
 
-          const uow = this.getUnitOfWork(ordersSchema);
-          return uow.create("orders", {
+          const uow = this.uow(ordersSchema);
+          const orderId = uow.create("orders", {
             user_external_id: userExternalId,
             product_name: productName,
             quantity,
             total,
           });
+
+          await uow.mutationPhase;
+          return orderId;
         },
         async getOrdersByUser(userExternalId: string) {
-          const uow = this.getUnitOfWork(ordersSchema).find("orders", (b) =>
+          const uow = this.uow(ordersSchema).find("orders", (b) =>
             b.whereIndex("orders_user_idx", (eb) => eb("user_external_id", "=", userExternalId)),
           );
           // Note: executeRetrieve() should be called by the caller before awaiting retrievalPhase
@@ -156,22 +161,18 @@ describe.sequential("Database Fragment Integration", () => {
       handler: async function ({ input }, { json }) {
         const body = await input.valid();
 
-        // Start the service call (which adds operations to UOW and awaits phases)
-        const orderIdPromise = services.orderService.createOrder(
-          body.userId,
-          body.productName,
-          body.quantity,
-          body.total,
-        );
+        const { orderId } = await this.uow(async ({ executeMutate }) => {
+          const orderIdPromise = services.orderService.createOrder(
+            body.userId,
+            body.productName,
+            body.quantity,
+            body.total,
+          );
 
-        const uow = this.getUnitOfWork();
-        await uow.executeRetrieve();
+          await executeMutate();
 
-        // Now the service call can complete
-        const orderId = await orderIdPromise;
-
-        // Execute mutations
-        await uow.executeMutations();
+          return { orderId: await orderIdPromise };
+        });
 
         return json({ orderId: orderId.externalId }, { status: 201 });
       },
@@ -246,9 +247,11 @@ describe.sequential("Database Fragment Integration", () => {
 
   it("should verify user was created with profile", async () => {
     const user = await usersFragment.inContext(async function () {
-      const userPromise = usersFragment.services.userService.getUserById(userId);
-      await this.getUnitOfWork().executeRetrieve();
-      return await userPromise;
+      return await this.uow(async ({ executeRetrieve }) => {
+        const userPromise = usersFragment.services.userService.getUserById(userId);
+        await executeRetrieve();
+        return await userPromise;
+      });
     });
 
     expect(user).toMatchObject({
@@ -278,9 +281,11 @@ describe.sequential("Database Fragment Integration", () => {
 
   it("should verify order was created with correct user reference", async () => {
     const orders = await ordersFragment.inContext(async function () {
-      const ordersPromise = ordersFragment.services.orderService.getOrdersByUser(userId);
-      await this.getUnitOfWork().executeRetrieve();
-      return await ordersPromise;
+      return await this.uow(async ({ executeRetrieve }) => {
+        const ordersPromise = ordersFragment.services.orderService.getOrdersByUser(userId);
+        await executeRetrieve();
+        return await ordersPromise;
+      });
     });
     expect(orders).toHaveLength(1);
     expect(orders[0]).toMatchObject({
@@ -297,16 +302,20 @@ describe.sequential("Database Fragment Integration", () => {
   it("should verify cross-fragment service integration works bidirectionally", async () => {
     // Orders service should be able to query users via the shared userService
     const ordersByUser = await ordersFragment.inContext(async function () {
-      const ordersPromise = ordersFragment.services.orderService.getOrdersByUser(userId);
-      await this.getUnitOfWork().executeRetrieve();
-      return await ordersPromise;
+      return await this.uow(async ({ executeRetrieve }) => {
+        const ordersPromise = ordersFragment.services.orderService.getOrdersByUser(userId);
+        await executeRetrieve();
+        return await ordersPromise;
+      });
     });
     const userFromOrdersContext = await usersFragment.inContext(async function () {
-      const userPromise = usersFragment.services.userService.getUserById(
-        ordersByUser[0].user_external_id,
-      );
-      await this.getUnitOfWork().executeRetrieve();
-      return await userPromise;
+      return await this.uow(async ({ executeRetrieve }) => {
+        const userPromise = usersFragment.services.userService.getUserById(
+          ordersByUser[0].user_external_id,
+        );
+        await executeRetrieve();
+        return await userPromise;
+      });
     });
 
     expect(userFromOrdersContext).toMatchObject({
@@ -334,13 +343,12 @@ describe.sequential("Database Fragment Integration", () => {
 
   it("should be able to use inContext to call a service", async () => {
     const [user, order] = await usersFragment.inContext(async function () {
-      // Set up both find operations first
-      const userPromise = usersFragment.services.userService.getUserById(userId);
-      const orderPromise = ordersFragment.services.orderService.getOrdersByUser(userId);
-      // Execute all retrievals at once
-      await this.getUnitOfWork().executeRetrieve();
-      // Now await the results
-      return await Promise.all([userPromise, orderPromise]);
+      return await this.uow(async ({ executeRetrieve }) => {
+        const user = usersFragment.services.userService.getUserById(userId);
+        const orders = ordersFragment.services.orderService.getOrdersByUser(userId);
+        await executeRetrieve();
+        return [user, orders];
+      });
     });
     expect(user).toMatchObject({
       id: expect.objectContaining({

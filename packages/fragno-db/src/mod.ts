@@ -100,10 +100,7 @@ export { decodeCursor, type CursorData } from "./query/cursor";
 export {
   createUnitOfWork,
   UnitOfWork,
-  UnitOfWorkSchemaView,
-  UnitOfWorkRestrictedSchemaView,
-  RestrictedUnitOfWork,
-  restrictUnitOfWork,
+  TypedUnitOfWork,
   type IUnitOfWork,
   type IUnitOfWorkRestricted,
   type UOWCompiler,

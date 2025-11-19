@@ -1,18 +1,19 @@
 import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type { IUnitOfWork, IUnitOfWorkRestricted } from "./query/unit-of-work";
-import {
-  UnitOfWorkSchemaView,
-  UnitOfWorkRestrictedSchemaView,
-  restrictUnitOfWork,
-} from "./query/unit-of-work";
+import type { IUnitOfWork } from "./query/unit-of-work";
+import { TypedUnitOfWork, UnitOfWork } from "./query/unit-of-work";
 import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
   type ServiceConstructorFn,
 } from "@fragno-dev/core";
+import {
+  executeRestrictedUnitOfWork,
+  type AwaitedPromisesInObject,
+  type ExecuteRestrictedUnitOfWorkOptions,
+} from "./query/execute-unit-of-work";
 
 /**
  * Extended FragnoPublicConfig that includes a database adapter.
@@ -47,34 +48,56 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
  */
 export type DatabaseServiceContext = RequestThisContext & {
   /**
-   * Get the Unit of Work from the current context (restricted version without execute methods).
-   * @param schema - Optional schema to get a typed view. If not provided, returns the base UOW.
-   * @returns IUnitOfWorkRestricted if no schema provided, or UnitOfWorkRestrictedSchemaView if schema provided.
+   * Get a typed, restricted Unit of Work for the given schema.
+   * @param schema - Schema to get a typed view for
+   * @returns TypedUnitOfWork (restricted version without execute methods)
    */
-  getUnitOfWork(): IUnitOfWorkRestricted;
-  getUnitOfWork<TSchema extends AnySchema>(
-    schema: TSchema,
-  ): UnitOfWorkRestrictedSchemaView<TSchema>;
+  uow<TSchema extends AnySchema>(schema: TSchema): TypedUnitOfWork<TSchema, [], unknown>;
 };
 
 /**
- * Handler context for database fragments - provides full UOW access including execute methods.
+ * Handler context for database fragments - provides UOW execution with automatic retry support.
  */
 export type DatabaseHandlerContext = RequestThisContext & {
   /**
-   * Get the Unit of Work from the current context.
-   * @param schema - Optional schema to get a typed view. If not provided, returns the base UOW.
-   * @returns IUnitOfWork if no schema provided, or typed UnitOfWorkSchemaView if schema provided.
+   * Execute a Unit of Work with explicit phase control and automatic retry support.
+   * This method provides an API where users call forSchema to create a schema-specific
+   * UOW, then call executeRetrieve() and executeMutate() to execute the phases. The entire
+   * callback is re-executed on optimistic concurrency conflicts, ensuring retries work properly.
+   * Automatically provides the UOW factory from context.
+   * Promises in the returned object are awaited 1 level deep.
+   *
+   * @param callback - Async function that receives a context with forSchema, executeRetrieve, and executeMutate methods
+   * @param options - Optional configuration for retry policy and abort signal
+   * @returns Promise resolving to the callback's return value with promises awaited 1 level deep
+   * @throws Error if retries are exhausted or callback throws an error
+   *
+   * @example
+   * ```ts
+   * const result = await this.uow(async ({ forSchema, executeRetrieve, executeMutate }) => {
+   *   const uow = forSchema(schema);
+   *   const userId = uow.create("users", { name: "John" });
+   *
+   *   // Execute retrieval phase
+   *   await executeRetrieve();
+   *
+   *   const profileId = uow.create("profiles", { userId });
+   *
+   *   // Execute mutation phase
+   *   await executeMutate();
+   *
+   *   return { userId, profileId };
+   * });
+   * ```
    */
-  getUnitOfWork(): IUnitOfWork;
-  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
-
-  /**
-   * Execute the current Unit of Work (retrieval + mutations).
-   * Convenience method that calls executeRetrieve() followed by executeMutations().
-   * @returns Promise resolving to the mutation execution result
-   */
-  execute(): Promise<{ success: boolean }>;
+  uow<TResult>(
+    callback: (context: {
+      forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+      executeRetrieve: () => Promise<void>;
+      executeMutate: () => Promise<void>;
+    }) => Promise<TResult> | TResult,
+    options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
+  ): Promise<AwaitedPromisesInObject<TResult>>;
 };
 
 /**
@@ -381,22 +404,15 @@ export class DatabaseFragmentDefinitionBuilder<
       },
     );
 
-    // Services get restricted context (no execute methods), handlers get full context
+    // Services get restricted context (no execute methods), handlers get execution context
     const builderWithContext = builderWithStorage.withThisContext<
       DatabaseServiceContext,
       DatabaseHandlerContext
     >(({ storage }) => {
-      // Cache restricted UOW wrappers to ensure identity equality within a request
-      const restrictedUowCache = new WeakMap<IUnitOfWork, IUnitOfWorkRestricted>();
-
-      // Service context - restricted UOW without execute methods
-      function getServiceUnitOfWork(): IUnitOfWorkRestricted;
-      function getServiceUnitOfWork<TSchema extends AnySchema>(
+      // Service context - forSchema method to get restricted typed UOW
+      function forSchema<TSchema extends AnySchema>(
         schema: TSchema,
-      ): UnitOfWorkRestrictedSchemaView<TSchema>;
-      function getServiceUnitOfWork<TSchema extends AnySchema>(
-        schema?: TSchema,
-      ): IUnitOfWorkRestricted | UnitOfWorkRestrictedSchemaView<TSchema> {
+      ): TypedUnitOfWork<TSchema, [], unknown> {
         const uow = storage.getStore()?.uow;
         if (!uow) {
           throw new Error(
@@ -404,62 +420,52 @@ export class DatabaseFragmentDefinitionBuilder<
           );
         }
 
-        if (schema) {
-          // Return restricted schema view (note: schema views are not cached as they're type-specific)
-          const fullView = uow.forSchema(schema);
-          return new UnitOfWorkRestrictedSchemaView(fullView);
-        }
-        // Return cached restricted UOW to ensure identity equality
-        let restricted = restrictedUowCache.get(uow);
-        if (!restricted) {
-          restricted = restrictUnitOfWork(uow);
-          restrictedUowCache.set(uow, restricted);
-        }
-        return restricted;
+        // Return typed view of restricted UOW
+        return uow.restrict().forSchema(schema);
       }
 
       const serviceContext: DatabaseServiceContext = {
-        getUnitOfWork: getServiceUnitOfWork,
+        uow: forSchema,
       };
 
-      // Handler context - full UOW with execute methods
-      function getHandlerUnitOfWork(): IUnitOfWork;
-      function getHandlerUnitOfWork<TSchema extends AnySchema>(
-        schema: TSchema,
-      ): UnitOfWorkSchemaView<TSchema>;
-      function getHandlerUnitOfWork<TSchema extends AnySchema>(
-        schema?: TSchema,
-      ): IUnitOfWork | UnitOfWorkSchemaView<TSchema> {
-        const uow = storage.getStore()?.uow;
-        if (!uow) {
+      // Handler context - only executeRestrictedUnitOfWork
+      async function uow<TResult>(
+        callback: (context: {
+          forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+          executeRetrieve: () => Promise<void>;
+          executeMutate: () => Promise<void>;
+        }) => Promise<TResult> | TResult,
+        options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
+      ): Promise<AwaitedPromisesInObject<TResult>> {
+        const currentStorage = storage.getStore();
+        if (!currentStorage) {
           throw new Error(
-            "No UnitOfWork in context. Handler must be called within a request context.",
+            "No storage in context. Handler must be called within a request context.",
           );
         }
 
-        if (schema) {
-          return uow.forSchema(schema);
-        }
-        return uow;
-      }
+        // Wrap callback to ensure it always returns a Promise
+        const wrappedCallback = async (context: {
+          forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+          executeRetrieve: () => Promise<void>;
+          executeMutate: () => Promise<void>;
+        }): Promise<TResult> => {
+          return await callback(context);
+        };
 
-      async function execute(): Promise<{ success: boolean }> {
-        const uow = storage.getStore()?.uow;
-        if (!uow) {
-          throw new Error(
-            "No UnitOfWork in context. Handler must be called within a request context.",
-          );
-        }
-
-        await uow.executeRetrieve();
-        const { success } = await uow.executeMutations();
-
-        return { success };
+        // Use the UOW from storage - reset it before each attempt for retry support
+        // Cast is safe because IUnitOfWork is actually implemented by UnitOfWork
+        return executeRestrictedUnitOfWork(wrappedCallback, {
+          ...options,
+          createUnitOfWork: () => {
+            currentStorage.uow.reset();
+            return currentStorage.uow as UnitOfWork;
+          },
+        });
       }
 
       const handlerContext: DatabaseHandlerContext = {
-        getUnitOfWork: getHandlerUnitOfWork,
-        execute,
+        uow,
       };
 
       return { serviceContext, handlerContext };

@@ -18,6 +18,21 @@ describe("generateMigrationsOrSchema - kysely", () => {
   beforeAll(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     db = new Kysely({ dialect: new PostgresDialect({} as any) });
+
+    // Mock Kysely transaction to prevent actual database connections
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(db, "transaction").mockReturnValue({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      execute: async (callback: any) => {
+        // Return a mock transaction executor that returns empty results
+        const mockTx = {
+          executeQuery: async () => ({ rows: [] }),
+        };
+        return callback(mockTx);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
     adapter = new KyselyAdapter({ db, provider: "postgresql" });
 
     // Mock the adapter methods
@@ -283,6 +298,20 @@ describe("generateMigrationsOrSchema - kysely", () => {
   it("should include MySQL-specific foreign key checks in generated SQL", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mysqlDb = new Kysely({ dialect: new PostgresDialect({} as any) });
+
+    // Mock Kysely transaction to prevent actual database connections
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(mysqlDb, "transaction").mockReturnValue({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      execute: async (callback: any) => {
+        const mockTx = {
+          executeQuery: async () => ({ rows: [] }),
+        };
+        return callback(mockTx);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
     const mysqlAdapter = new KyselyAdapter({ db: mysqlDb, provider: "mysql" });
 
     vi.spyOn(mysqlAdapter, "isConnectionHealthy").mockResolvedValue(true);
@@ -318,6 +347,20 @@ describe("generateMigrationsOrSchema - kysely", () => {
   it("should include SQLite-specific pragma in generated SQL", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sqliteDb = new Kysely({ dialect: new PostgresDialect({} as any) });
+
+    // Mock Kysely transaction to prevent actual database connections
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(sqliteDb, "transaction").mockReturnValue({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      execute: async (callback: any) => {
+        const mockTx = {
+          executeQuery: async () => ({ rows: [] }),
+        };
+        return callback(mockTx);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
     const sqliteAdapter = new KyselyAdapter({ db: sqliteDb, provider: "sqlite" });
 
     vi.spyOn(sqliteAdapter, "isConnectionHealthy").mockResolvedValue(true);

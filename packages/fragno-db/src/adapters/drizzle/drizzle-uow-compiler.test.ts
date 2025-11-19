@@ -85,7 +85,7 @@ describe("drizzle-uow-compiler", () => {
       }
       return rawResults;
     };
-    return new UnitOfWork(schema, compiler, mockExecutor, mockDecoder);
+    return new UnitOfWork(compiler, mockExecutor, mockDecoder).forSchema(schema);
   }
 
   function createTestUOW(name?: string) {
@@ -100,7 +100,7 @@ describe("drizzle-uow-compiler", () => {
       }
       return rawResults;
     };
-    return new UnitOfWork(testSchema, compiler, mockExecutor, mockDecoder, name);
+    return new UnitOfWork(compiler, mockExecutor, mockDecoder, name).forSchema(testSchema);
   }
 
   it("should create a compiler with the correct structure", () => {
@@ -1102,7 +1102,7 @@ describe("drizzle-uow-compiler", () => {
         }
         return rawResults;
       };
-      return new UnitOfWork(nestedSchema, compiler, mockExecutor, mockDecoder, name);
+      return new UnitOfWork(compiler, mockExecutor, mockDecoder, name).forSchema(nestedSchema);
     }
 
     it("should compile nested joins (comments -> post -> author)", () => {
@@ -1297,7 +1297,7 @@ describe("drizzle-uow-compiler", () => {
         }
         return rawResults;
       };
-      return new UnitOfWork(authSchema, compiler, mockExecutor, mockDecoder, name);
+      return new UnitOfWork(compiler, mockExecutor, mockDecoder, name).forSchema(authSchema);
     }
 
     it("should compile find session with user join", () => {

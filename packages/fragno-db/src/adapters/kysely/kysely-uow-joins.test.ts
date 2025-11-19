@@ -114,7 +114,7 @@ describe("kysely-uow-joins", () => {
       }
       return rawResults;
     };
-    return new UnitOfWork(userSchema, mockCompiler, mockExecutor, mockDecoder, name);
+    return new UnitOfWork(mockCompiler, mockExecutor, mockDecoder, name).forSchema(userSchema);
   }
 
   describe("postgresql", () => {
@@ -586,7 +586,7 @@ describe("kysely-uow-joins", () => {
         }
         return rawResults;
       };
-      return new UnitOfWork(customIdSchema, mockCompiler, mockExecutor, mockDecoder);
+      return new UnitOfWork(mockCompiler, mockExecutor, mockDecoder).forSchema(customIdSchema);
     }
 
     it("should compile join with custom id column names", () => {

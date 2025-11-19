@@ -89,9 +89,6 @@ const commentRoutesFactory = defineRoutes(commentFragmentDef).create(
         outputSchema: z.array(z.any()),
         errorCodes: ["NOT_FOUND", "INVALID_INPUT"] as const,
         handler: async function ({ query }, { json }) {
-          const uow = this.getUnitOfWork();
-          console.log({ uow });
-
           const postReference = query.get("postReference");
           if (!postReference) {
             throw new Error("postReference is required");

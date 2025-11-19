@@ -685,7 +685,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(storage.uow).toBeDefined();
     });
 
-    it("should provide DatabaseRequestContext with getUnitOfWork", () => {
+    it("should provide DatabaseServiceContext with forSchema and DatabaseHandlerContext with executeRestrictedUnitOfWork", () => {
       const mockAdapter = createMockAdapter();
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
@@ -704,11 +704,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         storage: mockStorage,
       });
 
-      // Both service and handler contexts should have getUnitOfWork
-      expect(contexts.serviceContext).toHaveProperty("getUnitOfWork");
-      expect(typeof contexts.serviceContext.getUnitOfWork).toBe("function");
-      expect(contexts.handlerContext).toHaveProperty("getUnitOfWork");
-      expect(typeof contexts.handlerContext.getUnitOfWork).toBe("function");
+      expect(typeof contexts.serviceContext.uow).toBe("function");
+      expect(typeof contexts.handlerContext.uow).toBe("function");
     });
   });
 
