@@ -273,9 +273,14 @@ describe("db-fragment-instantiator", () => {
           handler: async function (_input, { json }) {
             // Mark the UOW with an ID
             const uow1 = services.main.markUow();
-
             const uow2 = services.helpers.logUow();
             const uow3 = services.main.markUow();
+
+            console.log({
+              x: uow1 === uow2,
+              y: uow2 === uow3,
+              z: uow1 === uow3,
+            });
 
             return json({
               same: uow1 === uow2 && uow2 === uow3,

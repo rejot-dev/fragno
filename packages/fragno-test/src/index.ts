@@ -6,7 +6,7 @@ import type {
   KyselyPgliteAdapter,
   DrizzlePgliteAdapter,
 } from "./adapters";
-import { withUnitOfWork, type IUnitOfWorkBase, type DatabaseAdapter } from "@fragno-dev/db";
+import type { DatabaseAdapter } from "@fragno-dev/db";
 import type { AbstractQuery } from "@fragno-dev/db/query";
 
 // Re-export utilities from @fragno-dev/core/test
@@ -34,9 +34,6 @@ export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-t
 export interface BaseTestContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly adapter: DatabaseAdapter<any>;
-  createUnitOfWork: (name?: string) => IUnitOfWorkBase;
-  withUnitOfWork: <T>(fn: (uow: IUnitOfWorkBase) => Promise<T>) => Promise<T>;
-  callService: <T>(fn: () => T | Promise<T>) => Promise<T>;
   resetDatabase: () => Promise<void>;
   cleanup: () => Promise<void>;
 }
@@ -46,9 +43,6 @@ export interface BaseTestContext {
  */
 export interface InternalTestContextMethods {
   getOrm: <TSchema extends AnySchema>(namespace: string) => AbstractQuery<TSchema>;
-  createUnitOfWork: (name?: string) => IUnitOfWorkBase;
-  withUnitOfWork: <T>(fn: (uow: IUnitOfWorkBase) => Promise<T>) => Promise<T>;
-  callService: <T>(fn: () => T | Promise<T>) => Promise<T>;
 }
 
 /**
@@ -66,42 +60,6 @@ export function createCommonTestContextMethods(
         throw new Error(`No ORM found for namespace: ${namespace}`);
       }
       return orm as AbstractQuery<TSchema>;
-    },
-    createUnitOfWork: (name?: string) => {
-      // Use the first schema's ORM to create a base UOW
-      const firstOrm = ormMap.values().next().value;
-      if (!firstOrm) {
-        throw new Error("No ORMs available to create UnitOfWork");
-      }
-      return firstOrm.createUnitOfWork(name);
-    },
-    withUnitOfWork: async <T>(fn: (uow: IUnitOfWorkBase) => Promise<T>) => {
-      const firstOrm = ormMap.values().next().value;
-      if (!firstOrm) {
-        throw new Error("No ORMs available to create UnitOfWork");
-      }
-      const uow = firstOrm.createUnitOfWork();
-      return withUnitOfWork(uow, async () => {
-        return await fn(uow);
-      });
-    },
-    callService: async <T>(fn: () => T | Promise<T>) => {
-      const firstOrm = ormMap.values().next().value;
-      if (!firstOrm) {
-        throw new Error("No ORMs available to create UnitOfWork");
-      }
-      const uow = firstOrm.createUnitOfWork();
-      return withUnitOfWork(uow, async () => {
-        // Call the function to schedule operations (don't await yet)
-        const resultPromise = fn();
-
-        // Execute UOW phases
-        await uow.executeRetrieve();
-        await uow.executeMutations();
-
-        // Now await the result
-        return await resultPromise;
-      });
     },
   };
 }

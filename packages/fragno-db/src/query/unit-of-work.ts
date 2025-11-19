@@ -862,10 +862,10 @@ export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
 }
 
 /**
- * Base interface for Unit of Work with schema-agnostic methods only.
- * This allows UOW instances to be passed between services that use different schemas.
+ * Full Unit of Work interface with all operations including execution.
+ * This allows UOW instances to be passed between different contexts that use different schemas.
  */
-export interface IUnitOfWorkBase {
+export interface IUnitOfWork {
   // Getters (schema-agnostic)
   readonly state: UOWState;
   readonly name: string | undefined;
@@ -886,6 +886,30 @@ export interface IUnitOfWorkBase {
     schema: TOtherSchema,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): UnitOfWorkSchemaView<TOtherSchema, [], any>;
+}
+
+/**
+ * Restricted UOW interface without execute methods.
+ * Useful when you want to allow building operations but not executing them,
+ * to prevent deadlocks or enforce execution control at a higher level.
+ */
+export interface IUnitOfWorkRestricted {
+  // Getters (schema-agnostic)
+  readonly state: UOWState;
+  readonly name: string | undefined;
+  readonly retrievalPhase: Promise<unknown[]>;
+  readonly mutationPhase: Promise<void>;
+
+  // Inspection (schema-agnostic)
+  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<AnySchema>>;
+  getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>>;
+  getCreatedIds(): FragnoId[];
+
+  // Schema-specific view (for cross-schema operations) - returns restricted view
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): UnitOfWorkRestrictedSchemaView<TOtherSchema, [], any>;
 }
 
 export function createUnitOfWork<
@@ -939,7 +963,7 @@ export class UnitOfWork<
   const TSchema extends AnySchema,
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
-> implements IUnitOfWorkBase
+> implements IUnitOfWork
 {
   #schema: TSchema;
 
@@ -1501,7 +1525,7 @@ export class UnitOfWorkSchemaView<
   const TSchema extends AnySchema,
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
-> implements IUnitOfWorkBase
+> implements IUnitOfWork
 {
   #schema: TSchema;
   #namespace?: string;
@@ -1787,5 +1811,223 @@ export class UnitOfWorkSchemaView<
   ): UnitOfWorkSchemaView<TOtherSchema, [], TRawInput> {
     // Delegate to the parent's forSchema to create a new view
     return this.#parent.forSchema(schema);
+  }
+}
+
+/**
+ * Restricted wrapper around a full UnitOfWork.
+ * Provides access to UOW operations but hides execute methods.
+ * Useful to prevent deadlocks or enforce execution control at a higher level.
+ */
+export class RestrictedUnitOfWork implements IUnitOfWorkRestricted {
+  #uow: IUnitOfWork;
+
+  constructor(uow: IUnitOfWork) {
+    this.#uow = uow;
+  }
+
+  get state() {
+    return this.#uow.state;
+  }
+
+  get name() {
+    return this.#uow.name;
+  }
+
+  get retrievalPhase() {
+    return this.#uow.retrievalPhase;
+  }
+
+  get mutationPhase() {
+    return this.#uow.mutationPhase;
+  }
+
+  getRetrievalOperations() {
+    return this.#uow.getRetrievalOperations();
+  }
+
+  getMutationOperations() {
+    return this.#uow.getMutationOperations();
+  }
+
+  getCreatedIds() {
+    return this.#uow.getCreatedIds();
+  }
+
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+  ): UnitOfWorkRestrictedSchemaView<TOtherSchema, [], unknown> {
+    const fullView = this.#uow.forSchema(schema);
+    return new UnitOfWorkRestrictedSchemaView(fullView);
+  }
+}
+
+/**
+ * Create a restricted version of a UnitOfWork that cannot execute phases.
+ * Useful to prevent deadlocks or enforce execution control at a higher level.
+ */
+export function restrictUnitOfWork(uow: IUnitOfWork): IUnitOfWorkRestricted {
+  return new RestrictedUnitOfWork(uow);
+}
+
+/**
+ * Restricted wrapper around UnitOfWorkSchemaView.
+ * Provides access to UOW operations but hides execute methods.
+ * Useful to prevent deadlocks or enforce execution control at a higher level.
+ */
+export class UnitOfWorkRestrictedSchemaView<
+  const TSchema extends AnySchema,
+  const TRetrievalResults extends unknown[] = [],
+  const TRawInput = unknown,
+> implements IUnitOfWorkRestricted
+{
+  #view: UnitOfWorkSchemaView<TSchema, TRetrievalResults, TRawInput>;
+
+  constructor(view: UnitOfWorkSchemaView<TSchema, TRetrievalResults, TRawInput>) {
+    this.#view = view;
+  }
+
+  get $results(): Prettify<TRetrievalResults> {
+    return this.#view.$results;
+  }
+
+  get schema(): TSchema {
+    return this.#view.schema;
+  }
+
+  get name(): string | undefined {
+    return this.#view.name;
+  }
+
+  get state() {
+    return this.#view.state;
+  }
+
+  get retrievalPhase(): Promise<TRetrievalResults> {
+    return this.#view.retrievalPhase;
+  }
+
+  get mutationPhase(): Promise<void> {
+    return this.#view.mutationPhase;
+  }
+
+  getRetrievalOperations() {
+    return this.#view.getRetrievalOperations();
+  }
+
+  getMutationOperations() {
+    return this.#view.getMutationOperations();
+  }
+
+  getCreatedIds() {
+    return this.#view.getCreatedIds();
+  }
+
+  // Note: executeRetrieve and executeMutations are intentionally omitted
+
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWorkRestrictedSchemaView<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      >[],
+    ],
+    TRawInput
+  >;
+  find<TTableName extends keyof TSchema["tables"] & string>(
+    tableName: TTableName,
+  ): UnitOfWorkRestrictedSchemaView<
+    TSchema,
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
+    TRawInput
+  >;
+  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn?: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWorkRestrictedSchemaView<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      >[],
+    ],
+    TRawInput
+  > {
+    const updatedView = builderFn
+      ? this.#view.find(tableName, builderFn)
+      : this.#view.find(tableName);
+    // Safe cast: we're wrapping the updated view with the correct types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new UnitOfWorkRestrictedSchemaView(updatedView as any);
+  }
+
+  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): UnitOfWorkRestrictedSchemaView<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      CursorResult<
+        SelectResult<
+          TSchema["tables"][TTableName],
+          ExtractJoinOut<TBuilderResult>,
+          Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+        >
+      >,
+    ],
+    TRawInput
+  > {
+    const updatedView = this.#view.findWithCursor(tableName, builderFn);
+    // Safe cast: we're wrapping the updated view with the correct types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new UnitOfWorkRestrictedSchemaView(updatedView as any);
+  }
+
+  create<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    values: TableToInsertValues<TSchema["tables"][TableName]>,
+  ): FragnoId {
+    return this.#view.create(tableName, values);
+  }
+
+  update<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    id: FragnoId | string,
+    builderFn: (
+      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
+    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
+  ): void {
+    this.#view.update(tableName, id, builderFn);
+  }
+
+  delete<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    id: FragnoId | string,
+    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build"> | void,
+  ): void {
+    this.#view.delete(tableName, id, builderFn);
+  }
+
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+  ): UnitOfWorkRestrictedSchemaView<TOtherSchema, [], TRawInput> {
+    const otherView = this.#view.forSchema(schema);
+    return new UnitOfWorkRestrictedSchemaView(otherView);
   }
 }

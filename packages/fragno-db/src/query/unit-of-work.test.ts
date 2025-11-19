@@ -941,3 +941,250 @@ describe("getCreatedIds", () => {
     );
   });
 });
+
+describe("Phase promises with multiple views", () => {
+  it("should return only operations added to the current view when using retrievalPhase promise", async () => {
+    // Create two separate schemas
+    const schema1 = schema((s) =>
+      s.addTable("users", (t) =>
+        t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+      ),
+    );
+
+    const schema2 = schema((s) =>
+      s.addTable("posts", (t) =>
+        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
+      ),
+    );
+
+    // Create a schema namespace map
+    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string>();
+    schemaNamespaceMap.set(schema1, "namespace1");
+    schemaNamespaceMap.set(schema2, "namespace2");
+
+    // Mock executor that returns distinct results
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [
+          [{ id: "user1", name: "Alice", email: "alice@example.com" }],
+          [{ id: "user2", name: "Bob", email: "bob@example.com" }],
+          [{ id: "post1", title: "Post 1", content: "Content 1" }],
+        ];
+      },
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [],
+      }),
+    };
+
+    // Create parent UOW with schema1
+    const parentUow = new UnitOfWork(
+      schema1,
+      createMockCompiler(),
+      executor,
+      createMockDecoder(),
+      "test-uow",
+      undefined,
+      schemaNamespaceMap,
+    );
+
+    // Add a find operation directly to parent
+    parentUow.find("users", (b) => b.whereIndex("primary"));
+
+    // Create a view for schema1 and add another find operation
+    const view1 = parentUow.forSchema(schema1).find("users", (b) => b.whereIndex("primary"));
+
+    // Create a view for schema2 and add a find operation
+    const view2 = parentUow.forSchema(schema2).find("posts", (b) => b.whereIndex("primary"));
+
+    // Execute retrieval phase on parent
+    const parentResults = await parentUow.executeRetrieve();
+
+    // Parent should have all 3 results
+    expect(parentResults).toHaveLength(3);
+
+    // View1's retrievalPhase promise should only contain results from operations added through view1
+    // (which is index 1 in the parent's operations)
+    const view1Results = await view1.retrievalPhase;
+    expect(view1Results).toHaveLength(1);
+    expect(view1Results[0]).toEqual([{ id: "user2", name: "Bob", email: "bob@example.com" }]);
+
+    // View2's retrievalPhase promise should only contain results from operations added through view2
+    // (which is index 2 in the parent's operations)
+    const view2Results = await view2.retrievalPhase;
+    expect(view2Results).toHaveLength(1);
+    expect(view2Results[0]).toEqual([{ id: "post1", title: "Post 1", content: "Content 1" }]);
+  });
+
+  it("should isolate operations when getUnitOfWork is called multiple times with same schema", async () => {
+    const testSchema = schema((s) =>
+      s.addTable("users", (t) =>
+        t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+      ),
+    );
+
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [
+          [{ id: "user1", name: "Alice", email: "alice@example.com" }],
+          [{ id: "user2", name: "Bob", email: "bob@example.com" }],
+        ];
+      },
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [],
+      }),
+    };
+
+    const parentUow = new UnitOfWork(
+      testSchema,
+      createMockCompiler(),
+      executor,
+      createMockDecoder(),
+      "test-uow",
+    );
+
+    // Simulate what happens in db-fragment-definition-builder when getUnitOfWork(schema) is called twice
+    const view1 = parentUow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    const view2 = parentUow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    // Execute retrieval
+    await parentUow.executeRetrieve();
+
+    // Each view should only see its own operation's results
+    const view1Results = await view1.retrievalPhase;
+    expect(view1Results).toHaveLength(1);
+    expect(view1Results[0]).toEqual([{ id: "user1", name: "Alice", email: "alice@example.com" }]);
+
+    const view2Results = await view2.retrievalPhase;
+    expect(view2Results).toHaveLength(1);
+    expect(view2Results[0]).toEqual([{ id: "user2", name: "Bob", email: "bob@example.com" }]);
+  });
+
+  it("should show that getCreatedIds returns ALL created IDs regardless of which view created them", async () => {
+    const schema1 = schema((s) =>
+      s.addTable("users", (t) =>
+        t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+      ),
+    );
+
+    const schema2 = schema((s) =>
+      s.addTable("posts", (t) =>
+        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
+      ),
+    );
+
+    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string>();
+    schemaNamespaceMap.set(schema1, "namespace1");
+    schemaNamespaceMap.set(schema2, "namespace2");
+
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [1n, 2n],
+      }),
+    };
+
+    const parentUow = new UnitOfWork(
+      schema1,
+      createMockCompiler(),
+      executor,
+      createMockDecoder(),
+      "test-uow",
+      undefined,
+      schemaNamespaceMap,
+    );
+
+    // View1 creates one user
+    const view1 = parentUow.forSchema(schema1);
+    view1.create("users", { name: "Alice", email: "alice@example.com" });
+
+    // View2 creates one post
+    const view2 = parentUow.forSchema(schema2);
+    view2.create("posts", { title: "Post 1", content: "Content 1" });
+
+    // Execute mutations
+    await parentUow.executeMutations();
+
+    // Both views see ALL created IDs (not filtered by view)
+    const view1Ids = view1.getCreatedIds();
+    const view2Ids = view2.getCreatedIds();
+
+    expect(view1Ids).toHaveLength(2); // Sees both IDs, not just the one it created
+    expect(view2Ids).toHaveLength(2); // Sees both IDs, not just the one it created
+
+    // They're the same array
+    expect(view1Ids).toEqual(view2Ids);
+  });
+
+  it("should generate unique IDs when multiple views create items", async () => {
+    const schema1 = schema((s) =>
+      s.addTable("users", (t) =>
+        t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+      ),
+    );
+
+    const schema2 = schema((s) =>
+      s.addTable("posts", (t) =>
+        t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
+      ),
+    );
+
+    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string>();
+    schemaNamespaceMap.set(schema1, "namespace1");
+    schemaNamespaceMap.set(schema2, "namespace2");
+
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [1n, 2n],
+      }),
+    };
+
+    const parentUow = new UnitOfWork(
+      schema1,
+      createMockCompiler(),
+      executor,
+      createMockDecoder(),
+      "test-uow",
+      undefined,
+      schemaNamespaceMap,
+    );
+
+    // View1 creates a user
+    const view1 = parentUow.forSchema(schema1);
+    const userId = view1.create("users", { name: "Alice", email: "alice@example.com" });
+
+    // View2 creates a post
+    const view2 = parentUow.forSchema(schema2);
+    const postId = view2.create("posts", { title: "Post 1", content: "Content 1" });
+
+    // IDs should be unique before execution
+    expect(userId.externalId).not.toBe(postId.externalId);
+    expect(userId.externalId).toBeTruthy();
+    expect(postId.externalId).toBeTruthy();
+    expect(userId.internalId).toBeUndefined();
+    expect(postId.internalId).toBeUndefined();
+
+    // Execute mutations
+    await parentUow.executeMutations();
+
+    // Get the created IDs after execution
+    const createdIds = parentUow.getCreatedIds();
+    expect(createdIds).toHaveLength(2);
+
+    // Both should have external IDs set (from create operation)
+    expect(createdIds[0].externalId).toBe(userId.externalId);
+    expect(createdIds[1].externalId).toBe(postId.externalId);
+
+    // Both should now have internal IDs (from database)
+    expect(createdIds[0].internalId).toBe(1n);
+    expect(createdIds[1].internalId).toBe(2n);
+
+    // IDs should still be unique
+    expect(createdIds[0].externalId).not.toBe(createdIds[1].externalId);
+  });
+});

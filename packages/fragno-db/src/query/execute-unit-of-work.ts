@@ -82,6 +82,35 @@ export interface ExecuteUnitOfWorkOptions<TSchema extends AnySchema, TRawInput> 
 }
 
 /**
+ * Create a bound version of executeUnitOfWork with a pre-configured UOW factory.
+ * This is useful for handler contexts where the factory is already known.
+ *
+ * @param createUnitOfWork - Factory function that creates a fresh UOW instance
+ * @returns A bound executeUnitOfWork function that doesn't require the factory parameter
+ *
+ * @example
+ * ```ts
+ * const boundExecute = createExecuteUnitOfWork(() => db.createUnitOfWork());
+ * const result = await boundExecute({
+ *   retrieve: (uow) => uow.find("users", (b) => b.whereIndex("primary")),
+ *   mutate: (uow, [users]) => {
+ *     uow.update("users", users[0].id, (b) => b.set({ balance: newBalance }));
+ *   }
+ * });
+ * ```
+ */
+export function createExecuteUnitOfWork<TSchema extends AnySchema, TRawInput>(
+  createUnitOfWork: () => UnitOfWork<TSchema, [], TRawInput>,
+) {
+  return async function <TRetrievalResults extends unknown[], TMutationResult = void>(
+    callbacks: ExecuteUnitOfWorkCallbacks<TSchema, TRetrievalResults, TMutationResult, TRawInput>,
+    options?: Omit<ExecuteUnitOfWorkOptions<TSchema, TRawInput>, "createUnitOfWork">,
+  ): Promise<ExecuteUnitOfWorkResult<TRetrievalResults, TMutationResult>> {
+    return executeUnitOfWork(callbacks, { ...options, createUnitOfWork });
+  };
+}
+
+/**
  * Execute a Unit of Work with automatic retry support for optimistic concurrency conflicts.
  *
  * This function orchestrates the two-phase execution (retrieval + mutation) with retry logic.

@@ -91,7 +91,7 @@ export {
   DatabaseFragmentDefinitionBuilder,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
-  type DatabaseRequestContext,
+  type DatabaseHandlerContext as DatabaseRequestContext,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
 
@@ -101,7 +101,11 @@ export {
   createUnitOfWork,
   UnitOfWork,
   UnitOfWorkSchemaView,
-  type IUnitOfWorkBase,
+  UnitOfWorkRestrictedSchemaView,
+  RestrictedUnitOfWork,
+  restrictUnitOfWork,
+  type IUnitOfWork,
+  type IUnitOfWorkRestricted,
   type UOWCompiler,
   type UOWExecutor,
   type UOWDecoder,
@@ -121,12 +125,4 @@ export {
   type ExecuteUnitOfWorkOptions,
 } from "./query/execute-unit-of-work";
 
-export {
-  withUnitOfWork,
-  serviceContext,
-  uowStorage,
-  type DatabaseRequestThisContext,
-} from "./db-fragment-definition-builder";
-
-// Re-export BoundServices from core
 export { type BoundServices } from "@fragno-dev/core";

@@ -1,12 +1,11 @@
-import type { AnySchema, FragnoId } from "./schema/create";
+import type { AnySchema } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type {
-  IUnitOfWorkBase,
+import type { IUnitOfWork, IUnitOfWorkRestricted } from "./query/unit-of-work";
+import {
   UnitOfWorkSchemaView,
-  UOWState,
-  RetrievalOperation,
-  MutationOperation,
+  UnitOfWorkRestrictedSchemaView,
+  restrictUnitOfWork,
 } from "./query/unit-of-work";
 import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
 import {
@@ -14,60 +13,6 @@ import {
   type FragmentDefinition,
   type ServiceConstructorFn,
 } from "@fragno-dev/core";
-import { AsyncLocalStorage } from "node:async_hooks";
-
-// AsyncLocalStorage for Unit of Work
-export const uowStorage = new AsyncLocalStorage<IUnitOfWorkBase>();
-
-// Overload for synchronous callbacks
-export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => T): T;
-// Overload for asynchronous callbacks
-export function withUnitOfWork<T>(uow: IUnitOfWorkBase, callback: () => Promise<T>): Promise<T>;
-// Implementation
-export function withUnitOfWork<T>(
-  uow: IUnitOfWorkBase,
-  callback: () => T | Promise<T>,
-): T | Promise<T> {
-  return uowStorage.run(uow, callback);
-}
-
-/**
- * Service context for database fragments, providing access to the Unit of Work.
- * This reads from AsyncLocalStorage.
- */
-export interface DatabaseRequestThisContext extends RequestThisContext {
-  getUnitOfWork(): IUnitOfWorkBase;
-  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
-}
-
-/**
- * Implementation function for getUnitOfWork
- */
-function getUnitOfWorkImpl(): IUnitOfWorkBase;
-function getUnitOfWorkImpl<TSchema extends AnySchema>(
-  schema: TSchema,
-): UnitOfWorkSchemaView<TSchema>;
-function getUnitOfWorkImpl<TSchema extends AnySchema>(
-  schema?: TSchema,
-): IUnitOfWorkBase | UnitOfWorkSchemaView<TSchema> {
-  const uow = uowStorage.getStore();
-  if (!uow) {
-    throw new Error(
-      "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
-    );
-  }
-  if (schema) {
-    return uow.forSchema(schema);
-  }
-  return uow;
-}
-
-/**
- * Global service context that reads from AsyncLocalStorage.
- */
-export const serviceContext: DatabaseRequestThisContext = {
-  getUnitOfWork: getUnitOfWorkImpl,
-};
 
 /**
  * Extended FragnoPublicConfig that includes a database adapter.
@@ -94,64 +39,42 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
   /**
    * Create a new Unit of Work for database operations.
    */
-  createUnitOfWork: () => IUnitOfWorkBase;
+  createUnitOfWork: () => IUnitOfWork;
 };
 
 /**
- * Restricted UOW schema view for service methods - only includes read operations, no execute methods.
- * This is a subset of UnitOfWorkSchemaView that excludes execute* methods.
- */
-export type UnitOfWorkServiceSchemaView<TSchema extends AnySchema> = Omit<
-  UnitOfWorkSchemaView<TSchema>,
-  "executeRetrieve" | "executeMutations"
->;
-
-/**
- * Restricted UOW interface for service methods - only includes read operations, no execute methods.
- * Services should not be able to execute UOW directly; only handlers can.
- */
-export interface IUnitOfWorkServiceBase {
-  // Getters (schema-agnostic)
-  readonly state: UOWState;
-  readonly name: string | undefined;
-  readonly retrievalPhase: Promise<unknown[]>;
-  readonly mutationPhase: Promise<void>;
-
-  // Inspection (schema-agnostic)
-  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<AnySchema>>;
-  getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>>;
-  getCreatedIds(): FragnoId[];
-
-  // Schema-specific view (for cross-schema operations) - returns restricted view
-  forSchema<TOtherSchema extends AnySchema>(
-    schema: TOtherSchema,
-  ): UnitOfWorkServiceSchemaView<TOtherSchema>;
-}
-
-/**
- * Service request context for database fragments - provides restricted UOW access without execute methods.
+ * Service context for database fragments - provides restricted UOW access without execute methods.
  */
 export type DatabaseServiceContext = RequestThisContext & {
   /**
    * Get the Unit of Work from the current context (restricted version without execute methods).
    * @param schema - Optional schema to get a typed view. If not provided, returns the base UOW.
-   * @returns IUnitOfWorkServiceBase if no schema provided, or UnitOfWorkServiceSchemaView if schema provided.
+   * @returns IUnitOfWorkRestricted if no schema provided, or UnitOfWorkRestrictedSchemaView if schema provided.
    */
-  getUnitOfWork(): IUnitOfWorkServiceBase;
-  getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkServiceSchemaView<TSchema>;
+  getUnitOfWork(): IUnitOfWorkRestricted;
+  getUnitOfWork<TSchema extends AnySchema>(
+    schema: TSchema,
+  ): UnitOfWorkRestrictedSchemaView<TSchema>;
 };
 
 /**
- * Handler request context for database fragments - provides full UOW access including execute methods.
+ * Handler context for database fragments - provides full UOW access including execute methods.
  */
-export type DatabaseRequestContext = RequestThisContext & {
+export type DatabaseHandlerContext = RequestThisContext & {
   /**
    * Get the Unit of Work from the current context.
    * @param schema - Optional schema to get a typed view. If not provided, returns the base UOW.
-   * @returns IUnitOfWorkBase if no schema provided, or typed UnitOfWorkSchemaView if schema provided.
+   * @returns IUnitOfWork if no schema provided, or typed UnitOfWorkSchemaView if schema provided.
    */
-  getUnitOfWork(): IUnitOfWorkBase;
+  getUnitOfWork(): IUnitOfWork;
   getUnitOfWork<TSchema extends AnySchema>(schema: TSchema): UnitOfWorkSchemaView<TSchema>;
+
+  /**
+   * Execute the current Unit of Work (retrieval + mutations).
+   * Convenience method that calls executeRetrieve() followed by executeMutations().
+   * @returns Promise resolving to the mutation execution result
+   */
+  execute(): Promise<{ success: boolean }>;
 };
 
 /**
@@ -194,7 +117,7 @@ function createDatabaseContext<TSchema extends AnySchema>(
  * Storage type for database fragments - stores the Unit of Work.
  */
 export type DatabaseRequestStorage = {
-  uow: IUnitOfWorkBase;
+  uow: IUnitOfWork;
 };
 
 /**
@@ -210,8 +133,8 @@ export class DatabaseFragmentDefinitionBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
-  TServiceThisContext extends RequestThisContext = DatabaseRequestContext,
-  THandlerThisContext extends RequestThisContext = DatabaseRequestContext,
+  TServiceThisContext extends RequestThisContext = DatabaseHandlerContext,
+  THandlerThisContext extends RequestThisContext = DatabaseHandlerContext,
 > {
   // Store the base builder - we'll replace its storage and context setup when building
   #baseBuilder: FragmentDefinitionBuilder<
@@ -410,8 +333,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    DatabaseRequestContext,
-    DatabaseRequestContext,
+    DatabaseServiceContext,
+    DatabaseHandlerContext,
     DatabaseRequestStorage
   > {
     // Ensure dependencies callback always exists for database fragments
@@ -452,33 +375,94 @@ export class DatabaseFragmentDefinitionBuilder<
         const dbContextForStorage = createDatabaseContext(options, this.#schema, this.#namespace);
 
         // Create a new Unit of Work for this request
-        const uow: IUnitOfWorkBase = dbContextForStorage.db.createUnitOfWork();
+        const uow: IUnitOfWork = dbContextForStorage.db.createUnitOfWork();
 
         return { uow };
       },
     );
 
-    // TODO: Services should get restricted context (no execute methods), handlers get full context
-    const builderWithContext = builderWithStorage.withThisContext(({ storage }) => {
-      const fullContext: DatabaseRequestContext = {
-        getUnitOfWork: ((...args: [AnySchema?]) => {
-          const uow = storage.getStore()?.uow;
-          if (!uow) {
-            throw new Error(
-              "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
-            );
-          }
+    // Services get restricted context (no execute methods), handlers get full context
+    const builderWithContext = builderWithStorage.withThisContext<
+      DatabaseServiceContext,
+      DatabaseHandlerContext
+    >(({ storage }) => {
+      // Cache restricted UOW wrappers to ensure identity equality within a request
+      const restrictedUowCache = new WeakMap<IUnitOfWork, IUnitOfWorkRestricted>();
 
-          const [schema] = args;
-          if (schema) {
-            return uow.forSchema(schema);
-          }
-          return uow;
-        }) as DatabaseRequestContext["getUnitOfWork"],
+      // Service context - restricted UOW without execute methods
+      function getServiceUnitOfWork(): IUnitOfWorkRestricted;
+      function getServiceUnitOfWork<TSchema extends AnySchema>(
+        schema: TSchema,
+      ): UnitOfWorkRestrictedSchemaView<TSchema>;
+      function getServiceUnitOfWork<TSchema extends AnySchema>(
+        schema?: TSchema,
+      ): IUnitOfWorkRestricted | UnitOfWorkRestrictedSchemaView<TSchema> {
+        const uow = storage.getStore()?.uow;
+        if (!uow) {
+          throw new Error(
+            "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
+          );
+        }
+
+        if (schema) {
+          // Return restricted schema view (note: schema views are not cached as they're type-specific)
+          const fullView = uow.forSchema(schema);
+          return new UnitOfWorkRestrictedSchemaView(fullView);
+        }
+        // Return cached restricted UOW to ensure identity equality
+        let restricted = restrictedUowCache.get(uow);
+        if (!restricted) {
+          restricted = restrictUnitOfWork(uow);
+          restrictedUowCache.set(uow, restricted);
+        }
+        return restricted;
+      }
+
+      const serviceContext: DatabaseServiceContext = {
+        getUnitOfWork: getServiceUnitOfWork,
       };
 
-      // Both service and handler contexts are the same for now
-      return { serviceContext: fullContext, handlerContext: fullContext };
+      // Handler context - full UOW with execute methods
+      function getHandlerUnitOfWork(): IUnitOfWork;
+      function getHandlerUnitOfWork<TSchema extends AnySchema>(
+        schema: TSchema,
+      ): UnitOfWorkSchemaView<TSchema>;
+      function getHandlerUnitOfWork<TSchema extends AnySchema>(
+        schema?: TSchema,
+      ): IUnitOfWork | UnitOfWorkSchemaView<TSchema> {
+        const uow = storage.getStore()?.uow;
+        if (!uow) {
+          throw new Error(
+            "No UnitOfWork in context. Handler must be called within a request context.",
+          );
+        }
+
+        if (schema) {
+          return uow.forSchema(schema);
+        }
+        return uow;
+      }
+
+      async function execute(): Promise<{ success: boolean }> {
+        const uow = storage.getStore()?.uow;
+        if (!uow) {
+          throw new Error(
+            "No UnitOfWork in context. Handler must be called within a request context.",
+          );
+        }
+
+        await uow.executeRetrieve();
+        const { success } = await uow.executeMutations();
+
+        return { success };
+      }
+
+      const handlerContext: DatabaseHandlerContext = {
+        getUnitOfWork: getHandlerUnitOfWork,
+        execute,
+      };
+
+      return { serviceContext, handlerContext };
     });
 
     // Build the final definition
@@ -541,8 +525,8 @@ export function withDatabase<TSchema extends AnySchema>(
   TBaseServices,
   TServices,
   TServiceDeps,
-  DatabaseRequestContext,
-  DatabaseRequestContext
+  DatabaseServiceContext,
+  DatabaseHandlerContext
 > {
   return <
     TConfig,
@@ -571,7 +555,7 @@ export function withDatabase<TSchema extends AnySchema>(
     // The database builder's build() method will enforce FragnoPublicConfigWithDatabase at the end.
     // We also add ImplicitDatabaseDependencies to TDeps so they're available in service constructors.
     // Note: We discard TRequestStorage here because database fragments manage their own storage (DatabaseRequestStorage).
-    // We set TThisContext to DatabaseRequestContext so handlers/inContext have full UOW access (with execute methods).
+    // We set TServiceThisContext to DatabaseServiceContext (restricted) and THandlerThisContext to DatabaseHandlerContext (full).
     return new DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
@@ -579,8 +563,8 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
-      DatabaseRequestContext,
-      DatabaseRequestContext
+      DatabaseServiceContext,
+      DatabaseHandlerContext
     >(
       builder as unknown as FragmentDefinitionBuilder<
         TConfig,
@@ -589,8 +573,8 @@ export function withDatabase<TSchema extends AnySchema>(
         TBaseServices,
         TServices,
         TServiceDeps,
-        DatabaseRequestContext,
-        DatabaseRequestContext,
+        DatabaseServiceContext,
+        DatabaseHandlerContext,
         DatabaseRequestStorage
       >,
       schema,

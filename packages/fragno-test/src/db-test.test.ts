@@ -251,7 +251,6 @@ describe("buildDatabaseFragmentsTest", () => {
       body: { name: "Test User", email: "test@example.com" },
     });
 
-    console.log("response", response);
     assert(response.type === "json");
     expect(response.data).toMatchObject({
       id: "123",

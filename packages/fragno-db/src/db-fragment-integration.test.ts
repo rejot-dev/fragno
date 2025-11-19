@@ -85,7 +85,7 @@ describe.sequential("Database Fragment Integration", () => {
         const userId = services.userService.createUser("John Doe", "john@example.com");
         const profileId = services.userService.createProfile(userId, "Software engineer");
 
-        await this.getUnitOfWork().executeMutations();
+        await this.execute();
 
         return json(
           { userId: userId.externalId, profileId: profileId.externalId },
@@ -115,9 +115,8 @@ describe.sequential("Database Fragment Integration", () => {
           total: number,
         ) {
           // Verify user exists by calling the userService from the other fragment
-          const userPromise = serviceDeps.userService.getUserById(userExternalId);
-          await this.getUnitOfWork().executeRetrieve();
-          const user = await userPromise;
+          // Phase execution is handled by the handler, not the service
+          const user = await serviceDeps.userService.getUserById(userExternalId);
           if (!user) {
             throw new Error("User not found");
           }
@@ -157,14 +156,22 @@ describe.sequential("Database Fragment Integration", () => {
       handler: async function ({ input }, { json }) {
         const body = await input.valid();
 
-        const orderId = await services.orderService.createOrder(
+        // Start the service call (which adds operations to UOW and awaits phases)
+        const orderIdPromise = services.orderService.createOrder(
           body.userId,
           body.productName,
           body.quantity,
           body.total,
         );
 
-        await this.getUnitOfWork().executeMutations();
+        const uow = this.getUnitOfWork();
+        await uow.executeRetrieve();
+
+        // Now the service call can complete
+        const orderId = await orderIdPromise;
+
+        // Execute mutations
+        await uow.executeMutations();
 
         return json({ orderId: orderId.externalId }, { status: 201 });
       },

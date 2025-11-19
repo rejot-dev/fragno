@@ -235,7 +235,7 @@ export function defineRoutes<const TDefinition extends AnyFragmentDefinition>(
       StandardSchemaV1 | undefined,
       string,
       string,
-      ExtractFragmentThisContext<TDefinition>
+      ExtractFragmentHandlerThisContext<TDefinition>
     >[],
   >(
     fn: (
@@ -260,7 +260,7 @@ export function defineRoutes<const TDefinition extends AnyFragmentDefinition>(
             TOutputSchema,
             TErrorCode,
             TQueryParameters,
-            ExtractFragmentThisContext<TDefinition>
+            ExtractFragmentHandlerThisContext<TDefinition>
           >,
         ) => FragnoRouteConfig<
           TMethod,
@@ -269,7 +269,7 @@ export function defineRoutes<const TDefinition extends AnyFragmentDefinition>(
           TOutputSchema,
           TErrorCode,
           TQueryParameters,
-          ExtractFragmentThisContext<TDefinition>
+          ExtractFragmentHandlerThisContext<TDefinition>
         >;
       },
     ) => TRoutes,
@@ -292,7 +292,7 @@ export function defineRoutes<const TDefinition extends AnyFragmentDefinition>():
       StandardSchemaV1 | undefined,
       string,
       string,
-      ExtractFragmentThisContext<TDefinition>
+      ExtractFragmentHandlerThisContext<TDefinition>
     >[],
   >(
     fn: (
@@ -317,7 +317,7 @@ export function defineRoutes<const TDefinition extends AnyFragmentDefinition>():
             TOutputSchema,
             TErrorCode,
             TQueryParameters,
-            ExtractFragmentThisContext<TDefinition>
+            ExtractFragmentHandlerThisContext<TDefinition>
           >,
         ) => FragnoRouteConfig<
           TMethod,
@@ -326,7 +326,7 @@ export function defineRoutes<const TDefinition extends AnyFragmentDefinition>():
           TOutputSchema,
           TErrorCode,
           TQueryParameters,
-          ExtractFragmentThisContext<TDefinition>
+          ExtractFragmentHandlerThisContext<TDefinition>
         >;
       },
     ) => TRoutes,
