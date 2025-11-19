@@ -1,7 +1,6 @@
 import { describe, it, expect, assert, expectTypeOf } from "vitest";
 import { column, schema, idColumn } from "../schema/create";
 import {
-  UnitOfWork,
   type UOWCompiler,
   type UOWDecoder,
   createUnitOfWork,
@@ -49,13 +48,8 @@ describe("FindBuilder", () => {
       ),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
-    uow.find("users", (b) => b.whereIndex("primary"));
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -73,15 +67,12 @@ describe("FindBuilder", () => {
       ),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
-    uow.find("users", (b) =>
-      b.whereIndex("idx_email", (eb) => eb("email", "=", "test@example.com")),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    uow
+      .forSchema(testSchema)
+      .find("users", (b) =>
+        b.whereIndex("idx_email", (eb) => eb("email", "=", "test@example.com")),
+      );
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -93,15 +84,12 @@ describe("FindBuilder", () => {
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     const cursor = "eyJpbmRleFZhbHVlcyI6eyJpZCI6InVzZXIxMjMifSwiZGlyZWN0aW9uIjoiZm9yd2FyZCJ9";
-    uow.find("users", (b) => b.whereIndex("primary").after(cursor).pageSize(10));
+    uow
+      .forSchema(testSchema)
+      .find("users", (b) => b.whereIndex("primary").after(cursor).pageSize(10));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -116,15 +104,12 @@ describe("FindBuilder", () => {
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     const cursor = "eyJpbmRleFZhbHVlcyI6eyJpZCI6InVzZXI0NTYifSwiZGlyZWN0aW9uIjoiYmFja3dhcmQifQ==";
-    uow.find("users", (b) => b.whereIndex("primary").before(cursor).pageSize(5));
+    uow
+      .forSchema(testSchema)
+      .find("users", (b) => b.whereIndex("primary").before(cursor).pageSize(5));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -139,14 +124,9 @@ describe("FindBuilder", () => {
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     expect(() => {
-      uow.find("users", (b) => b.whereIndex("nonexistent" as "primary"));
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("nonexistent" as "primary"));
     }).toThrow('Index "nonexistent" not found on table "users"');
   });
 
@@ -155,14 +135,9 @@ describe("FindBuilder", () => {
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     expect(() => {
-      uow.find("users", (b) => b);
+      uow.forSchema(testSchema).find("users", (b) => b);
     }).toThrow(
       'Must specify an index using .whereIndex() before finalizing find operation on table "users"',
     );
@@ -175,13 +150,8 @@ describe("FindBuilder", () => {
       ),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
-    uow.find("users", (b) => b.whereIndex("primary").selectCount());
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").selectCount());
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -193,27 +163,21 @@ describe("FindBuilder", () => {
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     // select() then selectCount()
     expect(() => {
-      uow.find("users", (b) => b.whereIndex("primary").select(["name"]).selectCount());
+      uow
+        .forSchema(testSchema)
+        .find("users", (b) => b.whereIndex("primary").select(["name"]).selectCount());
     }).toThrow(/cannot call selectCount/i);
 
     // selectCount() then select()
-    const uow2 = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow2 = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
     expect(() => {
-      uow2.find("users", (b) => b.whereIndex("primary").selectCount().select(["name"]));
+      uow2
+        .forSchema(testSchema)
+        .find("users", (b) => b.whereIndex("primary").selectCount().select(["name"]));
     }).toThrow(/cannot call select/i);
   });
 
@@ -228,13 +192,10 @@ describe("FindBuilder", () => {
       ),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
-    uow.find("users", (b) => b.whereIndex("primary").orderByIndex("idx_created", "desc"));
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    uow
+      .forSchema(testSchema)
+      .find("users", (b) => b.whereIndex("primary").orderByIndex("idx_created", "desc"));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -267,16 +228,13 @@ describe("FindBuilder", () => {
         }),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.select(["name"]))),
-    );
+    uow
+      .forSchema(testSchema)
+      .find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.select(["name"]))),
+      );
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -304,15 +262,10 @@ describe("FindBuilder", () => {
         }),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     // Join without builder function should use default options
-    uow.find("posts", (b) => b.whereIndex("primary").join((jb) => jb.user()));
+    uow.forSchema(testSchema).find("posts", (b) => b.whereIndex("primary").join((jb) => jb.user()));
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -348,22 +301,19 @@ describe("FindBuilder", () => {
         }),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((jb) =>
-          jb["user"]((builder) =>
-            builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
+    uow
+      .forSchema(testSchema)
+      .find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb["user"]((builder) =>
+              builder.whereIndex("idx_name", (eb) => eb("name", "=", "Alice")).select(["name"]),
+            ),
           ),
-        ),
-    );
+      );
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -400,18 +350,15 @@ describe("FindBuilder", () => {
         }),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.find("posts", (b) =>
-      b
-        .whereIndex("primary")
-        .join((jb) => jb["user"]((builder) => builder.orderByIndex("idx_created", "desc"))),
-    );
+    uow
+      .forSchema(testSchema)
+      .find("posts", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) => jb["user"]((builder) => builder.orderByIndex("idx_created", "desc"))),
+      );
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -442,16 +389,13 @@ describe("FindBuilder", () => {
         }),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.find("posts", (b) =>
-      b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.pageSize(5))),
-    );
+    uow
+      .forSchema(testSchema)
+      .find("posts", (b) =>
+        b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.pageSize(5))),
+      );
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -494,24 +438,21 @@ describe("FindBuilder", () => {
         }),
     );
 
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.find("comments", (b) =>
-      b
-        .whereIndex("primary")
-        .join((jb) =>
-          jb["post"]((postBuilder) =>
-            postBuilder
-              .select(["title"])
-              .join((jb2) => jb2["user"]((userBuilder) => userBuilder.select(["name"]))),
+    uow
+      .forSchema(testSchema)
+      .find("comments", (b) =>
+        b
+          .whereIndex("primary")
+          .join((jb) =>
+            jb["post"]((postBuilder) =>
+              postBuilder
+                .select(["title"])
+                .join((jb2) => jb2["user"]((userBuilder) => userBuilder.select(["name"]))),
+            ),
           ),
-        ),
-    );
+      );
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
@@ -700,13 +641,12 @@ describe("IndexedConditionBuilder", () => {
       >;
       expectTypeOf<_IndexColumnNames>().toEqualTypeOf<"name" | "age">();
 
-      const uow = createUnitOfWork(
-        typeTestSchema,
+      const baseUow = createUnitOfWork(
         createMockCompiler(),
         createMockExecutor(),
         createMockDecoder(),
       );
-      expectTypeOf(uow.schema).toEqualTypeOf(typeTestSchema);
+      const uow = baseUow.forSchema(typeTestSchema);
       expectTypeOf<keyof typeof typeTestSchema.tables>().toEqualTypeOf<"users">();
       type _Query = AbstractQuery<typeof typeTestSchema>;
       expectTypeOf<Parameters<_Query["create"]>[0]>().toEqualTypeOf<"users">();
@@ -744,15 +684,10 @@ describe("UpdateBuilder with string ID", () => {
   );
 
   it("should allow update with string ID", async () => {
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     // Should work with string ID
-    uow.update("users", "user-123", (b) => b.set({ name: "New Name" }));
+    uow.forSchema(testSchema).update("users", "user-123", (b) => b.set({ name: "New Name" }));
 
     const ops = uow.getMutationOperations();
     expect(ops).toHaveLength(1);
@@ -766,16 +701,13 @@ describe("UpdateBuilder with string ID", () => {
   });
 
   it("should throw when using check() with string ID", async () => {
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     // Should throw because check() is not allowed with string ID
     expect(() => {
-      uow.update("users", "user-123", (b) => b.set({ name: "New Name" }).check());
+      uow
+        .forSchema(testSchema)
+        .update("users", "user-123", (b) => b.set({ name: "New Name" }).check());
     }).toThrow(
       'Cannot use check() with a string ID on table "users". Version checking requires a FragnoId with version information.',
     );
@@ -788,15 +720,10 @@ describe("DeleteBuilder with string ID", () => {
   );
 
   it("should allow delete with string ID", async () => {
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     // Should work with string ID
-    uow.delete("users", "user-123");
+    uow.forSchema(testSchema).delete("users", "user-123");
 
     const ops = uow.getMutationOperations();
     expect(ops).toMatchObject([
@@ -809,16 +736,11 @@ describe("DeleteBuilder with string ID", () => {
   });
 
   it("should throw when using check() with string ID", async () => {
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
     // Should throw because check() is not allowed with string ID
     expect(() => {
-      uow.delete("users", "user-123", (b) => b.check());
+      uow.forSchema(testSchema).delete("users", "user-123", (b) => b.check());
     }).toThrow(
       'Cannot use check() with a string ID on table "users". Version checking requires a FragnoId with version information.',
     );
@@ -841,10 +763,10 @@ describe("getCreatedIds", () => {
       }),
     };
 
-    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
 
-    uow.create("users", { email: "user1@example.com", name: "User 1" });
-    uow.create("users", { email: "user2@example.com", name: "User 2" });
+    uow.forSchema(testSchema).create("users", { email: "user1@example.com", name: "User 1" });
+    uow.forSchema(testSchema).create("users", { email: "user2@example.com", name: "User 2" });
 
     await uow.executeMutations();
     const createdIds = uow.getCreatedIds();
@@ -867,10 +789,10 @@ describe("getCreatedIds", () => {
       }),
     };
 
-    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
 
-    uow.create("users", { email: "user1@example.com", name: "User 1" });
-    uow.create("users", { email: "user2@example.com", name: "User 2" });
+    uow.forSchema(testSchema).create("users", { email: "user1@example.com", name: "User 1" });
+    uow.forSchema(testSchema).create("users", { email: "user2@example.com", name: "User 2" });
 
     await uow.executeMutations();
     const createdIds = uow.getCreatedIds();
@@ -891,9 +813,11 @@ describe("getCreatedIds", () => {
       }),
     };
 
-    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
 
-    uow.create("users", { id: "my-custom-id", email: "user@example.com", name: "User" });
+    uow
+      .forSchema(testSchema)
+      .create("users", { id: "my-custom-id", email: "user@example.com", name: "User" });
 
     await uow.executeMutations();
     const createdIds = uow.getCreatedIds();
@@ -912,11 +836,11 @@ describe("getCreatedIds", () => {
       }),
     };
 
-    const uow = new UnitOfWork(testSchema, createMockCompiler(), executor, createMockDecoder());
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
 
-    uow.create("users", { email: "user@example.com", name: "User" });
-    uow.update("users", "existing-id", (b) => b.set({ name: "Updated" }));
-    uow.delete("users", "other-id");
+    uow.forSchema(testSchema).create("users", { email: "user@example.com", name: "User" });
+    uow.forSchema(testSchema).update("users", "existing-id", (b) => b.set({ name: "Updated" }));
+    uow.forSchema(testSchema).delete("users", "other-id");
 
     await uow.executeMutations();
     const createdIds = uow.getCreatedIds();
@@ -927,14 +851,9 @@ describe("getCreatedIds", () => {
   });
 
   it("should throw when called before executeMutations", () => {
-    const uow = new UnitOfWork(
-      testSchema,
-      createMockCompiler(),
-      createMockExecutor(),
-      createMockDecoder(),
-    );
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
-    uow.create("users", { email: "user@example.com", name: "User" });
+    uow.forSchema(testSchema).create("users", { email: "user@example.com", name: "User" });
 
     expect(() => uow.getCreatedIds()).toThrow(
       "getCreatedIds() can only be called after executeMutations()",
@@ -977,19 +896,17 @@ describe("Phase promises with multiple views", () => {
       }),
     };
 
-    // Create parent UOW with schema1
-    const parentUow = new UnitOfWork(
-      schema1,
+    // Create parent UOW
+    const parentUow = createUnitOfWork(
       createMockCompiler(),
       executor,
       createMockDecoder(),
-      "test-uow",
-      undefined,
       schemaNamespaceMap,
+      "test-uow",
     );
 
-    // Add a find operation directly to parent
-    parentUow.find("users", (b) => b.whereIndex("primary"));
+    // Add a find operation via a schema1 view (but don't keep a reference to this view)
+    parentUow.forSchema(schema1).find("users", (b) => b.whereIndex("primary"));
 
     // Create a view for schema1 and add another find operation
     const view1 = parentUow.forSchema(schema1).find("users", (b) => b.whereIndex("primary"));
@@ -1036,11 +953,11 @@ describe("Phase promises with multiple views", () => {
       }),
     };
 
-    const parentUow = new UnitOfWork(
-      testSchema,
+    const parentUow = createUnitOfWork(
       createMockCompiler(),
       executor,
       createMockDecoder(),
+      undefined,
       "test-uow",
     );
 
@@ -1087,14 +1004,12 @@ describe("Phase promises with multiple views", () => {
       }),
     };
 
-    const parentUow = new UnitOfWork(
-      schema1,
+    const parentUow = createUnitOfWork(
       createMockCompiler(),
       executor,
       createMockDecoder(),
-      "test-uow",
-      undefined,
       schemaNamespaceMap,
+      "test-uow",
     );
 
     // View1 creates one user
@@ -1144,14 +1059,12 @@ describe("Phase promises with multiple views", () => {
       }),
     };
 
-    const parentUow = new UnitOfWork(
-      schema1,
+    const parentUow = createUnitOfWork(
       createMockCompiler(),
       executor,
       createMockDecoder(),
-      "test-uow",
-      undefined,
       schemaNamespaceMap,
+      "test-uow",
     );
 
     // View1 creates a user

@@ -133,7 +133,6 @@ export function fromDrizzle<T extends AnySchema>(
     const { onQuery, ...restUowConfig } = opts.config ?? {};
 
     return new UnitOfWork(
-      schema,
       uowCompiler,
       executor,
       decoder,
@@ -153,7 +152,7 @@ export function fromDrizzle<T extends AnySchema>(
         },
       },
       schemaNamespaceMap,
-    );
+    ).forSchema(schema);
   }
 
   return {

@@ -218,7 +218,6 @@ export function fromKysely<T extends AnySchema>(
     const { onQuery, ...restUowConfig } = opts.config ?? {};
 
     return new UnitOfWork(
-      schema,
       uowCompiler,
       executor,
       decoder,
@@ -238,7 +237,7 @@ export function fromKysely<T extends AnySchema>(
         },
       },
       schemaNamespaceMap,
-    );
+    ).forSchema(schema);
   }
 
   return {

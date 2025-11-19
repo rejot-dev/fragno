@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../schema/create";
-import { createUnitOfWork, JoinFindBuilder } from "./unit-of-work";
+import { JoinFindBuilder, UnitOfWork } from "./unit-of-work";
 import type { FragnoId, FragnoReference } from "../schema/create";
 
 type Prettify<T> = {
@@ -95,7 +95,7 @@ describe("UnitOfWork type tests", () => {
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
     const mockDecoder = () => [];
-    return createUnitOfWork(testSchema, mockCompiler, mockExecutor, mockDecoder);
+    return new UnitOfWork(mockCompiler, mockExecutor, mockDecoder).forSchema(testSchema);
   }
 
   it("should type find without joins correctly", async () => {

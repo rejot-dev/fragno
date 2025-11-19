@@ -40,7 +40,7 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
   .providesService("otp", ({ defineService }) =>
     defineService({
       generateOTP: function (userId: string): string {
-        const uow = this.getUnitOfWork(otpSchema);
+        const uow = this.uow(otpSchema);
         const code = generateOTPCode();
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
@@ -55,7 +55,7 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
         return code;
       },
       verifyOTP: async function (userId: string, code: string): Promise<boolean> {
-        const uow = this.getUnitOfWork(otpSchema).find("otp_code", (b) =>
+        const uow = this.uow(otpSchema).find("otp_code", (b) =>
           b
             .whereIndex("idx_otp_user", (eb) => eb("userId", "=", userId))
             .select(["id", "code", "expiresAt", "verified"]),
@@ -105,16 +105,14 @@ const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(({ services,
       handler: async function ({ input }, { json }) {
         const { userId, code } = await input.valid();
 
-        // Schedule the verification operation (returns immediately)
-        const verifyPromise = services.otp.verifyOTP(userId, code);
+        const verified = await this.uow(async ({ executeMutate }) => {
+          const verified = services.otp.verifyOTP(userId, code);
 
-        // Execute UOW phases
-        const uow = this.getUnitOfWork(otpSchema);
-        await uow.executeRetrieve();
-        await uow.executeMutations();
+          await executeMutate();
 
-        // Now await the result
-        const verified = await verifyPromise;
+          return verified;
+        });
+
         return json({ verified });
       },
     }),
@@ -141,13 +139,13 @@ export interface AuthConfig {
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment")
   .extend(withDatabase(authSchema))
   .usesOptionalService<"otp", IOTPService>("otp")
-  .providesBaseService(({ serviceDeps, deps, defineService }) => {
+  .providesBaseService(({ serviceDeps, defineService }) => {
     return defineService({
       /**
        * Create a user with email verification using OTP
        */
       createUserWithOTP: async function (email: string, password: string) {
-        const uow = this.getUnitOfWork(authSchema);
+        const uow = this.uow(authSchema);
 
         // Hash password (simplified - in real app use bcrypt/argon2)
         const passwordHash = `hashed_${password}`;
@@ -175,7 +173,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment"
       },
 
       createUser: function (email: string, password: string) {
-        const uow = this.getUnitOfWork(authSchema);
+        const uow = this.uow(authSchema);
         const userId = uow.create("user", {
           email,
           passwordHash: `hashed_${password}`, // fake hash
@@ -193,11 +191,17 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment"
        * Get user by email
        */
       getUserByEmail: async function (email: string) {
-        const user = await deps.db.findFirst("user", (b) =>
+        const uow = this.uow(authSchema).find("user", (b) =>
           b
             .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
-            .select(["id", "email", "emailVerified"]),
+            .select(["id", "email", "emailVerified"])
+            .pageSize(1),
         );
+
+        // Wait for retrieval phase to complete and get the typed results
+        const [users] = await uow.retrievalPhase;
+
+        const user = users[0] ?? null;
 
         if (!user) {
           return null;
@@ -291,23 +295,22 @@ const authRoutesFactory = defineRoutes(authFragmentDefinition).create(
         handler: async function ({ input }, { json }) {
           const { email, password } = await input.valid();
 
-          // Schedule operations (don't await yet)
-          const user = services.createUser(email, password);
-          const otpCode = serviceDeps.otp?.generateOTP(user.id) ?? null;
+          const result = await this.uow(async ({ executeMutate }) => {
+            // Schedule operations (don't await yet)
+            const user = services.createUser(email, password);
+            const otpCode = serviceDeps.otp?.generateOTP(user.id) ?? null;
 
-          // Execute UOW phases once - the UOW handles all schemas together
-          const uow = this.getUnitOfWork();
-          await uow.executeRetrieve();
-          await uow.executeMutations();
+            await executeMutate();
 
-          console.log("otpCode", otpCode);
-
-          return json({
-            userId: user.id,
-            email: user.email,
-            emailVerified: user.emailVerified,
-            otpCode,
+            return {
+              userId: user.id,
+              email: user.email,
+              emailVerified: user.emailVerified,
+              otpCode,
+            };
           });
+
+          return json(result);
         },
       }),
     ];

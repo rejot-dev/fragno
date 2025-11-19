@@ -881,54 +881,190 @@ export interface IUnitOfWork {
   getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>>;
   getCreatedIds(): FragnoId[];
 
+  // Parent-child relationships
+  restrict(): IUnitOfWork;
+
+  // Reset for retry support
+  reset(): void;
+
   // Schema-specific view (for cross-schema operations)
   forSchema<TOtherSchema extends AnySchema>(
     schema: TOtherSchema,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): UnitOfWorkSchemaView<TOtherSchema, [], any>;
+  ): TypedUnitOfWork<TOtherSchema, [], any>;
 }
 
 /**
  * Restricted UOW interface without execute methods.
  * Useful when you want to allow building operations but not executing them,
  * to prevent deadlocks or enforce execution control at a higher level.
+ *
+ * Note: This is just a marker interface. Restriction is enforced by the UnitOfWork class itself.
  */
-export interface IUnitOfWorkRestricted {
-  // Getters (schema-agnostic)
-  readonly state: UOWState;
-  readonly name: string | undefined;
-  readonly retrievalPhase: Promise<unknown[]>;
-  readonly mutationPhase: Promise<void>;
+export interface IUnitOfWorkRestricted
+  extends Omit<IUnitOfWork, "executeRetrieve" | "executeMutations"> {}
 
-  // Inspection (schema-agnostic)
-  getRetrievalOperations(): ReadonlyArray<RetrievalOperation<AnySchema>>;
-  getMutationOperations(): ReadonlyArray<MutationOperation<AnySchema>>;
-  getCreatedIds(): FragnoId[];
-
-  // Schema-specific view (for cross-schema operations) - returns restricted view
-  forSchema<TOtherSchema extends AnySchema>(
-    schema: TOtherSchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): UnitOfWorkRestrictedSchemaView<TOtherSchema, [], any>;
-}
-
-export function createUnitOfWork<
-  const TSchema extends AnySchema,
-  const TRetrievalResults extends unknown[] = [],
-  const TRawInput = unknown,
->(
-  schema: TSchema,
+export function createUnitOfWork(
   compiler: UOWCompiler<unknown>,
-  executor: UOWExecutor<unknown, TRawInput>,
-  decoder: UOWDecoder<TRawInput>,
+  executor: UOWExecutor<unknown, unknown>,
+  decoder: UOWDecoder<unknown>,
+  schemaNamespaceMap?: WeakMap<AnySchema, string>,
   name?: string,
-): UnitOfWork<TSchema, TRetrievalResults, TRawInput> {
-  return new UnitOfWork(schema, compiler, executor, decoder, name);
+): UnitOfWork {
+  return new UnitOfWork(compiler, executor, decoder, name, undefined, schemaNamespaceMap);
 }
 
 export interface UnitOfWorkConfig {
   dryRun?: boolean;
   onQuery?: (query: unknown) => void;
+}
+
+/**
+ * Manages parent-child relationships and readiness coordination for Unit of Work instances.
+ * This allows parent UOWs to wait for all child UOWs to signal readiness before executing phases.
+ */
+class UOWChildCoordinator<TRawInput> {
+  #parent: UnitOfWork<TRawInput> | null = null;
+  #parentCoordinator: UOWChildCoordinator<TRawInput> | null = null;
+  #children: Set<UnitOfWork<TRawInput>> = new Set();
+  #isRestricted = false;
+
+  #readyForRetrievalCount = 0;
+  #readyForMutationCount = 0;
+  #retrievalReadinessResolve?: () => void;
+  #mutationReadinessResolve?: () => void;
+  #retrievalReadinessPromise = Promise.resolve();
+  #mutationReadinessPromise = Promise.resolve();
+
+  get isRestricted(): boolean {
+    return this.#isRestricted;
+  }
+
+  get parent(): UnitOfWork<TRawInput> | null {
+    return this.#parent;
+  }
+
+  get children(): ReadonlySet<UnitOfWork<TRawInput>> {
+    return this.#children;
+  }
+
+  get retrievalReadinessPromise(): Promise<void> {
+    return this.#retrievalReadinessPromise;
+  }
+
+  get mutationReadinessPromise(): Promise<void> {
+    return this.#mutationReadinessPromise;
+  }
+
+  /**
+   * Mark this UOW as a restricted child of the given parent
+   */
+  setAsRestricted(
+    parent: UnitOfWork<TRawInput>,
+    parentCoordinator: UOWChildCoordinator<TRawInput>,
+  ): void {
+    this.#parent = parent;
+    this.#parentCoordinator = parentCoordinator;
+    this.#isRestricted = true;
+  }
+
+  /**
+   * Register a child UOW and update readiness promises
+   */
+  addChild(child: UnitOfWork<TRawInput>): void {
+    this.#children.add(child);
+    this.updateReadinessPromises();
+  }
+
+  /**
+   * Update readiness promises to wait for all children.
+   * Called when children are added or readiness is signaled.
+   */
+  updateReadinessPromises(): void {
+    const childCount = this.#children.size;
+    if (childCount === 0) {
+      // No children, immediately ready
+      this.#retrievalReadinessPromise = Promise.resolve();
+      this.#mutationReadinessPromise = Promise.resolve();
+      return;
+    }
+
+    // Create new promises that wait for all children
+    const retrievalPromise = Promise.withResolvers<void>();
+    this.#retrievalReadinessResolve = retrievalPromise.resolve;
+    this.#retrievalReadinessPromise = retrievalPromise.promise;
+
+    // If all children are already ready, resolve immediately
+    if (this.#readyForRetrievalCount >= childCount) {
+      retrievalPromise.resolve();
+    }
+
+    const mutationPromise = Promise.withResolvers<void>();
+    this.#mutationReadinessResolve = mutationPromise.resolve;
+    this.#mutationReadinessPromise = mutationPromise.promise;
+
+    // If all children are already ready, resolve immediately
+    if (this.#readyForMutationCount >= childCount) {
+      mutationPromise.resolve();
+    }
+  }
+
+  /**
+   * Signal that this child is ready for retrieval phase execution.
+   * Only valid for restricted (child) UOWs.
+   */
+  signalReadyForRetrieval(): void {
+    if (!this.#parentCoordinator) {
+      throw new Error("signalReadyForRetrieval() can only be called on restricted child UOWs");
+    }
+
+    this.#parentCoordinator.notifyChildReadyForRetrieval();
+  }
+
+  /**
+   * Signal that this child is ready for mutation phase execution.
+   * Only valid for restricted (child) UOWs.
+   */
+  signalReadyForMutation(): void {
+    if (!this.#parentCoordinator) {
+      throw new Error("signalReadyForMutation() can only be called on restricted child UOWs");
+    }
+
+    this.#parentCoordinator.notifyChildReadyForMutation();
+  }
+
+  /**
+   * Notify this coordinator that a child is ready for retrieval (internal use).
+   * Called by child UOWs when they signal readiness.
+   */
+  notifyChildReadyForRetrieval(): void {
+    this.#readyForRetrievalCount++;
+    if (this.#readyForRetrievalCount >= this.#children.size) {
+      this.#retrievalReadinessResolve?.();
+    }
+  }
+
+  /**
+   * Notify this coordinator that a child is ready for mutation (internal use).
+   * Called by child UOWs when they signal readiness.
+   */
+  notifyChildReadyForMutation(): void {
+    this.#readyForMutationCount++;
+    if (this.#readyForMutationCount >= this.#children.size) {
+      this.#mutationReadinessResolve?.();
+    }
+  }
+
+  /**
+   * Reset coordination state for retry support
+   */
+  reset(): void {
+    this.#children.clear();
+    this.#readyForRetrievalCount = 0;
+    this.#readyForMutationCount = 0;
+    this.#retrievalReadinessPromise = Promise.resolve();
+    this.#mutationReadinessPromise = Promise.resolve();
+  }
 }
 
 /**
@@ -938,19 +1074,22 @@ export interface UnitOfWorkConfig {
  * 1. Retrieval phase: Read operations to fetch entities with their versions
  * 2. Mutation phase: Write operations that check versions before committing
  *
+ * This is the untyped base storage. Use TypedUnitOfWork for type-safe operations.
+ *
  * @example
  * ```ts
  * const uow = queryEngine.createUnitOfWork("update-user-balance");
+ * const typedUow = uow.forSchema(mySchema);
  *
  * // Retrieval phase
- * uow.find("users", (b) => b.where("primary", (eb) => eb("id", "=", userId)));
+ * typedUow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
  *
  * // Execute retrieval and transition to mutation phase
  * const [users] = await uow.executeRetrieve();
  *
  * // Mutation phase with version check
  * const user = users[0];
- * uow.update("users", user.id, (b) => b.set({ balance: newBalance }).check());
+ * typedUow.update("users", user.id, (b) => b.set({ balance: newBalance }).check());
  *
  * // Execute mutations
  * const { success } = await uow.executeMutations();
@@ -959,20 +1098,13 @@ export interface UnitOfWorkConfig {
  * }
  * ```
  */
-export class UnitOfWork<
-  const TSchema extends AnySchema,
-  const TRetrievalResults extends unknown[] = [],
-  const TRawInput = unknown,
-> implements IUnitOfWork
-{
-  #schema: TSchema;
-
+export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #name?: string;
   #config?: UnitOfWorkConfig;
 
   #state: UOWState = "building-retrieval";
 
-  // Operations can now come from any schema
+  // Operations can come from any schema
   #retrievalOps: RetrievalOperation<AnySchema>[] = [];
   #mutationOps: MutationOperation<AnySchema>[] = [];
 
@@ -981,17 +1113,25 @@ export class UnitOfWork<
   #decoder: UOWDecoder<TRawInput>;
   #schemaNamespaceMap?: WeakMap<AnySchema, string>;
 
-  #retrievalResults?: TRetrievalResults;
+  #retrievalResults?: unknown[];
   #createdInternalIds: (bigint | null)[] = [];
 
   // Phase coordination promises
-  #retrievalPhaseResolve?: (value: TRetrievalResults) => void;
+  #retrievalPhaseResolve?: (value: unknown[]) => void;
+  #retrievalPhaseReject?: (error: Error) => void;
   #mutationPhaseResolve?: () => void;
-  #retrievalPhasePromise: Promise<TRetrievalResults>;
+  #mutationPhaseReject?: (error: Error) => void;
+  #retrievalPhasePromise: Promise<unknown[]>;
   #mutationPhasePromise: Promise<void>;
 
+  // Error tracking
+  #retrievalError: Error | null = null;
+  #mutationError: Error | null = null;
+
+  // Child coordination
+  #coordinator: UOWChildCoordinator<TRawInput> = new UOWChildCoordinator();
+
   constructor(
-    schema: TSchema,
     compiler: UOWCompiler<unknown>,
     executor: UOWExecutor<unknown, TRawInput>,
     decoder: UOWDecoder<TRawInput>,
@@ -999,49 +1139,125 @@ export class UnitOfWork<
     config?: UnitOfWorkConfig,
     schemaNamespaceMap?: WeakMap<AnySchema, string>,
   ) {
-    this.#schema = schema;
     this.#compiler = compiler;
     this.#executor = executor;
     this.#decoder = decoder;
+    this.#schemaNamespaceMap = schemaNamespaceMap;
     this.#name = name;
     this.#config = config;
-    this.#schemaNamespaceMap = schemaNamespaceMap;
 
     // Initialize phase coordination promises
-    this.#retrievalPhasePromise = new Promise<TRetrievalResults>((resolve) => {
-      this.#retrievalPhaseResolve = resolve;
-    });
-    this.#mutationPhasePromise = new Promise<void>((resolve) => {
-      this.#mutationPhaseResolve = resolve;
-    });
-  }
+    const retrievalPromise = Promise.withResolvers<unknown[]>();
+    this.#retrievalPhaseResolve = retrievalPromise.resolve;
+    this.#retrievalPhaseReject = retrievalPromise.reject;
+    this.#retrievalPhasePromise = retrievalPromise.promise;
 
-  get schema(): TSchema {
-    return this.#schema;
-  }
-
-  get $results(): Prettify<TRetrievalResults> {
-    throw new Error("type only");
+    const mutationPromise = Promise.withResolvers<void>();
+    this.#mutationPhaseResolve = mutationPromise.resolve;
+    this.#mutationPhaseReject = mutationPromise.reject;
+    this.#mutationPhasePromise = mutationPromise.promise;
   }
 
   /**
-   * Get a schema-specific view of this UOW for type-safe operations
-   * Returns a wrapper that uses a different schema for operations.
+   * Get a schema-specific typed view of this UOW for type-safe operations.
+   * Returns a wrapper that provides typed operations for the given schema.
    * The namespace is automatically resolved from the schema-namespace map.
    */
-  forSchema<TOtherSchema extends AnySchema>(
+  forSchema<TOtherSchema extends AnySchema, TRawInput>(
     schema: TOtherSchema,
-  ): UnitOfWorkSchemaView<TOtherSchema, [], TRawInput> {
+  ): TypedUnitOfWork<TOtherSchema, [], TRawInput> {
     // Look up namespace from map
     const resolvedNamespace = this.#schemaNamespaceMap?.get(schema);
 
-    // Safe cast: UnitOfWorkSchemaView starts with empty result types
-    // As operations are added, the types will accumulate correctly
-    return new UnitOfWorkSchemaView(
-      schema,
-      resolvedNamespace,
-      this as unknown as UnitOfWork<AnySchema, unknown[], TRawInput>,
+    return new TypedUnitOfWork(schema, resolvedNamespace, this as unknown as UnitOfWork<TRawInput>);
+  }
+
+  /**
+   * Create a restricted child UOW that cannot execute phases.
+   * The child shares the same operation storage but must signal readiness
+   * before the parent can execute each phase.
+   */
+  restrict(): UnitOfWork<TRawInput> {
+    const child = new UnitOfWork(
+      this.#compiler,
+      this.#executor,
+      this.#decoder,
+      this.#name,
+      this.#config,
+      this.#schemaNamespaceMap,
     );
+    child.#coordinator.setAsRestricted(this, this.#coordinator);
+
+    // Share state with parent
+    child.#state = this.#state;
+    child.#retrievalOps = this.#retrievalOps;
+    child.#mutationOps = this.#mutationOps;
+    child.#retrievalResults = this.#retrievalResults;
+    child.#createdInternalIds = this.#createdInternalIds;
+    child.#retrievalPhasePromise = this.#retrievalPhasePromise;
+    child.#mutationPhasePromise = this.#mutationPhasePromise;
+    child.#retrievalError = this.#retrievalError;
+    child.#mutationError = this.#mutationError;
+
+    this.#coordinator.addChild(child);
+
+    // For synchronous usage (the common case), immediately signal readiness
+    // This allows services called directly from handlers to work without explicit signaling
+    child.signalReadyForRetrieval();
+    child.signalReadyForMutation();
+
+    return child;
+  }
+
+  /**
+   * Signal that this child is ready for retrieval phase execution.
+   * Only valid for restricted (child) UOWs.
+   */
+  signalReadyForRetrieval(): void {
+    this.#coordinator.signalReadyForRetrieval();
+  }
+
+  /**
+   * Signal that this child is ready for mutation phase execution.
+   * Only valid for restricted (child) UOWs.
+   */
+  signalReadyForMutation(): void {
+    this.#coordinator.signalReadyForMutation();
+  }
+
+  /**
+   * Reset the UOW to initial state for retry support.
+   * Clears operations, resets state, and resets phase promises.
+   */
+  reset(): void {
+    if (this.#coordinator.isRestricted) {
+      throw new Error("reset() cannot be called on restricted child UOWs");
+    }
+
+    // Clear operations
+    this.#retrievalOps = [];
+    this.#mutationOps = [];
+    this.#retrievalResults = undefined;
+    this.#createdInternalIds = [];
+
+    // Reset state
+    this.#state = "building-retrieval";
+    this.#retrievalError = null;
+    this.#mutationError = null;
+
+    // Reset phase promises
+    const retrievalPromise = Promise.withResolvers<unknown[]>();
+    this.#retrievalPhaseResolve = retrievalPromise.resolve;
+    this.#retrievalPhaseReject = retrievalPromise.reject;
+    this.#retrievalPhasePromise = retrievalPromise.promise;
+
+    const mutationPromise = Promise.withResolvers<void>();
+    this.#mutationPhaseResolve = mutationPromise.resolve;
+    this.#mutationPhaseReject = mutationPromise.reject;
+    this.#mutationPhasePromise = mutationPromise.promise;
+
+    // Reset child coordination
+    this.#coordinator.reset();
   }
 
   get state(): UOWState {
@@ -1056,7 +1272,7 @@ export class UnitOfWork<
    * Promise that resolves when the retrieval phase is executed
    * Service methods can await this to coordinate multi-phase logic
    */
-  get retrievalPhase(): Promise<TRetrievalResults> {
+  get retrievalPhase(): Promise<unknown[]> {
     return this.#retrievalPhasePromise;
   }
 
@@ -1072,308 +1288,64 @@ export class UnitOfWork<
    * Execute the retrieval phase and transition to mutation phase
    * Returns all results from find operations
    */
-  async executeRetrieve(): Promise<TRetrievalResults> {
+  async executeRetrieve(): Promise<unknown[]> {
+    if (this.#coordinator.isRestricted) {
+      throw new Error("executeRetrieve() cannot be called on restricted child UOWs");
+    }
+
     if (this.#state !== "building-retrieval") {
       throw new Error(
         `Cannot execute retrieval from state ${this.#state}. Must be in building-retrieval state.`,
       );
     }
 
-    if (this.#retrievalOps.length === 0) {
+    try {
+      // Wait for all children to signal readiness
+      await this.#coordinator.retrievalReadinessPromise;
+
+      if (this.#retrievalOps.length === 0) {
+        this.#state = "building-mutation";
+        const emptyResults: unknown[] = [];
+        this.#retrievalPhaseResolve?.(emptyResults);
+        return emptyResults;
+      }
+
+      // Compile retrieval operations using single compiler
+      const retrievalBatch: unknown[] = [];
+      for (const op of this.#retrievalOps) {
+        const compiled = this.#compiler.compileRetrievalOperation(op);
+        if (compiled !== null) {
+          this.#config?.onQuery?.(compiled);
+          retrievalBatch.push(compiled);
+        }
+      }
+
+      if (this.#config?.dryRun) {
+        this.#state = "executed";
+        const emptyResults: unknown[] = [];
+        this.#retrievalPhaseResolve?.(emptyResults);
+        return emptyResults;
+      }
+
+      // Execute all operations together (ideally in same transaction)
+      const rawResults = await this.#executor.executeRetrievalPhase(retrievalBatch);
+
+      // Decode results using single decoder
+      const results = this.#decoder(rawResults, this.#retrievalOps);
+
+      // Store results and transition to mutation phase
+      this.#retrievalResults = results;
       this.#state = "building-mutation";
-      const emptyResults = [] as unknown as TRetrievalResults;
-      this.#retrievalPhaseResolve?.(emptyResults);
-      return emptyResults;
+
+      // Resolve the retrieval phase promise to unblock waiting service methods
+      this.#retrievalPhaseResolve?.(this.#retrievalResults);
+
+      return this.#retrievalResults;
+    } catch (error) {
+      this.#retrievalError = error instanceof Error ? error : new Error(String(error));
+      this.#retrievalPhaseReject?.(this.#retrievalError);
+      throw error;
     }
-
-    // Compile retrieval operations using single compiler
-    const retrievalBatch: unknown[] = [];
-    for (const op of this.#retrievalOps) {
-      const compiled = this.#compiler.compileRetrievalOperation(op);
-      if (compiled !== null) {
-        this.#config?.onQuery?.(compiled);
-        retrievalBatch.push(compiled);
-      }
-    }
-
-    if (this.#config?.dryRun) {
-      this.#state = "executed";
-      return [] as unknown as TRetrievalResults;
-    }
-
-    // Execute all operations together (ideally in same transaction)
-    const rawResults = await this.#executor.executeRetrievalPhase(retrievalBatch);
-
-    // Decode results using single decoder
-    const results = this.#decoder(rawResults, this.#retrievalOps);
-
-    // Store results and transition to mutation phase
-    this.#retrievalResults = results as TRetrievalResults;
-    this.#state = "building-mutation";
-
-    // Resolve the retrieval phase promise to unblock waiting service methods
-    this.#retrievalPhaseResolve?.(this.#retrievalResults);
-
-    return this.#retrievalResults;
-  }
-
-  /**
-   * Add a find operation using a builder callback (retrieval phase only)
-   */
-  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): UnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      >[],
-    ],
-    TRawInput
-  >;
-  find<TTableName extends keyof TSchema["tables"] & string>(
-    tableName: TTableName,
-  ): UnitOfWork<
-    TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
-    TRawInput
-  >;
-  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn?: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): UnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      >[],
-    ],
-    TRawInput
-  > {
-    if (this.#state !== "building-retrieval") {
-      throw new Error(
-        `find() can only be called during retrieval phase. Current state: ${this.#state}`,
-      );
-    }
-
-    const table = this.#schema.tables[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
-
-    // Create builder, pass to callback (or use default), then extract configuration
-    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
-    if (builderFn) {
-      builderFn(builder);
-    } else {
-      // Default to primary index with no filter
-      builder.whereIndex("primary");
-    }
-    const { indexName, options, type } = builder.build();
-
-    this.#retrievalOps.push({
-      type,
-      schema: this.#schema,
-      // Safe: we know the table is part of the schema from the find() method
-      table: table as TSchema["tables"][TTableName],
-      indexName,
-      // Safe: we're storing the options for later compilation
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options: options as any,
-    });
-
-    // Safe: return type is correctly specified in the method signature
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return this as any;
-  }
-
-  /**
-   * Add a find operation with cursor metadata (retrieval phase only)
-   */
-  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
-      // We omit "build" because we don't want to expose it to the user
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): UnitOfWork<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      CursorResult<
-        SelectResult<
-          TSchema["tables"][TTableName],
-          ExtractJoinOut<TBuilderResult>,
-          Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-        >
-      >,
-    ],
-    TRawInput
-  > {
-    if (this.#state !== "building-retrieval") {
-      throw new Error(
-        `findWithCursor() can only be called during retrieval phase. Current state: ${this.#state}`,
-      );
-    }
-
-    const table = this.#schema.tables[tableName];
-    if (!table) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
-
-    // Create builder and pass to callback
-    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
-    builderFn(builder);
-    const { indexName, options, type } = builder.build();
-
-    this.#retrievalOps.push({
-      type,
-      schema: this.#schema,
-      // Safe: we know the table is part of the schema from the findWithCursor() method
-      table: table as TSchema["tables"][TTableName],
-      indexName,
-      // Safe: we're storing the options for later compilation
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options: options as any,
-      withCursor: true,
-    });
-
-    // Safe: return type is correctly specified in the method signature
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return this as any;
-  }
-
-  /**
-   * Add a create operation (mutation phase only)
-   * Returns a FragnoId with the external ID that can be used immediately in subsequent operations
-   */
-  create<TableName extends keyof TSchema["tables"] & string>(
-    table: TableName,
-    values: TableToInsertValues<TSchema["tables"][TableName]>,
-  ): FragnoId {
-    if (this.#state === "executed") {
-      throw new Error(`create() can only be called during mutation phase.`);
-    }
-
-    const tableSchema = this.#schema.tables[table];
-    if (!tableSchema) {
-      throw new Error(`Table ${table} not found in schema`);
-    }
-
-    const idColumn = tableSchema.getIdColumn();
-    let externalId: string;
-    let updatedValues = values;
-
-    // Check if ID value is provided in values
-    const providedIdValue = (values as Record<string, unknown>)[idColumn.ormName];
-
-    if (providedIdValue !== undefined) {
-      // Extract string from FragnoId or use string directly
-      if (
-        typeof providedIdValue === "object" &&
-        providedIdValue !== null &&
-        "externalId" in providedIdValue
-      ) {
-        externalId = (providedIdValue as FragnoId).externalId;
-      } else {
-        externalId = providedIdValue as string;
-      }
-    } else {
-      // Generate using the column's default configuration
-      const generated = idColumn.generateDefaultValue();
-      if (generated === undefined) {
-        throw new Error(
-          `No ID value provided and ID column ${idColumn.ormName} has no default generator`,
-        );
-      }
-      externalId = generated as string;
-
-      // Add the generated ID to values so it's used in the insert
-      updatedValues = {
-        ...values,
-        [idColumn.ormName]: externalId,
-      } as TableToInsertValues<TSchema["tables"][TableName]>;
-    }
-
-    this.#mutationOps.push({
-      type: "create",
-      schema: this.#schema,
-      table,
-      values: updatedValues,
-      generatedExternalId: externalId,
-    });
-
-    return FragnoId.fromExternal(externalId, 0);
-  }
-
-  /**
-   * Add an update operation using a builder callback (mutation phase only)
-   */
-  update<TableName extends keyof TSchema["tables"] & string>(
-    table: TableName,
-    id: FragnoId | string,
-    builderFn: (
-      // We omit "build" because we don't want to expose it to the user
-      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
-    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
-  ): void {
-    if (this.#state === "executed") {
-      throw new Error(`update() can only be called during mutation phase.`);
-    }
-
-    // Create builder, pass to callback, then extract configuration
-    const builder = new UpdateBuilder<TSchema["tables"][TableName]>(table, id);
-    builderFn(builder);
-    const { id: opId, checkVersion, set } = builder.build();
-
-    this.#mutationOps.push({
-      type: "update",
-      schema: this.#schema,
-      table,
-      id: opId,
-      checkVersion,
-      set,
-    });
-  }
-
-  /**
-   * Add a delete operation using a builder callback (mutation phase only)
-   */
-  delete<TableName extends keyof TSchema["tables"] & string>(
-    table: TableName,
-    id: FragnoId | string,
-    builderFn?: (
-      // We omit "build" because we don't want to expose it to the user
-      builder: Omit<DeleteBuilder, "build">,
-    ) => Omit<DeleteBuilder, "build"> | void,
-  ): void {
-    if (this.#state === "executed") {
-      throw new Error(`delete() can only be called during mutation phase.`);
-    }
-
-    // Create builder, optionally pass to callback, then extract configuration
-    const builder = new DeleteBuilder(table, id);
-    builderFn?.(builder);
-    const { id: opId, checkVersion } = builder.build();
-
-    this.#mutationOps.push({
-      type: "delete",
-      schema: this.#schema,
-      table,
-      id: opId,
-      checkVersion,
-    });
   }
 
   /**
@@ -1381,41 +1353,55 @@ export class UnitOfWork<
    * Returns success flag indicating if mutations completed without conflicts
    */
   async executeMutations(): Promise<{ success: boolean }> {
+    if (this.#coordinator.isRestricted) {
+      throw new Error("executeMutations() cannot be called on restricted child UOWs");
+    }
+
     if (this.#state === "executed") {
       throw new Error(`Cannot execute mutations from state ${this.#state}.`);
     }
 
-    // Compile mutation operations using single compiler
-    const mutationBatch: CompiledMutation<unknown>[] = [];
-    for (const op of this.#mutationOps) {
-      const compiled = this.#compiler.compileMutationOperation(op);
-      if (compiled !== null) {
-        this.#config?.onQuery?.(compiled);
-        mutationBatch.push(compiled);
+    try {
+      // Wait for all children to signal readiness
+      await this.#coordinator.mutationReadinessPromise;
+
+      // Compile mutation operations using single compiler
+      const mutationBatch: CompiledMutation<unknown>[] = [];
+      for (const op of this.#mutationOps) {
+        const compiled = this.#compiler.compileMutationOperation(op);
+        if (compiled !== null) {
+          this.#config?.onQuery?.(compiled);
+          mutationBatch.push(compiled);
+        }
       }
-    }
 
-    if (this.#config?.dryRun) {
+      if (this.#config?.dryRun) {
+        this.#state = "executed";
+        this.#mutationPhaseResolve?.();
+        return {
+          success: true,
+        };
+      }
+
+      // Execute mutation phase
+      const result = await this.#executor.executeMutationPhase(mutationBatch);
       this.#state = "executed";
+
+      if (result.success) {
+        this.#createdInternalIds = result.createdInternalIds;
+      }
+
+      // Resolve the mutation phase promise to unblock waiting service methods
+      this.#mutationPhaseResolve?.();
+
       return {
-        success: true,
+        success: result.success,
       };
+    } catch (error) {
+      this.#mutationError = error instanceof Error ? error : new Error(String(error));
+      this.#mutationPhaseReject?.(this.#mutationError);
+      throw error;
     }
-
-    // Execute mutation phase
-    const result = await this.#executor.executeMutationPhase(mutationBatch);
-    this.#state = "executed";
-
-    if (result.success) {
-      this.#createdInternalIds = result.createdInternalIds;
-    }
-
-    // Resolve the mutation phase promise to unblock waiting service methods
-    this.#mutationPhaseResolve?.();
-
-    return {
-      success: result.success,
-    };
   }
 
   /**
@@ -1434,18 +1420,26 @@ export class UnitOfWork<
 
   /**
    * @internal
-   * Add a retrieval operation (used by SchemaView)
+   * Add a retrieval operation (used by TypedUnitOfWork)
    */
   addRetrievalOperation(op: RetrievalOperation<AnySchema>): number {
+    if (this.#state !== "building-retrieval") {
+      throw new Error(
+        `Cannot add retrieval operation in state ${this.#state}. Must be in building-retrieval state.`,
+      );
+    }
     this.#retrievalOps.push(op);
     return this.#retrievalOps.length - 1;
   }
 
   /**
    * @internal
-   * Add a mutation operation (used by SchemaView)
+   * Add a mutation operation (used by TypedUnitOfWork)
    */
   addMutationOperation(op: MutationOperation<AnySchema>): void {
+    if (this.#state === "executed") {
+      throw new Error(`Cannot add mutation operation in executed state.`);
+    }
     this.#mutationOps.push(op);
   }
 
@@ -1518,10 +1512,11 @@ export class UnitOfWork<
 }
 
 /**
- * A lightweight wrapper around a parent UOW that provides type-safe operations for a different schema.
- * All operations are stored in the parent UOW, but this wrapper ensures the correct schema is used.
+ * A typed facade around a UnitOfWork that provides type-safe operations for a specific schema.
+ * All operations are stored in the underlying UOW, but this facade ensures type safety and
+ * filters retrieval results to only include operations added through this facade.
  */
-export class UnitOfWorkSchemaView<
+export class TypedUnitOfWork<
   const TSchema extends AnySchema,
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
@@ -1529,17 +1524,13 @@ export class UnitOfWorkSchemaView<
 {
   #schema: TSchema;
   #namespace?: string;
-  #parent: UnitOfWork<AnySchema, unknown[], TRawInput>;
+  #uow: UnitOfWork<TRawInput>;
   #operationIndices: number[] = [];
 
-  constructor(
-    schema: TSchema,
-    namespace: string | undefined,
-    parent: UnitOfWork<AnySchema, unknown[], TRawInput>,
-  ) {
+  constructor(schema: TSchema, namespace: string | undefined, uow: UnitOfWork<TRawInput>) {
     this.#schema = schema;
     this.#namespace = namespace;
-    this.#parent = parent;
+    this.#uow = uow;
   }
 
   get $results(): Prettify<TRetrievalResults> {
@@ -1551,43 +1542,65 @@ export class UnitOfWorkSchemaView<
   }
 
   get name(): string | undefined {
-    return this.#parent.name;
+    return this.#uow.name;
   }
 
   get state() {
-    return this.#parent.state;
+    return this.#uow.state;
   }
 
   get retrievalPhase(): Promise<TRetrievalResults> {
     // Filter parent's results to only include operations from this view
-    return this.#parent.retrievalPhase.then((allResults) => {
+    return this.#uow.retrievalPhase.then((allResults) => {
       const filteredResults = this.#operationIndices.map((index) => allResults[index]);
       return filteredResults as TRetrievalResults;
     });
   }
 
   get mutationPhase(): Promise<void> {
-    return this.#parent.mutationPhase;
+    return this.#uow.mutationPhase;
   }
 
   getRetrievalOperations() {
-    return this.#parent.getRetrievalOperations();
+    return this.#uow.getRetrievalOperations();
   }
 
   getMutationOperations() {
-    return this.#parent.getMutationOperations();
+    return this.#uow.getMutationOperations();
   }
 
   getCreatedIds() {
-    return this.#parent.getCreatedIds();
+    return this.#uow.getCreatedIds();
   }
 
-  async executeRetrieve(): Promise<unknown[]> {
-    return this.#parent.executeRetrieve();
+  async executeRetrieve(): Promise<TRetrievalResults> {
+    return this.#uow.executeRetrieve() as Promise<TRetrievalResults>;
   }
 
   async executeMutations(): Promise<{ success: boolean }> {
-    return this.#parent.executeMutations();
+    return this.#uow.executeMutations();
+  }
+
+  restrict(): IUnitOfWork {
+    return this.#uow.restrict();
+  }
+
+  reset(): void {
+    return this.#uow.reset();
+  }
+
+  forSchema<TOtherSchema extends AnySchema>(
+    schema: TOtherSchema,
+  ): TypedUnitOfWork<TOtherSchema, [], TRawInput> {
+    return this.#uow.forSchema(schema);
+  }
+
+  compile<TOutput>(compiler: UOWCompiler<TOutput>): {
+    name?: string;
+    retrievalBatch: TOutput[];
+    mutationBatch: CompiledMutation<TOutput>[];
+  } {
+    return this.#uow.compile(compiler);
   }
 
   find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
@@ -1595,7 +1608,7 @@ export class UnitOfWorkSchemaView<
     builderFn: (
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
     ) => TBuilderResult,
-  ): UnitOfWorkSchemaView<
+  ): TypedUnitOfWork<
     TSchema,
     [
       ...TRetrievalResults,
@@ -1609,7 +1622,7 @@ export class UnitOfWorkSchemaView<
   >;
   find<TTableName extends keyof TSchema["tables"] & string>(
     tableName: TTableName,
-  ): UnitOfWorkSchemaView<
+  ): TypedUnitOfWork<
     TSchema,
     [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
     TRawInput
@@ -1619,7 +1632,7 @@ export class UnitOfWorkSchemaView<
     builderFn?: (
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
     ) => TBuilderResult,
-  ): UnitOfWorkSchemaView<
+  ): TypedUnitOfWork<
     TSchema,
     [
       ...TRetrievalResults,
@@ -1644,7 +1657,7 @@ export class UnitOfWorkSchemaView<
     }
     const { indexName, options, type } = builder.build();
 
-    const operationIndex = this.#parent.addRetrievalOperation({
+    const operationIndex = this.#uow.addRetrievalOperation({
       type,
       schema: this.#schema,
       namespace: this.#namespace,
@@ -1667,7 +1680,7 @@ export class UnitOfWorkSchemaView<
     builderFn: (
       builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
     ) => TBuilderResult,
-  ): UnitOfWorkSchemaView<
+  ): TypedUnitOfWork<
     TSchema,
     [
       ...TRetrievalResults,
@@ -1690,7 +1703,7 @@ export class UnitOfWorkSchemaView<
     builderFn(builder);
     const { indexName, options, type } = builder.build();
 
-    const operationIndex = this.#parent.addRetrievalOperation({
+    const operationIndex = this.#uow.addRetrievalOperation({
       type,
       schema: this.#schema,
       namespace: this.#namespace,
@@ -1753,7 +1766,7 @@ export class UnitOfWorkSchemaView<
       } as TableToInsertValues<TSchema["tables"][TableName]>;
     }
 
-    this.#parent.addMutationOperation({
+    this.#uow.addMutationOperation({
       type: "create",
       schema: this.#schema,
       namespace: this.#namespace,
@@ -1776,7 +1789,7 @@ export class UnitOfWorkSchemaView<
     builderFn(builder);
     const { id: opId, checkVersion, set } = builder.build();
 
-    this.#parent.addMutationOperation({
+    this.#uow.addMutationOperation({
       type: "update",
       schema: this.#schema,
       namespace: this.#namespace,
@@ -1796,7 +1809,7 @@ export class UnitOfWorkSchemaView<
     builderFn?.(builder);
     const { id: opId, checkVersion } = builder.build();
 
-    this.#parent.addMutationOperation({
+    this.#uow.addMutationOperation({
       type: "delete",
       schema: this.#schema,
       namespace: this.#namespace,
@@ -1804,230 +1817,5 @@ export class UnitOfWorkSchemaView<
       id: opId,
       checkVersion,
     });
-  }
-
-  forSchema<TOtherSchema extends AnySchema>(
-    schema: TOtherSchema,
-  ): UnitOfWorkSchemaView<TOtherSchema, [], TRawInput> {
-    // Delegate to the parent's forSchema to create a new view
-    return this.#parent.forSchema(schema);
-  }
-}
-
-/**
- * Restricted wrapper around a full UnitOfWork.
- * Provides access to UOW operations but hides execute methods.
- * Useful to prevent deadlocks or enforce execution control at a higher level.
- */
-export class RestrictedUnitOfWork implements IUnitOfWorkRestricted {
-  #uow: IUnitOfWork;
-
-  constructor(uow: IUnitOfWork) {
-    this.#uow = uow;
-  }
-
-  get state() {
-    return this.#uow.state;
-  }
-
-  get name() {
-    return this.#uow.name;
-  }
-
-  get retrievalPhase() {
-    return this.#uow.retrievalPhase;
-  }
-
-  get mutationPhase() {
-    return this.#uow.mutationPhase;
-  }
-
-  getRetrievalOperations() {
-    return this.#uow.getRetrievalOperations();
-  }
-
-  getMutationOperations() {
-    return this.#uow.getMutationOperations();
-  }
-
-  getCreatedIds() {
-    return this.#uow.getCreatedIds();
-  }
-
-  forSchema<TOtherSchema extends AnySchema>(
-    schema: TOtherSchema,
-  ): UnitOfWorkRestrictedSchemaView<TOtherSchema, [], unknown> {
-    const fullView = this.#uow.forSchema(schema);
-    return new UnitOfWorkRestrictedSchemaView(fullView);
-  }
-}
-
-/**
- * Create a restricted version of a UnitOfWork that cannot execute phases.
- * Useful to prevent deadlocks or enforce execution control at a higher level.
- */
-export function restrictUnitOfWork(uow: IUnitOfWork): IUnitOfWorkRestricted {
-  return new RestrictedUnitOfWork(uow);
-}
-
-/**
- * Restricted wrapper around UnitOfWorkSchemaView.
- * Provides access to UOW operations but hides execute methods.
- * Useful to prevent deadlocks or enforce execution control at a higher level.
- */
-export class UnitOfWorkRestrictedSchemaView<
-  const TSchema extends AnySchema,
-  const TRetrievalResults extends unknown[] = [],
-  const TRawInput = unknown,
-> implements IUnitOfWorkRestricted
-{
-  #view: UnitOfWorkSchemaView<TSchema, TRetrievalResults, TRawInput>;
-
-  constructor(view: UnitOfWorkSchemaView<TSchema, TRetrievalResults, TRawInput>) {
-    this.#view = view;
-  }
-
-  get $results(): Prettify<TRetrievalResults> {
-    return this.#view.$results;
-  }
-
-  get schema(): TSchema {
-    return this.#view.schema;
-  }
-
-  get name(): string | undefined {
-    return this.#view.name;
-  }
-
-  get state() {
-    return this.#view.state;
-  }
-
-  get retrievalPhase(): Promise<TRetrievalResults> {
-    return this.#view.retrievalPhase;
-  }
-
-  get mutationPhase(): Promise<void> {
-    return this.#view.mutationPhase;
-  }
-
-  getRetrievalOperations() {
-    return this.#view.getRetrievalOperations();
-  }
-
-  getMutationOperations() {
-    return this.#view.getMutationOperations();
-  }
-
-  getCreatedIds() {
-    return this.#view.getCreatedIds();
-  }
-
-  // Note: executeRetrieve and executeMutations are intentionally omitted
-
-  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): UnitOfWorkRestrictedSchemaView<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      >[],
-    ],
-    TRawInput
-  >;
-  find<TTableName extends keyof TSchema["tables"] & string>(
-    tableName: TTableName,
-  ): UnitOfWorkRestrictedSchemaView<
-    TSchema,
-    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
-    TRawInput
-  >;
-  find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn?: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): UnitOfWorkRestrictedSchemaView<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      SelectResult<
-        TSchema["tables"][TTableName],
-        ExtractJoinOut<TBuilderResult>,
-        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-      >[],
-    ],
-    TRawInput
-  > {
-    const updatedView = builderFn
-      ? this.#view.find(tableName, builderFn)
-      : this.#view.find(tableName);
-    // Safe cast: we're wrapping the updated view with the correct types
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new UnitOfWorkRestrictedSchemaView(updatedView as any);
-  }
-
-  findWithCursor<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
-    tableName: TTableName,
-    builderFn: (
-      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
-    ) => TBuilderResult,
-  ): UnitOfWorkRestrictedSchemaView<
-    TSchema,
-    [
-      ...TRetrievalResults,
-      CursorResult<
-        SelectResult<
-          TSchema["tables"][TTableName],
-          ExtractJoinOut<TBuilderResult>,
-          Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
-        >
-      >,
-    ],
-    TRawInput
-  > {
-    const updatedView = this.#view.findWithCursor(tableName, builderFn);
-    // Safe cast: we're wrapping the updated view with the correct types
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new UnitOfWorkRestrictedSchemaView(updatedView as any);
-  }
-
-  create<TableName extends keyof TSchema["tables"] & string>(
-    tableName: TableName,
-    values: TableToInsertValues<TSchema["tables"][TableName]>,
-  ): FragnoId {
-    return this.#view.create(tableName, values);
-  }
-
-  update<TableName extends keyof TSchema["tables"] & string>(
-    tableName: TableName,
-    id: FragnoId | string,
-    builderFn: (
-      builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
-    ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
-  ): void {
-    this.#view.update(tableName, id, builderFn);
-  }
-
-  delete<TableName extends keyof TSchema["tables"] & string>(
-    tableName: TableName,
-    id: FragnoId | string,
-    builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build"> | void,
-  ): void {
-    this.#view.delete(tableName, id, builderFn);
-  }
-
-  forSchema<TOtherSchema extends AnySchema>(
-    schema: TOtherSchema,
-  ): UnitOfWorkRestrictedSchemaView<TOtherSchema, [], TRawInput> {
-    const otherView = this.#view.forSchema(schema);
-    return new UnitOfWorkRestrictedSchemaView(otherView);
   }
 }

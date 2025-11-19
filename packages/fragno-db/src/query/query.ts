@@ -1,7 +1,7 @@
 import type { IdColumn, AnySchema, AnyTable, Relation, FragnoId } from "../schema/create";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type {
-  UnitOfWork,
+  TypedUnitOfWork,
   FindBuilder,
   UpdateBuilder,
   DeleteBuilder,
@@ -258,5 +258,5 @@ export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
   /**
    * Create a Unit of Work bound to this query engine
    */
-  createUnitOfWork: (name?: string, config?: TUOWConfig) => UnitOfWork<TSchema, []>;
+  createUnitOfWork: (name?: string, config?: TUOWConfig) => TypedUnitOfWork<TSchema, [], unknown>;
 }
