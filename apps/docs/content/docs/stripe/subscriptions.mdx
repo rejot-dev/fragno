@@ -22,6 +22,16 @@ subscription and renewing causes multiple subscription to be created by Stripe. 
 often make the assumption of a single 'active' subscription, but multiple active subscriptions are
 supported by providing the specific subscription id for a given action like `upgrade` or `cancel`.
 
+You can also configure Stripe to allow only a single (active) subscription per customer on the
+[Checkout and Payment Links](https://dashboard.stripe.com/settings/checkout) settings page:
+
+<figure className="flex flex-col items-center justify-center">
+  <div class="rounded-xl shadow-md">
+    ![Screenshot Stripe dashboard](/stripe-limit-one-customer.webp)
+  </div>
+  <figcaption>Stripe checkout settings</figcaption>
+</figure>
+
 <Callout type="info">
   Stripe also has a concept of "plans" but this API is superseded by the more flexible [Prices
   API](https://docs.stripe.com/api/prices). This fragment uses the latter.
