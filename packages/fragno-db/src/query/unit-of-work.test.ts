@@ -1101,3 +1101,258 @@ describe("Phase promises with multiple views", () => {
     expect(createdIds[0].externalId).not.toBe(createdIds[1].externalId);
   });
 });
+
+describe("Error Handling", () => {
+  const testSchema = schema((s) =>
+    s.addTable("users", (t) =>
+      t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+    ),
+  );
+
+  it("should throw error from executeRetrieve() when retrieval fails", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        throw new Error("Database connection failed");
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    await expect(uow.executeRetrieve()).rejects.toThrow("Database connection failed");
+  });
+
+  it("should throw error from executeMutations() when mutation fails", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => {
+        throw new Error("Write conflict");
+      },
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
+
+    await expect(uow.executeMutations()).rejects.toThrow("Write conflict");
+  });
+
+  it("should reject retrievalPhase promise when executeRetrieve() fails", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        throw new Error("Query timeout");
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    // Start executing (this will fail)
+    const executePromise = uow.executeRetrieve().catch(() => {
+      /* handled */
+    });
+
+    // The retrievalPhase promise should also reject
+    await expect(uow.retrievalPhase).rejects.toThrow("Query timeout");
+
+    // Wait for execute to complete
+    await executePromise;
+  });
+
+  it("should reject mutationPhase promise when executeMutations() fails", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => {
+        throw new Error("Constraint violation");
+      },
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
+
+    // Start executing (this will fail)
+    const executePromise = uow.executeMutations().catch(() => {
+      /* handled */
+    });
+
+    // The mutationPhase promise should also reject
+    await expect(uow.mutationPhase).rejects.toThrow("Constraint violation");
+
+    // Wait for execute to complete
+    await executePromise;
+  });
+
+  it("should not cause unhandled promise rejection when executeRetrieve() fails and coordination promise is not awaited", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        throw new Error("Table does not exist");
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    // Access the retrievalPhase promise but don't await it
+    // This simulates the internal coordination promise that might not be awaited
+    const _retrievalPhase = uow.retrievalPhase;
+
+    const errorResolver = Promise.withResolvers<void>();
+
+    // Execute and catch the error from executeRetrieve()
+    try {
+      await uow.executeRetrieve();
+    } catch (error) {
+      // Error is caught, this is expected
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Table does not exist");
+      errorResolver.resolve();
+    }
+
+    await errorResolver.promise;
+  });
+
+  it("should not cause unhandled promise rejection when executeMutations() fails and coordination promise is not awaited", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => {
+        throw new Error("Deadlock detected");
+      },
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
+
+    // Access the mutationPhase promise but don't await it
+    // This simulates the internal coordination promise that might not be awaited
+    const _mutationPhase = uow.mutationPhase;
+
+    const errorResolver = Promise.withResolvers<void>();
+
+    // Execute and catch the error from executeMutations()
+    try {
+      await uow.executeMutations();
+    } catch (error) {
+      // Error is caught, this is expected
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Deadlock detected");
+      errorResolver.resolve();
+    }
+
+    await errorResolver.promise;
+  });
+
+  it("should handle error in executeRetrieve() when coordination promise is never accessed", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        throw new Error("Connection lost");
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    // Don't access retrievalPhase at all - this is the most common case
+    // The internal coordination promise should not cause unhandled rejection
+    const errorResolver = Promise.withResolvers<void>();
+
+    // Execute and catch the error
+    try {
+      await uow.executeRetrieve();
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Connection lost");
+      errorResolver.resolve();
+    }
+
+    await errorResolver.promise;
+  });
+
+  it("should handle error in executeMutations() when coordination promise is never accessed", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => {
+        throw new Error("Transaction aborted");
+      },
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
+
+    // Don't access mutationPhase at all - this is the most common case
+    // The internal coordination promise should not cause unhandled rejection
+    const errorResolver = Promise.withResolvers<void>();
+    // Execute and catch the error
+    try {
+      await uow.executeMutations();
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Transaction aborted");
+      errorResolver.resolve();
+    }
+
+    await errorResolver.promise;
+  });
+
+  it("should handle reset() after retrieval error", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        throw new Error("First attempt failed");
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    // First attempt fails
+    const errorResolver = Promise.withResolvers<void>();
+    try {
+      await uow.executeRetrieve();
+    } catch (error) {
+      expect((error as Error).message).toBe("First attempt failed");
+      errorResolver.resolve();
+    }
+
+    // Reset the UOW
+    uow.reset();
+
+    // The UOW should be in a clean state
+    expect(uow.state).toBe("building-retrieval");
+    expect(uow.getRetrievalOperations()).toHaveLength(0);
+
+    await errorResolver.promise;
+  });
+
+  it("should handle reset() after mutation error", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => {
+        throw new Error("First mutation failed");
+      },
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
+
+    // First attempt fails
+    const errorResolver = Promise.withResolvers<void>();
+    try {
+      await uow.executeMutations();
+    } catch (error) {
+      expect((error as Error).message).toBe("First mutation failed");
+      errorResolver.resolve();
+    }
+
+    // Reset the UOW
+    uow.reset();
+
+    // The UOW should be in a clean state
+    expect(uow.state).toBe("building-retrieval");
+    expect(uow.getMutationOperations()).toHaveLength(0);
+
+    await errorResolver.promise;
+  });
+});

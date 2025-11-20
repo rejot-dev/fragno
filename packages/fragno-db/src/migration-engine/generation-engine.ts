@@ -102,7 +102,7 @@ export async function generateMigrationsOrSchema<
       settingsSourceVersion = parseInt(result.value);
     }
   } catch {
-    // We don't really have a way to verify this error happens because the key doesn't exist in the database
+    // Settings table doesn't exist yet (first migration)
     settingsSourceVersion = 0;
   }
 
@@ -245,6 +245,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     const result = await settingsManager.get("version");
     settingsSourceVersion = result ? parseInt(result.value) : 0;
   } catch {
+    // Settings table doesn't exist yet (first migration)
     settingsSourceVersion = 0;
   }
 

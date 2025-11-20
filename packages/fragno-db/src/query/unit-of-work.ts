@@ -1151,11 +1151,16 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#retrievalPhaseResolve = retrievalPromise.resolve;
     this.#retrievalPhaseReject = retrievalPromise.reject;
     this.#retrievalPhasePromise = retrievalPromise.promise;
+    // Attach a no-op error handler to prevent unhandled rejection warnings
+    // The actual error is thrown from executeRetrieve() and should be caught there
+    this.#retrievalPhasePromise.catch(() => {});
 
     const mutationPromise = Promise.withResolvers<void>();
     this.#mutationPhaseResolve = mutationPromise.resolve;
     this.#mutationPhaseReject = mutationPromise.reject;
     this.#mutationPhasePromise = mutationPromise.promise;
+    // Attach a no-op error handler to prevent unhandled rejection warnings
+    this.#mutationPhasePromise.catch(() => {});
   }
 
   /**
@@ -1250,11 +1255,15 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#retrievalPhaseResolve = retrievalPromise.resolve;
     this.#retrievalPhaseReject = retrievalPromise.reject;
     this.#retrievalPhasePromise = retrievalPromise.promise;
+    // Attach a no-op error handler to prevent unhandled rejection warnings
+    this.#retrievalPhasePromise.catch(() => {});
 
     const mutationPromise = Promise.withResolvers<void>();
     this.#mutationPhaseResolve = mutationPromise.resolve;
     this.#mutationPhaseReject = mutationPromise.reject;
     this.#mutationPhasePromise = mutationPromise.promise;
+    // Attach a no-op error handler to prevent unhandled rejection warnings
+    this.#mutationPhasePromise.catch(() => {});
 
     // Reset child coordination
     this.#coordinator.reset();

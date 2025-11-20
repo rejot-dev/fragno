@@ -629,4 +629,94 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     // Verify only retrieval phase was executed, no mutations
     expect(executionLog).toEqual(["RETRIEVAL: 2 queries"]);
   });
+
+  it("should handle errors thrown by service methods without unhandled rejections", async () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("name", "string")
+            .addColumn("email", "string")
+            .addColumn("status", "string"),
+        )
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", "string")
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"]),
+        ),
+    );
+
+    const executor = createMockExecutor();
+    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    // Service A: Validates user and throws if not active
+    const validateActiveUser = async (userId: string) => {
+      const childUow = parentUow.restrict();
+      const typedUow = childUow
+        .forSchema(testSchema)
+        .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+
+      const [users] = await typedUow.retrievalPhase;
+      const user = users?.[0];
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Mock check: assume user status is "inactive"
+      if (user.name === "Mock User") {
+        throw new Error("User is not active");
+      }
+
+      return user;
+    };
+
+    // Service B: Gets user posts (won't be reached due to validation error)
+    const getUserPosts = async (userId: string) => {
+      const childUow = parentUow.restrict();
+      const typedUow = childUow
+        .forSchema(testSchema)
+        .find("posts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+
+      const [posts] = await typedUow.retrievalPhase;
+      return posts;
+    };
+
+    // Handler: Orchestrates service calls that may throw
+    const handler = async () => {
+      // Both services add retrieval operations
+      const userPromise = validateActiveUser("user-123");
+      const postsPromise = getUserPosts("user-123");
+
+      // Execute retrieval phase - this resolves the retrievalPhase promises
+      await parentUow.executeRetrieve();
+
+      // Now await the service results - validateActiveUser will throw
+      const user = await userPromise; // This will throw "User is not active"
+      const posts = await postsPromise; // Won't be reached
+
+      return { user, posts };
+    };
+
+    // Execute handler and expect it to throw
+    await expect(handler()).rejects.toThrow("User is not active");
+
+    // Verify retrieval phase was executed (both operations were registered)
+    expect(parentUow.getRetrievalOperations()).toHaveLength(2);
+
+    // Verify execution happened
+    const log = executor.getLog();
+    expect(log).toEqual(["RETRIEVAL: 2 queries"]);
+
+    // No mutations should have been added since we threw during retrieval validation
+    expect(parentUow.getMutationOperations()).toHaveLength(0);
+
+    // Give Node.js event loop time to detect any unhandled rejections
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // If we got here without Node.js throwing an unhandled rejection, the test passes
+  });
 });
