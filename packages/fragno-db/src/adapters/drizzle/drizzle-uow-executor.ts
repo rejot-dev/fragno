@@ -75,7 +75,6 @@ function toSQL(query: DrizzleCompiledQuery, provider: "sqlite" | "mysql" | "post
 
   const queryChunks =
     provider === "sqlite" ? sqliteToSQL(sqlString, params) : postgresToSQL(sqlString, params);
-
   return new SQL(queryChunks);
 }
 

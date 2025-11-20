@@ -262,6 +262,135 @@ describe("encodeValues", () => {
       expect(mysqlResult).toEqual({ id: "user123", name: "John" });
     });
   });
+
+  describe("skipDriverConversions parameter", () => {
+    it("should skip Date to number conversion for sqlite when skipDriverConversions is true", () => {
+      const date = new Date("2024-01-15T10:30:00Z");
+      const result = encodeValues({ createdAt: date }, usersTable, false, "sqlite", true);
+
+      // Date should remain as Date object, not converted to timestamp
+      expect(result).toEqual({ createdAt: date });
+    });
+
+    it("should skip boolean to number conversion for sqlite when skipDriverConversions is true", () => {
+      const result = encodeValues({ isActive: true }, usersTable, false, "sqlite", true);
+
+      // Boolean should remain as boolean, not converted to 1
+      expect(result).toEqual({ isActive: true });
+    });
+
+    it("should skip bigint to Buffer conversion for sqlite when skipDriverConversions is true", () => {
+      const schemaWithBigInt = schema((s) => {
+        return s.addTable("items", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("count", column("bigint"));
+        });
+      });
+
+      const result = encodeValues(
+        { count: BigInt(12345) },
+        schemaWithBigInt.tables.items,
+        false,
+        "sqlite",
+        true,
+      );
+
+      // BigInt should remain as bigint, not converted to Buffer
+      expect(result).toEqual({ count: BigInt(12345) });
+    });
+
+    it("should still perform conversions for sqlite when skipDriverConversions is false", () => {
+      const date = new Date("2024-01-15T10:30:00Z");
+      const result = encodeValues(
+        { createdAt: date, isActive: true },
+        usersTable,
+        false,
+        "sqlite",
+        false,
+      );
+
+      // Conversions should happen as normal
+      expect(result).toEqual({ createdAt: date.getTime(), isActive: 1 });
+    });
+
+    it("should not affect PostgreSQL encoding (no conversions to skip)", () => {
+      const date = new Date("2024-01-15T10:30:00Z");
+      const resultWithSkip = encodeValues(
+        { createdAt: date },
+        usersTable,
+        false,
+        "postgresql",
+        true,
+      );
+      const resultWithoutSkip = encodeValues(
+        { createdAt: date },
+        usersTable,
+        false,
+        "postgresql",
+        false,
+      );
+
+      // Both should be the same since PostgreSQL doesn't do these conversions
+      expect(resultWithSkip).toEqual({ createdAt: date });
+      expect(resultWithoutSkip).toEqual({ createdAt: date });
+    });
+
+    it("should work with complete record encoding when skipDriverConversions is true", () => {
+      const date = new Date("2024-01-15T10:30:00Z");
+      const result = encodeValues(
+        {
+          id: "user1",
+          name: "Alice",
+          email: "alice@example.com",
+          age: 30,
+          isActive: false,
+          createdAt: date,
+        },
+        usersTable,
+        false,
+        "sqlite",
+        true,
+      );
+
+      // All values should remain in their original types
+      expect(result).toEqual({
+        id: "user1",
+        name: "Alice",
+        email: "alice@example.com",
+        age: 30,
+        isActive: false, // Not converted to 0
+        createdAt: date, // Not converted to timestamp
+      });
+    });
+
+    it("should still handle FragnoId and ReferenceSubquery correctly with skipDriverConversions", () => {
+      const fragnoId = FragnoId.fromExternal("user123", 1);
+      const result = encodeValues(
+        { id: fragnoId, name: "John" },
+        usersTable,
+        false,
+        "sqlite",
+        true,
+      );
+
+      // FragnoId handling should still work
+      expect(result).toEqual({
+        id: "user123",
+        name: "John",
+      });
+
+      // Test ReferenceSubquery
+      const refResult = encodeValues(
+        { title: "Test Post", userId: "user_external_id" },
+        postsTable,
+        false,
+        "sqlite",
+        true,
+      );
+
+      expect(refResult["title"]).toBe("Test Post");
+      expect(refResult["userId"]).toBeInstanceOf(ReferenceSubquery);
+    });
+  });
 });
 
 describe("decodeResult", () => {

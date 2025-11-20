@@ -9,13 +9,18 @@ function getAffectedRows(result: QueryResult<unknown>): number {
     ("affectedRows" in result &&
     (typeof result["affectedRows"] === "number" || typeof result["affectedRows"] === "bigint")
       ? result["affectedRows"]
+      : undefined) ??
+    // SQLite via SQLocal returns `numUpdatedRows` as BigInt
+    ("numUpdatedRows" in result &&
+    (typeof result["numUpdatedRows"] === "number" || typeof result["numUpdatedRows"] === "bigint")
+      ? result["numUpdatedRows"]
       : undefined);
 
   if (affectedRows === undefined) {
-    throw new Error("No affected rows found");
+    throw new Error(`No affected rows found: ${JSON.stringify(result)}`);
   }
 
-  if (affectedRows > Number.MAX_SAFE_INTEGER) {
+  if (typeof affectedRows === "bigint" && affectedRows > Number.MAX_SAFE_INTEGER) {
     throw new Error(
       `affectedRows BigInt value ${affectedRows.toString()} exceeds JS safe integer range`,
     );
@@ -100,20 +105,21 @@ export async function executeKyselyMutationPhase(
       for (const compiledMutation of mutationBatch) {
         const result = await tx.executeQuery(compiledMutation.query);
 
-        // For creates (expectedAffectedRows === null), try to extract internal ID
+        // Best-effort extraction: Try to get internal ID if available
+        // This is optional - the system works without it by using subqueries for references
         if (compiledMutation.expectedAffectedRows === null) {
-          // Check if result has rows (RETURNING clause supported)
           if (Array.isArray(result.rows) && result.rows.length > 0) {
             const row = result.rows[0] as Record<string, unknown>;
             if ("_internalId" in row || "_internal_id" in row) {
               const internalId = (row["_internalId"] ?? row["_internal_id"]) as bigint;
               createdInternalIds.push(internalId);
             } else {
-              // RETURNING supported but _internalId not found
+              // RETURNING supported but _internalId not found - that's okay
               createdInternalIds.push(null);
             }
           } else {
-            // No RETURNING support (e.g., MySQL)
+            // No rows returned (no RETURNING clause, or SQLite via executeQuery)
+            // This is fine - references will use subqueries based on external IDs
             createdInternalIds.push(null);
           }
         } else if (compiledMutation.expectedAffectedRows !== null) {

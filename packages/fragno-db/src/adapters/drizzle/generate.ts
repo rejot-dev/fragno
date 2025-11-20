@@ -184,7 +184,11 @@ function mapDBTypeToDrizzleFunction(
       case "longblob":
         return { name: generateBinaryCustomType(ctx, customTypes), isCustomType: true };
       case "bigint":
-        return { name: "bigint" };
+        // MySQL bigint requires mode parameter
+        return { name: "bigint", params: [`{ mode: "number" }`] };
+      case "integer":
+        // MySQL uses "int" not "integer" in Drizzle ORM
+        return { name: "int" };
       default:
         if (dbType.startsWith("varchar(")) {
           const length = parseVarchar(dbType);
