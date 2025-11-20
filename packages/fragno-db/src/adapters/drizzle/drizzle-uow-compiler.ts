@@ -529,7 +529,7 @@ export function createDrizzleUOWCompiler(
           const table = getTable(schema, op.table);
           const drizzleTable = toDrizzleTable(table, op.namespace);
           // encodeValues now handles runtime defaults automatically
-          const encodedValues = encodeValues(op.values, table, true, provider);
+          const encodedValues = encodeValues(op.values, table, true, provider, true);
           const values = processReferenceSubqueries(encodedValues);
 
           const compiledQuery = db.insert(drizzleTable).values(values).toSQL();
@@ -568,7 +568,7 @@ export function createDrizzleUOWCompiler(
 
           const whereClause =
             condition === true ? undefined : buildWhere(schema, op.namespace, condition);
-          const encodedSetValues = encodeValues(op.set, table, false, provider);
+          const encodedSetValues = encodeValues(op.set, table, false, provider, true);
           const setValues = processReferenceSubqueries(encodedSetValues);
 
           // Automatically increment _version for optimistic concurrency control

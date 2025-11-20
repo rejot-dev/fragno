@@ -122,7 +122,7 @@ describe("generateSchema", () => {
     it("should generate MySQL schema", () => {
       const generated = generateSchema([{ namespace: "test", schema: testSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -134,8 +134,8 @@ describe("generateSchema", () => {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           key: text("key").notNull(),
           value: text("value").notNull(),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
@@ -150,9 +150,9 @@ describe("generateSchema", () => {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
-          age: integer("age"),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          age: int("age"),
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("idx_email_test").on(table.email),
           index("idx_name_test").on(table.name)
@@ -162,10 +162,10 @@ describe("generateSchema", () => {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
-          userId: bigint("userId").notNull(),
-          viewCount: integer("viewCount").notNull().default(0),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          userId: bigint("userId", { mode: "number" }).notNull(),
+          viewCount: int("viewCount").notNull().default(0),
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -576,7 +576,7 @@ describe("generateSchema", () => {
     it("should generate MySQL schema with many relations", () => {
       const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -588,8 +588,8 @@ describe("generateSchema", () => {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           key: text("key").notNull(),
           value: text("value").notNull(),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
@@ -603,16 +603,16 @@ describe("generateSchema", () => {
         export const users_test = mysqlTable("users_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         })
 
         export const posts_test = mysqlTable("posts_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
-          userId: bigint("userId").notNull(),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          userId: bigint("userId", { mode: "number" }).notNull(),
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
             columns: [table.userId],
@@ -1013,7 +1013,7 @@ describe("generateSchema", () => {
     it("should generate MySQL self-referencing foreign key using table parameter", () => {
       const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -1025,8 +1025,8 @@ describe("generateSchema", () => {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           key: text("key").notNull(),
           value: text("value").notNull(),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("unique_key").on(table.key)
         ])
@@ -1040,9 +1040,9 @@ describe("generateSchema", () => {
         export const comment_test = mysqlTable("comment_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
           content: text("content").notNull(),
-          parentId: bigint("parentId"),
-          _internalId: bigint("_internalId").primaryKey().autoincrement().notNull(),
-          _version: integer("_version").notNull().default(0)
+          parentId: bigint("parentId", { mode: "number" }),
+          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
+          _version: int("_version").notNull().default(0)
         }, (table) => [
           foreignKey({
             columns: [table.parentId],

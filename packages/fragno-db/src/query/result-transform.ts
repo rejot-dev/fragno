@@ -86,6 +86,8 @@ export function generateRuntimeDefault(column: AnyColumn): unknown {
  * @param table - The table schema definition containing column information
  * @param generateDefault - Whether to generate default values for undefined columns
  * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
+ * @param skipDriverConversions - Skip driver-level type conversions (Date->number, boolean->0/1, bigint->Buffer).
+ *                                 Set to true when using ORMs like Drizzle that handle these conversions internally.
  * @returns A record with database-compatible column names and serialized values
  *
  * @example
@@ -104,6 +106,7 @@ export function encodeValues(
   table: AnyTable,
   generateDefault: boolean,
   provider: SQLProvider,
+  skipDriverConversions = false,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -155,7 +158,7 @@ export function encodeValues(
         }
       }
 
-      result[col.name] = serialize(value, col, provider);
+      result[col.name] = serialize(value, col, provider, skipDriverConversions);
     }
   }
 

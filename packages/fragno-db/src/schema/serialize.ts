@@ -337,8 +337,16 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
 
 /**
  * Encode to driver value
+ *
+ * @param skipDriverConversions - Skip driver-level type conversions (Date->number, boolean->0/1, bigint->Buffer).
+ *                                 Set to true when using ORMs like Drizzle that handle these conversions internally.
  */
-export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider) {
+export function serialize(
+  value: unknown,
+  col: AnyColumn,
+  provider: SQLProvider,
+  skipDriverConversions = false,
+) {
   if (value === null) {
     return null;
   }
@@ -373,18 +381,21 @@ export function serialize(value: unknown, col: AnyColumn, provider: SQLProvider)
     return JSON.stringify(value);
   }
 
-  if (provider === "sqlite" && value instanceof Date) {
-    return value.getTime();
-  }
+  // Skip driver-specific type conversions when using ORMs that handle them internally
+  if (!skipDriverConversions) {
+    if (provider === "sqlite" && value instanceof Date) {
+      return value.getTime();
+    }
 
-  if (provider === "sqlite" && typeof value === "boolean") {
-    return value ? 1 : 0;
-  }
+    if (provider === "sqlite" && typeof value === "boolean") {
+      return value ? 1 : 0;
+    }
 
-  if (provider === "sqlite" && typeof value === "bigint") {
-    const buf = Buffer.alloc(8);
-    buf.writeBigInt64BE(value);
-    return buf;
+    if (provider === "sqlite" && typeof value === "bigint") {
+      const buf = Buffer.alloc(8);
+      buf.writeBigInt64BE(value);
+      return buf;
+    }
   }
 
   // most drivers accept Buffer
