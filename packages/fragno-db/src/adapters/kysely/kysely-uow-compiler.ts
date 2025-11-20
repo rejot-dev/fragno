@@ -1,4 +1,5 @@
 import type { CompiledQuery, Kysely } from "kysely";
+import { sql } from "kysely";
 import type { AnyColumn, AnySchema, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
@@ -7,7 +8,7 @@ import type {
   UOWCompiler,
 } from "../../query/unit-of-work";
 import { createKyselyQueryCompiler } from "./kysely-query-compiler";
-import { createKyselyQueryBuilder } from "./kysely-query-builder";
+import { createKyselyQueryBuilder, buildWhere } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { AnySelectClause } from "../../query/query";
@@ -230,6 +231,7 @@ export function createKyselyUOWCompiler(
           return {
             query: queryCompiler.create(op.table, op.values),
             expectedAffectedRows: null, // creates don't need affected row checks
+            expectedReturnedRows: null,
           };
 
         case "update": {
@@ -261,6 +263,7 @@ export function createKyselyUOWCompiler(
             ? {
                 query,
                 expectedAffectedRows: op.checkVersion ? 1 : null,
+                expectedReturnedRows: null,
               }
             : null;
         }
@@ -294,8 +297,39 @@ export function createKyselyUOWCompiler(
             ? {
                 query,
                 expectedAffectedRows: op.checkVersion ? 1 : null,
+                expectedReturnedRows: null,
               }
             : null;
+        }
+
+        case "check": {
+          const table = toTable(op.schema, op.table);
+          const idColumn = table.getIdColumn();
+          const versionColumn = table.getVersionColumn();
+          const mapper = getMapperForOperation(op.namespace);
+          const tableName = mapper ? mapper.toPhysical(op.table) : op.table;
+
+          const externalId = op.id.externalId;
+          const version = op.id.version;
+
+          // Build a SELECT 1 query to check if the row exists with the correct version
+          const condition = buildCondition(table.columns, (eb) =>
+            eb.and(eb(idColumn.ormName, "=", externalId), eb(versionColumn.ormName, "=", version)),
+          );
+
+          let query = kysely.selectFrom(tableName).select(sql<number>`1`.as("exists"));
+
+          if (typeof condition === "boolean") {
+            throw new Error("Condition is a boolean, but should be a condition object.");
+          }
+
+          query = query.where((eb) => buildWhere(condition, eb, provider, mapper, table)).limit(1);
+
+          return {
+            query: query.compile(),
+            expectedAffectedRows: null,
+            expectedReturnedRows: 1, // Check that exactly 1 row was returned
+          };
         }
       }
     },

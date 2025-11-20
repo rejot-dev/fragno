@@ -116,7 +116,7 @@ export async function executeKyselyMutationPhase(
             // No RETURNING support (e.g., MySQL)
             createdInternalIds.push(null);
           }
-        } else {
+        } else if (compiledMutation.expectedAffectedRows !== null) {
           // Check affected rows for updates/deletes
           const affectedRows = getAffectedRows(result);
 
@@ -125,6 +125,19 @@ export async function executeKyselyMutationPhase(
             // This means either the row doesn't exist or the version has changed
             throw new Error(
               `Version conflict: expected ${compiledMutation.expectedAffectedRows} rows affected, but got ${affectedRows}`,
+            );
+          }
+        }
+
+        if (compiledMutation.expectedReturnedRows !== null) {
+          // For SELECT queries (check operations), verify row count
+          const rowCount = Array.isArray(result.rows) ? result.rows.length : 0;
+
+          if (rowCount !== compiledMutation.expectedReturnedRows) {
+            // Version conflict detected - the SELECT didn't return the expected number of rows
+            // This means either the row doesn't exist or the version has changed
+            throw new Error(
+              `Version conflict: expected ${compiledMutation.expectedReturnedRows} rows returned, but got ${rowCount}`,
             );
           }
         }

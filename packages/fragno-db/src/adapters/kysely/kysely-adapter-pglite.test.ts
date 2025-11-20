@@ -980,4 +980,38 @@ describe("KyselyAdapter PGLite", () => {
     expect(typeof result.hasNextPage).toBe("boolean");
     expect(result.cursor).toBeInstanceOf(Cursor);
   });
+
+  it("should fail check() when version changes", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
+
+    // Create a user
+    const userId = await queryEngine.create("users", {
+      name: "Version Conflict User",
+      age: 40,
+    });
+
+    // Update the user to increment their version
+    await queryEngine.updateMany("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", userId)).set({ age: 41 }),
+    );
+
+    // Try to check with the old version (should fail)
+    const uow = queryEngine.createUnitOfWork("check-stale-version");
+    uow.check("users", userId); // This has version 0, but the user now has version 1
+    uow.create("posts", {
+      user_id: userId,
+      title: "Should Not Be Created",
+      content: "Content",
+    });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(false);
+
+    // Verify the post was NOT created
+    const posts = await queryEngine.find("posts", (b) =>
+      b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId)),
+    );
+    const conflictPosts = posts.filter((p) => p.title === "Should Not Be Created");
+    expect(conflictPosts).toHaveLength(0);
+  });
 });

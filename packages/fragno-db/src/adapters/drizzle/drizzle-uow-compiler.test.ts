@@ -1379,5 +1379,22 @@ describe("drizzle-uow-compiler", () => {
         internalId: undefined,
       });
     });
+
+    it("should compile check operation", () => {
+      const uow = createTestUOW();
+      const userId = FragnoId.fromExternal("user123", 5);
+      uow.check("users", userId);
+
+      const compiler = createDrizzleUOWCompiler(pool, "postgresql");
+      const compiled = uow.compile(compiler);
+      const [batch] = compiled.mutationBatch;
+      assert(batch);
+      expect(batch.expectedAffectedRows).toBe(null);
+      expect(batch.expectedReturnedRows).toBe(1);
+      expect(batch.query.sql).toMatchInlineSnapshot(
+        `"select 1 as "exists" from "users" where ("users"."id" = $1 and "users"."_version" = $2) limit $3"`,
+      );
+      expect(batch.query.params).toMatchObject(["user123", 5, 1]);
+    });
   });
 });

@@ -160,7 +160,24 @@ function extractCreatedInternalId(result: unknown): bigint | null {
   return null;
 }
 
+function validateReturnedRows(result: unknown, expected: number): void {
+  // For SELECT queries, check the number of rows returned
+  // Result can be an array (sync) or an object with rows property (async)
+  let rowCount = 0;
+  if (Array.isArray(result)) {
+    rowCount = result.length;
+  } else if (result && typeof result === "object" && "rows" in result) {
+    const rows = (result as { rows: unknown[] }).rows;
+    rowCount = Array.isArray(rows) ? rows.length : 0;
+  }
+
+  if (rowCount !== expected) {
+    throw new Error(`Version conflict: expected ${expected} rows returned, but got ${rowCount}`);
+  }
+}
+
 function validateAffectedRows(result: unknown, expected: number): void {
+  // For UPDATE/DELETE queries, check affected rows
   const actual = getAffectedRows(result);
   if (actual !== expected) {
     throw new Error(`Version conflict: expected ${expected} rows affected, but got ${actual}`);
@@ -235,21 +252,32 @@ export async function executeDrizzleMutationPhase(
       db,
       provider,
       (syncDb) => {
-        for (const { query, expectedAffectedRows } of mutationBatch) {
+        for (const { query, expectedAffectedRows, expectedReturnedRows } of mutationBatch) {
           const sqlObj = toSQL(query, provider);
-          // Type assertion needed due to drizzle-orm version mismatch in dependencies
-          const result = syncDb.run(sqlObj as never);
 
-          if (expectedAffectedRows === null) {
+          // Type assertion needed due to drizzle-orm version mismatch in dependencies
+          const result =
+            expectedReturnedRows !== null
+              ? syncDb.all(sqlObj as never)
+              : syncDb.run(sqlObj as never);
+
+          if (expectedAffectedRows === null && expectedReturnedRows === null) {
             createdInternalIds.push(extractCreatedInternalId(result));
-          } else {
+          }
+
+          if (expectedReturnedRows !== null) {
+            validateReturnedRows(result, expectedReturnedRows);
+          }
+
+          if (expectedAffectedRows !== null) {
             validateAffectedRows(result, expectedAffectedRows);
           }
         }
       },
       async (tx) => {
-        for (const { query, expectedAffectedRows } of mutationBatch) {
+        for (const { query, expectedAffectedRows, expectedReturnedRows } of mutationBatch) {
           const sqlObj = toSQL(query, provider);
+
           // Fallback to run when execute is not available (e.g., libsql)
           const executeMethod = tx.execute ?? tx.run;
           if (!executeMethod) {
@@ -257,9 +285,15 @@ export async function executeDrizzleMutationPhase(
           }
           const result = await executeMethod.call(tx, sqlObj);
 
-          if (expectedAffectedRows === null) {
+          if (expectedAffectedRows === null && expectedReturnedRows === null) {
             createdInternalIds.push(extractCreatedInternalId(result));
-          } else {
+          }
+
+          if (expectedReturnedRows !== null) {
+            validateReturnedRows(result, expectedReturnedRows);
+          }
+
+          if (expectedAffectedRows !== null) {
             validateAffectedRows(result, expectedAffectedRows);
           }
         }

@@ -1,5 +1,5 @@
 import { describe, it, expect, assert, expectTypeOf } from "vitest";
-import { column, schema, idColumn } from "../schema/create";
+import { column, schema, idColumn, FragnoId } from "../schema/create";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -1354,5 +1354,24 @@ describe("Error Handling", () => {
     expect(uow.getMutationOperations()).toHaveLength(0);
 
     await errorResolver.promise;
+  });
+
+  it("should support standalone check() operation", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const typedUow = uow.forSchema(testSchema);
+
+    // Create a FragnoId for testing
+    const userId = FragnoId.fromExternal("user-123", 5);
+
+    typedUow.check("users", userId);
+
+    const mutationOps = uow.getMutationOperations();
+    expect(mutationOps).toHaveLength(1);
+
+    const checkOp = mutationOps[0];
+    assert(checkOp);
+    assert(checkOp.type === "check");
+    expect(checkOp.table).toBe("users");
+    expect(checkOp.id).toBe(userId);
   });
 });

@@ -198,6 +198,13 @@ export type MutationOperation<
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
+    }
+  | {
+      type: "check";
+      schema: TSchema;
+      namespace?: string;
+      table: TTable["name"];
+      id: FragnoId;
     };
 
 /**
@@ -211,6 +218,12 @@ export interface CompiledMutation<TOutput> {
    * null means don't check affected rows (e.g., for create operations).
    */
   expectedAffectedRows: number | null;
+  /**
+   * Number of rows this SELECT query must return for the transaction to succeed.
+   * Used for check operations to verify version without modifying data.
+   * null means this is not a SELECT query that needs row count validation.
+   */
+  expectedReturnedRows: number | null;
 }
 
 /**
@@ -1825,6 +1838,35 @@ export class TypedUnitOfWork<
       table: tableName,
       id: opId,
       checkVersion,
+    });
+  }
+
+  /**
+   * Check that a record's version hasn't changed since retrieval.
+   * This is useful for ensuring related records remain unchanged during a transaction.
+   *
+   * @param tableName - The table name
+   * @param id - The FragnoId with version information (string IDs are not allowed)
+   * @throws Error if the ID is a string without version information
+   *
+   * @example
+   * ```ts
+   * // Ensure both accounts haven't changed before creating a transfer
+   * uow.check("accounts", fromAccount.id);
+   * uow.check("accounts", toAccount.id);
+   * uow.create("transactions", { fromAccountId, toAccountId, amount });
+   * ```
+   */
+  check<TableName extends keyof TSchema["tables"] & string>(
+    tableName: TableName,
+    id: FragnoId,
+  ): void {
+    this.#uow.addMutationOperation({
+      type: "check",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      id,
     });
   }
 }

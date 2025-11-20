@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { schema, idColumn } from "../schema/create";
+import { schema, idColumn, type FragnoId } from "../schema/create";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -19,7 +19,8 @@ function createMockCompiler(): UOWCompiler<string> {
     compileMutationOperation: (op: MutationOperation<AnySchema>) => {
       return {
         query: `${op.type.toUpperCase()} ${op.table}`,
-        expectedAffectedRows: op.type === "create" ? null : 1,
+        expectedAffectedRows: op.type === "create" ? null : op.type === "check" ? null : 1,
+        expectedReturnedRows: op.type === "check" ? 1 : null,
       };
     },
   };
@@ -576,14 +577,17 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     };
 
     // Service: Create transfer (mutation)
-    const createTransfer = (fromAccountId: string, toAccountId: string, amount: number) => {
+    const createTransfer = (fromAccountId: FragnoId, toAccountId: FragnoId, amount: number) => {
       const childUow = parentUow.restrict();
       const typedUow = childUow.forSchema(testSchema);
 
-      // TODO(Wilco): It should be possible to add a "Check" here for both accounts
+      // Check that both accounts haven't changed since retrieval
+      typedUow.check("accounts", fromAccountId);
+      typedUow.check("accounts", toAccountId);
+
       return typedUow.create("transactions", {
-        fromAccountId,
-        toAccountId,
+        fromAccountId: String(fromAccountId),
+        toAccountId: String(toAccountId),
         amount,
       });
     };
@@ -611,7 +615,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       }
 
       // Phase 2: Mutation - would create transfer, but we never get here
-      createTransfer(String(fromAccount.id), String(toAccount.id), amount);
+      createTransfer(fromAccount.id, toAccount.id, amount);
       await parentUow.executeMutations();
 
       return { success: true };

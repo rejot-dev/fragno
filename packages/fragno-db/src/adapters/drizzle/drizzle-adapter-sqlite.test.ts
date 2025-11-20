@@ -874,4 +874,50 @@ describe("DrizzleAdapter SQLite", () => {
       age: 43,
     });
   });
+
+  it("should fail check() when version changes", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    // Create a user
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-version-conflict");
+    createUserUow.create("users", {
+      name: "Version Conflict User SQLite",
+      age: 40,
+    });
+    await createUserUow.executeMutations();
+
+    // Get the user
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-version-conflict")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Version Conflict User SQLite")),
+      )
+      .executeRetrieve();
+
+    // Update the user to increment their version
+    const updateUow = queryEngine.createUnitOfWork("update-user-version");
+    updateUow.update("users", user.id, (b) => b.set({ age: 41 }));
+    await updateUow.executeMutations();
+
+    // Try to check with the old version (should fail)
+    const uow = queryEngine.createUnitOfWork("check-stale-version");
+    uow.check("users", user.id); // This has version 0, but the user now has version 1
+    uow.create("posts", {
+      user_id: user.id,
+      title: "Should Not Be Created SQLite",
+      content: "Content",
+    });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(false);
+
+    // Verify the post was NOT created
+    const [posts] = await queryEngine
+      .createUnitOfWork("get-posts-for-version-conflict")
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .executeRetrieve();
+
+    const conflictPosts = posts.filter((p) => p.title === "Should Not Be Created SQLite");
+    expect(conflictPosts).toHaveLength(0);
+  });
 });

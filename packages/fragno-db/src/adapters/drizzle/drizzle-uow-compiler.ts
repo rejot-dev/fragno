@@ -536,6 +536,7 @@ export function createDrizzleUOWCompiler(
           return {
             query: compiledQuery,
             expectedAffectedRows: null, // creates don't need affected row checks
+            expectedReturnedRows: null,
           };
         }
 
@@ -580,6 +581,7 @@ export function createDrizzleUOWCompiler(
           return {
             query: compiledQuery,
             expectedAffectedRows: op.checkVersion ? 1 : null,
+            expectedReturnedRows: null,
           };
         }
 
@@ -632,6 +634,41 @@ export function createDrizzleUOWCompiler(
           return {
             query: compiledQuery,
             expectedAffectedRows: op.checkVersion ? 1 : null,
+            expectedReturnedRows: null,
+          };
+        }
+
+        case "check": {
+          const table = getTable(schema, op.table);
+          const idColumn = table.getIdColumn();
+          const versionColumn = table.getVersionColumn();
+          const drizzleTable = toDrizzleTable(table, op.namespace);
+
+          const externalId = op.id.externalId;
+          const version = op.id.version;
+
+          // Build WHERE clause that filters by ID and version
+          const condition = buildCondition(table.columns, (eb) =>
+            eb.and(eb(idColumn.ormName, "=", externalId), eb(versionColumn.ormName, "=", version)),
+          );
+
+          if (typeof condition === "boolean") {
+            throw new Error("Condition is a boolean, but should be a condition object.");
+          }
+
+          // Build a SELECT query to check if the row exists with the correct version
+          // Use sql`1` to select a constant with an alias
+          const compiledQuery = db
+            .select({ exists: Drizzle.sql<number>`1`.as("exists") })
+            .from(drizzleTable)
+            .where(buildWhere(schema, op.namespace, condition))
+            .limit(1)
+            .toSQL();
+
+          return {
+            query: compiledQuery,
+            expectedAffectedRows: null,
+            expectedReturnedRows: 1, // Check that exactly 1 row was returned
           };
         }
       }
