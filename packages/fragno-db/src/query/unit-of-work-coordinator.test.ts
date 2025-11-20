@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { schema, idColumn, type FragnoId } from "../schema/create";
+import { schema, idColumn, type FragnoId, referenceColumn } from "../schema/create";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -540,8 +540,8 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
         .addTable("transactions", (t) =>
           t
             .addColumn("id", idColumn())
-            .addColumn("fromAccountId", "string")
-            .addColumn("toAccountId", "string")
+            .addColumn("fromAccountId", referenceColumn())
+            .addColumn("toAccountId", referenceColumn())
             .addColumn("amount", "integer"),
         ),
     );
@@ -586,8 +586,8 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       typedUow.check("accounts", toAccountId);
 
       return typedUow.create("transactions", {
-        fromAccountId: String(fromAccountId),
-        toAccountId: String(toAccountId),
+        fromAccountId,
+        toAccountId,
         amount,
       });
     };

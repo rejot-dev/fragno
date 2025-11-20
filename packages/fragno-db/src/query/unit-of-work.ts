@@ -157,6 +157,7 @@ export type RetrievalOperation<
       indexName: string;
       options: FindOptions<TTable, SelectClause<TTable>>;
       withCursor?: boolean;
+      withSingleResult?: boolean;
     }
   | {
       type: "count";
@@ -1574,7 +1575,16 @@ export class TypedUnitOfWork<
   get retrievalPhase(): Promise<TRetrievalResults> {
     // Filter parent's results to only include operations from this view
     return this.#uow.retrievalPhase.then((allResults) => {
-      const filteredResults = this.#operationIndices.map((index) => allResults[index]);
+      const allOperations = this.#uow.getRetrievalOperations();
+      const filteredResults = this.#operationIndices.map((opIndex) => {
+        const result = allResults[opIndex];
+        const operation = allOperations[opIndex];
+        // Transform array to single item for findFirst operations
+        if (operation?.type === "find" && operation.withSingleResult) {
+          return Array.isArray(result) ? (result[0] ?? null) : result;
+        }
+        return result;
+      });
       return filteredResults as TRetrievalResults;
     });
   }
@@ -1687,6 +1697,81 @@ export class TypedUnitOfWork<
       indexName,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       options: options as any,
+    });
+
+    // Track which operation index belongs to this view
+    this.#operationIndices.push(operationIndex);
+
+    // Safe: return type is correctly specified in the method signature
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this as any;
+  }
+
+  findFirst<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): TypedUnitOfWork<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      > | null,
+    ],
+    TRawInput
+  >;
+  findFirst<TTableName extends keyof TSchema["tables"] & string>(
+    tableName: TTableName,
+  ): TypedUnitOfWork<
+    TSchema,
+    [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true> | null],
+    TRawInput
+  >;
+  findFirst<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+    tableName: TTableName,
+    builderFn?: (
+      builder: Omit<FindBuilder<TSchema["tables"][TTableName]>, "build">,
+    ) => TBuilderResult,
+  ): TypedUnitOfWork<
+    TSchema,
+    [
+      ...TRetrievalResults,
+      SelectResult<
+        TSchema["tables"][TTableName],
+        ExtractJoinOut<TBuilderResult>,
+        Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
+      > | null,
+    ],
+    TRawInput
+  > {
+    const table = this.#schema.tables[tableName];
+    if (!table) {
+      throw new Error(`Table ${tableName} not found in schema`);
+    }
+
+    const builder = new FindBuilder(tableName, table as TSchema["tables"][TTableName]);
+    if (builderFn) {
+      builderFn(builder);
+    } else {
+      builder.whereIndex("primary");
+    }
+    // Automatically set pageSize to 1 for findFirst
+    builder.pageSize(1);
+    const { indexName, options, type } = builder.build();
+
+    const operationIndex = this.#uow.addRetrievalOperation({
+      type,
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: table as TSchema["tables"][TTableName],
+      indexName,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      options: options as any,
+      withSingleResult: true,
     });
 
     // Track which operation index belongs to this view

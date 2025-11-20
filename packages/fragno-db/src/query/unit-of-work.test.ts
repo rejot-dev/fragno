@@ -1375,3 +1375,240 @@ describe("Error Handling", () => {
     expect(checkOp.id).toBe(userId);
   });
 });
+
+describe("findFirst convenience method", () => {
+  const testSchema = schema((s) =>
+    s
+      .addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", "string")
+          .addColumn("email", "string")
+          .createIndex("idx_email", ["email"])
+          .createIndex("idx_name", ["name"]),
+      )
+      .addTable("posts", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("userId", "string")
+          .addColumn("title", "string")
+          .createIndex("idx_user", ["userId"]),
+      ),
+  );
+
+  it("should return a single result instead of an array", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [[{ id: "mock-id", name: "Mock User", email: "mock@example.com" }]];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    // Use findFirst instead of find
+    const typedUow = uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
+
+    // Execute retrieval
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+
+    // Result should be a single object, not an array
+    const [user] = results;
+    expect(user).toEqual({ id: "mock-id", name: "Mock User", email: "mock@example.com" });
+    expect(Array.isArray(user)).toBe(false);
+  });
+
+  it("should return null when no results are found", async () => {
+    // Create executor that returns empty results
+    const emptyExecutor = {
+      executeRetrievalPhase: async () => {
+        return [[]]; // Empty array for no results
+      },
+      executeMutationPhase: async () => {
+        return { success: true, createdInternalIds: [] };
+      },
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), emptyExecutor, createMockDecoder());
+
+    const typedUow = uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user] = results;
+
+    // Should be null when no results
+    expect(user).toBeNull();
+  });
+
+  it("should automatically set pageSize to 1", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    uow.forSchema(testSchema).findFirst("users", (b) => b.whereIndex("primary"));
+
+    // Check that pageSize was set to 1 in the operation
+    const ops = uow.getRetrievalOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops[0]?.type).toBe("find");
+    if (ops[0]?.type === "find") {
+      expect(ops[0].options.pageSize).toBe(1);
+    }
+  });
+
+  it("should work with custom select clause", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [[{ id: "mock-id", name: "Mock User" }]];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    const typedUow = uow
+      .forSchema(testSchema)
+      .findFirst("users", (b) => b.whereIndex("primary").select(["id", "name"] as const));
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user] = results;
+
+    expect(user).toBeDefined();
+    expect(user).not.toBeNull();
+    expect(user).toEqual({ id: "mock-id", name: "Mock User" });
+  });
+
+  it("should work with where conditions", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [[{ id: "mock-id", name: "Mock User", email: "test@example.com" }]];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    const typedUow = uow
+      .forSchema(testSchema)
+      .findFirst("users", (b) =>
+        b.whereIndex("idx_email", (eb) => eb("email", "=", "test@example.com")),
+      );
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user] = results;
+
+    expect(user).toEqual({ id: "mock-id", name: "Mock User", email: "test@example.com" });
+  });
+
+  it("should handle multiple findFirst operations in the same UOW", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [
+          [{ id: "user-1", name: "User 1", email: "user1@example.com" }],
+          [{ id: "post-1", userId: "user-1", title: "Post 1" }],
+        ];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    const typedUow = uow
+      .forSchema(testSchema)
+      .findFirst("users", (b) => b.whereIndex("primary"))
+      .findFirst("posts", (b) => b.whereIndex("primary"));
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user, post] = results;
+
+    // Both should be single objects, not arrays
+    expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
+    expect(post).toEqual({ id: "post-1", userId: "user-1", title: "Post 1" });
+    expect(Array.isArray(user)).toBe(false);
+    expect(Array.isArray(post)).toBe(false);
+  });
+
+  it("should handle mix of find and findFirst operations", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [
+          [{ id: "user-1", name: "User 1", email: "user1@example.com" }],
+          [
+            { id: "post-1", userId: "user-1", title: "Post 1" },
+            { id: "post-2", userId: "user-1", title: "Post 2" },
+          ],
+        ];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    const typedUow = uow
+      .forSchema(testSchema)
+      .findFirst("users", (b) => b.whereIndex("primary")) // Single result
+      .find("posts", (b) => b.whereIndex("primary")); // Array of results
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user, posts] = results;
+
+    // User should be a single object
+    expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
+    expect(Array.isArray(user)).toBe(false);
+
+    // Posts should be an array
+    expect(Array.isArray(posts)).toBe(true);
+    expect(posts).toHaveLength(2);
+  });
+
+  it("should work with orderByIndex", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [[{ id: "user-1", name: "Alice", email: "alice@example.com" }]];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    const typedUow = uow
+      .forSchema(testSchema)
+      .findFirst("users", (b) => b.whereIndex("idx_name").orderByIndex("idx_name", "asc"));
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user] = results;
+
+    expect(user).toEqual({ id: "user-1", name: "Alice", email: "alice@example.com" });
+    expect(Array.isArray(user)).toBe(false);
+  });
+
+  it("should work without explicit builder function", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => {
+        return [[{ id: "user-1", name: "User 1", email: "user1@example.com" }]];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    // findFirst without builder function should use primary index by default
+    const typedUow = uow.forSchema(testSchema).findFirst("users");
+
+    await uow.executeRetrieve();
+    const results = await typedUow.retrievalPhase;
+    const [user] = results;
+
+    expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
+    expect(Array.isArray(user)).toBe(false);
+
+    // Verify the operation used the primary index
+    const ops = uow.getRetrievalOperations();
+    expect(ops[0]?.indexName).toBe("_primary");
+  });
+});
