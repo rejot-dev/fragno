@@ -32,7 +32,7 @@ export const mainCommand = define({
   description: "Tools for working with Fragno fragments",
 });
 
-if (import.meta.main) {
+export async function run() {
   try {
     const args = process.argv.slice(2);
 
@@ -127,6 +127,10 @@ if (import.meta.main) {
     console.error("Error:", error instanceof Error ? error.message : error);
     process.exit(1);
   }
+}
+
+if (import.meta.main) {
+  await run();
 }
 
 export { generateCommand, migrateCommand, infoCommand, searchCommand, corpusCommand };

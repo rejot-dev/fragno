@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "fragno-cli": "./dist/cli.js"
+    "fragno-cli": "./bin/run.js"
   },
   "scripts": {
     "build": "tsdown",
