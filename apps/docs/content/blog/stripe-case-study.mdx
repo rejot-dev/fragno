@@ -1,7 +1,8 @@
 ---
 title: "Solving Split Brain Integrations"
-description: "A Stripe integration case study"
-date: "2025-11-20"
+description:
+  "Why service providers should offer full-stack integration primitives to their customers."
+date: "2025-11-24"
 author: "Jan Schutte"
 image: "blog-stripe-case-study-hero.jpeg"
 ---
@@ -10,75 +11,69 @@ import { StripeDataFlow } from "../../components/stripe-data-flow";
 
 # Solving Split Brain Integrations
 
-Those who build API based products that other developers need to implement, know that it is not
-always easy to get the developer experience (DX) smooth. You may spend some time educating users or
-even build custom CLIs for them, and the actual implementation might be hard to get right. I believe
-that DX for the implementer can greatly be improved if it were possible to offer full-stack
-integration primitives that cover frontend, backend, and database thereby shifting much of the
-integration work to the service provider.
+For API-based products it is not always easy to get the developer experience smooth. I believe this
+can be greatly improved if it was easier for the service provider to offer full-stack integration
+primitives. By distributing frontend, backend, and database primitives in one package you shift much
+of the integration work for the customer to the service provider.
 
-An often quoted problem when integrating with third party services is the split brain problem: your
-source of truth ends up divided between two systems. Most developers solve this by integrating
-webhooks and maintaining a local view of the remote state. This however requires that users are
-educated on the best way to integrate with that service. A smoother integration experience would be
-if most of the integration code, i.e. webhook handlers, database schemas and frontend hooks, were
-provided by the service provider directly.
+A common issue when integrating with a third party is the split brain problem: a copy of the service
+provider's data is replicated to the customers application and this data must be kept in sync. This
+places the burden on the customer to understand and implement all the subtle details involved in
+keeping that data aligned. A smoother integration experience would be if most of the integration
+code, e.g. webhook handlers and database schemas, were provided by the service provider directly.
 
-In this case study, we explore our alternative Stripe subscription integration library (called
-"fragment" in Fragno terms) that provides components for every layer of the stack and we see how it
-makes integrating with Stripe significantly simpler.
+We explore these ideas by implementing a Stripe subscription library that provides components for
+every layer of the stack and we see how it makes integrating with Stripe significantly simpler.
 
-## Stripe Webhooks
+## The Stripe Integration
 
-We're using Stripe's Billing product for subscriptions which handles payment schedules, subscription
-lifecycle management and invoicing for us. The application needs to know if our customers have an
-active subscription, but that information now exists in Stripe: we have split our application's
-brain.
-
-A common design pattern to solve this is by creating a view of Stripe's subscription data inside
-your own database, and keep it up-to-date by integrating with Stripe's webhooks. You can listen to
-subscription events and update your internal record as these updates come in. This is a solid
-solution: your app has low latency and you can query the data as you see fit.
+Stripe's Billing product for subscriptions handles payment schedules, subscription lifecycle
+management and invoicing. Application developers need to know if their customers have an active
+subscription, so they keep a local record of Stripe subscription data. To keep this copy aligned,
+developers integrate with Stripe's webhooks, updating their records as events come in. This solution
+gives them the ability to query data as they see fit while keeping the app latency low.
 
 The figure below shows what that would look like. In blue we have annotated the components that we
-have built in our Stripe implementation.
+have built in our Stripe integration library.
 
 <figure className="flex flex-col items-center justify-center">
   <StripeDataFlow mode="with-fragment" />
   <figcaption className="max-w-prose text-center text-sm text-gray-500 dark:text-gray-400">
-    A typical Stripe integration where webhook events are processed and stored in the database.
+    A typical Stripe integration where webhook events are processed then stored in the database.
   </figcaption>
 </figure>
-
-### Hidden complexity
 
 Implementing a few webhooks seems simple enough on the surface, but in reality always requires more
 work than you'd think.
 
-The development experience isn't great, you need to find a way to generate webhook events in your
-test setup and need to set up a tunnel for Stripe to reach your dev machine. You need to deal with
-duplicated events or events arriving out of order. You must validate webhook signatures to prevent
-abuse, and you must ensure you can process webhooks fast enough so a sudden burst of retries from
-Stripe doesn't overload your system. On top of that, Stripe has about 224 distinct events that you
-_may_ or _may not_ have to integrate with.
+The development experience is not ideal. You need a way to generate and then test the events the
+integration relies on, and you also need a tunnel from Stripe to your dev machine. In order to
+create test events, the right preconditions must be set up. Stripe's CLI helps here by creating
+products, customers, and prices, and by opening that tunnel for you. This covers a large part of the
+workflow, but sadly it does not cover every event type or scenario.
+
+Beyond testing, developers also need to understand Stripe's delivery guarantees for events and how
+these shape their webhook handlers. Handlers must be idempotent because Stripe guarantees 'at least
+once' delivery and they must take into account that events can arrive out of order. On top of that
+developers have to account for the possibility of a sudden burst of retries so their system is not
+overloaded.
 
 All the details quickly pile up to become a bit of a headache. The funny thing is, it seems that
-everyone using Stripe for subscriptions has to deal with the exact same set of problems. Stripe
-provides only an API client, no database schemas, no backend routes, or ready-to-use frontend hooks
-for using those routes.
+everyone using Stripe for subscriptions has to deal with the exact same set of problems.
 
-## The missing piece
+## Full-stack building blocks
 
-Why doesn't Stripe help you more when you're integrating with their platform? For one, they can't
-make any assumptions about your tech stack: which database or SQL dialect you use, which ORM, which
-backend framework, or even which programming language. Maintaining bespoke solutions across all of
-these options and product features is seemingly an intractable problem.
+It'd be great if Stripe could take over some of the integration burden, but that is not easy. For
+one, they can't make any assumptions about their customers' tech stack: which database they use,
+which ORM, which backend framework, or even which programming language. Maintaining bespoke
+solutions across all of these options and product features is seemingly an intractable problem.
 
-What's missing is an abstraction that allows Stripe to distribute modular building blocks that work
-across the stack. With Fragno we are trying to address this problem directly. We do have to slice
-the cake one way however: we assume TypeScript for the whole stack.
+Fragno is our open-source framework-agnostic toolkit for building full-stack TypeScript libraries.
+In short, it gives library builders primitives for frontend hooks, backend request handlers, and a
+database layer with schema and query support, all without worrying about the specific systems the
+end users might use. This is how we built our Stripe integration.
 
-With Fragno a Stripe integration looks very much like how you'd implement it yourself, but what's
+With Fragno a Stripe integration looks very much like how you'd implement it yourself, but what is
 different is _who_ is implementing it.
 
 This way much of the headache of implementing Stripe shifts from the customer to the fragment
@@ -90,11 +85,9 @@ they change their APIs and data model, but for now we have taken on this task ou
 Let's walk through a few code samples to illustrate the practical differences for a developer when
 using a fragment to build a Stripe integration.
 
-Detailed installation instructions are in our [quickstart guide](/docs/stripe/quickstart).
-
 ### Server
 
-For the server, we need to configure secrets and hook up the database using one of
+For the server the Stripe secrets must be provided and the database hooked up using one of
 [the supported adapters](/docs/fragno/reference/frameworks#database-adapters).
 
 ```typescript title="stripe.ts"
@@ -113,20 +106,15 @@ const stripeFragment = createStripeFragment(
 );
 ```
 
-Then the API route handlers must be mounted in the application, note that this also includes the
-endpoint for processing webhook events.
+API route handlers must be mounted in the application, note that this also includes the endpoint for
+processing webhook events.
 
 <include>../.includes/stripe/mount-routes.md</include>
 
 ### Database
 
-With the backend configured, it's time to generate the table schema for our subscriptions. The
-Fragno CLI reads which fragments you've configured and generates schema files for the ORM and
-database of choice. In this example we're using Drizzle with PostgreSQL.
-
-```npm
-npx fragno-cli db generate stripe.ts -o stripe.schema.ts
-```
+The Fragno CLI reads which fragments you've installed and generates schema files for the ORM and
+database that the developer is using. In this example it's Drizzle with PostgreSQL.
 
 ```typescript title="stripe.schema.ts"
 import { pgTable, varchar, text } from "drizzle-orm/pg-core";
@@ -153,23 +141,41 @@ would do for any other schema change.
 From a data model perspective, a subscription must be owned by some kind of entity, like a user or
 organization, and this mapping is one of the few things that remains to be implemented by the
 developer. It basically amounts to a `stripe_customer_id` column on the user table. The fragment
-requires you to implement a callback that sets this value when Stripe Customers are created.
+requires you to implement the `onStripeCustomerCreated` callback that sets this value when Stripe
+Customers are created.
 
-Similarly, when one of your end-users interacts with the `/api/stripe/upgrade` or
+Similarly, when one of the end users interacts with the `/api/stripe/upgrade` or
 `/api/stripe/cancel` routes, that request must be authenticated and resolved back to a Stripe
-Customer that belongs to that user (if one exists). This is another callback the developer must
-implement.
+Customer that belongs to that user (if one exists). This is implemented with the
+`resolveEntityFromRequest` callback.
+
+```typescript title="stripe.ts"
+createStripeFragment(
+  {
+        onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
+            await db.update(user).set({ stripeCustomerId }).where(eq(user.id, referenceId));
+        },
+        resolveEntityFromRequest: async ({ headers }) => {
+          const session = await getSession({ headers });
+
+          return {
+              referenceId: session.user.id,
+              stripeCustomerId: session.user.stripeCustomerId,
+              customerEmail: session.user.email,
+              stripeMetadata: {},
+          };
+      },
+      /* ... */
+  },
+),
+```
 
 ### Frontend
 
-This one is easy enough; simply import your framework-specific client:
-
-<include>../.includes/stripe/create-client.md</include>
-
-Now you can start building components using this client:
+Hooks are provided for the frontend to make building components simple:
 
 ```typescript title="plan-switcher.tsx"
-import { stripeClient } from "stripe-client.ts";
+import { stripeClient } from "./stripe-client";
 
 /* ... */
 
@@ -184,10 +190,7 @@ const handleSwitchPlan = async (plan: Plan) => {
       quantity: 1,
     },
   });
-  if (response?.redirect) {
-    // Redirects to Stripe Checkout Session for collecting payment information
-    window.location.href = response.url;
-  }
+  // Handle response
 };
 ```
 
@@ -204,7 +207,7 @@ fragment author's problem, this way the developer can focus on the product they'
 
 ## Try it yourself
 
-Fragno and the Stripe fragment are very much in a developer preview state, if you're interested in
+Fragno and the Stripe fragment are very much in a developer preview state. If you're interested in
 trying it out take a look at our [quickstart guide](/docs/stripe/quickstart). Code is available on
 [GitHub](https://github.com/rejot-dev/fragno) under the MIT license.
 
@@ -213,7 +216,7 @@ If you're interested in building better SDKs for your users, we'd love to
 
 ## Attribution
 
-I'd like to thank the authors of the following resources for helping inspire this case study.
+I'd like to thank the authors of the following resources for helping inspire this post.
 
 - Theo Browne:
   ["How I Stay Sane Implementing Stripe"](https://github.com/t3dotgg/stripe-recommendations)
