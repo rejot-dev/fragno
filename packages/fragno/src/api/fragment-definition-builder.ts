@@ -1,6 +1,7 @@
 import type { RequestThisContext } from "./api";
 import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestContextStorage } from "./request-context-storage";
+import type { FragnoInstantiatedFragment } from "./fragment-instantiator";
 
 /**
  * Metadata for a service dependency
@@ -11,6 +12,21 @@ interface ServiceMetadata {
   /** Whether this service is required (false means optional) */
   required: boolean;
 }
+
+/**
+ * Callback that instantiates a linked fragment.
+ * Receives the same context as the main fragment and returns an instantiated fragment.
+ */
+export type LinkedFragmentCallback<
+  TConfig,
+  TOptions extends FragnoPublicConfig,
+  TServiceDependencies,
+> = (context: {
+  config: TConfig;
+  options: TOptions;
+  serviceDependencies?: TServiceDependencies;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}) => FragnoInstantiatedFragment<any, any, any, any, any, any, any>;
 
 /**
  * Context passed to the request context factory function.
@@ -35,12 +51,14 @@ export type ServiceContext<
   TOptions,
   TDeps,
   TServiceDependencies,
+  TPrivateServices,
   TServiceThisContext extends RequestThisContext,
 > = {
   config: TConfig;
   options: TOptions;
   deps: TDeps;
   serviceDeps: TServiceDependencies;
+  privateServices: TPrivateServices;
   /**
    * Helper to define services with proper `this` context typing.
    * Use this to wrap your service methods when they need access to `this`.
@@ -56,10 +74,18 @@ export type ServiceConstructorFn<
   TOptions,
   TDeps,
   TServiceDependencies,
+  TPrivateServices,
   TService,
   TServiceThisContext extends RequestThisContext,
 > = (
-  context: ServiceContext<TConfig, TOptions, TDeps, TServiceDependencies, TServiceThisContext>,
+  context: ServiceContext<
+    TConfig,
+    TOptions,
+    TDeps,
+    TServiceDependencies,
+    TPrivateServices,
+    TServiceThisContext
+  >,
 ) => TService;
 
 /**
@@ -73,6 +99,7 @@ export interface FragmentDefinition<
   TBaseServices,
   TServices,
   TServiceDependencies,
+  TPrivateServices,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
@@ -87,6 +114,7 @@ export interface FragmentDefinition<
     TOptions,
     TDeps,
     TServiceDependencies,
+    TPrivateServices,
     TBaseServices,
     TServiceThisContext
   >;
@@ -98,7 +126,21 @@ export interface FragmentDefinition<
       TOptions,
       TDeps,
       TServiceDependencies,
+      TPrivateServices,
       TServices[K],
+      TServiceThisContext
+    >;
+  };
+
+  // Private services - only accessible internally when defining other services
+  privateServices?: {
+    [K in keyof TPrivateServices]: ServiceConstructorFn<
+      TConfig,
+      TOptions,
+      TDeps,
+      TServiceDependencies,
+      TPrivateServices, // Private services can access other private services
+      TPrivateServices[K],
       TServiceThisContext
     >;
   };
@@ -167,6 +209,14 @@ export interface FragmentDefinition<
     deps: TDeps;
   }) => RequestContextStorage<TRequestStorage>;
 
+  /**
+   * Optional linked fragments that will be automatically instantiated with this fragment.
+   * Linked fragments are service-only and share the same config/options as the parent.
+   */
+  linkedFragments?: {
+    [name: string]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
+  };
+
   $serviceThisContext?: TServiceThisContext;
   $handlerThisContext?: THandlerThisContext;
   $requestStorage?: TRequestStorage;
@@ -183,6 +233,7 @@ export class FragmentDefinitionBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
+  TPrivateServices,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
@@ -194,6 +245,7 @@ export class FragmentDefinitionBuilder<
     TOptions,
     TDeps,
     TServiceDependencies,
+    TPrivateServices,
     TBaseServices,
     TServiceThisContext
   >;
@@ -203,7 +255,19 @@ export class FragmentDefinitionBuilder<
       TOptions,
       TDeps,
       TServiceDependencies,
+      TPrivateServices,
       TServices[K],
+      TServiceThisContext
+    >;
+  };
+  #privateServices?: {
+    [K in keyof TPrivateServices]: ServiceConstructorFn<
+      TConfig,
+      TOptions,
+      TDeps,
+      TServiceDependencies,
+      TPrivateServices,
+      TPrivateServices[K],
       TServiceThisContext
     >;
   };
@@ -226,6 +290,9 @@ export class FragmentDefinitionBuilder<
     options: TOptions;
     deps: TDeps;
   }) => RequestContextStorage<TRequestStorage>;
+  #linkedFragments?: {
+    [name: string]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
+  };
 
   constructor(
     name: string,
@@ -236,6 +303,7 @@ export class FragmentDefinitionBuilder<
         TOptions,
         TDeps,
         TServiceDependencies,
+        TPrivateServices,
         TBaseServices,
         TServiceThisContext
       >;
@@ -245,7 +313,19 @@ export class FragmentDefinitionBuilder<
           TOptions,
           TDeps,
           TServiceDependencies,
+          TPrivateServices,
           TServices[K],
+          TServiceThisContext
+        >;
+      };
+      privateServices?: {
+        [K in keyof TPrivateServices]: ServiceConstructorFn<
+          TConfig,
+          TOptions,
+          TDeps,
+          TServiceDependencies,
+          TPrivateServices,
+          TPrivateServices[K],
           TServiceThisContext
         >;
       };
@@ -268,6 +348,9 @@ export class FragmentDefinitionBuilder<
         options: TOptions;
         deps: TDeps;
       }) => RequestContextStorage<TRequestStorage>;
+      linkedFragments?: {
+        [name: string]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
+      };
     },
   ) {
     this.#name = name;
@@ -275,10 +358,12 @@ export class FragmentDefinitionBuilder<
       this.#dependencies = state.dependencies;
       this.#baseServices = state.baseServices;
       this.#namedServices = state.namedServices;
+      this.#privateServices = state.privateServices;
       this.#serviceDependencies = state.serviceDependencies;
       this.#createRequestStorage = state.createRequestStorage;
       this.#createThisContext = state.createThisContext;
       this.#getExternalStorage = state.getExternalStorage;
+      this.#linkedFragments = state.linkedFragments;
     }
   }
 
@@ -317,6 +402,7 @@ export class FragmentDefinitionBuilder<
     {},
     {},
     TServiceDependencies,
+    {},
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -325,6 +411,7 @@ export class FragmentDefinitionBuilder<
     if (
       this.#baseServices ||
       this.#namedServices ||
+      this.#privateServices ||
       this.#createRequestStorage ||
       this.#createThisContext ||
       this.#getExternalStorage
@@ -342,6 +429,7 @@ export class FragmentDefinitionBuilder<
       {},
       {},
       TServiceDependencies,
+      {},
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -349,6 +437,7 @@ export class FragmentDefinitionBuilder<
       dependencies: fn,
       baseServices: undefined,
       namedServices: undefined,
+      privateServices: undefined,
       serviceDependencies: this.#serviceDependencies,
       // Reset storage/context functions since deps type changed - they must be reconfigured
       createRequestStorage: undefined,
@@ -367,6 +456,7 @@ export class FragmentDefinitionBuilder<
       TOptions,
       TDeps,
       TServiceDependencies,
+      TPrivateServices,
       TNewService,
       TServiceThisContext
     >,
@@ -377,6 +467,7 @@ export class FragmentDefinitionBuilder<
     TNewService,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -388,6 +479,7 @@ export class FragmentDefinitionBuilder<
       TNewService,
       TServices,
       TServiceDependencies,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -395,6 +487,7 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: fn,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
@@ -412,6 +505,7 @@ export class FragmentDefinitionBuilder<
       TOptions,
       TDeps,
       TServiceDependencies,
+      TPrivateServices,
       TService,
       TServiceThisContext
     >,
@@ -422,6 +516,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices & { [K in TServiceName]: TService },
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -436,6 +531,7 @@ export class FragmentDefinitionBuilder<
         TOptions,
         TDeps,
         TServiceDependencies,
+        TPrivateServices,
         (TServices & { [K in TServiceName]: TService })[K],
         TServiceThisContext
       >;
@@ -448,6 +544,7 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices & { [K in TServiceName]: TService },
       TServiceDependencies,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -455,6 +552,75 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: newNamedServices,
+      privateServices: this.#privateServices,
+      serviceDependencies: this.#serviceDependencies,
+      createRequestStorage: this.#createRequestStorage,
+      createThisContext: this.#createThisContext,
+    });
+  }
+
+  /**
+   * Provide a private service that is only accessible to the fragment author.
+   * Private services are NOT exposed on the fragment instance, but can be used
+   * when defining other services (baseServices, namedServices, and other privateServices).
+   * Private services are instantiated in order, so earlier private services are available
+   * to later ones.
+   */
+  providesPrivateService<TServiceName extends string, TService>(
+    serviceName: TServiceName,
+    fn: ServiceConstructorFn<
+      TConfig,
+      TOptions,
+      TDeps,
+      TServiceDependencies,
+      TPrivateServices,
+      TService,
+      TServiceThisContext
+    >,
+  ): FragmentDefinitionBuilder<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TPrivateServices & { [K in TServiceName]: TService },
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage
+  > {
+    // Type assertion needed because TypeScript can't verify object spread with mapped types
+    const newPrivateServices = {
+      ...this.#privateServices,
+      [serviceName]: fn,
+    } as {
+      [K in keyof (TPrivateServices & { [K in TServiceName]: TService })]: ServiceConstructorFn<
+        TConfig,
+        TOptions,
+        TDeps,
+        TServiceDependencies,
+        TPrivateServices & { [K in TServiceName]: TService },
+        (TPrivateServices & { [K in TServiceName]: TService })[K],
+        TServiceThisContext
+      >;
+    };
+
+    return new FragmentDefinitionBuilder<
+      TConfig,
+      TOptions,
+      TDeps,
+      TBaseServices,
+      TServices,
+      TServiceDependencies,
+      TPrivateServices & { [K in TServiceName]: TService },
+      TServiceThisContext,
+      THandlerThisContext,
+      TRequestStorage
+    >(this.#name, {
+      dependencies: this.#dependencies,
+      baseServices: this.#baseServices,
+      namedServices: this.#namedServices,
+      privateServices: newPrivateServices,
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
@@ -473,6 +639,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService },
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -492,6 +659,7 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies & { [K in TServiceName]: TService },
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -499,6 +667,7 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: newServiceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
@@ -517,6 +686,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService | undefined },
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -538,6 +708,7 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies & { [K in TServiceName]: TService | undefined },
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -545,6 +716,7 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: newServiceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
@@ -586,6 +758,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TNewRequestStorage
@@ -607,6 +780,7 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TNewRequestStorage
@@ -614,6 +788,7 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: initializer,
       // Reset context function since storage type changed - it must be reconfigured
@@ -651,6 +826,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TNewStorage
@@ -662,6 +838,7 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TNewStorage
@@ -669,6 +846,7 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: this.#serviceDependencies,
       // Reset storage/context functions since storage type changed - they must be reconfigured
       createRequestStorage: undefined,
@@ -709,6 +887,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TNewServiceThisContext,
     TNewHandlerThisContext,
     TRequestStorage
@@ -720,6 +899,7 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
+      TPrivateServices,
       TNewServiceThisContext,
       TNewHandlerThisContext,
       TRequestStorage
@@ -727,10 +907,48 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createThisContext: fn,
       getExternalStorage: this.#getExternalStorage,
+    });
+  }
+
+  /**
+   * Register a linked fragment that will be automatically instantiated.
+   * Linked fragments are service-only (no routes) and share the same config/options as the parent.
+   */
+  withLinkedFragment<const TName extends string>(
+    name: TName,
+    callback: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>,
+  ): FragmentDefinitionBuilder<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TPrivateServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage
+  > {
+    const newLinkedFragments = {
+      ...this.#linkedFragments,
+      [name]: callback,
+    };
+
+    return new FragmentDefinitionBuilder(this.#name, {
+      dependencies: this.#dependencies,
+      baseServices: this.#baseServices,
+      namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
+      serviceDependencies: this.#serviceDependencies,
+      createRequestStorage: this.#createRequestStorage,
+      createThisContext: this.#createThisContext,
+      getExternalStorage: this.#getExternalStorage,
+      linkedFragments: newLinkedFragments,
     });
   }
 
@@ -752,6 +970,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -761,10 +980,12 @@ export class FragmentDefinitionBuilder<
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
       namedServices: this.#namedServices,
+      privateServices: this.#privateServices,
       serviceDependencies: this.#serviceDependencies,
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
       getExternalStorage: this.#getExternalStorage,
+      linkedFragments: this.#linkedFragments,
     };
   }
 }
@@ -783,6 +1004,7 @@ export function defineFragment<
 ): FragmentDefinitionBuilder<
   TConfig,
   TOptions,
+  {},
   {},
   {},
   {},

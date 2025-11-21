@@ -7,6 +7,7 @@ export {
   type FragmentDefinition,
   type ServiceContext,
   type ServiceConstructorFn,
+  type LinkedFragmentCallback,
 } from "./api/fragment-definition-builder";
 
 export {

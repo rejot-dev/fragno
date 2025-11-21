@@ -158,6 +158,7 @@ export class DatabaseFragmentDefinitionBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
+  TPrivateServices,
   TServiceThisContext extends RequestThisContext = DatabaseHandlerContext,
   THandlerThisContext extends RequestThisContext = DatabaseHandlerContext,
 > {
@@ -169,6 +170,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     DatabaseRequestStorage
@@ -184,6 +186,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       DatabaseRequestStorage
@@ -214,6 +217,7 @@ export class DatabaseFragmentDefinitionBuilder<
     {},
     {},
     TServiceDependencies,
+    {},
     TServiceThisContext,
     THandlerThisContext
   > {
@@ -256,6 +260,7 @@ export class DatabaseFragmentDefinitionBuilder<
       FragnoPublicConfigWithDatabase,
       TDeps,
       TServiceDependencies,
+      TPrivateServices,
       TNewService,
       TServiceThisContext
     >,
@@ -266,6 +271,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TNewService,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext
   > {
@@ -281,6 +287,7 @@ export class DatabaseFragmentDefinitionBuilder<
       FragnoPublicConfigWithDatabase,
       TDeps,
       TServiceDependencies,
+      TPrivateServices,
       TService,
       TServiceThisContext
     >,
@@ -291,6 +298,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices & { [K in TServiceName]: TService },
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext
   > {
@@ -315,6 +323,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService },
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext
   > {
@@ -336,6 +345,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService | undefined },
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext
   > {
@@ -358,6 +368,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     DatabaseServiceContext,
     DatabaseHandlerContext,
     DatabaseRequestStorage
@@ -515,6 +526,7 @@ export function withDatabase<TSchema extends AnySchema>(
   TBaseServices,
   TServices,
   TServiceDeps,
+  TPrivateServices,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
@@ -526,6 +538,7 @@ export function withDatabase<TSchema extends AnySchema>(
     TBaseServices,
     TServices,
     TServiceDeps,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -537,6 +550,7 @@ export function withDatabase<TSchema extends AnySchema>(
   TBaseServices,
   TServices,
   TServiceDeps,
+  TPrivateServices,
   DatabaseServiceContext,
   DatabaseHandlerContext
 > {
@@ -546,6 +560,7 @@ export function withDatabase<TSchema extends AnySchema>(
     TBaseServices,
     TServices,
     TServiceDeps,
+    TPrivateServices,
     TServiceThisContext extends RequestThisContext,
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
@@ -557,6 +572,7 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -575,6 +591,7 @@ export function withDatabase<TSchema extends AnySchema>(
       TBaseServices,
       TServices,
       TServiceDeps,
+      TPrivateServices,
       DatabaseServiceContext,
       DatabaseHandlerContext
     >(
@@ -585,6 +602,7 @@ export function withDatabase<TSchema extends AnySchema>(
         TBaseServices,
         TServices,
         TServiceDeps,
+        TPrivateServices,
         DatabaseServiceContext,
         DatabaseHandlerContext,
         DatabaseRequestStorage

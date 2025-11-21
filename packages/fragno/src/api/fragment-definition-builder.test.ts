@@ -167,6 +167,7 @@ describe("FragmentDefinitionBuilder", () => {
         options: {},
         deps: { apiKey: "test-key" },
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -218,6 +219,7 @@ describe("FragmentDefinitionBuilder", () => {
         options: {},
         deps: { apiKey: "test-key" },
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -244,6 +246,7 @@ describe("FragmentDefinitionBuilder", () => {
         options: {},
         deps: {},
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
       const smsService = definition.namedServices!.sms({
@@ -251,6 +254,7 @@ describe("FragmentDefinitionBuilder", () => {
         options: {},
         deps: {},
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -335,6 +339,7 @@ describe("FragmentDefinitionBuilder", () => {
             send: (to: string) => `Email sent to ${to}`,
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -395,6 +400,7 @@ describe("FragmentDefinitionBuilder", () => {
             log: (msg) => logs.push(msg),
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -407,6 +413,7 @@ describe("FragmentDefinitionBuilder", () => {
             log: (msg) => logs.push(msg),
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -441,8 +448,10 @@ describe("FragmentDefinitionBuilder", () => {
         {},
         { server: { start: () => string } },
         {},
+        {},
         RequestThisContext,
-        RequestThisContext
+        RequestThisContext,
+        {}
       >
         ? true
         : false = true;

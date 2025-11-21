@@ -1125,6 +1125,7 @@ export function createClientBuilder<
   TBaseServices,
   TServices,
   TServiceDependencies,
+  TPrivateServices,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
@@ -1137,6 +1138,7 @@ export function createClientBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage

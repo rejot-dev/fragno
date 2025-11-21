@@ -43,6 +43,7 @@ interface FragmentBuilderConfig<
   TBaseServices extends Record<string, unknown>,
   TServices extends Record<string, unknown>,
   TServiceDependencies,
+  TPrivateServices extends Record<string, unknown>,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
@@ -55,6 +56,7 @@ interface FragmentBuilderConfig<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -66,6 +68,7 @@ interface FragmentBuilderConfig<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
@@ -144,7 +147,7 @@ interface DatabaseFragmentsTestResult<
  */
 type FragmentConfigMap = Map<
   string,
-  FragmentBuilderConfig<any, any, any, any, any, any, any, any, any, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  FragmentBuilderConfig<any, any, any, any, any, any, any, any, any, any, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 >;
 
 /**
@@ -183,6 +186,7 @@ export class DatabaseFragmentsTestBuilder<
     TBaseServices extends Record<string, unknown>,
     TServices extends Record<string, unknown>,
     TServiceDependencies,
+    TPrivateServices extends Record<string, unknown>,
     TServiceThisContext extends RequestThisContext,
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
@@ -196,6 +200,7 @@ export class DatabaseFragmentsTestBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,

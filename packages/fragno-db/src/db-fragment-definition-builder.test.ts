@@ -138,6 +138,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -170,6 +171,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -178,6 +180,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -242,6 +245,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -274,6 +278,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -329,6 +334,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             log: (msg) => logs.push(msg),
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -344,6 +350,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             log: (msg) => logs.push(msg),
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -388,6 +395,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -491,6 +499,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           logger: { log: (msg) => logs.push(msg) },
           auth: undefined, // Optional service
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -504,6 +513,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           logger: { log: (msg) => logs.push(msg) },
           auth: undefined, // Optional service
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -594,6 +604,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -627,6 +638,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
         deps,
         serviceDeps: {},
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -768,6 +780,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             log: (msg) => logs.push(msg),
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -783,6 +796,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
             log: (msg) => logs.push(msg),
           },
         },
+        privateServices: {},
         defineService: (svc) => svc,
       });
 
@@ -863,6 +877,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
   //       options: { databaseAdapter: mockAdapter },
   //       deps,
   //       serviceDeps: {},
+  //       privateServices: {},
   //       defineService: (svc) => svc,
   //     });
 

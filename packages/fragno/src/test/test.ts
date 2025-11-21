@@ -4,6 +4,7 @@ import type { FragnoPublicConfig } from "../api/shared-types";
 import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
+  type ServiceConstructorFn,
 } from "../api/fragment-definition-builder";
 import { instantiateFragment, type FragnoInstantiatedFragment } from "../api/fragment-instantiator";
 import type { BoundServices } from "../api/bind-services";
@@ -42,6 +43,7 @@ export function withTestUtils() {
     TBaseServices,
     TServices,
     TServiceDeps,
+    TPrivateServices,
     TServiceThisContext extends RequestThisContext,
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
@@ -53,6 +55,7 @@ export function withTestUtils() {
       TBaseServices,
       TServices,
       TServiceDeps,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -64,6 +67,7 @@ export function withTestUtils() {
     TBaseServices & TestBaseServices<TDeps>,
     TServices,
     TServiceDeps,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage
@@ -73,13 +77,15 @@ export function withTestUtils() {
     const currentBaseServices = currentBaseDef.baseServices;
 
     // Create new base services factory that merges test utilities
-    const newBaseServices = (context: {
-      config: TConfig;
-      options: TOptions;
-      deps: TDeps;
-      serviceDeps: TServiceDeps;
-      defineService: <T>(svc: T & ThisType<TServiceThisContext>) => T;
-    }) => {
+    const newBaseServices: ServiceConstructorFn<
+      TConfig,
+      TOptions,
+      TDeps,
+      TServiceDeps,
+      TPrivateServices,
+      TBaseServices & TestBaseServices<TDeps>,
+      TServiceThisContext
+    > = (context) => {
       // Call existing base services if they exist
       const existingServices = currentBaseServices
         ? currentBaseServices(context)
@@ -104,6 +110,7 @@ export function withTestUtils() {
       TBaseServices & TestBaseServices<TDeps>,
       TServices,
       TServiceDeps,
+      TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage
@@ -111,6 +118,7 @@ export function withTestUtils() {
       dependencies: currentBaseDef.dependencies,
       baseServices: newBaseServices,
       namedServices: currentBaseDef.namedServices,
+      privateServices: currentBaseDef.privateServices,
       serviceDependencies: currentBaseDef.serviceDependencies,
       createRequestStorage: currentBaseDef.createRequestStorage,
       createThisContext: currentBaseDef.createThisContext,
@@ -187,6 +195,7 @@ export function createFragmentForTest<
   TBaseServices extends Record<string, unknown>,
   TServices extends Record<string, unknown>,
   TServiceDependencies,
+  TPrivateServices extends Record<string, unknown>,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
@@ -199,6 +208,7 @@ export function createFragmentForTest<
     TBaseServices,
     TServices,
     TServiceDependencies,
+    TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage

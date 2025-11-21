@@ -534,4 +534,194 @@ describe("Fragment Service System", () => {
       expect(typeof instance.services.maybeSendEmail).toBe("function");
     });
   });
+
+  describe("Private Services", () => {
+    test("private service should be accessible when defining other services", () => {
+      interface IDataStore {
+        get(key: string): string | undefined;
+        set(key: string, value: string): void;
+      }
+
+      const dataStoreImpl: IDataStore = {
+        get: () => "cached-value",
+        set: () => {},
+      };
+
+      const definition = defineFragment("test")
+        .providesPrivateService("dataStore", () => dataStoreImpl)
+        .providesBaseService(({ privateServices }) => ({
+          getValue: (key: string) => {
+            // Private service is accessible here
+            return privateServices.dataStore.get(key);
+          },
+        }))
+        .build();
+
+      const instance = instantiate(definition).withOptions({}).build();
+
+      // Private service should NOT be accessible on the instance
+      expectTypeOf<typeof instance.services>().not.toMatchTypeOf<{ dataStore: IDataStore }>();
+
+      // But the public service that uses it should work
+      expect(instance.services.getValue).toBeDefined();
+      expect(instance.services.getValue("test")).toBe("cached-value");
+    });
+
+    test("private service should NOT be exposed on fragment instance", () => {
+      interface IInternalCache {
+        cache: Map<string, unknown>;
+      }
+
+      const definition = defineFragment("test")
+        .providesPrivateService<"cache", IInternalCache>("cache", () => ({
+          cache: new Map(),
+        }))
+        .providesBaseService(({ privateServices }) => ({
+          getCacheSize: () => privateServices.cache.cache.size,
+        }))
+        .build();
+
+      const instance = instantiate(definition).withOptions({}).build();
+
+      // @ts-expect-error - Private service should not be accessible
+      expect(instance.services.cache).toBeUndefined();
+
+      // Only the public service should be accessible
+      expect(instance.services.getCacheSize).toBeDefined();
+    });
+
+    test("multiple private services should work together", () => {
+      interface ILogger {
+        log(msg: string): void;
+      }
+
+      interface ICache {
+        get(key: string): unknown;
+      }
+
+      const logger: ILogger = {
+        log: () => {},
+      };
+
+      const cache: ICache = {
+        get: () => "cached",
+      };
+
+      const definition = defineFragment("test")
+        .providesPrivateService("logger", () => logger)
+        .providesPrivateService("cache", () => cache)
+        .providesBaseService(({ privateServices }) => ({
+          getCachedValue: (key: string) => {
+            privateServices.logger.log(`Getting ${key}`);
+            return privateServices.cache.get(key);
+          },
+        }))
+        .build();
+
+      const instance = instantiate(definition).withOptions({}).build();
+
+      expect(instance.services.getCachedValue).toBeDefined();
+      expect(instance.services.getCachedValue("test")).toBe("cached");
+    });
+
+    test("private services can access config and deps", () => {
+      const definition = defineFragment<{ apiKey: string }>("test")
+        .withDependencies(({ config }) => ({
+          endpoint: `https://api.example.com/${config.apiKey}`,
+        }))
+        .providesPrivateService("internalApi", ({ deps }) => ({
+          makeRequest: () => `${deps.endpoint}/request`,
+        }))
+        .providesBaseService(({ privateServices }) => ({
+          doRequest: () => privateServices.internalApi.makeRequest(),
+        }))
+        .build();
+
+      const instance = instantiate(definition)
+        .withConfig({ apiKey: "test-key" })
+        .withOptions({})
+        .build();
+
+      expect(instance.services.doRequest()).toBe("https://api.example.com/test-key/request");
+    });
+
+    test("private services can access serviceDeps", () => {
+      interface IEmailService {
+        sendEmail(to: string): Promise<void>;
+      }
+
+      const emailImpl: IEmailService = {
+        sendEmail: async () => {},
+      };
+
+      const definition = defineFragment("test")
+        .usesService<"email", IEmailService>("email")
+        .providesPrivateService("emailHelper", ({ serviceDeps }) => ({
+          sendWelcomeEmail: (to: string) => serviceDeps.email.sendEmail(to),
+        }))
+        .providesBaseService(({ privateServices }) => ({
+          welcomeUser: (email: string) => privateServices.emailHelper.sendWelcomeEmail(email),
+        }))
+        .build();
+
+      const instance = instantiate(definition)
+        .withServices({ email: emailImpl })
+        .withOptions({})
+        .build();
+
+      expect(instance.services.welcomeUser).toBeDefined();
+      expectTypeOf<typeof instance.services.welcomeUser>().toExtend<
+        (email: string) => Promise<void>
+      >();
+    });
+
+    test("named services can also access private services", () => {
+      const definition = defineFragment("test")
+        .providesPrivateService("helper", () => ({
+          multiply: (a: number, b: number) => a * b,
+        }))
+        .providesService("calculator", ({ privateServices }) => ({
+          square: (n: number) => privateServices.helper.multiply(n, n),
+        }))
+        .build();
+
+      const instance = instantiate(definition).withOptions({}).build();
+
+      expect(instance.services.calculator.square(5)).toBe(25);
+      // @ts-expect-error - Private service should not be accessible
+      expect(instance.services.helper).toBeUndefined();
+    });
+
+    test("private services can access other private services (in order)", () => {
+      const definition = defineFragment("test")
+        .providesPrivateService("math", () => ({
+          add: (a: number, b: number) => a + b,
+          multiply: (a: number, b: number) => a * b,
+        }))
+        .providesPrivateService("calculator", ({ privateServices }) => ({
+          // This private service can access the earlier private service
+          square: (n: number) => privateServices.math.multiply(n, n),
+          addTen: (n: number) => privateServices.math.add(n, 10),
+        }))
+        .providesBaseService(({ privateServices }) => ({
+          compute: (n: number) => {
+            // Public service can access both private services
+            const squared = privateServices.calculator.square(n);
+            return privateServices.calculator.addTen(squared);
+          },
+        }))
+        .build();
+
+      const instance = instantiate(definition).withOptions({}).build();
+
+      // 5^2 = 25, 25 + 10 = 35
+      expect(instance.services.compute(5)).toBe(35);
+
+      // Private services should not be accessible on the instance
+      // @ts-expect-error - Private service should not be accessible
+      expect(instance.services.math).toBeUndefined();
+      // @ts-expect-error - Private service should not be accessible
+      expect(instance.services.calculator).toBeUndefined();
+    });
+  });
 });
