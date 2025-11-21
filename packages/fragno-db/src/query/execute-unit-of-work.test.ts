@@ -192,6 +192,7 @@ describe("executeUnitOfWork", () => {
         results: expect.any(Array),
         mutationResult: { newBalance: 200 },
         createdIds: [],
+        nonce: expect.any(String),
       });
     });
   });
@@ -342,6 +343,7 @@ describe("executeUnitOfWork", () => {
         results: expect.any(Array),
         mutationResult: { updatedCount: 5 },
         createdIds: [],
+        nonce: expect.any(String),
       });
     });
 
@@ -667,6 +669,7 @@ describe("executeUnitOfWork", () => {
           status: "active",
         },
         createdIds: [],
+        nonce: expect.any(String),
       });
     });
   });

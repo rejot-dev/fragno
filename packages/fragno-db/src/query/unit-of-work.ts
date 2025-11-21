@@ -883,6 +883,7 @@ export interface IUnitOfWork {
   // Getters (schema-agnostic)
   readonly state: UOWState;
   readonly name: string | undefined;
+  readonly nonce: string;
   readonly retrievalPhase: Promise<unknown[]>;
   readonly mutationPhase: Promise<void>;
 
@@ -931,6 +932,7 @@ export function createUnitOfWork(
 export interface UnitOfWorkConfig {
   dryRun?: boolean;
   onQuery?: (query: unknown) => void;
+  nonce?: string;
 }
 
 /**
@@ -1115,6 +1117,7 @@ class UOWChildCoordinator<TRawInput> {
 export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #name?: string;
   #config?: UnitOfWorkConfig;
+  #nonce: string;
 
   #state: UOWState = "building-retrieval";
 
@@ -1159,6 +1162,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#schemaNamespaceMap = schemaNamespaceMap;
     this.#name = name;
     this.#config = config;
+    this.#nonce = config?.nonce ?? crypto.randomUUID();
 
     // Initialize phase coordination promises
     const retrievalPromise = Promise.withResolvers<unknown[]>();
@@ -1202,7 +1206,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       this.#executor,
       this.#decoder,
       this.#name,
-      this.#config,
+      { ...this.#config, nonce: this.#nonce },
       this.#schemaNamespaceMap,
     );
     child.#coordinator.setAsRestricted(this, this.#coordinator);
@@ -1289,6 +1293,10 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
   get name(): string | undefined {
     return this.#name;
+  }
+
+  get nonce(): string {
+    return this.#nonce;
   }
 
   /**
@@ -1566,6 +1574,10 @@ export class TypedUnitOfWork<
 
   get name(): string | undefined {
     return this.#uow.name;
+  }
+
+  get nonce(): string {
+    return this.#uow.nonce;
   }
 
   get state() {

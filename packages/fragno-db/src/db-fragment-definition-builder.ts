@@ -67,14 +67,14 @@ export type DatabaseHandlerContext = RequestThisContext & {
    * Automatically provides the UOW factory from context.
    * Promises in the returned object are awaited 1 level deep.
    *
-   * @param callback - Async function that receives a context with forSchema, executeRetrieve, and executeMutate methods
+   * @param callback - Async function that receives a context with forSchema, executeRetrieve, executeMutate, nonce, and currentAttempt
    * @param options - Optional configuration for retry policy and abort signal
    * @returns Promise resolving to the callback's return value with promises awaited 1 level deep
    * @throws Error if retries are exhausted or callback throws an error
    *
    * @example
    * ```ts
-   * const result = await this.uow(async ({ forSchema, executeRetrieve, executeMutate }) => {
+   * const result = await this.uow(async ({ forSchema, executeRetrieve, executeMutate, nonce, currentAttempt }) => {
    *   const uow = forSchema(schema);
    *   const userId = uow.create("users", { name: "John" });
    *
@@ -95,6 +95,8 @@ export type DatabaseHandlerContext = RequestThisContext & {
       forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
       executeRetrieve: () => Promise<void>;
       executeMutate: () => Promise<void>;
+      nonce: string;
+      currentAttempt: number;
     }) => Promise<TResult> | TResult,
     options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
   ): Promise<AwaitedPromisesInObject<TResult>>;
@@ -434,6 +436,8 @@ export class DatabaseFragmentDefinitionBuilder<
           forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
           executeRetrieve: () => Promise<void>;
           executeMutate: () => Promise<void>;
+          nonce: string;
+          currentAttempt: number;
         }) => Promise<TResult> | TResult,
         options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
       ): Promise<AwaitedPromisesInObject<TResult>> {
@@ -449,6 +453,8 @@ export class DatabaseFragmentDefinitionBuilder<
           forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
           executeRetrieve: () => Promise<void>;
           executeMutate: () => Promise<void>;
+          nonce: string;
+          currentAttempt: number;
         }): Promise<TResult> => {
           return await callback(context);
         };

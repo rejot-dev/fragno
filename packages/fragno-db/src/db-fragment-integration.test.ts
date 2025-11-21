@@ -364,4 +364,45 @@ describe.sequential("Database Fragment Integration", () => {
       user_external_id: userId,
     });
   });
+
+  it("should provide nonce and currentAttempt in the UOW context", async () => {
+    let firstNonce: string;
+
+    const result = await usersFragment.inContext(async function () {
+      return await this.uow(async ({ executeRetrieve, nonce, currentAttempt }) => {
+        const user = usersFragment.services.userService.getUserById(userId);
+        await executeRetrieve();
+
+        if (currentAttempt === 0) {
+          firstNonce = nonce;
+          throw new Error("Test error");
+        }
+
+        expect(nonce).toBe(firstNonce);
+
+        // Return context data along with user data
+        return {
+          user,
+          nonce,
+          currentAttempt,
+        };
+      });
+    });
+
+    // Verify nonce is a string UUID
+    expect(result.nonce).toBeDefined();
+    expect(typeof result.nonce).toBe("string");
+    expect(result.nonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+    expect(result.currentAttempt).toBe(1);
+
+    // Verify user data is still correct
+    expect(result.user).toMatchObject({
+      id: expect.objectContaining({
+        externalId: userId,
+      }),
+      name: "John Doe",
+      email: "john@example.com",
+    });
+  });
 });

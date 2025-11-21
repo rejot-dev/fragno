@@ -723,4 +723,51 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     // If we got here without Node.js throwing an unhandled rejection, the test passes
   });
+
+  it("should inherit nonce from parent to children for idempotent operations", () => {
+    const executor = createMockExecutor();
+    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    // Parent UOW should have a nonce
+    const parentNonce = parentUow.nonce;
+    expect(parentNonce).toBeDefined();
+    expect(typeof parentNonce).toBe("string");
+    expect(parentNonce.length).toBeGreaterThan(0);
+
+    // Create first child
+    const child1 = parentUow.restrict();
+    expect(child1.nonce).toBe(parentNonce);
+
+    // Create second child (sibling to child1)
+    const child2 = parentUow.restrict();
+    expect(child2.nonce).toBe(parentNonce);
+
+    // Create nested child (child of child1)
+    const grandchild = child1.restrict();
+    expect(grandchild.nonce).toBe(parentNonce);
+
+    // All UOWs in the hierarchy should share the same nonce
+    expect(parentUow.nonce).toBe(child1.nonce);
+    expect(child1.nonce).toBe(child2.nonce);
+    expect(child2.nonce).toBe(grandchild.nonce);
+  });
+
+  it("should generate different nonces for separate UOW hierarchies", () => {
+    const executor = createMockExecutor();
+
+    // Create two separate parent UOWs
+    const parentUow1 = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow2 = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+
+    // They should have different nonces
+    expect(parentUow1.nonce).not.toBe(parentUow2.nonce);
+
+    // But children within each hierarchy should inherit their parent's nonce
+    const child1 = parentUow1.restrict();
+    const child2 = parentUow2.restrict();
+
+    expect(child1.nonce).toBe(parentUow1.nonce);
+    expect(child2.nonce).toBe(parentUow2.nonce);
+    expect(child1.nonce).not.toBe(child2.nonce);
+  });
 });

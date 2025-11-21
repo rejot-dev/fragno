@@ -81,6 +81,7 @@ export type ExecuteUnitOfWorkResult<TRetrievalResults, TMutationResult> =
       results: TRetrievalResults;
       mutationResult: AwaitedPromisesInObject<TMutationResult>;
       createdIds: FragnoId[];
+      nonce: string;
     }
   | {
       success: false;
@@ -128,6 +129,7 @@ export interface ExecuteUnitOfWorkCallbacks<
     results: TRetrievalResults;
     mutationResult: AwaitedPromisesInObject<TMutationResult>;
     createdIds: FragnoId[];
+    nonce: string;
   }) => void | Promise<void>;
 }
 
@@ -263,8 +265,9 @@ export async function executeUnitOfWork<
       const { success } = await retrievalUow.executeMutations();
 
       if (success) {
-        // Success! Get created IDs and invoke onSuccess if provided
+        // Success! Get created IDs and nonce, then invoke onSuccess if provided
         const createdIds = retrievalUow.getCreatedIds();
+        const nonce = retrievalUow.nonce;
 
         // Await promises in mutationResult (1 level deep)
         const awaitedMutationResult = await awaitPromisesInObject(mutationResult);
@@ -274,6 +277,7 @@ export async function executeUnitOfWork<
             results,
             mutationResult: awaitedMutationResult,
             createdIds,
+            nonce,
           });
         }
 
@@ -282,6 +286,7 @@ export async function executeUnitOfWork<
           results,
           mutationResult: awaitedMutationResult,
           createdIds,
+          nonce,
         };
       }
 
@@ -336,7 +341,7 @@ export interface ExecuteRestrictedUnitOfWorkOptions {
  * to execute the retrieval and mutation phases. The entire callback is re-executed on optimistic
  * concurrency conflicts, ensuring retries work properly.
  *
- * @param callback - Async function that receives a context with forSchema, executeRetrieve, and executeMutate methods
+ * @param callback - Async function that receives a context with forSchema, executeRetrieve, executeMutate, nonce, and currentAttempt
  * @param options - Configuration including UOW factory, retry policy, and abort signal
  * @returns Promise resolving to the callback's return value
  * @throws Error if retries are exhausted or callback throws an error
@@ -344,7 +349,7 @@ export interface ExecuteRestrictedUnitOfWorkOptions {
  * @example
  * ```ts
  * const { userId, profileId } = await executeRestrictedUnitOfWork(
- *   async ({ forSchema, executeRetrieve, executeMutate }) => {
+ *   async ({ forSchema, executeRetrieve, executeMutate, nonce, currentAttempt }) => {
  *     const uow = forSchema(schema);
  *     const userId = uow.create("users", { name: "John" });
  *
@@ -370,6 +375,8 @@ export async function executeRestrictedUnitOfWork<TResult>(
     forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
     executeRetrieve: () => Promise<void>;
     executeMutate: () => Promise<void>;
+    nonce: string;
+    currentAttempt: number;
   }) => Promise<TResult>,
   options: ExecuteRestrictedUnitOfWorkOptions,
 ): Promise<AwaitedPromisesInObject<TResult>> {
@@ -394,7 +401,7 @@ export async function executeRestrictedUnitOfWork<TResult>(
       // Create a fresh UOW for this attempt
       const baseUow = options.createUnitOfWork();
 
-      // Create context object with forSchema, executeRetrieve, and executeMutate methods
+      // Create context object with forSchema, executeRetrieve, executeMutate, nonce, and currentAttempt
       const context = {
         forSchema: <S extends AnySchema>(schema: S) => {
           return baseUow.forSchema(schema);
@@ -416,6 +423,8 @@ export async function executeRestrictedUnitOfWork<TResult>(
             throw new Error("Mutations failed due to conflict");
           }
         },
+        nonce: baseUow.nonce,
+        currentAttempt: attempt,
       };
 
       // Execute the callback which will call executeRetrieve and executeMutate

@@ -34,7 +34,7 @@ export async function writeAndLoadSchema(
   // Generate unique schema file path
   const schemaFilePath = join(
     testDir,
-    `test-schema-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.ts`,
+    `test-schema-${testFileName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.ts`,
   );
 
   // Generate and write the Drizzle schema to file
@@ -47,7 +47,11 @@ export async function writeAndLoadSchema(
 
   // Cleanup function to remove the test-specific directory
   const cleanup = async () => {
-    await rm(testDir, { recursive: true, force: true });
+    try {
+      await rm(testDir, { recursive: true, force: true });
+    } catch {
+      // Ignore error if directory doesn't exist
+    }
   };
 
   return {
