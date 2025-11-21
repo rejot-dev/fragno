@@ -1273,10 +1273,10 @@ describe("fragment-instantiator", () => {
         .build();
 
       // Verify linked fragment exists
-      expect(fragment.$internal.linkedFragments.size).toBe(1);
-      expect(fragment.$internal.linkedFragments.has("internal")).toBe(true);
+      expect(Object.keys(fragment.$internal.linkedFragments).length).toBe(1);
+      expect("internal" in fragment.$internal.linkedFragments).toBe(true);
 
-      const linkedFragment = fragment.$internal.linkedFragments.get("internal")!;
+      const linkedFragment = fragment.$internal.linkedFragments.internal;
       expect(linkedFragment).toBeDefined();
       expect(linkedFragment?.name).toBe("linked-fragment");
     });
@@ -1304,10 +1304,10 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition)
         .withConfig({ value: "config" })
-        .withOptions({ customOption: "option", mountRoute: "/api" })
+        .withOptions({ customOption: "option", mountRoute: "/api" } as Options)
         .build();
 
-      const linkedFragment = fragment.$internal.linkedFragments.get("internal")!;
+      const linkedFragment = fragment.$internal.linkedFragments.internal;
       expect(linkedFragment?.$internal.deps).toEqual({
         combined: "config-option",
       });
@@ -1331,7 +1331,7 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition).withOptions({}).build();
 
-      const linkedFragment = fragment.$internal.linkedFragments.get("internal")!;
+      const linkedFragment = fragment.$internal.linkedFragments.internal;
       expect(linkedFragment?.services.settingsService).toBeDefined();
       expect(linkedFragment?.services.settingsService.get("test")).toBe("value-for-test");
     });
@@ -1356,12 +1356,12 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition).withOptions({}).build();
 
-      expect(fragment.$internal.linkedFragments.size).toBe(2);
-      expect(fragment.$internal.linkedFragments.has("internal1")).toBe(true);
-      expect(fragment.$internal.linkedFragments.has("internal2")).toBe(true);
+      expect(Object.keys(fragment.$internal.linkedFragments).length).toBe(2);
+      expect("internal1" in fragment.$internal.linkedFragments).toBe(true);
+      expect("internal2" in fragment.$internal.linkedFragments).toBe(true);
 
-      const linked1 = fragment.$internal.linkedFragments.get("internal1")!;
-      const linked2 = fragment.$internal.linkedFragments.get("internal2")!;
+      const linked1 = fragment.$internal.linkedFragments.internal1;
+      const linked2 = fragment.$internal.linkedFragments.internal2;
 
       expect(linked1?.services.service1.method()).toBe("service1");
       expect(linked2?.services.service2.method()).toBe("service2");
@@ -1399,8 +1399,36 @@ describe("fragment-instantiator", () => {
         .withServices({ externalService })
         .build();
 
-      const linkedFragment = fragment.$internal.linkedFragments.get("internal")!;
+      const linkedFragment = fragment.$internal.linkedFragments.internal;
       expect(linkedFragment?.services.linkedService.getFromExternal()).toBe("external-value");
+    });
+
+    it("should expose linked fragment services as private services", () => {
+      const linkedFragmentDef = defineFragment("linked-fragment")
+        .providesService("linkedService", () => ({
+          getValue: () => "from-linked",
+        }))
+        .build();
+
+      const definition = defineFragment("main-fragment")
+        .withLinkedFragment("internal", ({ config, options }) => {
+          return instantiate(linkedFragmentDef).withConfig(config).withOptions(options).build();
+        })
+        .providesService("mainService", ({ privateServices }) => ({
+          getLinkedValue: () => {
+            return privateServices.linkedService.getValue();
+          },
+        }))
+        .build();
+
+      const fragment = instantiate(definition).withOptions({}).build();
+
+      // The main service can access linked fragment services via privateServices
+      expect(fragment.services.mainService.getLinkedValue()).toBe("from-linked");
+
+      // Linked fragment services are NOT directly exposed on the main fragment
+      // @ts-expect-error - Linked fragment service should not be accessible
+      expect(fragment.services.linkedService).toBeUndefined();
     });
   });
 

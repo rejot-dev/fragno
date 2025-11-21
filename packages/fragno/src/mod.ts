@@ -8,12 +8,14 @@ export {
   type ServiceContext,
   type ServiceConstructorFn,
   type LinkedFragmentCallback,
+  type ExtractLinkedServices,
 } from "./api/fragment-definition-builder";
 
 export {
   instantiate,
   type FragmentInstantiationBuilder,
   type FragnoInstantiatedFragment,
+  type AnyFragnoInstantiatedFragment,
   type BoundServices,
 } from "./api/fragment-instantiator";
 

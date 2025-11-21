@@ -33,6 +33,73 @@ type ExtractSchemaFromDeps<TDeps> = TDeps extends { schema: infer TSchema extend
   ? TSchema
   : AnySchema;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyLinkedFragments = Record<string, any>;
+
+// Forward declarations for recursive type references
+interface FragmentResult<
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
+  TRequestStorage,
+  TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+  TSchema extends AnySchema,
+  TLinkedFragments extends AnyLinkedFragments = {},
+> {
+  fragment: FragnoInstantiatedFragment<
+    TRoutes,
+    TDeps,
+    TServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    FragnoPublicConfig,
+    TLinkedFragments
+  >;
+  services: TServices;
+  deps: TDeps;
+  callRoute: FragnoInstantiatedFragment<
+    TRoutes,
+    TDeps,
+    TServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    FragnoPublicConfig,
+    TLinkedFragments
+  >["callRoute"];
+  db: AbstractQuery<TSchema>;
+}
+
+// Safe: Catch-all for any fragment result type
+type AnyFragmentResult = FragmentResult<
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any // eslint-disable-line @typescript-eslint/no-explicit-any
+>;
+
+// Safe: Catch-all for any fragment builder config type
+type AnyFragmentBuilderConfig = FragmentBuilderConfig<
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any // eslint-disable-line @typescript-eslint/no-explicit-any
+>;
+
 /**
  * Configuration for a single fragment in the test builder
  */
@@ -48,6 +115,7 @@ interface FragmentBuilderConfig<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  TLinkedFragments extends AnyLinkedFragments,
 > {
   definition: FragmentDefinition<
     TConfig,
@@ -59,7 +127,8 @@ interface FragmentBuilderConfig<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >;
   builder: FragmentInstantiationBuilder<
     TConfig,
@@ -72,42 +141,10 @@ interface FragmentBuilderConfig<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TRoutesOrFactories
+    TRoutesOrFactories,
+    TLinkedFragments
   >;
   migrateToVersion?: number;
-}
-
-/**
- * Result type for a single fragment
- */
-interface FragmentResult<
-  TDeps,
-  TServices extends Record<string, unknown>,
-  TServiceThisContext extends RequestThisContext,
-  THandlerThisContext extends RequestThisContext,
-  TRequestStorage,
-  TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
-  TSchema extends AnySchema,
-> {
-  fragment: FragnoInstantiatedFragment<
-    TRoutes,
-    TDeps,
-    TServices,
-    TServiceThisContext,
-    THandlerThisContext,
-    TRequestStorage
-  >;
-  services: TServices;
-  deps: TDeps;
-  callRoute: FragnoInstantiatedFragment<
-    TRoutes,
-    TDeps,
-    TServices,
-    TServiceThisContext,
-    THandlerThisContext,
-    TRequestStorage
-  >["callRoute"];
-  db: AbstractQuery<TSchema>;
 }
 
 /**
@@ -134,7 +171,7 @@ type TestContext<
  * Result of building the database fragments test
  */
 interface DatabaseFragmentsTestResult<
-  TFragments extends Record<string, FragmentResult<any, any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TFragments extends Record<string, AnyFragmentResult>,
   TAdapter extends SupportedAdapter,
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
@@ -145,16 +182,13 @@ interface DatabaseFragmentsTestResult<
 /**
  * Internal storage for fragment configurations
  */
-type FragmentConfigMap = Map<
-  string,
-  FragmentBuilderConfig<any, any, any, any, any, any, any, any, any, any, any> // eslint-disable-line @typescript-eslint/no-explicit-any
->;
+type FragmentConfigMap = Map<string, AnyFragmentBuilderConfig>;
 
 /**
  * Builder for creating multiple database fragments for testing
  */
 export class DatabaseFragmentsTestBuilder<
-  TFragments extends Record<string, FragmentResult<any, any, any, any, any, any, any>>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  TFragments extends Record<string, AnyFragmentResult>,
   TAdapter extends SupportedAdapter | undefined = undefined,
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
@@ -191,6 +225,7 @@ export class DatabaseFragmentsTestBuilder<
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
     TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+    TLinkedFragments extends AnyLinkedFragments,
   >(
     name: TName,
     builder: FragmentInstantiationBuilder<
@@ -204,7 +239,8 @@ export class DatabaseFragmentsTestBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TRoutesOrFactories
+      TRoutesOrFactories,
+      TLinkedFragments
     >,
     options?: {
       migrateToVersion?: number;
@@ -218,7 +254,8 @@ export class DatabaseFragmentsTestBuilder<
         THandlerThisContext,
         TRequestStorage,
         FlattenRouteFactories<TRoutesOrFactories>,
-        ExtractSchemaFromDeps<TDeps> // Extract actual schema type from deps
+        ExtractSchemaFromDeps<TDeps>, // Extract actual schema type from deps
+        TLinkedFragments
       >;
     },
     TAdapter,

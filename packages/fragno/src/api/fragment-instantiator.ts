@@ -73,8 +73,27 @@ type HandlersByFramework = {
 
 type FullstackFrameworks = keyof HandlersByFramework;
 
-// oxlint-disable-next-line no-explicit-any
-type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<any, any, any, any, any, any, any>;
+// Safe: This is a catch-all type for any instantiated fragment
+type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any
+>;
+
+export type { AnyFragnoInstantiatedFragment };
 
 export interface FragnoFragmentSharedConfig<
   TRoutes extends readonly FragnoRouteConfig<
@@ -102,6 +121,7 @@ export class FragnoInstantiatedFragment<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
   TOptions extends FragnoPublicConfig = FragnoPublicConfig,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
 > {
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
@@ -118,7 +138,7 @@ export class FragnoInstantiatedFragment<
   #contextStorage: RequestContextStorage<TRequestStorage>;
   #createRequestStorage?: () => TRequestStorage;
   #options: TOptions;
-  #linkedFragments: Map<string, AnyFragnoInstantiatedFragment>;
+  #linkedFragments: TLinkedFragments;
 
   constructor(params: {
     name: string;
@@ -131,7 +151,7 @@ export class FragnoInstantiatedFragment<
     storage: RequestContextStorage<TRequestStorage>;
     createRequestStorage?: () => TRequestStorage;
     options: TOptions;
-    linkedFragments?: Map<string, AnyFragnoInstantiatedFragment>;
+    linkedFragments?: TLinkedFragments;
   }) {
     this.#name = params.name;
     this.#routes = params.routes;
@@ -143,7 +163,7 @@ export class FragnoInstantiatedFragment<
     this.#contextStorage = params.storage;
     this.#createRequestStorage = params.createRequestStorage;
     this.#options = params.options;
-    this.#linkedFragments = params.linkedFragments ?? new Map();
+    this.#linkedFragments = params.linkedFragments ?? ({} as TLinkedFragments);
 
     // Build router
     this.#router =
@@ -611,6 +631,7 @@ export function instantiateFragment<
   const THandlerThisContext extends RequestThisContext,
   const TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  const TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -622,7 +643,8 @@ export function instantiateFragment<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >,
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
@@ -635,7 +657,8 @@ export function instantiateFragment<
   TServiceThisContext,
   THandlerThisContext,
   TRequestStorage,
-  TOptions
+  TOptions,
+  TLinkedFragments
 > {
   // 1. Validate service dependencies
   const serviceDependencies = definition.serviceDependencies;
@@ -654,12 +677,36 @@ export function instantiateFragment<
   // 2. Call dependencies callback
   const deps = definition.dependencies?.({ config, options }) ?? ({} as TDeps);
 
+  // 3. Instantiate linked fragments FIRST (before any services)
+  // Their services will be merged into private services
+  const linkedFragmentInstances = {} as TLinkedFragments;
+  const linkedFragmentServices: Record<string, unknown> = {};
+
+  if (definition.linkedFragments) {
+    for (const [name, callback] of Object.entries(definition.linkedFragments)) {
+      const linkedFragment = callback({
+        config,
+        options,
+        serviceDependencies: serviceImplementations,
+      });
+      (linkedFragmentInstances as Record<string, AnyFragnoInstantiatedFragment>)[name] =
+        linkedFragment;
+
+      // Merge all services from linked fragment into private services directly by their service name
+      const services = linkedFragment.services as Record<string, unknown>;
+      for (const [serviceName, service] of Object.entries(services)) {
+        linkedFragmentServices[serviceName] = service;
+      }
+    }
+  }
+
   // Identity function for service definition (used to set 'this' context)
   const defineService = <T>(services: T & ThisType<TServiceThisContext>): T => services;
 
-  // 3. Call privateServices factories FIRST
+  // 4. Call privateServices factories
   // Private services are instantiated in order, so earlier ones are available to later ones
-  const privateServices = {} as TPrivateServices;
+  // Start with linked fragment services, then add explicitly defined private services
+  const privateServices = { ...linkedFragmentServices } as TPrivateServices;
   if (definition.privateServices) {
     for (const [serviceName, factory] of Object.entries(definition.privateServices)) {
       const serviceFactory = factory as (context: {
@@ -681,7 +728,7 @@ export function instantiateFragment<
     }
   }
 
-  // 4. Call baseServices callback (with access to private services)
+  // 5. Call baseServices callback (with access to private services including linked fragment services)
   const baseServices =
     definition.baseServices?.({
       config,
@@ -692,7 +739,7 @@ export function instantiateFragment<
       defineService,
     }) ?? ({} as TBaseServices);
 
-  // 5. Call namedServices factories (with access to private services)
+  // 6. Call namedServices factories (with access to private services including linked fragment services)
   const namedServices = {} as TServices;
   if (definition.namedServices) {
     for (const [serviceName, factory] of Object.entries(definition.namedServices)) {
@@ -715,13 +762,13 @@ export function instantiateFragment<
     }
   }
 
-  // 6. Merge public services (NOT including private services)
+  // 7. Merge public services (NOT including private services)
   const services = {
     ...baseServices,
     ...namedServices,
   };
 
-  // 7. Create request context storage and both service & handler contexts
+  // 8. Create request context storage and both service & handler contexts
   // Use external storage if provided, otherwise create new storage
   const storage = definition.getExternalStorage
     ? definition.getExternalStorage({ config, options, deps })
@@ -738,11 +785,11 @@ export function instantiateFragment<
   const serviceContext = contexts?.serviceContext;
   const handlerContext = contexts?.handlerContext;
 
-  // 8. Bind services to serviceContext (restricted)
+  // 9. Bind services to serviceContext (restricted)
   // Services get the restricted context (for database fragments, this excludes execute methods)
   const boundServices = serviceContext ? bindServicesToContext(services, serviceContext) : services;
 
-  // 9. Resolve routes with bound services
+  // 10. Resolve routes with bound services
   const context = {
     config,
     deps,
@@ -751,30 +798,16 @@ export function instantiateFragment<
   };
   const routes = resolveRouteFactories(context, routesOrFactories);
 
-  // 10. Calculate mount route
+  // 11. Calculate mount route
   const mountRoute = getMountRoute({
     name: definition.name,
     mountRoute: options.mountRoute,
   });
 
-  // 11. Wrap createRequestStorage to capture context
+  // 12. Wrap createRequestStorage to capture context
   const createRequestStorageWithContext = definition.createRequestStorage
     ? () => definition.createRequestStorage!({ config, options, deps })
     : undefined;
-
-  // 12. Instantiate linked fragments
-  const linkedFragmentInstances = new Map<string, AnyFragnoInstantiatedFragment>();
-
-  if (definition.linkedFragments) {
-    for (const [name, callback] of Object.entries(definition.linkedFragments)) {
-      const linkedFragment = callback({
-        config,
-        options,
-        serviceDependencies: serviceImplementations,
-      });
-      linkedFragmentInstances.set(name, linkedFragment);
-    }
-  }
 
   // 13. Create and return fragment instance
   // Pass bound services so they have access to serviceContext via 'this'
@@ -810,6 +843,7 @@ export class FragmentInstantiationBuilder<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
 > {
   #definition: FragmentDefinition<
     TConfig,
@@ -821,7 +855,8 @@ export class FragmentInstantiationBuilder<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >;
   #config?: TConfig;
   #routes?: TRoutesOrFactories;
@@ -839,7 +874,8 @@ export class FragmentInstantiationBuilder<
       TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
-      TRequestStorage
+      TRequestStorage,
+      TLinkedFragments
     >,
     routes?: TRoutesOrFactories,
   ) {
@@ -860,7 +896,8 @@ export class FragmentInstantiationBuilder<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   > {
     return this.#definition;
   }
@@ -910,7 +947,8 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TNewRoutes
+    TNewRoutes,
+    TLinkedFragments
   > {
     const newBuilder = new FragmentInstantiationBuilder(this.#definition, routes);
     // Preserve config, options, and services from the current instance
@@ -946,7 +984,8 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TOptions
+    TOptions,
+    TLinkedFragments
   > {
     return instantiateFragment(
       this.#definition,
@@ -981,6 +1020,7 @@ export function instantiate<
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -992,7 +1032,8 @@ export function instantiate<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >,
 ): FragmentInstantiationBuilder<
   TConfig,
@@ -1005,7 +1046,8 @@ export function instantiate<
   TServiceThisContext,
   THandlerThisContext,
   TRequestStorage,
-  readonly []
+  readonly [],
+  TLinkedFragments
 > {
   return new FragmentInstantiationBuilder(definition);
 }
