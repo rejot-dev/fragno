@@ -101,7 +101,7 @@ export function fromKysely<T extends AnySchema>(
   schemaNamespaceMap?: WeakMap<AnySchema, string>,
 ): AbstractQuery<T, KyselyUOWConfig> {
   function createUOW(opts: { name?: string; config?: KyselyUOWConfig }) {
-    const uowCompiler = createKyselyUOWCompiler(pool, provider, mapper);
+    const uowCompiler = createKyselyUOWCompiler(provider, mapper);
 
     const executor: UOWExecutor<CompiledQuery, unknown> = {
       async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {

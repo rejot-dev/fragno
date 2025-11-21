@@ -1,5 +1,4 @@
-import type { CompiledQuery, Kysely } from "kysely";
-import { sql } from "kysely";
+import { type CompiledQuery, sql } from "kysely";
 import type { AnyColumn, AnySchema, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
@@ -12,12 +11,8 @@ import { createKyselyQueryBuilder, buildWhere } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { AnySelectClause } from "../../query/query";
-import { type TableNameMapper, createTableNameMapper } from "./kysely-shared";
-import type { ConnectionPool } from "../../shared/connection-pool";
+import { type TableNameMapper, createKysely, createTableNameMapper } from "./kysely-shared";
 import type { SQLProvider } from "../../shared/providers";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type KyselyAny = Kysely<any>;
 
 /**
  * Create a Kysely-specific Unit of Work compiler
@@ -31,12 +26,11 @@ type KyselyAny = Kysely<any>;
  * @returns A UOWCompiler instance for Kysely
  */
 export function createKyselyUOWCompiler(
-  pool: ConnectionPool<KyselyAny>,
   provider: SQLProvider,
   mapper?: TableNameMapper,
 ): UOWCompiler<CompiledQuery> {
   // Get kysely instance for query building (compilation doesn't execute, just builds SQL)
-  const kysely = pool.getDatabaseSync();
+  const kysely = createKysely(provider);
 
   /**
    * Get the mapper for a specific operation
@@ -58,7 +52,7 @@ export function createKyselyUOWCompiler(
     let compiler = compilerCache.get(cacheKey);
     if (!compiler) {
       const opMapper = getMapperForOperation(namespace);
-      compiler = createKyselyQueryCompiler(schema, pool, provider, opMapper);
+      compiler = createKyselyQueryCompiler(schema, provider, opMapper);
       compilerCache.set(cacheKey, compiler);
     }
     return compiler;

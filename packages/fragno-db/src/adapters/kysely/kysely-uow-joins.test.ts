@@ -1,11 +1,7 @@
-import { Kysely, PostgresDialect } from "kysely";
-import { describe, it, beforeAll, assert, expect } from "vitest";
+import { describe, it, assert, expect } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import type { Kysely as KyselyType, PostgresDialectConfig } from "kysely";
 import { UnitOfWork, type UOWDecoder } from "../../query/unit-of-work";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
-import type { ConnectionPool } from "../../shared/connection-pool";
-import { createKyselyConnectionPool } from "./kysely-connection-pool";
 
 describe("kysely-uow-joins", () => {
   const userSchema = schema((s) => {
@@ -88,22 +84,9 @@ describe("kysely-uow-joins", () => {
     );
   });
 
-  let kysely: KyselyType<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: ConnectionPool<Kysely<any>>;
-
-  beforeAll(async () => {
-    kysely = new Kysely({
-      dialect: new PostgresDialect({} as PostgresDialectConfig),
-    });
-
-    // Wrap in connection pool
-    pool = createKyselyConnectionPool(kysely);
-  });
-
   // Helper to create UnitOfWork for testing
   function createTestUOW(name?: string) {
-    const mockCompiler = createKyselyUOWCompiler(pool, "postgresql");
+    const mockCompiler = createKyselyUOWCompiler("postgresql");
     const mockExecutor = {
       executeRetrievalPhase: async () => [],
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
@@ -127,7 +110,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author()),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -147,7 +130,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["name", "email"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -171,7 +154,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -191,7 +174,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.inviter((ib) => ib.select(["name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -211,7 +194,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.post((pb) => pb.select(["title"])).author((ab) => ab.select(["name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -231,7 +214,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.post((pb) => pb.select(["title"])).tag((tb) => tb.select(["name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -261,7 +244,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -281,7 +264,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["name"]).orderByIndex("idx_name", "asc"))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -302,7 +285,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["name"]).pageSize(1))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -330,7 +313,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -353,7 +336,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -376,7 +359,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -401,7 +384,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["id"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -423,7 +406,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -446,7 +429,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -466,7 +449,7 @@ describe("kysely-uow-joins", () => {
       const uow = createTestUOW();
       uow.find("posts", (b) => b.whereIndex("primary").join((jb) => jb.author()));
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -494,7 +477,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -517,7 +500,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -575,7 +558,7 @@ describe("kysely-uow-joins", () => {
     });
 
     function createCustomIdTestUOW() {
-      const mockCompiler = createKyselyUOWCompiler(pool, "postgresql");
+      const mockCompiler = createKyselyUOWCompiler("postgresql");
       const mockExecutor = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
@@ -602,7 +585,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -636,7 +619,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -655,7 +638,7 @@ describe("kysely-uow-joins", () => {
       const uow = createCustomIdTestUOW();
       uow.find("product_categories", (b) => b.whereIndex("primary").join((jb) => jb.product()));
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -685,7 +668,7 @@ describe("kysely-uow-joins", () => {
           ),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -717,7 +700,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["id"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -741,7 +724,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.author((ab) => ab.select(["id", "name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -765,7 +748,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.post((pb) => pb.select(["id"])).author((ab) => ab.select(["id"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
@@ -793,7 +776,7 @@ describe("kysely-uow-joins", () => {
           .join((jb) => jb.inviter((ib) => ib.select(["id", "name"]))),
       );
 
-      const compiler = createKyselyUOWCompiler(pool, "postgresql");
+      const compiler = createKyselyUOWCompiler("postgresql");
       const compiled = uow.compile(compiler);
 
       expect(compiled.retrievalBatch).toHaveLength(1);
