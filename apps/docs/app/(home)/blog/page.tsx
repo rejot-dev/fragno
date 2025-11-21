@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { blogSource } from "@/lib/source";
 import { Calendar, User, ArrowRight } from "lucide-react";
 
@@ -67,6 +68,27 @@ export default function Page() {
               <div className="absolute inset-0 bg-gradient-to-br from-zinc-50 via-gray-50 to-stone-50 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-zinc-900/20 dark:via-gray-900/20 dark:to-stone-900/20" />
 
               <Link href={post.url} className="relative block h-full">
+                {/* Hero Image or Decorative Gradient */}
+                {post.data.image ? (
+                  <div className="relative h-48 w-full overflow-hidden">
+                    <Image
+                      src={`/${post.data.image}`}
+                      alt={post.data.title}
+                      fill
+                      className="object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                  </div>
+                ) : (
+                  <div className="relative h-48 w-full overflow-hidden bg-gradient-to-br from-zinc-100 via-gray-100 to-stone-100 dark:from-zinc-800 dark:via-gray-800 dark:to-stone-800">
+                    <div
+                      className="absolute inset-0 opacity-30"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.15'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                      }}
+                    />
+                  </div>
+                )}
+
                 <div className="p-8">
                   {/* Post Meta */}
                   <div className="mb-4 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
