@@ -2,14 +2,16 @@ import type { FragnoDatabase } from "../mod";
 import type { AnySchema } from "../schema/create";
 import type { PreparedMigration } from "./create";
 import {
-  settingsSchema,
-  SETTINGS_NAMESPACE,
-  createSettingsManager,
-} from "../shared/settings-schema";
-import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "../adapters/adapters";
+import {
+  internalFragmentDef,
+  settingsSchema,
+  SETTINGS_TABLE_NAME,
+  SETTINGS_NAMESPACE,
+} from "../fragments/internal-fragment";
+import { instantiate } from "@fragno-dev/core";
 
 export interface GenerationEngineResult {
   schema: string;
@@ -59,12 +61,30 @@ export async function generateMigrationsOrSchema<
       );
     }
 
-    const fragments = databases.map((db) => ({
-      schema: db.schema,
-      namespace: db.namespace,
-    }));
+    // Collect all schemas, de-duplicating by namespace.
+    // The internal fragment (settings schema) is always included first since all database
+    // fragments automatically link to it via withDatabase().
+    const fragmentsMap = new Map<string, { schema: AnySchema; namespace: string }>();
 
-    const generator = adapter.createSchemaGenerator(fragments, {
+    // Include internal fragment first with empty namespace (settings table has no prefix)
+    fragmentsMap.set("", {
+      schema: settingsSchema,
+      namespace: "",
+    });
+
+    // Add user fragments, de-duplicating by namespace
+    // Each FragnoDatabase has a unique namespace, so this prevents duplicate schema generation
+    for (const db of databases) {
+      if (!fragmentsMap.has(db.namespace)) {
+        fragmentsMap.set(db.namespace, {
+          schema: db.schema,
+          namespace: db.namespace,
+        });
+      }
+    }
+
+    const allFragments = Array.from(fragmentsMap.values());
+    const generator = adapter.createSchemaGenerator(allFragments, {
       path: options?.path,
     });
 
@@ -89,12 +109,27 @@ export async function generateMigrationsOrSchema<
     );
   }
 
-  const settingsQueryEngine = adapter.createQueryEngine(settingsSchema, "");
-  const settingsManager = createSettingsManager(settingsQueryEngine, SETTINGS_NAMESPACE);
+  // Use the internal fragment for settings management
+  const internalFragment = instantiate(internalFragmentDef)
+    .withConfig({})
+    .withOptions({ databaseAdapter: adapter })
+    .build();
 
   let settingsSourceVersion: number;
   try {
-    const result = await settingsManager.get("version");
+    const result = await internalFragment.inContext(async function () {
+      return await this.uow(async ({ forSchema, executeRetrieve }) => {
+        const uow = forSchema(settingsSchema);
+        const findOp = uow.find(SETTINGS_TABLE_NAME, (b) =>
+          b.whereIndex("unique_key", (eb) => eb("key", "=", `${SETTINGS_NAMESPACE}.version`)),
+        );
+
+        await executeRetrieve();
+
+        const [results] = await findOp.retrievalPhase;
+        return results?.[0];
+      });
+    });
 
     if (!result) {
       settingsSourceVersion = 0;
@@ -108,7 +143,8 @@ export async function generateMigrationsOrSchema<
 
   const generatedFiles: GenerationInternalResult[] = [];
 
-  const settingsMigrator = adapter.createMigrationEngine(settingsSchema, SETTINGS_NAMESPACE);
+  // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
+  const settingsMigrator = adapter.createMigrationEngine(settingsSchema, "");
   const settingsTargetVersion = settingsSchema.version;
 
   // Generate settings table migration
@@ -128,7 +164,7 @@ export async function generateMigrationsOrSchema<
     generatedFiles.push({
       schema: settingsSql,
       path: "settings-migration.sql", // Placeholder, will be renamed in post-processing
-      namespace: SETTINGS_NAMESPACE,
+      namespace: "", // Empty namespace for settings table
       fromVersion: settingsSourceVersion,
       toVersion: settingsTargetVersion,
       preparedMigration: settingsMigration,
@@ -237,19 +273,35 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   }> = [];
 
   // 1. Prepare settings table migration
-  const settingsQueryEngine = adapter.createQueryEngine(settingsSchema, "");
-  const settingsManager = createSettingsManager(settingsQueryEngine, SETTINGS_NAMESPACE);
+  // Use the internal fragment for settings management
+  const internalFragment = instantiate(internalFragmentDef)
+    .withConfig({})
+    .withOptions({ databaseAdapter: adapter })
+    .build();
 
   let settingsSourceVersion: number;
   try {
-    const result = await settingsManager.get("version");
+    const result = await internalFragment.inContext(async function () {
+      return this.uow(async ({ forSchema, executeRetrieve }) => {
+        const uow = forSchema(settingsSchema);
+        const findOp = uow.find(SETTINGS_TABLE_NAME, (b) =>
+          b.whereIndex("unique_key", (eb) => eb("key", "=", `${SETTINGS_NAMESPACE}.version`)),
+        );
+
+        await executeRetrieve();
+
+        const [results] = await findOp.retrievalPhase;
+        return results?.[0];
+      });
+    });
     settingsSourceVersion = result ? parseInt(result.value) : 0;
   } catch {
     // Settings table doesn't exist yet (first migration)
     settingsSourceVersion = 0;
   }
 
-  const settingsMigrator = adapter.createMigrationEngine(settingsSchema, SETTINGS_NAMESPACE);
+  // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
+  const settingsMigrator = adapter.createMigrationEngine(settingsSchema, "");
   const settingsTargetVersion = settingsSchema.version;
 
   if (settingsSourceVersion < settingsTargetVersion) {
@@ -260,7 +312,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
 
     if (settingsMigration.operations.length > 0) {
       migrationsToExecute.push({
-        namespace: SETTINGS_NAMESPACE,
+        namespace: "", // Empty namespace for settings table
         fromVersion: settingsSourceVersion,
         toVersion: settingsTargetVersion,
         preparedMigration: settingsMigration,
@@ -335,12 +387,13 @@ export function postProcessMigrationFilenames(
     return [];
   }
 
-  // Sort files: settings namespace first, then alphabetically by namespace
+  // Sort files: settings namespace first (empty string), then alphabetically by namespace
   const sortedFiles = [...files].sort((a, b) => {
-    if (a.namespace === SETTINGS_NAMESPACE) {
+    // Settings table has empty namespace - sort it first
+    if (a.namespace === "") {
       return -1;
     }
-    if (b.namespace === SETTINGS_NAMESPACE) {
+    if (b.namespace === "") {
       return 1;
     }
     return a.namespace.localeCompare(b.namespace);
@@ -358,7 +411,11 @@ export function postProcessMigrationFilenames(
     const orderNum = (index + 1).toString().padStart(3, "0");
     const fromPadded = fromVersion.toString().padStart(3, "0");
     const toPadded = toVersion.toString().padStart(3, "0");
-    const safeName = file.namespace.replace(/[^a-z0-9-]/gi, "_");
+
+    // For settings table (empty namespace), use "fragno_db_settings" in the filename
+    // For other tables, use their namespace
+    const safeName =
+      file.namespace === "" ? "fragno_db_settings" : file.namespace.replace(/[^a-z0-9-]/gi, "_");
     const newPath = `${date}_${orderNum}_f${fromPadded}_t${toPadded}_${safeName}.sql`;
 
     return {

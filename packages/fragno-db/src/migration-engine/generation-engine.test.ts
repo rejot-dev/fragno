@@ -65,8 +65,8 @@ describe("generateMigrationsOrSchema - kysely", () => {
     const results = await generateMigrationsOrSchema([fragnoDb]);
 
     expect(results).toHaveLength(2); // Settings + test-db
-    expect(results[0].namespace).toBe("fragno-db-settings");
-    expect(results[0].path).toBe("20251024_001_f000_t001_fragno-db-settings.sql");
+    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(results[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
     expect(results[0].schema).toContain("create table");
     expect(results[0].schema).toContain("fragno_db_settings");
 
@@ -116,8 +116,8 @@ describe("generateMigrationsOrSchema - kysely", () => {
     const results = await generateMigrationsOrSchema([fragnoDb1, fragnoDb2, fragnoDb3]);
 
     expect(results).toHaveLength(4); // Settings + 3 databases
-    expect(results[0].namespace).toBe("fragno-db-settings");
-    expect(results[0].path).toBe("20251024_001_f000_t001_fragno-db-settings.sql");
+    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(results[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
 
     expect(results[1].namespace).toBe("apple-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_apple-db.sql");
@@ -157,7 +157,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
     // Settings table already at version 1, so no settings migration needed
     // But fragment migration is still generated
     expect(results).toHaveLength(2);
-    expect(results[0].namespace).toBe("fragno-db-settings");
+    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
     expect(results[1].namespace).toBe("test-db");
     expect(results[1].path).toBe("20251024_002_f000_t002_test-db.sql");
     expect(results[1].schema).toContain("create table");
@@ -185,7 +185,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
 
     // Settings migration is generated, but no fragment migration (since toVersion=0)
     expect(results).toHaveLength(1);
-    expect(results[0].namespace).toBe("fragno-db-settings");
+    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
   });
 
   it("should throw error when no databases provided", async () => {
@@ -420,7 +420,7 @@ describe("postProcessMigrationFilenames", () => {
       {
         schema: "schema2",
         path: "placeholder.sql",
-        namespace: "fragno-db-settings",
+        namespace: "", // Empty namespace for settings table
         fromVersion: 0,
         toVersion: 1,
       },
@@ -436,8 +436,8 @@ describe("postProcessMigrationFilenames", () => {
     const result = postProcessMigrationFilenames(files);
 
     expect(result).toHaveLength(3);
-    expect(result[0].namespace).toBe("fragno-db-settings");
-    expect(result[0].path).toBe("20251024_001_f000_t001_fragno-db-settings.sql");
+    expect(result[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(result[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
   });
 
   it("should sort non-settings namespaces alphabetically", () => {
@@ -478,9 +478,9 @@ describe("postProcessMigrationFilenames", () => {
       {
         schema: "CREATE TABLE users;",
         path: "placeholder.sql",
-        namespace: "fragno-db-settings",
+        namespace: "", // Empty namespace for settings table
         fromVersion: 0,
-        toVersion: 1,
+        toVersion: 5,
       },
       {
         schema: "CREATE TABLE comments;",
@@ -493,7 +493,7 @@ describe("postProcessMigrationFilenames", () => {
 
     const result = postProcessMigrationFilenames(files);
 
-    expect(result[0].path).toBe("20251024_001_f000_t001_fragno-db-settings.sql");
+    expect(result[0].path).toBe("20251024_001_f000_t005_fragno_db_settings.sql");
     expect(result[1].path).toBe("20251024_002_f005_t010_comment-db.sql");
   });
 
@@ -557,7 +557,7 @@ describe("postProcessMigrationFilenames", () => {
       {
         schema: "schema2",
         path: "placeholder.sql",
-        namespace: "fragno-db-settings",
+        namespace: "", // Empty namespace for settings table
         fromVersion: 0,
         toVersion: 5,
       },
@@ -580,8 +580,8 @@ describe("postProcessMigrationFilenames", () => {
     const result = postProcessMigrationFilenames(files);
 
     expect(result).toHaveLength(4);
-    expect(result[0].namespace).toBe("fragno-db-settings");
-    expect(result[0].path).toBe("20251024_001_f000_t005_fragno-db-settings.sql");
+    expect(result[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(result[0].path).toBe("20251024_001_f000_t005_fragno_db_settings.sql");
     expect(result[1].namespace).toBe("apple-db");
     expect(result[1].path).toBe("20251024_002_f003_t004_apple-db.sql");
     expect(result[2].namespace).toBe("mango-db");

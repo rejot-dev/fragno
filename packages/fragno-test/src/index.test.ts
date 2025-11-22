@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 import { defineFragment } from "@fragno-dev/core";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "./db-test";

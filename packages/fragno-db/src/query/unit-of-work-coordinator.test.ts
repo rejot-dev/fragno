@@ -770,4 +770,64 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     expect(child2.nonce).toBe(parentUow2.nonce);
     expect(child1.nonce).not.toBe(child2.nonce);
   });
+
+  it.skip("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {
+    const testSchema = schema((s) =>
+      s.addTable("settings", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("key", "string")
+          .addColumn("value", "string")
+          .createIndex("unique_key", ["key"], { unique: true }),
+      ),
+    );
+
+    // Create executor that throws "table does not exist" error
+    const failingExecutor = {
+      executeRetrievalPhase: async () => {
+        throw new Error('relation "settings" does not exist');
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const parentUow = createUnitOfWork(createMockCompiler(), failingExecutor, createMockDecoder());
+
+    // Service method that awaits retrievalPhase (simulating settingsService.get())
+    const getSettingValue = async (key: string) => {
+      const childUow = parentUow.restrict();
+      const typedUow = childUow
+        .forSchema(testSchema)
+        .find("settings", (b) => b.whereIndex("unique_key", (eb) => eb("key", "=", key)));
+
+      // This is the critical line - accessing retrievalPhase creates a new promise
+      // If not cached properly, this new promise won't have a catch handler attached
+      const [results] = await typedUow.retrievalPhase;
+      return results?.[0];
+    };
+
+    const deferred = Promise.withResolvers<string>();
+
+    // Handler that calls the service and handles the error
+    const handler = async () => {
+      try {
+        const settingPromise = getSettingValue("version");
+
+        await parentUow.executeRetrieve();
+
+        // Won't reach here
+        return await settingPromise;
+      } catch (error) {
+        // Error is caught here - this is expected behavior
+        expect(error).toBeInstanceOf(Error);
+        deferred.resolve((error as Error).message);
+        return null;
+      }
+    };
+
+    // Execute handler - should catch the error without unhandled rejection
+    const result = await handler();
+    expect(result).toBeNull();
+
+    expect(await deferred.promise).toContain('relation "settings" does not exist');
+  });
 });

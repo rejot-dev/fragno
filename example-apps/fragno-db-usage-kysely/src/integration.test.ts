@@ -1,5 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { cli } from "gunshi";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { resolve } from "node:path";
 
 describe("Fragno Database Kysely", () => {
   // Store original console.log
@@ -235,6 +238,40 @@ describe("Fragno Database Kysely", () => {
       expect(logs.some((log) => log.includes("comments"))).toBe(true);
 
       expect(logs.some((log) => log.includes("rating"))).toBe(true);
+    });
+  });
+
+  describe("DB Generate Command", () => {
+    const outputDir = resolve(process.cwd(), "_generated");
+
+    afterEach(async () => {
+      // Clean up generated directory
+      if (existsSync(outputDir)) {
+        await rm(outputDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should generate schema files to output directory", async () => {
+      const { generateCommand } = await import("@fragno-dev/cli");
+
+      await cli(
+        ["./src/fragno/comment-fragment.ts", "./src/fragno/rating-fragment.ts", "-o", "_generated"],
+        generateCommand,
+        {
+          name: "fragno-cli db generate",
+          version: "test",
+        },
+      );
+
+      // Verify output directory was created
+      expect(existsSync(outputDir)).toBe(true);
+
+      // Verify files were generated
+      expect(logs.some((log) => log.includes("✓ Generated:"))).toBe(true);
+      expect(logs.some((log) => log.includes("Schema generated successfully"))).toBe(true);
+      expect(logs.some((log) => log.includes("fragno-db-comment-db"))).toBe(true);
+      expect(logs.some((log) => log.includes("fragno-db-rating-db"))).toBe(true);
+      expect(logs.some((log) => log.includes("Files generated: 3"))).toBe(true);
     });
   });
 });

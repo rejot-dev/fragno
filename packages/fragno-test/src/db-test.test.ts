@@ -1,6 +1,6 @@
 import { assert, describe, expect, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { defineRoute } from "@fragno-dev/core/route";
 import { z } from "zod";

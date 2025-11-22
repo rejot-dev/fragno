@@ -2,9 +2,9 @@ import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
-  withDatabase,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
+import { withDatabase } from "./with-database";
 import { schema, column, idColumn } from "./schema/create";
 import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";

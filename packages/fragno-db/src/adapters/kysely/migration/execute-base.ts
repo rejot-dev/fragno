@@ -7,7 +7,7 @@ import type {
 import type { SQLProvider } from "../../../shared/providers";
 import { schemaToDBType } from "../../../schema/serialize";
 import type { TableNameMapper } from "../kysely-shared";
-import { SETTINGS_TABLE_NAME } from "../../../shared/settings-schema";
+import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
 
 export type ExecuteNode = {
   compile(): { sql: string; parameters: readonly unknown[] };

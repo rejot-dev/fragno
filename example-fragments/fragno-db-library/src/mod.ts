@@ -5,7 +5,7 @@ import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];

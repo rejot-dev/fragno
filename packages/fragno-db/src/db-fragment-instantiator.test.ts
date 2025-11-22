@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, assert } from "vitest";
 import { instantiate, defineFragment } from "@fragno-dev/core";
 import { defineRoutes } from "@fragno-dev/core/route";
-import { withDatabase } from "./db-fragment-definition-builder";
+import { withDatabase } from "./with-database";
 import { schema, idColumn, column } from "./schema/create";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AbstractQuery } from "./query/query";

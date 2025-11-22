@@ -5,7 +5,7 @@ CRUD operations and querying with conditions.
 
 ```typescript @fragno-imports
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 import { schema, idColumn, column } from "@fragno-dev/db/schema";
 import type { AbstractQuery } from "@fragno-dev/db/query";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";

@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import { stripeSchema } from "./database/schema";
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 import { stripeSubscriptionToInternalSubscription } from "./utils";
 
 const LOG_PREFIX = "[Stripe Fragment]";

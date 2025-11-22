@@ -2,6 +2,7 @@ import { describe, it, expect, vi, assert, expectTypeOf } from "vitest";
 import { schema, idColumn, FragnoId } from "../schema/create";
 import {
   createUnitOfWork,
+  type TypedUnitOfWork,
   type UOWCompiler,
   type UOWDecoder,
   type UOWExecutor,
@@ -1233,6 +1234,77 @@ describe("executeRestrictedUnitOfWork", () => {
 
       expect(result).toEqual([1, 2, 3]);
       expect(result).toHaveLength(3);
+    });
+  });
+
+  describe.skip("unhandled rejection handling", () => {
+    it("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {
+      const settingsSchema = schema((s) =>
+        s.addTable("settings", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("key", "string")
+            .addColumn("value", "string")
+            .createIndex("unique_key", ["key"], { unique: true }),
+        ),
+      );
+
+      // Create executor that throws "table does not exist" error
+      const failingExecutor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => {
+          throw new Error('relation "settings" does not exist');
+        },
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+
+      const factory = () =>
+        createUnitOfWork(createMockCompiler(), failingExecutor, createMockDecoder());
+
+      const deferred = Promise.withResolvers<string>();
+
+      // Service method that awaits retrievalPhase (simulating settingsService.get())
+      const getSettingValue = async (typedUow: TypedUnitOfWork<typeof settingsSchema>) => {
+        const uow = typedUow.find("settings", (b) =>
+          b.whereIndex("unique_key", (eb) => eb("key", "=", "version")),
+        );
+        const [results] = await uow.retrievalPhase;
+        return results?.[0];
+      };
+
+      // Execute with executeRestrictedUnitOfWork
+      try {
+        await executeRestrictedUnitOfWork(
+          async ({ forSchema, executeRetrieve }) => {
+            const uow = forSchema(settingsSchema);
+
+            const settingPromise = getSettingValue(uow);
+
+            // Execute retrieval - this will fail
+            await executeRetrieve();
+
+            // Won't reach here
+            return await settingPromise;
+          },
+          {
+            createUnitOfWork: factory,
+            retryPolicy: new NoRetryPolicy(),
+          },
+        );
+        expect.fail("Should have thrown an error");
+      } catch (error) {
+        // The error should be wrapped by executeRestrictedUnitOfWork
+        expect(error).toBeInstanceOf(Error);
+        // Check that the original error is in the cause chain
+        expect((error as Error).cause).toBeInstanceOf(Error);
+        expect(((error as Error).cause as Error).message).toContain(
+          'relation "settings" does not exist',
+        );
+        deferred.resolve((error as Error).message);
+      }
+
+      // Verify no unhandled rejection occurred
+      // If the test completes without throwing, the promise rejection was properly handled
+      expect(await deferred.promise).toContain("Unit of Work execution failed");
     });
   });
 });

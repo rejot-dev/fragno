@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { generateSchema } from "./generate";
+import { settingsSchema } from "../../fragments/internal-fragment";
 
 describe("generateSchema", () => {
   const testSchema = schema((s) => {
@@ -35,25 +36,9 @@ describe("generateSchema", () => {
     it("should generate PostgreSQL schema", () => {
       const generated = generateSchema([{ namespace: "test", schema: testSchema }], "postgresql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -122,25 +107,9 @@ describe("generateSchema", () => {
     it("should generate MySQL schema", () => {
       const generated = generateSchema([{ namespace: "test", schema: testSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, int, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, int, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = mysqlTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -212,22 +181,6 @@ describe("generateSchema", () => {
         "import { sqliteTable, text, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = sqliteTable("fragno_db_settings", {
-          id: text("id").notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -308,24 +261,8 @@ describe("generateSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, timestamp } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -361,24 +298,8 @@ describe("generateSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, timestamp } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -410,7 +331,7 @@ describe("generateSchema", () => {
 
       const generated = generateSchema([{ namespace: "test", schema: binarySchema }], "postgresql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, customType } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         const customBinary = customType<
           {
@@ -428,22 +349,6 @@ describe("generateSchema", () => {
             return value instanceof Buffer? value : Buffer.from(value)
           }
         });
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -496,25 +401,9 @@ describe("generateSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, text, bigserial, integer, bigint, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -576,25 +465,9 @@ describe("generateSchema", () => {
     it("should generate MySQL schema with many relations", () => {
       const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, int, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = mysqlTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -656,25 +529,9 @@ describe("generateSchema", () => {
     it("should generate SQLite schema with many relations", () => {
       const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = sqliteTable("fragno_db_settings", {
-          id: text("id").notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -772,25 +629,9 @@ describe("generateSchema", () => {
       // Should have schema export
       expect(generated).toContain("export const test_schema = {");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, text, bigserial, integer, bigint } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -864,25 +705,9 @@ describe("generateSchema", () => {
       expect(fkMatches).toHaveLength(1);
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, text, bigint, bigserial, integer, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -950,25 +775,9 @@ describe("generateSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, bigint, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, text, bigint, bigserial, integer, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -1013,25 +822,9 @@ describe("generateSchema", () => {
     it("should generate MySQL self-referencing foreign key using table parameter", () => {
       const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, int, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = mysqlTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -1076,25 +869,9 @@ describe("generateSchema", () => {
     it("should generate SQLite self-referencing foreign key using table parameter", () => {
       const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = sqliteTable("fragno_db_settings", {
-          id: text("id").notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: test
@@ -1209,25 +986,9 @@ describe("generateSchema", () => {
       expect(generated).toContain('pgTable("posts_my_fragment_v2"');
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
-
-        // ============================================================================
-        // Settings Table (shared across all fragments)
-        // ============================================================================
-
-        export const fragno_db_settings = pgTable("fragno_db_settings", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          key: text("key").notNull(),
-          value: text("value").notNull(),
-          _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        }, (table) => [
-          uniqueIndex("unique_key").on(table.key)
-        ])
-
-        export const fragnoDbSettingSchemaVersion = 1;
 
         // ============================================================================
         // Fragment: my-fragment-v2
@@ -1289,6 +1050,78 @@ describe("generateSchema", () => {
           schemaVersion: 3
         }"
       `);
+    });
+  });
+
+  describe("schema generation", () => {
+    it("should generate settings schema and multiple user fragments", () => {
+      // settingsSchema is imported at the top to simulate what happens with linked internal fragments
+      const fragment1Schema = schema((s) => {
+        return s.addTable("users", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+        });
+      });
+
+      const fragment2Schema = schema((s) => {
+        return s.addTable("posts", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+        });
+      });
+
+      // De-duplication happens in generation-engine.ts before calling generateSchema
+      // This test verifies generateSchema works correctly with already-deduplicated inputs
+      const generated = generateSchema(
+        [
+          { namespace: "", schema: settingsSchema }, // Internal fragment (namespace: "")
+          { namespace: "fragment1", schema: fragment1Schema },
+          { namespace: "fragment2", schema: fragment2Schema },
+        ],
+        "postgresql",
+      );
+
+      // Count how many times fragno_db_settings appears in the output
+      const settingsTableMatches = generated.match(/export const fragno_db_settings = /g);
+      expect(settingsTableMatches).toHaveLength(1);
+
+      // Verify it appears before the fragment tables
+      const lines = generated.split("\n");
+      const settingsIndex = lines.findIndex((line) =>
+        line.includes("export const fragno_db_settings"),
+      );
+      const usersIndex = lines.findIndex((line) => line.includes("export const users_fragment1"));
+      const postsIndex = lines.findIndex((line) => line.includes("export const posts_fragment2"));
+
+      expect(settingsIndex).toBeLessThan(usersIndex);
+      expect(settingsIndex).toBeLessThan(postsIndex);
+
+      // Verify the structure includes all expected tables
+      expect(generated).toContain("export const fragno_db_settings");
+      expect(generated).toContain("export const users_fragment1");
+      expect(generated).toContain("export const posts_fragment2");
+      expect(generated).toContain("export const fragment1_schema");
+      expect(generated).toContain("export const fragment2_schema");
+    });
+
+    it("should generate schema for single fragment with custom namespace", () => {
+      // Test a simple single-schema generation
+      const sharedSchema = schema((s) => {
+        return s.addTable("shared_table", (t) => {
+          return t.addColumn("id", idColumn()).addColumn("data", column("string"));
+        });
+      });
+
+      // De-duplication happens in generation-engine.ts, so we pass pre-deduplicated input
+      const generated = generateSchema(
+        [{ namespace: "namespace1", schema: sharedSchema }],
+        "postgresql",
+      );
+
+      // Should generate the schema with the provided namespace
+      const sharedTableMatches = generated.match(/export const shared_table_/g);
+      expect(sharedTableMatches).toHaveLength(1);
+
+      expect(generated).toContain("export const shared_table_namespace1");
+      expect(generated).toContain("export const namespace1_schema");
     });
   });
 });

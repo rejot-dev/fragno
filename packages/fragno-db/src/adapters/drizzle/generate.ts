@@ -10,7 +10,6 @@ import {
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
 import { createTableNameMapper, sanitizeNamespace } from "./shared";
-import { settingsSchema, SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -610,20 +609,8 @@ export interface GenerateSchemaOptions {
 /**
  * Generate a settings table for storing fragment versions
  */
-function generateSettingsTable(ctx: GeneratorContext): string {
-  // Use centralized settings schema
-
-  // Extract the table from the schema
-  const settingsTable =
-    settingsSchema.tables[SETTINGS_TABLE_NAME as keyof typeof settingsSchema.tables];
-
-  // Generate the table using the existing generateTable function
-  const customTypes: string[] = [];
-  return generateTable(ctx, settingsTable, customTypes);
-}
-
 /**
- * Generate a schema file from one or more fragments with a shared settings table
+ * Generate a schema file from one or more fragments with automatic de-duplication
  */
 export function generateSchema(
   fragments: { namespace: string; schema: AnySchema }[],
@@ -634,18 +621,7 @@ export function generateSchema(
   const customTypes: string[] = [];
   const sections: string[] = [];
 
-  // Generate settings table first
-  sections.push("");
-  sections.push("// ============================================================================");
-  sections.push("// Settings Table (shared across all fragments)");
-  sections.push("// ============================================================================");
-  sections.push("");
-  sections.push(generateSettingsTable(ctx));
-  sections.push("");
-  sections.push(`export const fragnoDbSettingSchemaVersion = ${settingsSchema.version};`);
-
-  // Generate each fragment's tables
-  for (const { namespace, schema } of fragments) {
+  for (const { schema, namespace } of fragments) {
     const fragmentTables: string[] = [];
 
     // Add section header
@@ -695,9 +671,11 @@ export function generateSchema(
       }
     }
 
-    // Generate schema export object
-    fragmentTables.push("");
-    fragmentTables.push(generateFragmentSchemaExport(schema, namespace, tablesWithRelations));
+    // Generate schema export object (skip for empty namespace to avoid duplicate _schema exports)
+    if (namespace !== "") {
+      fragmentTables.push("");
+      fragmentTables.push(generateFragmentSchemaExport(schema, namespace, tablesWithRelations));
+    }
 
     sections.push(...fragmentTables);
   }
