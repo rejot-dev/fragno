@@ -87,13 +87,14 @@ export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
 }
 
 export {
-  withDatabase,
   DatabaseFragmentDefinitionBuilder,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
   type DatabaseHandlerContext as DatabaseRequestContext,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
+
+export { withDatabase } from "./with-database";
 
 export { decodeCursor, type CursorData } from "./query/cursor";
 
@@ -123,3 +124,5 @@ export {
 } from "./query/execute-unit-of-work";
 
 export { type BoundServices } from "@fragno-dev/core";
+
+export { internalFragmentDef } from "./fragments/internal-fragment";

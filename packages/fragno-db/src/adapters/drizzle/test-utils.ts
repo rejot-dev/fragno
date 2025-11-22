@@ -1,7 +1,8 @@
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { generateSchema, type SupportedProvider } from "./generate";
 import type { Schema } from "../../schema/create";
+import { settingsSchema } from "../../fragments/internal-fragment";
 
 /**
  * Writes a Fragno schema to a temporary TypeScript file and dynamically imports it.
@@ -38,9 +39,35 @@ export async function writeAndLoadSchema(
   );
 
   // Generate and write the Drizzle schema to file
-  // Use empty namespace for tests to avoid table name prefixing
-  const drizzleSchemaTs = generateSchema([{ namespace: namespace ?? "", schema }], dialect);
+  // Always include settings schema first (as done in generation-engine.ts), then the test schema
+  // De-duplicate: if the test schema IS the settings schema, don't add it twice
+  const fragments: Array<{ namespace: string; schema: Schema }> = [
+    { namespace: "", schema: settingsSchema },
+  ];
+
+  if (schema !== settingsSchema) {
+    fragments.push({ namespace: namespace ?? "", schema });
+  }
+
+  const drizzleSchemaTs = generateSchema(fragments, dialect);
   await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
+
+  // Ensure the file is accessible before importing (handle race conditions)
+  let retries = 0;
+  const maxRetries = 10;
+  while (retries < maxRetries) {
+    try {
+      await access(schemaFilePath);
+      break;
+    } catch {
+      if (retries === maxRetries - 1) {
+        throw new Error(`Schema file was not accessible after writing: ${schemaFilePath}`);
+      }
+      // Wait a bit before retrying
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      retries++;
+    }
+  }
 
   // Dynamically import the generated schema (with cache busting)
   const schemaModule = await import(`${schemaFilePath}?t=${Date.now()}`);

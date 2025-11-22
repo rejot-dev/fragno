@@ -6,7 +6,7 @@ import { KyselyAdapter } from "./adapters/kysely/kysely-adapter";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "./schema/create";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { defineRoutes } from "@fragno-dev/core/route";
-import { withDatabase } from "./db-fragment-definition-builder";
+import { withDatabase } from "./with-database";
 import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
 
 describe.sequential("Database Fragment Integration", () => {

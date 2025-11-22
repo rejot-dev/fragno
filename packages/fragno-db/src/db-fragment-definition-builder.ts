@@ -38,6 +38,10 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    */
   schema: TSchema;
   /**
+   * The database namespace for this fragment.
+   */
+  namespace: string;
+  /**
    * Create a new Unit of Work for database operations.
    */
   createUnitOfWork: () => IUnitOfWork;
@@ -238,6 +242,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         db: dbContext.db,
         schema: this.#schema,
+        namespace: this.#namespace,
         createUnitOfWork: createUow,
       };
 
@@ -387,6 +392,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         db,
         schema: this.#schema,
+        namespace: this.#namespace,
         createUnitOfWork: () => db.createUnitOfWork(),
       };
 
@@ -497,118 +503,4 @@ export class DatabaseFragmentDefinitionBuilder<
       dependencies,
     };
   }
-}
-
-/**
- * Helper to add database support to a fragment builder.
- * Automatically adds ImplicitDatabaseDependencies to the TDeps type.
- *
- * @example
- * ```typescript
- * // With .extend() - recommended
- * const def = defineFragment("my-frag")
- *   .extend(withDatabase(mySchema))
- *   .withDependencies(...)
- *   .build();
- *
- * // Or as a function wrapper
- * const def = withDatabase(mySchema)(defineFragment("my-frag"))
- *   .withDependencies(...)
- *   .build();
- * ```
- */
-export function withDatabase<TSchema extends AnySchema>(
-  schema: TSchema,
-  namespace?: string,
-): <
-  TConfig,
-  TDeps,
-  TBaseServices,
-  TServices,
-  TServiceDeps,
-  TPrivateServices,
-  TServiceThisContext extends RequestThisContext,
-  THandlerThisContext extends RequestThisContext,
-  TRequestStorage,
->(
-  builder: FragmentDefinitionBuilder<
-    TConfig,
-    FragnoPublicConfig,
-    TDeps,
-    TBaseServices,
-    TServices,
-    TServiceDeps,
-    TPrivateServices,
-    TServiceThisContext,
-    THandlerThisContext,
-    TRequestStorage
-  >,
-) => DatabaseFragmentDefinitionBuilder<
-  TSchema,
-  TConfig,
-  TDeps & ImplicitDatabaseDependencies<TSchema>,
-  TBaseServices,
-  TServices,
-  TServiceDeps,
-  TPrivateServices,
-  DatabaseServiceContext,
-  DatabaseHandlerContext
-> {
-  return <
-    TConfig,
-    TDeps,
-    TBaseServices,
-    TServices,
-    TServiceDeps,
-    TPrivateServices,
-    TServiceThisContext extends RequestThisContext,
-    THandlerThisContext extends RequestThisContext,
-    TRequestStorage,
-  >(
-    builder: FragmentDefinitionBuilder<
-      TConfig,
-      FragnoPublicConfig,
-      TDeps,
-      TBaseServices,
-      TServices,
-      TServiceDeps,
-      TPrivateServices,
-      TServiceThisContext,
-      THandlerThisContext,
-      TRequestStorage
-    >,
-  ) => {
-    // Cast is safe: we're creating a DatabaseFragmentDefinitionBuilder which internally uses
-    // FragnoPublicConfigWithDatabase, but the input builder uses FragnoPublicConfig.
-    // The database builder's build() method will enforce FragnoPublicConfigWithDatabase at the end.
-    // We also add ImplicitDatabaseDependencies to TDeps so they're available in service constructors.
-    // Note: We discard TRequestStorage here because database fragments manage their own storage (DatabaseRequestStorage).
-    // We set TServiceThisContext to DatabaseServiceContext (restricted) and THandlerThisContext to DatabaseHandlerContext (full).
-    return new DatabaseFragmentDefinitionBuilder<
-      TSchema,
-      TConfig,
-      TDeps & ImplicitDatabaseDependencies<TSchema>,
-      TBaseServices,
-      TServices,
-      TServiceDeps,
-      TPrivateServices,
-      DatabaseServiceContext,
-      DatabaseHandlerContext
-    >(
-      builder as unknown as FragmentDefinitionBuilder<
-        TConfig,
-        FragnoPublicConfigWithDatabase,
-        TDeps & ImplicitDatabaseDependencies<TSchema>,
-        TBaseServices,
-        TServices,
-        TServiceDeps,
-        TPrivateServices,
-        DatabaseServiceContext,
-        DatabaseHandlerContext,
-        DatabaseRequestStorage
-      >,
-      schema,
-      namespace,
-    );
-  };
 }

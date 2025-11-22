@@ -14,7 +14,7 @@ import type { AbstractQuery } from "../../query/query";
 import { fromKysely, type KyselyUOWConfig } from "./kysely-query";
 import { createTableNameMapper } from "./kysely-shared";
 import { createHash } from "node:crypto";
-import { SETTINGS_TABLE_NAME } from "../../shared/settings-schema";
+import { SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import { createKyselyConnectionPool } from "./kysely-connection-pool";
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";

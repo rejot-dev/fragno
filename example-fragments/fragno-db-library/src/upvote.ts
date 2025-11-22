@@ -1,7 +1,7 @@
 import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db/fragment-definition-builder";
+import { withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 export const upvoteSchema = schema((s) => {

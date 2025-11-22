@@ -5,8 +5,8 @@ import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { generateSchema } from "./generate";
 import { fromDrizzle, type DrizzleUOWConfig } from "./drizzle-query";
 import { createTableNameMapper, type DBType, type DrizzleResult } from "./shared";
-import { createSettingsManager, settingsSchema } from "../../shared/settings-schema";
 import { sql } from "drizzle-orm";
+import { settingsSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
@@ -80,11 +80,17 @@ export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
   }
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {
-    const queryEngine = this.createQueryEngine(settingsSchema, namespace);
-    const manager = createSettingsManager(queryEngine, namespace);
+    // Note: This looks up arbitrary fragment schema versions (e.g., "my-fragment.schema_version")
+    // which are different from Fragno's internal settings (prefixed with SETTINGS_NAMESPACE)
+    // So we can't use the internal fragment here, we need direct query engine access
+    const queryEngine = this.createQueryEngine(settingsSchema, "");
 
-    // Try to read the version key directly
-    const result = await manager.get("version");
+    const uow = queryEngine
+      .createUnitOfWork()
+      .find(SETTINGS_TABLE_NAME, (b) =>
+        b.whereIndex("unique_key", (eb) => eb("key", "=", `${namespace}.schema_version`)),
+      );
+    const [[result]] = await uow.executeRetrieve();
     return result?.value;
   }
 
