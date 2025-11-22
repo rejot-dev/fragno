@@ -1,5 +1,12 @@
 # @fragno-dev/unplugin-fragno
 
+## 0.0.5
+
+### Patch Changes
+
+- d78940e: fix: make sure @fragno-dev/db is properly tree shaken from browser bundles
+- 5ea24d2: refactor: improve Fragment builder and instatiator
+
 ## 0.0.4
 
 ### Patch Changes

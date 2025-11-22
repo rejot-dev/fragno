@@ -1,5 +1,12 @@
 # @fragno-dev/create
 
+## 0.1.3
+
+### Patch Changes
+
+- d78940e: fix: make sure @fragno-dev/db is properly tree shaken from browser bundles
+- 46ecc44: create: add moduleSideEffects: false to fragment template
+
 ## 0.1.2
 
 ### Patch Changes

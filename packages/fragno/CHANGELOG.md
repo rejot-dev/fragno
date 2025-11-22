@@ -1,5 +1,18 @@
 # @fragno-dev/core
 
+## 0.1.9
+
+### Patch Changes
+
+- e848208: feat: restrict Unit of Work in service contexts
+- 7276378: feat: add providesPrivateService method to Fragment definition
+
+  This allows the Fragment author to define private services that are only accessible within the
+  Fragment's own code.
+
+- 5ea24d2: refactor: improve Fragment builder and instatiator
+- f22c503: fix: make unit of work available in middleware
+
 ## 0.1.8
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @fragno-dev/node
 
+## 0.0.8
+
+### Patch Changes
+
+- 5ea24d2: refactor: improve Fragment builder and instatiator
+
 ## 0.0.7
 
 ### Patch Changes
