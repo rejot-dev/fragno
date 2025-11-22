@@ -1,5 +1,11 @@
 # @fragno-dev/corpus
 
+## 0.0.6
+
+### Patch Changes
+
+- 5ea24d2: refactor: improve Fragment builder and instatiator
+
 ## 0.0.5
 
 ### Patch Changes
