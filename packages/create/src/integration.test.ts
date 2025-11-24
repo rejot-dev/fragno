@@ -19,6 +19,8 @@ async function createTempDir(name: string): Promise<string> {
   return dir;
 }
 
+// Trigger CI
+
 type BuildTool = "tsdown" | "esbuild" | "vite" | "rollup" | "webpack" | "rspack";
 
 function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
