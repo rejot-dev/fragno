@@ -113,21 +113,23 @@ const isChainedFromDefineFragmentCall = (path: NodePath<t.CallExpression>): bool
 };
 
 /**
- * Strip callback arguments from builder methods
+ * Strip callback arguments from builder methods and replace with no-op callback
  */
 const stripCallbackArguments = (path: NodePath<t.CallExpression>, methodName: string): void => {
-  // For providesService, keep the first argument (service name), remove the second (callback)
+  // Create a no-op arrow function: () => {}
+  const noopCallback = t.arrowFunctionExpression([], t.blockStatement([]));
+
+  // For providesService, keep the first argument (service name), replace the second with no-op
   if (methodName === "providesService") {
     if (path.node.arguments.length >= 1) {
-      // Keep only the first argument
       const firstArg = path.node.arguments[0];
       if (firstArg && t.isExpression(firstArg)) {
-        path.node.arguments = [firstArg];
+        path.node.arguments = [firstArg, noopCallback];
       }
     }
   } else {
-    // For all other methods, remove all arguments
-    path.node.arguments = [];
+    // For all other methods, replace all arguments with a no-op callback
+    path.node.arguments = [noopCallback];
   }
 };
 

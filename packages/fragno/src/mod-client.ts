@@ -24,20 +24,42 @@ export type {
 // Stub implementation for defineFragment
 // This is stripped by unplugin-fragno in browser builds
 export function defineFragment(_name: string) {
-  return {
-    withDependencies: () => ({ withDependencies: () => ({}) }),
-    providesBaseService: () => ({ providesBaseService: () => ({}) }),
-    providesService: () => ({ providesService: () => ({}) }),
-    withRequestStorage: () => ({ withRequestStorage: () => ({}) }),
-    withExternalRequestStorage: () => ({ withExternalRequestStorage: () => ({}) }),
-    withRequestThisContext: () => ({ withRequestThisContext: () => ({}) }),
-    extend: () => ({ extend: () => ({}) }),
+  const stub = {
+    withDependencies: () => stub,
+    providesBaseService: () => stub,
+    providesService: () => stub,
+    providesPrivateService: () => stub,
+    usesService: () => stub,
+    usesOptionalService: () => stub,
+    withRequestStorage: () => stub,
+    withExternalRequestStorage: () => stub,
+    withThisContext: () => stub,
+    withLinkedFragment: () => stub,
+    extend: () => stub,
     build: () => ({}),
   };
+  return stub;
 }
 
 // Re-export the builder class (for type compatibility)
 export { FragmentDefinitionBuilder } from "./api/fragment-definition-builder";
+
+// Stub implementation for instantiate
+// This is stripped by unplugin-fragno in browser builds
+export function instantiate(_definition: unknown) {
+  const stub = {
+    withConfig: () => stub,
+    withRoutes: () => stub,
+    withOptions: () => stub,
+    withServices: () => stub,
+    build: () => ({}),
+    definition: {},
+    routes: [],
+    config: undefined,
+    options: undefined,
+  };
+  return stub;
+}
 
 // ============================================================================
 // Core Configuration

@@ -41,12 +41,12 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
+      expect(result.code).toContain("withDependencies(() => {})");
       expect(result.code).not.toContain("apiKey");
       expect(result.code).not.toContain("config.key");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withDependencies().build();"
+        const fragment = defineFragment("test").withDependencies(() => {}).build();"
       `);
     });
   });
@@ -65,13 +65,13 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("providesBaseService()");
+      expect(result.code).toContain("providesBaseService(() => {})");
       expect(result.code).not.toContain("getData");
       expect(result.code).not.toContain("setData");
       expect(result.code).not.toContain("deps.data");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").providesBaseService().build();"
+        const fragment = defineFragment("test").providesBaseService(() => {}).build();"
       `);
     });
   });
@@ -89,12 +89,12 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain('providesService("myService")');
+      expect(result.code).toContain('providesService("myService", () => {})');
       expect(result.code).not.toContain("doSomething");
       expect(result.code).not.toContain("deps.data");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").providesService("myService").build();"
+        const fragment = defineFragment("test").providesService("myService", () => {}).build();"
       `);
     });
 
@@ -109,15 +109,15 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain('providesService("service1")');
-      expect(result.code).toContain('providesService("service2")');
+      expect(result.code).toContain('providesService("service1", () => {})');
+      expect(result.code).toContain('providesService("service2", () => {})');
       expect(result.code).not.toContain("method1");
       expect(result.code).not.toContain("method2");
       expect(result.code).not.toContain("test1");
       expect(result.code).not.toContain("test2");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").providesService("service1").providesService("service2").build();"
+        const fragment = defineFragment("test").providesService("service1", () => {}).providesService("service2", () => {}).build();"
       `);
     });
   });
@@ -136,13 +136,13 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withRequestStorage()");
+      expect(result.code).toContain("withRequestStorage(() => {})");
       expect(result.code).not.toContain("counter");
       expect(result.code).not.toContain("userId");
       expect(result.code).not.toContain("currentUserId");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withRequestStorage().build();"
+        const fragment = defineFragment("test").withRequestStorage(() => {}).build();"
       `);
     });
   });
@@ -160,12 +160,12 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withExternalRequestStorage()");
+      expect(result.code).toContain("withExternalRequestStorage(() => {})");
       expect(result.code).not.toContain("databaseAdapter");
       expect(result.code).not.toContain("contextStorage");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withExternalRequestStorage().build();"
+        const fragment = defineFragment("test").withExternalRequestStorage(() => {}).build();"
       `);
     });
   });
@@ -184,13 +184,13 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withRequestThisContext()");
+      expect(result.code).toContain("withRequestThisContext(() => {})");
       expect(result.code).not.toContain("counter");
       expect(result.code).not.toContain("getUser");
       expect(result.code).not.toContain("storage.getStore");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withRequestThisContext().build();"
+        const fragment = defineFragment("test").withRequestThisContext(() => {}).build();"
       `);
     });
   });
@@ -207,12 +207,12 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("extend()");
+      expect(result.code).toContain("extend(() => {})");
       expect(result.code).not.toContain("withDatabase");
       expect(result.code).not.toContain("schema");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").extend().build();"
+        const fragment = defineFragment("test").extend(() => {}).build();"
       `);
     });
 
@@ -261,11 +261,11 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
-      expect(result.code).toContain("providesBaseService()");
-      expect(result.code).toContain('providesService("auth")');
-      expect(result.code).toContain("withRequestStorage()");
-      expect(result.code).toContain("withRequestThisContext()");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain("providesBaseService(() => {})");
+      expect(result.code).toContain('providesService("auth", () => {})');
+      expect(result.code).toContain("withRequestStorage(() => {})");
+      expect(result.code).toContain("withRequestThisContext(() => {})");
       expect(result.code).not.toContain("initialData");
       expect(result.code).not.toContain("getData");
       expect(result.code).not.toContain("login");
@@ -273,7 +273,7 @@ describe("Fragment builder transformation", () => {
       expect(result.code).not.toContain("getUserId");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withDependencies().providesBaseService().providesService("auth").withRequestStorage().withRequestThisContext().build();"
+        const fragment = defineFragment("test").withDependencies(() => {}).providesBaseService(() => {}).providesService("auth", () => {}).withRequestStorage(() => {}).withRequestThisContext(() => {}).build();"
       `);
     });
 
@@ -292,16 +292,16 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("extend()");
-      expect(result.code).toContain("withDependencies()");
-      expect(result.code).toContain('providesService("db")');
+      expect(result.code).toContain("extend(() => {})");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain('providesService("db", () => {})');
       expect(result.code).not.toContain("withDatabase");
       expect(result.code).not.toContain("mySchema");
       expect(result.code).not.toContain("query");
       expect(result.code).not.toContain("orm.query");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").extend().withDependencies().providesService("db").build();"
+        const fragment = defineFragment("test").extend(() => {}).withDependencies(() => {}).providesService("db", () => {}).build();"
       `);
     });
   });
@@ -338,11 +338,11 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
+      expect(result.code).toContain("withDependencies(() => {})");
       expect(result.code).not.toContain("data");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment as createFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = createFragment("test").withDependencies().build();"
+        const fragment = createFragment("test").withDependencies(() => {}).build();"
       `);
     });
   });
@@ -373,11 +373,11 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
-      expect(result.code).toContain("providesBaseService()");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain("providesBaseService(() => {})");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withDependencies().providesBaseService().build();"
+        const fragment = defineFragment("test").withDependencies(() => {}).providesBaseService(() => {}).build();"
       `);
     });
 
@@ -394,11 +394,11 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
+      expect(result.code).toContain("withDependencies(() => {})");
       expect(result.code).not.toContain("computeData");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").withDependencies().build();"
+        const fragment = defineFragment("test").withDependencies(() => {}).build();"
       `);
     });
 
@@ -415,7 +415,7 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("providesBaseService()");
+      expect(result.code).toContain("providesBaseService(() => {})");
       expect(result.code).not.toContain("fetchData");
       expect(result.code).not.toContain("await");
     });
@@ -478,12 +478,12 @@ describe("Fragment builder transformation", () => {
       expect(result.code).not.toContain("method");
       expect(result.code).not.toContain("test1");
       expect(result.code).not.toContain("test2");
-      const matches = result.code.match(/withDependencies\(\)/g);
+      const matches = result.code.match(/withDependencies\(\(\) => \{\}\)/g);
       expect(matches).toHaveLength(2);
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment1 = defineFragment("fragment1").withDependencies().build();
-        const fragment2 = defineFragment("fragment2").withDependencies().providesService("myService").build();"
+        const fragment1 = defineFragment("fragment1").withDependencies(() => {}).build();
+        const fragment2 = defineFragment("fragment2").withDependencies(() => {}).providesService("myService", () => {}).build();"
       `);
     });
   });
@@ -513,8 +513,8 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
-      expect(result.code).toContain("providesBaseService()");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain("providesBaseService(() => {})");
       expect(result.code).not.toContain("getData");
       // Handler should now be transformed to noop
       expect(result.code).toContain("handler: () => {}");
@@ -522,7 +522,7 @@ describe("Fragment builder transformation", () => {
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
         import { defineRoutes } from "@fragno-dev/core/api/route";
-        const fragment = defineFragment("test").withDependencies().providesBaseService().build();
+        const fragment = defineFragment("test").withDependencies(() => {}).providesBaseService(() => {}).build();
         const routes = defineRoutes(fragment).create(({
           defineRoute
         }) => [defineRoute({
@@ -557,8 +557,8 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
-      expect(result.code).toContain("providesBaseService()");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain("providesBaseService(() => {})");
       expect(result.code).not.toContain("getData");
       // Handler should now be transformed to noop
       expect(result.code).toContain("handler: () => {}");
@@ -566,7 +566,7 @@ describe("Fragment builder transformation", () => {
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
         import { defineRoutes } from "@fragno-dev/core/api/route";
-        const fragment = defineFragment("test").withDependencies().providesBaseService().build();
+        const fragment = defineFragment("test").withDependencies(() => {}).providesBaseService(() => {}).build();
         const routes = defineRoutes(fragment).create(context => [context.defineRoute({
           method: "GET",
           path: "/test",
@@ -610,15 +610,15 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("withDependencies()");
-      expect(result.code).toContain("providesBaseService()");
+      expect(result.code).toContain("withDependencies(() => {})");
+      expect(result.code).toContain("providesBaseService(() => {})");
       expect(result.code).not.toContain("serverSideData");
       expect(result.code).not.toContain("getData");
       expect(result.code).not.toContain("getHashFromHostsFileData");
       expect(result.code).not.toContain("node:");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const exampleFragmentDefinition = defineFragment("example-fragment").withDependencies().providesBaseService().build();"
+        const exampleFragmentDefinition = defineFragment("example-fragment").withDependencies(() => {}).providesBaseService(() => {}).build();"
       `);
     });
   });
