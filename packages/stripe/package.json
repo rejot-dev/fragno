@@ -1,7 +1,7 @@
 {
   "name": "@fragno-dev/stripe",
   "description": "Stripe integration using Fragno",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "files": [
     "dist"
   ],
