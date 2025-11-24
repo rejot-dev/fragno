@@ -1,5 +1,16 @@
 # @fragno-dev/chatno
 
+## 0.0.17
+
+### Patch Changes
+
+- 5ea24d2: refactor: improve Fragment builder and instatiator
+- Updated dependencies [e848208]
+- Updated dependencies [7276378]
+- Updated dependencies [5ea24d2]
+- Updated dependencies [f22c503]
+  - @fragno-dev/core@0.1.9
+
 ## 0.0.16
 
 ### Patch Changes

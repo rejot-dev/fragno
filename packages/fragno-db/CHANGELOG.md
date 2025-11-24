@@ -1,5 +1,29 @@
 # @fragno-dev/db
 
+## 0.1.15
+
+### Patch Changes
+
+- d6a7ff5: feat: support standalone check() operation on UOWs
+- e848208: feat: restrict Unit of Work in service contexts
+- e9b2e7d: feat: add 'nonce' to Unit of Work for idempotent excecution
+- 5e185bc: feat: add `withUnitOfWork` helper method to `deps` on Fragment instance
+- ec622bc: fix: problem with serialization of cursor values
+- 219ce35: fix: surface Database-driver level errors in executeMutation/executeRetrieve
+- b34917f: feat: add `executeUnitOfWork` utility of retrying transactions, including support for
+  retry policies.
+- 7276378: feat: add providesPrivateService method to Fragment definition
+
+  This allows the Fragment author to define private services that are only accessible within the
+  Fragment's own code.
+
+- 462004f: Add `hasNextPage` field to cursor pagination results. The `CursorResult` interface now
+  includes an explicit `hasNextPage: boolean` field that accurately indicates whether more results
+  are available.
+- 5ea24d2: refactor: improve Fragment builder and instatiator
+- f22c503: fix: make unit of work available in middleware
+- 3474006: feat: add findFirst convenience method to UOWs
+
 ## 0.1.14
 
 ### Patch Changes
