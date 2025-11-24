@@ -1,5 +1,11 @@
 # @fragno-dev/stripe
 
+## 0.1.2
+
+### Patch Changes
+
+- 2112922: fix: client bundle generation issues
+
 ## 0.1.1
 
 ### Patch Changes
