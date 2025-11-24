@@ -1,14 +1,6 @@
-import {
-  defineRoute,
-  defineRoutes,
-  createFragment,
-  type FragnoPublicClientConfig,
-} from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
-import {
-  defineFragmentWithDatabase,
-  type FragnoPublicConfigWithDatabase,
-} from "@fragno-dev/db/fragment";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
+import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { noteSchema } from "./schema";
 
@@ -21,33 +13,32 @@ export interface ExampleConfig {
   // Add any server-side configuration here if needed
 }
 
-type ExampleServices = {
-  createNote: (note: TableToInsertValues<typeof noteSchema.tables.note>) => Promise<{
-    id: string;
-    content: string;
-    userId: string;
-    createdAt: Date;
-  }>;
-  getNotes: () => Promise<
-    Array<{
-      id: string;
-      content: string;
-      userId: string;
-      createdAt: Date;
-    }>
-  >;
-  getNotesByUser: (userId: string) => Promise<
-    Array<{
-      id: string;
-      content: string;
-      userId: string;
-      createdAt: Date;
-    }>
-  >;
-};
+const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
+  .extend(withDatabase(noteSchema))
+  .providesBaseService(({ deps }) => {
+    return {
+      createNote: async (note: TableToInsertValues<typeof noteSchema.tables.note>) => {
+        const id = await deps.db.create("note", note);
+        return {
+          ...note,
+          id: id.valueOf(),
+          createdAt: note.createdAt ?? new Date(),
+        };
+      },
+      getNotes: () => {
+        return deps.db.find("note", (b) => b);
+      },
+      getNotesByUser: (userId: string) => {
+        return deps.db.find("note", (b) =>
+          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
+        );
+      },
+    };
+  })
+  .build();
 
-const exampleRoutesFactory = defineRoutes<ExampleConfig, {}, ExampleServices>().create(
-  ({ services }) => {
+const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
+  ({ services, defineRoute }) => {
     return [
       defineRoute({
         method: "GET",
@@ -66,11 +57,25 @@ const exampleRoutesFactory = defineRoutes<ExampleConfig, {}, ExampleServices>().
 
           if (userId) {
             const notes = await services.getNotesByUser(userId);
-            return json(notes);
+            return json(
+              notes.map((note) => ({
+                id: note.id.valueOf(),
+                content: note.content,
+                userId: note.userId,
+                createdAt: note.createdAt,
+              })),
+            );
           }
 
           const notes = await services.getNotes();
-          return json(notes);
+          return json(
+            notes.map((note) => ({
+              id: note.id.valueOf(),
+              content: note.content,
+              userId: note.userId,
+              createdAt: note.createdAt,
+            })),
+          );
         },
       }),
 
@@ -96,34 +101,15 @@ const exampleRoutesFactory = defineRoutes<ExampleConfig, {}, ExampleServices>().
   },
 );
 
-const exampleFragmentDefinition = defineFragmentWithDatabase<ExampleConfig>("example-fragment")
-  .withDatabase(noteSchema)
-  .providesService(({ db }) => {
-    return {
-      createNote: async (note: TableToInsertValues<typeof noteSchema.tables.note>) => {
-        const id = await db.create("note", note);
-        return {
-          ...note,
-          id: id.toJSON(),
-          createdAt: note.createdAt ?? new Date(),
-        };
-      },
-      getNotes: () => {
-        return db.find("note", (b) => b);
-      },
-      getNotesByUser: (userId: string) => {
-        return db.find("note", (b) =>
-          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
-        );
-      },
-    };
-  });
-
 export function createExampleFragment(
   config: ExampleConfig = {},
-  fragnoConfig: FragnoPublicConfigWithDatabase,
+  options: FragnoPublicConfigWithDatabase,
 ) {
-  return createFragment(exampleFragmentDefinition, config, [exampleRoutesFactory], fragnoConfig);
+  return instantiate(exampleFragmentDefinition)
+    .withConfig(config)
+    .withRoutes([exampleRoutesFactory])
+    .withOptions(options)
+    .build();
 }
 
 export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
@@ -134,4 +120,4 @@ export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientCon
     useCreateNote: b.createMutator("POST", "/notes"),
   };
 }
-export type { FragnoRouteConfig } from "@fragno-dev/core/api";
+export type { FragnoRouteConfig } from "@fragno-dev/core";

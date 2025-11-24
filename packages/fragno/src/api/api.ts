@@ -2,6 +2,8 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { RequestInputContext } from "./request-input-context";
 import type { RequestOutputContext } from "./request-output-context";
 
+export type { StandardSchemaV1 } from "@standard-schema/spec";
+
 export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 export type NonGetHTTPMethod = Exclude<HTTPMethod, "GET">;
 

@@ -3,6 +3,9 @@ import unpluginFragno from "@fragno-dev/unplugin-fragno/vite";
 
 export default defineConfig({
   plugins: [unpluginFragno({ platform: "browser" })],
+  resolve: {
+    conditions: ["browser"],
+  },
   // https://vite.dev/guide/build.html#library-mode
   build: {
     lib: {

@@ -1,12 +1,10 @@
 import {
   defineFragment,
-  defineRoute,
   defineRoutes,
-  createFragment,
-  type FragnoPublicClientConfig,
+  instantiate,
   type FragnoPublicConfig,
 } from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
+import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 // NOTE: We use zod here for defining schemas, but any StandardSchema library can be used!
 //       For a complete list see:
@@ -17,16 +15,21 @@ export interface ExampleConfig {
   initialData?: string;
 }
 
-type ExampleServices = {
-  getData: () => string;
-};
+const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
+  .withDependencies(({ config }) => {
+    return {
+      serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
+    };
+  })
+  .providesBaseService(({ deps }) => {
+    return {
+      getData: () => deps.serverSideData.value,
+    };
+  })
+  .build();
 
-type ExampleDeps = {
-  serverSideData: { value: string };
-};
-
-const exampleRoutesFactory = defineRoutes<ExampleConfig, ExampleDeps, ExampleServices>().create(
-  ({ deps }) => {
+const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
+  ({ deps, defineRoute }) => {
     const { serverSideData } = deps;
 
     return [
@@ -55,23 +58,15 @@ const exampleRoutesFactory = defineRoutes<ExampleConfig, ExampleDeps, ExampleSer
   },
 );
 
-const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
-  .withDependencies(({ config }) => {
-    return {
-      serverSideData: { value: config.initialData ?? "Hello World! This is a server-side data." },
-    };
-  })
-  .providesService(({ deps }) => {
-    return {
-      getData: () => deps.serverSideData.value,
-    };
-  });
-
 export function createExampleFragment(
   config: ExampleConfig = {},
-  fragnoConfig: FragnoPublicConfig = {},
+  options: FragnoPublicConfig = {},
 ) {
-  return createFragment(exampleFragmentDefinition, config, [exampleRoutesFactory], fragnoConfig);
+  return instantiate(exampleFragmentDefinition)
+    .withConfig(config)
+    .withRoutes([exampleRoutesFactory])
+    .withOptions(options)
+    .build();
 }
 
 export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
@@ -82,4 +77,4 @@ export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientCon
     useHelloMutator: b.createMutator("POST", "/hello"),
   };
 }
-export type { FragnoRouteConfig } from "@fragno-dev/core/api";
+export type { FragnoRouteConfig } from "@fragno-dev/core";

@@ -24,6 +24,7 @@ export default [
       resolve({
         moduleDirectories: ["node_modules"],
         browser: true,
+        conditions: ["browser"],
       }),
       typescript({
         tsconfig: "./tsconfig.json",

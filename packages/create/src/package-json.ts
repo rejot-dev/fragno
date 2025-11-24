@@ -1,18 +1,20 @@
 import type { BuildTools } from "./index";
 
-const fragnoCoreVersion = "^0.1.7";
-const fragnoDbVersion = "^0.1.13";
-const unpluginFragnoVersion = "^0.0.3";
-const fragnoCliVersion = "^0.1.16";
+const fragnoCoreVersion = "0.1.10";
+const fragnoDbVersion = "0.1.15";
+const unpluginFragnoVersion = "0.0.7";
+const fragnoCliVersion = "0.1.20";
 
 export const basePkg: Record<string, unknown> = {
   dependencies: {
     "@fragno-dev/core": fragnoCoreVersion,
-    zod: "^4.1.12",
+    "@standard-schema/spec": "^1.0.0",
+    zod: "^4.0.5",
   },
   devDependencies: {
-    "@types/node": "^22",
+    "@types/node": "^24",
     "@fragno-dev/cli": fragnoCliVersion,
+    "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
   },
   peerDependencies: {
     typescript: ">=5",
@@ -36,7 +38,6 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   none: {},
   tsdown: {
     devDependencies: {
-      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
       tsdown: "^0.12.0",
     },
     scripts: {
@@ -45,7 +46,6 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   esbuild: {
     devDependencies: {
-      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
       esbuild: "^0.25.12",
     },
     scripts: {
@@ -54,7 +54,6 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   vite: {
     devDependencies: {
-      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
       vite: "^6.3.5",
     },
     scripts: {
@@ -63,7 +62,6 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   rollup: {
     devDependencies: {
-      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
       "@rollup/plugin-node-resolve": "^16.0.2",
       "@rollup/plugin-typescript": "^12.1.4",
       tslib: "^2.8.1",
@@ -75,7 +73,6 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   webpack: {
     devDependencies: {
-      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
       webpack: "^5.99.9",
       "webpack-cli": "^6.0.1",
       "ts-loader": "^9.5.1",
@@ -86,7 +83,6 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   rspack: {
     devDependencies: {
-      "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
       "@rspack/core": "^1.6.1",
       "@rspack/cli": "^1.6.1",
     },
