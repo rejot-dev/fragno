@@ -119,8 +119,14 @@ const stripCallbackArguments = (path: NodePath<t.CallExpression>, methodName: st
   // Create a no-op arrow function: () => {}
   const noopCallback = t.arrowFunctionExpression([], t.blockStatement([]));
 
-  // For providesService, keep the first argument (service name), replace the second with no-op
-  if (methodName === "providesService") {
+  if (methodName === "extend") {
+    // For extend, use identity function: x => x
+    const xParam = t.identifier("x");
+    const identityFn = t.arrowFunctionExpression([xParam], xParam);
+    path.node.arguments = [identityFn];
+  } else if (methodName === "providesService") {
+    // For providesService, keep the first argument (service name), replace the second with no-op
+
     if (path.node.arguments.length >= 1) {
       const firstArg = path.node.arguments[0];
       if (firstArg && t.isExpression(firstArg)) {

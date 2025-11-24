@@ -207,12 +207,12 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("extend(() => {})");
+      expect(result.code).toContain("extend(x => x)");
       expect(result.code).not.toContain("withDatabase");
       expect(result.code).not.toContain("schema");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").extend(() => {}).build();"
+        const fragment = defineFragment("test").extend(x => x).build();"
       `);
     });
 
@@ -292,7 +292,7 @@ describe("Fragment builder transformation", () => {
       `;
 
       const result = transform(source, "", { ssr: false });
-      expect(result.code).toContain("extend(() => {})");
+      expect(result.code).toContain("extend(x => x)");
       expect(result.code).toContain("withDependencies(() => {})");
       expect(result.code).toContain('providesService("db", () => {})');
       expect(result.code).not.toContain("withDatabase");
@@ -301,7 +301,7 @@ describe("Fragment builder transformation", () => {
       expect(result.code).not.toContain("orm.query");
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core/api/fragment-definition-builder";
-        const fragment = defineFragment("test").extend(() => {}).withDependencies(() => {}).providesService("db", () => {}).build();"
+        const fragment = defineFragment("test").extend(x => x).withDependencies(() => {}).providesService("db", () => {}).build();"
       `);
     });
   });
