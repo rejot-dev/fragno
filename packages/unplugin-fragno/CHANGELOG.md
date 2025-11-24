@@ -1,5 +1,11 @@
 # @fragno-dev/unplugin-fragno
 
+## 0.0.6
+
+### Patch Changes
+
+- aabd6d2: fix: client bundle generation issues
+
 ## 0.0.5
 
 ### Patch Changes
