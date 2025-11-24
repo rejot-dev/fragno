@@ -1,5 +1,14 @@
 # create-fragno
 
+## 0.1.3
+
+### Patch Changes
+
+- 46ecc44: create: add moduleSideEffects: false to fragment template
+- Updated dependencies [d78940e]
+- Updated dependencies [46ecc44]
+  - @fragno-dev/create@0.1.3
+
 ## 0.1.2
 
 ### Patch Changes
