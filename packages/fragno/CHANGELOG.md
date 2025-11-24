@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.1.10
+
+### Patch Changes
+
+- aabd6d2: fix: client bundle generation issues
+
 ## 0.1.9
 
 ### Patch Changes

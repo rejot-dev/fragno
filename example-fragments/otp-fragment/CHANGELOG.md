@@ -1,5 +1,13 @@
 # @fragno-dev/otp-fragment
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [aabd6d2]
+  - @fragno-dev/core@0.1.10
+  - @fragno-dev/db@0.1.15
+
 ## 0.0.3
 
 ### Patch Changes

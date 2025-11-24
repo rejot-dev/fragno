@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/chatno",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "exports": {
     ".": {
       "development": {

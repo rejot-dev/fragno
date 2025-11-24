@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/core",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "exports": {
     ".": {
       "development": "./src/mod.ts",
