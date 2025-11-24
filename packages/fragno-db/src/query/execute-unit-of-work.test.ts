@@ -1237,7 +1237,7 @@ describe("executeRestrictedUnitOfWork", () => {
     });
   });
 
-  describe.skip("unhandled rejection handling", () => {
+  describe("unhandled rejection handling", () => {
     it("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {
       const settingsSchema = schema((s) =>
         s.addTable("settings", (t) =>

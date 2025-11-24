@@ -936,6 +936,97 @@ export interface UnitOfWorkConfig {
 }
 
 /**
+ * Encapsulates a promise with its resolver/rejecter functions.
+ * Simplifies management of deferred promises with built-in error handling.
+ */
+class DeferredPromise<T> {
+  #resolve?: (value: T) => void;
+  #reject?: (error: Error) => void;
+  #promise: Promise<T>;
+
+  constructor() {
+    const { promise, resolve, reject } = Promise.withResolvers<T>();
+    this.#promise = promise;
+    this.#resolve = resolve;
+    this.#reject = reject;
+    // Attach no-op error handler to prevent unhandled rejection warnings
+    this.#promise.catch(() => {});
+  }
+
+  get promise(): Promise<T> {
+    return this.#promise;
+  }
+
+  resolve(value: T): void {
+    this.#resolve?.(value);
+  }
+
+  reject(error: Error): void {
+    this.#reject?.(error);
+  }
+
+  /**
+   * Reset to a new promise
+   */
+  reset(): void {
+    const { promise, resolve, reject } = Promise.withResolvers<T>();
+    this.#promise = promise;
+    this.#resolve = resolve;
+    this.#reject = reject;
+    // Attach no-op error handler to prevent unhandled rejection warnings
+    this.#promise.catch(() => {});
+  }
+}
+
+/**
+ * Tracks readiness signals from a group of children.
+ * Maintains a promise that resolves when all registered children have signaled.
+ */
+class ReadinessTracker {
+  #expectedCount = 0;
+  #signalCount = 0;
+  #resolve?: () => void;
+  #promise: Promise<void> = Promise.resolve();
+
+  get promise(): Promise<void> {
+    return this.#promise;
+  }
+
+  /**
+   * Register that we're expecting a signal from a child
+   */
+  registerChild(): void {
+    if (this.#expectedCount === 0) {
+      // First child - create new promise
+      const { promise, resolve } = Promise.withResolvers<void>();
+      this.#promise = promise;
+      this.#resolve = resolve;
+    }
+    this.#expectedCount++;
+  }
+
+  /**
+   * Signal that one child is ready
+   */
+  signal(): void {
+    this.#signalCount++;
+    if (this.#signalCount >= this.#expectedCount && this.#resolve) {
+      this.#resolve();
+    }
+  }
+
+  /**
+   * Reset to initial state
+   */
+  reset(): void {
+    this.#expectedCount = 0;
+    this.#signalCount = 0;
+    this.#resolve = undefined;
+    this.#promise = Promise.resolve();
+  }
+}
+
+/**
  * Manages parent-child relationships and readiness coordination for Unit of Work instances.
  * This allows parent UOWs to wait for all child UOWs to signal readiness before executing phases.
  */
@@ -945,12 +1036,8 @@ class UOWChildCoordinator<TRawInput> {
   #children: Set<UnitOfWork<TRawInput>> = new Set();
   #isRestricted = false;
 
-  #readyForRetrievalCount = 0;
-  #readyForMutationCount = 0;
-  #retrievalReadinessResolve?: () => void;
-  #mutationReadinessResolve?: () => void;
-  #retrievalReadinessPromise = Promise.resolve();
-  #mutationReadinessPromise = Promise.resolve();
+  #retrievalTracker = new ReadinessTracker();
+  #mutationTracker = new ReadinessTracker();
 
   get isRestricted(): boolean {
     return this.#isRestricted;
@@ -965,11 +1052,11 @@ class UOWChildCoordinator<TRawInput> {
   }
 
   get retrievalReadinessPromise(): Promise<void> {
-    return this.#retrievalReadinessPromise;
+    return this.#retrievalTracker.promise;
   }
 
   get mutationReadinessPromise(): Promise<void> {
-    return this.#mutationReadinessPromise;
+    return this.#mutationTracker.promise;
   }
 
   /**
@@ -985,44 +1072,12 @@ class UOWChildCoordinator<TRawInput> {
   }
 
   /**
-   * Register a child UOW and update readiness promises
+   * Register a child UOW
    */
   addChild(child: UnitOfWork<TRawInput>): void {
     this.#children.add(child);
-    this.updateReadinessPromises();
-  }
-
-  /**
-   * Update readiness promises to wait for all children.
-   * Called when children are added or readiness is signaled.
-   */
-  updateReadinessPromises(): void {
-    const childCount = this.#children.size;
-    if (childCount === 0) {
-      // No children, immediately ready
-      this.#retrievalReadinessPromise = Promise.resolve();
-      this.#mutationReadinessPromise = Promise.resolve();
-      return;
-    }
-
-    // Create new promises that wait for all children
-    const retrievalPromise = Promise.withResolvers<void>();
-    this.#retrievalReadinessResolve = retrievalPromise.resolve;
-    this.#retrievalReadinessPromise = retrievalPromise.promise;
-
-    // If all children are already ready, resolve immediately
-    if (this.#readyForRetrievalCount >= childCount) {
-      retrievalPromise.resolve();
-    }
-
-    const mutationPromise = Promise.withResolvers<void>();
-    this.#mutationReadinessResolve = mutationPromise.resolve;
-    this.#mutationReadinessPromise = mutationPromise.promise;
-
-    // If all children are already ready, resolve immediately
-    if (this.#readyForMutationCount >= childCount) {
-      mutationPromise.resolve();
-    }
+    this.#retrievalTracker.registerChild();
+    this.#mutationTracker.registerChild();
   }
 
   /**
@@ -1054,10 +1109,7 @@ class UOWChildCoordinator<TRawInput> {
    * Called by child UOWs when they signal readiness.
    */
   notifyChildReadyForRetrieval(): void {
-    this.#readyForRetrievalCount++;
-    if (this.#readyForRetrievalCount >= this.#children.size) {
-      this.#retrievalReadinessResolve?.();
-    }
+    this.#retrievalTracker.signal();
   }
 
   /**
@@ -1065,10 +1117,7 @@ class UOWChildCoordinator<TRawInput> {
    * Called by child UOWs when they signal readiness.
    */
   notifyChildReadyForMutation(): void {
-    this.#readyForMutationCount++;
-    if (this.#readyForMutationCount >= this.#children.size) {
-      this.#mutationReadinessResolve?.();
-    }
+    this.#mutationTracker.signal();
   }
 
   /**
@@ -1076,10 +1125,8 @@ class UOWChildCoordinator<TRawInput> {
    */
   reset(): void {
     this.#children.clear();
-    this.#readyForRetrievalCount = 0;
-    this.#readyForMutationCount = 0;
-    this.#retrievalReadinessPromise = Promise.resolve();
-    this.#mutationReadinessPromise = Promise.resolve();
+    this.#retrievalTracker.reset();
+    this.#mutationTracker.reset();
   }
 }
 
@@ -1134,12 +1181,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #createdInternalIds: (bigint | null)[] = [];
 
   // Phase coordination promises
-  #retrievalPhaseResolve?: (value: unknown[]) => void;
-  #retrievalPhaseReject?: (error: Error) => void;
-  #mutationPhaseResolve?: () => void;
-  #mutationPhaseReject?: (error: Error) => void;
-  #retrievalPhasePromise: Promise<unknown[]>;
-  #mutationPhasePromise: Promise<void>;
+  #retrievalPhaseDeferred = new DeferredPromise<unknown[]>();
+  #mutationPhaseDeferred = new DeferredPromise<void>();
 
   // Error tracking
   #retrievalError: Error | null = null;
@@ -1163,22 +1206,6 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#name = name;
     this.#config = config;
     this.#nonce = config?.nonce ?? crypto.randomUUID();
-
-    // Initialize phase coordination promises
-    const retrievalPromise = Promise.withResolvers<unknown[]>();
-    this.#retrievalPhaseResolve = retrievalPromise.resolve;
-    this.#retrievalPhaseReject = retrievalPromise.reject;
-    this.#retrievalPhasePromise = retrievalPromise.promise;
-    // Attach a no-op error handler to prevent unhandled rejection warnings
-    // The actual error is thrown from executeRetrieve() and should be caught there
-    this.#retrievalPhasePromise.catch(() => {});
-
-    const mutationPromise = Promise.withResolvers<void>();
-    this.#mutationPhaseResolve = mutationPromise.resolve;
-    this.#mutationPhaseReject = mutationPromise.reject;
-    this.#mutationPhasePromise = mutationPromise.promise;
-    // Attach a no-op error handler to prevent unhandled rejection warnings
-    this.#mutationPhasePromise.catch(() => {});
   }
 
   /**
@@ -1217,8 +1244,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     child.#mutationOps = this.#mutationOps;
     child.#retrievalResults = this.#retrievalResults;
     child.#createdInternalIds = this.#createdInternalIds;
-    child.#retrievalPhasePromise = this.#retrievalPhasePromise;
-    child.#mutationPhasePromise = this.#mutationPhasePromise;
+    child.#retrievalPhaseDeferred = this.#retrievalPhaseDeferred;
+    child.#mutationPhaseDeferred = this.#mutationPhaseDeferred;
     child.#retrievalError = this.#retrievalError;
     child.#mutationError = this.#mutationError;
 
@@ -1269,19 +1296,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#mutationError = null;
 
     // Reset phase promises
-    const retrievalPromise = Promise.withResolvers<unknown[]>();
-    this.#retrievalPhaseResolve = retrievalPromise.resolve;
-    this.#retrievalPhaseReject = retrievalPromise.reject;
-    this.#retrievalPhasePromise = retrievalPromise.promise;
-    // Attach a no-op error handler to prevent unhandled rejection warnings
-    this.#retrievalPhasePromise.catch(() => {});
-
-    const mutationPromise = Promise.withResolvers<void>();
-    this.#mutationPhaseResolve = mutationPromise.resolve;
-    this.#mutationPhaseReject = mutationPromise.reject;
-    this.#mutationPhasePromise = mutationPromise.promise;
-    // Attach a no-op error handler to prevent unhandled rejection warnings
-    this.#mutationPhasePromise.catch(() => {});
+    this.#retrievalPhaseDeferred.reset();
+    this.#mutationPhaseDeferred.reset();
 
     // Reset child coordination
     this.#coordinator.reset();
@@ -1304,7 +1320,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * Service methods can await this to coordinate multi-phase logic
    */
   get retrievalPhase(): Promise<unknown[]> {
-    return this.#retrievalPhasePromise;
+    return this.#retrievalPhaseDeferred.promise;
   }
 
   /**
@@ -1312,7 +1328,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * Service methods can await this to coordinate multi-phase logic
    */
   get mutationPhase(): Promise<void> {
-    return this.#mutationPhasePromise;
+    return this.#mutationPhaseDeferred.promise;
   }
 
   /**
@@ -1337,7 +1353,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       if (this.#retrievalOps.length === 0) {
         this.#state = "building-mutation";
         const emptyResults: unknown[] = [];
-        this.#retrievalPhaseResolve?.(emptyResults);
+        this.#retrievalPhaseDeferred.resolve(emptyResults);
         return emptyResults;
       }
 
@@ -1354,27 +1370,23 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       if (this.#config?.dryRun) {
         this.#state = "executed";
         const emptyResults: unknown[] = [];
-        this.#retrievalPhaseResolve?.(emptyResults);
+        this.#retrievalPhaseDeferred.resolve(emptyResults);
         return emptyResults;
       }
 
-      // Execute all operations together (ideally in same transaction)
       const rawResults = await this.#executor.executeRetrievalPhase(retrievalBatch);
 
-      // Decode results using single decoder
       const results = this.#decoder(rawResults, this.#retrievalOps);
 
       // Store results and transition to mutation phase
       this.#retrievalResults = results;
       this.#state = "building-mutation";
 
-      // Resolve the retrieval phase promise to unblock waiting service methods
-      this.#retrievalPhaseResolve?.(this.#retrievalResults);
+      this.#retrievalPhaseDeferred.resolve(this.#retrievalResults);
 
       return this.#retrievalResults;
     } catch (error) {
       this.#retrievalError = error instanceof Error ? error : new Error(String(error));
-      this.#retrievalPhaseReject?.(this.#retrievalError);
       throw error;
     }
   }
@@ -1408,7 +1420,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
       if (this.#config?.dryRun) {
         this.#state = "executed";
-        this.#mutationPhaseResolve?.();
+        this.#mutationPhaseDeferred.resolve();
         return {
           success: true,
         };
@@ -1423,14 +1435,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       }
 
       // Resolve the mutation phase promise to unblock waiting service methods
-      this.#mutationPhaseResolve?.();
+      this.#mutationPhaseDeferred.resolve();
 
       return {
         success: result.success,
       };
     } catch (error) {
       this.#mutationError = error instanceof Error ? error : new Error(String(error));
-      this.#mutationPhaseReject?.(this.#mutationError);
       throw error;
     }
   }
@@ -1557,6 +1568,7 @@ export class TypedUnitOfWork<
   #namespace?: string;
   #uow: UnitOfWork<TRawInput>;
   #operationIndices: number[] = [];
+  #cachedRetrievalPhase?: Promise<TRetrievalResults>;
 
   constructor(schema: TSchema, namespace: string | undefined, uow: UnitOfWork<TRawInput>) {
     this.#schema = schema;
@@ -1585,20 +1597,23 @@ export class TypedUnitOfWork<
   }
 
   get retrievalPhase(): Promise<TRetrievalResults> {
-    // Filter parent's results to only include operations from this view
-    return this.#uow.retrievalPhase.then((allResults) => {
-      const allOperations = this.#uow.getRetrievalOperations();
-      const filteredResults = this.#operationIndices.map((opIndex) => {
-        const result = allResults[opIndex];
-        const operation = allOperations[opIndex];
-        // Transform array to single item for findFirst operations
-        if (operation?.type === "find" && operation.withSingleResult) {
-          return Array.isArray(result) ? (result[0] ?? null) : result;
-        }
-        return result;
+    // Cache the filtered promise to avoid recreating it on every access
+    if (!this.#cachedRetrievalPhase) {
+      this.#cachedRetrievalPhase = this.#uow.retrievalPhase.then((allResults) => {
+        const allOperations = this.#uow.getRetrievalOperations();
+        const filteredResults = this.#operationIndices.map((opIndex) => {
+          const result = allResults[opIndex];
+          const operation = allOperations[opIndex];
+          // Transform array to single item for findFirst operations
+          if (operation?.type === "find" && operation.withSingleResult) {
+            return Array.isArray(result) ? (result[0] ?? null) : result;
+          }
+          return result;
+        });
+        return filteredResults as TRetrievalResults;
       });
-      return filteredResults as TRetrievalResults;
-    });
+    }
+    return this.#cachedRetrievalPhase;
   }
 
   get mutationPhase(): Promise<void> {

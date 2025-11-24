@@ -1149,15 +1149,22 @@ describe("Error Handling", () => {
     uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // Start executing (this will fail)
-    const executePromise = uow.executeRetrieve().catch(() => {
-      /* handled */
+    const executePromise = uow.executeRetrieve().catch((e) => {
+      return (e as Error).message;
     });
 
-    // The retrievalPhase promise should also reject
-    await expect(uow.retrievalPhase).rejects.toThrow("Query timeout");
+    uow.retrievalPhase
+      .then(() => {
+        throw new Error("Should not be called");
+      })
+      .catch(() => {
+        throw new Error("Should not be called");
+      });
+
+    // uow.retrievalPhase should not be settled yet
 
     // Wait for execute to complete
-    await executePromise;
+    expect(await executePromise).toBe("Query timeout");
   });
 
   it("should reject mutationPhase promise when executeMutations() fails", async () => {
@@ -1172,15 +1179,19 @@ describe("Error Handling", () => {
     uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
 
     // Start executing (this will fail)
-    const executePromise = uow.executeMutations().catch(() => {
-      /* handled */
+    const executePromise = uow.executeMutations().catch((e) => {
+      return (e as Error).message;
     });
 
-    // The mutationPhase promise should also reject
-    await expect(uow.mutationPhase).rejects.toThrow("Constraint violation");
-
+    uow.mutationPhase
+      .then(() => {
+        throw new Error("Should not be called");
+      })
+      .catch(() => {
+        throw new Error("Should not be called");
+      });
     // Wait for execute to complete
-    await executePromise;
+    expect(await executePromise).toBe("Constraint violation");
   });
 
   it("should not cause unhandled promise rejection when executeRetrieve() fails and coordination promise is not awaited", async () => {

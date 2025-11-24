@@ -118,16 +118,11 @@ export async function generateMigrationsOrSchema<
   let settingsSourceVersion: number;
   try {
     const result = await internalFragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeRetrieve }) => {
-        const uow = forSchema(settingsSchema);
-        const findOp = uow.find(SETTINGS_TABLE_NAME, (b) =>
-          b.whereIndex("unique_key", (eb) => eb("key", "=", `${SETTINGS_NAMESPACE}.version`)),
-        );
-
+      return await this.uow(async ({ executeRetrieve }) => {
+        const v = internalFragment.services.settingsService.get("version");
         await executeRetrieve();
 
-        const [results] = await findOp.retrievalPhase;
-        return results?.[0];
+        return v;
       });
     });
 
