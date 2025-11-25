@@ -13,7 +13,6 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiTodosRouteImport } from './routes/api/todos'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedStripeRouteImport } from './routes/_authenticated/stripe'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
@@ -40,11 +39,6 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiTodosRoute = ApiTodosRouteImport.update({
-  id: '/api/todos',
-  path: '/api/todos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
@@ -97,7 +91,6 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/stripe': typeof AuthenticatedStripeRoute
   '/users': typeof AuthenticatedUsersRoute
-  '/api/todos': typeof ApiTodosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
@@ -111,7 +104,6 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/stripe': typeof AuthenticatedStripeRoute
   '/users': typeof AuthenticatedUsersRoute
-  '/api/todos': typeof ApiTodosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
@@ -127,7 +119,6 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/stripe': typeof AuthenticatedStripeRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
-  '/api/todos': typeof ApiTodosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
@@ -143,7 +134,6 @@ export interface FileRouteTypes {
     | '/profile'
     | '/stripe'
     | '/users'
-    | '/api/todos'
     | '/api/auth/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
@@ -157,7 +147,6 @@ export interface FileRouteTypes {
     | '/profile'
     | '/stripe'
     | '/users'
-    | '/api/todos'
     | '/api/auth/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
@@ -172,7 +161,6 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/stripe'
     | '/_authenticated/users'
-    | '/api/todos'
     | '/api/auth/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
@@ -183,7 +171,6 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
-  ApiTodosRoute: typeof ApiTodosRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiStripeSplatRoute: typeof ApiStripeSplatRoute
   ApiSubscriptionStatusRoute: typeof ApiSubscriptionStatusRoute
@@ -217,13 +204,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/todos': {
-      id: '/api/todos'
-      path: '/api/todos'
-      fullPath: '/api/todos'
-      preLoaderRoute: typeof ApiTodosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/users': {
@@ -310,7 +290,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
-  ApiTodosRoute: ApiTodosRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiStripeSplatRoute: ApiStripeSplatRoute,
   ApiSubscriptionStatusRoute: ApiSubscriptionStatusRoute,

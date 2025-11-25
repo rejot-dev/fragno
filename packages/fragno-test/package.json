@@ -26,7 +26,7 @@
   },
   "peerDependencies": {
     "@electric-sql/pglite": "^0.3.11",
-    "drizzle-kit": "^0.30.3",
+    "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
     "@fragno-dev/core": "workspace:*",
@@ -55,7 +55,7 @@
     "@libsql/client": "^0.14.0",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "drizzle-kit": "^0.30.3",
+    "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4",
