@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@fragno-dev/example-fragment": "workspace:*",
-    "astro": "^5.13.2",
+    "astro": "^5.15.9",
     "typescript": "^5.9.2"
   },
   "devDependencies": {

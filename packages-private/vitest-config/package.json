@@ -23,7 +23,7 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22",
     "@vitest/ui": "^3.2.4",
-    "glob": "^11.0.1",
+    "glob": "^11.1.0",
     "nyc": "^17.1.0",
     "typescript": "^5.9.3"
   }
