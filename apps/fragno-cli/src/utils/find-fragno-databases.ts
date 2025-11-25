@@ -6,13 +6,11 @@ import {
 import type { AnySchema } from "@fragno-dev/db/schema";
 import { instantiatedFragmentFakeSymbol } from "@fragno-dev/core/internal/symbols";
 import { type FragnoInstantiatedFragment } from "@fragno-dev/core";
-import { loadConfig } from "c12";
+import { loadConfig } from "./load-config";
 import { relative } from "node:path";
 
 export async function importFragmentFile(path: string): Promise<Record<string, unknown>> {
-  const { config } = await loadConfig({
-    configFile: path,
-  });
+  const config = await loadConfig(path);
 
   const databases = findFragnoDatabases(config);
   const adapterNames = databases.map(
