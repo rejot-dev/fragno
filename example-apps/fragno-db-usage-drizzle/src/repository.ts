@@ -1,10 +1,10 @@
 import { eq, like, desc, and, sql } from "drizzle-orm";
 import { getDb } from "./database";
 import { user, blogPost } from "./schema/drizzle-schema";
-import { fragno_db_comment_db_schema, fragno_db_rating_db_schema } from "./schema/fragno-schema";
+import { fragno_db_comment_schema, fragno_db_rating_schema } from "./schema/fragno-schema";
 
-const { comment } = fragno_db_comment_db_schema;
-const { upvote_total } = fragno_db_rating_db_schema;
+const { comment } = fragno_db_comment_schema;
+const { upvote_total } = fragno_db_rating_schema;
 
 type User = typeof user.$inferSelect;
 type NewUser = typeof user.$inferInsert;
@@ -191,7 +191,7 @@ export async function findAuthSessionById(sessionId: string) {
  */
 export async function findAuthUsersWithSessions() {
   const db = await getDb();
-  return await db.query.user_simple_auth_db.findMany({
+  return await db.query.user_simple_auth.findMany({
     with: {
       sessionList: {
         orderBy: (session, { desc }) => [desc(session.createdAt)],

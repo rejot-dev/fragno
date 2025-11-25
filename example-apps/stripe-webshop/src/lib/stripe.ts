@@ -1,21 +1,24 @@
 import { createStripeFragment } from "@fragno-dev/stripe";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import { db } from "../db";
-import { user } from "@/db/schema";
+import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { auth } from "@/lib/auth/auth";
-
-// check env
-if (!process.env["STRIPE_SECRET_KEY"]) {
-  throw new Error("STRIPE_SECRET_KEY is not set");
-} else if (!process.env["STRIPE_WEBHOOK_KEY"]) {
-  throw new Error("STRIPE_WEBHOOK_SECRET is not set");
-}
+import { auth } from "./auth/auth";
 
 export const stripeFragment = createStripeFragment(
   {
-    stripeSecretKey: process.env["STRIPE_SECRET_KEY"]!,
-    webhookSecret: process.env["STRIPE_WEBHOOK_KEY"]!,
+    get stripeSecretKey() {
+      // if (!process.env["STRIPE_SECRET_KEY"]) {
+      //   throw new Error("STRIPE_SECRET_KEY is not set");
+      // }
+      return process.env["STRIPE_SECRET_KEY"] ?? "ASD";
+    },
+    get webhookSecret() {
+      // if (!process.env["STRIPE_WEBHOOK_KEY"]) {
+      //   throw new Error("STRIPE_WEBHOOK_KEY is not set");
+      // }
+      return process.env["STRIPE_WEBHOOK_KEY"]!;
+    },
     resolveEntityFromRequest: async ({ headers }) => {
       const session = await auth.api.getSession({ headers });
 

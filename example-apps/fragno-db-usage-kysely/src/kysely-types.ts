@@ -4,9 +4,9 @@ export interface KyselyDatabase {
   user: UserTable;
   blog_post: BlogPostTable;
   fragno_db_settings: FragnoDbSettingsTable;
-  "comment_fragno-db-comment-db": CommentFragnoDbCommentDbTable;
-  "upvote_fragno-db-rating-db": UpvoteFragnoDbRatingDbTable;
-  "upvote_total_fragno-db-rating-db": UpvoteTotalFragnoDbRatingDbTable;
+  "comment_fragno-db-comment": CommentFragnoDbCommentDbTable;
+  "upvote_fragno-db-rating": UpvoteFragnoDbRatingDbTable;
+  "upvote_total_fragno-db-rating": UpvoteTotalFragnoDbRatingDbTable;
 }
 
 export interface UserTable {

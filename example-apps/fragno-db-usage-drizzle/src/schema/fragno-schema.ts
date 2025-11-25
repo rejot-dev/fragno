@@ -17,10 +17,10 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
 ])
 
 // ============================================================================
-// Fragment: fragno-db-comment-db
+// Fragment: fragno-db-comment
 // ============================================================================
 
-export const comment_fragno_db_comment_db = pgTable("comment_fragno_db_comment_db", {
+export const comment_fragno_db_comment = pgTable("comment_fragno_db_comment", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -35,35 +35,35 @@ export const comment_fragno_db_comment_db = pgTable("comment_fragno_db_comment_d
   foreignKey({
     columns: [table.parentId],
     foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent_fragno_db_comment_db"
+    name: "fk_comment_comment_parent_fragno_db_comment"
   }),
-  index("idx_comment_post_fragno-db-comment-db").on(table.postReference)
+  index("idx_comment_post_fragno-db-comment").on(table.postReference)
 ])
 
-export const comment_fragno_db_comment_dbRelations = relations(comment_fragno_db_comment_db, ({ one, many }) => ({
-  parent: one(comment_fragno_db_comment_db, {
+export const comment_fragno_db_commentRelations = relations(comment_fragno_db_comment, ({ one, many }) => ({
+  parent: one(comment_fragno_db_comment, {
     relationName: "comment_comment",
-    fields: [comment_fragno_db_comment_db.parentId],
-    references: [comment_fragno_db_comment_db._internalId]
+    fields: [comment_fragno_db_comment.parentId],
+    references: [comment_fragno_db_comment._internalId]
   }),
-  commentList: many(comment_fragno_db_comment_db, {
+  commentList: many(comment_fragno_db_comment, {
     relationName: "comment_comment"
   })
 }));
 
-export const fragno_db_comment_db_schema = {
-  comment_fragno_db_comment_db: comment_fragno_db_comment_db,
-  comment_fragno_db_comment_dbRelations: comment_fragno_db_comment_dbRelations,
-  comment: comment_fragno_db_comment_db,
-  commentRelations: comment_fragno_db_comment_dbRelations,
+export const fragno_db_comment_schema = {
+  comment_fragno_db_comment: comment_fragno_db_comment,
+  comment_fragno_db_commentRelations: comment_fragno_db_commentRelations,
+  comment: comment_fragno_db_comment,
+  commentRelations: comment_fragno_db_commentRelations,
   schemaVersion: 3
 }
 
 // ============================================================================
-// Fragment: fragno-db-rating-db
+// Fragment: fragno-db-rating
 // ============================================================================
 
-export const upvote_fragno_db_rating_db = pgTable("upvote_fragno_db_rating_db", {
+export const upvote_fragno_db_rating = pgTable("upvote_fragno_db_rating", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
@@ -73,32 +73,32 @@ export const upvote_fragno_db_rating_db = pgTable("upvote_fragno_db_rating_db", 
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  index("idx_upvote_reference_fragno-db-rating-db").on(table.reference, table.ownerReference)
+  index("idx_upvote_reference_fragno-db-rating").on(table.reference, table.ownerReference)
 ])
 
-export const upvote_total_fragno_db_rating_db = pgTable("upvote_total_fragno_db_rating_db", {
+export const upvote_total_fragno_db_rating = pgTable("upvote_total_fragno_db_rating", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: integer("total").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("idx_upvote_total_reference_fragno-db-rating-db").on(table.reference)
+  uniqueIndex("idx_upvote_total_reference_fragno-db-rating").on(table.reference)
 ])
 
-export const fragno_db_rating_db_schema = {
-  upvote_fragno_db_rating_db: upvote_fragno_db_rating_db,
-  upvote: upvote_fragno_db_rating_db,
-  upvote_total_fragno_db_rating_db: upvote_total_fragno_db_rating_db,
-  upvote_total: upvote_total_fragno_db_rating_db,
+export const fragno_db_rating_schema = {
+  upvote_fragno_db_rating: upvote_fragno_db_rating,
+  upvote: upvote_fragno_db_rating,
+  upvote_total_fragno_db_rating: upvote_total_fragno_db_rating,
+  upvote_total: upvote_total_fragno_db_rating,
   schemaVersion: 2
 }
 
 // ============================================================================
-// Fragment: simple-auth-db
+// Fragment: simple-auth
 // ============================================================================
 
-export const user_simple_auth_db = pgTable("user_simple_auth_db", {
+export const user_simple_auth = pgTable("user_simple_auth", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   email: text("email").notNull(),
   passwordHash: text("passwordHash").notNull(),
@@ -106,10 +106,10 @@ export const user_simple_auth_db = pgTable("user_simple_auth_db", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  index("idx_user_email_simple-auth-db").on(table.email)
+  index("idx_user_email_simple-auth").on(table.email)
 ])
 
-export const session_simple_auth_db = pgTable("session_simple_auth_db", {
+export const session_simple_auth = pgTable("session_simple_auth", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
@@ -119,34 +119,34 @@ export const session_simple_auth_db = pgTable("session_simple_auth_db", {
 }, (table) => [
   foreignKey({
     columns: [table.userId],
-    foreignColumns: [user_simple_auth_db._internalId],
-    name: "fk_session_user_sessionOwner_simple_auth_db"
+    foreignColumns: [user_simple_auth._internalId],
+    name: "fk_session_user_sessionOwner_simple_auth"
   }),
-  index("idx_session_user_simple-auth-db").on(table.userId)
+  index("idx_session_user_simple-auth").on(table.userId)
 ])
 
-export const user_simple_auth_dbRelations = relations(user_simple_auth_db, ({ many }) => ({
-  sessionList: many(session_simple_auth_db, {
+export const user_simple_authRelations = relations(user_simple_auth, ({ many }) => ({
+  sessionList: many(session_simple_auth, {
     relationName: "session_user"
   })
 }));
 
-export const session_simple_auth_dbRelations = relations(session_simple_auth_db, ({ one }) => ({
-  sessionOwner: one(user_simple_auth_db, {
+export const session_simple_authRelations = relations(session_simple_auth, ({ one }) => ({
+  sessionOwner: one(user_simple_auth, {
     relationName: "session_user",
-    fields: [session_simple_auth_db.userId],
-    references: [user_simple_auth_db._internalId]
+    fields: [session_simple_auth.userId],
+    references: [user_simple_auth._internalId]
   })
 }));
 
-export const simple_auth_db_schema = {
-  user_simple_auth_db: user_simple_auth_db,
-  user_simple_auth_dbRelations: user_simple_auth_dbRelations,
-  user: user_simple_auth_db,
-  userRelations: user_simple_auth_dbRelations,
-  session_simple_auth_db: session_simple_auth_db,
-  session_simple_auth_dbRelations: session_simple_auth_dbRelations,
-  session: session_simple_auth_db,
-  sessionRelations: session_simple_auth_dbRelations,
+export const simple_auth_schema = {
+  user_simple_auth: user_simple_auth,
+  user_simple_authRelations: user_simple_authRelations,
+  user: user_simple_auth,
+  userRelations: user_simple_authRelations,
+  session_simple_auth: session_simple_auth,
+  session_simple_authRelations: session_simple_authRelations,
+  session: session_simple_auth,
+  sessionRelations: session_simple_authRelations,
   schemaVersion: 3
 }

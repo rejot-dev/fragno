@@ -165,6 +165,7 @@ export function findFragnoDatabases(
       }
 
       const schema = deps["schema"] as AnySchema;
+      const namespace = deps["namespace"] as string;
       const databaseAdapter = options["databaseAdapter"] as DatabaseAdapter | undefined;
 
       if (!databaseAdapter) {
@@ -173,9 +174,6 @@ export function findFragnoDatabases(
         );
         continue;
       }
-
-      // Derive namespace from fragment name (follows convention: fragmentName + "-db")
-      const namespace = value.name + "-db";
 
       fragnoDatabases.push(
         new FragnoDatabase({

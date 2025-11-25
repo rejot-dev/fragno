@@ -2,7 +2,7 @@ import { pgTable, varchar, text, bigserial, integer, uniqueIndex, timestamp, boo
 import { createId } from "@fragno-dev/db/id"
 
 // ============================================================================
-// Settings Table (shared across all fragments)
+// Fragment: 
 // ============================================================================
 
 export const fragno_db_settings = pgTable("fragno_db_settings", {
@@ -14,8 +14,6 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
 }, (table) => [
   uniqueIndex("unique_key").on(table.key)
 ])
-
-export const fragnoDbSettingSchemaVersion = 1;
 
 // ============================================================================
 // Fragment: stripe

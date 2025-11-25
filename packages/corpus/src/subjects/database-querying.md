@@ -39,7 +39,7 @@ type UserSchema = typeof userSchema;
 
 ```typescript @fragno-test-init
 // Create a test fragment with database
-const testFragmentDef = defineFragment<{}>("test-db-fragment")
+const testFragmentDef = defineFragment<{}>("test-fragment")
   .extend(withDatabase(userSchema))
   .providesBaseService(() => ({}))
   .build();

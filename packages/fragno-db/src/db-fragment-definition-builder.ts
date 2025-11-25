@@ -200,7 +200,7 @@ export class DatabaseFragmentDefinitionBuilder<
   ) {
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
-    this.#namespace = namespace ?? baseBuilder.name + "-db";
+    this.#namespace = namespace ?? baseBuilder.name;
   }
 
   /**

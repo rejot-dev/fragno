@@ -301,9 +301,9 @@ export class DatabaseFragmentsTestBuilder<
       const builder = fragmentConfig.builder;
       const definition = builder.definition;
 
-      // Extract schema from definition by calling dependencies with a mock adapter
+      // Extract schema and namespace from definition by calling dependencies with a mock adapter
       let schema: AnySchema | undefined;
-      const namespace = definition.name + "-db";
+      let namespace: string | undefined;
 
       if (definition.dependencies) {
         try {
@@ -324,9 +324,10 @@ export class DatabaseFragmentsTestBuilder<
             } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
           });
 
-          // The schema is in deps.schema for database fragments
+          // The schema and namespace are in deps for database fragments
           if (deps && typeof deps === "object" && "schema" in deps) {
             schema = (deps as any).schema; // eslint-disable-line @typescript-eslint/no-explicit-any
+            namespace = (deps as any).namespace; // eslint-disable-line @typescript-eslint/no-explicit-any
           }
         } catch (error) {
           // If extraction fails, provide a helpful error message
@@ -349,6 +350,13 @@ export class DatabaseFragmentsTestBuilder<
         throw new Error(
           `Fragment '${definition.name}' does not have a database schema. ` +
             `Make sure you're using defineFragment().extend(withDatabase(schema)).`,
+        );
+      }
+
+      if (!namespace) {
+        throw new Error(
+          `Fragment '${definition.name}' does not have a namespace in dependencies. ` +
+            `This should be automatically provided by withDatabase().`,
         );
       }
 
