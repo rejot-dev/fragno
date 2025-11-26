@@ -8,15 +8,15 @@ import { auth } from "./auth/auth";
 export const stripeFragment = createStripeFragment(
   {
     get stripeSecretKey() {
-      // if (!process.env["STRIPE_SECRET_KEY"]) {
-      //   throw new Error("STRIPE_SECRET_KEY is not set");
-      // }
-      return process.env["STRIPE_SECRET_KEY"] ?? "ASD";
+      if (!process.env["STRIPE_SECRET_KEY"]) {
+        throw new Error("STRIPE_SECRET_KEY is not set");
+      }
+      return process.env["STRIPE_SECRET_KEY"]!;
     },
     get webhookSecret() {
-      // if (!process.env["STRIPE_WEBHOOK_KEY"]) {
-      //   throw new Error("STRIPE_WEBHOOK_KEY is not set");
-      // }
+      if (!process.env["STRIPE_WEBHOOK_KEY"]) {
+        throw new Error("STRIPE_WEBHOOK_KEY is not set");
+      }
       return process.env["STRIPE_WEBHOOK_KEY"]!;
     },
     resolveEntityFromRequest: async ({ headers }) => {

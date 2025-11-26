@@ -616,6 +616,18 @@ export class FragnoInstantiatedFragment<
 }
 
 /**
+ * Options for fragment instantiation.
+ */
+export interface InstantiationOptions {
+  /**
+   * If true, catches errors during initialization and returns stub implementations.
+   * This is useful for CLI tools that need to extract metadata (like database schemas)
+   * without requiring all dependencies to be fully initialized.
+   */
+  dryRun?: boolean;
+}
+
+/**
  * Core instantiation function that creates a fragment instance from a definition.
  * This function validates dependencies, calls all callbacks, and wires everything together.
  */
@@ -650,6 +662,7 @@ export function instantiateFragment<
   routesOrFactories: TRoutesOrFactories,
   options: TOptions,
   serviceImplementations?: TServiceDependencies,
+  instantiationOptions?: InstantiationOptions,
 ): FragnoInstantiatedFragment<
   FlattenRouteFactories<TRoutesOrFactories>,
   TDeps,
@@ -660,6 +673,8 @@ export function instantiateFragment<
   TOptions,
   TLinkedFragments
 > {
+  const { dryRun = false } = instantiationOptions ?? {};
+
   // 1. Validate service dependencies
   const serviceDependencies = definition.serviceDependencies;
   if (serviceDependencies) {
@@ -675,7 +690,21 @@ export function instantiateFragment<
   }
 
   // 2. Call dependencies callback
-  const deps = definition.dependencies?.({ config, options }) ?? ({} as TDeps);
+  let deps: TDeps;
+  try {
+    deps = definition.dependencies?.({ config, options }) ?? ({} as TDeps);
+  } catch (error) {
+    if (dryRun) {
+      console.warn(
+        "Warning: Failed to initialize dependencies in dry run mode:",
+        error instanceof Error ? error.message : String(error),
+      );
+      // Return empty deps - database fragments will add implicit deps later
+      deps = {} as TDeps;
+    } else {
+      throw error;
+    }
+  }
 
   // 3. Instantiate linked fragments FIRST (before any services)
   // Their services will be merged into private services
@@ -717,27 +746,53 @@ export function instantiateFragment<
         privateServices: TPrivateServices;
         defineService: <T>(svc: T & ThisType<TServiceThisContext>) => T;
       }) => unknown;
-      (privateServices as Record<string, unknown>)[serviceName] = serviceFactory({
-        config,
-        options,
-        deps,
-        serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
-        privateServices, // Pass the current state of private services (earlier ones are available)
-        defineService,
-      });
+
+      try {
+        (privateServices as Record<string, unknown>)[serviceName] = serviceFactory({
+          config,
+          options,
+          deps,
+          serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
+          privateServices, // Pass the current state of private services (earlier ones are available)
+          defineService,
+        });
+      } catch (error) {
+        if (dryRun) {
+          console.warn(
+            `Warning: Failed to initialize private service '${serviceName}' in dry run mode:`,
+            error instanceof Error ? error.message : String(error),
+          );
+          (privateServices as Record<string, unknown>)[serviceName] = {};
+        } else {
+          throw error;
+        }
+      }
     }
   }
 
   // 5. Call baseServices callback (with access to private services including linked fragment services)
-  const baseServices =
-    definition.baseServices?.({
-      config,
-      options,
-      deps,
-      serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
-      privateServices,
-      defineService,
-    }) ?? ({} as TBaseServices);
+  let baseServices: TBaseServices;
+  try {
+    baseServices =
+      definition.baseServices?.({
+        config,
+        options,
+        deps,
+        serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
+        privateServices,
+        defineService,
+      }) ?? ({} as TBaseServices);
+  } catch (error) {
+    if (dryRun) {
+      console.warn(
+        "Warning: Failed to initialize base services in dry run mode:",
+        error instanceof Error ? error.message : String(error),
+      );
+      baseServices = {} as TBaseServices;
+    } else {
+      throw error;
+    }
+  }
 
   // 6. Call namedServices factories (with access to private services including linked fragment services)
   const namedServices = {} as TServices;
@@ -751,14 +806,27 @@ export function instantiateFragment<
         privateServices: TPrivateServices;
         defineService: <T>(svc: T & ThisType<TServiceThisContext>) => T;
       }) => unknown;
-      (namedServices as Record<string, unknown>)[serviceName] = serviceFactory({
-        config,
-        options,
-        deps,
-        serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
-        privateServices,
-        defineService,
-      });
+
+      try {
+        (namedServices as Record<string, unknown>)[serviceName] = serviceFactory({
+          config,
+          options,
+          deps,
+          serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
+          privateServices,
+          defineService,
+        });
+      } catch (error) {
+        if (dryRun) {
+          console.warn(
+            `Warning: Failed to initialize service '${serviceName}' in dry run mode:`,
+            error instanceof Error ? error.message : String(error),
+          );
+          (namedServices as Record<string, unknown>)[serviceName] = {};
+        } else {
+          throw error;
+        }
+      }
     }
   }
 
@@ -987,12 +1055,16 @@ export class FragmentInstantiationBuilder<
     TOptions,
     TLinkedFragments
   > {
+    // This variable is set by the frango-cli when extracting database schemas
+    const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
+
     return instantiateFragment(
       this.#definition,
       this.#config ?? ({} as TConfig),
       this.#routes ?? ([] as const as unknown as TRoutesOrFactories),
       this.#options ?? ({} as TOptions),
       this.#services,
+      { dryRun },
     );
   }
 }

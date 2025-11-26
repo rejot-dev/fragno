@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-definition-builder";
-import { instantiate, FragnoInstantiatedFragment } from "./fragment-instantiator";
+import {
+  instantiate,
+  instantiateFragment,
+  FragnoInstantiatedFragment,
+} from "./fragment-instantiator";
 import { defineRoute, defineRoutes, type AnyFragmentDefinition } from "./route";
 import type { FragnoPublicConfig } from "./shared-types";
 import type { RequestThisContext } from "./api";
@@ -1483,6 +1487,144 @@ describe("fragment-instantiator", () => {
       expect(response.status).toBe(500);
       const data = await response.json();
       expect(data.code).toBe("INTERNAL_SERVER_ERROR");
+    });
+  });
+
+  describe("dry run mode", () => {
+    it("should handle dependency errors in dry run mode", () => {
+      interface Config {
+        requiredKey: string;
+      }
+
+      const definition = defineFragment<Config>("test-fragment")
+        .withDependencies(({ config }) => {
+          if (!config.requiredKey) {
+            throw new Error("Missing required key");
+          }
+          return { key: config.requiredKey };
+        })
+        .build();
+
+      // Without dry run - should throw
+      expect(() => {
+        instantiateFragment(definition, {} as Config, [], {});
+      }).toThrow("Missing required key");
+
+      // With dry run - should succeed with stub deps
+      const fragment = instantiateFragment(definition, {} as Config, [], {}, undefined, {
+        dryRun: true,
+      });
+
+      expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
+      expect(fragment.$internal.deps).toEqual({});
+    });
+
+    it("should handle service errors in dry run mode", () => {
+      interface Config {
+        value: string;
+      }
+
+      const definition = defineFragment<Config>("test-fragment")
+        .withDependencies(({ config }) => {
+          if (!config.value) {
+            throw new Error("Missing value");
+          }
+          return { val: config.value };
+        })
+        .providesBaseService(({ deps }) => {
+          if (!deps.val) {
+            throw new Error("Missing deps.val");
+          }
+          return {
+            getValue: () => deps.val,
+          };
+        })
+        .build();
+
+      // Without dry run - should throw during deps initialization
+      expect(() => {
+        instantiateFragment(definition, {} as Config, [], {});
+      }).toThrow("Missing value");
+
+      // With dry run - should succeed with stub services
+      const fragment = instantiateFragment(definition, {} as Config, [], {}, undefined, {
+        dryRun: true,
+      });
+
+      expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
+      // Services should be empty objects in dry run
+      expect(fragment.services).toBeDefined();
+    });
+
+    it("should handle named service errors in dry run mode", () => {
+      interface Config {
+        apiKey: string;
+      }
+
+      const definition = defineFragment<Config>("test-fragment")
+        .withDependencies(({ config }) => {
+          if (!config.apiKey) {
+            throw new Error("Missing API key");
+          }
+          return { key: config.apiKey };
+        })
+        .providesService("apiService", ({ deps }) => {
+          if (!deps.key) {
+            throw new Error("Cannot create service without key");
+          }
+          return {
+            call: () => `Calling with ${deps.key}`,
+          };
+        })
+        .build();
+
+      const fragment = instantiateFragment(definition, {} as Config, [], {}, undefined, {
+        dryRun: true,
+      });
+
+      expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
+      expect(fragment.services.apiService).toBeDefined();
+      expect(fragment.services.apiService).toEqual({});
+    });
+
+    it("should handle private service errors in dry run mode", () => {
+      interface Config {
+        secret: string;
+      }
+
+      const definition = defineFragment<Config>("test-fragment")
+        .withDependencies(({ config }) => {
+          if (!config.secret) {
+            throw new Error("Missing secret");
+          }
+          return { secret: config.secret };
+        })
+        .build();
+
+      const fragment = instantiateFragment(definition, {} as Config, [], {}, undefined, {
+        dryRun: true,
+      });
+
+      expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
+    });
+
+    it("should not catch errors when dry run is disabled", () => {
+      interface Config {
+        key: string;
+      }
+
+      const definition = defineFragment<Config>("test-fragment")
+        .withDependencies(({ config }) => {
+          if (!config.key) {
+            throw new Error("Missing key");
+          }
+          return { key: config.key };
+        })
+        .build();
+
+      expect(() => {
+        instantiateFragment(definition, {} as Config, [], {}, undefined, { dryRun: false });
+      }).toThrow("Missing key");
     });
   });
 });

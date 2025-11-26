@@ -9,7 +9,7 @@
     "test": "vitest run --passWithNoTests",
     "types:check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "fragno:generate": "fragno-cli db generate src/lib/stripe.ts -o src/db/subscriptions.schema.ts",
+    "db:fragno:generate": "fragno-cli db generate src/lib/stripe.ts -o src/db/subscriptions.schema.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:pull": "drizzle-kit pull",

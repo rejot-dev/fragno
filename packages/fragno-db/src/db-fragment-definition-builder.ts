@@ -385,7 +385,26 @@ export class DatabaseFragmentDefinitionBuilder<
       options: FragnoPublicConfigWithDatabase;
     }): TDeps => {
       const baseDef = this.#baseBuilder.build();
-      const userDeps = baseDef.dependencies?.(context);
+
+      // In dry run mode, allow user deps to fail gracefully.
+      // This is critical for database fragments because the CLI needs access to the schema
+      // even when user dependencies (like API clients) can't be initialized.
+      // Without this, if user deps fail, we'd lose the implicit database dependencies
+      // (including schema), and the CLI couldn't extract schema information.
+      let userDeps;
+      try {
+        userDeps = baseDef.dependencies?.(context);
+      } catch (error) {
+        if (process.env["FRAGNO_INIT_DRY_RUN"] === "true") {
+          console.warn(
+            "Warning: Failed to initialize user dependencies in dry run mode:",
+            error instanceof Error ? error.message : String(error),
+          );
+          userDeps = {};
+        } else {
+          throw error;
+        }
+      }
 
       const { db } = createDatabaseContext(context.options, this.#schema, this.#namespace);
 

@@ -10,26 +10,34 @@ import { loadConfig } from "./load-config";
 import { relative } from "node:path";
 
 export async function importFragmentFile(path: string): Promise<Record<string, unknown>> {
-  const config = await loadConfig(path);
+  // Enable dry run mode for database schema extraction
+  process.env["FRAGNO_INIT_DRY_RUN"] = "true";
 
-  const databases = findFragnoDatabases(config);
-  const adapterNames = databases.map(
-    (db) =>
-      `${db.adapter[fragnoDatabaseAdapterNameFakeSymbol]}@${db.adapter[fragnoDatabaseAdapterVersionFakeSymbol]}`,
-  );
-  const uniqueAdapterNames = [...new Set(adapterNames)];
+  try {
+    const config = await loadConfig(path);
 
-  if (uniqueAdapterNames.length > 1) {
-    throw new Error(
-      `All Fragno databases must use the same adapter name and version. ` +
-        `Found mismatch: (${adapterNames.join(", ")})`,
+    const databases = findFragnoDatabases(config);
+    const adapterNames = databases.map(
+      (db) =>
+        `${db.adapter[fragnoDatabaseAdapterNameFakeSymbol]}@${db.adapter[fragnoDatabaseAdapterVersionFakeSymbol]}`,
     );
-  }
+    const uniqueAdapterNames = [...new Set(adapterNames)];
 
-  return {
-    adapter: databases[0].adapter,
-    databases,
-  };
+    if (uniqueAdapterNames.length > 1) {
+      throw new Error(
+        `All Fragno databases must use the same adapter name and version. ` +
+          `Found mismatch: (${adapterNames.join(", ")})`,
+      );
+    }
+
+    return {
+      adapter: databases[0].adapter,
+      databases,
+    };
+  } finally {
+    // Clean up after loading
+    delete process.env["FRAGNO_INIT_DRY_RUN"];
+  }
 }
 
 /**
