@@ -1,194 +1,123 @@
-# Fragno
+<p align="center">
+  <img src="./assets/stripe-integration.png" alt="Stripe integration example" width="600" />
+</p>
 
-Fragno is the <ins>fr</ins>amework-<ins>agno</ins>stic toolkit for building full-stack TypeScript
-libraries that work seamlessly across different frameworks such as Next.js, Nuxt, and
-[way more](https://fragno.dev/docs/fragno/reference/frameworks).
+# Fragno - Build Full-Stack Libraries
 
-With Fragno:
+Fragno is a meta framework for building full-stack TypeScript libraries that work across frameworks
+like Next.js, Nuxt, React Router, SvelteKit, and more.
 
-- **Library authors** write API routes and client-side hooks as part of their library.
-- **Users** integrate a library into their application in a couple lines of code. They can then
-  immediately use library functionality from both the frontend and the backend.
+This is for:
 
-A library built with Fragno is called a **Fragment**.
+- **Library authors** ship full-stack libraries with routes, client hooks, and optional data layer.
+- **Users** integrate a Fragno library into their app with a few lines of code and get type-safe
+  usage from both frontend and backend. The data layer integrate with their ORM.
 
-## Fragments
+Full documentation lives at [fragno.dev](https://fragno.dev/docs).
 
-A **Fragment** is a full-stack **library** that:
+The docs reflect this split:
 
-- Contains both server-side API logic and client-side integration code
-- Works across multiple frameworks (React, Vue, Next.js, Nuxt,
-  [etc.](https://fragno.dev/docs/fragno/reference/frameworks))
-- Provides end-to-end functionality: type-safe & reactive
+- **For library authors**:
+  [Library author docs](https://fragno.dev/docs/fragno/for-library-authors/getting-started)
+- **For users**: [User Quick Start](https://fragno.dev/docs/fragno/user-quick-start)
 
-## Quick Start
+## Example use cases
 
-Start building a full-stack library:
+- **Client libraries / SDKs** – e.g. a client library integrating with a payment provider that ships
+  backend handlers (including webhooks), database schemas, and frontend hooks/components in one
+  package. So users don't need to know the implementation details of the payment provider.
+- **Full-stack product features** – opinionated packages that own backend, frontend, and data layer
+  together, like authentication (Better Auth–style), feature flags, or form builders, where today
+  you’d usually glue several separate tools together. Apps where directly storing data in the user's
+  database is a superpower.
+
+## Quick start (users integrating a Fragno library)
+
+Use this if you are integrating an existing Fragno library like `@fragno-dev/example-fragment`.
 
 ```bash
-npm install @fragno-dev/core
+npm install @fragno-dev/example-fragment
 # or
-pnpm add @fragno-dev/core
+pnpm add @fragno-dev/example-fragment
 ```
 
-Full documentation is available at [fragno.dev](https://fragno.dev/docs).
+### 1. Mount the backend routes (example: Next.js)
 
-- If you're looking to build a Fragment, see the
-  [For Library Authors](https://fragno.dev/docs/fragno/for-library-authors/getting-started) section.
-- If you're looking to integrate a Fragment into your project, see the
-  [User Quick Start](https://fragno.dev/docs/user-quick-start) section.
-
-## Features
-
-- 🔐 **End-to-end type safety**: routes are typed using Standard Schema and client-side hooks are
-  fully type-safe
-- 🚀 **Built-in state management**: reactive stores with caching built in (TanStack Query-style),
-  using [Nano Stores](https://github.com/nanostores/nanostores)
-- 🔄 **Middleware support**: Users can use middleware for custom request processing such as
-  authentication.
-- 🌊 **Streaming support**: Real-time data with NDJSON (New-line Delimited JSON) streaming
-- 📦 **Automatic code splitting**: code is split on the library level, no added build complexity for
-  end-users.
-
-## Usage
-
-### NextJS / Backend
-
-As a user of a Fragment (library built w/ Fragno), you integrate with only a couple of lines of
-code.
-
-```typescript app/api/example-fragment/[...all]/route.ts
+```ts
 // app/api/example-fragment/[...all]/route.ts
-import { createExampleFragment } from "@fragno-dev/example-fragment";
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
 
-const exampleFragment = createExampleFragment({});
+const exampleFragment = createExampleFragmentInstance();
 export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("next-js");
 ```
 
-Similar patterns apply for other frameworks as well.
+### 2. Use the client hooks (example: React)
 
-### React / Client
+```tsx
+// components/ExampleComponent.tsx
+import { exampleFragment } from "@/lib/example-fragment-client";
 
-On the frontend, the user gets fully-typed TanStack Query-style hooks.
+export function ExampleComponent() {
+  const { data, loading } = exampleFragment.useData();
 
-```typescript
-// src/app/my-component.tsx
-import { createExampleFragmentClient } from "@fragno-dev/example-fragment/react";
-const { useTodos, useAddTodo } = createExampleFragmentClient();
+  if (loading) {
+    return <div>Loading...</div>;
+  }
 
-export default function MyComponent() {
-  const { data: todos, loading: todosLoading } = useTodos();
-  const { mutate: addTodo, loading: addTodoLoading } = useAddTodo();
-
-  return (
-    <div>
-      {todos?.map(todo => (
-        <div key={todo.id}>{todo.text}</div>
-      ))}
-      <button onClick={() => addTodo({ body: { text: "New todo" } })} disabled={addTodoLoading}>
-        {addTodoLoading ? "Adding..." : "Add Todo"}
-      </button>
-    </div>
-  );
+  return <div>{data}</div>;
 }
 ```
 
-## Fragment Development Quick Start
+For full, framework-specific instructions (Nuxt, React Router, Astro, SvelteKit, SolidStart, Hono,
+Express, Node, Vue, Vanilla JS, etc.), see the
+[User Quick Start](https://fragno.dev/docs/fragno/user-quick-start).
 
-A Fragment is a full-stack library that works across different frameworks.
+## Quick start (library authors)
 
-## Installation
+Use this if you are building a Fragno library (a full-stack library) yourself.
 
 ```bash
-# Create from template
+# Create a new Fragno library from a template
 npm create fragno@latest
 # or
 pnpm create fragno@latest
 
-# Add to existing package
+# Or add Fragno to an existing package
 npm install @fragno-dev/core
 # or
 pnpm add @fragno-dev/core
 ```
 
-### 1. Create a Fragment (Library)
+At a high level you:
 
-```typescript
-// my-fragment/index.ts
-import { defineFragment, defineRoute, createFragment } from "@fragno-dev/core";
-import { createClientBuilder } from "@fragno-dev/core/client";
-import { z } from "zod";
-import OpenAI from "openai";
+1. **Define a library** (its config and dependencies).
+2. **Define routes** using `defineRoute`.
+3. **Create a library instance** with `createFragment`.
+4. **Create client hooks** with `createClientBuilder`.
 
-export interface FragmentConfig {
-  // Any arguments the Fragment's user will have to pass. Could be callback methods, AI model, etc.
-  openaiApiKey: string;
-  onTodoCreated?: (todo: { id: string; text: string; done: boolean }) => void;
-}
+The full walkthrough is in the
+[Library Author docs](https://fragno.dev/docs/fragno/for-library-authors/getting-started).
 
-// Define your fragment
-const todosDefinition = defineFragment<FragmentConfig>("example-fragment").withDependencies(
-  (config: FragmentConfig) => {
-    return {
-      openaiClient: new OpenAI({
-        apiKey: config.openaiApiKey,
-      }),
-    };
-  },
-);
+## Features
 
-// Define routes
-const getTodosRoute = defineRoute({
-  method: "GET",
-  path: "/todos",
-  // Accepts any StandardSchema object
-  outputSchema: z.array(
-    z.object({
-      id: z.string(),
-      text: z.string(),
-      done: z.boolean(),
-    }),
-  ),
-  handler: async (_, { json }) => {
-    return json([]);
-  },
-});
+- **End-to-end type safety**: Standard Schema-compatible route typing and fully type-safe client
+  hooks.
+- **Built-in frontend state management**: reactive stores with caching and invalidation (TanStack
+  Query-style) via [Nano Stores](https://github.com/nanostores/nanostores).
+- **Optional data layer**: type-safe database layer with schema generation and adapters for common
+  ORMs.
+- **Middleware support**: users can plug in authentication, rate limiting, and other cross-cutting
+  concerns.
+- **Streaming support**: NDJSON (newline-delimited JSON) streaming for real-time use cases.
+- **Automatic code splitting**: library-level splitting via `@fragno-dev/unplugin-fragno`, no extra
+  build complexity for end users.
 
-const addTodoRoute = defineRoute({
-  method: "POST",
-  path: "/todos",
-  inputSchema: z.object({ text: z.string() }),
-  outputSchema: z.object({
-    id: z.string(),
-    text: z.string(),
-    done: z.boolean(),
-  }),
-  handler: async ({ input }, { json }) => {
-    const { text } = await input.valid();
-    const todo = { id: crypto.randomUUID(), text, done: false };
-    return json(todo);
-  },
-});
+## Framework and database support
 
-// Export server creator
-export function createTodos(serverConfig: FragmentConfig = {}, fragnoConfig = {}) {
-  return createFragment(todosDefinition, serverConfig, [getTodosRoute, addTodoRoute], fragnoConfig);
-}
+Fragno focuses on a small, framework-agnostic surface (standard `Request`/`Response`) and provides
+adapters for many environments.
 
-// Export type-safe client creator
-export function createTodosClient(fragnoConfig = {}) {
-  const builder = createClientBuilder(todosDefinition, fragnoConfig, [getTodosRoute, addTodoRoute]);
-
-  return {
-    useTodos: builder.createHook("/todos"),
-    useAddTodo: builder.createMutator("POST", "/todos"),
-  };
-}
-```
-
-## Framework Support Matrix
-
-| Client-side Frameworks | Support | —   | Server-side Frameworks  | Support |
+| Client-side frameworks | Support | —   | Server-side frameworks  | Support |
 | ---------------------- | ------- | --- | ----------------------- | ------- |
 | React                  | ✅      |     | Node.js / Express       | ✅      |
 | Vue                    | ✅      |     | React Router v7 / Remix | ✅      |
@@ -200,18 +129,25 @@ export function createTodosClient(fragnoConfig = {}) {
 |                        |         |     | TanStack Start          | ✅      |
 
 See the [Framework Support](https://fragno.dev/docs/fragno/reference/frameworks) page for the full
-list of supported frameworks.
+and up-to-date list, including database adapter support.
+
+Supported ORMs are Kysely and Drizzle, with Postgres and SQLite. This includes PGLite and Cloudflare
+Durable Objects.
 
 ## Examples
 
-The `example-apps` directory contains complete examples of how to use Fragno with different
-frameworks (React Router, Next.js, Nuxt, Astro, etc.).
+This repo ships complete examples and sample libraries:
 
-There are also two examples showing the implementation of a Fragment (Fragno Library):
-
-- `example-fragments/example-fragment` - Minimal fragment example
-- `example-fragments/chatno` - Example fragment with OpenAI integration. Shows usage of config,
-  dependencies, streaming, and advanced client-side state management.
+- `example-fragments/stripe` – A featureful Stripe integration library that manages subscriptions
+  and customers. It uses the data layer and to consume webhooks from Stripe and write them to the
+  user's database. See the [Stripe Quick Start](https://fragno.dev/docs/stripe/quickstart) for more
+  details.
+- `example-fragments/example-fragment` – minimal Fragno library example.
+- `example-apps/*` – full application examples (React Router, Next.js, Nuxt, Astro, SvelteKit,
+  SolidStart, Vue SPA, etc.).
+- `examples-apps/stripe-webshop` and `packages/stripe` – Stripe subscription library and example
+  app, as described in
+  ["Solving Split Brain Integrations"](https://fragno.dev/docs/blog/split-brain-stripe).
 
 ## Contributing
 
@@ -219,3 +155,12 @@ Fragno is an open source project. We welcome contributions! Fragno is licensed u
 License. See the [LICENSE](LICENSE.md) file for details.
 
 See the [CONTRIBUTING](CONTRIBUTING.md) file for details.
+
+## Post Scriptum
+
+If you want more background on why Fragno exists and how we think about full-stack libraries:
+
+- ["The case for full-stack libraries"](https://fragno.dev/docs/blog/fragno-introduction)
+- ["Solving Split Brain Integrations"](https://fragno.dev/docs/blog/split-brain-stripe)
+
+Don't forget to give us a star ⭐️
