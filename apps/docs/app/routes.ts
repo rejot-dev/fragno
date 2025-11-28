@@ -12,6 +12,9 @@ export default [
 
   route("docs/*", "routes/docs/docs-page.tsx"),
 
+  route("code-preview", "routes/code-preview/code-preview-page.tsx"),
+  route("og-image", "routes/og-image/og-image-page.tsx"),
+
   ...prefix("api", [
     route("search", "routes/api/search.ts"),
     route("markdown/*", "routes/api/markdown.ts"),
