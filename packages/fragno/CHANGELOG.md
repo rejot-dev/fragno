@@ -1,5 +1,13 @@
 # @fragno-dev/core
 
+## 0.1.11
+
+### Patch Changes
+
+- bc072dd: fix: export StandardSchema interface
+- fcce048: feat: use "dry run" mode when searching for database schemas to be more lenient when
+  instantiating a Fragment
+
 ## 0.1.10
 
 ### Patch Changes
