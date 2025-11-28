@@ -1,9 +1,0 @@
-{
-  "pages": [
-    "route-definition",
-    "dependencies-and-services",
-    "client-state-management",
-    "code-splitting"
-  ],
-  "defaultOpen": true
-}
