@@ -5,7 +5,7 @@
     "url": "https://github.com/rejot-dev/fragno.git"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.7",
+    "@changesets/cli": "^2.29.8",
     "@nanostores/query": "^0.3.4",
     "lefthook": "^1.13.6",
     "nanostores": "^1.1.0",

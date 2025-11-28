@@ -1,5 +1,11 @@
 # @fragno-dev/corpus
 
+## 0.0.7
+
+### Patch Changes
+
+- f9ae2d3: fix: database namespace generation
+
 ## 0.0.6
 
 ### Patch Changes
