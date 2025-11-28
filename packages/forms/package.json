@@ -1,0 +1,98 @@
+{
+  "description": "Form builder fragment",
+  "name": "@fragno-dev/forms",
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "fragno",
+    "typescript",
+    "react",
+    "vue",
+    "svelte",
+    "solidjs"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./react": {
+      "development": {
+        "browser": "./dist/browser/client/react.js",
+        "default": "./src/client/react.ts"
+      },
+      "types": "./dist/browser/client/react.d.ts",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./vue": {
+      "development": {
+        "browser": "./dist/browser/client/vue.js",
+        "default": "./src/client/vue.ts"
+      },
+      "types": "./dist/browser/client/vue.d.ts",
+      "default": "./dist/browser/client/vue.js"
+    },
+    "./svelte": {
+      "development": {
+        "browser": "./dist/browser/client/svelte.js",
+        "default": "./src/client/svelte.ts"
+      },
+      "types": "./dist/browser/client/svelte.d.ts",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/client/solid.js",
+        "default": "./src/client/solid.ts"
+      },
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
+    "./vanilla": {
+      "development": {
+        "browser": "./dist/browser/client/vanilla.js",
+        "default": "./src/client/vanilla.ts"
+      },
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "default": "./dist/browser/client/vanilla.js"
+    }
+  },
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "build": "tsdown",
+    "test": "vitest run"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@cfworker/json-schema": "^4.1.1",
+    "@jsonforms/core": "^3.7.0",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "tsdown": "^0.11.9",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
+    "typescript": "^5",
+    "vue": ">=3.0.0"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
+}
