@@ -1,0 +1,255 @@
+---
+title: Client-side State Management
+description: Managing state in Fragno client-side fragments
+---
+
+An important feature of Fragno is the ability to define client-side components as part of the
+Fragment. Under the hood, Fragno uses [Nanostores](https://github.com/nanostores/nanostores) to
+manage state. These reactive primitives integrate seamlessly with many popular frontend frameworks,
+such as React, Svelte, Vue, and vanilla JavaScript. Helper functions are provided to automatically
+create reactive stores for each API route. These are inspired by the popular TanStack Query library.
+
+## The `ClientBuilder` class
+
+The `ClientBuilder` class is the starting point for creating client-side Fragments. It is
+instantiated with the library definition, the public config, and the routes. It is used as part of
+your Fragment's export.
+
+```typescript title="src/index.ts"
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { type FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const builder = createClientBuilder(myFragmentDefinition, fragnoConfig, routes);
+
+  return {
+    useTodos: builder.createHook("/todos"),
+  };
+}
+```
+
+The object returned from the `createMyFragmentClient` function is the client-side Fragment's entry
+point. It contains the hooks and mutators for the routes, as well as any other values that you want
+to expose to the user on the client-side. The object is passed through the framework-specific
+`useFragno` helper function, which returns the hooks and mutators as reactive stores for the
+framework.
+
+## Reading from GET routes with `createHook`
+
+The `createHook` method is used to create a read-only query hook for a route. It takes the route's
+path and returns a function that can be called by the user.
+
+The `createHook` method takes an optional object with the following options:
+
+- `transform`: A function to transform the response data before it reaches the user
+- `refetchInterval`: Interval in milliseconds to automatically refetch data
+- `enabled`: Boolean to enable/disable the hook
+
+### Fragment User Usage
+
+Your users will use this hook by calling the function with an object containing `path` and `query`
+fields. These fields are based on the route's path and query parameters. The function returns an
+object with the following properties:
+
+- `data`: The data returned from the route. Based on the route's output schema.
+- `loading`: A boolean indicating if the route is loading.
+- `error`: An error object if the route fails. Based on the route's error codes, if set.
+
+The parameters passed to the hook by the user are fully reactive, meaning that when the user updates
+the parameters, the hook will automatically re-run and update the data.
+
+### Streaming Responses
+
+As covered in the [Route Definition](./route-definition.mdx) section, Fragno supports streaming
+responses. When a route returns a streaming response, the output schema is required to be an array.
+When a hook starts fetching in the streaming case, the `loading` state will be `true` until the
+first item is received. The array in `data` will then contain the first item, but will be updated
+reactively as more items come in.
+
+## Mutating data with `createMutator`
+
+The `createMutator` method is used to create a mutator for a route. It takes the route's method and
+path and returns a function that can be called by the user.
+
+```typescript title="src/index.ts"
+// ... in your createMyFragmentClient function ...
+return {
+  useTodos: builder.createHook("/todos"),
+  useCreateTodo: builder.createMutator("POST", "/todos"),
+  useUpdateTodo: builder.createMutator("PUT", "/todos/:id"),
+  useDeleteTodo: builder.createMutator("DELETE", "/todos/:id"),
+};
+```
+
+### Invalidating Data
+
+The `createMutator` method takes an optional third parameter that is a function called when the
+mutation has succeeded. It receives the `invalidate` function, which can be used to invalidate other
+routes.
+
+When no `onInvalidate` function is provided, the following default implementation is used:
+
+```typescript
+const defaultOnInvalidate = (invalidate, params) => invalidate("GET", route.path, params);
+```
+
+In the example above, when the `useCreateTodo` mutator is called, it will invalidate the `useTodos`
+hook.
+
+<Callout title="Invalidation only happens on exactly the same route/path" type="warning">
+  In this example, updating or deleting a todo would not invalidate the `useTodos` hook. Therefore,
+  we'd have to specify a custom `onInvalidate` function.
+</Callout>
+
+<Callout title="Default behaviour might be removed in the future" type="warning">
+  This default behavior might be removed in the future as we cannot automatically determine which
+  routes should be invalidated.
+</Callout>
+
+### Fragment User Usage
+
+In addition to the `data`, `loading`, and `error` properties, the hook will also return a `mutate`
+function that can be used to mutate the data.
+
+```typescript
+const { data, loading, error, mutate } = useTodos();
+
+// ... in some onClick handler ...
+await mutate({ body: { text: "New todo" } });
+```
+
+The resulting data is also returned from the `mutate` function, but generally it should be read from
+the `data` property instead.
+
+The `loading` state will be `undefined` until a mutation has started.
+
+### Streaming Responses
+
+Like with the `createHook` method, when a route returns a streaming response, the `loading` state
+will be `true` until the first item is received. The array in `data` will then contain the first
+item, but will be updated reactively as more items come in.
+
+## Advanced Use-Cases
+
+Not everything can be covered by the `createHook` and `createMutator` methods. There are cases where
+you want more fine-grained control over state management.
+
+In Fragno, Fragment authors can use
+[Nanostores](https://github.com/nanostores/nanostores?tab=readme-ov-file#nano-stores) directly to
+create reactive stores and derived values.
+
+### Derived Data
+
+Consider the following example:
+
+```typescript title="src/index.ts"
+import { computed } from "nanostores";
+
+// ... in your createMyFragmentClient function ...
+const chatStream = builder.createMutator("POST", "/chat/stream");
+
+const aggregatedMessage = computed(chatStream.mutatorStore, ({ data }) => {
+  return (data ?? [])
+    .filter((item) => item.type === "response.output_text.delta")
+    .map((item) => item.delta)
+    .join("");
+});
+
+return {
+  useChatStream: chatStream,
+  useAggregatedMessage: builder.createStore(aggregatedMessage),
+};
+```
+
+Here we're creating a derived store that aggregates the delta messages from the chat stream. When
+data is populated in the `chatStream` store, the `aggregatedMessage` store will be updated
+reactively. In this example, we **must** call `builder.createStore` to ensure the aggregated message
+can be transformed into a reactive store for the framework the user is using.
+
+<Callout title="Mutate must be called" type="info">
+  Since the aggregated message is derived from the chat stream, the message will not be populated
+  until the mutate function on the `useChatStream` hook is called.
+</Callout>
+
+Like `computed`, `atom` and `effect` are also supported. Please refer to the
+[Nanostores documentation](https://github.com/nanostores/nanostores?tab=readme-ov-file#nano-stores)
+for more information.
+
+### Arbitrary Values
+
+We can clean up the example above by returning a single hook from the client-side Fragment factory.
+
+```typescript title="src/index.ts"
+// ... in your createMyFragmentClient function ...
+
+function sendMessage(message: string) {
+  chatStream.mutatorStore.mutate({
+    body: {
+      messages: [{ type: "chat", id: crypto.randomUUID(), role: "user", content: message }],
+    },
+  });
+}
+
+return {
+  useSendMessage: builder.createStore({
+    response: aggregatedMessage,
+    responseLoading: computed(chatStream.mutatorStore, ({ loading }) => loading),
+    sendMessage,
+  }),
+  fragmentVersion: "1.2.0",
+};
+```
+
+In this example, we've hidden the 'raw' chat stream from the user. Instead, we've exposed a single
+`useSendMessage` hook that allows the user to send a message and get the response, while handling
+the aggregation in the background. Instead of giving the user a `mutate` function, we've provided
+them with a more descriptive `sendMessage` function.
+
+We can return any other values or functions from the `createMyFragmentClient` function.
+
+<Callout title="`createStore` nesting" type="warning">
+  If an object is passed to `createStore`, all fields on this object will be made reactive. In the
+  case of a function, nothing will happen to it. Deeply nested keys will **not** be considered.
+</Callout>
+
+## Custom Fetcher Configuration
+
+Set default fetch configuration for your Fragment's HTTP requests using the fourth parameter of
+`createClientBuilder`. Useful for authentication, credentials, or custom fetch implementations.
+
+```typescript title="src/index.ts"
+export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const builder = createClientBuilder(myFragmentDefinition, fragnoConfig, routes, {
+    type: "options",
+    options: { credentials: "include" },
+  });
+
+  return { useTodos: builder.createHook("/todos") };
+}
+```
+
+Two configuration types:
+
+- `{ type: "options", options: RequestInit }` - Merge RequestInit options with user config
+- `{ type: "function", fetcher: typeof fetch }` - Provide custom fetch function
+
+User configuration takes precedence: custom functions override everything, RequestInit options deep
+merge (user wins conflicts), headers merge with user values winning.
+
+### Custom Backend Calls
+
+Use `buildUrl()` and `getFetcher()` for requests beyond `createHook`/`createMutator`:
+
+```typescript title="src/index.ts"
+export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = {}) {
+  const builder = createClientBuilder(myFragmentDefinition, fragnoConfig, routes);
+
+  async function customCall(userId: string) {
+    const { fetcher, defaultOptions } = builder.getFetcher();
+    const url = builder.buildUrl("/users/:id", { path: { id: userId } });
+    return fetcher(url, { ...defaultOptions, method: "GET" }).then((r) => r.json());
+  }
+
+  return { useTodos: builder.createHook("/todos"), customCall };
+}
+```

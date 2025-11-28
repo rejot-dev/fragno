@@ -1,0 +1,315 @@
+---
+title: Subscriptions
+description: Create, manage, and cancel subscriptions
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Data Model
+
+The fragment maintains a local database table (`subscription_stripe`) that tracks subscription
+state, with a subscription linked back to an entity in your application through the
+**`referenceId`**.
+
+In Stripe's model:
+
+- A **Subscription** connects a **Customer** (identified by your `referenceId`) to a **Price**
+- A **Product** can have multiple **Prices** (e.g., monthly vs annual)
+
+We assume that 1 reference id is mapped to 1 Stripe Customer, which can have N subscriptions. Note
+that this is required even if you only want a single subscription per customer because cancelling a
+subscription and renewing causes multiple subscription to be created by Stripe. In our API's we
+often make the assumption of a single 'active' subscription, but multiple active subscriptions are
+supported by providing the specific subscription id for a given action like `upgrade` or `cancel`.
+
+You can also configure Stripe to allow only a single (active) subscription per customer on the
+[Checkout and Payment Links](https://dashboard.stripe.com/settings/checkout) settings page:
+
+<figure className="flex flex-col items-center justify-center">
+  <div class="rounded-xl shadow-md">
+    ![Screenshot Stripe dashboard](/stripe-limit-one-customer.webp)
+  </div>
+  <figcaption>Stripe checkout settings</figcaption>
+</figure>
+
+<Callout type="info">
+  Stripe also has a concept of "plans" but this API is superseded by the more flexible [Prices
+  API](https://docs.stripe.com/api/prices). This fragment uses the latter.
+</Callout>
+
+### Mutations
+
+Stripe is the source of truth for subscription state. Never modify subscription data in the database
+tables. All subscription changes (create, update, cancel) should be performed through either this
+fragments `/subscription/upgrade` or `/subscription/cancel` hooks or directly through the Stripe
+API. The database table is updated automatically via webhooks or manually through the
+`syncStripeSubscriptions` service.
+
+### Security
+
+To prevent exposing sensitive information make sure to only expose Stripe Price IDs to end-users,
+Stripe Customer IDs, Product IDs, and Subscription IDs should remain private.
+
+## Payment Collection
+
+Collecting payments from users happens through a redirect to a
+[Stripe Checkout](https://docs.stripe.com/payments/checkout) page. Updating or cancelling a
+subscription happens through a redirect to a
+[Stripe Customer Portal](https://docs.stripe.com/customer-management).
+
+## Database Schema
+
+The Stripe fragment maintains a `subscription_stripe` table in your database to track subscription
+state. This allows you to query subscription data without making API calls to Stripe and ensures
+your application remains responsive even if Stripe is temporarily unavailable.
+
+The `subscription_stripe` table has a `reference_id` column that is used to link a subscription to
+an application-specific identifier like a user ID or organization ID.
+
+For setting up Fragno DB schemas, see the
+[Fragno DB Quickstart](/docs/fragno/for-users/database-fragments/overview#quick-start).
+
+## Creating Subscriptions
+
+To create a new subscription, use the `upgradeSubscription` mutator. This mutator handles both
+creating new subscriptions and upgrading existing ones.
+
+```typescript title="components/PricingCard.tsx"
+import { stripeClient } from "@/lib/stripe-client";
+
+export function PricingCard({ priceId, planName }: { priceId: string; planName: string }) {
+  const { mutate, loading, error } = stripeClient.upgradeSubscription();
+
+  const handleSubscribe = async () => {
+    const { url, redirect } = await mutate({
+      body: {
+        priceId: priceId, // Stripe price ID (e.g., "price_1234567890")
+        successUrl: `${window.location.origin}/success`,
+        cancelUrl: window.location.href,
+      },
+    });
+
+    if (redirect) {
+      window.location.href = url; // Redirect to Stripe Checkout
+    }
+  };
+
+  return (
+    <div className="pricing-card">
+      <h3>{planName}</h3>
+      <button onClick={handleSubscribe} disabled={loading}>
+        {loading ? "Loading..." : "Subscribe"}
+      </button>
+    </div>
+  );
+}
+```
+
+### Showing a Success Page
+
+The Stripe Checkout portal will redirect the user back to `successUrl` after a successful payment,
+at this point the webhook event that registers this payment may not (yet) have arrived. Therefore
+you can create a dedicated success page which fetches the latest subscription status from using the
+`syncStripeSubscriptions` service to ensure the end-user sees the right result. See
+[Manual Synchronization](#manual-synchronization) for details.
+
+### Configuration Requirements
+
+When creating the Stripe fragment, you must provide two callbacks:
+
+**`onStripeCustomerCreated`**
+
+Called when a new Stripe Customer is created for an entity in your system. Use this to store the
+Stripe Customer ID in your database so you can link it back to your user/organization.
+
+**`resolveEntityFromRequest`**
+
+Called on subscription management routes (`/subscription/upgrade` and `/subscription/cancel`) to
+identify which entity (user or organization) is making the request. This callback should:
+
+1. Extract authentication information from the request context (session cookies, JWT tokens in
+   headers, etc.)
+2. Return the entity's Stripe-related data needed for subscription operations
+
+The `getEntity` function should return an object of type `StripeEntityData` with the following
+properties:
+
+- `stripeCustomerId`: The Stripe customer ID
+- `id`: Your internal entity ID
+
+See this example:
+
+```typescript title="lib/stripe.ts"
+import { createStripeFragment } from "@fragno-dev/stripe";
+import { updateUser } from "@/db/user-repo";
+import { getSession } from "@/lib/auth";
+
+export const stripeFragment = createStripeFragment({
+  // ... other config
+
+  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
+    // Store the Stripe Customer ID in your database
+    await updateUser(referenceId, { stripeCustomerId });
+  },
+
+  resolveEntityFromRequest: async (context) => {
+    // Extract authentication from your session/auth system
+    const session = getSession(context.headers);
+
+    return {
+      referenceId: session.user.id,
+      customerEmail: session.user.email,
+      stripeCustomerId: session.user.stripeCustomerId || undefined,
+      stripeMetadata: {
+        // Additional metadata you want to attach
+      },
+    };
+  },
+});
+```
+
+## Retrieving Subscriptions
+
+The fragment exposes service functions that can be used server-side to query data from the
+subscription table:
+
+```typescript
+import { stripeFragment } from "@/lib/stripe";
+
+// Get all subscriptions for a reference ID (e.g., user ID)
+const subscriptions = await stripeFragment.services.getSubscriptionsByReferenceId(user.id);
+
+// Get a specific subscription by ID
+const subscription = await stripeFragment.services.getSubscriptionById(subscriptionId);
+
+// Get all subscriptions for a Stripe customer
+const subscriptions = await stripeFragment.services.getSubscriptionsByStripeCustomerId(customerId);
+```
+
+## Handling Multiple Subscriptions
+
+When users have multiple subscriptions, you need to specify which subscription to upgrade or cancel
+using the subscription ID, this is the identifier of the fragments subscription table.
+
+```typescript
+const { mutate } = stripeClient.upgradeSubscription();
+
+await mutate({
+  body: {
+    priceId: "price_new_plan",
+    subscriptionId: subscriptionId,
+    successUrl: `${window.location.origin}/success`,
+    cancelUrl: window.location.href,
+  },
+});
+```
+
+## Canceling Subscriptions
+
+Users can cancel their subscriptions using the `cancelSubscription` mutator. Cancellations are
+handled through Stripe's Billing Portal, where users confirm their cancellation.
+
+```typescript title="components/CancelSubscriptionButton.tsx"
+import { stripeClient } from "@/lib/stripe-client";
+
+export function CancelSubscriptionButton() {
+  const { mutate, loading, error } = stripeClient.cancelSubscription();
+
+  const handleCancel = async () => {
+    const { url, redirect } = await mutate({
+      body: {
+        returnUrl: `${window.location.origin}/account`,
+      },
+    });
+
+    if (redirect) {
+      window.location.href = url; // Redirect to Stripe Billing Portal
+    }
+  };
+
+  return (
+    <button onClick={handleCancel} disabled={loading}>
+      {loading ? "Processing..." : "Cancel Subscription"}
+    </button>
+  );
+}
+```
+
+## Changing Subscription Plans
+
+To change the user from one plan to another, use the same `upgradeSubscription` mutator with a
+different price ID. If the user already has an active subscription, the fragment will create a
+Stripe Billing Portal confirming the change.
+
+```typescript
+const { mutate } = stripeClient.upgradeSubscription();
+
+await mutate({
+  body: {
+    priceId: "price_new_plan", // The new price ID
+    successUrl: `${window.location.origin}/success`,
+    cancelUrl: window.location.href,
+  },
+});
+```
+
+## Managing Billing Details
+
+The Stripe fragment provides a `useBillingPortal` mutator that generates a redirect URL for users to
+Stripe's hosted billing portal. This portal can be used to:
+
+- Update payment methods
+- View invoices and payment history
+- Update billing information
+
+```typescript
+const { mutate, error, loading } = stripeClient.useBillingPortal();
+
+const response = await mutate({
+  body: {
+    returnUrl: `${window.location.origin}/account`,
+  },
+});
+
+if (response?.redirect) {
+  window.location.href = response.url; // Redirect to Stripe Billing Portal
+}
+```
+
+## Manual Synchronization
+
+The subscription table is automatically kept in sync with Stripe through webhook events. However,
+there are cases where you cannot depend on webhook events because you need a guarantee that you have
+the most recent data.
+
+For example a "checkout success" page, directly after a user completes payment through Stripe
+Checkout. They should see their subscription status reflected in your UI immediately. Since webhooks
+could arrive a few seconds later, it would be better to get the latest info from Stripe directly on
+the checkout success page.
+
+### Using `syncStripeSubscriptions`
+
+The fragment provides the `syncStripeSubscriptions` method as a fragment service. This method will
+fetch the latest subscriptions from Stripe and write it to your database. If no subscriptions are
+found for a customer, then the subscription will be dropped from the database.
+
+```typescript
+import { stripeFragment } from "@/lib/stripe";
+import { getSession } from "@/lib/auth";
+
+/* ... */
+
+const session = await getSession();
+
+// Fetch latest subscription data from Stripe and sync to database
+await stripeFragment.services.syncStripeSubscriptions(
+  session.user.id, // referenceId
+  session.user.stripeCustomerId, // stripeCustomerId
+);
+
+// Now you can assume the db state is recent
+const subscription = await stripeFragment.services.getSubscriptionById(session.subscriptionId);
+
+// do things
+console.log(subscription.status);
+```

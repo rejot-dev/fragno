@@ -1,0 +1,218 @@
+---
+title: Integrating a Fragment
+description: Specifics for integration per framework.
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+Integrating a Fragment into your project is a straightforward process. There are two main
+integration points for a Fragment: server-side and client-side. This page contains
+framework-specific integration details.
+
+A complete guide to integrating a Fragment is available on the previous page:
+
+<Cards>
+  <Card
+    title="User Quick Start"
+    href="/docs/fragno/user-quick-start"
+    description="Learn how to integrate a Fragment into your codebase."
+  />
+</Cards>
+
+## Fragno Configuration
+
+Every Fragno Fragment can be configured with several built-in options:
+
+<TypeTable
+  type={{
+    baseUrl: {
+      description:
+        "The base URL of the Fragment. Must be changed when running the backend separately from the frontend.",
+      type: "string",
+      default: "/",
+    },
+    mountRoute: {
+      description: "The mount route of the Fragment. Defaults to `/api/${fragmentName}/",
+      type: "string",
+      default: "/api/example-fragment",
+    },
+  }}
+/>
+
+These options can be configured at the frontend integration point, and are relevant when mounting
+the backend route in a non-standard location.
+
+## Fragment-specific Configuration
+
+Most Fragments will also require some configuration specific to them. Check the documentation for
+the specific Fragment you are integrating to figure out what configuration is required.
+
+## Fragments with Databases
+
+Some Fragments include a database layer for persistent storage. These Fragments require you to
+provide a **database adapter** that connects the Fragment to your existing database.
+
+<Callout title="Database Integration Required" type="warn">
+  If a Fragment requires `FragnoPublicConfigWithDatabase` or mentions `databaseAdapter` in its
+  documentation, you must set up database integration before using it.
+</Callout>
+
+### Quick Setup
+
+1. **Install the database package:**
+
+   ```bash
+   npm install @fragno-dev/db
+   ```
+
+2. **Create an adapter for your ORM:**
+
+   ```typescript
+   import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+   import { db } from "./database"; // Your existing Kysely instance
+
+   export const adapter = new KyselyAdapter({
+     db,
+     provider: "postgresql",
+   });
+   ```
+
+3. **Pass adapter when creating Fragment:**
+
+   ```typescript
+   const fragment = createCommentFragment({}, { databaseAdapter: adapter });
+   ```
+
+4. **Run migrations:**
+   ```bash
+   npx fragno-cli db generate lib/fragment-instance.ts
+   npx fragno-cli db migrate lib/fragment-instance.ts
+   ```
+
+For complete database integration instructions, see
+[Database Fragments](./database-fragments/overview).
+
+## Reference
+
+### Full-stack Frameworks
+
+#### Next.js
+
+```typescript title="app/api/example-fragment/[...all]/route.ts"
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+const exampleFragment = createExampleFragmentInstance();
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("next-js");
+```
+
+#### React Router v7 / Remix
+
+Note that in Remix, the file location might be different, as well as the `Route` type import.
+
+```typescript title="app/routes/api/example-fragment.tsx"
+import type { Route } from "./+types/example-fragment";
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  return await createExampleFragmentInstance().handler(request);
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  return await createExampleFragmentInstance().handler(request);
+}
+```
+
+#### Astro
+
+```typescript title="src/pages/api/example-fragment/[...all].ts"
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+const exampleFragment = createExampleFragmentInstance();
+export const { ALL } = exampleFragment.handlersFor("astro");
+export const prerender = false;
+```
+
+#### SvelteKit
+
+```ts title="routes/api/example-fragment/[...path].ts"
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+const exampleFragment = createExampleFragmentInstance();
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("svelte-kit");
+export const prerender = false;
+```
+
+#### Nuxt
+
+```typescript title="server/api/example-fragment/[...all].ts"
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+export default fromWebHandler(createExampleFragmentInstance().handler);
+```
+
+#### SolidStart
+
+```typescript title="routes/api/[...example-fragment].ts"
+import { exampleFragmentInstance } from "@/lib/example-fragment-server";
+
+// Make sure to initialize the fragment outside of route files
+export const { GET, POST, PUT, PATCH, DELETE } = exampleFragmentInstance.handlersFor("solid-start");
+```
+
+### Server-side Frameworks
+
+#### Hono
+
+```typescript title="index.ts"
+import { Hono } from "hono";
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+
+const app = new Hono();
+app.all("/api/example-fragment/*", (c) => createExampleFragmentInstance().handler(c.req.raw));
+```
+
+#### Node.js
+
+The `toNodeHandler` function is defined in a separate npm package:
+
+```npm
+npm install @fragno-dev/node
+```
+
+When using Node.js without a framework, it is important to only handle the request when the request
+URL starts with the Fragment's mount route.
+
+```typescript title="index.ts"
+import { createServer } from "node:http";
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+import { toNodeHandler } from "@fragno-dev/node";
+
+const server = createServer((req, res) => {
+  const exampleFragment = createExampleFragmentInstance();
+
+  if (req.url?.startsWith(exampleFragment.mountRoute)) {
+    const handler = toNodeHandler(exampleFragment.handler);
+    return handler(req, res);
+  }
+
+  // ... Your route handling
+});
+```
+
+#### Express
+
+```typescript title="server.js"
+import express from "express";
+import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
+import { toNodeHandler } from "@fragno-dev/node";
+
+const app = express();
+app.all("/api/example-fragment/*", toNodeHandler(createExampleFragmentInstance().handler));
+
+// WARNING! If you're using the Express json middleware, make sure that it's mounted AFTER the
+// Fragment handler.
+app.use(express.json());
+
+app.listen(3000);
+```

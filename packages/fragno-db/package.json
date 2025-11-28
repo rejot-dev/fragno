@@ -88,9 +88,9 @@
     "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",
     "mysql2": "^3.11.5",
+    "sqlocal": "^0.15.2",
     "vitest": "^3.2.4",
-    "zod": "^4.1.12",
-    "sqlocal": "^0.15.2"
+    "zod": "^4.1.12"
   },
   "repository": {
     "type": "git",
@@ -100,7 +100,7 @@
   "homepage": "https://fragno.dev",
   "license": "MIT",
   "dependencies": {
-    "@paralleldrive/cuid2": "^2.2.2",
+    "@paralleldrive/cuid2": "^2.3.1",
     "kysely": "^0.28.7"
   },
   "peerDependencies": {
