@@ -6,7 +6,7 @@
     "build": "react-router build",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
-    "postinstall": "pnpm run types:generate && fumadocs-mdx",
+    "postinstall": "fumadocs-mdx",
     "preview": "pnpm run build && vite preview",
     "types:check": "pnpm run types:generate && fumadocs-mdx && tsc --noEmit",
     "types:generate": "wrangler types && react-router typegen"
