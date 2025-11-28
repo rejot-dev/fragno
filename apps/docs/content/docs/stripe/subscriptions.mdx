@@ -131,7 +131,11 @@ identify which entity (user or organization) is making the request. This callbac
    headers, etc.)
 2. Return the entity's Stripe-related data needed for subscription operations
 
-<AutoTypeTable path="packages/stripe/src/types.ts" name="StripeEntityData" />
+The `getEntity` function should return an object of type `StripeEntityData` with the following
+properties:
+
+- `stripeCustomerId`: The Stripe customer ID
+- `id`: Your internal entity ID
 
 See this example:
 

@@ -26,13 +26,13 @@ export const blog = defineCollections({
   dir: "content/blog",
   schema: frontmatterSchema.extend({
     author: z.string(),
-    date: z.iso.date().or(z.date()),
+    date: z.coerce.date(),
     image: z.string().optional(),
   }),
 });
 
 export default defineConfig({
   mdxOptions: {
-    // MDX options
+    //
   },
 });

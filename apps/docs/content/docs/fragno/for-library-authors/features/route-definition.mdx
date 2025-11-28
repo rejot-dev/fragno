@@ -210,9 +210,13 @@ methods.
 
 ### Request Input Context
 
-The first parameter provides access to all incoming request data. Available properties are:
+The first parameter provides access to all incoming request data. Available properties include:
 
-<AutoTypeTable path="packages/fragno/src/api/request-input-context.ts" name="RequestInputContext" />
+- `path`: Path parameters from the URL
+- `query`: Query string parameters
+- `input`: Parsed and validated input body (only if input schema is defined)
+- `headers`: HTTP request headers
+- `method`: HTTP method (GET, POST, etc.)
 
 The input property is only defined if an input schema is defined for the route.
 

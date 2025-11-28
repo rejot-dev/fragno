@@ -39,9 +39,11 @@ framework.
 The `createHook` method is used to create a read-only query hook for a route. It takes the route's
 path and returns a function that can be called by the user.
 
-The `createHook` method takes an optional object with the following properties:
+The `createHook` method takes an optional object with the following options:
 
-<AutoTypeTable path="packages/fragno/src/client/client.ts" name="CreateHookOptions" />
+- `transform`: A function to transform the response data before it reaches the user
+- `refetchInterval`: Interval in milliseconds to automatically refetch data
+- `enabled`: Boolean to enable/disable the hook
 
 ### Fragment User Usage
 
