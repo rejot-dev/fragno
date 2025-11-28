@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
+    "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
-    "start": "react-router-serve ./build/server/index.js",
-    "types:check": "react-router typegen && fumadocs-mdx && tsc --noEmit",
-    "postinstall": "fumadocs-mdx"
+    "postinstall": "pnpm run types:generate && fumadocs-mdx",
+    "preview": "pnpm run build && vite preview",
+    "types:check": "pnpm run types:generate && fumadocs-mdx && tsc --noEmit",
+    "types:generate": "wrangler types && react-router typegen"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
@@ -33,6 +35,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.13.5",
     "@react-router/dev": "^7.9.5",
     "@tailwindcss/vite": "^4.1.16",
     "@types/mdx": "^2.0.13",
@@ -44,6 +47,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.0",
     "vite-plugin-devtools-json": "^1.0.0",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "wrangler": "^4.51.0"
   }
 }
