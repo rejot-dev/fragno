@@ -5,3 +5,12 @@
 /.react-router/
 /build/
 .source
+
+# Cloudflare
+.mf
+.wrangler
+.dev.vars*
+worker-configuration.d.ts
+
+# Typescript
+*.tsbuildinfo

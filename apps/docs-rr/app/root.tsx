@@ -93,7 +93,7 @@ export const middleware = [serverMiddleware];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const baseUrl =
-    process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://fragno.dev";
+    import.meta.env.MODE === "development" ? "http://localhost:3000" : "https://fragno.dev";
   const description =
     "Fragno is the toolkit for building full-stack TypeScript libraries that work seamlessly across frameworks";
   const socialImage = `${baseUrl}/social.webp`;
