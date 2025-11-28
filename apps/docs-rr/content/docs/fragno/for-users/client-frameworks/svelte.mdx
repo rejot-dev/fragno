@@ -1,0 +1,107 @@
+---
+title: Svelte
+description: Learn how to integrate Fragno fragments into your Svelte frontend and SvelteKit backend
+---
+
+# Svelte
+
+Svelte and SvelteKit support is included in the `@fragno-dev/core` package.
+
+To start, import the Svelte client creator from the fragment package.
+
+```typescript title="lib/example-fragment-client.ts"
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/svelte";
+
+export const exampleFragment = createExampleFragmentClient();
+```
+
+## Basic Usage
+
+```svelte title="components/ExampleComponent.svelte"
+<script lang="ts">
+  import { exampleFragment } from "@/lib/example-fragment-client";
+
+  const { data, loading } = exampleFragment.useData();
+</script>
+
+<div>
+  {#if $loading}
+    <div>Loading…</div>
+  {:else}
+    <div>{$data}</div>
+  {/if}
+</div>
+```
+
+## Reactivity
+
+Fragno currently supports Svelte reactivity using Svelte stores and runes. Stores can be passed to
+hooks as path or query parameters to automatically update the hook when the store changes. When
+using runes, you must wrap these variables in closures in order to keep reactive links working.
+
+```svelte title="components/UserProfile.svelte"
+<script lang="ts">
+  import { writable } from "svelte/store";
+  import { exampleFragment } from "@/lib/example-fragment-client";
+
+  // Store
+  const userId = writable("1");
+
+  // Rune
+  let orgId = $state("1");
+
+  // Note that the hooks always return Svelte stores
+  const { data: user, loading } = exampleFragment.useUser({
+    path: { id: userId, orgId: () => orgId },
+  });
+
+  const updateUser = () => {
+    userId.set("2");
+    orgId = "2";
+  };
+</script>
+
+<div>
+  {#if $loading}
+    <div>Loading user...</div>
+  {:else if $user}
+    <div>User: {$user.name}</div>
+    <button onclick={updateUser}>Switch to User 2</button>
+  {/if}
+</div>
+```
+
+### Mutations
+
+```svelte title="components/TodoComponent.svelte"
+<script lang="ts">
+  import { exampleFragment } from "@/lib/example-fragment-client";
+
+  const { data: todos, loading: todosLoading, error } = exampleFragment.useTodos();
+  const { mutate: addTodo, loading: addTodoLoading } = exampleFragment.useAddTodo();
+
+  const handleAddTodo = () => {
+    addTodo({ body: { text: "New todo" } });
+  };
+</script>
+
+<div>
+  <h1>Todos</h1>
+
+  {#if $todosLoading}
+    <div>Loading...</div>
+  {:else if $error}
+    <div>Error: {$error.message}</div>
+  {:else}
+    <div>
+      {#each $todos as todo (todo.id)}
+        <div>{todo.text} - {todo.done ? "Done" : "Pending"}</div>
+      {/each}
+    </div>
+  {/if}
+
+  <button onclick={handleAddTodo} disabled={$addTodoLoading}>
+    {$addTodoLoading ? "Adding..." : "Add Todo"}
+  </button>
+</div>
+```

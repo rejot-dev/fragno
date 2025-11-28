@@ -1,0 +1,101 @@
+---
+title: Vue
+description: Learn how to integrate Fragno fragments into your Vue frontend
+---
+
+Vue support is included in the `@fragno-dev/core` package.
+
+To start, import the Vue client creator from the fragment package.
+
+```typescript title="lib/example-fragment-client.ts"
+import { createExampleFragmentClient } from "@fragno-dev/example-fragment/vue";
+
+export const exampleFragment = createExampleFragmentClient();
+```
+
+## Basic Usage
+
+```vue title="components/ExampleComponent.vue"
+<template>
+  <div>
+    <div v-if="loading">Loading...</div>
+    <div v-else>{{ data }}</div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+const { data, loading } = exampleFragment.useData();
+</script>
+```
+
+## Reactivity
+
+Fragno hooks support reactivity out of the box. `ref`s can be passed to hooks as path or query
+parameters to automatically update the hook when the `ref` changes.
+
+```vue title="components/UserProfile.vue"
+<template>
+  <div>
+    <div v-if="loading">Loading user...</div>
+    <div v-else-if="user">
+      <div>User: {{ user.name }}</div>
+      <button @click="updateUser">Switch to User 2</button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref } from "vue";
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+const userId = ref("1");
+const orgId = ref("1");
+
+const { data: user, loading } = exampleFragment.useUser({
+  path: { id: userId, orgId },
+});
+
+const updateUser = () => {
+  userId.value = "2";
+  orgId.value = "2";
+};
+</script>
+```
+
+## Mutations
+
+```vue title="components/TodoComponent.vue"
+<script setup>
+import { exampleFragment } from "@/lib/example-fragment-client";
+
+const { data: todos, loading: todosLoading, error, refetch } = exampleFragment.useTodos();
+const { mutate: addTodo, loading: addTodoLoading } = exampleFragment.useAddTodo();
+
+const handleAddTodo = () => {
+  addTodo({ body: { text: "New todo" } });
+};
+</script>
+
+<template>
+  <div>
+    <h1>Todos</h1>
+
+    <div v-if="todosLoading">Loading...</div>
+    <div v-else-if="error">Error: {{ error.message }}</div>
+
+    <div v-else>
+      <div v-for="todo in todos" :key="todo.id">
+        {{ todo.text }} - {{ todo.done ? "Done" : "Pending" }}
+      </div>
+    </div>
+
+    <button @click="handleAddTodo" :disabled="addTodoLoading">
+      {{ addTodoLoading ? "Adding..." : "Add Todo" }}
+    </button>
+
+    <button @click="refetch">Refresh</button>
+  </div>
+</template>
+```

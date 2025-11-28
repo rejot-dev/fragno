@@ -1,0 +1,147 @@
+---
+title: Testing
+description: Testing Fragno fragments
+---
+
+Fragno provides comprehensive testing utilities to help you test your fragments without running a
+server. The `createFragmentForTest` function creates a test instance with type-safe route handling
+and response parsing.
+
+## Creating a Test Fragment
+
+```typescript
+import { createFragmentForTest, withTestUtils } from "@fragno-dev/core/test";
+import { routes } from "./fragment-definition";
+
+// Important: Use .extend(withTestUtils()) to expose deps via services.test.deps
+const fragment = createFragmentForTest(
+  myFragmentDefinition.extend(withTestUtils()).build(),
+  routes,
+  {
+    config: { apiKey: "test-key" },
+    // Optional: override service implementations
+    serviceImplementations: { emailService: mockEmailService },
+  },
+);
+```
+
+## Testing Route Handlers
+
+The `callRoute` method executes routes by method and path, returning a typed discriminated union:
+
+```typescript
+const response = await fragment.callRoute("POST", "/users/:id", {
+  pathParams: { id: "123" },
+  body: { name: "John" },
+  query: { filter: "active" },
+  headers: { authorization: "Bearer token" },
+});
+
+// Response is a discriminated union
+assert(response.type === "json");
+expect(response.status).toBe(200);
+expect(response.data).toEqual({ id: "123", name: "John" });
+```
+
+The method and path parameters are strongly typed based on your fragment's routes, providing
+autocomplete and type checking.
+
+## Response Types
+
+The `callRoute` method returns a discriminated union with four possible types:
+
+### JSON Response
+
+```typescript
+assert(response.type === "json");
+expect(response.status).toBe(200);
+expect(response.headers).toBeInstanceOf(Headers);
+expect(response.data).toEqual({ id: "123", name: "John" });
+```
+
+### Streaming Response
+
+```typescript
+assert(response.type === "jsonStream");
+const items = [];
+for await (const item of response.stream) {
+  items.push(item);
+}
+expect(items).toEqual([...expected]);
+```
+
+### Empty Response
+
+```typescript
+assert(response.type === "empty");
+expect(response.status).toBe(204);
+```
+
+### Error Response
+
+```typescript
+assert(response.type === "error");
+expect(response.status).toBe(404);
+expect(response.error).toEqual({
+  message: "Not found",
+  code: "NOT_FOUND",
+});
+```
+
+## Testing Database Fragments
+
+For Fragments that use `@fragno-dev/db`, use `buildDatabaseFragmentsTest` from `@fragno-dev/test` to
+automatically set up an in-memory database with migrations:
+
+```typescript
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core";
+
+const { fragments, test } = await buildDatabaseFragmentsTest()
+  .withTestAdapter({ type: "kysely-sqlite" })
+  .withFragment(
+    "myFragment",
+    instantiate(myDatabaseFragmentDefinition).withConfig({ apiKey: "test-key" }).withRoutes(routes),
+    {
+      // Optional: migrate to specific schema version (defaults to latest)
+      migrateToVersion: 2,
+    },
+  )
+  .build();
+
+// Access fragment methods as usual
+await fragments.myFragment.services.createUser({ name: "John" });
+
+// Or test routes directly
+const response = await fragments.myFragment.callRoute("POST", "/users", {
+  body: { name: "John" },
+});
+```
+
+### Cleanup
+
+The `test.cleanup()` function closes database connections and deletes any database files created
+during testing. This is useful in `afterAll` hooks to clean up resources:
+
+```typescript
+describe("User tests", () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment("auth", instantiate(authFragmentDefinition).withConfig({}).withRoutes(routes))
+    .build();
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("test 1", async () => {
+    const response = await fragments.auth.callRoute("POST", "/users", {
+      body: { name: "Alice" },
+    });
+    expect(response.type).toBe("json");
+  });
+});
+```
+
+Fragments tested in this way use an in-memory SQLite database with migrations automatically applied.
+This means that you can directly test the data layer of your Fragment.

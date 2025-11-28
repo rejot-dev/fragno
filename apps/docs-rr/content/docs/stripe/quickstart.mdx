@@ -1,0 +1,145 @@
+---
+title: Quick Start
+description: Install and configure the Stripe fragment
+icon: Album
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+<Callout type="warning">The Stripe fragment is new and under active development.</Callout>
+
+## Overview
+
+The Fragno Stripe fragment makes it easy to manage Stripe subscriptions in your application. This
+guide will walk you through installation and basic setup to get your first subscription working.
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+- **Stripe API Key**
+- **Stripe Webhook Secret**
+- **A Stripe Product & Price**: Create at least one product with a price in your
+  [Stripe Dashboard](https://dashboard.stripe.com/products)
+- **Database Adapter**: The fragment requires either Kysely or Drizzle for database operations
+
+## Installation
+
+Install the Stripe fragment and Fragno db package:
+
+```npm
+npm install @fragno-dev/stripe @fragno-dev/db
+```
+
+## Server Setup
+
+### 1. Create the Fragment Instance
+
+Create a file to instantiate your Stripe fragment (e.g., `lib/stripe.ts` or `server/stripe.ts`):
+
+```typescript title="lib/stripe.ts"
+import { createStripeFragment } from "@fragno-dev/stripe";
+/* These imports are illustrative and application specific */
+import { updateEntity } from "@/db/repo";
+import { getSession } from "@/lib/auth";
+
+export const stripeFragment = createStripeFragment({
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+  webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+
+  // Link Stripe customers to your users
+  onStripeCustomerCreated: async (stripeCustomerId, referenceId) => {
+    // When a Stripe customer is created, save the ID to your internal record
+    await updateEntity(referenceId, { stripeCustomerId });
+  },
+
+  // Resolves the authenticated entity from the request
+  resolveEntityFromRequest: async (context) => {
+    // Get session using your authentication system
+    const session = getSession(context.headers);
+
+    return {
+      // Your application's identifier for the entity which owns the subscription
+      referenceId: session.user.id,
+      customerEmail: session.user.email,
+
+      // Only used when updating an existing subscription.
+      stripeCustomerId: session.user.stripeCustomerId || undefined,
+
+      // Additional metadata to attach to the Stripe customer
+      stripeMetadata: {},
+    };
+  },
+
+  // Note: do not enable without configuring auth on those routes!
+  enableAdminRoutes: false,
+});
+```
+
+For additional details on setting up the `onStripeCustomerCreated` and `resolveEntityFromRequest`
+callbacks, see [Subscriptions](docs/stripe/subscriptions#configuration-requirements) page.
+
+<Callout type="info">
+  **What is `referenceId`?** This is your application's identifier for the entity that owns the
+  subscription (typically a user ID or organization ID). The fragment uses this to link Stripe data
+  back to your application's data model.
+</Callout>
+
+### 2. Mount the Fragment Routes
+
+The fragment provides HTTP routes that need to be mounted in your application. How you do this
+depends on your framework. See [Frameworks](/docs/frameworks) supported frameworks.
+
+<include>../../.includes/stripe/mount-routes.md</include>
+
+### 3. Run Database Migrations
+
+The fragment adds a `stripe_subscription` table to your database. Generate the schema for this table
+using the `fragno-cli`. For setting up Fragno DB schemas, see the
+[Fragno DB Quickstart](/docs/fragno/for-users/database-fragments/overview#quick-start).
+
+```npm
+# Generate schema file
+npx fragno-cli db generate lib/stripe.ts -o db/stripe.schema.ts
+```
+
+## Creating a subscription
+
+Create a client instance to use the fragment in your frontend:
+
+<include>../../.includes/stripe/create-client.md</include>
+
+This client exposes several mutators for managing subscriptions:
+
+- `upgradeSubscription`: create or update a subscription
+- `cancelSubscription`: cancel a subscription
+- `useBillingPortal`: redirect to Stripe's billing portal for managing payment methods and billing
+  details
+
+```typescript title="components/subscribe.tsx"
+import { stripeClient } from "@/lib/stripe-client";
+
+export function SubscribeButton() {
+  const { mutate, loading, error } = stripeClient.upgradeSubscription();
+
+  const handleSubscribe = async () => {
+    const { url, redirect } = await mutate({
+      body: {
+        priceId: "price_1234567890", // The Stripe price ID being subscribed to
+        successUrl: `${window.location.origin}/success`,
+        cancelUrl: window.location.href,
+      },
+    });
+
+    if (redirect) {
+      window.location.href = url; // Redirect to Stripe Checkout Portal
+    }
+  };
+
+  return (
+    <button onClick={handleSubscribe} disabled={loading}>
+      {loading ? "Loading..." : "Subscribe"}
+    </button>
+  );
+}
+```

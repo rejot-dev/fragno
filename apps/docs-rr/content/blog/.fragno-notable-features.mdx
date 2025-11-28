@@ -1,0 +1,294 @@
+---
+title: "Fragno's Most Notable Features"
+description: "Tweet-style highlights of Fragno's standout capabilities"
+date: "2025-01-27"
+author: "Jan Schutte"
+---
+
+# Fragno's Most Notable Features
+
+## 🧪 Testing Without Servers
+
+**Test fragments without spinning up a server.** Fragno's `createFragmentForTest` gives you typed
+route handling with discriminated union responses. Your test responses are typed as
+`json | jsonStream | empty | error` - no more guessing what you got back.
+
+```typescript
+const response = await fragment.callRoute("POST", "/users/:id", {
+  pathParams: { id: "123" },
+  body: { name: "John" },
+});
+
+assert(response.type === "json");
+expect(response.data).toEqual({ id: "123", name: "John" });
+```
+
+---
+
+## 🔍 CLI Search Command
+
+**Search your docs from the terminal.** `fragno-cli search` lets you search documentation directly
+from the command line. Perfect for quick lookups without leaving your terminal.
+
+```bash
+npx fragno-cli search "database migrations" --limit 5 --json
+```
+
+---
+
+## 🛡️ Type-Safe Middleware with Route Matching
+
+**Middleware that knows which route it's handling.** Use `ifMatchesRoute()` for route-specific
+middleware with full type safety. Access validated input, path params, and query params - all typed
+correctly.
+
+```typescript
+.withMiddleware(async ({ ifMatchesRoute }) => {
+  const response = await ifMatchesRoute("POST", "/users/:id", async ({ input, pathParams }) => {
+    const body = await input.valid(); // Fully typed!
+    // Modify request, log, or short-circuit
+  });
+})
+```
+
+---
+
+## 🔄 Modify Requests in Middleware
+
+**Transform requests before they hit handlers.** Middleware can modify query params, path params,
+headers, and even the request body. Perfect for adding default values, transforming data, or
+injecting context.
+
+```typescript
+query.set("role", "admin");
+pathParams.id = pathParams.id.toLowerCase();
+requestState.setBody({ ...body, createdBy: "system" });
+```
+
+---
+
+## 📞 Call Routes Directly from Server Code
+
+**Need full Response objects with headers?** Use `callRoute()` to invoke fragment routes from
+server-side code. Get cookies, custom headers, and full HTTP semantics - perfect for server actions
+and loaders.
+
+```typescript
+const response = await authFragment.callRoute("POST", "/sign-in", {
+  body: { email, password },
+});
+// Full Response with Set-Cookie headers!
+return response;
+```
+
+---
+
+## 📊 Cursor-Based Pagination Built-In
+
+**No more offset pagination headaches.** Fragno DB's `findWithCursor()` automatically generates
+cursors from query results. Just pass the cursor to fetch the next page - handles all the complexity
+for you.
+
+```typescript
+const firstPage = await db.findWithCursor("users", (b) =>
+  b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
+);
+
+if (firstPage.cursor) {
+  const nextPage = await db.findWithCursor("users", (b) => b.after(firstPage.cursor));
+}
+```
+
+---
+
+## ⚡ Two-Phase Transactions with Optimistic Locking
+
+**Safe concurrent updates without locks.** Fragno DB's Unit of Work pattern uses two phases:
+retrieve → mutate. The `.check()` method ensures rows haven't changed since retrieval, preventing
+lost updates.
+
+```typescript
+const uow = db.createUnitOfWork();
+uow.find("users", ...);
+const [users] = await uow.executeRetrieve();
+
+uow.update("users", user.id, (b) =>
+  b.set({ balance: newBalance }).check() // Optimistic locking!
+);
+
+const { success } = await uow.executeMutations();
+```
+
+---
+
+## 📈 Index-Based Queries Only
+
+**Forced performance by design.** All Fragno DB queries must specify an index. No more accidental
+table scans - the API literally won't let you write slow queries. Performance is built into the
+query API.
+
+```typescript
+// ✅ Required: specify index
+db.find("users", (b) => b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")));
+
+// ❌ This doesn't exist - can't do table scans
+db.find("users", (b) => b.where({ email: "user@example.com" }));
+```
+
+---
+
+## 🔄 Append-Only Schema Evolution
+
+**Every schema change is versioned automatically.** Fragno uses an append-only log where each
+operation (`.addTable()`, `.alterTable()`) increments the version. Migrations are generated
+automatically based on version differences.
+
+```typescript
+const schema = schema((s) => {
+  return s
+    .addTable("users", ...)      // Version 1
+    .alterTable("users", ...)     // Version 2
+    .alterTable("users", ...);    // Version 3
+});
+// schema.version === 3
+```
+
+---
+
+## 🎯 Database vs Runtime Defaults
+
+**Two types of defaults, clear distinction.** `defaultTo()` runs at the database level (DEFAULT
+NOW()), while `defaultTo$()` runs in application code (generate CUID). No confusion about when
+defaults are applied.
+
+```typescript
+.addColumn("createdAt", column("timestamp").defaultTo((b) => b.now()))  // DB-level
+.addColumn("sessionId", column("string").defaultTo$((b) => b.cuid()))     // Runtime
+```
+
+---
+
+## 🧩 Fragment Composition via Services
+
+**Fragments can depend on other fragments.** Use named services to compose fragments together. One
+fragment can require a service from another, enabling modular architectures where fragments work
+together.
+
+```typescript
+// Email fragment provides service
+emailFragment.providesService("email", ...)
+
+// Notification fragment requires it
+notificationFragment.usesService<"email", IEmailService>("email")
+```
+
+---
+
+## 🌊 Streaming Responses with Reactive Updates
+
+**NDJSON streaming that updates reactively.** When a route streams data, the client hook's `data`
+array updates reactively as items arrive. `loading` stays true until the first item, then updates
+happen automatically.
+
+```typescript
+const { data, loading } = useChatStream();
+// data starts as [], updates reactively as stream items arrive
+```
+
+---
+
+## 🎨 Custom Fetcher Configuration
+
+**Full control over HTTP requests.** Provide custom fetch functions or merge RequestInit options.
+Perfect for authentication, CORS, or testing. User config takes precedence - your auth headers
+always win.
+
+```typescript
+createFragmentClient({
+  fetcherConfig: {
+    type: "function",
+    fetcher: myCustomFetch, // Override everything
+  },
+});
+```
+
+---
+
+## 🧮 Derived Stores from Nanostores
+
+**Build reactive computed values.** Use Nanostores `computed()` to create derived stores that
+aggregate or transform data. Perfect for building up complex state from simpler primitives.
+
+```typescript
+const aggregatedMessage = computed(chatStream.mutatorStore, ({ data }) => {
+  return (data ?? [])
+    .filter((item) => item.type === "response.output_text.delta")
+    .map((item) => item.delta)
+    .join("");
+});
+```
+
+---
+
+## 🚫 Error Codes as Hints (Not Enums)
+
+**Forward-compatible error handling.** Error codes are hints, not strict enums. This means fragment
+updates can introduce new error codes without breaking existing clients. Smart approach to
+versioning.
+
+```typescript
+errorCodes: ["USER_EXISTS", "VALIDATION_ERROR"]; // Hints, not strict
+```
+
+---
+
+## ✂️ Automatic Code Splitting
+
+**Server code never ships to the client.** The `@fragno-dev/unplugin-fragno` plugin automatically
+removes server-side code from client bundles. Route handlers, dependencies, and services are
+stripped out at build time.
+
+---
+
+## 🌐 Framework Handlers via `handlersFor()`
+
+**One fragment, many frameworks.** Use `handlersFor("next-js")`, `handlersFor("svelte-kit")`, etc.
+to get framework-specific route handlers. Same fragment code works everywhere.
+
+```typescript
+export const { GET, POST } = fragment.handlersFor("next-js");
+```
+
+---
+
+## 🔐 Hidden System Columns for Performance
+
+**Smart internals you never see.** Every table gets `_internalId` (for joins) and `_version` (for
+optimistic locking) automatically. These are hidden from the API but power the performance features.
+
+---
+
+## 📦 Namespaced Database Tables
+
+**No conflicts with user tables.** Fragment tables are automatically namespaced, so multiple
+fragments can coexist in the same database without table name collisions. Each fragment manages its
+own schema.
+
+---
+
+## 🎓 AGENTS.md for AI-Assisted Development
+
+**Template includes AI helper file.** The fragment template comes with an AGENTS.md file to help AI
+assistants understand your fragment structure. Smart move for the AI era.
+
+---
+
+## 🎯 Web Standards First
+
+**Uses Request/Response everywhere.** Fragno uses standard web APIs, so it works with any framework
+that supports them. Not listed in the docs? Still works - just use the standard handler.
+
+```typescript
+// Works with any framework
+app.all("/api/fragment/*", (req) => fragment.handler(req));
+```

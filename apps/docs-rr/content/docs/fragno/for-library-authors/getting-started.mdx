@@ -1,0 +1,306 @@
+---
+title: Getting Started
+description: Learn how to build your own Fragno fragments
+---
+
+There are several concepts you should be familiar with before publishing a Fragment:
+
+- Defining Routes
+- Dependencies and Services
+- Client-side State Management
+- Code-Splitting (Client and Server bundles)
+
+But before getting into those details, we'll start with the basics. In this walkthrough, we'll
+create two simple server routes for getting and creating todos, and then create a client-side
+Fragment that provides TanStack Query-style hooks for the two routes.
+
+## Installation
+
+Before getting started, add the core package to your project as a regular dependency. You'll also
+need a [Standard Schema](https://standardschema.dev/) compatible library for schema validation, such
+as [Zod](https://zod.dev/).
+
+Quickstart your fragment from scratch using the create command:
+
+{/* using npm language removes the @latest version */}
+
+```bash tab="npm"
+npm create fragno@latest
+```
+
+```bash tab="pnpm"
+pnpm create fragno@latest
+```
+
+```bash tab="yarn"
+yarn create fragno@latest
+```
+
+```bash tab="bun"
+bun create fragno@latest
+```
+
+Our template comes with an
+[AGENTS.md](https://github.com/rejot-dev/fragno/blob/main/packages/create/templates/fragment/AGENTS.md)
+file that can get you started quickly with AI.
+
+or add it to an existing package:
+
+```npm
+npm install @fragno-dev/core
+```
+
+## Creating Your First Fragment
+
+Let's build a simple todos fragment that demonstrates the core concepts.
+
+### Step 1: Define Your Fragment
+
+```typescript title="src/index.ts"
+import { defineFragment, defineRoute, instantiate } from "@fragno-dev/core";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import { z } from "zod";
+
+// Any configuration the users of your Fragment will need to provide
+export interface TodosConfig {
+  openaiApiKey: string;
+  onTodoCreated?: (todo: Todo & { textSummary?: string }) => void;
+}
+
+export type Todo = z.infer<typeof TodoSchema>;
+
+const TodoSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  done: z.boolean(),
+  createdAt: z.string(),
+});
+
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment").build();
+```
+
+### Step 2: Add Dependencies and Services (Optional)
+
+Dependencies are private to the library/fragment and are not included in the client bundle. They can
+be used in the server-side route handlers. Dependencies can be defined using the `withDependencies`
+method, which has access to the config object.
+
+```typescript title="src/index.ts"
+import { defineFragment } from "@fragno-dev/core";
+import { MyOpenAIWrapper } from "./lib/my-openai-wrapper";
+
+const todosDefinition = defineFragment<TodosConfig>("todos-fragment")
+  .withDependencies(({ config }) => {
+    return {
+      aiWrapper: new MyOpenAIWrapper({
+        apiKey: config.openaiApiKey,
+      }),
+    };
+  })
+  .build();
+```
+
+We'll skip over services for now, but you can read more about them in the
+[Dependencies and Services](./features/dependencies-and-services) page.
+
+<Callout title="Need Persistent Storage?" type="info">
+  If your Fragment needs to store data in a database, check out the [Database
+  Integration](./database-integration/overview) section. It provides a type-safe ORM and lets users
+  integrate with their existing database.
+</Callout>
+
+### Step 3: Define Routes
+
+A basic route can be defined using the `defineRoute` function. Options are: `method`, `path`,
+`inputSchema`, `outputSchema`, `handler`, `errorCodes`, and `queryParameters`. See our
+[Route Definition](/docs/fragno/for-library-authors/features/route-definition) page for additional
+details.
+
+The first argument passed to the handler is the input context object, which has an `input` field
+with a `valid` method that can be used to validate the input. It also contains other fields related
+to the request.
+
+The second argument passed to the handler is the output context object, which contains several
+method fields: `json`, `jsonStream`, `empty`, and `error`. These methods can be used to return a
+response.
+
+```typescript title="routes/get-todos.ts"
+import { defineRoute } from "@fragno-dev/core";
+
+export const getTodosRoute = defineRoute({
+  method: "GET",
+  path: "/todos",
+  outputSchema: z.array(TodoSchema),
+  handler: async ({ query }, { json }) => {
+    return json([
+      {
+        id: "1",
+        text: "Learn Fragno",
+        done: query.get("done") === "true",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  },
+});
+```
+
+The `defineRoute` function does _not_ have access to the dependencies or services. These are
+available in the route factory context object that can be accessed by using `defineRoutes` (note the
+plural).
+
+```typescript title="routes/post-todos.ts"
+import { defineRoute, defineRoutes } from "@fragno-dev/core";
+import type { Todo } from "../index";
+import type { MyOpenAIWrapper } from "../lib/my-openai-wrapper";
+
+// Dependencies and services can be defined on a per-route level, since they might be a subset of
+// all dependencies/services.
+type AddTodoRouteDeps = {
+  aiWrapper: MyOpenAIWrapper;
+};
+
+export const addTodoRoute = defineRoutes<AddTodoRouteDeps, {}>().create(({ config, deps }) => {
+  const { aiWrapper } = deps;
+
+  return [
+    defineRoute({
+      method: "POST",
+      path: "/todos",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: TodoSchema,
+      queryParameters: ["summarize"],
+      errorCodes: ["SUMMARY_ERROR"],
+      handler: async ({ input, query }, { json, error }) => {
+        const { text } = await input.valid();
+
+        const todo = {
+          id: crypto.randomUUID(),
+          text,
+          done: false,
+          createdAt: new Date().toISOString(),
+        } satisfies Todo;
+
+        let textSummary: string | undefined;
+        try {
+          textSummary = query.get("summarize") ? await aiWrapper.summarizeText(text) : undefined;
+        } catch {
+          return error({ message: "Summary error", code: "SUMMARY_ERROR" }, 503);
+        }
+
+        // Call the user's callback if provided
+        config?.onTodoCreated?.({
+          ...todo,
+          textSummary,
+        });
+
+        return json(todo);
+      },
+    }),
+  ];
+});
+```
+
+### Step 4: Create the Server-Side Fragment
+
+To finalize the server-side Fragment, we need to export a function that creates the library
+instance. We use the `instantiate` builder pattern to configure the fragment with its config,
+routes, and options.
+
+```typescript title="src/index.ts"
+import { getTodosRoute } from "./routes/get-todos";
+import { addTodoRoute } from "./routes/post-todos";
+
+import { instantiate } from "@fragno-dev/core";
+import type { FragnoPublicConfig } from "@fragno-dev/core";
+
+export function createTodos(config: TodosConfig, options: FragnoPublicConfig = {}) {
+  return instantiate(todosDefinition)
+    .withConfig(config)
+    .withRoutes([getTodosRoute, addTodoRoute])
+    .withOptions(options)
+    .build();
+}
+```
+
+### Step 5: Create the Client-Side Fragment
+
+The last step is to create the client-side Fragment. This object defines how your users will use the
+Fragment on the client-side. These are React-style hooks (or Vue composables, etc). In this example,
+we simply create hooks for the two routes we defined. Library authors must export client hooks for
+each of the supported frameworks.
+
+```typescript title="src/fragment.ts"
+import { getTodosRoute } from "./routes/get-todos";
+import { addTodoRoute } from "./routes/post-todos";
+
+import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+export function createTodosClients(fragnoConfig: FragnoPublicClientConfig) {
+  const cb = createClientBuilder(todosDefinition, fragnoConfig, [getTodosRoute, addTodoRoute]);
+  return {
+    useTodos: cb.createHook("/todos"),
+    useAddTodo: cb.createMutator("POST", "/todos"),
+  };
+}
+```
+
+Then, create a client entrypoint file for each frontend framework.
+
+```typescript title="src/client/react.ts" tab="React"
+import { createTodosClients } from "../fragment";
+
+import { useFragno } from "@fragno-dev/core/react";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+export function createTodosClient(config: FragnoPublicClientConfig = {}) {
+  return useFragno(createTodosClients(config));
+}
+```
+
+```typescript title="src/client/vue.ts" tab="Vue"
+import { createTodosClients } from "../fragment";
+
+import { useFragno } from "@fragno-dev/core/vue";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+export function createTodosClient(config: FragnoPublicClientConfig = {}) {
+  return useFragno(createTodosClients(config));
+}
+```
+
+```typescript title="src/client/svelte.ts" tab="Svelte"
+import { createTodosClients } from "../fragment";
+
+import { useFragno } from "@fragno-dev/core/svelte";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+export function createTodosClient(config: FragnoPublicClientConfig = {}) {
+  return useFragno(createTodosClients(config));
+}
+```
+
+```typescript title="src/client/vanilla.ts" tab="Vanilla JavaScript"
+import { createTodosClients } from "../fragment";
+
+import { useFragno } from "@fragno-dev/core/vanilla";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+
+export function createTodosClient(config: FragnoPublicClientConfig = {}) {
+  return useFragno(createTodosClients(config));
+}
+```
+
+This file should be created for every frontend framework: React, Vue, Svelte, and vanilla
+JavaScript. The only difference between these files is the import of the `useFragno` hook.
+
+<Callout title="Create this file for every frontend framework" type="warning">
+  Fragment authors must explicitly include a stub for every framework, make sure to create this file
+  for other frameworks as well using the respective `useFragno` hooks.
+</Callout>
+
+## Next Steps
+
+We went over building a basic Fragment. In the next section, we'll cover the advanced features of
+Fragno. It's also important to review the [Code Splitting](./features/code-splitting) page, which
+goes over bundling and publishing your Fragment.

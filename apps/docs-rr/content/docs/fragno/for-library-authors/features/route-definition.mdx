@@ -1,0 +1,350 @@
+---
+title: Route Definitions
+description: Learn how to define routes in Fragno
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+The `defineRoute` function is the core building block for creating API endpoints. It provides a
+type-safe way to define HTTP routes with validation, error handling, and automatic type inference.
+
+## Basic Route Structure
+
+```typescript
+import { defineRoute } from "@fragno-dev/core";
+
+const route = defineRoute({
+  method: "GET",
+  path: "/users",
+  handler: async ({ query }, { json }) => {
+    return json({ users: [] });
+  },
+});
+```
+
+## Path Configuration
+
+### Valid Paths
+
+Paths must follow these rules:
+
+- Start with `/` (cannot be empty or missing leading slash)
+- Cannot be just `/` (root path)
+- Cannot end with `/`
+
+Example paths:
+
+```typescript
+"/users"; // Basic path
+"/v1/users"; // Nested path
+"/users/:id"; // With parameter
+"/files/**:path"; // With wildcard
+```
+
+By default, paths are mounted under `/api/<fragment-name>`. This means that when you define the
+`/users` route, it will be mounted under `/api/<fragment-name>/users`.
+
+### Path Parameters
+
+Use `:name` for single-segment parameters and `**:name` for wildcard parameters that capture the
+entire remainder of the path.
+
+```typescript
+// Single parameter
+defineRoute({
+  method: "GET",
+  path: "/users/:id",
+  handler: async ({ pathParams }, { json }) => {
+    // pathParams is typed as { id: string }
+    return json({ userId: pathParams.id });
+  },
+});
+
+// Multiple parameters
+defineRoute({
+  method: "GET",
+  path: "/organizations/:orgId/users/:userId",
+  handler: async ({ pathParams }, { json }) => {
+    // pathParams is typed as { orgId: string; userId: string }
+    return json({ orgId: pathParams.orgId, userId: pathParams.userId });
+  },
+});
+
+// Wildcard parameter
+defineRoute({
+  method: "GET",
+  path: "/files/**:filepath",
+  handler: async ({ pathParams }, { json }) => {
+    // pathParams is typed as { filepath: string }
+    // Captures entire remainder: "/files/docs/readme.txt" -> filepath = "docs/readme.txt"
+    return json({ file: pathParams.filepath });
+  },
+});
+```
+
+## Input Schema
+
+Define input validation using any [Standard Schema](https://standardschema.dev/) compatible library,
+such as Zod:
+
+```typescript
+import { z } from "zod";
+
+defineRoute({
+  method: "POST",
+  path: "/users",
+  inputSchema: z.object({
+    name: z.string().min(1),
+    email: z.string().email(),
+    age: z.number().optional(),
+  }),
+  handler: async ({ input }, { json }) => {
+    // input.valid() returns the validated data
+    const userData = await input.valid();
+    // userData is typed as { name: string; email: string; age?: number }
+
+    return json({ id: "123", ...userData });
+  },
+});
+```
+
+The input context provides:
+
+- `input.valid()` - Async method that validates and returns the parsed data. This method throws a
+  `FragnoApiValidationError` if the input is invalid, which is automatically converted to a 400
+  response.
+- `input.schema` - The schema object
+
+## Output Schema
+
+Define the expected response structure for type safety and documentation:
+
+```typescript
+const UserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  createdAt: z.string(),
+});
+
+defineRoute({
+  method: "GET",
+  path: "/users/:id",
+  outputSchema: UserSchema,
+  handler: async ({ pathParams }, { json }) => {
+    const user = await getUserById(pathParams.id);
+    // TypeScript ensures the return value matches UserSchema
+    return json(user);
+  },
+});
+```
+
+<Callout type="info" title="Output Schema when Streaming">
+  When using streaming responses with `jsonStream`, the output schema object is expected to be an
+  array of the items you want to stream.
+</Callout>
+
+## Error Codes
+
+Error codes can be defined on a route as a _hint_ to the client. These codes serve as hints for
+forward-compatibility reasons. Error codes are expected to be strings, as updating a Fragment might
+introduce new error codes.
+
+```typescript
+defineRoute({
+  method: "POST",
+  path: "/users",
+  inputSchema: z.object({ email: z.string().email() }),
+  errorCodes: ["USER_EXISTS", "VALIDATION_ERROR"],
+  handler: async ({ input }, { json, error }) => {
+    const { email } = await input.valid();
+
+    if (await userExists(email)) {
+      return error(
+        { message: "User already exists", code: "USER_EXISTS" },
+        409, // HTTP status code
+      );
+    }
+
+    return json({ id: "123", email });
+  },
+});
+```
+
+Error responses are returned to the client as:
+
+```json
+{
+  "message": "User already exists",
+  "code": "USER_EXISTS"
+}
+```
+
+## Query Parameters
+
+Like error codes, query parameters are just a hint. The `query` object is a web-standard
+`URLSearchParams` object.
+
+```typescript
+defineRoute({
+  method: "GET",
+  path: "/users",
+  queryParameters: ["page", "limit", "sort"],
+  handler: async ({ query }, { json }) => {
+    const page = query.get("page") || "1";
+    const limit = query.get("limit") || "10";
+    const sort = query.get("sort");
+
+    // Access any query parameter via query.get()
+    const users = await getUsers({ page, limit, sort });
+    return json(users);
+  },
+});
+```
+
+## Handler Callback
+
+The route handler receives two context objects that provide access to request data and response
+methods.
+
+### Request Input Context
+
+The first parameter provides access to all incoming request data. Available properties include:
+
+- `path`: Path parameters from the URL
+- `query`: Query string parameters
+- `input`: Parsed and validated input body (only if input schema is defined)
+- `headers`: HTTP request headers
+- `method`: HTTP method (GET, POST, etc.)
+
+The input property is only defined if an input schema is defined for the route.
+
+<TypeTable
+  type={{
+    valid: {
+      description:
+        "Async method that validates and returns the parsed data. This method throws a `FragnoApiValidationError` if the input is invalid, which is automatically converted to a 400 response.",
+      type: "() => Promise<StandardSchemaV1.InferOutput<TInputSchema>>",
+      required: true,
+    },
+    schema: {
+      description: "The schema object",
+      type: "StandardSchemaV1",
+      required: true,
+    },
+  }}
+/>
+
+### Request Output Context
+
+The second parameter provides methods for creating responses.
+
+#### JSON Responses
+
+Create JSON responses with automatic serialization and proper content-type headers:
+
+```typescript
+// Basic JSON response (200 status)
+return json({ message: "Success", data: [1, 2, 3] });
+
+// JSON with custom status code
+return json({ id: "123", created: true }, 201);
+
+// JSON with custom status and headers
+return json(
+  { result: "ok" },
+  {
+    status: 200,
+    headers: { "X-Custom": "value" },
+  },
+);
+
+// JSON with just status number
+return json({ count: 42 }, 200);
+```
+
+#### Empty Responses
+
+Create responses with no body content:
+
+```typescript
+// Empty response (201 status by default)
+return empty();
+
+// Empty with custom status
+return empty(204);
+
+// Empty with custom status and headers
+return empty({
+  status: 202,
+  headers: { Location: "/new-resource" },
+});
+```
+
+#### Error Responses
+
+Create structured error responses with consistent formatting:
+
+```typescript
+// Basic error (500 status by default)
+return error({ message: "Internal error", code: "INTERNAL_ERROR" });
+
+// Error with custom status
+return error({ message: "Not found", code: "NOT_FOUND" }, 404);
+
+// Error with custom status and headers
+return error(
+  { message: "Rate limited", code: "RATE_LIMITED" },
+  {
+    status: 429,
+    headers: { "Retry-After": "60" },
+  },
+);
+
+// Error with just status number
+return error({ message: "Bad request", code: "BAD_REQUEST" }, 400);
+```
+
+#### Streaming Responses
+
+```typescript
+return jsonStream(async (stream) => {
+  for await (const { progress } of eventStream) {
+    stream.write({ type: "progress", value: progress });
+  }
+
+  // Send final result
+  stream.write({ type: "complete", result: "Processing finished" });
+});
+```
+
+The streaming response uses Content Type `application/x-ndjson` (newline-delimited JSON). The
+parameter of the `write` method is expected to be an array element of the output schema. As such,
+errors can be defined in-line.
+
+#### Response Method Signatures
+
+```typescript
+// JSON response
+json(data: TOutput, initOrStatus?: ResponseInit | StatusCode, headers?: HeadersInit): Response
+
+// Empty response
+empty(initOrStatus?: ResponseInit<ContentlessStatusCode> | ContentlessStatusCode, headers?: HeadersInit): Response
+
+// Error response
+error(
+  { message: string; code: TErrorCode },
+  initOrStatus?: ResponseInit | StatusCode,
+  headers?: HeadersInit
+): Response
+
+// Streaming response
+jsonStream(
+  callback: (stream: ResponseStream<TOutput>) => void | Promise<void>,
+  options?: {
+    onError?: (error: Error, stream: ResponseStream<TOutput>) => void | Promise<void>;
+    headers?: HeadersInit;
+  }
+): Response
+```

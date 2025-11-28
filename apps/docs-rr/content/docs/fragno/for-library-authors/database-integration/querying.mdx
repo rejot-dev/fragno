@@ -1,0 +1,336 @@
+---
+title: Querying
+description: Using the DB to query and manipulate data
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+The `db` object provides a type-safe query interface for all CRUD operations. All methods are fully
+typed based on your schema.
+
+## Accessing the DB
+
+The `db` is available in both `withDependencies()` and `providesService()`:
+
+```typescript
+const fragmentDef = defineFragment("my-fragment")
+  .extend(withDatabase(mySchema))
+  .withDependencies(({ db }) => {
+    // Use in dependencies
+  })
+  .providesBaseService(({ db, deps }) => {
+    // Use in services
+    return {
+      createComment: async (data) => {
+        return db.create("comment", data);
+      },
+    };
+  });
+```
+
+## Index-Based Queries
+
+All queries in Fragno DB must specify an index using `whereIndex()`. This ensures optimal
+performance and predictable query patterns.
+
+```typescript
+// Query using the primary index (ID)
+const users = await db.find("users", (b) =>
+  b.whereIndex("primary", (eb) => eb("id", "=", "user123")),
+);
+
+// Query using a custom index
+const users = await db.find("users", (b) =>
+  b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
+);
+```
+
+<Callout title="Why Index-Based Queries?" type="info">
+  Requiring indexes for all queries ensures consistent performance and prevents slow table scans.
+</Callout>
+
+## Finding Records
+
+### Basic Queries
+
+```typescript
+// Find all users (using primary index)
+const users = await db.find("users", (b) => b.whereIndex("primary"));
+
+// Find with filtering
+const activeUsers = await db.find("users", (b) =>
+  b.whereIndex("idx_status", (eb) => eb("status", "=", "active")),
+);
+
+// Select specific columns
+const userNames = await db.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
+// Returns: Array<{ id: FragnoId; name: string }>
+
+// Count records
+const userCount = await db.find("users", (b) => b.whereIndex("primary").selectCount());
+// Returns: number
+```
+
+### Cursor-Based Pagination
+
+Use cursor-based pagination for efficient paging through large result sets. Fragno DB provides
+`findWithCursor()` which automatically generates cursors from query results:
+
+```typescript
+// Fetch first page with automatic cursor generation
+const firstPage = await db.findWithCursor("users", (b) =>
+  b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
+);
+// Returns: { items: User[], cursor?: Cursor }
+
+// Fetch next page using the returned cursor (simplified - cursor contains all metadata!)
+if (firstPage.cursor) {
+  const nextPage = await db.findWithCursor("users", (b) => b.after(firstPage.cursor));
+}
+
+// Or be explicit with parameters (they must match the cursor):
+if (firstPage.cursor) {
+  const nextPage = await db.findWithCursor("users", (b) =>
+    b.whereIndex("idx_name").after(firstPage.cursor).orderByIndex("idx_name", "asc").pageSize(10),
+  );
+}
+
+// Access the results
+firstPage.items.forEach((user) => {
+  console.log(user.name);
+});
+
+// Send cursor to client (encode to opaque string)
+const cursorForClient = firstPage.cursor?.encode();
+```
+
+**Manual Cursor Creation** (advanced):
+
+If you need more control, you can manually create cursors:
+
+```typescript
+import { Cursor } from "@fragno-dev/db";
+
+// Fetch page with regular find()
+const users = await db.find("users", (b) =>
+  b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
+);
+
+// Manually create cursor from last item
+const lastItem = users[users.length - 1];
+const cursor = new Cursor({
+  indexName: "idx_name",
+  orderDirection: "asc",
+  pageSize: 10,
+  indexValues: { name: lastItem.name },
+});
+```
+
+<Callout title="When to Use findWithCursor()" type="info">
+  Use `findWithCursor()` when you need pagination metadata. Use regular `find()` when you don't need
+  cursors. Both methods support the same query building features.
+</Callout>
+
+### Ordering
+
+Sort results using indexes:
+
+```typescript
+// Order by an index
+const users = await db.find("users", (b) =>
+  b
+    .whereIndex("idx_created", (eb) => eb("status", "=", "active"))
+    .orderByIndex("idx_created", "desc"),
+);
+```
+
+### Joins
+
+Load related data using joins:
+
+```typescript
+// Join a single relation
+const postsWithAuthor = await db.find("posts", (b) =>
+  b.whereIndex("primary").join((j) => j.author()),
+);
+
+// Access joined data
+postsWithAuthor.forEach((post) => {
+  console.log(post.title);
+  console.log(post.author?.name); // Typed as User | null
+});
+
+// Join with filtering and selection
+const posts = await db.find("posts", (b) =>
+  b
+    .whereIndex("primary")
+    .join((j) =>
+      j.author((authorBuilder) =>
+        authorBuilder
+          .whereIndex("idx_status", (eb) => eb("status", "=", "active"))
+          .select(["name"]),
+      ),
+    ),
+);
+
+// Nested joins
+const commentsWithPostAndAuthor = await db.find("comments", (b) =>
+  b
+    .whereIndex("primary")
+    .join((j) => j.post((postBuilder) => postBuilder.join((j2) => j2.author()))),
+);
+```
+
+## Creating Records
+
+```typescript
+// Create single record
+const userId = await db.create("users", {
+  name: "Alice",
+  email: "alice@example.com",
+  age: 25,
+});
+// Returns: FragnoId
+
+// Create multiple records
+const userIds = await db.createMany("users", [
+  { name: "Bob", email: "bob@example.com" },
+  { name: "Carol", email: "carol@example.com" },
+]);
+// Returns: FragnoId[]
+
+// Columns with defaultTo$() are auto-populated
+await db.create("posts", {
+  title: "My Post",
+  content: "Content here",
+  userId: userId.toString(),
+  // createdAt auto-generated via defaultTo$("now")
+});
+```
+
+## Updating Records
+
+```typescript
+// Update by ID
+await db.update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
+```
+
+## Deleting Records
+
+```typescript
+// Delete by ID
+await db.delete("users", userId);
+```
+
+## Transactions (Unit of Work)
+
+Unit of Work provides atomic transactions with a two-phase approach and optimistic concurrency
+control.
+
+### Two-Phase Transactions with Version Checking
+
+Fragno DB automatically tracks row versions in a hidden `_version` column. The two-phase pattern
+enables safe concurrent updates:
+
+```typescript
+const uow = db.createUnitOfWork();
+
+// Phase 1: Retrieval - fetch data with version info
+uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
+uow.find("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
+
+// Execute retrieval phase
+const [users, accounts] = await uow.executeRetrieve();
+
+// Phase 2: Mutation - modify data with version checks
+const user = users[0];
+const account = accounts[0];
+
+// Use .check() for optimistic locking
+uow.update("users", user.id, (b) => b.set({ lastLogin: new Date() }).check());
+uow.update("accounts", account.id, (b) => b.set({ balance: account.balance + 100 }).check());
+
+// Execute mutations atomically
+const { success } = await uow.executeMutations();
+if (!success) {
+  // Version conflict - another transaction modified the data
+  // Retry the entire transaction
+  console.error("Concurrent modification detected");
+}
+```
+
+**How `.check()` works:**
+
+- Only succeeds if the row's `_version` hasn't changed since retrieval
+- Prevents lost updates in concurrent scenarios
+- Requires a `FragnoId` with version info (not a plain string)
+- Returns `success: false` if any version check fails
+
+<Callout title="Version Checking Requires FragnoId" type="warn">
+  `.check()` only works with `FragnoId` objects from query results. String IDs don't contain version
+  information and will throw an error.
+</Callout>
+
+### Getting Created IDs
+
+```typescript
+const uow = db.createUnitOfWork();
+
+uow.create("users", { name: "Alice", email: "alice@example.com" });
+uow.create("users", { name: "Bob", email: "bob@example.com" });
+
+await uow.executeMutations();
+
+// Get IDs of created records
+const createdIds = uow.getCreatedIds();
+console.log(createdIds[0].toString()); // First user's ID
+console.log(createdIds[1].toString()); // Second user's ID
+```
+
+## Wrapping in Services
+
+DB operations won't be available in services (and thus to the user) by default. You can wrap these
+operations in functions as part of the services object. You're also free to expose the `db` object
+directly to the user if you want to, but make sure to think about encapsulation and security before
+you do.
+
+```typescript
+.providesService(({ db }) => {
+  return {
+    createComment: async (data: { content: string; userId: string; postId: string }) => {
+      // Validation
+      if (data.content.length < 10) {
+        throw new Error("Comment too short");
+      }
+
+      // Create with business logic
+      const id = await db.create("comment", {
+        content: data.content,
+        userId: data.userId,
+        postId: data.postId,
+      });
+
+      return { id: id.toString(), ...data };
+    },
+
+    getCommentsByPost: async (postId: string, limit = 20) => {
+      return db.find("comment", (b) =>
+        b
+          .whereIndex("idx_post", (eb) => eb("postId", "=", postId))
+          .orderByIndex("idx_created", "desc")
+          .pageSize(limit),
+      );
+    },
+  };
+})
+```
+
+## Next Steps
+
+- Learn about
+  [Defining Schemas](/docs/fragno/for-library-authors/database-integration/defining-schemas)
+- See
+  [Dependencies and Services](/docs/fragno/for-library-authors/features/dependencies-and-services)
+  for using DB in context
+- Check the
+  [example-fragments/fragno-db-library](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)
