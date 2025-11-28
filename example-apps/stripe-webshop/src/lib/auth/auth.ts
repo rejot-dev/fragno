@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { reactStartCookies } from "better-auth/react-start";
+import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { customSession } from "better-auth/plugins";
 import { admin } from "better-auth/plugins";
 import { db } from "@/db";
@@ -29,7 +29,7 @@ export const auth = betterAuth({
       };
     }),
     admin(),
-    reactStartCookies(),
+    tanstackStartCookies(),
   ],
   user: {
     additionalFields: {
