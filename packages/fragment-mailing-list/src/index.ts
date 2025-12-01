@@ -4,7 +4,10 @@ import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { mailingListRoutesFactory } from "./routes";
 import { mailingListFragmentDefinition } from "./definition";
-import type { MailingListConfig } from "./types";
+
+export interface MailingListConfig {
+  onSubscribe?: (email: string) => Promise<void> | void;
+}
 
 const routes = [mailingListRoutesFactory] as const;
 
@@ -29,5 +32,5 @@ export function createMailingListFragmentClients(fragnoConfig: FragnoPublicClien
 }
 
 export { mailingListFragmentDefinition } from "./definition";
-export type { MailingListConfig, MailingListServices } from "./types";
+export type { SortField, SortOrder, GetSubscribersParams } from "./definition";
 export type { FragnoRouteConfig } from "@fragno-dev/core";

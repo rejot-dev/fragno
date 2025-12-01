@@ -1,6 +1,9 @@
-import { createContext, createRequestHandler, RouterContextProvider } from "react-router";
+import { createRequestHandler, RouterContextProvider } from "react-router";
+import { CloudflareContext } from "../app/cloudflare/cloudflare-context";
+import { MailingList } from "./mailing-list.do";
 
-export const CloudflareContext = createContext<{ env: Env; ctx: ExecutionContext }>();
+// Export Durable Object classes
+export { MailingList };
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -13,4 +16,4 @@ export default {
     context.set(CloudflareContext, { env, ctx });
     return requestHandler(request, context);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<CloudflareEnv>;

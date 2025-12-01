@@ -1,7 +1,7 @@
 import { defineFragment } from "@fragno-dev/core";
 import { mailingListSchema } from "./schema";
-import type { MailingListConfig } from "./types";
 import { withDatabase, type Cursor } from "@fragno-dev/db";
+import type { MailingListConfig } from ".";
 
 export type SortField = "email" | "subscribedAt";
 export type SortOrder = "asc" | "desc";
@@ -16,7 +16,7 @@ export interface GetSubscribersParams {
 
 export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("mailing-list")
   .extend(withDatabase(mailingListSchema))
-  .providesBaseService(({ defineService }) => {
+  .providesBaseService(({ config, defineService }) => {
     return defineService({
       subscribe: async function (email: string) {
         // Check if already subscribed
@@ -39,6 +39,8 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
         const id = uow.create("subscriber", { email, subscribedAt });
 
         await uow.mutationPhase;
+
+        await config.onSubscribe?.(email);
 
         return {
           id: id.toString(),
