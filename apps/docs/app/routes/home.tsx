@@ -1,7 +1,5 @@
-"use client";
-
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, Form, useActionData, useNavigation } from "react-router";
 import { FragnoLogo } from "@/components/logos/fragno-logo";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import {
@@ -24,6 +22,11 @@ import BentoCake from "@/components/bento-cake";
 import Frameworks from "@/components/frameworks";
 import DatabaseIntegration from "@/components/database-integration";
 import { GitHub } from "@/components/logos/github";
+import type { Route } from "./+types/home";
+import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
+import { CloudflareContext } from "@/cloudflare/cloudflare-context";
+import { validateTurnstileToken } from "@/cloudflare/turnstile";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 export function meta() {
   return [
@@ -34,6 +37,58 @@ export function meta() {
         "Fragno is the toolkit for building full-stack TypeScript libraries that work seamlessly across frameworks",
     },
   ];
+}
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const { env } = context.get(CloudflareContext);
+  return {
+    turnstileSitekey: env.TURNSTILE_SITEKEY,
+  };
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const { env } = context.get(CloudflareContext);
+  const formData = await request.formData();
+  const email = formData.get("email");
+
+  if (!email || typeof email !== "string") {
+    return {
+      success: false,
+      message: "Email is required",
+    };
+  }
+
+  const turnstileToken = formData.get("cf-turnstile-response");
+  if (!turnstileToken || typeof turnstileToken !== "string") {
+    return {
+      success: false,
+      message: "Turnstile token is required",
+    };
+  }
+
+  const turnstileResult = await validateTurnstileToken(env.TURNSTILE_SECRET_KEY, turnstileToken);
+  if (!turnstileResult.success) {
+    return {
+      success: false,
+      message: "Turnstile validation failed",
+    };
+  }
+
+  try {
+    const mailingListDo = getMailingListDurableObject(context);
+    await mailingListDo.subscribe(email);
+
+    return {
+      success: true,
+      message: "Successfully subscribed!",
+    };
+  } catch (error) {
+    console.error("Mailing list subscription error:", error);
+    return {
+      success: false,
+      message: "Failed to subscribe. Please try again.",
+    };
+  }
 }
 
 function Hero() {
@@ -452,63 +507,105 @@ function DocsSection() {
   );
 }
 
-function BlogSection() {
-  return (
-    <section className="mx-auto w-full max-w-5xl">
-      <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
-        {/* Background elements similar to blog page */}
-        <div className="dark:from-zinc-400/3 dark:via-neutral-400/3 dark:to-stone-400/3 absolute inset-0 bg-gradient-to-r from-zinc-500/5 via-neutral-500/5 to-stone-500/5" />
-        <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-10 mix-blend-multiply dark:opacity-5"
-          style={{
-            backgroundImage:
-              "linear-gradient(120deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.05) 75%, transparent 75%, transparent)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-        <div className="pointer-events-none absolute -right-8 top-8 h-24 w-24 rotate-12 rounded-xl border border-gray-300/30 dark:border-white/5" />
+function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
+  const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
 
-        <div className="relative">
-          <div className="flex items-start gap-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
-              <FileText className="size-6 text-gray-700 dark:text-gray-300" />
-            </div>
-            <div className="flex-1">
-              <div className="mb-2">
-                <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                  Blog Post
-                </span>
+  return (
+    <section className="w-full max-w-5xl space-y-8">
+      <div className="space-y-4 text-center">
+        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Join the Community</h2>
+        <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
+          Connect with other developers and stay updated on the latest developments
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Discord Section */}
+        <a
+          href="https://discord.gg/jdXZxyGCnC"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:ring-white/10"
+        >
+          <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-blue-600/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-blue-600/15" />
+          <div className="relative">
+            <div className="mb-4 flex items-center gap-4">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 dark:bg-blue-600/20">
+                <Users className="size-6 text-blue-600 dark:text-blue-400" />
+              </span>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Discord</h3>
+                <p className="text-fd-muted-foreground text-sm">Join the conversation</p>
               </div>
-              <h3 className="mb-2 text-xl font-semibold text-gray-900 dark:text-white">
-                Introduction to Fragno
-              </h3>
-              <p className="mb-4 text-gray-600 dark:text-gray-300">
-                Understand the philosophy and vision behind Fragno. Learn why we think a
-                framework-agnostic approach to building full-stack libraries is a great choice.
-              </p>
-              <Link
-                to="/blog/fragno-introduction"
-                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
-              >
-                Read Introduction
-              </Link>
             </div>
+            <p className="text-fd-muted-foreground mb-4 text-sm">
+              Connect with the community, get help with your projects, and stay updated on the
+              latest features and releases.
+            </p>
+            <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 transition-all group-hover:gap-2 dark:text-blue-400">
+              Join Discord
+              <span className="transition-transform group-hover:translate-x-0.5">→</span>
+            </span>
+          </div>
+        </a>
+
+        {/* Mailing List Section */}
+        <div className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
+          <div className="relative">
+            <div className="mb-4 flex items-center gap-4">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 dark:bg-blue-600/20">
+                <FileText className="size-6 text-blue-600 dark:text-blue-400" />
+              </span>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Newsletter</h3>
+                <p className="text-fd-muted-foreground text-sm">Get email updates</p>
+              </div>
+            </div>
+            <p className="text-fd-muted-foreground mb-4 text-sm">
+              Receive notifications about new features, releases, and important announcements.
+            </p>
+            <Form method="post" className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="your@email.com"
+                  required
+                  disabled={isSubmitting}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-50 dark:border-gray-600 dark:bg-slate-800/50 dark:text-white dark:placeholder:text-gray-400"
+                />
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isSubmitting ? "..." : "Subscribe"}
+                </button>
+              </div>
+              {actionData?.message && (
+                <p
+                  className={`text-sm ${
+                    actionData.success
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {actionData.message}
+                </p>
+              )}
+              <Turnstile siteKey={turnstileSitekey} options={{ appearance: "interaction-only" }} />
+            </Form>
           </div>
         </div>
-
-        <span className="pointer-events-none absolute -bottom-6 left-1/2 h-24 w-[110%] -translate-x-1/2 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
       </div>
     </section>
   );
 }
 
-export default function HomePage() {
+export default function HomePage({ loaderData }: Route.ComponentProps) {
+  const { turnstileSitekey } = loaderData;
   return (
     <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-16 md:px-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
@@ -526,7 +623,7 @@ export default function HomePage() {
       <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
 
       <DocsSection />
-      <BlogSection />
+      <CommunitySection turnstileSitekey={turnstileSitekey} />
     </main>
   );
 }
