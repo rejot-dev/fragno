@@ -21,9 +21,19 @@ export type {
   BoundServices,
 } from "./api/fragment-instantiator";
 
+import type {
+  IFragmentInstantiationBuilder,
+  IFragnoInstantiatedFragment,
+} from "./api/fragment-instantiator";
+import { instantiatedFragmentFakeSymbol } from "./internal/symbols";
+
 // Stub implementation for defineFragment
 // This is stripped by unplugin-fragno in browser builds
 export function defineFragment(_name: string) {
+  const definitionStub = {
+    name: _name,
+  };
+
   const stub = {
     withDependencies: () => stub,
     providesBaseService: () => stub,
@@ -36,7 +46,7 @@ export function defineFragment(_name: string) {
     withThisContext: () => stub,
     withLinkedFragment: () => stub,
     extend: () => stub,
-    build: () => ({}),
+    build: () => definitionStub,
   };
   return stub;
 }
@@ -47,18 +57,41 @@ export { FragmentDefinitionBuilder } from "./api/fragment-definition-builder";
 // Stub implementation for instantiate
 // This is stripped by unplugin-fragno in browser builds
 export function instantiate(_definition: unknown) {
-  const stub = {
-    withConfig: () => stub,
-    withRoutes: () => stub,
-    withOptions: () => stub,
-    withServices: () => stub,
-    build: () => ({}),
+  const fragmentStub: IFragnoInstantiatedFragment = {
+    [instantiatedFragmentFakeSymbol]: instantiatedFragmentFakeSymbol,
+    name: "",
+    routes: [],
+    services: {},
+    mountRoute: "",
+    $internal: {
+      deps: {},
+      options: {},
+      linkedFragments: {},
+    },
+    withMiddleware: () => {
+      // throw new Error("withMiddleware is not supported in browser builds");
+      return fragmentStub;
+    },
+    inContext: <T>(callback: () => T) => callback(),
+    handlersFor: () => ({}),
+    handler: async () => new Response(),
+    callRoute: async () => ({ ok: true, data: undefined, error: undefined }),
+    callRouteRaw: async () => new Response(),
+  };
+
+  const builderStub: IFragmentInstantiationBuilder = {
+    withConfig: () => builderStub,
+    withRoutes: () => builderStub,
+    withOptions: () => builderStub,
+    withServices: () => builderStub,
+    build: () => fragmentStub,
     definition: {},
     routes: [],
     config: undefined,
     options: undefined,
   };
-  return stub;
+
+  return builderStub;
 }
 
 // ============================================================================

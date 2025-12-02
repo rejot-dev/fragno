@@ -4,6 +4,7 @@
   "exports": {
     ".": {
       "development": "./src/mod.ts",
+      "workerd": "./dist/mod.js",
       "browser": "./dist/mod-client.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"

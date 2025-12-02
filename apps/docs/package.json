@@ -8,8 +8,8 @@
     "dev": "react-router dev",
     "postinstall": "fumadocs-mdx",
     "preview": "pnpm run build && vite preview",
-    "types:check": "pnpm run types:generate && fumadocs-mdx && tsc --noEmit",
-    "types:generate": "wrangler types --env-interface CloudflareEnv && react-router typegen && prettier --write ./worker-configuration.d.ts",
+    "types:check": "tsc --noEmit",
+    "types:generate": "wrangler types --env-interface CloudflareEnv && react-router typegen && fumadocs-mdx",
     "db:fragno:generate": "fragno-cli db generate app/fragno/mailing-list.ts -o app/db/mailing-list-do.schema.ts",
     "db:mailing-list-do:generate": "drizzle-kit generate --config mailing-list-do.drizzle.config.ts"
   },
