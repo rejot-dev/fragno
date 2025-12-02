@@ -122,7 +122,8 @@ export class FragnoInstantiatedFragment<
   TRequestStorage = {},
   TOptions extends FragnoPublicConfig = FragnoPublicConfig,
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
-> {
+> implements IFragnoInstantiatedFragment
+{
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
   // Private fields
@@ -896,6 +897,101 @@ export function instantiateFragment<
 }
 
 /**
+ * Interface that defines the public API for a fragment instantiation builder.
+ * Used to ensure consistency between real implementations and stubs.
+ */
+interface IFragmentInstantiationBuilder {
+  /**
+   * Get the fragment definition
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get definition(): any;
+
+  /**
+   * Get the configured routes
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get routes(): any;
+
+  /**
+   * Get the configuration
+   */
+  get config(): unknown;
+
+  /**
+   * Get the options
+   */
+  get options(): unknown;
+
+  /**
+   * Set the configuration for the fragment
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withConfig(config: any): unknown;
+
+  /**
+   * Set the routes for the fragment
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withRoutes(routes: any): unknown;
+
+  /**
+   * Set the options for the fragment (e.g., mountRoute, databaseAdapter)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withOptions(options: any): unknown;
+
+  /**
+   * Provide implementations for services that this fragment uses
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withServices(services: any): unknown;
+
+  /**
+   * Build and return the instantiated fragment
+   */
+  build(): IFragnoInstantiatedFragment;
+}
+
+/**
+ * Interface that defines the public API for an instantiated fragment.
+ * Used to ensure consistency between real implementations and stubs.
+ */
+interface IFragnoInstantiatedFragment {
+  readonly [instantiatedFragmentFakeSymbol]: typeof instantiatedFragmentFakeSymbol;
+
+  get name(): string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get routes(): any;
+  get services(): Record<string, unknown>;
+  get mountRoute(): string;
+  get $internal(): {
+    deps: unknown;
+    options: unknown;
+    linkedFragments: unknown;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withMiddleware(handler: any): this;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  inContext<T>(callback: any): T;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  inContext<T>(callback: any): Promise<T>;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handlersFor(framework: FullstackFrameworks): any;
+
+  handler(req: Request): Promise<Response>;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  callRoute(method: HTTPMethod, path: string, inputOptions?: any): Promise<any>;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  callRouteRaw(method: HTTPMethod, path: string, inputOptions?: any): Promise<Response>;
+}
+
+/**
  * Fluent builder for instantiating fragments.
  * Provides a type-safe API for configuring and building fragment instances.
  */
@@ -912,7 +1008,8 @@ export class FragmentInstantiationBuilder<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
-> {
+> implements IFragmentInstantiationBuilder
+{
   #definition: FragmentDefinition<
     TConfig,
     TOptions,
@@ -1123,3 +1220,6 @@ export function instantiate<
 > {
   return new FragmentInstantiationBuilder(definition);
 }
+
+// Export interfaces for stub implementations
+export type { IFragmentInstantiationBuilder, IFragnoInstantiatedFragment };
