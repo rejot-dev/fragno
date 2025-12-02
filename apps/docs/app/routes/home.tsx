@@ -16,9 +16,9 @@ import {
   BookOpen,
   Users,
   FileText,
+  Puzzle,
 } from "lucide-react";
 
-import BentoCake from "@/components/bento-cake";
 import Frameworks from "@/components/frameworks";
 import DatabaseIntegration from "@/components/database-integration";
 import { GitHub } from "@/components/logos/github";
@@ -27,6 +27,7 @@ import { getMailingListDurableObject } from "@/cloudflare/cloudflare-utils";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { validateTurnstileToken } from "@/cloudflare/turnstile";
 import { Turnstile } from "@marsidev/react-turnstile";
+import { FragnoExplainer } from "@/components/explainer";
 
 export function meta() {
   return [
@@ -604,16 +605,54 @@ function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
   );
 }
 
+function FeatureSet() {
+  const features = [
+    {
+      icon: <Layers className="size-6 text-blue-600 dark:text-blue-400" />,
+      title: "Full stack primitives",
+      description: "Define backend routes, database schemas and frontend hooks in one place.",
+    },
+    {
+      icon: <Puzzle className="size-6 text-emerald-600 dark:text-emerald-400" />,
+      title: "Modular by Design",
+      description: "Build modular TypeScript building blocks that work on any stack",
+    },
+    {
+      icon: <Rocket className="size-6 text-purple-600 dark:text-purple-400" />,
+      title: "Developer Experience First",
+      description: "Ship an SDK that your users integrate in minutes",
+    },
+    {
+      icon: <Package className="size-6 text-amber-600 dark:text-amber-400" />,
+      title: "Neatly Packaged",
+      description: "Deliver a single npm package with a typed API.",
+    },
+  ];
+
+  return (
+    <section className="grid w-full max-w-5xl grid-cols-2 gap-8 md:grid-cols-4">
+      {features.map((feature) => (
+        <div key={feature.title} className="flex flex-col">
+          <span className="mb-3">{feature.icon}</span>
+          <h3 className="font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
+          <p className="text-fd-muted-foreground mt-1 text-sm">{feature.description}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export default function HomePage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
   return (
-    <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-16 md:px-8">
+    <main className="space-y-18 relative flex flex-1 flex-col items-center overflow-x-hidden px-4 py-16 md:px-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div className="mx-auto mt-[-80px] h-[520px] w-[820px] rounded-full bg-gradient-to-br from-blue-500/25 via-sky-400/20 to-purple-500/20 opacity-20 blur-3xl dark:opacity-40" />
       </div>
 
       <Hero />
-      <BentoCake />
+      <FeatureSet />
+      <FragnoExplainer />
       <Frameworks />
       <WhatFragnoProvides />
       {/* <Features /> */}

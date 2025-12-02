@@ -25,6 +25,13 @@ export interface DynamicCodeblockProps {
    */
   wrapInSuspense?: boolean;
   options?: Partial<Omit<HighlightOptionsCommon, "lang"> & HighlightOptionsThemes>;
+  className?: string;
+  /**
+   * Show/hide the copy button.
+   *
+   * @defaultValue true
+   */
+  allowCopy?: boolean;
 }
 
 const PropsContext = createContext<CodeBlockProps | undefined>(undefined);
@@ -53,6 +60,8 @@ export function FragnoCodeBlock({
   codeblock,
   options,
   wrapInSuspense = true,
+  className,
+  allowCopy = true,
 }: DynamicCodeblockProps) {
   const shikiOptions = {
     lang,
@@ -72,7 +81,13 @@ export function FragnoCodeBlock({
     );
   }
 
-  return <PropsContext value={codeblock}>{children}</PropsContext>;
+  const mergedCodeblock = {
+    ...codeblock,
+    className: cn(codeblock?.className, className),
+    allowCopy,
+  };
+
+  return <PropsContext value={mergedCodeblock}>{children}</PropsContext>;
 }
 
 function Placeholder({
