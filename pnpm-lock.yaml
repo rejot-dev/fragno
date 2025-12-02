@@ -1008,6 +1008,58 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.0.11)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
 
+  packages/forms:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@jsonforms/core':
+        specifier: ^3.7.0
+        version: 3.7.0
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.0
+      solid-js:
+        specifier: '>=1.0.0'
+        version: 1.9.10
+      svelte:
+        specifier: '>=4.0.0'
+        version: 5.45.2
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vue:
+        specifier: '>=3.0.0'
+        version: 3.5.25(typescript@5.9.3)
+      zod:
+        specifier: ^4.0.5
+        version: 4.1.13
+    devDependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../fragno-test
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../unplugin-fragno
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^20
+        version: 20.19.25
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      tsdown:
+        specifier: ^0.11.9
+        version: 0.11.13(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@20.19.25)(@vitest/ui@3.2.4)(happy-dom@20.0.11)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
+
   packages/fragment-mailing-list:
     dependencies:
       '@fragno-dev/core':
@@ -3127,6 +3179,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@jsonforms/core@3.7.0':
+    resolution: {integrity: sha512-CE9viWtwi9QWLqlWLeOul1/R1GRAyOA9y6OoUpsCc0FhyR+g5p29F3k0fUExHWxL0Sf4KHcXYkfhtqfRBPS8ww==}
 
   '@koa/cors@5.0.0':
     resolution: {integrity: sha512-x/iUDjcS90W69PryLDIMgFyV21YLTnG9zOpPXS7Bkt2b8AsY3zZsIpOLBkYr9fBcF3HbkKaER5hOBZLfpLgYNw==}
@@ -15164,6 +15219,13 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@jsonforms/core@3.7.0':
+    dependencies:
+      '@types/json-schema': 7.0.15
+      ajv: 8.17.1
+      ajv-formats: 2.1.1(ajv@8.17.1)
+      lodash: 4.17.21
 
   '@koa/cors@5.0.0':
     dependencies:
