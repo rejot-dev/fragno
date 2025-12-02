@@ -1,19 +1,6 @@
 import { z } from "zod";
 
-// JSON Schema type (using record for flexibility - actual JSON Schema is complex)
-export const dataSchemaZod = z.record(z.string(), z.unknown());
-
-// UI Schema element types (using record for flexibility)
-export const uiSchemaZod = z.record(z.string(), z.unknown());
-
-// Form input/output schemas
-export const createFormSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().nullable().optional(),
-  slug: z.string().min(1),
-  dataSchema: dataSchemaZod,
-  uiSchema: uiSchemaZod,
-});
+export const JSONSchemaSchema = z.record(z.string(), z.unknown());
 
 export const FormStatusSchema = z.enum(["draft", "open", "closed"]);
 

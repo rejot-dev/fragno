@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as FormsRouteImport } from './routes/forms'
 import { Route as CheckRouteImport } from './routes/check'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
@@ -21,6 +22,7 @@ import { Route as AuthenticatedPlansRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
 import { Route as ApiSubscriptionStatusRouteImport } from './routes/api/subscription/status'
 import { Route as ApiStripeSplatRouteImport } from './routes/api/stripe/$'
+import { Route as ApiFormsSplatRouteImport } from './routes/api/forms/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const SignupRoute = SignupRouteImport.update({
@@ -31,6 +33,11 @@ const SignupRoute = SignupRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FormsRoute = FormsRouteImport.update({
+  id: '/forms',
+  path: '/forms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CheckRoute = CheckRouteImport.update({
@@ -82,6 +89,11 @@ const ApiStripeSplatRoute = ApiStripeSplatRouteImport.update({
   path: '/api/stripe/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFormsSplatRoute = ApiFormsSplatRouteImport.update({
+  id: '/api/forms/$',
+  path: '/api/forms/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -91,6 +103,7 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/check': typeof CheckRoute
+  '/forms': typeof FormsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
@@ -99,12 +112,14 @@ export interface FileRoutesByFullPath {
   '/stripe': typeof AuthenticatedStripeRoute
   '/users': typeof AuthenticatedUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/forms/$': typeof ApiFormsSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/check': typeof CheckRoute
+  '/forms': typeof FormsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
@@ -113,6 +128,7 @@ export interface FileRoutesByTo {
   '/stripe': typeof AuthenticatedStripeRoute
   '/users': typeof AuthenticatedUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/forms/$': typeof ApiFormsSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
 }
@@ -121,6 +137,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/check': typeof CheckRoute
+  '/forms': typeof FormsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
@@ -129,6 +146,7 @@ export interface FileRoutesById {
   '/_authenticated/stripe': typeof AuthenticatedStripeRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/forms/$': typeof ApiFormsSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
 }
@@ -137,6 +155,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/check'
+    | '/forms'
     | '/login'
     | '/signup'
     | '/checkout'
@@ -145,12 +164,14 @@ export interface FileRouteTypes {
     | '/stripe'
     | '/users'
     | '/api/auth/$'
+    | '/api/forms/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/check'
+    | '/forms'
     | '/login'
     | '/signup'
     | '/checkout'
@@ -159,6 +180,7 @@ export interface FileRouteTypes {
     | '/stripe'
     | '/users'
     | '/api/auth/$'
+    | '/api/forms/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
   id:
@@ -166,6 +188,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/check'
+    | '/forms'
     | '/login'
     | '/signup'
     | '/_authenticated/checkout'
@@ -174,6 +197,7 @@ export interface FileRouteTypes {
     | '/_authenticated/stripe'
     | '/_authenticated/users'
     | '/api/auth/$'
+    | '/api/forms/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
   fileRoutesById: FileRoutesById
@@ -182,9 +206,11 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   CheckRoute: typeof CheckRoute
+  FormsRoute: typeof FormsRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiFormsSplatRoute: typeof ApiFormsSplatRoute
   ApiStripeSplatRoute: typeof ApiStripeSplatRoute
   ApiSubscriptionStatusRoute: typeof ApiSubscriptionStatusRoute
 }
@@ -203,6 +229,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forms': {
+      id: '/forms'
+      path: '/forms'
+      fullPath: '/forms'
+      preLoaderRoute: typeof FormsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/check': {
@@ -275,6 +308,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStripeSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/forms/$': {
+      id: '/api/forms/$'
+      path: '/api/forms/$'
+      fullPath: '/api/forms/$'
+      preLoaderRoute: typeof ApiFormsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -309,9 +349,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   CheckRoute: CheckRoute,
+  FormsRoute: FormsRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiFormsSplatRoute: ApiFormsSplatRoute,
   ApiStripeSplatRoute: ApiStripeSplatRoute,
   ApiSubscriptionStatusRoute: ApiSubscriptionStatusRoute,
 }

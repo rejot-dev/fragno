@@ -1,4 +1,6 @@
 import { defineRoutes } from "@fragno-dev/core";
+import { createAjv } from "@jsonforms/core";
+import type { JsonSchema } from "@jsonforms/core";
 import { z } from "zod";
 import { formsFragmentDef } from "./definition";
 import {
@@ -8,6 +10,8 @@ import {
   ResponseSchema,
   UpdateFormSchema,
 } from "./models";
+
+const ajv = createAjv({ allErrors: true });
 
 // Public routes
 export const publicRoutes = defineRoutes(formsFragmentDef).create(
@@ -30,9 +34,9 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
       defineRoute({
         method: "POST",
         path: "/:id/submit",
-        inputSchema: z.object({ data: z.record(z.string(), z.unknown()) }),
-        outputSchema: v.responseOutputSchema,
-        errorCodes: ["NOT_FOUND", "NOT_PUBLISHED"] as const,
+        inputSchema: NewResponseSchema,
+        outputSchema: z.string(),
+        errorCodes: ["NOT_FOUND", "VALIDATION_ERROR"] as const,
         handler: async ({ input, pathParams }, { json, error }) => {
           const { data } = await input.valid();
           const formId = pathParams.id;
@@ -42,10 +46,30 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
             return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
           }
 
-          // TODO: Validate data against form.dataSchema using @jsonforms/core
-          const response = await services.submitResponse(formId, data);
-          if (!response) {
-            return error({ message: "Failed to submit response", code: "NOT_FOUND" }, 500);
+          // Form validation
+          const validate = ajv.compile(form.dataSchema as JsonSchema);
+          const valid = validate(data);
+
+          if (!valid) {
+            const errors = validate.errors ?? [];
+            const message = errors.map((e) => `${e.instancePath || "/"}: ${e.message}`).join("; ");
+            return error(
+              { message: `Validation failed: ${message}`, code: "VALIDATION_ERROR" },
+              400,
+            );
+          }
+
+          const responseId = await services.createResponseUnvalidated(formId, form.version, data);
+
+          if (config.onResponseSubmitted) {
+            // Use "RETURNING" insert instead?
+            config.onResponseSubmitted({
+              id: responseId,
+              formId,
+              formVersion: form.version,
+              data,
+              submittedAt: new Date(),
+            });
           }
 
           return json(responseId);

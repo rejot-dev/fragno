@@ -36,19 +36,8 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
   .withDependencies(({ db }) => ({ db }))
   .providesBaseService(({ deps }) => {
     return {
-      // Form CRUD
-      createForm: async (input: v.CreateFormInput) => {
-        const id = await deps.db.create("form", {
-          title: input.title,
-          description: input.description ?? null,
-          slug: input.slug,
-          dataSchema: input.dataSchema,
-          uiSchema: input.uiSchema,
-        });
-        const form = await deps.db.findFirst("form", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", id.valueOf())),
-        );
-        return form ? mapFormOutput(form) : null;
+      createForm: async (input: NewForm) => {
+        return (await deps.db.create("form", input)).externalId;
       },
 
       getForm: async (id: string) => {

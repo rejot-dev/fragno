@@ -1,0 +1,44 @@
+/* JSON Forms vanilla renderer styles */
+
+.vertical-layout {
+  @apply flex flex-col gap-4;
+}
+
+.horizontal-layout {
+  @apply flex gap-4;
+}
+
+.horizontal-layout-item {
+  @apply flex-1 min-w-0;
+}
+
+.control {
+  @apply flex flex-col gap-1;
+}
+
+.control label {
+  @apply text-sm font-medium text-foreground;
+}
+
+.control input,
+.control select {
+  @apply w-full px-3 py-2 border border-border rounded-md bg-background text-sm;
+}
+
+.control input:focus,
+.control select:focus {
+  @apply outline-none border-primary ring-2 ring-primary/20;
+}
+
+.control input.invalid,
+.control select.invalid {
+  @apply border-destructive;
+}
+
+.validation {
+  @apply text-xs text-muted-foreground;
+}
+
+.validation_error {
+  @apply text-destructive;
+}
