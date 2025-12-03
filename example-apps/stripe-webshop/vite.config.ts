@@ -14,6 +14,10 @@ const config = defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  // Needed for 'Could not resolve "#tanstack-router-entry"' type errors
+  optimizeDeps: {
+    exclude: ["@tanstack/start-server-core", "@tanstack/react-start", "@tanstack/react-router"],
+  },
 });
 
 export default config;
