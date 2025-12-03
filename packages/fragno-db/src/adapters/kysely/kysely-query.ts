@@ -2,16 +2,15 @@ import type { AbstractQuery, TableToUpdateValues } from "../../query/query";
 import type { AnySchema, AnyTable } from "../../schema/create";
 import type {
   CompiledMutation,
+  UOWCompiler,
   UOWDecoder,
   UOWExecutor,
   ValidIndexName,
 } from "../../query/unit-of-work";
 import { decodeResult } from "../../query/result-transform";
-import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { executeKyselyRetrievalPhase, executeKyselyMutationPhase } from "./kysely-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
 import type { CompiledQuery, Kysely } from "kysely";
-import type { TableNameMapper } from "./kysely-shared";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import type { SQLProvider } from "../../shared/providers";
 import { createCursorFromRecord, Cursor, type CursorResult } from "../../query/cursor";
@@ -33,6 +32,142 @@ export interface KyselyUOWConfig {
    * since those have to be manually executed.
    */
   dryRun?: boolean;
+}
+
+/**
+ * Creates a UOWExecutor for Kysely that handles retrieval and mutation phases.
+ *
+ * @param pool - Connection pool for acquiring database connections
+ * @param dryRun - If true, skip execution and return mock results
+ * @returns A UOWExecutor instance for executing compiled queries
+ */
+export function createKyselyUOWExecutor(
+  pool: ConnectionPool<KyselyAny>,
+  dryRun?: boolean,
+): UOWExecutor<CompiledQuery, unknown> {
+  return {
+    async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {
+      // In dryRun mode, skip execution and return empty results
+      if (dryRun) {
+        return retrievalBatch.map(() => []);
+      }
+
+      const conn = await pool.connect();
+      try {
+        return await executeKyselyRetrievalPhase(conn.db, retrievalBatch);
+      } finally {
+        await conn.release();
+      }
+    },
+    async executeMutationPhase(mutationBatch: CompiledMutation<CompiledQuery>[]) {
+      // In dryRun mode, skip execution and return success with mock internal IDs
+      if (dryRun) {
+        return {
+          success: true,
+          createdInternalIds: mutationBatch.map(() => null),
+        };
+      }
+
+      const conn = await pool.connect();
+      try {
+        return await executeKyselyMutationPhase(conn.db, mutationBatch);
+      } finally {
+        await conn.release();
+      }
+    },
+  };
+}
+
+/**
+ * Creates a UOWDecoder for Kysely that transforms raw query results into application format.
+ *
+ * The decoder handles:
+ * - Count operations (returning number directly)
+ * - Regular queries (decoding rows using provider-specific logic)
+ * - Cursor-based pagination (generating cursors and handling hasNextPage)
+ *
+ * @param provider - SQL provider for proper result decoding
+ * @returns A UOWDecoder instance for transforming results
+ */
+export function createKyselyUOWDecoder(provider: SQLProvider): UOWDecoder<unknown> {
+  return (rawResults, ops) => {
+    if (rawResults.length !== ops.length) {
+      throw new Error("rawResults and ops must have the same length");
+    }
+
+    return rawResults.map((rows, index) => {
+      const op = ops[index];
+      if (!op) {
+        throw new Error("op must be defined");
+      }
+
+      // Handle count operations differently - return the count number directly
+      if (op.type === "count") {
+        const rowArray = rows as Record<string, unknown>[];
+        const firstRow = rowArray[0];
+        if (!firstRow) {
+          return 0;
+        }
+        const count = Number(firstRow["count"]);
+        if (Number.isNaN(count)) {
+          throw new Error(`Unexpected result for count, received: ${count}`);
+        }
+        return count;
+      }
+
+      // Each result is an array of rows - decode each row
+      const rowArray = rows as Record<string, unknown>[];
+      const decodedRows = rowArray.map((row) => decodeResult(row, op.table, provider));
+
+      // If cursor generation is requested, wrap in CursorResult
+      if (op.withCursor) {
+        let cursor: Cursor | undefined;
+        let hasNextPage = false;
+        let items = decodedRows;
+
+        // Check if there are more results (we fetched pageSize + 1)
+        if (op.options.pageSize && decodedRows.length > op.options.pageSize) {
+          hasNextPage = true;
+          // Trim to requested pageSize
+          items = decodedRows.slice(0, op.options.pageSize);
+
+          // Generate cursor from the last item we're returning
+          if (op.options.orderByIndex) {
+            const lastItem = items[items.length - 1];
+            const indexName = op.options.orderByIndex.indexName;
+
+            // Get index columns
+            let indexColumns;
+            if (indexName === "_primary") {
+              indexColumns = [op.table.getIdColumn()];
+            } else {
+              const index = op.table.indexes[indexName];
+              if (index) {
+                indexColumns = index.columns;
+              }
+            }
+
+            if (indexColumns && lastItem) {
+              cursor = createCursorFromRecord(lastItem as Record<string, unknown>, indexColumns, {
+                indexName: op.options.orderByIndex.indexName,
+                orderDirection: op.options.orderByIndex.direction,
+                pageSize: op.options.pageSize,
+              });
+            }
+          }
+        }
+
+        const result: CursorResult<unknown> = {
+          items,
+          cursor,
+          hasNextPage,
+        };
+        return result;
+      }
+
+      return decodedRows;
+    });
+  };
 }
 
 /**
@@ -74,9 +209,9 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
  * enabling features like SQL snapshot testing.
  *
  * @param schema - The database schema definition
- * @param pool - Connection pool for acquiring database connections
- * @param provider - SQL provider (postgresql, mysql, sqlite, etc.)
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param compiler - UOW compiler for compiling operations to SQL
+ * @param executor - UOW executor for running compiled queries
+ * @param decoder - UOW decoder for transforming raw results
  * @param uowConfig - Optional UOW configuration
  * @param schemaNamespaceMap - Optional WeakMap for schema-to-namespace lookups
  * @returns An AbstractQuery instance for performing database operations
@@ -84,7 +219,10 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
  * @example
  * ```ts
  * const pool = createSimpleConnectionPool(kysely);
- * const queryEngine = fromKysely(mySchema, pool, 'postgresql');
+ * const compiler = createKyselyUOWCompiler('postgresql');
+ * const executor = createKyselyUOWExecutor(pool);
+ * const decoder = createKyselyUOWDecoder('postgresql');
+ * const queryEngine = fromKysely(mySchema, compiler, executor, decoder);
  *
  * const users = await queryEngine.findMany('users', {
  *   where: (b) => b('age', '>', 18),
@@ -94,131 +232,17 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
  */
 export function fromKysely<T extends AnySchema>(
   schema: T,
-  pool: ConnectionPool<KyselyAny>,
-  provider: SQLProvider,
-  mapper?: TableNameMapper,
+  compiler: UOWCompiler<CompiledQuery>,
+  executor: UOWExecutor<CompiledQuery, unknown>,
+  decoder: UOWDecoder<unknown>,
   uowConfig?: KyselyUOWConfig,
   schemaNamespaceMap?: WeakMap<AnySchema, string>,
 ): AbstractQuery<T, KyselyUOWConfig> {
   function createUOW(opts: { name?: string; config?: KyselyUOWConfig }) {
-    const uowCompiler = createKyselyUOWCompiler(provider, mapper);
-
-    const executor: UOWExecutor<CompiledQuery, unknown> = {
-      async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {
-        // In dryRun mode, skip execution and return empty results
-        if (opts.config?.dryRun) {
-          return retrievalBatch.map(() => []);
-        }
-
-        const conn = await pool.connect();
-        try {
-          return await executeKyselyRetrievalPhase(conn.db, retrievalBatch);
-        } finally {
-          await conn.release();
-        }
-      },
-      async executeMutationPhase(mutationBatch: CompiledMutation<CompiledQuery>[]) {
-        // In dryRun mode, skip execution and return success with mock internal IDs
-        if (opts.config?.dryRun) {
-          return {
-            success: true,
-            createdInternalIds: mutationBatch.map(() => null),
-          };
-        }
-
-        const conn = await pool.connect();
-        try {
-          return await executeKyselyMutationPhase(conn.db, mutationBatch);
-        } finally {
-          await conn.release();
-        }
-      },
-    };
-
-    // Create a decoder function to transform raw results into application format
-    const decoder: UOWDecoder<unknown> = (rawResults, ops) => {
-      if (rawResults.length !== ops.length) {
-        throw new Error("rawResults and ops must have the same length");
-      }
-
-      return rawResults.map((rows, index) => {
-        const op = ops[index];
-        if (!op) {
-          throw new Error("op must be defined");
-        }
-
-        // Handle count operations differently - return the count number directly
-        if (op.type === "count") {
-          const rowArray = rows as Record<string, unknown>[];
-          const firstRow = rowArray[0];
-          if (!firstRow) {
-            return 0;
-          }
-          const count = Number(firstRow["count"]);
-          if (Number.isNaN(count)) {
-            throw new Error(`Unexpected result for count, received: ${count}`);
-          }
-          return count;
-        }
-
-        // Each result is an array of rows - decode each row
-        const rowArray = rows as Record<string, unknown>[];
-        const decodedRows = rowArray.map((row) => decodeResult(row, op.table, provider));
-
-        // If cursor generation is requested, wrap in CursorResult
-        if (op.withCursor) {
-          let cursor: Cursor | undefined;
-          let hasNextPage = false;
-          let items = decodedRows;
-
-          // Check if there are more results (we fetched pageSize + 1)
-          if (op.options.pageSize && decodedRows.length > op.options.pageSize) {
-            hasNextPage = true;
-            // Trim to requested pageSize
-            items = decodedRows.slice(0, op.options.pageSize);
-
-            // Generate cursor from the last item we're returning
-            if (op.options.orderByIndex) {
-              const lastItem = items[items.length - 1];
-              const indexName = op.options.orderByIndex.indexName;
-
-              // Get index columns
-              let indexColumns;
-              if (indexName === "_primary") {
-                indexColumns = [op.table.getIdColumn()];
-              } else {
-                const index = op.table.indexes[indexName];
-                if (index) {
-                  indexColumns = index.columns;
-                }
-              }
-
-              if (indexColumns && lastItem) {
-                cursor = createCursorFromRecord(lastItem as Record<string, unknown>, indexColumns, {
-                  indexName: op.options.orderByIndex.indexName,
-                  orderDirection: op.options.orderByIndex.direction,
-                  pageSize: op.options.pageSize,
-                });
-              }
-            }
-          }
-
-          const result: CursorResult<unknown> = {
-            items,
-            cursor,
-            hasNextPage,
-          };
-          return result;
-        }
-
-        return decodedRows;
-      });
-    };
-
     const { onQuery, ...restUowConfig } = opts.config ?? {};
 
     return new UnitOfWork(
-      uowCompiler,
+      compiler,
       executor,
       decoder,
       opts.name,

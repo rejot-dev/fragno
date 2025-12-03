@@ -11,8 +11,14 @@ import type { AnySchema } from "../../schema/create";
 import type { CustomOperation, MigrationOperation } from "../../migration-engine/shared";
 import { execute, preprocessOperations } from "./migration/execute";
 import type { AbstractQuery } from "../../query/query";
-import { fromKysely, type KyselyUOWConfig } from "./kysely-query";
+import {
+  fromKysely,
+  createKyselyUOWExecutor,
+  createKyselyUOWDecoder,
+  type KyselyUOWConfig,
+} from "./kysely-query";
 import { createTableNameMapper } from "./kysely-shared";
+import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { createHash } from "node:crypto";
 import { SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
 import type { ConnectionPool } from "../../shared/connection-pool";
@@ -68,14 +74,10 @@ export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
 
     // Only create mapper if namespace is non-empty
     const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromKysely(
-      schema,
-      this.#connectionPool,
-      this.#provider,
-      mapper,
-      undefined,
-      this.#schemaNamespaceMap,
-    );
+    const compiler = createKyselyUOWCompiler(this.#provider, mapper);
+    const executor = createKyselyUOWExecutor(this.#connectionPool);
+    const decoder = createKyselyUOWDecoder(this.#provider);
+    return fromKysely(schema, compiler, executor, decoder, undefined, this.#schemaNamespaceMap);
   }
 
   async isConnectionHealthy(): Promise<boolean> {

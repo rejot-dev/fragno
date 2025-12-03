@@ -1,6 +1,6 @@
 import { SQLocalKysely } from "sqlocal/kysely";
 import { describe, expect, it } from "vitest";
-import { GenericSQLAdapter } from "./sql-driver-adapter";
+import { SqlDriverAdapter } from "./sql-driver-adapter";
 import type { GenericSQLPlugin } from "./query-executor/plugin";
 import { sql } from "./sql";
 
@@ -8,7 +8,7 @@ describe("SQLocal", () => {
   it("should create a new SQLocal instance", async () => {
     const { dialect } = new SQLocalKysely(":memory:");
 
-    const adapter = new GenericSQLAdapter(dialect);
+    const adapter = new SqlDriverAdapter(dialect);
 
     const query = sql`SELECT 5`.build();
     const result = await adapter.executeQuery(query);
@@ -21,7 +21,7 @@ describe("SQLocal", () => {
 
   it("should execute queries in a transaction and commit", async () => {
     const { dialect } = new SQLocalKysely(":memory:");
-    const adapter = new GenericSQLAdapter(dialect);
+    const adapter = new SqlDriverAdapter(dialect);
 
     // Create table outside transaction
     await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER, name TEXT)`.build());
@@ -44,7 +44,7 @@ describe("SQLocal", () => {
 
   it("should rollback transaction on error", async () => {
     const { dialect } = new SQLocalKysely(":memory:");
-    const adapter = new GenericSQLAdapter(dialect);
+    const adapter = new SqlDriverAdapter(dialect);
 
     // Create table outside transaction
     await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)`.build());
@@ -68,7 +68,7 @@ describe("SQLocal", () => {
 
   it("should support plugins that transform results", async () => {
     const { dialect } = new SQLocalKysely(":memory:");
-    const adapter = new GenericSQLAdapter(dialect);
+    const adapter = new SqlDriverAdapter(dialect);
 
     // Create a plugin that adds metadata to results
     const metadataPlugin: GenericSQLPlugin = {
@@ -97,7 +97,7 @@ describe("SQLocal", () => {
 
   it("should properly destroy and release resources", async () => {
     const { dialect } = new SQLocalKysely(":memory:");
-    const adapter = new GenericSQLAdapter(dialect);
+    const adapter = new SqlDriverAdapter(dialect);
 
     // Execute some queries
     await adapter.executeQuery(sql`SELECT 1`.build());

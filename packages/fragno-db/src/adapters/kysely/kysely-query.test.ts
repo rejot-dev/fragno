@@ -2,10 +2,11 @@ import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
 import { assert, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import { column, FragnoId, idColumn, referenceColumn, schema } from "../../schema/create";
-import { fromKysely } from "./kysely-query";
+import { fromKysely, createKyselyUOWExecutor, createKyselyUOWDecoder } from "./kysely-query";
 import { createKyselyConnectionPool } from "./kysely-connection-pool";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import type { CompiledQuery } from "kysely";
+import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 
 describe("kysely-query", () => {
   const authSchema = schema((s) => {
@@ -62,7 +63,10 @@ describe("kysely-query", () => {
 
     // Wrap in connection pool
     pool = createKyselyConnectionPool(kysely);
-    orm = fromKysely(authSchema, pool, "postgresql", undefined, {
+    const compiler = createKyselyUOWCompiler("postgresql");
+    const executor = createKyselyUOWExecutor(pool, true);
+    const decoder = createKyselyUOWDecoder("postgresql");
+    orm = fromKysely(authSchema, compiler, executor, decoder, {
       onQuery: (query) => {
         queries.push(query);
       },

@@ -4,6 +4,7 @@ import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import type { IUnitOfWork } from "../query/unit-of-work";
+import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
@@ -45,6 +46,11 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   ) => AbstractQuery<T, TUOWConfig>;
 
   createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
+
+  prepareMigrations?: <const T extends AnySchema>(
+    schema: T,
+    namespace: string,
+  ) => PreparedMigrations;
 
   /**
    * Generate a combined schema file from one or more fragments.

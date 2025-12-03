@@ -13,7 +13,7 @@ import type { GenericSQLPlugin } from "./query-executor/plugin";
 import type { QueryExecutor } from "./query-executor/query-executor";
 import { DefaultQueryExecutor } from "./query-executor/default-query-executor";
 
-export class GenericSQLAdapter {
+export class SqlDriverAdapter {
   readonly #dialect: Dialect;
   readonly #driver: RuntimeDriver | null;
   readonly #executor: QueryExecutor;
@@ -35,11 +35,11 @@ export class GenericSQLAdapter {
     }
   }
 
-  async executeQuery(query: CompiledQuery): Promise<QueryResult<unknown>> {
+  async executeQuery(query: CompiledQuery): Promise<QueryResult<Record<string, unknown>>> {
     return await this.#executor.executeQuery(query);
   }
 
-  async transaction<T>(callback: (trx: GenericSQLAdapter) => Promise<T>): Promise<T> {
+  async transaction<T>(callback: (trx: SqlDriverAdapter) => Promise<T>): Promise<T> {
     if (this.#driver === null) {
       throw new Error("Cannot start transaction: adapter was created with custom executor");
     }
@@ -49,7 +49,7 @@ export class GenericSQLAdapter {
     return await this.#executor.provideConnection(async (connection) => {
       const singleConnectionProvider = new SingleConnectionProvider(connection);
       const transactionExecutor = this.#executor.withConnectionProvider(singleConnectionProvider);
-      const transactionAdapter = new GenericSQLAdapter(this.#dialect, transactionExecutor, driver);
+      const transactionAdapter = new SqlDriverAdapter(this.#dialect, transactionExecutor, driver);
 
       let transactionBegun = false;
       try {
@@ -74,15 +74,15 @@ export class GenericSQLAdapter {
   /**
    * Returns a copy of this adapter with the given plugin installed.
    */
-  withPlugin(plugin: GenericSQLPlugin): GenericSQLAdapter {
-    return new GenericSQLAdapter(this.#dialect, this.#executor.withPlugin(plugin), this.#driver);
+  withPlugin(plugin: GenericSQLPlugin): SqlDriverAdapter {
+    return new SqlDriverAdapter(this.#dialect, this.#executor.withPlugin(plugin), this.#driver);
   }
 
   /**
    * Returns a copy of this adapter without any plugins.
    */
-  withoutPlugins(): GenericSQLAdapter {
-    return new GenericSQLAdapter(this.#dialect, this.#executor.withoutPlugins(), this.#driver);
+  withoutPlugins(): SqlDriverAdapter {
+    return new SqlDriverAdapter(this.#dialect, this.#executor.withoutPlugins(), this.#driver);
   }
 
   /**
