@@ -54,6 +54,8 @@
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@vitest/coverage-istanbul": "^3.2.4",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.2.0",
     "@types/node": "^22.18.12",
