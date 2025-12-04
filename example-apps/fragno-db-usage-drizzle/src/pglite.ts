@@ -1,6 +1,6 @@
-import { getClient } from "./database";
+import { getPGLiteClient } from "./database";
 
-const client = getClient();
+const client = getPGLiteClient();
 
 const res = await client.query(`
   SELECT table_name

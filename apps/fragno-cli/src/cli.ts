@@ -124,7 +124,7 @@ export async function run() {
       process.exit(1);
     }
   } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+    console.error(error);
     process.exit(1);
   }
 }

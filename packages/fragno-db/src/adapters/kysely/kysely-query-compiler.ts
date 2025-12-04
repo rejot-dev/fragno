@@ -4,7 +4,8 @@ import { buildCondition } from "../../query/condition-builder";
 import { buildFindOptions } from "../../query/orm/orm";
 import { createKyselyQueryBuilder } from "./kysely-query-builder";
 import type { ConditionBuilder, Condition } from "../../query/condition-builder";
-import { createKysely, type TableNameMapper } from "./kysely-shared";
+import { createKysely } from "./kysely-shared";
+import type { TableNameMapper } from "../shared/table-name-mapper";
 import type { SQLProvider } from "../../shared/providers";
 
 /**

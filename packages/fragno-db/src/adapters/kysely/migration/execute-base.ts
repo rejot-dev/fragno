@@ -6,7 +6,7 @@ import type {
 } from "../../../migration-engine/shared";
 import type { SQLProvider } from "../../../shared/providers";
 import { schemaToDBType } from "../../../schema/serialize";
-import type { TableNameMapper } from "../kysely-shared";
+import type { TableNameMapper } from "../../shared/table-name-mapper";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
 
 export type ExecuteNode = {

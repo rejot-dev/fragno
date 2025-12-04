@@ -11,8 +11,7 @@ import {
   SqliteIntrospector,
   SqliteQueryCompiler,
 } from "kysely";
-
-export type SupportedDatabase = "sqlite" | "postgresql" | "mysql";
+import type { SupportedDatabase } from "../driver-config";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;

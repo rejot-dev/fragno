@@ -8,14 +8,8 @@ import type {
   UOWCompiler,
 } from "../../query/unit-of-work";
 import { buildCondition, type Condition } from "../../query/condition-builder";
-import {
-  type ColumnType,
-  type TableType,
-  type TableNameMapper,
-  parseDrizzle,
-  type DBType,
-  createTableNameMapper,
-} from "./shared";
+import { type ColumnType, type TableType, parseDrizzle, type DBType } from "./shared";
+import { createTableNameMapper, type TableNameMapper } from "../shared/table-name-mapper";
 import { encodeValues, ReferenceSubquery } from "../../query/result-transform";
 import { serialize } from "../../schema/serialize";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
@@ -55,7 +49,7 @@ export function createDrizzleUOWCompiler(
    */
   function getMapperForOperation(namespace: string | undefined): TableNameMapper | undefined {
     if (namespace) {
-      return createTableNameMapper(namespace);
+      return createTableNameMapper(namespace, true);
     }
     return mapper;
   }

@@ -14,8 +14,8 @@ import type {
 } from "../../../migration-engine/shared";
 import { schemaToDBType } from "../../../schema/serialize";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
-import type { TableNameMapper } from "../../kysely/kysely-shared";
-import type { SupportedDatabase } from "./cold-kysely";
+import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { SupportedDatabase } from "../driver-config";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
@@ -308,10 +308,8 @@ export abstract class SQLGenerator {
     mapper?: TableNameMapper,
   ): CompiledQuery {
     const tableName = this.getTableName(operation.table, mapper);
-    let builder = this.db.schema
-      .createIndex(operation.name)
-      .on(tableName)
-      .columns(operation.columns);
+    const indexName = this.getIndexName(operation.name, operation.table, mapper);
+    let builder = this.db.schema.createIndex(indexName).on(tableName).columns(operation.columns);
 
     if (operation.unique) {
       builder = builder.unique();
@@ -328,7 +326,8 @@ export abstract class SQLGenerator {
     mapper?: TableNameMapper,
   ): CompiledQuery {
     const tableName = this.getTableName(operation.table, mapper);
-    return this.db.schema.dropIndex(operation.name).ifExists().on(tableName).compile();
+    const indexName = this.getIndexName(operation.name, operation.table, mapper);
+    return this.db.schema.dropIndex(indexName).ifExists().on(tableName).compile();
   }
 
   /**
@@ -379,6 +378,21 @@ export abstract class SQLGenerator {
       return tableName;
     }
     return mapper ? mapper.toPhysical(tableName) : tableName;
+  }
+
+  /**
+   * Get the physical index name, applying namespace if a mapper is provided.
+   * Index names must be globally unique in most databases, so we namespace them
+   * to avoid collisions when multiple fragments use the same logical index names.
+   */
+  protected getIndexName(indexName: string, tableName: string, mapper?: TableNameMapper): string {
+    if (!mapper) {
+      return indexName;
+    }
+    // Create a unique index name by including the physical table name
+    // This ensures index names are unique across namespaces
+    const physicalTable = mapper.toPhysical(tableName);
+    return `${indexName}_${physicalTable}`;
   }
 
   /**

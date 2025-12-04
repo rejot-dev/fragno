@@ -20,7 +20,7 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
 // Fragment: fragno-db-comment
 // ============================================================================
 
-export const comment_fragno_db_comment = pgTable("comment_fragno_db_comment", {
+export const comment_fragno_db_comment = pgTable("comment_fragno-db-comment", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -35,7 +35,7 @@ export const comment_fragno_db_comment = pgTable("comment_fragno_db_comment", {
   foreignKey({
     columns: [table.parentId],
     foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent_fragno_db_comment"
+    name: "fk_comment_comment_parent_fragno-db-comment"
   }),
   index("idx_comment_post_fragno-db-comment").on(table.postReference)
 ])
@@ -63,7 +63,7 @@ export const fragno_db_comment_schema = {
 // Fragment: fragno-db-rating
 // ============================================================================
 
-export const upvote_fragno_db_rating = pgTable("upvote_fragno_db_rating", {
+export const upvote_fragno_db_rating = pgTable("upvote_fragno-db-rating", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
@@ -76,7 +76,7 @@ export const upvote_fragno_db_rating = pgTable("upvote_fragno_db_rating", {
   index("idx_upvote_reference_fragno-db-rating").on(table.reference, table.ownerReference)
 ])
 
-export const upvote_total_fragno_db_rating = pgTable("upvote_total_fragno_db_rating", {
+export const upvote_total_fragno_db_rating = pgTable("upvote_total_fragno-db-rating", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: integer("total").notNull().default(0),
@@ -98,7 +98,7 @@ export const fragno_db_rating_schema = {
 // Fragment: simple-auth
 // ============================================================================
 
-export const user_simple_auth = pgTable("user_simple_auth", {
+export const user_simple_auth = pgTable("user_simple-auth", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   email: text("email").notNull(),
   passwordHash: text("passwordHash").notNull(),
@@ -109,7 +109,7 @@ export const user_simple_auth = pgTable("user_simple_auth", {
   index("idx_user_email_simple-auth").on(table.email)
 ])
 
-export const session_simple_auth = pgTable("session_simple_auth", {
+export const session_simple_auth = pgTable("session_simple-auth", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
@@ -120,7 +120,7 @@ export const session_simple_auth = pgTable("session_simple_auth", {
   foreignKey({
     columns: [table.userId],
     foreignColumns: [user_simple_auth._internalId],
-    name: "fk_session_user_sessionOwner_simple_auth"
+    name: "fk_session_user_sessionOwner_simple-auth"
   }),
   index("idx_session_user_simple-auth").on(table.userId)
 ])

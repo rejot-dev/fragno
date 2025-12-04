@@ -17,7 +17,7 @@ import {
   createKyselyUOWDecoder,
   type KyselyUOWConfig,
 } from "./kysely-query";
-import { createTableNameMapper } from "./kysely-shared";
+import { createTableNameMapper } from "../shared/table-name-mapper";
 import { createKyselyUOWCompiler } from "./kysely-uow-compiler";
 import { createHash } from "node:crypto";
 import { SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
@@ -72,9 +72,9 @@ export class KyselyAdapter implements DatabaseAdapter<KyselyUOWConfig> {
     // Register schema-namespace mapping
     this.#schemaNamespaceMap.set(schema, namespace);
 
-    // Only create mapper if namespace is non-empty
-    const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    const compiler = createKyselyUOWCompiler(this.#provider, mapper);
+    const compiler = createKyselyUOWCompiler(this.#provider, (ns) =>
+      ns ? this.createTableNameMapper(ns) : undefined,
+    );
     const executor = createKyselyUOWExecutor(this.#connectionPool);
     const decoder = createKyselyUOWDecoder(this.#provider);
     return fromKysely(schema, compiler, executor, decoder, undefined, this.#schemaNamespaceMap);

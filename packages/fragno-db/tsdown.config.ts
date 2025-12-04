@@ -10,6 +10,8 @@ export default defineConfig({
     "./src/adapters/kysely/kysely-adapter.ts",
     "./src/adapters/drizzle/drizzle-adapter.ts",
     "./src/adapters/drizzle/generate.ts",
+    "./src/adapters/generic-sql/generic-sql-adapter.ts",
+    "./src/adapters/generic-sql/driver-config.ts",
     "./src/query/unit-of-work.ts",
     "./src/query/cursor.ts",
     "./src/fragment.ts",

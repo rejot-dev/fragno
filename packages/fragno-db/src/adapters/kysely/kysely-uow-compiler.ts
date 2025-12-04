@@ -11,7 +11,8 @@ import { createKyselyQueryBuilder, buildWhere } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
 import type { AnySelectClause } from "../../query/query";
-import { type TableNameMapper, createKysely, createTableNameMapper } from "./kysely-shared";
+import { createKysely } from "./kysely-shared";
+import { createTableNameMapper, type TableNameMapper } from "../shared/table-name-mapper";
 import type { SQLProvider } from "../../shared/providers";
 
 /**
@@ -22,25 +23,25 @@ import type { SQLProvider } from "../../shared/providers";
  *
  * @param pool - Connection pool for acquiring database connections
  * @param provider - SQL provider (postgresql, mysql, sqlite, etc.)
- * @param mapper - Optional table name mapper for namespace prefixing (fallback for operations without explicit namespace)
+ * @param mapperFactory - Optional factory function to create mappers for namespaces (receives undefined for non-namespaced operations)
  * @returns A UOWCompiler instance for Kysely
  */
 export function createKyselyUOWCompiler(
   provider: SQLProvider,
-  mapper?: TableNameMapper,
+  mapperFactory?: (namespace: string | undefined) => TableNameMapper | undefined,
 ): UOWCompiler<CompiledQuery> {
   // Get kysely instance for query building (compilation doesn't execute, just builds SQL)
   const kysely = createKysely(provider);
 
   /**
    * Get the mapper for a specific operation
-   * Uses operation's namespace if provided, otherwise falls back to the default mapper
    */
   function getMapperForOperation(namespace: string | undefined): TableNameMapper | undefined {
-    if (namespace) {
-      return createTableNameMapper(namespace);
-    }
-    return mapper;
+    return mapperFactory
+      ? mapperFactory(namespace)
+      : namespace
+        ? createTableNameMapper(namespace)
+        : undefined;
   }
 
   // Cache query compilers and builders by namespace for performance

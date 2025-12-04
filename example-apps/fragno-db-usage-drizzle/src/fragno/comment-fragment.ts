@@ -1,8 +1,9 @@
 import { createCommentFragment } from "@fragno-dev/fragno-db-library";
 import { adapter } from "../fragno-adapter";
-import type { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import type { DatabaseAdapter } from "@fragno-dev/db";
 
-export function createCommentFragmentServer(a: DrizzleAdapter) {
+// oxlint-disable-next-line no-explicit-any
+export function createCommentFragmentServer(a: DatabaseAdapter<any>) {
   return createCommentFragment({}, { databaseAdapter: a });
 }
 

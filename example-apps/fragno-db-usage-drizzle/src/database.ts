@@ -4,27 +4,27 @@ import { schema } from "./schema/drizzle-schema";
 
 export const pgFolder = "./fragno-db-usage.pglite" as const;
 
-type DatabaseInstance = ReturnType<typeof createDb>;
+type DatabaseInstance = ReturnType<typeof createDrizzleDatabase>;
 
 let clientInstance: PGlite | undefined;
 let dbInstance: DatabaseInstance | undefined;
 
-export function getClient(): PGlite {
+export function getPGLiteClient(): PGlite {
   if (!clientInstance) {
     clientInstance = new PGlite(pgFolder);
   }
   return clientInstance;
 }
 
-function createDb() {
-  return drizzle(getClient(), { schema });
+function createDrizzleDatabase() {
+  return drizzle(getPGLiteClient(), { schema });
 }
 
-export async function getDb() {
+export async function getDrizzleDatabase() {
   if (!dbInstance) {
     // Simulate async database initialization (e.g., connection pool, remote connection)
     await new Promise((resolve) => setTimeout(resolve, 10));
-    dbInstance = createDb();
+    dbInstance = createDrizzleDatabase();
   }
   return dbInstance;
 }

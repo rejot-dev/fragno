@@ -18,6 +18,11 @@
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"
     },
+    "./drivers": {
+      "development": "./src/adapters/generic-sql/driver-config.ts",
+      "types": "./dist/adapters/generic-sql/driver-config.d.ts",
+      "default": "./dist/adapters/generic-sql/driver-config.js"
+    },
     "./query": {
       "development": "./src/query/query.ts",
       "types": "./dist/query/query.d.ts",
@@ -42,6 +47,11 @@
       "development": "./src/adapters/drizzle/generate.ts",
       "types": "./dist/adapters/drizzle/generate.d.ts",
       "default": "./dist/adapters/drizzle/generate.js"
+    },
+    "./adapters/generic-sql": {
+      "development": "./src/adapters/generic-sql/generic-sql-adapter.ts",
+      "types": "./dist/adapters/generic-sql/generic-sql-adapter.d.ts",
+      "default": "./dist/adapters/generic-sql/generic-sql-adapter.js"
     },
     "./unit-of-work": {
       "development": "./src/query/unit-of-work.ts",
@@ -82,8 +92,10 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@libsql/client": "^0.15.15",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "@vitest/coverage-istanbul": "^3.2.4",
+    "better-sqlite3": "^12.5.0",
     "drizzle-kit": "^0.31.5",
     "drizzle-orm": "^0.44.6",
     "kysely-pglite": "^0.6.1",

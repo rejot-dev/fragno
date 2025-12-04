@@ -5,7 +5,7 @@ import type {
   MigrationOperation,
 } from "../../../../migration-engine/shared";
 import { isUpdated } from "../../../../migration-engine/shared";
-import type { TableNameMapper } from "../../../kysely/kysely-shared";
+import type { TableNameMapper } from "../../../shared/table-name-mapper";
 import { SQLGenerator } from "../sql-generator";
 
 const errors = {

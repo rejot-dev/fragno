@@ -29,7 +29,6 @@ export const infoCommand = define({
           currentVersion?: number;
           pendingVersions?: number;
           status?: string;
-          error?: string;
         } = {
           namespace: fragnoDb.namespace,
           schemaVersion: fragnoDb.schema.version,
@@ -38,23 +37,18 @@ export const infoCommand = define({
 
         // Get current database version if migrations are supported
         if (fragnoDb.adapter.createMigrationEngine) {
-          try {
-            const migrator = fragnoDb.adapter.createMigrationEngine(
-              fragnoDb.schema,
-              fragnoDb.namespace,
-            );
-            const currentVersion = await migrator.getVersion();
-            info.currentVersion = currentVersion;
-            info.pendingVersions = fragnoDb.schema.version - currentVersion;
+          const migrator = fragnoDb.adapter.createMigrationEngine(
+            fragnoDb.schema,
+            fragnoDb.namespace,
+          );
+          const currentVersion = await migrator.getVersion();
+          info.currentVersion = currentVersion;
+          info.pendingVersions = fragnoDb.schema.version - currentVersion;
 
-            if (info.pendingVersions > 0) {
-              info.status = `Pending (${info.pendingVersions} migration(s))`;
-            } else if (info.pendingVersions === 0) {
-              info.status = "Up to date";
-            }
-          } catch (error) {
-            info.error = error instanceof Error ? error.message : String(error);
-            info.status = "Error";
+          if (info.pendingVersions > 0) {
+            info.status = `Pending (${info.pendingVersions} migration(s))`;
+          } else if (info.pendingVersions === 0) {
+            info.status = "Up to date";
           }
         } else {
           info.status = "Schema only";

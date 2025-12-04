@@ -22,40 +22,6 @@ export function parseDrizzle(drizzle: unknown) {
   return [db, drizzleTables] as const;
 }
 
-/**
- * Maps logical table names (used by fragment authors) to physical table names (with namespace suffix)
- */
-export interface TableNameMapper {
-  toPhysical(logicalName: string): string;
-  toLogical(physicalName: string): string;
-}
-
-/**
- * Sanitize a namespace to be a valid JavaScript identifier
- * Replaces hyphens and other invalid characters with underscores
- */
-export function sanitizeNamespace(namespace: string): string {
-  return namespace.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-/**
- * Creates a table name mapper for a given namespace.
- * Physical names have format: {logicalName}_{sanitizedNamespace}
- * The namespace is sanitized to match TypeScript export names used in the schema
- */
-export function createTableNameMapper(namespace: string): TableNameMapper {
-  const sanitized = sanitizeNamespace(namespace);
-  return {
-    toPhysical: (logicalName: string) => `${logicalName}_${sanitized}`,
-    toLogical: (physicalName: string) => {
-      if (physicalName.endsWith(`_${sanitized}`)) {
-        return physicalName.slice(0, -(sanitized.length + 1));
-      }
-      return physicalName;
-    },
-  };
-}
-
 export interface DrizzleResult {
   rows: Record<string, unknown>[];
   affectedRows: number;

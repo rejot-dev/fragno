@@ -102,7 +102,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
 
     expect(statements.length).toBe(1);
     expect(statements[0].sql).toMatchInlineSnapshot(
-      `"create index "name_idx" on "users_test" ("name")"`,
+      `"create index "name_idx_users_test" on "users_test" ("name")"`,
     );
   });
 

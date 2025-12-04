@@ -5,7 +5,7 @@ import type {
   ForeignKeyInfo,
   MigrationOperation,
 } from "../../../../migration-engine/shared";
-import type { TableNameMapper } from "../../../kysely/kysely-shared";
+import type { TableNameMapper } from "../../../shared/table-name-mapper";
 import { SQLGenerator } from "../sql-generator";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

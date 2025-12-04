@@ -9,7 +9,11 @@ import {
 } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
 import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
-import { createTableNameMapper, sanitizeNamespace } from "./shared";
+import {
+  createTableNameMapper,
+  sanitizeNamespace,
+  type TableNameMapper,
+} from "../shared/table-name-mapper";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -232,6 +236,24 @@ function mapDBTypeToDrizzleFunction(
 }
 
 // ============================================================================
+// TABLE NAME HELPERS
+// ============================================================================
+
+/**
+ * Get the physical table name (with namespace suffix) using the mapper if available
+ */
+function getPhysicalTableName(
+  logicalName: string,
+  namespace: string | undefined,
+  mapper: TableNameMapper | undefined,
+): string {
+  if (!namespace) {
+    return logicalName;
+  }
+  return mapper ? mapper.toPhysical(logicalName) : `${logicalName}_${sanitizeNamespace(namespace)}`;
+}
+
+// ============================================================================
 // COLUMN GENERATION
 // ============================================================================
 
@@ -318,8 +340,12 @@ function generateAllColumns(
 // CONSTRAINT GENERATION
 // ============================================================================
 
-function generateForeignKeys(ctx: GeneratorContext, table: AnyTable, namespace?: string): string[] {
-  const mapper = namespace ? createTableNameMapper(namespace) : undefined;
+function generateForeignKeys(
+  ctx: GeneratorContext,
+  table: AnyTable,
+  namespace?: string,
+  mapper?: TableNameMapper,
+): string[] {
   const keys: string[] = [];
 
   for (const relation of Object.values(table.relations)) {
@@ -341,7 +367,7 @@ function generateForeignKeys(ctx: GeneratorContext, table: AnyTable, namespace?:
       if (isSelfReference) {
         foreignColumns.push(`table.${actualRefCol}`);
       } else {
-        // Suffix the foreign table reference with namespace if provided
+        // Use sanitized TypeScript export name for identifier reference
         const foreignTableRef = namespace
           ? `${relation.table.ormName}_${sanitizeNamespace(namespace)}`
           : relation.table.ormName;
@@ -391,8 +417,12 @@ function generateTableConstraints(
   ctx: GeneratorContext,
   table: AnyTable,
   namespace?: string,
+  mapper?: TableNameMapper,
 ): string[] {
-  return [...generateForeignKeys(ctx, table, namespace), ...generateIndexes(ctx, table, namespace)];
+  return [
+    ...generateForeignKeys(ctx, table, namespace, mapper),
+    ...generateIndexes(ctx, table, namespace),
+  ];
 }
 
 // ============================================================================
@@ -404,20 +434,18 @@ function generateTable(
   table: AnyTable,
   customTypes: string[],
   namespace?: string,
+  mapper?: TableNameMapper,
 ): string {
   const tableFn = PROVIDER_TABLE_FUNCTIONS[ctx.provider];
   ctx.imports.addImport(tableFn, ctx.importSource);
 
   const columns = generateAllColumns(ctx, table, customTypes);
-  const constraints = generateTableConstraints(ctx, table, namespace);
+  const constraints = generateTableConstraints(ctx, table, namespace, mapper);
 
-  // Suffix table name with namespace if provided, and sanitize for use as database table name
-  // Database table names must also be valid identifiers to work with Drizzle's relational query system
-  const physicalTableName = namespace
-    ? `${table.ormName}_${sanitizeNamespace(namespace)}`
-    : table.ormName;
-  // Same sanitized name for TypeScript export
-  const exportName = physicalTableName;
+  // Physical table name in the database (respects mapper configuration)
+  const physicalTableName = getPhysicalTableName(table.ormName, namespace, mapper);
+  // TypeScript export name must always be sanitized to be a valid JavaScript identifier
+  const exportName = namespace ? `${table.ormName}_${sanitizeNamespace(namespace)}` : table.ormName;
 
   const args: string[] = [`"${physicalTableName}"`, `{\n${columns.join(",\n")}\n}`];
 
@@ -437,6 +465,7 @@ function generateRelation(
   table: AnyTable,
   namespace?: string,
   inverseRelations?: Array<{ fromTable: AnyTable; relation: Relation }>,
+  _mapper?: TableNameMapper,
 ): string | undefined {
   const relations: string[] = [];
   let hasOne = false;
@@ -458,7 +487,7 @@ function generateRelation(
       const fields: string[] = [];
       const references: string[] = [];
 
-      // Use sanitized namespace for identifier references
+      // Use sanitized TypeScript export names for identifier references
       const tableRef = namespace
         ? `${table.ormName}_${sanitizeNamespace(namespace)}`
         : table.ormName;
@@ -496,6 +525,7 @@ function generateRelation(
       if (relation.type === "one") {
         hasMany = true;
 
+        // Use sanitized TypeScript export name for identifier reference
         const fromTableRef = namespace
           ? `${fromTable.ormName}_${sanitizeNamespace(namespace)}`
           : fromTable.ormName;
@@ -526,13 +556,14 @@ function generateRelation(
   }
   const relationParams = params.length > 0 ? `{ ${params.join(", ")} }` : "{}";
 
-  const tableRef = namespace ? `${table.ormName}_${sanitizeNamespace(namespace)}` : table.ormName;
-  const relationsName = namespace
-    ? `${table.ormName}_${sanitizeNamespace(namespace)}Relations`
-    : `${table.ormName}Relations`;
+  // Use sanitized names for TypeScript export identifiers
+  const exportTableRef = namespace
+    ? `${table.ormName}_${sanitizeNamespace(namespace)}`
+    : table.ormName;
+  const relationsName = namespace ? `${exportTableRef}Relations` : `${table.ormName}Relations`;
 
   ctx.imports.addImport("relations", "drizzle-orm");
-  return `export const ${relationsName} = relations(${tableRef}, (${relationParams}) => ({
+  return `export const ${relationsName} = relations(${exportTableRef}, (${relationParams}) => ({
 ${relations.join(",\n")}
 }));`;
 }
@@ -549,22 +580,22 @@ function generateFragmentSchemaExport(
   schema: AnySchema,
   namespace: string,
   tablesWithRelations?: Set<string>,
+  _mapper?: TableNameMapper,
 ): string {
   const drizzleEntries: string[] = [];
 
   for (const table of Object.values(schema.tables)) {
-    const physicalExportName = namespace
+    // TypeScript export name (always sanitized for valid JS identifiers)
+    const exportName = namespace
       ? `${table.ormName}_${sanitizeNamespace(namespace)}`
       : table.ormName;
 
     // Add physical table name to drizzle schema
-    drizzleEntries.push(`  ${physicalExportName}: ${physicalExportName}`);
+    drizzleEntries.push(`  ${exportName}: ${exportName}`);
 
     // Include relations for this table if they exist (either explicit or inverse)
     if (tablesWithRelations?.has(table.name)) {
-      const relationsName = namespace
-        ? `${table.ormName}_${sanitizeNamespace(namespace)}Relations`
-        : `${table.ormName}Relations`;
+      const relationsName = namespace ? `${exportName}Relations` : `${table.ormName}Relations`;
 
       drizzleEntries.push(`  ${relationsName}: ${relationsName}`);
     }
@@ -573,11 +604,11 @@ function generateFragmentSchemaExport(
     // The key insight: Drizzle needs BOTH the table alias AND its relations alias
     // in the same schema object for relational queries to work
     if (namespace) {
-      drizzleEntries.push(`  ${table.ormName}: ${physicalExportName}`);
+      drizzleEntries.push(`  ${table.ormName}: ${exportName}`);
 
       // Also add the relations under the aliased name if they exist
       if (tablesWithRelations?.has(table.name)) {
-        const physicalRelationsName = `${table.ormName}_${sanitizeNamespace(namespace)}Relations`;
+        const physicalRelationsName = `${exportName}Relations`;
         const aliasRelationsName = `${table.ormName}Relations`;
         drizzleEntries.push(`  ${aliasRelationsName}: ${physicalRelationsName}`);
       }
@@ -587,6 +618,7 @@ function generateFragmentSchemaExport(
   // Add schema version as a number
   drizzleEntries.push(`  schemaVersion: ${schema.version}`);
 
+  // Use logical name (not physical) for the schema export variable name, sanitized for valid JS identifier
   const exportName = namespace ? `${sanitizeNamespace(namespace)}_schema` : "_schema";
 
   return `export const ${exportName} = {\n${drizzleEntries.join(",\n")}\n}`;
@@ -604,6 +636,8 @@ export interface GenerateSchemaOptions {
     /** Module to import from */
     from: string;
   };
+  /** Optional mapper factory for creating table name mappers with custom sanitization */
+  mapperFactory?: (namespace: string | undefined) => TableNameMapper | undefined;
 }
 
 /**
@@ -620,9 +654,13 @@ export function generateSchema(
   const ctx = createContext(provider, options?.idGeneratorImport);
   const customTypes: string[] = [];
   const sections: string[] = [];
+  const getMapper =
+    options?.mapperFactory ||
+    ((ns: string | undefined) => (ns ? createTableNameMapper(ns, true) : undefined));
 
   for (const { schema, namespace } of fragments) {
     const fragmentTables: string[] = [];
+    const mapper = getMapper(namespace);
 
     // Add section header
     fragmentTables.push("");
@@ -636,7 +674,7 @@ export function generateSchema(
 
     // Generate tables for this fragment
     for (const table of Object.values(schema.tables)) {
-      const tableCode = generateTable(ctx, table, customTypes, namespace);
+      const tableCode = generateTable(ctx, table, customTypes, namespace, mapper);
       fragmentTables.push("");
       fragmentTables.push(tableCode);
     }
@@ -663,6 +701,7 @@ export function generateSchema(
         table,
         namespace,
         inverseRelations.get(table.name),
+        mapper,
       );
       if (relationCode) {
         fragmentTables.push("");
@@ -674,7 +713,9 @@ export function generateSchema(
     // Generate schema export object (skip for empty namespace to avoid duplicate _schema exports)
     if (namespace !== "") {
       fragmentTables.push("");
-      fragmentTables.push(generateFragmentSchemaExport(schema, namespace, tablesWithRelations));
+      fragmentTables.push(
+        generateFragmentSchemaExport(schema, namespace, tablesWithRelations, mapper),
+      );
     }
 
     sections.push(...fragmentTables);
