@@ -1,5 +1,5 @@
 import { eq, like, desc, and, sql } from "drizzle-orm";
-import { getDb } from "./database";
+import { getDrizzleDatabase } from "./database";
 import { user, blogPost } from "./schema/drizzle-schema";
 import { fragno_db_comment_schema, fragno_db_rating_schema } from "./schema/fragno-schema";
 
@@ -12,19 +12,19 @@ type NewBlogPost = typeof blogPost.$inferInsert;
 
 // User repository methods
 export async function findUserById(id: number) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.select().from(user).where(eq(user.id, id)).limit(1);
   return result[0];
 }
 
 export async function findUserByEmail(email: string) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.select().from(user).where(eq(user.email, email)).limit(1);
   return result[0];
 }
 
 export async function findUsers(criteria: Partial<User>) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const conditions = [];
 
   if (criteria.id) {
@@ -54,31 +54,31 @@ export async function findUsers(criteria: Partial<User>) {
 }
 
 export async function createUser(newUser: NewUser): Promise<User> {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.insert(user).values(newUser).returning();
   return result[0];
 }
 
 export async function updateUser(id: number, updateWith: Partial<NewUser>) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   await db.update(user).set(updateWith).where(eq(user.id, id));
 }
 
 export async function deleteUser(id: number) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.delete(user).where(eq(user.id, id)).returning();
   return result[0];
 }
 
 // BlogPost repository methods
 export async function findBlogPostById(id: number) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.select().from(blogPost).where(eq(blogPost.id, id)).limit(1);
   return result[0];
 }
 
 export async function findBlogPostsByAuthor(authorId: number) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db
     .select()
     .from(blogPost)
@@ -87,12 +87,12 @@ export async function findBlogPostsByAuthor(authorId: number) {
 }
 
 export async function findAllBlogPosts() {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db.select().from(blogPost).orderBy(desc(blogPost.createdAt));
 }
 
 export async function findBlogPostsWithAuthor() {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db
     .select({
       id: blogPost.id,
@@ -115,24 +115,24 @@ export async function findBlogPostsWithAuthor() {
 }
 
 export async function createBlogPost(post: NewBlogPost) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.insert(blogPost).values(post).returning();
   return result[0];
 }
 
 export async function updateBlogPost(id: number, updateWith: Partial<NewBlogPost>) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   await db.update(blogPost).set(updateWith).where(eq(blogPost.id, id));
 }
 
 export async function deleteBlogPost(id: number) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   const result = await db.delete(blogPost).where(eq(blogPost.id, id)).returning();
   return result[0];
 }
 
 export async function searchBlogPostsByTitle(searchTerm: string) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db
     .select()
     .from(blogPost)
@@ -150,7 +150,7 @@ export async function searchBlogPostsByTitle(searchTerm: string) {
  * We're using the 'session' convenience alias from simple_auth_db_schema.
  */
 export async function findAuthSessionsWithOwners() {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db.query.session.findMany({
     with: {
       sessionOwner: {
@@ -170,7 +170,7 @@ export async function findAuthSessionsWithOwners() {
  * This demonstrates that joins work with the aliased tables.
  */
 export async function findAuthSessionById(sessionId: string) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db.query.session.findFirst({
     where: (session, { eq }) => eq(session.id, sessionId),
     with: {
@@ -190,7 +190,7 @@ export async function findAuthSessionById(sessionId: string) {
  * Note: We use the physical table name to avoid confusion with the app's 'user' table.
  */
 export async function findAuthUsersWithSessions() {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db.query.user_simple_auth.findMany({
     with: {
       sessionList: {
@@ -205,7 +205,7 @@ export async function findAuthUsersWithSessions() {
  * This demonstrates that self-referential relations work correctly.
  */
 export async function findCommentsWithReplies(postReference: string) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db.query.comment.findMany({
     where: (comment, { eq, isNull }) =>
       and(eq(comment.postReference, postReference), isNull(comment.parentId)),
@@ -230,7 +230,7 @@ export async function findCommentsWithReplies(postReference: string) {
  * This demonstrates bidirectional self-referential relations.
  */
 export async function findCommentWithParentAndReplies(commentId: string) {
-  const db = await getDb();
+  const db = await getDrizzleDatabase();
   return await db.query.comment.findFirst({
     where: (comment, { eq }) => eq(comment.id, commentId),
     with: {

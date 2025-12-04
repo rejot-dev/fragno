@@ -4,7 +4,8 @@ import type { CompiledMutation, UOWExecutor, ValidIndexName } from "../../query/
 import { createDrizzleUOWCompiler, type DrizzleCompiledQuery } from "./drizzle-uow-compiler";
 import { executeDrizzleRetrievalPhase, executeDrizzleMutationPhase } from "./drizzle-uow-executor";
 import { UnitOfWork } from "../../query/unit-of-work";
-import { parseDrizzle, type DrizzleResult, type TableNameMapper, type DBType } from "./shared";
+import { parseDrizzle, type DrizzleResult, type DBType } from "./shared";
+import type { TableNameMapper } from "../shared/table-name-mapper";
 import { createDrizzleUOWDecoder } from "./drizzle-uow-decoder";
 import type { ConnectionPool } from "../../shared/connection-pool";
 import type { TableToUpdateValues } from "../../query/query";

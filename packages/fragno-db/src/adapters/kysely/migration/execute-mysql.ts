@@ -4,7 +4,7 @@ import {
   isUpdated,
   type MigrationOperation,
 } from "../../../migration-engine/shared";
-import type { TableNameMapper } from "../kysely-shared";
+import type { TableNameMapper } from "../../shared/table-name-mapper";
 import {
   BaseMigrationExecutor,
   createUniqueIndex,

@@ -1,21 +1,22 @@
 import type { AnySchema } from "../../../schema/create";
 import type { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
-import type { TableNameMapper } from "../../kysely/kysely-shared";
+import type { TableNameMapper } from "../../shared/table-name-mapper";
 import { generateMigrationFromSchema } from "../../../migration-engine/auto-from-schema";
-import { createColdKysely, type SupportedDatabase } from "./cold-kysely";
+import { createColdKysely } from "./cold-kysely";
 import { type SQLGenerator } from "./sql-generator";
 import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
 import { MySQLSQLGenerator } from "./dialect/mysql";
 import { executeMigration, type CompiledMigration } from "./executor";
+import type { SupportedDatabase } from "../driver-config";
 
 /**
  * Options for compiling a migration.
  */
 export interface CompileOptions {
-  fromVersion: number;
-  toVersion: number;
-  updateVersionInMigration: boolean;
+  fromVersion?: number;
+  toVersion?: number;
+  updateVersionInMigration?: boolean;
 }
 
 /**
@@ -27,7 +28,7 @@ export interface PreparedMigrations {
    * Compile migration operations to SQL statements.
    * This performs Phase 1 (schema → operations) and Phase 2 (operations → SQL).
    */
-  compile(options: CompileOptions): CompiledMigration;
+  compile(options?: CompileOptions): CompiledMigration;
 
   /**
    * Execute a compiled migration.
@@ -43,6 +44,7 @@ export interface PreparedMigrationsConfig {
   schema: AnySchema;
   namespace: string;
   database: SupportedDatabase;
+  mapper?: TableNameMapper;
 }
 
 /**
@@ -57,20 +59,26 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
   // Create the appropriate SQL generator for the database
   const generator = createSQLGenerator(database, coldKysely);
 
-  // Create table name mapper if namespace is provided
-  const mapper: TableNameMapper | undefined = namespace
-    ? {
-        toPhysical: (logicalName: string) => `${logicalName}_${namespace}`,
-        toLogical: (physicalName: string) =>
-          physicalName.endsWith(`_${namespace}`)
-            ? physicalName.slice(0, -(namespace.length + 1))
-            : physicalName,
-      }
-    : undefined;
+  // Use provided mapper or create default one if namespace is provided
+  const mapper: TableNameMapper | undefined =
+    config.mapper ??
+    (namespace
+      ? {
+          toPhysical: (logicalName: string) => `${logicalName}_${namespace}`,
+          toLogical: (physicalName: string) =>
+            physicalName.endsWith(`_${namespace}`)
+              ? physicalName.slice(0, -(namespace.length + 1))
+              : physicalName,
+        }
+      : undefined);
 
   return {
     compile(options) {
-      const { fromVersion, toVersion, updateVersionInMigration } = options;
+      const {
+        fromVersion = 0,
+        toVersion = schema.version,
+        updateVersionInMigration = false,
+      } = options ?? {};
 
       // Validate version numbers
       if (fromVersion < 0) {

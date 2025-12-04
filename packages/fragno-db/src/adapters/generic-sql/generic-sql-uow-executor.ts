@@ -74,7 +74,15 @@ export async function executeMutation(
           if (Array.isArray(result.rows) && result.rows.length > 0) {
             const row = result.rows[0] as Record<string, unknown>;
             if ("_internalId" in row || "_internal_id" in row) {
-              const internalId = (row["_internalId"] ?? row["_internal_id"]) as bigint;
+              const rawId = row["_internalId"] ?? row["_internal_id"];
+              // Normalize to bigint - different drivers return different types for integer columns
+              // TODO(Wilco): Move this to a better place
+              const internalId =
+                typeof rawId === "bigint"
+                  ? rawId
+                  : typeof rawId === "number"
+                    ? BigInt(rawId)
+                    : null;
               createdInternalIds.push(internalId);
             } else {
               // RETURNING supported but _internalId not found - that's okay

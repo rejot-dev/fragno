@@ -1,8 +1,9 @@
 import { createAuthFragment } from "@fragno-dev/simple-auth-fragment";
 import { adapter } from "../fragno-adapter";
-import type { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import type { DatabaseAdapter } from "@fragno-dev/db";
 
-export function createAuthFragmentServer(a: DrizzleAdapter) {
+// oxlint-disable-next-line no-explicit-any
+export function createAuthFragmentServer(a: DatabaseAdapter<any>) {
   return createAuthFragment({}, { databaseAdapter: a });
 }
 

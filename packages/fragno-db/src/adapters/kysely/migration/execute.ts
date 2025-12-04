@@ -1,6 +1,6 @@
 import type { CustomOperation, MigrationOperation } from "../../../migration-engine/shared";
 import type { KyselyConfig } from "../kysely-adapter";
-import type { TableNameMapper } from "../kysely-shared";
+import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { ExecuteNode } from "./execute-base";
 import { createMigrationExecutor } from "./execute-factory";
 

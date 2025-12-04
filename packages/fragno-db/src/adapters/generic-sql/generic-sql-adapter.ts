@@ -12,55 +12,44 @@ import { sql } from "../../sql-driver/sql";
 import type { AnySchema } from "../../schema/create";
 import type { Migrator } from "../../migration-engine/create";
 import type { SchemaGenerator } from "../../schema-generator/schema-generator";
-import { createTableNameMapper } from "../kysely/kysely-shared";
+import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { AbstractQuery } from "../../query/query";
 import { createExecutor } from "./generic-sql-uow-executor";
-import { fromKysely, createKyselyUOWDecoder, type KyselyUOWConfig } from "../kysely/kysely-query";
+import { fromKysely, createKyselyUOWDecoder } from "../kysely/kysely-query";
 import { createKyselyUOWCompiler } from "../kysely/kysely-uow-compiler";
 import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
-import type { SupportedDatabase } from "./migration/cold-kysely";
+import type { DriverConfig } from "./driver-config";
 
-export type SupportedDriverTypes = "sqlite-sqlocal" | "postgresql-pg" | "mysql-mysql2";
-export type SupportedDatabases = SupportedDatabase;
-
-export interface GenericSQLConfig {
+export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
 }
 
 export interface GenericSQLOptions {
   dialect: Dialect;
-  driver: SupportedDriverTypes;
-  config?: GenericSQLConfig;
+  driverConfig: DriverConfig;
+  uowConfig?: UnitOfWorkConfig;
 }
 
-export class GenericSQLAdapter implements DatabaseAdapter<KyselyUOWConfig> {
-  #dialect: Dialect;
-  #driverType: SupportedDriverTypes;
-  #config?: GenericSQLConfig;
+export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
+  readonly dialect: Dialect;
+  readonly driverConfig: DriverConfig;
+  readonly uowConfig?: UnitOfWorkConfig;
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   #driver: SqlDriverAdapter;
 
-  constructor({ dialect, driver, config }: GenericSQLOptions) {
-    this.#dialect = dialect;
-    this.#driverType = driver;
-    this.#config = config;
+  constructor({ dialect, driverConfig, uowConfig }: GenericSQLOptions) {
+    this.dialect = dialect;
+    this.driverConfig = driverConfig;
+    this.uowConfig = uowConfig;
 
     this.#schemaNamespaceMap = new WeakMap<AnySchema, string>();
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
-  }
-
-  get databaseType(): SupportedDatabases {
-    return this.#driverType.split("-")[0] as SupportedDatabases;
-  }
-
-  get dialect(): Dialect {
-    return this.#dialect;
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {
@@ -92,7 +81,8 @@ export class GenericSQLAdapter implements DatabaseAdapter<KyselyUOWConfig> {
     return createPreparedMigrations({
       schema,
       namespace,
-      database: this.databaseType,
+      database: this.driverConfig.databaseType,
+      mapper: namespace ? this.createTableNameMapper(namespace) : undefined,
     });
   }
 
@@ -101,7 +91,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<KyselyUOWConfig> {
   }
 
   createTableNameMapper(namespace: string): TableNameMapper {
-    return createTableNameMapper(namespace);
+    return createTableNameMapper(namespace, false);
   }
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {
@@ -125,14 +115,22 @@ export class GenericSQLAdapter implements DatabaseAdapter<KyselyUOWConfig> {
   createQueryEngine<T extends AnySchema>(
     schema: T,
     namespace: string,
-  ): AbstractQuery<T, KyselyUOWConfig> {
+  ): AbstractQuery<T, UnitOfWorkConfig> {
     this.#schemaNamespaceMap.set(schema, namespace);
 
-    const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    const compiler = createKyselyUOWCompiler(this.databaseType, mapper);
+    const compiler = createKyselyUOWCompiler(this.driverConfig.databaseType, (ns) =>
+      ns ? this.createTableNameMapper(ns) : undefined,
+    );
     const executor = createExecutor(this.#driver, false);
-    const decoder = createKyselyUOWDecoder(this.databaseType);
+    const decoder = createKyselyUOWDecoder(this.driverConfig.databaseType);
 
-    return fromKysely(schema, compiler, executor, decoder, this.#config, this.#schemaNamespaceMap);
+    return fromKysely(
+      schema,
+      compiler,
+      executor,
+      decoder,
+      this.uowConfig,
+      this.#schemaNamespaceMap,
+    );
   }
 }
