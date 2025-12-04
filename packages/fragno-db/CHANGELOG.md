@@ -1,5 +1,13 @@
 # @fragno-dev/db
 
+## 0.1.16
+
+### Patch Changes
+
+- fcce048: feat: use "dry run" mode when searching for database schemas to be more lenient when
+  instantiating a Fragment
+- f9ae2d3: fix: database namespace generation
+
 ## 0.1.15
 
 ### Patch Changes
