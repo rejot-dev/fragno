@@ -147,7 +147,7 @@ This repo ships complete examples and sample libraries:
   SolidStart, Vue SPA, etc.).
 - `examples-apps/stripe-webshop` and `packages/stripe` – Stripe subscription library and example
   app, as described in
-  ["Solving Split Brain Integrations"](https://fragno.dev/docs/blog/split-brain-stripe).
+  ["Solving Split Brain Integrations"](https://fragno.dev/blog/split-brain-stripe).
 
 ## Contributing
 
@@ -160,7 +160,7 @@ See the [CONTRIBUTING](CONTRIBUTING.md) file for details.
 
 If you want more background on why Fragno exists and how we think about full-stack libraries:
 
-- ["The case for full-stack libraries"](https://fragno.dev/docs/blog/fragno-introduction)
-- ["Solving Split Brain Integrations"](https://fragno.dev/docs/blog/split-brain-stripe)
+- ["The case for full-stack libraries"](https://fragno.dev/blog/fragno-introduction)
+- ["Solving Split Brain Integrations"](https://fragno.dev/blog/split-brain-stripe)
 
 Don't forget to give us a star ⭐️
