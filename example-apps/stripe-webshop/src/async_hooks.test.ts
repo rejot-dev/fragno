@@ -2,9 +2,14 @@ import { test, expect, afterAll, beforeAll, describe } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { config } from "dotenv";
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+
+const isCI = !!process.env["CI"];
+const hasEnvFile =
+  existsSync(resolve(process.cwd(), ".env")) || existsSync(resolve(process.cwd(), ".env.local"));
 
 // Load .env.ci when running in CI environment
-if (process.env["CI"]) {
+if (isCI) {
   config({ path: resolve(process.cwd(), ".env.ci") });
 }
 
@@ -12,7 +17,8 @@ if (process.env["CI"]) {
 // but I couldn't get the async_hooks to be included in a
 // developement build using `vite build -m development`.
 // Feel free to remove this down the line when we are more certain this issue won't pop up again.
-describe("development server integration", () => {
+// Skip if no .env or .env.local file is available outside CI
+describe.skipIf(!isCI && !hasEnvFile)("development server integration", () => {
   let devServer: ChildProcess;
   let serverLogs: string[] = [];
   const PORT = 3000;
