@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, Form, useActionData, useNavigation } from "react-router";
-import { FragnoLogo } from "@/components/logos/fragno-logo";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import {
   Shield,
@@ -31,7 +30,7 @@ import { FragnoExplainer } from "@/components/explainer";
 
 export function meta() {
   return [
-    { title: "Fragno: Build Full-Stack TypeScript Libraries" },
+    { title: "Fragno: Full-Stack TypeScript Components" },
     {
       name: "description",
       content:
@@ -94,20 +93,16 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 function Hero() {
   return (
-    <section className="w-full max-w-5xl space-y-6 text-center">
-      <div className="flex justify-center">
-        <FragnoLogo className="size-72 dark:text-white" />
-      </div>
-
-      <h1 className="text-fd-foreground text-6xl font-extrabold tracking-tight md:text-7xl dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Build Full-
-        <span className="text-fd-foreground relative inline-block dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-          Stack
+    <section className="w-full max-w-5xl space-y-6 rounded-2xl bg-white p-6 text-center shadow-sm md:p-12 dark:bg-slate-900/75">
+      <h1 className="text-fd-foreground dark:bg-linear-to-b text-5xl font-extrabold tracking-tight md:text-6xl lg:text-7xl dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
+        Full-Stack{" "}
+        <span className="text-fd-foreground dark:bg-linear-to-b relative inline-block dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
+          TypeScript
           <span className="absolute -right-3 -top-2 inline-flex rotate-12 items-center md:-right-7 md:-top-3">
-            <span className="relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
+            <span className="bg-linear-to-r relative inline-flex items-center gap-2 rounded-full from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
               <span
                 aria-hidden
-                className="pointer-events-none absolute -inset-0.5 -z-10 rounded-full bg-gradient-to-r from-indigo-500/30 to-fuchsia-500/30 blur-md"
+                className="bg-linear-to-r pointer-events-none absolute -inset-0.5 -z-10 rounded-full from-indigo-500/30 to-fuchsia-500/30 blur-md"
               />
               <span
                 aria-hidden
@@ -121,21 +116,13 @@ function Hero() {
           </span>
         </span>
         <br />
-        Libraries
+        Components
       </h1>
-      <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl">
-        <span>
-          Build{" "}
-          <span className="underline decoration-blue-600 underline-offset-4 dark:decoration-blue-400">
-            fr
-          </span>
-          amework-
-          <span className="underline decoration-purple-600 underline-offset-4 dark:decoration-purple-400">
-            agno
-          </span>
-          stic
+      <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-10">
+        <span className="underline decoration-blue-600 underline-offset-4 dark:decoration-blue-400">
+          Framework agnostic
         </span>{" "}
-        libraries that embed backend and frontend logic in your users' applications
+        components that bundle DB schemas, backend routes and frontend hooks into one package.
       </p>
 
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
@@ -604,7 +591,7 @@ function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
     </section>
   );
 }
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function FeatureSet() {
   const features = [
     {
@@ -647,11 +634,10 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
   return (
     <main className="space-y-18 relative flex flex-1 flex-col items-center overflow-x-hidden px-4 py-16 md:px-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="mx-auto mt-[-80px] h-[520px] w-[820px] rounded-full bg-gradient-to-br from-blue-500/25 via-sky-400/20 to-purple-500/20 opacity-20 blur-3xl dark:opacity-40" />
+        <div className="bg-linear-to-br mx-auto mt-[-80px] h-[520px] w-[1000px] from-blue-500/50 via-sky-400/50 to-purple-500/50 opacity-20 blur-3xl dark:opacity-40" />
       </div>
 
       <Hero />
-      <FeatureSet />
       <FragnoExplainer />
       <Frameworks />
       <WhatFragnoProvides />

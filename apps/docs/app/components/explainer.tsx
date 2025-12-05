@@ -245,7 +245,7 @@ export function FragnoExplainer() {
               <Cake
                 variant={variant}
                 layerVariant={layerVariant}
-                className={`absolute right-0 top-0 z-10 -translate-y-1/2 md:translate-x-1/4 ${index === layers.length - 1 ? "size-40" : "size-24"}`}
+                className={`dark:drop-shadow-slate-600 absolute right-0 top-0 z-10 -translate-y-1/2 md:translate-x-1/4 dark:drop-shadow-md ${index === layers.length - 1 ? "size-40" : "size-24"}`}
               />
 
               {/* Card content: title, subtitle, code */}
