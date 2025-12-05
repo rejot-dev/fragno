@@ -23,6 +23,16 @@
       "types": "./dist/adapters/generic-sql/driver-config.d.ts",
       "default": "./dist/adapters/generic-sql/driver-config.js"
     },
+    "./dialects": {
+      "development": "./src/sql-driver/dialects/dialects.ts",
+      "types": "./dist/sql-driver/dialects/dialects.d.ts",
+      "default": "./dist/sql-driver/dialects/dialects.js"
+    },
+    "./dialects/durable-object": {
+      "development": "./src/sql-driver/dialects/durable-object-dialect.ts",
+      "types": "./dist/sql-driver/dialects/durable-object-dialect.d.ts",
+      "default": "./dist/sql-driver/dialects/durable-object-dialect.js"
+    },
     "./query": {
       "development": "./src/query/query.ts",
       "types": "./dist/query/query.d.ts",
