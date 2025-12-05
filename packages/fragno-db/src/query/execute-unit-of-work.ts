@@ -4,6 +4,17 @@ import { NoRetryPolicy, ExponentialBackoffRetryPolicy, type RetryPolicy } from "
 import type { FragnoId } from "../schema/create";
 
 /**
+ * Error thrown when a Unit of Work execution fails due to optimistic concurrency conflict.
+ * This error triggers automatic retry behavior in executeRestrictedUnitOfWork.
+ */
+export class ConcurrencyConflictError extends Error {
+  constructor(message = "Optimistic concurrency conflict detected") {
+    super(message);
+    this.name = "ConcurrencyConflictError";
+  }
+}
+
+/**
  * Type utility that unwraps promises 1 level deep in objects, arrays, or direct promises
  * Handles tuples, arrays, objects, and direct promises
  */
@@ -420,7 +431,7 @@ export async function executeRestrictedUnitOfWork<TResult>(
 
           const result = await baseUow.executeMutations();
           if (!result.success) {
-            throw new Error("Mutations failed due to conflict");
+            throw new ConcurrencyConflictError();
           }
         },
         nonce: baseUow.nonce,
@@ -438,6 +449,12 @@ export async function executeRestrictedUnitOfWork<TResult>(
     } catch (error) {
       if (signal?.aborted) {
         throw new Error("Unit of Work execution aborted");
+      }
+
+      // Only retry concurrency conflicts, not other errors
+      if (!(error instanceof ConcurrencyConflictError)) {
+        // Not a concurrency conflict - throw immediately without retry
+        throw error;
       }
 
       if (!retryPolicy.shouldRetry(attempt, error, signal)) {

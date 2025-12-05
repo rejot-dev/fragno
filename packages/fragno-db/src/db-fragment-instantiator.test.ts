@@ -428,6 +428,82 @@ describe("db-fragment-instantiator", () => {
     });
   });
 
+  describe("$internal object", () => {
+    it("should populate $internal.deps with database dependencies", () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({ mountRoute: "/api", databaseAdapter: mockAdapter })
+        .build();
+
+      expect(fragment.$internal.deps).toBeDefined();
+      expect(fragment.$internal.deps).toHaveProperty("db");
+      expect(fragment.$internal.deps).toHaveProperty("schema");
+      expect(fragment.$internal.deps).toHaveProperty("namespace");
+      expect(fragment.$internal.deps).toHaveProperty("createUnitOfWork");
+    });
+
+    it("should populate $internal.options with database adapter", () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({ mountRoute: "/api", databaseAdapter: mockAdapter })
+        .build();
+
+      expect(fragment.$internal.options).toBeDefined();
+      expect(fragment.$internal.options).toHaveProperty("databaseAdapter");
+      expect(fragment.$internal.options.databaseAdapter).toBe(mockAdapter);
+      expect(fragment.$internal.options).toHaveProperty("mountRoute", "/api");
+    });
+
+    it("should have correct schema and namespace in $internal.deps", () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({ mountRoute: "/api", databaseAdapter: mockAdapter })
+        .build();
+
+      expect(fragment.$internal.deps.schema).toBe(testSchema);
+      expect(fragment.$internal.deps.namespace).toBe("test-db-fragment");
+    });
+
+    it("should populate $internal when using providesBaseService without withDependencies", () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            testMethod: function () {
+              return "test";
+            },
+          }),
+        )
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({ mountRoute: "/api", databaseAdapter: mockAdapter })
+        .build();
+
+      expect(fragment.$internal.deps).toBeDefined();
+      expect(fragment.$internal.deps).toHaveProperty("db");
+      expect(fragment.$internal.deps).toHaveProperty("schema");
+      expect(fragment.$internal.deps).toHaveProperty("namespace");
+      expect(fragment.$internal.deps).toHaveProperty("createUnitOfWork");
+      expect(fragment.$internal.options).toBeDefined();
+      expect(fragment.$internal.options).toHaveProperty("databaseAdapter");
+      expect(fragment.$internal.options.databaseAdapter).toBe(mockAdapter);
+    });
+  });
+
   describe("error handling", () => {
     it("should throw when databaseAdapter is not provided", () => {
       const definition = defineFragment("test-db-fragment")

@@ -838,7 +838,7 @@ describe("executeRestrictedUnitOfWork", () => {
   });
 
   describe("error handling", () => {
-    it("should throw error from callback", async () => {
+    it("should throw error from callback immediately without retry", async () => {
       const { factory, callCount } = createMockUOWFactory([{ success: true }]);
 
       await expect(
@@ -848,13 +848,13 @@ describe("executeRestrictedUnitOfWork", () => {
           },
           { createUnitOfWork: factory },
         ),
-      ).rejects.toThrow("Unit of Work execution failed: optimistic concurrency conflict");
+      ).rejects.toThrow("Callback error");
 
-      // Should attempt retries even on callback errors
-      expect(callCount.value).toBe(6); // Initial + 5 retries (default)
+      // Should NOT retry non-conflict errors
+      expect(callCount.value).toBe(1); // Only initial attempt
     });
 
-    it("should wrap callback error as cause", async () => {
+    it("should throw callback error directly", async () => {
       const { factory } = createMockUOWFactory([{ success: true }]);
       const originalError = new Error("Original error");
 
@@ -870,8 +870,8 @@ describe("executeRestrictedUnitOfWork", () => {
         );
         expect.fail("Should have thrown");
       } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        expect((error as Error).cause).toBe(originalError);
+        // Error should be thrown directly, not wrapped
+        expect(error).toBe(originalError);
       }
     });
   });
@@ -1292,19 +1292,15 @@ describe("executeRestrictedUnitOfWork", () => {
         );
         expect.fail("Should have thrown an error");
       } catch (error) {
-        // The error should be wrapped by executeRestrictedUnitOfWork
+        // The error should be thrown directly (not wrapped) since it's not a concurrency conflict
         expect(error).toBeInstanceOf(Error);
-        // Check that the original error is in the cause chain
-        expect((error as Error).cause).toBeInstanceOf(Error);
-        expect(((error as Error).cause as Error).message).toContain(
-          'relation "settings" does not exist',
-        );
+        expect((error as Error).message).toContain('relation "settings" does not exist');
         deferred.resolve((error as Error).message);
       }
 
       // Verify no unhandled rejection occurred
       // If the test completes without throwing, the promise rejection was properly handled
-      expect(await deferred.promise).toContain("Unit of Work execution failed");
+      expect(await deferred.promise).toContain('relation "settings" does not exist');
     });
   });
 });

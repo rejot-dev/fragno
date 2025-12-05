@@ -1,19 +1,13 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client";
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
 import { DrizzleAdapter } from "./drizzle-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it, assert } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
-import type { DBType } from "./shared";
-import { createRequire } from "node:module";
-import { writeAndLoadSchema } from "./test-utils";
 import { Cursor } from "../../query/cursor";
 import { executeUnitOfWork } from "../../query/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/retry-policy";
-
-// Import drizzle-kit for migrations
-const require = createRequire(import.meta.url);
-const { generateSQLiteDrizzleJson, generateSQLiteMigration } =
-  require("drizzle-kit/api") as typeof import("drizzle-kit/api");
+import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
+import { settingsSchema } from "../../fragments/internal-fragment";
 
 describe("DrizzleAdapter SQLite", () => {
   const testSchema = schema((s) => {
@@ -98,56 +92,38 @@ describe("DrizzleAdapter SQLite", () => {
   });
 
   let adapter: DrizzleAdapter;
-  let db: DBType;
-  // let sqliteDb: Database.Database;
+  let sqliteDatabase: InstanceType<typeof SQLite>;
 
   beforeAll(async () => {
-    // Write schema to file and dynamically import it
-    const { schemaModule, cleanup } = await writeAndLoadSchema(
-      "drizzle-adapter-sqlite",
-      testSchema,
-      "sqlite",
-      "namespace",
-    );
+    sqliteDatabase = new SQLite(":memory:");
 
-    // Write second schema to file and dynamically import it
-    const { schemaModule: schemaModule2, cleanup: cleanup2 } = await writeAndLoadSchema(
-      "drizzle-adapter-sqlite-schema2",
-      schema2,
-      "sqlite",
-      "namespace2",
-    );
-
-    const client = createClient({
-      url: "file::memory:?cache=shared",
+    const dialect = new SqliteDialect({
+      database: sqliteDatabase,
     });
-
-    // Merge both schema modules for the db
-    const mergedSchema = { ...schemaModule, ...schemaModule2 };
-
-    db = drizzle(client, {
-      schema: mergedSchema,
-    }) as unknown as DBType;
-
-    // Generate and run migrations for both schemas
-    const emptyJson = await generateSQLiteDrizzleJson({});
-    const targetJson = await generateSQLiteDrizzleJson(mergedSchema);
-
-    const migrationStatements = await generateSQLiteMigration(emptyJson, targetJson);
-
-    for (const statement of migrationStatements) {
-      await client.execute(statement);
-    }
 
     adapter = new DrizzleAdapter({
-      db,
-      provider: "sqlite",
+      dialect,
+      driverConfig: new BetterSQLite3DriverConfig(),
     });
 
+    // Create settings table first (needed for version tracking)
+    {
+      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
+    {
+      const migrations = adapter.prepareMigrations(testSchema, "namespace");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
+    {
+      const migrations = adapter.prepareMigrations(schema2, "namespace2");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
     return async () => {
-      client.close();
-      await cleanup();
-      await cleanup2();
+      await adapter.close();
     };
   }, 12000);
 

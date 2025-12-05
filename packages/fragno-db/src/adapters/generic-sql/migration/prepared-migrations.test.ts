@@ -5,6 +5,7 @@ import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
 import { MySQLSQLGenerator } from "./dialect/mysql";
 import { createPreparedMigrations } from "./prepared-migrations";
+import { createTableNameMapper } from "../../shared/table-name-mapper";
 
 const testSchema = schema((s) => {
   return s
@@ -301,76 +302,185 @@ describe("PreparedMigrations - MySQL", () => {
 });
 
 describe("PreparedMigrations - Integration", () => {
-  test("createPreparedMigrations compiles schema to SQL", () => {
+  test("createPreparedMigrations - execute with version tracking", async () => {
+    const executedStatements: string[] = [];
+    let transactionStarted = false;
+
+    // Create a mock driver that captures SQL statements
+    const mockDriver = {
+      async executeQuery(query: { sql: string }) {
+        executedStatements.push(query.sql);
+        return { rows: [] };
+      },
+      async transaction(
+        callback: (tx: {
+          executeQuery: (q: { sql: string }) => Promise<{ rows: [] }>;
+        }) => Promise<void>,
+      ) {
+        transactionStarted = true;
+        await callback({
+          async executeQuery(query: { sql: string }) {
+            executedStatements.push(query.sql);
+            return { rows: [] };
+          },
+        });
+      },
+      async destroy() {},
+    };
+
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
+      mapper: createTableNameMapper("test"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      driver: mockDriver as any,
     });
 
-    const migration = prepared.compile({
-      fromVersion: 0,
-      toVersion: 1,
-      updateVersionInMigration: true,
-    });
+    await prepared.execute(0, 1);
 
-    expect(migration.fromVersion).toBe(0);
-    expect(migration.toVersion).toBe(1);
-    expect(migration.statements.length).toBe(2);
-
-    const sql = migration.statements.map((s) => s.sql).join("\n\n");
-    expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)
-
-      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '1')"
-    `);
+    expect(transactionStarted).toBe(true);
+    expect(executedStatements.length).toBe(2);
+    expect(executedStatements[0]).toMatchInlineSnapshot(
+      `"create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
+    );
+    expect(executedStatements[1]).toMatchInlineSnapshot(
+      `"insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '1')"`,
+    );
   });
 
-  test("throws error for backward migration", () => {
+  test("execute with updateVersionInMigration=false skips version update", async () => {
+    const executedStatements: string[] = [];
+
+    const mockDriver = {
+      async executeQuery(query: { sql: string }) {
+        executedStatements.push(query.sql);
+        return { rows: [] };
+      },
+      async transaction(
+        callback: (tx: {
+          executeQuery: (q: { sql: string }) => Promise<{ rows: [] }>;
+        }) => Promise<void>,
+      ) {
+        await callback({
+          async executeQuery(query: { sql: string }) {
+            executedStatements.push(query.sql);
+            return { rows: [] };
+          },
+        });
+      },
+      async destroy() {},
+    };
+
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
+      mapper: createTableNameMapper("test"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      driver: mockDriver as any,
     });
 
-    expect(() =>
-      prepared.compile({
-        fromVersion: 2,
-        toVersion: 1,
-        updateVersionInMigration: true,
-      }),
-    ).toThrow("Cannot migrate backwards");
+    await prepared.execute(0, 1, { updateVersionInMigration: false });
+
+    // Should only have the create table statement, no version update
+    expect(executedStatements.length).toBe(1);
+    expect(executedStatements[0]).toContain('create table "users_test"');
   });
 
-  test("throws error for version beyond schema", () => {
+  test("throws error for backward migration", async () => {
+    const mockDriver = {
+      async executeQuery() {
+        return { rows: [] };
+      },
+      async transaction() {},
+      async destroy() {},
+    };
+
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
+      mapper: createTableNameMapper("test"),
     });
 
-    expect(() =>
-      prepared.compile({
-        fromVersion: 0,
-        toVersion: 100,
-        updateVersionInMigration: true,
-      }),
-    ).toThrow("exceeds schema version");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect(() => prepared.executeWithDriver(mockDriver as any, 2, 1)).rejects.toThrow(
+      "Cannot migrate backwards",
+    );
   });
 
-  test("returns empty statements for same version", () => {
+  test("throws error for version beyond schema", async () => {
+    const mockDriver = {
+      async executeQuery() {
+        return { rows: [] };
+      },
+      async transaction() {},
+      async destroy() {},
+    };
+
     const prepared = createPreparedMigrations({
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
+      mapper: createTableNameMapper("test"),
     });
 
-    const migration = prepared.compile({
-      fromVersion: 2,
-      toVersion: 2,
-      updateVersionInMigration: true,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect(() => prepared.executeWithDriver(mockDriver as any, 0, 100)).rejects.toThrow(
+      "exceeds schema version",
+    );
+  });
+
+  test("returns early for same version (no statements executed)", async () => {
+    const executedStatements: string[] = [];
+
+    const mockDriver = {
+      async executeQuery(query: { sql: string }) {
+        executedStatements.push(query.sql);
+        return { rows: [] };
+      },
+      async transaction(
+        callback: (tx: {
+          executeQuery: (q: { sql: string }) => Promise<{ rows: [] }>;
+        }) => Promise<void>,
+      ) {
+        await callback({
+          async executeQuery(query: { sql: string }) {
+            executedStatements.push(query.sql);
+            return { rows: [] };
+          },
+        });
+      },
+      async destroy() {},
+    };
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      driver: mockDriver as any,
     });
 
-    expect(migration.statements.length).toBe(0);
+    await prepared.execute(2, 2);
+
+    // No statements should be executed
+    expect(executedStatements.length).toBe(0);
+  });
+
+  test("throws error when execute is called without driver", async () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+      // No driver provided
+    });
+
+    await expect(() => prepared.execute(0, 1)).rejects.toThrow(
+      "Driver not provided. Cannot execute migration. Use `executeWithDriver` instead.",
+    );
   });
 });

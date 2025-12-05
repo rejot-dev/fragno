@@ -1,19 +1,17 @@
-import { drizzle } from "drizzle-orm/pglite";
+import { PGlite } from "@electric-sql/pglite";
+import { KyselyPGlite } from "kysely-pglite";
 import { DrizzleAdapter } from "./drizzle-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import type { DBType } from "./shared";
-import { createRequire } from "node:module";
 import { Cursor } from "../../query/cursor";
-import type { DrizzleCompiledQuery } from "./drizzle-uow-compiler";
-import { writeAndLoadSchema } from "./test-utils";
-
-// Import drizzle-kit for migrations
-const require = createRequire(import.meta.url);
-const { generateDrizzleJson, generateMigration } =
-  require("drizzle-kit/api") as typeof import("drizzle-kit/api");
+import { PGLiteDriverConfig } from "../generic-sql/driver-config";
+import type { CompiledQuery } from "../../sql-driver/sql-driver";
+import { settingsSchema } from "../../fragments/internal-fragment";
 
 describe("DrizzleAdapter PGLite", () => {
+  let pgliteDatabase: PGlite;
+  let adapter: DrizzleAdapter;
+
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -75,43 +73,54 @@ describe("DrizzleAdapter PGLite", () => {
       });
   });
 
-  let adapter: DrizzleAdapter;
-  let db: DBType;
+  const schema2 = schema((s) => {
+    return s
+      .addTable("products", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("price", column("integer"))
+          .createIndex("name_idx", ["name"]);
+      })
+      .addTable("orders", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("product_id", referenceColumn())
+          .addColumn("quantity", column("integer"))
+          .addColumn("user_id", referenceColumn())
+          .createIndex("orders_user_idx", ["user_id"])
+          .createIndex("orders_product_idx", ["product_id"]);
+      });
+  });
 
   beforeAll(async () => {
-    // Write schema to file and dynamically import it
-    const { schemaModule, cleanup } = await writeAndLoadSchema(
-      "drizzle-adapter-pglite",
-      testSchema,
-      "postgresql",
-      "namespace",
-    );
+    pgliteDatabase = new PGlite();
 
-    // Create Drizzle instance with PGLite (in-memory Postgres)
-    db = drizzle({
-      schema: schemaModule,
-    }) as unknown as DBType;
-
-    // Generate and run migrations
-    const migrationStatements = await generateMigration(
-      generateDrizzleJson({}), // Empty schema (starting state)
-      generateDrizzleJson(schemaModule), // Target schema
-    );
-
-    // Execute migration SQL
-    for (const statement of migrationStatements) {
-      await db.execute(statement);
-    }
+    const { dialect } = new KyselyPGlite(pgliteDatabase);
 
     adapter = new DrizzleAdapter({
-      db: () => db,
-      provider: "postgresql",
+      dialect,
+      driverConfig: new PGLiteDriverConfig(),
     });
 
-    expect(await adapter.isConnectionHealthy()).toBe(true);
+    // Create settings table first (needed for version tracking)
+    {
+      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
+    {
+      const migrations = adapter.prepareMigrations(testSchema, "namespace");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
+    {
+      const migrations = adapter.prepareMigrations(schema2, "namespace2");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
 
     return async () => {
-      await cleanup();
+      await adapter.close();
     };
   }, 12000);
 
@@ -277,7 +286,7 @@ describe("DrizzleAdapter PGLite", () => {
 
   it("should support joins", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const queries: DrizzleCompiledQuery[] = [];
+    const queries: CompiledQuery[] = [];
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", { name: "Email User", age: 20 });
@@ -312,7 +321,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "emails_namespace"."id", "emails_namespace"."user_id", "emails_namespace"."email", "emails_namespace"."is_primary", "emails_namespace"."_internalId", "emails_namespace"."_version", "emails_namespace_user"."data" as "user" from "emails_namespace" "emails_namespace" left join lateral (select json_build_array("emails_namespace_user"."name", "emails_namespace_user"."id", "emails_namespace_user"."age", "emails_namespace_user"."_internalId", "emails_namespace_user"."_version") as "data" from (select * from "users_namespace" "emails_namespace_user" where "emails_namespace_user"."_internalId" = "emails_namespace"."user_id" limit $1) "emails_namespace_user") "emails_namespace_user" on true"`,
+      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "emails_namespace"."id" as "id", "emails_namespace"."user_id" as "user_id", "emails_namespace"."email" as "email", "emails_namespace"."is_primary" as "is_primary", "emails_namespace"."_internalId" as "_internalId", "emails_namespace"."_version" as "_version" from "emails_namespace" left join "users_namespace" as "user" on "emails_namespace"."user_id" = "user"."_internalId""`,
     );
 
     expect(email).toMatchObject({
@@ -390,7 +399,7 @@ describe("DrizzleAdapter PGLite", () => {
 
   it("should support complex nested joins (comments -> post -> author)", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const queries: DrizzleCompiledQuery[] = [];
+    const queries: CompiledQuery[] = [];
 
     // Create a user (author)
     const createAuthorUow = queryEngine.createUnitOfWork("create-author");
@@ -493,127 +502,8 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "comments_namespace"."id", "comments_namespace"."post_id", "comments_namespace"."user_id", "comments_namespace"."text", "comments_namespace"."_internalId", "comments_namespace"."_version", "comments_namespace_post"."data" as "post", "comments_namespace_commenter"."data" as "commenter" from "comments_namespace" "comments_namespace" left join lateral (select json_build_array("comments_namespace_post"."id", "comments_namespace_post"."title", "comments_namespace_post"."content", "comments_namespace_post"."_internalId", "comments_namespace_post"."_version", "comments_namespace_post_author"."data") as "data" from (select * from "posts_namespace" "comments_namespace_post" where "comments_namespace_post"."_internalId" = "comments_namespace"."post_id" order by "comments_namespace_post"."id" desc limit $1) "comments_namespace_post" left join lateral (select json_build_array("comments_namespace_post_author"."id", "comments_namespace_post_author"."name", "comments_namespace_post_author"."age", "comments_namespace_post_author"."_internalId", "comments_namespace_post_author"."_version") as "data" from (select * from "users_namespace" "comments_namespace_post_author" where "comments_namespace_post_author"."_internalId" = "comments_namespace_post"."user_id" order by "comments_namespace_post_author"."name" asc limit $2) "comments_namespace_post_author") "comments_namespace_post_author" on true) "comments_namespace_post" on true left join lateral (select json_build_array("comments_namespace_commenter"."id", "comments_namespace_commenter"."name", "comments_namespace_commenter"."_internalId", "comments_namespace_commenter"."_version") as "data" from (select * from "users_namespace" "comments_namespace_commenter" where "comments_namespace_commenter"."_internalId" = "comments_namespace"."user_id" limit $3) "comments_namespace_commenter") "comments_namespace_commenter" on true"`,
+      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "comments_namespace"."id" as "id", "comments_namespace"."post_id" as "post_id", "comments_namespace"."user_id" as "user_id", "comments_namespace"."text" as "text", "comments_namespace"."_internalId" as "_internalId", "comments_namespace"."_version" as "_version" from "comments_namespace" left join "posts_namespace" as "post" on "comments_namespace"."post_id" = "post"."_internalId" left join "users_namespace" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "users_namespace" as "commenter" on "comments_namespace"."user_id" = "commenter"."_internalId""`,
     );
-  });
-
-  it("should support joins with convenience aliases when relations are also aliased", async () => {
-    // This test demonstrates the solution: include BOTH table aliases AND relations aliases
-    // in the same schema object. This works around Drizzle's relation resolution bug.
-    //
-    // The bug: When Drizzle processes a relational query with `.join()`, it looks up
-    // tableConfig.relations[relationKey]. If the tableConfig comes from an alias that
-    // doesn't have matching relations, it returns undefined and crashes.
-    //
-    // The fix: For each table alias (e.g., `user`), also add a relations alias
-    // (e.g., `userRelations`) pointing to the same relations object.
-
-    const authSchema = schema((s) => {
-      return s
-        .addTable("user", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("email", column("string"))
-            .addColumn("passwordHash", column("string"));
-        })
-        .addTable("session", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("userId", referenceColumn())
-            .addColumn("expiresAt", column("timestamp"));
-        })
-        .addReference("sessionOwner", {
-          from: { table: "session", column: "userId" },
-          to: { table: "user", column: "id" },
-          type: "one",
-        });
-    });
-
-    // Generate schema with BOTH table aliases AND relations aliases
-    const { schemaModule, cleanup } = await writeAndLoadSchema(
-      "drizzle-adapter-with-relations-aliases",
-      authSchema,
-      "postgresql",
-      "test-namespace",
-    );
-
-    // The schema now includes:
-    // - user_test_namespace + user_test_namespaceRelations (physical)
-    // - user + userRelations (aliases that point to the same objects)
-    const schemaWithAliases = {
-      ...schemaModule.test_namespace_schema,
-    };
-
-    // Create Drizzle instance
-    const db = drizzle({
-      schema: schemaWithAliases,
-    }) as unknown as DBType;
-
-    // Generate and run migrations
-    const require = createRequire(import.meta.url);
-    const { generateDrizzleJson, generateMigration } =
-      require("drizzle-kit/api") as typeof import("drizzle-kit/api");
-
-    const migrationStatements = await generateMigration(
-      generateDrizzleJson({}),
-      generateDrizzleJson(schemaModule),
-    );
-
-    for (const statement of migrationStatements) {
-      await db.execute(statement);
-    }
-
-    const adapter = new DrizzleAdapter({
-      db: async () => db,
-      provider: "postgresql",
-    });
-
-    await adapter.isConnectionHealthy();
-    const queryEngine = adapter.createQueryEngine(authSchema, "test-namespace");
-
-    // Create a user
-    const createUserUow = queryEngine.createUnitOfWork("create-user");
-    createUserUow.create("user", {
-      email: "test@example.com",
-      passwordHash: "hash",
-    });
-    await createUserUow.executeMutations();
-
-    // Create a session
-    const [[user]] = await queryEngine.createUnitOfWork("get-user").find("user").executeRetrieve();
-
-    const createSessionUow = queryEngine.createUnitOfWork("create-session");
-    createSessionUow.create("session", {
-      userId: user.id,
-      expiresAt: new Date("2025-12-31"),
-    });
-    await createSessionUow.executeMutations();
-
-    // Get session
-    const [[session]] = await queryEngine
-      .createUnitOfWork("get-session")
-      .find("session")
-      .executeRetrieve();
-
-    // Find session with join - this works now!
-    // The key is that when Drizzle looks up the session's relations,
-    // it finds BOTH `sessionOwner` (from session_test_namespaceRelations)
-    // AND the same relations via `sessionRelations` (the alias)
-    const [[sessionWithUser]] = await queryEngine
-      .createUnitOfWork("find-session-with-join")
-      .find("session", (b) =>
-        b
-          .whereIndex("primary", (eb) => eb("id", "=", session.id.valueOf()))
-          .join((j) => j.sessionOwner((b) => b.select(["id", "email"]))),
-      )
-      .executeRetrieve();
-
-    // Verify the join worked
-    expect(sessionWithUser).toBeDefined();
-    expect(sessionWithUser.sessionOwner).toBeDefined();
-    expect(sessionWithUser.sessionOwner?.email).toBe("test@example.com");
-
-    await cleanup();
   });
 
   it("should handle timestamps and timezones correctly", async () => {
@@ -673,7 +563,7 @@ describe("DrizzleAdapter PGLite", () => {
 
   it("should create user and post in same transaction using returned ID", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const queries: DrizzleCompiledQuery[] = [];
+    const queries: CompiledQuery[] = [];
 
     // Create UOW and create both user and post in same transaction
     const uow = queryEngine.createUnitOfWork("create-user-and-post", {
@@ -723,15 +613,16 @@ describe("DrizzleAdapter PGLite", () => {
 
     const [insertUserQuery, insertPostQuery] = queries;
     expect(insertUserQuery.sql).toMatchInlineSnapshot(
-      `"insert into "users_namespace" ("id", "name", "age", "_internalId", "_version") values ($1, $2, $3, default, default)"`,
+      `"insert into "users_namespace" ("id", "name", "age") values ($1, $2, $3) returning "users_namespace"."id" as "id", "users_namespace"."name" as "name", "users_namespace"."age" as "age", "users_namespace"."_internalId" as "_internalId", "users_namespace"."_version" as "_version""`,
     );
-    expect(insertUserQuery.params).toEqual([userId.externalId, "UOW Test User", 35]);
+    expect(insertUserQuery.parameters).toEqual([userId.externalId, "UOW Test User", 35]);
     expect(insertPostQuery.sql).toMatchInlineSnapshot(
-      `"insert into "posts_namespace" ("id", "user_id", "title", "content", "created_at", "_internalId", "_version") values ($1, (select "_internalId" from "users_namespace" where "id" = $2 limit 1), $3, $4, default, default, default)"`,
+      `"insert into "posts_namespace" ("id", "user_id", "title", "content") values ($1, (select "_internalId" from "users_namespace" where "id" = $2 limit $3), $4, $5) returning "posts_namespace"."id" as "id", "posts_namespace"."user_id" as "user_id", "posts_namespace"."title" as "title", "posts_namespace"."content" as "content", "posts_namespace"."created_at" as "created_at", "posts_namespace"."_internalId" as "_internalId", "posts_namespace"."_version" as "_version""`,
     );
-    expect(insertPostQuery.params).toEqual([
+    expect(insertPostQuery.parameters).toEqual([
       postId.externalId,
       userId.externalId,
+      1,
       "UOW Test Post",
       "This post was created in the same transaction as the user",
     ]);

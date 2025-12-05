@@ -8,6 +8,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { defineRoutes } from "@fragno-dev/core/route";
 import { withDatabase } from "./with-database";
 import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
+import { ConcurrencyConflictError } from "./query/execute-unit-of-work";
 
 describe.sequential("Database Fragment Integration", () => {
   // Schema 1: Users fragment
@@ -375,7 +376,8 @@ describe.sequential("Database Fragment Integration", () => {
 
         if (currentAttempt === 0) {
           firstNonce = nonce;
-          throw new Error("Test error");
+          // Trigger a conflict by throwing the specific conflict error
+          throw new ConcurrencyConflictError();
         }
 
         expect(nonce).toBe(firstNonce);

@@ -9,13 +9,15 @@ import { PostgresSQLGenerator } from "./dialect/postgres";
 import { MySQLSQLGenerator } from "./dialect/mysql";
 import { executeMigration, type CompiledMigration } from "./executor";
 import type { SupportedDatabase } from "../driver-config";
-
+import type { Kysely } from "kysely";
 /**
- * Options for compiling a migration.
+ * Options for executing a migration.
  */
-export interface CompileOptions {
-  fromVersion?: number;
-  toVersion?: number;
+export interface ExecuteOptions {
+  /**
+   * Whether to automatically update the schema version in the database after migration.
+   * If not specified, uses the value from PreparedMigrationsConfig.
+   */
   updateVersionInMigration?: boolean;
 }
 
@@ -25,16 +27,33 @@ export interface CompileOptions {
  */
 export interface PreparedMigrations {
   /**
-   * Compile migration operations to SQL statements.
-   * This performs Phase 1 (schema → operations) and Phase 2 (operations → SQL).
+   * Execute migration from one version to another.
+   * This performs all three phases:
+   * - Phase 1: schema → operations
+   * - Phase 2: operations → SQL
+   * - Phase 3: SQL → database
+   *
+   * @param fromVersion - Current database version (0 for new database)
+   * @param toVersion - Target schema version (defaults to schema.version)
+   * @param options - Optional execution options (overrides config defaults)
    */
-  compile(options?: CompileOptions): CompiledMigration;
+  execute(fromVersion: number, toVersion?: number, options?: ExecuteOptions): Promise<void>;
 
   /**
-   * Execute a compiled migration.
-   * This performs Phase 3 (SQL → database).
+   * Execute migration using a specific driver.
+   * Useful for testing or when you need to use a different driver than the one provided in config.
+   *
+   * @param driver - SQL driver to use for execution
+   * @param fromVersion - Current database version (0 for new database)
+   * @param toVersion - Target schema version (defaults to schema.version)
+   * @param options - Optional execution options (overrides config defaults)
    */
-  execute(driver: SqlDriverAdapter, migration: CompiledMigration): Promise<void>;
+  executeWithDriver(
+    driver: SqlDriverAdapter,
+    fromVersion: number,
+    toVersion?: number,
+    options?: ExecuteOptions,
+  ): Promise<void>;
 }
 
 /**
@@ -45,13 +64,25 @@ export interface PreparedMigrationsConfig {
   namespace: string;
   database: SupportedDatabase;
   mapper?: TableNameMapper;
+  driver?: SqlDriverAdapter;
+  /**
+   * Whether to automatically update the schema version in the database after migration.
+   * Defaults to true. Can be overridden per execution via ExecuteOptions.
+   */
+  updateVersionInMigration?: boolean;
 }
 
 /**
  * Create a PreparedMigrations instance for a schema and namespace.
  */
 export function createPreparedMigrations(config: PreparedMigrationsConfig): PreparedMigrations {
-  const { schema, namespace, database } = config;
+  const {
+    schema,
+    namespace,
+    database,
+    driver,
+    updateVersionInMigration: defaultUpdateVersion = true,
+  } = config;
 
   // Create the cold Kysely instance for SQL generation
   const coldKysely = createColdKysely(database);
@@ -59,64 +90,70 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
   // Create the appropriate SQL generator for the database
   const generator = createSQLGenerator(database, coldKysely);
 
-  // Use provided mapper or create default one if namespace is provided
-  const mapper: TableNameMapper | undefined =
-    config.mapper ??
-    (namespace
-      ? {
-          toPhysical: (logicalName: string) => `${logicalName}_${namespace}`,
-          toLogical: (physicalName: string) =>
-            physicalName.endsWith(`_${namespace}`)
-              ? physicalName.slice(0, -(namespace.length + 1))
-              : physicalName,
-        }
-      : undefined);
+  /**
+   * Internal method to compile a migration for a given version range.
+   */
+  function compile(
+    fromVersion: number,
+    toVersion: number,
+    updateVersionInMigration: boolean,
+  ): CompiledMigration {
+    // Validate version numbers
+    if (fromVersion < 0) {
+      throw new Error(`fromVersion cannot be negative: ${fromVersion}`);
+    }
+    if (toVersion < 0) {
+      throw new Error(`toVersion cannot be negative: ${toVersion}`);
+    }
+    if (toVersion < fromVersion) {
+      throw new Error(
+        `Cannot migrate backwards: fromVersion (${fromVersion}) > toVersion (${toVersion})`,
+      );
+    }
+    if (toVersion > schema.version) {
+      throw new Error(`toVersion (${toVersion}) exceeds schema version (${schema.version})`);
+    }
+
+    // Phase 1: Generate migration operations from schema
+    const operations = generateMigrationFromSchema(schema, fromVersion, toVersion);
+
+    // Phase 2: Compile operations to SQL
+    const statements = generator.compile(operations, config.mapper);
+
+    // Add version update SQL if requested
+    if (updateVersionInMigration && toVersion !== fromVersion) {
+      const versionUpdate = generator.generateVersionUpdateSQL(namespace, fromVersion, toVersion);
+      statements.push(versionUpdate);
+    }
+
+    return {
+      statements,
+      fromVersion,
+      toVersion,
+    };
+  }
 
   return {
-    compile(options) {
-      const {
-        fromVersion = 0,
-        toVersion = schema.version,
-        updateVersionInMigration = false,
-      } = options ?? {};
-
-      // Validate version numbers
-      if (fromVersion < 0) {
-        throw new Error(`fromVersion cannot be negative: ${fromVersion}`);
-      }
-      if (toVersion < 0) {
-        throw new Error(`toVersion cannot be negative: ${toVersion}`);
-      }
-      if (toVersion < fromVersion) {
+    async execute(fromVersion, toVersion, options) {
+      if (!driver) {
         throw new Error(
-          `Cannot migrate backwards: fromVersion (${fromVersion}) > toVersion (${toVersion})`,
+          "Driver not provided. Cannot execute migration. Use `executeWithDriver` instead.",
         );
       }
-      if (toVersion > schema.version) {
-        throw new Error(`toVersion (${toVersion}) exceeds schema version (${schema.version})`);
-      }
 
-      // Phase 1: Generate migration operations from schema
-      const operations = generateMigrationFromSchema(schema, fromVersion, toVersion);
-
-      // Phase 2: Compile operations to SQL
-      const statements = generator.compile(operations, mapper);
-
-      // Add version update SQL if requested
-      if (updateVersionInMigration && toVersion !== fromVersion) {
-        const versionUpdate = generator.generateVersionUpdateSQL(namespace, fromVersion, toVersion);
-        statements.push(versionUpdate);
-      }
-
-      return {
-        statements,
-        fromVersion,
-        toVersion,
-      };
+      return this.executeWithDriver(driver, fromVersion, toVersion, options);
     },
 
-    async execute(driver, migration) {
-      await executeMigration(driver, migration);
+    async executeWithDriver(driverToUse, fromVersion, toVersion, options) {
+      // Use option if provided, otherwise use config default
+      const updateVersionInMigration = options?.updateVersionInMigration ?? defaultUpdateVersion;
+      const targetVersion = toVersion ?? schema.version;
+
+      // Compile the migration (this will validate the version numbers)
+      const migration = compile(fromVersion, targetVersion, updateVersionInMigration);
+
+      // Execute the migration
+      await executeMigration(driverToUse, migration);
     },
   };
 }
@@ -127,7 +164,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
 function createSQLGenerator(
   database: SupportedDatabase,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  coldKysely: any,
+  coldKysely: Kysely<any>,
 ): SQLGenerator {
   switch (database) {
     case "sqlite":
