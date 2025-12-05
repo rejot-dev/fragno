@@ -52,6 +52,10 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#driver = new SqlDriverAdapter(dialect);
   }
 
+  get driver(): SqlDriverAdapter {
+    return this.#driver;
+  }
+
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {
     return "generic-sql";
   }
@@ -83,6 +87,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       namespace,
       database: this.driverConfig.databaseType,
       mapper: namespace ? this.createTableNameMapper(namespace) : undefined,
+      driver: this.#driver,
     });
   }
 
