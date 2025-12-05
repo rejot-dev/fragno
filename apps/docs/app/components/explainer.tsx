@@ -50,7 +50,7 @@ const { response } = await mutate({
     },
   },
   stripe: {
-    label: "Stripe",
+    label: "Stripe SDK",
     link: "/docs/stripe/quickstart",
     linkCta: "Start using this fragment today",
     frontend: {
@@ -234,7 +234,7 @@ export function FragnoExplainer() {
           <Fragment key={id}>
             {/* Layer card */}
             <div
-              className={`flex w-full max-w-xl flex-col gap-6 rounded-2xl bg-gray-100/85 p-6 shadow-sm backdrop-blur-md dark:bg-slate-900/75 ${
+              className={`relative flex w-full max-w-xl flex-col gap-6 rounded-2xl bg-gray-100/85 p-6 shadow-sm backdrop-blur-md dark:bg-slate-900/75 ${
                 index % 2 === 0 ? "md:self-start" : "md:self-end"
               }`}
               style={{
@@ -245,7 +245,7 @@ export function FragnoExplainer() {
               <Cake
                 variant={variant}
                 layerVariant={layerVariant}
-                className={`absolute right-0 top-0 z-10 -translate-y-1/2 md:translate-x-1/4 ${index === layers.length - 1 ? "size-40" : "size-24"}`}
+                className={`dark:drop-shadow-slate-600 absolute right-0 top-0 z-10 -translate-y-1/2 md:translate-x-1/4 dark:drop-shadow-md ${index === layers.length - 1 ? "size-40" : "size-24"}`}
               />
 
               {/* Card content: title, subtitle, code */}
