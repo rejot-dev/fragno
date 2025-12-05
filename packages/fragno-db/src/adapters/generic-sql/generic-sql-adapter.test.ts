@@ -3,7 +3,7 @@ import { assert, describe, expect, it } from "vitest";
 import { SQLocalDriverConfig } from "./driver-config";
 import { GenericSQLAdapter } from "./generic-sql-adapter";
 import { column, idColumn, schema } from "../../schema/create";
-import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
+import { settingsSchema } from "../../fragments/internal-fragment";
 
 describe("GenericSQLAdapter", () => {
   const testSchema = schema((s) => {
@@ -22,11 +22,15 @@ describe("GenericSQLAdapter", () => {
 
     const adapter = new GenericSQLAdapter({ dialect, driverConfig });
 
-    const { compile, execute } = adapter.prepareMigrations(testSchema, "");
-    const compiledMigration = compile();
-    await execute(new SqlDriverAdapter(dialect), compiledMigration);
+    // Create settings table first (needed for version tracking)
+    const settingsMigrations = adapter.prepareMigrations(settingsSchema, "");
+    await settingsMigrations.executeWithDriver(adapter.driver, 0);
 
-    const queryEngine = adapter.createQueryEngine(testSchema, "");
+    // Now run the actual test schema migrations (use a different namespace)
+    const migrations = adapter.prepareMigrations(testSchema, "test");
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
     await queryEngine.create("products", {
       name: "test",

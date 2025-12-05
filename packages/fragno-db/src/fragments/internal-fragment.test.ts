@@ -1,22 +1,15 @@
-import { drizzle } from "drizzle-orm/libsql";
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
 import { beforeAll, describe, expect, it } from "vitest";
 import { instantiate } from "@fragno-dev/core";
-import { internalFragmentDef, settingsSchema } from "./internal-fragment";
+import { internalFragmentDef, settingsSchema, SETTINGS_NAMESPACE } from "./internal-fragment";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
 import { DrizzleAdapter } from "../adapters/drizzle/drizzle-adapter";
-import type { DBType } from "../adapters/drizzle/shared";
-import { writeAndLoadSchema } from "../adapters/drizzle/test-utils";
-import { createClient } from "@libsql/client";
-import { createRequire } from "node:module";
-
-// Import drizzle-kit for migrations
-const require = createRequire(import.meta.url);
-const { generateSQLiteDrizzleJson, generateSQLiteMigration } =
-  require("drizzle-kit/api") as typeof import("drizzle-kit/api");
+import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 
 describe("Internal Fragment", () => {
+  let sqliteDatabase: SQLite.Database;
   let adapter: DrizzleAdapter;
-  let db: DBType;
   let fragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
@@ -24,35 +17,21 @@ describe("Internal Fragment", () => {
   }
 
   beforeAll(async () => {
-    const { schemaModule, cleanup } = await writeAndLoadSchema(
-      "internal-fragment",
-      settingsSchema,
-      "sqlite",
-      "",
-    );
+    sqliteDatabase = new SQLite(":memory:");
 
-    const client = createClient({
-      url: "file::memory:?cache=shared",
+    const dialect = new SqliteDialect({
+      database: sqliteDatabase,
     });
-
-    db = drizzle(client, {
-      schema: schemaModule,
-    }) as unknown as DBType;
-
-    // Generate and run migrations for both schemas
-    const emptyJson = await generateSQLiteDrizzleJson({});
-    const targetJson = await generateSQLiteDrizzleJson(schemaModule);
-
-    const migrationStatements = await generateSQLiteMigration(emptyJson, targetJson);
-
-    for (const statement of migrationStatements) {
-      await client.execute(statement);
-    }
 
     adapter = new DrizzleAdapter({
-      db,
-      provider: "sqlite",
+      dialect,
+      driverConfig: new BetterSQLite3DriverConfig(),
     });
+
+    {
+      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
 
     // Instantiate fragment with shared database adapter
     const options: FragnoPublicConfigWithDatabase = {
@@ -62,15 +41,14 @@ describe("Internal Fragment", () => {
     fragment = instantiateFragment(options);
 
     return async () => {
-      client.close();
-      await cleanup();
+      await adapter.close();
     };
   }, 12000);
 
   it("should get undefined for non-existent key", async () => {
     const result = await fragment.inContext(async function () {
       return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get("test-key");
+        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
         await executeRetrieve();
         return await valuePromise;
       });
@@ -82,7 +60,11 @@ describe("Internal Fragment", () => {
   it("should set and get a value", async () => {
     await fragment.inContext(async function () {
       return await this.uow(async ({ executeMutate }) => {
-        const setPromise = fragment.services.settingsService.set("test-key", "test-value");
+        const setPromise = fragment.services.settingsService.set(
+          SETTINGS_NAMESPACE,
+          "test-key",
+          "test-value",
+        );
         await executeMutate();
         await setPromise;
       });
@@ -90,7 +72,7 @@ describe("Internal Fragment", () => {
 
     const result = await fragment.inContext(async function () {
       return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get("test-key");
+        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
         await executeRetrieve();
         return await valuePromise;
       });
@@ -105,7 +87,11 @@ describe("Internal Fragment", () => {
   it("should update an existing value", async () => {
     await fragment.inContext(async function () {
       return await this.uow(async ({ executeMutate }) => {
-        const setPromise = fragment.services.settingsService.set("test-key", "updated-value");
+        const setPromise = fragment.services.settingsService.set(
+          SETTINGS_NAMESPACE,
+          "test-key",
+          "updated-value",
+        );
         await executeMutate();
         await setPromise;
       });
@@ -113,7 +99,7 @@ describe("Internal Fragment", () => {
 
     const result = await fragment.inContext(async function () {
       return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get("test-key");
+        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
         await executeRetrieve();
         return await valuePromise;
       });
@@ -129,7 +115,7 @@ describe("Internal Fragment", () => {
     // First get the ID
     const setting = await fragment.inContext(async function () {
       return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get("test-key");
+        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
         await executeRetrieve();
         return await valuePromise;
       });
@@ -149,7 +135,7 @@ describe("Internal Fragment", () => {
     // Verify it's gone
     const result = await fragment.inContext(async function () {
       return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get("test-key");
+        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
         await executeRetrieve();
         return await valuePromise;
       });
