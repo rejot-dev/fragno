@@ -28,6 +28,11 @@
   "license": "MIT",
   "packageManager": "pnpm@10.19.0",
   "private": true,
+  "pnpm": {
+    "overrides": {
+      "globby": "^13.0.0"
+    }
+  },
   "scripts": {
     "dev": "turbo watch --ui tui dev",
     "cli": "tsx apps/fragno-cli/src/cli.ts",

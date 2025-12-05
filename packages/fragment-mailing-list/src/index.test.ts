@@ -2,6 +2,7 @@ import { test, describe, expect, beforeEach } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { mailingListFragmentDefinition } from "./definition";
 import { instantiate } from "@fragno-dev/core";
+import { mailingListSchema } from "./schema";
 
 describe("Mailing List Fragment", async () => {
   // Create fragment with test configuration
@@ -15,6 +16,18 @@ describe("Mailing List Fragment", async () => {
   // Reset database before each test for isolation
   beforeEach(async () => {
     await testContext.resetDatabase();
+  });
+
+  describe("set up", () => {
+    test("should have the correct $internal object", async () => {
+      expect(fragment).toBeDefined();
+      expect(fragment.$internal).toBeDefined();
+      expect(fragment.$internal.deps).toBeDefined();
+      expect(fragment.$internal.deps.schema).toBe(mailingListSchema);
+      expect(fragment.$internal.deps.namespace).toBe("mailing-list");
+      expect(fragment.$internal.deps.createUnitOfWork).toBeDefined();
+      expect(fragment.$internal.options).toBeDefined();
+    });
   });
 
   describe("Services", () => {

@@ -4,6 +4,10 @@ import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "./auth/auth";
+import { KyselyPGlite } from "kysely-pglite";
+import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
+
+const { dialect } = new KyselyPGlite(db.$client);
 
 export const stripeFragment = createStripeFragment(
   {
@@ -44,8 +48,8 @@ export const stripeFragment = createStripeFragment(
   },
   {
     databaseAdapter: new DrizzleAdapter({
-      db,
-      provider: "postgresql",
+      dialect,
+      driverConfig: new PGLiteDriverConfig(),
     }),
   },
 );

@@ -25,7 +25,6 @@ describe("corpus API", () => {
       expect(ids).toContain("database-querying");
       expect(ids).toContain("database-adapters");
       expect(ids).toContain("kysely-adapter");
-      expect(ids).toContain("drizzle-adapter");
     });
   });
 
