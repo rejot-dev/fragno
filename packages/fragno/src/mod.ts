@@ -17,6 +17,7 @@ export {
   type FragnoInstantiatedFragment,
   type AnyFragnoInstantiatedFragment,
   type BoundServices,
+  type InstantiatedFragmentFromDefinition,
 } from "./api/fragment-instantiator";
 
 // ============================================================================

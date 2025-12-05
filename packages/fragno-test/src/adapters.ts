@@ -8,12 +8,12 @@ import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
 import type { AbstractQuery } from "@fragno-dev/db/query";
-import { createRequire } from "node:module";
-import { mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
 import { createCommonTestContextMethods } from ".";
+import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
+import { internalFragmentDef } from "@fragno-dev/db";
 
 // Adapter configuration types
 export interface KyselySqliteAdapter {
@@ -267,96 +267,47 @@ export async function createDrizzlePgliteAdapter(
 ): Promise<AdapterFactoryResult<DrizzlePgliteAdapter>> {
   const databasePath = config.databasePath;
 
-  // Import drizzle-kit for migrations
-  const require = createRequire(import.meta.url);
-  const { generateDrizzleJson, generateMigration } =
-    require("drizzle-kit/api") as typeof import("drizzle-kit/api");
-
-  // Import generateSchema from the properly exported module
-  const { generateSchema } = await import("@fragno-dev/db/adapters/drizzle/generate");
-
-  // Helper to write schema to file and dynamically import it
-  const writeAndLoadSchema = async () => {
-    const testDir = join(import.meta.dirname, "_generated", "drizzle-test");
-    await mkdir(testDir, { recursive: true }).catch(() => {
-      // Ignore error if directory already exists
-    });
-
-    const schemaFilePath = join(
-      testDir,
-      `test-schema-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.ts`,
-    );
-
-    // Combine all schemas into a single Drizzle schema with namespaced tables
-    const schemaConfigs = schemas.map(({ schema, namespace }) => ({
-      namespace: namespace ?? "",
-      schema,
-    }));
-
-    const drizzleSchemaTs = generateSchema(schemaConfigs, "postgresql");
-    await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
-
-    // Dynamically import the generated schema (with cache busting)
-    const schemaModule = await import(`${schemaFilePath}?t=${Date.now()}`);
-
-    const cleanup = async () => {
-      await rm(testDir, { recursive: true, force: true });
-    };
-
-    return { schemaModule, cleanup };
-  };
-
   // Helper to create a new database instance and run migrations for all schemas
   const createDatabase = async () => {
-    // Write schema to file and load it
-    const { schemaModule, cleanup } = await writeAndLoadSchema();
-
-    // Create PGlite instance
     const pglite = new PGlite(databasePath);
 
-    // Create Drizzle instance with PGlite
-    const db = drizzle(pglite, {
-      schema: schemaModule,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any;
+    const { dialect } = new KyselyPGlite(pglite);
 
-    // Generate and run migrations
-    const migrationStatements = await generateMigration(
-      generateDrizzleJson({}), // Empty schema (starting state)
-      generateDrizzleJson(schemaModule), // Target schema
-    );
-
-    // Execute migration SQL
-    for (const statement of migrationStatements) {
-      await db.execute(statement);
-    }
-
-    // Create DrizzleAdapter
     const adapter = new DrizzleAdapter({
-      db: () => db,
-      provider: "postgresql",
+      dialect,
+      driverConfig: new PGLiteDriverConfig(),
     });
 
-    // Create ORM instances for each schema and store in map
+    // Run migrations for all schemas
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ormMap = new Map<string, AbstractQuery<any, any>>();
 
+    const databaseDeps = internalFragmentDef.dependencies?.({
+      config: {},
+      options: { databaseAdapter: adapter },
+    });
+    if (databaseDeps?.schema) {
+      const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
     for (const { schema, namespace } of schemas) {
+      const preparedMigrations = adapter.prepareMigrations(schema, namespace);
+      await preparedMigrations.executeWithDriver(adapter.driver, 0);
+
+      // Create ORM instance and store in map
       const orm = adapter.createQueryEngine(schema, namespace);
       ormMap.set(namespace, orm);
     }
 
-    return { drizzle: db, adapter, pglite, cleanup, ormMap };
+    // Create Drizzle instance for backward compatibility (if needed)
+    const db = drizzle(pglite) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    return { drizzle: db, adapter, pglite, ormMap };
   };
 
   // Create initial database
-  const {
-    drizzle: drizzleDb,
-    adapter,
-    pglite,
-    cleanup: schemaCleanup,
-    ormMap,
-  } = await createDatabase();
+  const { drizzle: drizzleDb, adapter, ormMap } = await createDatabase();
 
   // Reset database function - truncates all tables (only supported for in-memory databases)
   const resetDatabase = async () => {
@@ -374,10 +325,10 @@ export async function createDrizzlePgliteAdapter(
     }
   };
 
-  // Cleanup function - closes connections and deletes generated files and database directory
+  // Cleanup function - closes connections and deletes database directory
   const cleanup = async () => {
-    await pglite.close();
-    await schemaCleanup();
+    // Close the adapter (which will handle closing the underlying database connection)
+    await adapter.close();
 
     // Delete the database directory if it exists and is a file path
     if (databasePath && databasePath !== ":memory:" && existsSync(databasePath)) {

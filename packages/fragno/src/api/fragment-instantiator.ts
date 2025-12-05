@@ -31,6 +31,45 @@ import { instantiatedFragmentFakeSymbol } from "../internal/symbols";
 // Re-export types needed by consumers
 export type { BoundServices };
 
+/**
+ * Helper type to extract the instantiated fragment type from a fragment definition.
+ * This is useful for typing functions that accept instantiated fragments based on their definition.
+ *
+ * @example
+ * ```typescript
+ * const myFragmentDef = defineFragment("my-fragment").build();
+ * type MyInstantiatedFragment = InstantiatedFragmentFromDefinition<typeof myFragmentDef>;
+ * ```
+ */
+export type InstantiatedFragmentFromDefinition<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TDef extends FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>,
+> =
+  TDef extends FragmentDefinition<
+    infer _TConfig,
+    infer TOptions,
+    infer TDeps,
+    infer TBaseServices,
+    infer TServices,
+    infer _TServiceDependencies,
+    infer _TPrivateServices,
+    infer TServiceThisContext,
+    infer THandlerThisContext,
+    infer TRequestStorage,
+    infer TLinkedFragments
+  >
+    ? FragnoInstantiatedFragment<
+        readonly AnyFragnoRouteConfig[], // Routes are dynamic, so we use a generic array
+        TDeps,
+        BoundServices<TBaseServices & TServices>,
+        TServiceThisContext,
+        THandlerThisContext,
+        TRequestStorage,
+        TOptions,
+        TLinkedFragments
+      >
+    : never;
+
 type AstroHandlers = {
   ALL: (req: Request) => Promise<Response>;
 };
@@ -73,8 +112,7 @@ type HandlersByFramework = {
 
 type FullstackFrameworks = keyof HandlersByFramework;
 
-// Safe: This is a catch-all type for any instantiated fragment
-type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
+export type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,8 +130,6 @@ type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any
 >;
-
-export type { AnyFragnoInstantiatedFragment };
 
 export interface FragnoFragmentSharedConfig<
   TRoutes extends readonly FragnoRouteConfig<

@@ -1,4 +1,5 @@
 import { FragmentDefinitionBuilder } from "@fragno-dev/core";
+import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
   type DatabaseHandlerContext,
@@ -45,20 +46,25 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
 )
   .providesService("settingsService", ({ defineService }) => {
     return defineService({
-      async get(key: string): Promise<{ id: FragnoId; key: string; value: string } | undefined> {
+      async get(
+        namespace: string,
+        key: string,
+      ): Promise<{ id: FragnoId; key: string; value: string } | undefined> {
+        const fullKey = `${namespace}.${key}`;
         const uow = this.uow(settingsSchema).find(SETTINGS_TABLE_NAME, (b) =>
-          b.whereIndex("unique_key", (eb) => eb("key", "=", `${SETTINGS_NAMESPACE}.${key}`)),
+          b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
         );
         const [results] = await uow.retrievalPhase;
         return results?.[0];
       },
 
-      async set(key: string, value: string) {
+      async set(namespace: string, key: string, value: string) {
+        const fullKey = `${namespace}.${key}`;
         const uow = this.uow(settingsSchema);
 
         // First, find if the key already exists
         const findUow = uow.find(SETTINGS_TABLE_NAME, (b) =>
-          b.whereIndex("unique_key", (eb) => eb("key", "=", `${SETTINGS_NAMESPACE}.${key}`)),
+          b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
         );
         const [existing] = await findUow.retrievalPhase;
 
@@ -66,7 +72,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
           uow.update(SETTINGS_TABLE_NAME, existing[0].id, (b) => b.set({ value }).check());
         } else {
           uow.create(SETTINGS_TABLE_NAME, {
-            key: `${SETTINGS_NAMESPACE}.${key}`,
+            key: fullKey,
             value,
           });
         }
@@ -83,3 +89,31 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     });
   })
   .build();
+
+/**
+ * Type representing an instantiated internal fragment.
+ * This is the fragment that manages Fragno's internal settings table.
+ */
+export type InternalFragmentInstance = InstantiatedFragmentFromDefinition<
+  typeof internalFragmentDef
+>;
+
+export async function getSchemaVersionFromDatabase(
+  fragment: InternalFragmentInstance,
+  namespace: string,
+): Promise<number> {
+  try {
+    const version = await fragment.inContext(async function () {
+      const version = await this.uow(async ({ executeRetrieve }) => {
+        const version = fragment.services.settingsService.get(namespace, "schema_version");
+        await executeRetrieve();
+        return version;
+      });
+
+      return version ? parseInt(version.value, 10) : 0;
+    });
+    return version;
+  } catch {
+    return 0;
+  }
+}

@@ -3,11 +3,14 @@
   "version": "0.1.10",
   "exports": {
     ".": {
+      "workerd": {
+        "development": "./src/mod.ts",
+        "default": "./dist/mod.js"
+      },
       "development": {
         "browser": "./src/mod-client.ts",
         "default": "./src/mod.ts"
       },
-      "workerd": "./dist/mod.js",
       "browser": "./dist/mod-client.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"

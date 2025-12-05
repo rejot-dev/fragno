@@ -19,6 +19,7 @@ export type {
   FragmentInstantiationBuilder,
   FragnoInstantiatedFragment,
   BoundServices,
+  InstantiatedFragmentFromDefinition,
 } from "./api/fragment-instantiator";
 
 import type {
@@ -63,10 +64,12 @@ export function instantiate(_definition: unknown) {
     routes: [],
     services: {},
     mountRoute: "",
-    $internal: {
-      deps: {},
-      options: {},
-      linkedFragments: {},
+    get $internal() {
+      return {
+        deps: {},
+        options: {},
+        linkedFragments: {},
+      };
     },
     withMiddleware: () => {
       // throw new Error("withMiddleware is not supported in browser builds");

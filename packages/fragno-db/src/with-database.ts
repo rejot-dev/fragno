@@ -1,5 +1,9 @@
 import type { AnySchema } from "./schema/create";
-import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
+import type {
+  RequestThisContext,
+  FragnoPublicConfig,
+  AnyFragnoInstantiatedFragment,
+} from "@fragno-dev/core";
 import { FragmentDefinitionBuilder, instantiate } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
@@ -9,7 +13,7 @@ import {
   type FragnoPublicConfigWithDatabase,
   type DatabaseRequestStorage,
 } from "./db-fragment-definition-builder";
-import { internalFragmentDef } from "./fragments/internal-fragment";
+import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
 
 /**
  * Helper to add database support to a fragment builder.
@@ -42,6 +46,7 @@ export function withDatabase<TSchema extends AnySchema>(
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
 >(
   builder: FragmentDefinitionBuilder<
     TConfig,
@@ -53,7 +58,8 @@ export function withDatabase<TSchema extends AnySchema>(
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >,
 ) => DatabaseFragmentDefinitionBuilder<
   TSchema,
@@ -64,7 +70,8 @@ export function withDatabase<TSchema extends AnySchema>(
   TServiceDeps,
   TPrivateServices,
   DatabaseServiceContext,
-  DatabaseHandlerContext
+  DatabaseHandlerContext,
+  TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
 > {
   return <
     TConfig,
@@ -76,6 +83,7 @@ export function withDatabase<TSchema extends AnySchema>(
     TServiceThisContext extends RequestThisContext,
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
+    TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
   >(
     builder: FragmentDefinitionBuilder<
       TConfig,
@@ -87,22 +95,21 @@ export function withDatabase<TSchema extends AnySchema>(
       TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
-      TRequestStorage
+      TRequestStorage,
+      TLinkedFragments
     >,
   ) => {
-    // Link the internal fragment to all database fragments (except the internal fragment itself)
-    // No circular dependency: internal-fragment.ts uses DatabaseFragmentDefinitionBuilder directly
-    const isInternalFragment = builder.name === "$fragno-internal-fragment";
-    const builderWithInternal = isInternalFragment
-      ? builder
-      : builder.withLinkedFragment("_fragno_internal", ({ config, options }) => {
-          // Cast is safe: by the time this callback is invoked during fragment instantiation,
-          // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
-          return instantiate(internalFragmentDef)
-            .withConfig(config as {})
-            .withOptions(options as FragnoPublicConfigWithDatabase)
-            .build();
-        });
+    const builderWithInternal = builder.withLinkedFragment(
+      "_fragno_internal",
+      ({ config, options }) => {
+        // Cast is safe: by the time this callback is invoked during fragment instantiation,
+        // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
+        return instantiate(internalFragmentDef)
+          .withConfig(config as {})
+          .withOptions(options as FragnoPublicConfigWithDatabase)
+          .build();
+      },
+    );
 
     // Cast is safe: we're creating a DatabaseFragmentDefinitionBuilder which internally uses
     // FragnoPublicConfigWithDatabase, but the input builder uses FragnoPublicConfig.
@@ -119,7 +126,8 @@ export function withDatabase<TSchema extends AnySchema>(
       TServiceDeps,
       TPrivateServices,
       DatabaseServiceContext,
-      DatabaseHandlerContext
+      DatabaseHandlerContext,
+      TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
     >(
       builderWithInternal as unknown as FragmentDefinitionBuilder<
         TConfig,
@@ -131,7 +139,8 @@ export function withDatabase<TSchema extends AnySchema>(
         TPrivateServices,
         DatabaseServiceContext,
         DatabaseHandlerContext,
-        DatabaseRequestStorage
+        DatabaseRequestStorage,
+        TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
       >,
       schema,
       namespace,
