@@ -530,9 +530,21 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db
+      '@fragno-dev/forms':
+        specifier: workspace:*
+        version: link:../../packages/forms
       '@fragno-dev/stripe':
         specifier: workspace:*
         version: link:../../packages/stripe
+      '@jsonforms/core':
+        specifier: ^3.7.0
+        version: 3.7.0
+      '@jsonforms/react':
+        specifier: ^3.7.0
+        version: 3.7.0(@jsonforms/core@3.7.0)(react@19.2.0)
+      '@jsonforms/vanilla-renderers':
+        specifier: ^3.7.0
+        version: 3.7.0(@jsonforms/core@3.7.0)(@jsonforms/react@3.7.0(@jsonforms/core@3.7.0)(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-dialog':
         specifier: ^1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -1007,6 +1019,58 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.0.11)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/forms:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@jsonforms/core':
+        specifier: ^3.7.0
+        version: 3.7.0
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.0
+      solid-js:
+        specifier: '>=1.0.0'
+        version: 1.9.10
+      svelte:
+        specifier: '>=4.0.0'
+        version: 5.45.2
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vue:
+        specifier: '>=3.0.0'
+        version: 3.5.25(typescript@5.9.3)
+      zod:
+        specifier: ^4.0.5
+        version: 4.1.13
+    devDependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../fragno-test
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../unplugin-fragno
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^20
+        version: 20.19.25
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      tsdown:
+        specifier: ^0.11.9
+        version: 0.11.13(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@20.19.25)(@vitest/ui@3.2.4)(happy-dom@20.0.11)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
 
   packages/fragment-mailing-list:
     dependencies:
@@ -3127,6 +3191,22 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@jsonforms/core@3.7.0':
+    resolution: {integrity: sha512-CE9viWtwi9QWLqlWLeOul1/R1GRAyOA9y6OoUpsCc0FhyR+g5p29F3k0fUExHWxL0Sf4KHcXYkfhtqfRBPS8ww==}
+
+  '@jsonforms/react@3.7.0':
+    resolution: {integrity: sha512-HkY7qAx8vW97wPEgZ7GxCB3iiXG1c95GuObxtcDHGPBJWMwnxWBnVYJmv5h7nthrInKsQKHZL5OusnC/sj/1GQ==}
+    peerDependencies:
+      '@jsonforms/core': 3.7.0
+      react: ^16.12.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  '@jsonforms/vanilla-renderers@3.7.0':
+    resolution: {integrity: sha512-RdXQGsheARUJVbaTe6SqGw9W4/yrm0BgUok6OKUj8krp1NF4fqXc5UbYGHFksMR/p7LCuoYHCtQzKLXEfxJbDw==}
+    peerDependencies:
+      '@jsonforms/core': 3.7.0
+      '@jsonforms/react': 3.7.0
+      react: ^16.12.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   '@koa/cors@5.0.0':
     resolution: {integrity: sha512-x/iUDjcS90W69PryLDIMgFyV21YLTnG9zOpPXS7Bkt2b8AsY3zZsIpOLBkYr9fBcF3HbkKaER5hOBZLfpLgYNw==}
@@ -15165,6 +15245,26 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@jsonforms/core@3.7.0':
+    dependencies:
+      '@types/json-schema': 7.0.15
+      ajv: 8.17.1
+      ajv-formats: 2.1.1(ajv@8.17.1)
+      lodash: 4.17.21
+
+  '@jsonforms/react@3.7.0(@jsonforms/core@3.7.0)(react@19.2.0)':
+    dependencies:
+      '@jsonforms/core': 3.7.0
+      lodash: 4.17.21
+      react: 19.2.0
+
+  '@jsonforms/vanilla-renderers@3.7.0(@jsonforms/core@3.7.0)(@jsonforms/react@3.7.0(@jsonforms/core@3.7.0)(react@19.2.0))(react@19.2.0)':
+    dependencies:
+      '@jsonforms/core': 3.7.0
+      '@jsonforms/react': 3.7.0(@jsonforms/core@3.7.0)(react@19.2.0)
+      lodash: 4.17.21
+      react: 19.2.0
+
   '@koa/cors@5.0.0':
     dependencies:
       vary: 1.1.2
@@ -20490,8 +20590,8 @@ snapshots:
       '@typescript-eslint/parser': 8.48.0(eslint@8.57.1)(typescript@5.9.3)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.1)
@@ -20514,7 +20614,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.3(supports-color@5.5.0)
@@ -20525,7 +20625,7 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -20539,14 +20639,14 @@ snapshots:
     dependencies:
       eslint: 9.39.1(jiti@2.6.1)
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.48.0(eslint@8.57.1)(typescript@5.9.3)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -20574,7 +20674,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -20585,7 +20685,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3

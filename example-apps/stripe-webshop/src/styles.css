@@ -2,6 +2,8 @@
 
 @import "tw-animate-css";
 
+@import "./styles/jsonforms.css";
+
 @custom-variant dark (&:is(.dark *));
 
 code {
