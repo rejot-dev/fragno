@@ -1,20 +1,9 @@
-import type { DatabaseAdapter, DatabaseContextStorage } from "../adapters";
+import type { DatabaseAdapter } from "../adapters";
 import { type AnySchema } from "../../schema/create";
-import type { AbstractQuery } from "../../query/query";
 import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { generateSchema } from "./generate";
-import { fromDrizzle, type DrizzleUOWConfig } from "./drizzle-query";
-import type { DBType, DrizzleResult } from "./shared";
 import { createTableNameMapper } from "../shared/table-name-mapper";
-import { sql } from "drizzle-orm";
-import { settingsSchema, SETTINGS_TABLE_NAME } from "../../fragments/internal-fragment";
-import {
-  fragnoDatabaseAdapterNameFakeSymbol,
-  fragnoDatabaseAdapterVersionFakeSymbol,
-} from "../adapters";
-import type { ConnectionPool } from "../../shared/connection-pool";
-import { createDrizzleConnectionPool } from "./drizzle-connection-pool";
-import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
+
 import {
   GenericSQLAdapter,
   type GenericSQLOptions,
@@ -26,122 +15,7 @@ export interface DrizzleConfig {
   provider: "sqlite" | "mysql" | "postgresql";
 }
 
-export class DrizzleAdapter implements DatabaseAdapter<DrizzleUOWConfig> {
-  #connectionPool: ConnectionPool<DBType>;
-  #provider: "sqlite" | "mysql" | "postgresql";
-  #schemaNamespaceMap = new WeakMap<AnySchema, string>();
-  #contextStorage: RequestContextStorage<DatabaseContextStorage>;
-
-  constructor(config: DrizzleConfig) {
-    this.#connectionPool = createDrizzleConnectionPool(
-      config.db as DBType | (() => DBType | Promise<DBType>),
-    );
-    this.#provider = config.provider;
-    this.#contextStorage = new RequestContextStorage();
-  }
-
-  get [fragnoDatabaseAdapterNameFakeSymbol](): string {
-    return "drizzle";
-  }
-
-  get [fragnoDatabaseAdapterVersionFakeSymbol](): number {
-    return 0;
-  }
-
-  get contextStorage(): RequestContextStorage<DatabaseContextStorage> {
-    return this.#contextStorage;
-  }
-
-  async close(): Promise<void> {
-    await this.#connectionPool.close();
-  }
-
-  createTableNameMapper(namespace: string) {
-    return createTableNameMapper(namespace, true);
-  }
-
-  get provider(): "sqlite" | "mysql" | "postgresql" {
-    return this.#provider;
-  }
-
-  async isConnectionHealthy(): Promise<boolean> {
-    const conn = await this.#connectionPool.connect();
-    try {
-      const result = await conn.db.execute(sql`SELECT 1 as healthy`);
-
-      // Handle different result formats across providers
-      // PostgreSQL/MySQL: { rows: [...] }
-      // SQLite: array directly or { rows: [...] }
-      if (Array.isArray(result)) {
-        return result.length > 0 && result[0]["healthy"] === 1;
-      } else {
-        const drizzleResult = result as DrizzleResult;
-        return drizzleResult.rows[0]["healthy"] === 1;
-      }
-    } catch {
-      return false;
-    } finally {
-      await conn.release();
-    }
-  }
-
-  async getSchemaVersion(namespace: string): Promise<string | undefined> {
-    // Note: This looks up arbitrary fragment schema versions (e.g., "my-fragment.schema_version")
-    // which are different from Fragno's internal settings (prefixed with SETTINGS_NAMESPACE)
-    // So we can't use the internal fragment here, we need direct query engine access
-    const queryEngine = this.createQueryEngine(settingsSchema, "");
-
-    const uow = queryEngine
-      .createUnitOfWork()
-      .find(SETTINGS_TABLE_NAME, (b) =>
-        b.whereIndex("unique_key", (eb) => eb("key", "=", `${namespace}.schema_version`)),
-      );
-    const [[result]] = await uow.executeRetrieve();
-    return result?.value;
-  }
-
-  createQueryEngine<TSchema extends AnySchema>(
-    schema: TSchema,
-    namespace: string,
-  ): AbstractQuery<TSchema, DrizzleUOWConfig> {
-    // Register schema-namespace mapping
-    this.#schemaNamespaceMap.set(schema, namespace);
-
-    // Only create mapper if namespace is non-empty
-    const mapper = namespace ? createTableNameMapper(namespace) : undefined;
-    return fromDrizzle(
-      schema,
-      this.#connectionPool,
-      this.#provider,
-      mapper,
-      undefined,
-      this.#schemaNamespaceMap,
-    );
-  }
-
-  createSchemaGenerator(
-    fragments: { schema: AnySchema; namespace: string }[],
-    options?: { path?: string },
-  ): SchemaGenerator {
-    return {
-      generateSchema: (genOptions) => {
-        const path = genOptions?.path ?? options?.path ?? "fragno-schema.ts";
-
-        return {
-          schema: generateSchema(fragments, this.#provider, {
-            mapperFactory: (ns) => (ns ? this.createTableNameMapper(ns) : undefined),
-          }),
-          path,
-        };
-      },
-    };
-  }
-}
-
-export class NewDrizzleAdapter
-  extends GenericSQLAdapter
-  implements DatabaseAdapter<UnitOfWorkConfig>
-{
+export class DrizzleAdapter extends GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   constructor(options: GenericSQLOptions) {
     super(options);
   }
