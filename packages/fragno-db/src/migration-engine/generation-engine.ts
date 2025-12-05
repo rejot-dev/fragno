@@ -119,7 +119,7 @@ export async function generateMigrationsOrSchema<
   try {
     const result = await internalFragment.inContext(async function () {
       return await this.uow(async ({ executeRetrieve }) => {
-        const v = internalFragment.services.settingsService.get("version");
+        const v = internalFragment.services.settingsService.get(SETTINGS_NAMESPACE, "version");
         await executeRetrieve();
 
         return v;

@@ -1,12 +1,17 @@
 import { createMailingListFragment } from "@fragno-dev/fragment-mailing-list";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
-import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite/driver";
 import { sendEmail } from "@/resend/resend";
+import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 
-export function createAdapter(db?: DrizzleSqliteDODatabase<Record<string, unknown>>) {
+export function createAdapter(state?: DurableObjectState) {
+  const dialect = new DurableObjectDialect({
+    ctx: state!,
+  });
+
   return new DrizzleAdapter({
-    db: db ?? {},
-    provider: "sqlite",
+    dialect,
+    driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });
 }
 
@@ -17,7 +22,7 @@ export type MailingListInit =
   | {
       type: "live";
       env: CloudflareEnv;
-      db: DrizzleSqliteDODatabase<Record<string, unknown>>;
+      state: DurableObjectState;
     };
 
 export function createMailingListServer(init: MailingListInit) {
@@ -53,7 +58,7 @@ export function createMailingListServer(init: MailingListInit) {
         }
       },
     },
-    { databaseAdapter: createAdapter(init.type === "live" ? init.db : undefined) },
+    { databaseAdapter: createAdapter(init.type === "live" ? init.state : undefined) },
   ).withMiddleware(async ({ ifMatchesRoute }, { error }) => {
     const getSubscribersResult = await ifMatchesRoute("GET", "/subscribers", async () => {
       return error({ message: "Not authorized", code: "NOT_AUTHORIZED" }, 401);

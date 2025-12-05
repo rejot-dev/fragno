@@ -1,30 +1,22 @@
 import { DurableObject } from "cloudflare:workers";
-import { migrate } from "drizzle-orm/durable-sqlite/migrator";
-import migrations from "@/db/mailing-list-do.migrations";
-import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite/driver";
 import type { MailingListFragment } from "@/fragno/mailing-list";
 import { createMailingListServer } from "@/fragno/mailing-list";
-import { mailing_list_schema } from "@/db/mailing-list-do.schema";
+import { migrate } from "@fragno-dev/db";
 
 export class MailingList extends DurableObject<CloudflareEnv> {
-  #db: DrizzleSqliteDODatabase<Record<string, unknown>>;
   #fragment: MailingListFragment;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
 
-    this.#db = drizzle(state.storage, {
-      schema: mailing_list_schema,
+    this.#fragment = createMailingListServer({
+      env,
+      state: state,
+      type: "live",
     });
 
     state.blockConcurrencyWhile(async () => {
-      await migrate(this.#db, migrations);
-    });
-
-    this.#fragment = createMailingListServer({
-      env,
-      db: this.#db,
-      type: "live",
+      await migrate(this.#fragment);
     });
   }
 
