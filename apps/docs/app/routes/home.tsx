@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, Form, useActionData, useNavigation } from "react-router";
-import { FragnoLogo } from "@/components/logos/fragno-logo";
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import {
   Shield,
@@ -15,8 +14,8 @@ import {
   Layers,
   BookOpen,
   Users,
-  FileText,
-  Puzzle,
+  MessageCircleMore,
+  Mail,
 } from "lucide-react";
 
 import Frameworks from "@/components/frameworks";
@@ -31,7 +30,7 @@ import { FragnoExplainer } from "@/components/explainer";
 
 export function meta() {
   return [
-    { title: "Fragno: Build Full-Stack TypeScript Libraries" },
+    { title: "Fragno: Full-Stack TypeScript Libraries" },
     {
       name: "description",
       content:
@@ -94,20 +93,16 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 function Hero() {
   return (
-    <section className="w-full max-w-5xl space-y-6 text-center">
-      <div className="flex justify-center">
-        <FragnoLogo className="size-72 dark:text-white" />
-      </div>
-
-      <h1 className="text-fd-foreground text-6xl font-extrabold tracking-tight md:text-7xl dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Build Full-
-        <span className="text-fd-foreground relative inline-block dark:bg-gradient-to-b dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-          Stack
+    <section className="w-full max-w-5xl space-y-6 py-8 text-center md:py-16">
+      <h1 className="text-fd-foreground dark:bg-linear-to-b text-5xl font-extrabold tracking-tight md:text-6xl lg:text-7xl dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
+        Full-Stack{" "}
+        <span className="text-fd-foreground dark:bg-linear-to-b relative inline-block dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
+          TypeScript
           <span className="absolute -right-3 -top-2 inline-flex rotate-12 items-center md:-right-7 md:-top-3">
-            <span className="relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
+            <span className="bg-linear-to-r relative inline-flex items-center gap-2 rounded-full from-slate-600 via-gray-600 to-zinc-600 px-4 py-1.5 text-white shadow-[0_12px_30px_-12px_rgba(99,102,241,0.65)] ring-1 ring-white/20">
               <span
                 aria-hidden
-                className="pointer-events-none absolute -inset-0.5 -z-10 rounded-full bg-gradient-to-r from-indigo-500/30 to-fuchsia-500/30 blur-md"
+                className="bg-linear-to-r pointer-events-none absolute -inset-0.5 -z-10 rounded-full from-indigo-500/30 to-fuchsia-500/30 blur-md"
               />
               <span
                 aria-hidden
@@ -123,19 +118,9 @@ function Hero() {
         <br />
         Libraries
       </h1>
-      <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl">
-        <span>
-          Build{" "}
-          <span className="underline decoration-blue-600 underline-offset-4 dark:decoration-blue-400">
-            fr
-          </span>
-          amework-
-          <span className="underline decoration-purple-600 underline-offset-4 dark:decoration-purple-400">
-            agno
-          </span>
-          stic
-        </span>{" "}
-        libraries that embed backend and frontend logic in your users' applications
+      <p className="text-fd-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-10">
+        A toolkit for building libraries that bundle database schemas, backend routes and frontend
+        hooks into one package.
       </p>
 
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
@@ -178,7 +163,7 @@ function FeatureCard({
     <div className="relative overflow-hidden rounded-2xl bg-white/90 p-6 shadow-sm ring-1 ring-black/5 dark:bg-slate-950/60 dark:ring-white/10">
       <div className="relative flex items-start gap-3">
         <span
-          className={`flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${iconClass ?? "bg-blue-500/15 dark:bg-blue-400/20"}`}
+          className={`flex items-center justify-center rounded-xl p-3 text-2xl ${iconClass ?? "bg-blue-500/15 dark:bg-blue-400/20"}`}
         >
           {icon}
         </span>
@@ -196,51 +181,52 @@ function Features() {
   return (
     <section className="grid w-full max-w-6xl gap-6 md:grid-cols-3">
       <FeatureCard
+        icon={<Target className="size-6" />}
+        title="Framework agnostic"
+        description="Works with React, Vue, Next.js, Nuxt, React Router, and more."
+        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
+        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
+      />
+      <FeatureCard
         icon={<Shield className="size-6" />}
         title="End-to-end type safety"
         description="From server to client, everything is typed."
-        glowClass="bg-blue-500/15 dark:bg-blue-400/20"
-        iconClass="bg-blue-500/15 dark:bg-blue-400/20"
-      />
-      <FeatureCard
-        icon={<Target className="size-6" />}
-        title="Framework agnostic"
-        description="Works with React, Vue, Next.js, Nuxt, React Router."
-        glowClass="bg-purple-500/15 dark:bg-purple-400/20"
-        iconClass="bg-purple-500/15 dark:bg-purple-400/20"
+        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
+        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
       <FeatureCard
         icon={<Package className="size-6" />}
         title="Automatic code splitting"
         description="Server code never reaches the client bundle."
-        glowClass="bg-rose-500/15 dark:bg-rose-400/20"
-        iconClass="bg-rose-500/15 dark:bg-rose-400/20"
+        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
+        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
       <FeatureCard
         icon={<Rocket className="size-6" />}
         title="Built-in state management"
         description="Reactive stores with caching built in."
-        glowClass="bg-emerald-500/15 dark:bg-emerald-400/20"
-        iconClass="bg-emerald-500/15 dark:bg-emerald-400/20"
+        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
+        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
       <FeatureCard
         icon={<Waves className="size-6" />}
         title="Streaming support"
         description="Real-time NDJSON streaming for live data."
-        glowClass="bg-sky-500/15 dark:bg-sky-400/20"
-        iconClass="bg-sky-500/15 dark:bg-sky-400/20"
+        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
+        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
       <FeatureCard
         icon={<RotateCcw className="size-6" />}
         title="Middleware support"
         description="Compose auth and custom request processing."
-        glowClass="bg-amber-500/15 dark:bg-amber-400/20"
-        iconClass="bg-amber-500/15 dark:bg-amber-400/20"
+        glowClass="bg-blue-500/10 dark:bg-blue-400/20"
+        iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
     </section>
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function WhatFragnoProvides() {
   const providesTabs = [
     {
@@ -461,27 +447,6 @@ function DocsSection() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <Link
-          to="/docs/fragno/user-quick-start"
-          className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
-        >
-          <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-gray-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-gray-400/15" />
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-500/10 dark:bg-gray-400/20">
-                <BookOpen className="size-6 text-gray-700 dark:text-gray-300" />
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quick Start</h3>
-                <p className="text-fd-muted-foreground text-sm">For users</p>
-              </div>
-            </div>
-            <p className="text-fd-muted-foreground text-sm">
-              Learn how to integrate Fragno Fragments into your application
-            </p>
-          </div>
-        </Link>
-
-        <Link
           to="/docs/fragno/for-library-authors/getting-started"
           className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
         >
@@ -500,6 +465,27 @@ function DocsSection() {
             </div>
             <p className="text-fd-muted-foreground text-sm">
               Create your own full-stack libraries. Learn how to build framework-agnostic Fragments.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          to="/docs/fragno/user-quick-start"
+          className="group relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-950/60 dark:from-slate-950/60 dark:via-slate-950/50 dark:to-slate-950/40 dark:ring-white/10"
+        >
+          <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-gray-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-gray-400/15" />
+          <div className="relative">
+            <div className="mb-4 flex items-center gap-4">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-500/10 dark:bg-gray-400/20">
+                <BookOpen className="size-6 text-gray-700 dark:text-gray-300" />
+              </span>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Quick Start</h3>
+                <p className="text-fd-muted-foreground text-sm">For users</p>
+              </div>
+            </div>
+            <p className="text-fd-muted-foreground text-sm">
+              Learn how to integrate Fragno Fragments into your application
             </p>
           </div>
         </Link>
@@ -534,7 +520,7 @@ function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
           <div className="relative">
             <div className="mb-4 flex items-center gap-4">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 dark:bg-blue-600/20">
-                <Users className="size-6 text-blue-600 dark:text-blue-400" />
+                <MessageCircleMore className="size-6 text-blue-600 dark:text-blue-400" />
               </span>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Discord</h3>
@@ -557,7 +543,7 @@ function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
           <div className="relative">
             <div className="mb-4 flex items-center gap-4">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600/10 dark:bg-blue-600/20">
-                <FileText className="size-6 text-blue-600 dark:text-blue-400" />
+                <Mail className="size-6 text-blue-600 dark:text-blue-400" />
               </span>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Newsletter</h3>
@@ -605,39 +591,42 @@ function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
   );
 }
 
-function FeatureSet() {
-  const features = [
-    {
-      icon: <Layers className="size-6 text-blue-600 dark:text-blue-400" />,
-      title: "Full stack primitives",
-      description: "Define backend routes, database schemas and frontend hooks in one place.",
-    },
-    {
-      icon: <Puzzle className="size-6 text-emerald-600 dark:text-emerald-400" />,
-      title: "Modular by Design",
-      description: "Build modular TypeScript building blocks that work on any stack",
-    },
-    {
-      icon: <Rocket className="size-6 text-purple-600 dark:text-purple-400" />,
-      title: "Developer Experience First",
-      description: "Ship an SDK that your users integrate in minutes",
-    },
-    {
-      icon: <Package className="size-6 text-amber-600 dark:text-amber-400" />,
-      title: "Neatly Packaged",
-      description: "Deliver a single npm package with a typed API.",
-    },
-  ];
-
+function UseCases() {
   return (
-    <section className="grid w-full max-w-5xl grid-cols-2 gap-8 md:grid-cols-4">
-      {features.map((feature) => (
-        <div key={feature.title} className="flex flex-col">
-          <span className="mb-3">{feature.icon}</span>
-          <h3 className="font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
-          <p className="text-fd-muted-foreground mt-1 text-sm">{feature.description}</p>
+    <section className="w-full max-w-6xl space-y-12">
+      <div className="space-y-4 text-center">
+        <h2 className="text-3xl font-bold tracking-tight md:text-4xl">When to use Fragno</h2>
+      </div>
+      <div className="relative flex flex-col items-start gap-12 lg:flex-row">
+        <div className="space-y-6 lg:w-1/2">
+          <p className="text-fd-muted-foreground font-medium">More than an API client</p>
+          <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+            <span className="text-blue-700 dark:text-blue-400">Full-stack SDKs</span>
+          </h2>
+          <p className="text-fd-muted-foreground max-w-xl text-lg">
+            Most SDKs only wrap API calls. Developers still have to write things like webhook
+            handlers that persist events or build their own frontend hooks.
+          </p>
+          <p className="text-fd-muted-foreground max-w-xl text-lg">
+            With Fragno you can ship a pre-built integration for your product.
+          </p>
         </div>
-      ))}
+
+        <div className="space-y-6 lg:w-1/2">
+          <p className="text-fd-muted-foreground font-medium">Do not repeat yourself</p>
+          <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+            <span className="text-blue-700 dark:text-blue-400">Full-Stack Components</span>
+          </h2>
+          <p className="text-fd-muted-foreground max-w-xl text-lg">
+            Build components that can be reused across applications regardless of which stack they
+            use.
+          </p>
+          <p className="text-fd-muted-foreground max-w-xl text-lg">
+            Use community-made Fragments like the Stripe Fragment to add functionality you don't
+            want to maintain yourself.
+          </p>
+        </div>
+      </div>
     </section>
   );
 }
@@ -647,15 +636,18 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
   return (
     <main className="space-y-18 relative flex flex-1 flex-col items-center overflow-x-hidden px-4 py-16 md:px-8">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="mx-auto mt-[-80px] h-[520px] w-[820px] rounded-full bg-gradient-to-br from-blue-500/25 via-sky-400/20 to-purple-500/20 opacity-20 blur-3xl dark:opacity-40" />
+        <div className="bg-linear-to-br opacity-4 mx-auto -mt-20 h-[520px] w-[1000px] from-blue-500 via-sky-400 to-purple-500 blur-3xl dark:opacity-15" />
       </div>
 
       <Hero />
-      <FeatureSet />
       <FragnoExplainer />
+      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <UseCases />
+      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <Frameworks />
-      <WhatFragnoProvides />
-      {/* <Features /> */}
+      {/*<WhatFragnoProvides />*/}
+      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <Features />
 
       <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <DatabaseIntegration />
