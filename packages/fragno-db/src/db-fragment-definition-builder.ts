@@ -3,7 +3,11 @@ import type { AbstractQuery } from "./query/query";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { IUnitOfWork } from "./query/unit-of-work";
 import { TypedUnitOfWork, UnitOfWork } from "./query/unit-of-work";
-import type { RequestThisContext, FragnoPublicConfig } from "@fragno-dev/core";
+import type {
+  RequestThisContext,
+  FragnoPublicConfig,
+  AnyFragnoInstantiatedFragment,
+} from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
   type FragmentDefinition,
@@ -165,6 +169,7 @@ export class DatabaseFragmentDefinitionBuilder<
   TPrivateServices,
   TServiceThisContext extends RequestThisContext = DatabaseHandlerContext,
   THandlerThisContext extends RequestThisContext = DatabaseHandlerContext,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
 > {
   // Store the base builder - we'll replace its storage and context setup when building
   #baseBuilder: FragmentDefinitionBuilder<
@@ -177,7 +182,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    DatabaseRequestStorage
+    DatabaseRequestStorage,
+    TLinkedFragments
   >;
   #schema: TSchema;
   #namespace: string;
@@ -193,7 +199,8 @@ export class DatabaseFragmentDefinitionBuilder<
       TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
-      DatabaseRequestStorage
+      DatabaseRequestStorage,
+      TLinkedFragments
     >,
     schema: TSchema,
     namespace?: string,
@@ -223,7 +230,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TServiceDependencies,
     {},
     TServiceThisContext,
-    THandlerThisContext
+    THandlerThisContext,
+    TLinkedFragments
   > {
     // Wrap user function to inject DB context
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
@@ -278,7 +286,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TServiceDependencies,
     TPrivateServices,
     TServiceThisContext,
-    THandlerThisContext
+    THandlerThisContext,
+    TLinkedFragments
   > {
     const newBaseBuilder = this.#baseBuilder.providesBaseService<TNewService>(fn);
 
@@ -305,7 +314,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TServiceDependencies,
     TPrivateServices,
     TServiceThisContext,
-    THandlerThisContext
+    THandlerThisContext,
+    TLinkedFragments
   > {
     const newBaseBuilder = this.#baseBuilder.providesService<TServiceName, TService>(
       serviceName,
@@ -330,7 +340,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TServiceDependencies & { [K in TServiceName]: TService },
     TPrivateServices,
     TServiceThisContext,
-    THandlerThisContext
+    THandlerThisContext,
+    TLinkedFragments
   > {
     const newBaseBuilder = this.#baseBuilder.usesService<TServiceName, TService>(serviceName);
 
@@ -352,7 +363,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TServiceDependencies & { [K in TServiceName]: TService | undefined },
     TPrivateServices,
     TServiceThisContext,
-    THandlerThisContext
+    THandlerThisContext,
+    TLinkedFragments
   > {
     const newBaseBuilder = this.#baseBuilder.usesOptionalService<TServiceName, TService>(
       serviceName,
@@ -376,7 +388,8 @@ export class DatabaseFragmentDefinitionBuilder<
     TPrivateServices,
     DatabaseServiceContext,
     DatabaseHandlerContext,
-    DatabaseRequestStorage
+    DatabaseRequestStorage,
+    TLinkedFragments
   > {
     // Ensure dependencies callback always exists for database fragments
     // If no user dependencies were defined, create a minimal one that only adds implicit deps
