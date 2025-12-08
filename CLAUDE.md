@@ -35,7 +35,7 @@ as a monorepo manager.
 - Vitest
 - Lefthook for pre-commit hooks
 - Prettier
-- ESLint
+- oxlint
 
 ## Development Practices
 
@@ -44,44 +44,13 @@ as a monorepo manager.
 - [IMPORTANT]: When adding new exports to a package.json file, you must also update the
   corresponding tsdown.config.ts file in the same directory to include the new entry points
 
-### TypeScript + Style
-
-- Use strict TypeScript configuration
-- Do NOT use `any` unless absolutely necessary
-- Use proper JSDoc comments for public APIs
-- Prefer to destruct objects in things like for-loops.
-- In Typescript, never use Array<T>, always use T[]
-- Use Javascript private (#) for private members, NEVER use `private` in Typescript.
-- Always use `import type` and indicate `type` as needed
-- Always use curly braces, even for single-line blocks. You may add parentheses if you find a block
-  without them.
-- Avoid:
-  - Enums
-  - Constructor parameter members
-  - TypeScript constructs that don't work with type stripping
-- When using unsafe casts (`x as Y`), always add a comment explaining why it's safe. Prefer not to
-  use them.
-
 ### Testing
 
 - When testing _types_, do NOT use `.toMatchTypeOf(..)`, it's deprecated. Use either
   toMatchObjectType or toExtend instead:
   - Use toMatchObjectType to perform a strict check on a subset of your type's keys
   - Use toExtend to check if your type extends the expected type
-
-### File Naming
-
-- Use kebab-case for file names
-- Use PascalCase for component/class files
-- Use lowercase for utility and helper files
-- Internal files go in `internal/` subdirectories
 - Tests are colocated, e.g. `route.ts` -> `route.test.ts`
-
-### Import/Export Patterns
-
-- Use named exports over default exports
-- Keep internal imports separate from public API imports
-- Use relative imports within packages, package imports across packages
 
 ## Package Structure
 

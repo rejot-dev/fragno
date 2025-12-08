@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn"],
+  "jsPlugins": ["./packages-private/oxlint-plugins/tsdown-exports-sync.js"],
   "env": {
     "builtin": true
   },
@@ -21,6 +22,7 @@
     "packages/docs/.source/**"
   ],
   "rules": {
+    "tsdown-exports-sync/exports-match": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",

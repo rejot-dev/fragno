@@ -1,0 +1,17 @@
+{
+  "name": "@fragno-private/oxlint-plugins",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsdown-exports-sync": "./tsdown-exports-sync.js"
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/eslint": "^9.6.1",
+    "@types/node": "^22"
+  }
+}
