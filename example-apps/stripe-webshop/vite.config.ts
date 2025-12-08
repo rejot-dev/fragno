@@ -14,6 +14,13 @@ const config = defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  resolve: {
+    alias: {
+      // Fix globby/unicorn-magic incompatibility in Vite's dep optimization
+      // unicorn-magic exports toPath only from node.js, not default.js
+      "unicorn-magic": "unicorn-magic/node",
+    },
+  },
   // Needed for 'Could not resolve "#tanstack-router-entry"' type errors
   optimizeDeps: {
     exclude: ["@tanstack/start-server-core", "@tanstack/react-start", "@tanstack/react-router"],
