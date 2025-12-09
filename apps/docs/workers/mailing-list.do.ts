@@ -16,7 +16,11 @@ export class MailingList extends DurableObject<CloudflareEnv> {
     });
 
     state.blockConcurrencyWhile(async () => {
-      await migrate(this.#fragment);
+      try {
+        await migrate(this.#fragment);
+      } catch (error) {
+        console.log("Migration failed", { error });
+      }
     });
   }
 
