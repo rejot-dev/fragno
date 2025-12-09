@@ -203,7 +203,7 @@ describe("auth fragment", async () => {
           align: "center",
           loop: false,
         }}
-        className="w-full"
+        className="mx-auto w-full max-w-3xl"
         setApi={(api) => {
           if (!api) {
             return;
@@ -228,7 +228,7 @@ describe("auth fragment", async () => {
             </CarouselItem>
           ))}
         </CarouselContent>
-        <div className="mt-8 flex items-center justify-center gap-2.5">
+        <div className="mt-8 flex h-5 items-center justify-center gap-2.5">
           {carouselItems.map((item, index) => (
             <button
               key={item.id}
@@ -238,8 +238,8 @@ describe("auth fragment", async () => {
               }}
               className={`rounded-full transition-all duration-300 ${
                 activeIndex === index
-                  ? "h-2.5 w-2.5 bg-slate-700 dark:bg-slate-300"
-                  : "h-2 w-2 bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-500"
+                  ? "h-4 w-4 bg-slate-700 dark:bg-slate-300"
+                  : "h-3 w-3 bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-500"
               }`}
               aria-label={`Go to ${item.title}`}
               aria-current={activeIndex === index ? "true" : "false"}
