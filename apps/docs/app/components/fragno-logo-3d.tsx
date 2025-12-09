@@ -41,6 +41,77 @@ const COLORS: ColorScheme[] = [
 ];
 const INITIAL_ROTATION = { x: 0.893, y: 6.464, z: 0.5 };
 
+function drawFOutline(
+  addTo: Zdog.Illustration | Zdog.Anchor,
+  unit: number,
+  zOffset: number,
+  strokeWidth = 2,
+) {
+  const depth = unit / 1.5;
+  const hd = depth / 2;
+  // Small expansion to prevent z-fighting with box faces
+  const expand = 0.1;
+
+  // 10 corners of the F perimeter (clockwise from top-left)
+  // A--------------B
+  // |              |
+  // |    D---------C
+  // |    |
+  // |    E---------F
+  // |              |
+  // |    H---------G
+  // |    |
+  // J----I
+  const corners2D = [
+    { x: -2 * unit - expand, y: -2.5 * unit - expand }, // A: top-left (outer)
+    { x: 1 * unit + expand, y: -2.5 * unit - expand }, // B: top-right (outer)
+    { x: 1 * unit + expand, y: -1.5 * unit + expand }, // C: bottom-right of top bar (outer right, inner bottom)
+    { x: -1 * unit + expand, y: -1.5 * unit + expand }, // D: inner corner (inner)
+    { x: -1 * unit + expand, y: -0.5 * unit - expand }, // E: inner corner (inner)
+    { x: 1 * unit + expand, y: -0.5 * unit - expand }, // F: top-right of middle bar (outer right, inner top)
+    { x: 1 * unit + expand, y: 0.5 * unit + expand }, // G: bottom-right of middle bar (outer)
+    { x: -1 * unit + expand, y: 0.5 * unit + expand }, // H: inner corner (inner)
+    { x: -1 * unit + expand, y: 2.5 * unit + expand }, // I: bottom-right of spine (inner right, outer bottom)
+    { x: -2 * unit - expand, y: 2.5 * unit + expand }, // J: bottom-left of spine (outer)
+  ];
+
+  // Create front and back face corners with z expansion
+  const frontCorners = corners2D.map((c) => ({ ...c, z: zOffset + hd + expand }));
+  const backCorners = corners2D.map((c) => ({ ...c, z: zOffset - hd - expand }));
+
+  // Draw front face perimeter (10 edges)
+  for (let i = 0; i < frontCorners.length; i++) {
+    const next = (i + 1) % frontCorners.length;
+    new Zdog.Shape({
+      addTo,
+      path: [frontCorners[i], frontCorners[next]],
+      stroke: strokeWidth,
+      color: "#000",
+    });
+  }
+
+  // Draw back face perimeter (10 edges)
+  for (let i = 0; i < backCorners.length; i++) {
+    const next = (i + 1) % backCorners.length;
+    new Zdog.Shape({
+      addTo,
+      path: [backCorners[i], backCorners[next]],
+      stroke: strokeWidth,
+      color: "#000",
+    });
+  }
+
+  // Draw depth edges connecting front to back (10 edges)
+  for (let i = 0; i < frontCorners.length; i++) {
+    new Zdog.Shape({
+      addTo,
+      path: [frontCorners[i], backCorners[i]],
+      stroke: strokeWidth,
+      color: "#000",
+    });
+  }
+}
+
 function createF(illo: Zdog.Illustration, unit: number, zOffset: number, colors: ColorScheme) {
   const depth = unit / 1.5;
   const stemHeight = unit * 4; // 1 unit smaller to make room for cap
@@ -55,16 +126,19 @@ function createF(illo: Zdog.Illustration, unit: number, zOffset: number, colors:
     depth: depth,
     translate: { x: stemX, y: topY, z: zOffset },
     ...colors,
+    bottomFace: false,
+    rightFace: false,
   });
 
   // Top bar (extends right from cap)
   new Zdog.Box({
     addTo: illo,
-    width: unit * 2, // 2 units extending right
+    width: unit * 2,
     height: unit,
     depth: depth,
     translate: { x: stemX + unit * 1.5, y: topY, z: zOffset },
     ...colors,
+    leftFace: false,
   });
 
   // Vertical spine (below cap)
@@ -75,6 +149,7 @@ function createF(illo: Zdog.Illustration, unit: number, zOffset: number, colors:
     depth: depth,
     translate: { x: stemX, y: topY + unit / 2 + stemHeight / 2, z: zOffset },
     ...colors,
+    topFace: false,
   });
 
   // Middle bar (1 unit below top bar)
@@ -85,7 +160,11 @@ function createF(illo: Zdog.Illustration, unit: number, zOffset: number, colors:
     depth: depth,
     translate: { x: stemX + unit * 1.5, y: topY + unit * 2, z: zOffset },
     ...colors,
+    leftFace: false,
   });
+
+  // Draw outline for entire F shape
+  drawFOutline(illo, unit, zOffset);
 }
 
 type FragnoLogo3DProps = {
