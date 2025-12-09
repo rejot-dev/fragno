@@ -2,95 +2,89 @@ import { useEffect, useRef, useState } from "react";
 import Zdog from "zdog";
 
 type ColorScheme = {
-  base: string;
-  front: string;
-  rear: string;
-  left: string;
-  right: string;
-  top: string;
-  bottom: string;
+  frontFace: string;
+  rearFace: string;
+  leftFace: string;
+  rightFace: string;
+  topFace: string;
+  bottomFace: string;
 };
 
 const COLORS: ColorScheme[] = [
   // Red (front)
   {
-    base: "#ff6467",
-    front: "#ff8a8c",
-    rear: "#e54b4e",
-    left: "#ff6467",
-    right: "#cc5052",
-    top: "#ffb0b2",
-    bottom: "#b23e40",
+    frontFace: "#ff6467",
+    rearFace: "#e85558",
+    leftFace: "#ff6467",
+    rightFace: "#d94a4d",
+    topFace: "#ff9a9c",
+    bottomFace: "#c43e40",
   },
   // Yellow (middle)
   {
-    base: "#fdc700",
-    front: "#fdd633",
-    rear: "#d4a800",
-    left: "#fdc700",
-    right: "#b89200",
-    top: "#fee566",
-    bottom: "#9a7a00",
+    frontFace: "#fdc700",
+    rearFace: "#fdd633",
+    leftFace: "#fdc700",
+    rightFace: "#e6b800",
+    topFace: "#fee566",
+    bottomFace: "#d4a800",
   },
   // Blue (back)
   {
-    base: "#51a2ff",
-    front: "#7ab8ff",
-    rear: "#3a8be6",
-    left: "#51a2ff",
-    right: "#2d74cc",
-    top: "#a3ceff",
-    bottom: "#1f5db3",
+    frontFace: "#51a2ff",
+    rearFace: "#6bb0ff",
+    leftFace: "#51a2ff",
+    rightFace: "#3d8fe6",
+    topFace: "#a3ceff",
+    bottomFace: "#2d7acc",
   },
 ];
-
-const INITIAL_ROTATION = { x: 0.602, y: 6.83, z: 0 };
+const INITIAL_ROTATION = { x: 0.893, y: 6.464, z: 0.5 };
 
 function createF(illo: Zdog.Illustration, unit: number, zOffset: number, colors: ColorScheme) {
-  const boxStyle = {
-    stroke: false,
-    color: colors.base,
-    frontFace: colors.front,
-    rearFace: colors.rear,
-    leftFace: colors.left,
-    rightFace: colors.right,
-    topFace: colors.top,
-    bottomFace: colors.bottom,
-  };
-
-  const barWidth = unit * 2;
-  const stemHeight = unit * 5;
+  const depth = unit / 1.5;
+  const stemHeight = unit * 4; // 1 unit smaller to make room for cap
   const stemX = -unit * 1.5;
-  const topY = -stemHeight / 2 + unit / 2;
+  const topY = -unit * 2; // Top of the F (where cap sits)
 
-  // Vertical spine
+  // Cap (cube at top-left corner where stem meets top bar)
+  new Zdog.Box({
+    addTo: illo,
+    width: unit,
+    height: unit,
+    depth: depth,
+    translate: { x: stemX, y: topY, z: zOffset },
+    ...colors,
+  });
+
+  // Top bar (extends right from cap)
+  new Zdog.Box({
+    addTo: illo,
+    width: unit * 2, // 2 units extending right
+    height: unit,
+    depth: depth,
+    translate: { x: stemX + unit * 1.5, y: topY, z: zOffset },
+    ...colors,
+  });
+
+  // Vertical spine (below cap)
   new Zdog.Box({
     addTo: illo,
     width: unit,
     height: stemHeight,
-    depth: unit / 1.5,
-    translate: { x: stemX, y: 0, z: zOffset },
-    ...boxStyle,
-  });
-
-  // Top bar
-  new Zdog.Box({
-    addTo: illo,
-    width: barWidth,
-    height: unit,
-    depth: unit / 1.5,
-    translate: { x: 0, y: topY, z: zOffset },
-    ...boxStyle,
+    depth: depth,
+    translate: { x: stemX, y: topY + unit / 2 + stemHeight / 2, z: zOffset },
+    ...colors,
   });
 
   // Middle bar (1 unit below top bar)
   new Zdog.Box({
     addTo: illo,
-    width: barWidth,
+    width: unit * 2,
     height: unit,
-    depth: unit / 1.5,
-    translate: { x: 0, y: topY + unit * 2, z: zOffset },
-    ...boxStyle,
+    depth: depth,
+    translate: { x: stemX + unit * 1.5, y: topY + unit * 2, z: zOffset },
+    ...colors,
   });
 }
 
@@ -110,10 +104,12 @@ export function FragnoLogo3D({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rotation, setRotation] = useState(INITIAL_ROTATION);
 
-  const unit = size / 10;
+  const unit = size / 7;
 
   useEffect(() => {
-    if (!canvasRef.current) {return;}
+    if (!canvasRef.current) {
+      return;
+    }
 
     const illo = new Zdog.Illustration({
       element: canvasRef.current,
