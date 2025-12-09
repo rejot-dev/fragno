@@ -154,7 +154,7 @@ const layers = [
   {
     id: "backend",
     label: "Backend",
-    subLabel: "API routes are the central abstraction, input validation included.",
+    subLabel: "API routes are the central abstraction, with input validation included.",
     layerVariant: "middle" as const,
     variant: "cake-layer" as const,
   },

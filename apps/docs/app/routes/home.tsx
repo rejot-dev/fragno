@@ -119,7 +119,7 @@ function Hero() {
         Libraries
       </h1>
       <p className="text-fd-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-10">
-        A toolkit for building libraries that bundle database schemas, backend routes and frontend
+        A toolkit for building libraries that bundle database schemas, backend routes, and frontend
         hooks into one package.
       </p>
 
@@ -182,7 +182,7 @@ function Features() {
     <section className="grid w-full max-w-6xl gap-6 md:grid-cols-3">
       <FeatureCard
         icon={<Target className="size-6" />}
-        title="Framework agnostic"
+        title="Framework-agnostic"
         description="Works with React, Vue, Next.js, Nuxt, React Router, and more."
         glowClass="bg-blue-500/10 dark:bg-blue-400/20"
         iconClass="bg-blue-500/10 dark:bg-blue-400/20"
@@ -342,8 +342,8 @@ export function Chat() {
             and the user is responsible for the glue-code.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
-            A <u>Fragment</u> does both, it's a full-stack library. Users integrate with only a
-            couple lines of code. No glue.
+            A <u>Fragment</u> does both: it's a full-stack library. Users integrate with only a
+            couple of lines of code. No glue.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">10x the developer experience.</p>
         </div>
@@ -441,7 +441,7 @@ function DocsSection() {
       <div className="space-y-4 text-center">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Documentation</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          Choose your path depending on whether you're a user or a library author
+          Choose your path based on whether you're a user or a library author
         </p>
       </div>
 
@@ -504,7 +504,7 @@ function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
       <div className="space-y-4 text-center">
         <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Join the Community</h2>
         <p className="text-fd-muted-foreground mx-auto max-w-prose text-lg">
-          Connect with other developers and stay updated on the latest developments
+          Connect with other developers and stay updated with the latest news
         </p>
       </div>
 
@@ -604,7 +604,7 @@ function UseCases() {
             <span className="text-blue-700 dark:text-blue-400">Full-stack SDKs</span>
           </h2>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Most SDKs only wrap API calls. Developers still have to write things like webhook
+            Most SDKs simply wrap API calls. Developers still have to write things like webhook
             handlers that persist events or build their own frontend hooks.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
@@ -615,11 +615,10 @@ function UseCases() {
         <div className="space-y-6 lg:w-1/2">
           <p className="text-fd-muted-foreground font-medium">Do not repeat yourself</p>
           <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-            <span className="text-blue-700 dark:text-blue-400">Full-Stack Components</span>
+            <span className="text-blue-700 dark:text-blue-400">Full-stack Components</span>
           </h2>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
-            Build components that can be reused across applications regardless of which stack they
-            use.
+            Build components that can be reused across applications regardless of their stack.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
             Use community-made Fragments like the Stripe Fragment to add functionality you don't

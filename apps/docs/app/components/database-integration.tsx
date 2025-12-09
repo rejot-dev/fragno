@@ -17,7 +17,7 @@ export default function DatabaseIntegration() {
     {
       id: "schema",
       title: "Define Your Schema",
-      subtitle: "Type-safe tables with automatic migrations and support for indexes & relations",
+      subtitle: "Type-safe tables with automatic migrations and support for indexes and relations",
       content: (
         <FragnoCodeBlock
           lang="typescript"
@@ -191,7 +191,7 @@ describe("auth fragment", async () => {
           </span>
         </div>
         <h2 className="mb-4 text-3xl font-bold tracking-tight md:text-4xl">
-          Agnostic Data Persistence
+          Database-Agnostic Data Persistence
         </h2>
         <p className="text-fd-muted-foreground mx-auto max-w-2xl text-lg">
           Define schemas, query with type safety, and write directly to the user's database
