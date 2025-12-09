@@ -19,7 +19,7 @@ Fragno is a toolkit for building libraries that bundle frontend hooks, backend r
 database schema into a single package. This allows library authors to ship complete features across
 the full stack.
 
-**Fragno supports all major frameworks: Next.js, Nuxt, SvelteKit, SolidStart, and more.** Where ever
+**Fragno supports all major frameworks: Next.js, Nuxt, SvelteKit, SolidStart, and more.** Wherever
 your users are, Fragno will work. This is also true for the **data layer**: Fragno integrates with
 **Kysely** and **Drizzle**, and is database-system agnostic.
 
@@ -33,11 +33,11 @@ transactions**.
 
 #### When to use Fragno?
 
-- You are a **Client SDK author** and want to do more than simply wrapping an API calls. You can use
+- You are a **Client SDK author** and want to do more than simply wrapping API calls. You can use
   Fragno so your users no longer have to be concerned with webhook handlers and your data model. You
   understand **idempotency** and **at-least-once delivery**, but your users don't have to.
 - You want to build **full-stack components** that can be reused across applications, regardless of
-  their stack. You see how **Better-Auth is outmanoeuvring SaaS auth providers** and want to do the
+  their stack. You see how **Better-Auth is outmaneuvering SaaS auth providers** and want to do the
   same for your vertical.
 
 Either way, you want to use Fragno when you care about a great developer experience for your users,
@@ -100,7 +100,7 @@ Your users can then immediately use the hooks in their application:
 ```ts
 const { mutate, loading, error } = useChat();
 const { response } = await mutate({
-  body: { prompt },
+  body: { message: prompt },
 });
 ```
 
@@ -171,7 +171,7 @@ ORMs and databases. Its basic feature set still contains everything you need to 
 performant schema such as indexes and relationships.
 
 The **query builder** follows the same pattern. Retrieval operations such as filtering and ordering
-take indexes as argument, so it's impossible to write queries that can't be executed efficiently.
+take indexes as arguments, so it's impossible to write queries that can't be executed efficiently.
 Simple joins are supported as well as cursor-based pagination.
 
 **Transactions** are supported via the _Unit of Work_ pattern. This is a two-phase pattern for
@@ -218,7 +218,7 @@ This repo ships complete examples and sample libraries:
 - `example-fragments/example-fragment` – minimal Fragno library example.
 - `example-apps/*` – full application examples (React Router, Next.js, Nuxt, Astro, SvelteKit,
   SolidStart, Vue SPA, etc.).
-- `examples-apps/stripe-webshop`– Uses Drizzle and Better Auth with PGLite to integrate the Stripe
+- `example-apps/stripe-webshop` – Uses Drizzle and Better Auth with PGLite to integrate the Stripe
   Fragment.
 
 ### Contributing
