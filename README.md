@@ -2,103 +2,141 @@
   <img src="./assets/stripe-integration.png" alt="Stripe integration example" width="600" />
 </p>
 
-# Fragno - Build Full-Stack Libraries
+<br/>
+<div align="center">
+  <h3>Fragno: Build Full-Stack Libraries</h3>
+  <a href="https://fragno.dev">Website</a> •
+  <a href="https://fragno.dev/docs">Documentation</a> •
+  <a href="https://discord.gg/jdXZxyGCnC">Discord</a>
+</div>
 
-Fragno is a meta framework for building full-stack TypeScript libraries that work across frameworks
-like Next.js, Nuxt, React Router, SvelteKit, and more.
+<br/>
+<br/>
 
-This is for:
+### What's Fragno?
 
-- **Library authors** ship full-stack libraries with routes, client hooks, and optional data layer.
-- **Users** integrate a Fragno library into their app with a few lines of code and get type-safe
-  usage from both frontend and backend. The data layer integrate with their ORM.
+Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and a
+database schema into a single package. This allows library authors to ship complete features across
+the full stack.
 
-Full documentation lives at [fragno.dev](https://fragno.dev/docs).
+**Fragno supports all major frameworks: Next.js, Nuxt, SvelteKit, SolidStart, and more.** Where ever
+your users are, Fragno will work. This is also true for the **data layer**: Fragno integrates with
+**Kysely** and **Drizzle**, and is database-system agnostic.
 
-The docs reflect this split:
+Fragno has all features you'd expect from a **modern framework**: type-safe routes, streaming
+support, and middleware support. Frontend hooks follow "Stale-While-Revalidate" semantics and allow
+arbitrary logic.
 
-- **For library authors**:
-  [Library author docs](https://fragno.dev/docs/fragno/for-library-authors/getting-started)
-- **For users**: [User Quick Start](https://fragno.dev/docs/fragno/user-quick-start)
+When using the **optional** data layer, all database features are fully supported like schema
+generation and querying. We also focus on performance and correctness with **indexes and
+transactions**.
 
-## Example use cases
+#### When to use Fragno?
 
-- **Client libraries / SDKs** – e.g. a client library integrating with a payment provider that ships
-  backend handlers (including webhooks), database schemas, and frontend hooks/components in one
-  package. So users don't need to know the implementation details of the payment provider.
-- **Full-stack product features** – opinionated packages that own backend, frontend, and data layer
-  together, like authentication (Better Auth–style), feature flags, or form builders, where today
-  you’d usually glue several separate tools together. Apps where directly storing data in the user's
-  database is a superpower.
+- You are a **Client SDK author** and want to do more than simply wrapping an API calls. You can use
+  Fragno so your users no longer have to be concerned with webhook handlers and your data model. You
+  understand **idempotency** and **at-least-once delivery**, but your users don't have to.
+- You want to build **full-stack components** that can be reused across applications, regardless of
+  their stack. You see how **Better-Auth is outmanoeuvring SaaS auth providers** and want to do the
+  same for your vertical.
 
-## Quick start (users integrating a Fragno library)
+Either way, you want to use Fragno when you care about a great developer experience for your users,
+you care about correctness and performance, and want to have everything tested from the ground up.
 
-Use this if you are integrating an existing Fragno library like `@fragno-dev/example-fragment`.
+#### What it looks like
 
-```bash
-npm install @fragno-dev/example-fragment
-# or
-pnpm add @fragno-dev/example-fragment
-```
-
-### 1. Mount the backend routes (example: Next.js)
+Start by defining what configuration you need from your users:
 
 ```ts
-// app/api/example-fragment/[...all]/route.ts
-import { createExampleFragmentInstance } from "@/lib/example-fragment-server";
-
-const exampleFragment = createExampleFragmentInstance();
-export const { GET, POST, PUT, PATCH, DELETE } = exampleFragment.handlersFor("next-js");
-```
-
-### 2. Use the client hooks (example: React)
-
-```tsx
-// components/ExampleComponent.tsx
-import { exampleFragment } from "@/lib/example-fragment-client";
-
-export function ExampleComponent() {
-  const { data, loading } = exampleFragment.useData();
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  return <div>{data}</div>;
+export interface ChatConfig {
+  openaiApiKey: string;
+  model?: string;
 }
+
+export const definition = defineFragment<ChatConfig>("chat")
+  .withDependencies(({ config }) => ({ openaiClient: new OpenAI({ apiKey: config.openaiApiKey }) }))
+  .build();
 ```
 
-For full, framework-specific instructions (Nuxt, React Router, Astro, SvelteKit, SolidStart, Hono,
-Express, Node, Vue, Vanilla JS, etc.), see the
-[User Quick Start](https://fragno.dev/docs/fragno/user-quick-start).
+Then, simply define a route:
 
-## Quick start (library authors)
+```ts
+export const routes = defineRoutes(definition).create(({ defineRoute, deps, config }) => {
+  const { openaiClient } = deps;
 
-Use this if you are building a Fragno library (a full-stack library) yourself.
+  return [
+    defineRoute({
+      method: "POST",
+      path: "/chat/:id",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.any(),
+      handler: async ({ input }, { json }) => {
+        const { message } = await input.valid();
+
+        return json({
+          response: await openaiClient.responses.create({
+            model: config.model ?? "gpt-5-nano",
+            // ...
+          }),
+        });
+      },
+    }),
+  ];
+});
+```
+
+And your client-side hooks:
+
+```ts
+const builder = createClientBuilder(definition, options, routes);
+
+const hooks = {
+  useChat: builder.createMutator("POST", "/chat/:id"),
+};
+```
+
+Your users can then immediately use the hooks in their application:
+
+```ts
+const { mutate, loading, error } = useChat();
+const { response } = await mutate({
+  body: { prompt },
+});
+```
+
+#### Example use cases
+
+- **Full-stack components** – opinionated packages that own backend, frontend, and a data layer.
+  E.g.:
+  - Feature flags
+  - Form builder
+  - Authentication (Better Auth–style)
+  - ...
+
+- **Client SDKs** – packages to facilitate interaction with a SaaS application, such as payments.
+  Flows with a lot of webhooks can benefit greatly.
+
+### Documentation
+
+Full documentation can be found at [fragno.dev](https://fragno.dev/docs).
+
+The docs are split in two:
+
+- [For Library Authors](https://fragno.dev/docs/fragno/for-library-authors/getting-started) -
+  Everything you need to build Fragno libraries.
+- [User Quick Start](https://fragno.dev/docs/fragno/user-quick-start) - This gives you a good idea
+  on how users would integrate your library and how they would customize the experience.
+
+#### Quick Start
+
+Basic template to get you started building a full-stack Fragno library:
 
 ```bash
 # Create a new Fragno library from a template
-npm create fragno@latest
-# or
 pnpm create fragno@latest
-
-# Or add Fragno to an existing package
-npm install @fragno-dev/core
-# or
-pnpm add @fragno-dev/core
 ```
 
-At a high level you:
-
-1. **Define a library** (its config and dependencies).
-2. **Define routes** using `defineRoute`.
-3. **Create a library instance** with `createFragment`.
-4. **Create client hooks** with `createClientBuilder`.
-
-The full walkthrough is in the
-[Library Author docs](https://fragno.dev/docs/fragno/for-library-authors/getting-started).
-
-## Features
+### Features
 
 - **End-to-end type safety**: Standard Schema-compatible route typing and fully type-safe client
   hooks.
@@ -112,7 +150,41 @@ The full walkthrough is in the
 - **Automatic code splitting**: library-level splitting via `@fragno-dev/unplugin-fragno`, no extra
   build complexity for end users.
 
-## Framework and database support
+#### Data Layer
+
+Define schemas, query with type safety, and write directly to the user's database.
+
+```ts
+schema((s) => {
+  return s.addTable("conversation", (t) => {
+    return t
+      .addColumn("id", idColumn())
+      .addColumn("messages", column("json"))
+      .addColumn("createdAt", column("timestamp"))
+      .createIndex("idx_conversation_createdAt", ["createdAt"]);
+  });
+});
+```
+
+**Fragno's schema builder** is intentionally restricted in types to be able to map onto multiple
+ORMs and databases. Its basic feature set still contains everything you need to build a rich and
+performant schema such as indexes and relationships.
+
+The **query builder** follows the same pattern. Retrieval operations such as filtering and ordering
+take indexes as argument, so it's impossible to write queries that can't be executed efficiently.
+Simple joins are supported as well as cursor-based pagination.
+
+**Transactions** are supported via the _Unit of Work_ pattern. This is a two-phase pattern for
+atomic operations using optimistic concurrency control (OCC). The first phase **retrieves** the
+data, the second phase is responsible for **mutating** the data. When mutating, the OCC pattern
+ensures that data isn't modified by another client. This means transactions are non-interactive,
+meaning the user's database cannot be blocked for a long time.
+
+We make sure it's easy to **test** everything. Fragno libraries can be easily instantiated in test
+environments, the data layer will be backed by a real SQLite or PGLite database. This means you can
+easily test full flows, from calling a route to persisting data to the database.
+
+#### Framework and database support
 
 Fragno focuses on a small, framework-agnostic surface (standard `Request`/`Response`) and provides
 adapters for many environments.
@@ -134,33 +206,30 @@ and up-to-date list, including database adapter support.
 Supported ORMs are Kysely and Drizzle, with Postgres and SQLite. This includes PGLite and Cloudflare
 Durable Objects.
 
-## Examples
+### Example Code
 
 This repo ships complete examples and sample libraries:
 
 - `example-fragments/stripe` – A featureful Stripe integration library that manages subscriptions
-  and customers. It uses the data layer and to consume webhooks from Stripe and write them to the
-  user's database. See the [Stripe Quick Start](https://fragno.dev/docs/stripe/quickstart) for more
-  details.
+  and customers. It uses the data layer to consume webhooks from Stripe and write them to the user's
+  database. See the [Stripe Quick Start](https://fragno.dev/docs/stripe/quickstart) for more
+  details. This full-stack library is also discussed in
+  ["Solving Split Brain Integrations"](https://fragno.dev/blog/split-brain-stripe).
 - `example-fragments/example-fragment` – minimal Fragno library example.
 - `example-apps/*` – full application examples (React Router, Next.js, Nuxt, Astro, SvelteKit,
   SolidStart, Vue SPA, etc.).
-- `examples-apps/stripe-webshop` and `packages/stripe` – Stripe subscription library and example
-  app, as described in
-  ["Solving Split Brain Integrations"](https://fragno.dev/blog/split-brain-stripe).
+- `examples-apps/stripe-webshop`– Uses Drizzle and Better Auth with PGLite to integrate the Stripe
+  Fragment.
 
-## Contributing
+### Contributing
 
 Fragno is an open source project. We welcome contributions! Fragno is licensed under the MIT
 License. See the [LICENSE](LICENSE.md) file for details.
 
 See the [CONTRIBUTING](CONTRIBUTING.md) file for details.
 
-## Post Scriptum
+<p align="center">
+  <img src="./assets/cake.png" alt="Have your cake and eat it, too" width="400" />
+</p>
 
-If you want more background on why Fragno exists and how we think about full-stack libraries:
-
-- ["The case for full-stack libraries"](https://fragno.dev/blog/fragno-introduction)
-- ["Solving Split Brain Integrations"](https://fragno.dev/blog/split-brain-stripe)
-
-Don't forget to give us a star ⭐️
+Make sure to star the repo! ⭐️
