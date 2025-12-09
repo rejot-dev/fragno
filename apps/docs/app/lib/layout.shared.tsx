@@ -1,5 +1,5 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import { FragnoLogo } from "../components/logos/fragno-logo";
+import { FragnoLogo3D } from "../components/fragno-logo-3d";
 
 /**
  * Shared layout configurations
@@ -12,9 +12,9 @@ export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
-        <div className="flex items-center gap-2">
-          <FragnoLogo className="h-12 w-16 dark:text-white" />
-          {/* <span className="text-lg font-semibold tracking-tight">Fragno</span> */}
+        <div className="flex items-center gap-1">
+          <FragnoLogo3D size={40} />
+          <span className="text-lg font-semibold tracking-tight">fragno</span>
         </div>
       ),
     },
