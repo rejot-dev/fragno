@@ -1,4 +1,0 @@
-{
-  "include": ["src/**/*"],
-  "extends": "@fragno-private/typescript-config/tsconfig.base.json"
-}
