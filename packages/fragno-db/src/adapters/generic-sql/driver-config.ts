@@ -41,7 +41,7 @@ export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
   override readonly supportsRowsAffected = true;
 }
 
-export class PostgreSQLDriverConfig extends DriverConfig<"pg"> {
+export class NodePostgresDriverConfig extends DriverConfig<"pg"> {
   override readonly driverType = "pg";
   override readonly databaseType = "postgresql";
   override readonly supportsReturning = true;
@@ -55,7 +55,7 @@ export class PGLiteDriverConfig extends DriverConfig<"pglite"> {
   override readonly supportsRowsAffected = false;
 }
 
-export class MySQLDriverConfig extends DriverConfig<"mysql2"> {
+export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
   override readonly driverType = "mysql2";
   override readonly databaseType = "mysql";
   override readonly supportsReturning = false;
