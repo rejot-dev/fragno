@@ -1,0 +1,166 @@
+import { sql, type BinaryOperator } from "kysely";
+import { type AnyColumn, type AnyTable, Column } from "../../../schema/create";
+import type { Condition } from "../../../query/condition-builder";
+import { serialize } from "../../../schema/serialize";
+import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { SupportedDatabase } from "../driver-config";
+import { ReferenceSubquery } from "../../../query/result-transform";
+import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
+
+/**
+ * Returns the fully qualified SQL name for a column (table.column).
+ *
+ * @param column - The column to get the full name for
+ * @param mapper - Optional table name mapper for namespace prefixing
+ * @returns The fully qualified SQL name in the format "tableName.columnName"
+ * @internal
+ */
+export function fullSQLName(column: AnyColumn, mapper?: TableNameMapper): string {
+  const tableName = mapper ? mapper.toPhysical(column.tableName) : column.tableName;
+  return `${tableName}.${column.name}`;
+}
+
+/**
+ * Builds a WHERE clause expression from a Condition tree.
+ *
+ * Recursively processes condition objects to build Kysely WHERE expressions.
+ * Handles comparison operators, logical AND/OR/NOT, and special string operators
+ * like "contains", "starts with", and "ends with".
+ *
+ * @param condition - The condition tree to build the WHERE clause from
+ * @param eb - Kysely expression builder for constructing SQL expressions
+ * @param database - The database type (affects SQL generation)
+ * @param mapper - Optional table name mapper for namespace prefixing
+ * @param table - The table being queried (used for resolving reference columns)
+ * @returns A Kysely expression wrapper representing the WHERE clause
+ * @internal
+ */
+export function buildWhere(
+  condition: Condition,
+  eb: AnyExpressionBuilder,
+  database: SupportedDatabase,
+  mapper?: TableNameMapper,
+  table?: AnyTable,
+): AnyExpressionWrapper {
+  if (condition.type === "compare") {
+    const left = condition.a;
+    const op = condition.operator;
+    let val = condition.b;
+
+    if (!(val instanceof Column)) {
+      if (left.role === "reference" && typeof val === "string" && table) {
+        const relation = Object.values(table.relations).find((rel) =>
+          rel.on.some(([localCol]) => localCol === left.ormName),
+        );
+        if (relation) {
+          const refTable = relation.table;
+          const internalIdCol = refTable.getInternalIdColumn();
+          const idCol = refTable.getIdColumn();
+          const physicalTableName = mapper ? mapper.toPhysical(refTable.ormName) : refTable.ormName;
+
+          val = eb
+            .selectFrom(physicalTableName)
+            .select(internalIdCol.name)
+            .where(idCol.name, "=", val)
+            .limit(1);
+        }
+      } else {
+        val = serialize(val, left, database);
+      }
+    }
+
+    let v: BinaryOperator;
+    let rhs: unknown;
+
+    switch (op) {
+      case "contains":
+        v = "like";
+        rhs =
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))}, '%')`
+            : `%${val}%`;
+        break;
+      case "not contains":
+        v = "not like";
+        rhs =
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))}, '%')`
+            : `%${val}%`;
+        break;
+      case "starts with":
+        v = "like";
+        rhs =
+          val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val, mapper))}, '%')` : `${val}%`;
+        break;
+      case "not starts with":
+        v = "not like";
+        rhs =
+          val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val, mapper))}, '%')` : `${val}%`;
+        break;
+      case "ends with":
+        v = "like";
+        rhs =
+          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))})` : `%${val}`;
+        break;
+      case "not ends with":
+        v = "not like";
+        rhs =
+          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))})` : `%${val}`;
+        break;
+      default:
+        v = op;
+        rhs = val instanceof Column ? eb.ref(fullSQLName(val, mapper)) : val;
+    }
+
+    return eb(fullSQLName(left, mapper), v, rhs);
+  }
+
+  // Nested conditions
+  if (condition.type === "and") {
+    return eb.and(condition.items.map((v) => buildWhere(v, eb, database, mapper, table)));
+  }
+
+  if (condition.type === "not") {
+    return eb.not(buildWhere(condition.item, eb, database, mapper, table));
+  }
+
+  return eb.or(condition.items.map((v) => buildWhere(v, eb, database, mapper, table)));
+}
+
+/**
+ * Process reference subqueries in encoded values, converting them to Kysely SQL subqueries
+ *
+ * @param values - The encoded values that may contain ReferenceSubquery objects
+ * @param kysely - The Kysely database instance for building subqueries
+ * @param mapper - Optional table name mapper for namespace prefixing
+ * @returns Processed values with subqueries in place of ReferenceSubquery markers
+ * @internal
+ */
+export function processReferenceSubqueries(
+  values: Record<string, unknown>,
+  kysely: AnyKysely,
+  mapper?: TableNameMapper,
+): Record<string, unknown> {
+  const processed: Record<string, unknown> = {};
+  const getTableName = (table: AnyTable) => (mapper ? mapper.toPhysical(table.name) : table.name);
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value instanceof ReferenceSubquery) {
+      const refTable = value.referencedTable;
+      const externalId = value.externalIdValue;
+      const tableName = getTableName(refTable);
+      const internalIdCol = refTable.getInternalIdColumn().name;
+      const idCol = refTable.getIdColumn().name;
+
+      processed[key] = kysely
+        .selectFrom(tableName)
+        .select(internalIdCol)
+        .where(idCol, "=", externalId)
+        .limit(1);
+    } else {
+      processed[key] = value;
+    }
+  }
+
+  return processed;
+}

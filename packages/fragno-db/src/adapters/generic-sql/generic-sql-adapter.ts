@@ -15,10 +15,15 @@ import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { AbstractQuery } from "../../query/query";
 import { createExecutor } from "./generic-sql-uow-executor";
-import { fromKysely, createKyselyUOWDecoder } from "../kysely/kysely-query";
-import { createKyselyUOWCompiler } from "../kysely/kysely-uow-compiler";
+import { createKyselyUOWDecoder } from "../kysely/kysely-query";
 import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
 import type { DriverConfig } from "./driver-config";
+import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
+import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
+import {
+  fromUnitOfWorkCompiler,
+  type UnitOfWorkFactory,
+} from "../shared/from-unit-of-work-compiler";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -123,19 +128,18 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   ): AbstractQuery<T, UnitOfWorkConfig> {
     this.#schemaNamespaceMap.set(schema, namespace);
 
-    const compiler = createKyselyUOWCompiler(this.driverConfig.databaseType, (ns) =>
+    const operationCompiler = new GenericSQLUOWOperationCompiler(this.driverConfig, (ns) =>
       ns ? this.createTableNameMapper(ns) : undefined,
     );
-    const executor = createExecutor(this.#driver, false);
-    const decoder = createKyselyUOWDecoder(this.driverConfig.databaseType);
 
-    return fromKysely(
-      schema,
-      compiler,
-      executor,
-      decoder,
-      this.uowConfig,
-      this.#schemaNamespaceMap,
-    );
+    const factory: UnitOfWorkFactory = {
+      compiler: createUOWCompilerFromOperationCompiler(operationCompiler),
+      executor: createExecutor(this.#driver, false),
+      decoder: createKyselyUOWDecoder(this.driverConfig.databaseType),
+      uowConfig: this.uowConfig,
+      schemaNamespaceMap: this.#schemaNamespaceMap,
+    };
+
+    return fromUnitOfWorkCompiler(schema, factory);
   }
 }

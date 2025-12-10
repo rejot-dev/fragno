@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { column, idColumn, schema } from "../../schema/create";
 import { DrizzleAdapter } from "./drizzle-adapter";
-import { PostgreSQLDriverConfig, BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
+import { NodePostgresDriverConfig, BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
 import type { Dialect } from "../../sql-driver/sql-driver";
 import type { DialectAdapter } from "../../sql-driver/dialect-adapter/dialect-adapter";
 import { DummyDriver } from "kysely";
@@ -29,7 +29,7 @@ describe("DrizzleAdapter", () => {
   it("should generate schema with settings table for postgresql", () => {
     const adapter = new DrizzleAdapter({
       dialect: createMockDialect(),
-      driverConfig: new PostgreSQLDriverConfig(),
+      driverConfig: new NodePostgresDriverConfig(),
     });
 
     const generator = adapter.createSchemaGenerator([{ schema: testSchema, namespace: "test" }]);
@@ -95,7 +95,7 @@ describe("DrizzleAdapter", () => {
   it("should use default path if not provided", () => {
     const adapter = new DrizzleAdapter({
       dialect: createMockDialect(),
-      driverConfig: new PostgreSQLDriverConfig(),
+      driverConfig: new NodePostgresDriverConfig(),
     });
 
     const generator = adapter.createSchemaGenerator([{ schema: testSchema, namespace: "myapp" }]);
@@ -107,7 +107,7 @@ describe("DrizzleAdapter", () => {
   it("should preserve original schema tables", () => {
     const adapter = new DrizzleAdapter({
       dialect: createMockDialect(),
-      driverConfig: new PostgreSQLDriverConfig(),
+      driverConfig: new NodePostgresDriverConfig(),
     });
 
     const generator = adapter.createSchemaGenerator([{ schema: testSchema, namespace: "test" }]);

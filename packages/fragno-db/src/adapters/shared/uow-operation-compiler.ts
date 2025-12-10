@@ -4,6 +4,7 @@ import type {
   CompiledMutation,
   RetrievalOperation,
   MutationOperation,
+  UOWCompiler,
 } from "../../query/unit-of-work";
 import { Cursor } from "../../query/cursor";
 import type { DriverConfig } from "../generic-sql/driver-config";
@@ -157,4 +158,54 @@ export abstract class UOWOperationCompiler<TCompiledQuery> {
     const mapper = this.getMapperForOperation(namespace);
     return mapper ? mapper.toPhysical(logicalName) : logicalName;
   }
+}
+
+/**
+ * Creates a UOWCompiler from a UOWOperationCompiler by dispatching operations
+ * to the appropriate specific compilation methods based on operation type.
+ *
+ * @template TCompiledQuery - The type of compiled query for the target ORM
+ * @param operationCompiler - The operation compiler to wrap
+ * @returns A UOWCompiler instance that delegates to the operation compiler
+ */
+export function createUOWCompilerFromOperationCompiler<TCompiledQuery>(
+  operationCompiler: UOWOperationCompiler<TCompiledQuery>,
+): UOWCompiler<TCompiledQuery> {
+  return {
+    compileRetrievalOperation(op: RetrievalOperation<AnySchema>): TCompiledQuery | null {
+      switch (op.type) {
+        case "count":
+          return operationCompiler.compileCount(op);
+        case "find":
+          return operationCompiler.compileFind(op);
+        default: {
+          const exhaustiveCheck: never = op;
+          throw new Error(
+            `Unknown retrieval operation type: ${(exhaustiveCheck as RetrievalOperation<AnySchema>).type}`,
+          );
+        }
+      }
+    },
+
+    compileMutationOperation(
+      op: MutationOperation<AnySchema>,
+    ): CompiledMutation<TCompiledQuery> | null {
+      switch (op.type) {
+        case "create":
+          return operationCompiler.compileCreate(op);
+        case "update":
+          return operationCompiler.compileUpdate(op);
+        case "delete":
+          return operationCompiler.compileDelete(op);
+        case "check":
+          return operationCompiler.compileCheck(op);
+        default: {
+          const exhaustiveCheck: never = op;
+          throw new Error(
+            `Unknown mutation operation type: ${(exhaustiveCheck as MutationOperation<AnySchema>).type}`,
+          );
+        }
+      }
+    },
+  };
 }
