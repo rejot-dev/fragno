@@ -55,7 +55,7 @@ describe("drizzle-query", () => {
   beforeAll(async () => {
     // Write schema to file and dynamically import it
     const { schemaModule, cleanup, drizzleSchemaTs } = await writeAndLoadSchema(
-      "drizzle-query",
+      "drizzle-query-auth",
       authSchema,
       "postgresql",
     );

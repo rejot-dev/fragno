@@ -914,7 +914,7 @@ describe("drizzle-uow-compiler", () => {
     beforeAll(async () => {
       // Write schema to file and dynamically import it
       const { schemaModule, cleanup } = await writeAndLoadSchema(
-        "drizzle-uow-compiler-defaults",
+        "drizzle-uow-compiler-postgresql-defaults",
         defaultsSchema,
         "postgresql",
       );
@@ -1072,7 +1072,7 @@ describe("drizzle-uow-compiler", () => {
     beforeAll(async () => {
       // Write schema to file and dynamically import it
       const { schemaModule, cleanup } = await writeAndLoadSchema(
-        "drizzle-uow-compiler-nested",
+        "drizzle-uow-compiler-postgresql-nested",
         nestedSchema,
         "postgresql",
       );
@@ -1267,7 +1267,7 @@ describe("drizzle-uow-compiler", () => {
     beforeAll(async () => {
       // Write schema to file and dynamically import it
       const { schemaModule, cleanup } = await writeAndLoadSchema(
-        "drizzle-uow-compiler-auth",
+        "drizzle-uow-compiler-postgresql-auth",
         authSchema,
         "postgresql",
       );

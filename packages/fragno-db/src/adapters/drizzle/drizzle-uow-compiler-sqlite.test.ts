@@ -919,7 +919,7 @@ describe("drizzle-uow-compiler", () => {
     beforeAll(async () => {
       // Write schema to file and dynamically import it
       const { schemaModule, cleanup } = await writeAndLoadSchema(
-        "drizzle-uow-compiler-defaults",
+        "drizzle-uow-compiler-sqlite-defaults",
         defaultsSchema,
         "sqlite",
       );
@@ -1082,7 +1082,7 @@ describe("drizzle-uow-compiler", () => {
     beforeAll(async () => {
       // Write schema to file and dynamically import it
       const { schemaModule, cleanup } = await writeAndLoadSchema(
-        "drizzle-uow-compiler-nested",
+        "drizzle-uow-compiler-sqlite-nested",
         nestedSchema,
         "sqlite",
       );
@@ -1278,7 +1278,7 @@ describe("drizzle-uow-compiler", () => {
     beforeAll(async () => {
       // Write schema to file and dynamically import it
       const { schemaModule, cleanup } = await writeAndLoadSchema(
-        "drizzle-uow-compiler-auth",
+        "drizzle-uow-compiler-sqlite-auth",
         authSchema,
         "sqlite",
       );

@@ -6,7 +6,6 @@ import type {
   RetrievalOperation,
   UOWCompiler,
 } from "../../query/unit-of-work";
-import { createKyselyQueryCompiler } from "./kysely-query-compiler";
 import { createKyselyQueryBuilder, buildWhere } from "./kysely-query-builder";
 import { buildCondition, type Condition } from "../../query/condition-builder";
 import { decodeCursor, serializeCursorValues } from "../../query/cursor";
@@ -14,6 +13,7 @@ import type { AnySelectClause } from "../../query/query";
 import { createKysely } from "./kysely-shared";
 import { createTableNameMapper, type TableNameMapper } from "../shared/table-name-mapper";
 import type { SQLProvider } from "../../shared/providers";
+import { buildFindOptions } from "../../query/orm/orm";
 
 /**
  * Create a Kysely-specific Unit of Work compiler
@@ -44,30 +44,9 @@ export function createKyselyUOWCompiler(
         : undefined;
   }
 
-  // Cache query compilers and builders by namespace for performance
-  const compilerCache = new Map<string | undefined, ReturnType<typeof createKyselyQueryCompiler>>();
-  const builderCache = new Map<string | undefined, ReturnType<typeof createKyselyQueryBuilder>>();
-
-  function getQueryCompiler(schema: AnySchema, namespace: string | undefined) {
-    const cacheKey = namespace;
-    let compiler = compilerCache.get(cacheKey);
-    if (!compiler) {
-      const opMapper = getMapperForOperation(namespace);
-      compiler = createKyselyQueryCompiler(schema, provider, opMapper);
-      compilerCache.set(cacheKey, compiler);
-    }
-    return compiler;
-  }
-
   function getQueryBuilder(namespace: string | undefined) {
-    const cacheKey = namespace;
-    let builder = builderCache.get(cacheKey);
-    if (!builder) {
-      const opMapper = getMapperForOperation(namespace);
-      builder = createKyselyQueryBuilder(kysely, provider, opMapper);
-      builderCache.set(cacheKey, builder);
-    }
-    return builder;
+    const opMapper = getMapperForOperation(namespace);
+    return createKyselyQueryBuilder(kysely, provider, opMapper);
   }
 
   function toTable(schema: AnySchema, name: unknown) {
@@ -80,12 +59,21 @@ export function createKyselyUOWCompiler(
 
   return {
     compileRetrievalOperation(op: RetrievalOperation<AnySchema>): CompiledQuery | null {
-      const queryCompiler = getQueryCompiler(op.schema, op.namespace);
+      const queryBuilder = getQueryBuilder(op.namespace);
+
       switch (op.type) {
         case "count": {
-          return queryCompiler.count(op.table.name, {
-            where: op.options.where,
-          });
+          let conditions = op.options.where
+            ? buildCondition(op.table.columns, op.options.where)
+            : undefined;
+          if (conditions === true) {
+            conditions = undefined;
+          }
+          if (conditions === false) {
+            return null;
+          }
+
+          return queryBuilder.count(op.table, { where: conditions });
         }
 
         case "find": {
@@ -193,9 +181,8 @@ export function createKyselyUOWCompiler(
           // Only apply this when using the high-level findWithCursor() API (op.withCursor === true)
           const effectiveLimit = pageSize && op.withCursor ? pageSize + 1 : pageSize;
 
-          // When we have joins or need to bypass buildFindOptions, use operation-specific queryBuilder
+          // When we have joins, use the query builder directly
           if (join && join.length > 0) {
-            const queryBuilder = getQueryBuilder(op.namespace);
             return queryBuilder.findMany(op.table, {
               // Safe cast: select from UOW matches SimplifyFindOptions requirement
               select: (findManyOptions.select ?? true) as AnySelectClause,
@@ -206,12 +193,19 @@ export function createKyselyUOWCompiler(
             });
           }
 
-          return queryCompiler.findMany(op.table.name, {
+          // Otherwise, use buildFindOptions to process the query options
+          const compiledOptions = buildFindOptions(op.table, {
             ...findManyOptions,
             where: combinedWhere ? () => combinedWhere! : undefined,
             orderBy: orderBy?.map(([col, dir]) => [col.ormName, dir]),
             limit: effectiveLimit,
           });
+
+          if (compiledOptions === false) {
+            return null;
+          }
+
+          return queryBuilder.findMany(op.table, compiledOptions);
         }
       }
     },
@@ -219,15 +213,18 @@ export function createKyselyUOWCompiler(
     compileMutationOperation(
       op: MutationOperation<AnySchema>,
     ): CompiledMutation<CompiledQuery> | null {
-      const queryCompiler = getQueryCompiler(op.schema, op.namespace);
+      const queryBuilder = getQueryBuilder(op.namespace);
+
       switch (op.type) {
-        case "create":
-          // queryCompiler.create() calls encodeValues() which handles runtime defaults
+        case "create": {
+          const table = toTable(op.schema, op.table);
+          // queryBuilder.create() calls encodeValues() which handles runtime defaults
           return {
-            query: queryCompiler.create(op.table, op.values),
+            query: queryBuilder.create(table, op.values),
             expectedAffectedRows: null, // creates don't need affected row checks
             expectedReturnedRows: null,
           };
+        }
 
         case "update": {
           const table = toTable(op.schema, op.table);
@@ -238,29 +235,33 @@ export function createKyselyUOWCompiler(
           const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
 
           // Build WHERE clause that filters by ID and optionally by version
-          const whereClause =
+          const conditionsResult =
             versionToCheck !== undefined
-              ? () =>
-                  buildCondition(table.columns, (eb) =>
-                    eb.and(
-                      eb(idColumn.ormName, "=", externalId),
-                      eb(versionColumn.ormName, "=", versionToCheck),
-                    ),
-                  )
-              : () => buildCondition(table.columns, (eb) => eb(idColumn.ormName, "=", externalId));
+              ? buildCondition(table.columns, (eb) =>
+                  eb.and(
+                    eb(idColumn.ormName, "=", externalId),
+                    eb(versionColumn.ormName, "=", versionToCheck),
+                  ),
+                )
+              : buildCondition(table.columns, (eb) => eb(idColumn.ormName, "=", externalId));
 
-          const query = queryCompiler.updateMany(op.table, {
-            where: whereClause,
+          if (conditionsResult === false) {
+            return null;
+          }
+
+          const conditions: Condition | undefined =
+            conditionsResult === true ? undefined : conditionsResult;
+
+          const query = queryBuilder.updateMany(table, {
             set: op.set,
+            where: conditions,
           });
 
-          return query
-            ? {
-                query,
-                expectedAffectedRows: op.checkVersion ? 1 : null,
-                expectedReturnedRows: null,
-              }
-            : null;
+          return {
+            query,
+            expectedAffectedRows: op.checkVersion ? 1 : null,
+            expectedReturnedRows: null,
+          };
         }
 
         case "delete": {
@@ -273,28 +274,32 @@ export function createKyselyUOWCompiler(
           const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
 
           // Build WHERE clause that filters by ID and optionally by version
-          const whereClause =
+          const conditionsResult =
             versionToCheck !== undefined
-              ? () =>
-                  buildCondition(table.columns, (eb) =>
-                    eb.and(
-                      eb(idColumn.ormName, "=", externalId),
-                      eb(versionColumn.ormName, "=", versionToCheck),
-                    ),
-                  )
-              : () => buildCondition(table.columns, (eb) => eb(idColumn.ormName, "=", externalId));
+              ? buildCondition(table.columns, (eb) =>
+                  eb.and(
+                    eb(idColumn.ormName, "=", externalId),
+                    eb(versionColumn.ormName, "=", versionToCheck),
+                  ),
+                )
+              : buildCondition(table.columns, (eb) => eb(idColumn.ormName, "=", externalId));
 
-          const query = queryCompiler.deleteMany(op.table, {
-            where: whereClause,
+          if (conditionsResult === false) {
+            return null;
+          }
+
+          const conditions: Condition | undefined =
+            conditionsResult === true ? undefined : conditionsResult;
+
+          const query = queryBuilder.deleteMany(table, {
+            where: conditions,
           });
 
-          return query
-            ? {
-                query,
-                expectedAffectedRows: op.checkVersion ? 1 : null,
-                expectedReturnedRows: null,
-              }
-            : null;
+          return {
+            query,
+            expectedAffectedRows: op.checkVersion ? 1 : null,
+            expectedReturnedRows: null,
+          };
         }
 
         case "check": {
