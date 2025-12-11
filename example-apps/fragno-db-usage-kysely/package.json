@@ -17,9 +17,9 @@
     "types:check": "tsc --noEmit",
     "db:migrate": "pnpm run db:migrate:kysely && pnpm run db:migrate:fragno",
     "db:migrate:kysely": "kysely migrate up",
-    "db:generate:fragno": "node --import tsx ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts -o ./migrations",
-    "db:migrate:fragno": "node --import tsx ../../apps/fragno-cli/src/cli.ts db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
-    "db:generate": "node --import tsx ../../apps/fragno-cli/src/cli.ts db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts -o ./migrations",
+    "db:migrate:fragno": "fragno-cli db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:generate": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "test": "vitest run"
   },
   "type": "module",

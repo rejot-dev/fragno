@@ -13,6 +13,7 @@ import { schema, idColumn, column } from "../schema/create";
 
 // Constants for Fragno's internal settings table
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
+// FIXME: In some places we simply use empty string "" as namespace, which is not correct.
 export const SETTINGS_NAMESPACE = "fragno-db-settings" as const;
 
 // Settings schema for storing Fragno's internal key-value settings

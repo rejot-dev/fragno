@@ -359,17 +359,17 @@ describe("DrizzleAdapter SQLite", () => {
     expect(email).toMatchObject({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       user_id: expect.objectContaining({
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       email: "test@example.com",
       is_primary: true,
       user: {
         id: expect.objectContaining({
           externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-          internalId: expect.any(Number),
+          internalId: expect.any(BigInt),
         }),
         name: "Email User",
         age: 20,
@@ -452,7 +452,7 @@ describe("DrizzleAdapter SQLite", () => {
     expect(comment).toMatchObject({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       text: "Great post!",
       // Post join (first level)

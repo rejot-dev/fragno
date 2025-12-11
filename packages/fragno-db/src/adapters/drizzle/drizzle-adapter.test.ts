@@ -16,6 +16,12 @@ function createMockDialect(): Dialect {
   return {
     createDriver: () => new DummyDriver(),
     createAdapter: () => adapter,
+    createQueryCompiler: () => ({
+      compileQuery: () => ({
+        sql: "",
+        parameters: [],
+      }),
+    }),
   };
 }
 

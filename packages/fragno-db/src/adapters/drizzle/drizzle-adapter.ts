@@ -10,11 +10,6 @@ import {
   type UnitOfWorkConfig,
 } from "../generic-sql/generic-sql-adapter";
 
-export interface DrizzleConfig {
-  db: unknown | (() => unknown | Promise<unknown>);
-  provider: "sqlite" | "mysql" | "postgresql";
-}
-
 export class DrizzleAdapter extends GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   constructor(options: GenericSQLOptions) {
     super(options);
@@ -24,7 +19,7 @@ export class DrizzleAdapter extends GenericSQLAdapter implements DatabaseAdapter
     return createTableNameMapper(namespace, false);
   }
 
-  override createSchemaGenerator(
+  createSchemaGenerator(
     fragments: { schema: AnySchema; namespace: string }[],
     options?: { path?: string },
   ): SchemaGenerator {

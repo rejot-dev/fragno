@@ -54,6 +54,28 @@ export interface PreparedMigrations {
     toVersion?: number,
     options?: ExecuteOptions,
   ): Promise<void>;
+
+  /**
+   * Get the SQL for a migration from one version to another without executing it.
+   * Useful for generating migration files or previewing changes.
+   *
+   * @param fromVersion - Current database version (0 for new database)
+   * @param toVersion - Target schema version (defaults to schema.version)
+   * @param options - Optional execution options (affects version update SQL)
+   * @returns SQL string for the migration
+   */
+  getSQL(fromVersion: number, toVersion?: number, options?: ExecuteOptions): string;
+
+  /**
+   * Get the compiled migration for a version range.
+   * Returns both the SQL statements and the version information.
+   *
+   * @param fromVersion - Current database version (0 for new database)
+   * @param toVersion - Target schema version (defaults to schema.version)
+   * @param options - Optional execution options (affects version update SQL)
+   * @returns Compiled migration with statements and version info
+   */
+  compile(fromVersion: number, toVersion?: number, options?: ExecuteOptions): CompiledMigration;
 }
 
 /**
@@ -154,6 +176,21 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
 
       // Execute the migration
       await executeMigration(driverToUse, migration);
+    },
+
+    getSQL(fromVersion, toVersion, options) {
+      const updateVersionInMigration = options?.updateVersionInMigration ?? defaultUpdateVersion;
+      const targetVersion = toVersion ?? schema.version;
+
+      const migration = compile(fromVersion, targetVersion, updateVersionInMigration);
+      return migration.statements.map((stmt) => stmt.sql + ";").join("\n\n");
+    },
+
+    compile(fromVersion, toVersion, options) {
+      const updateVersionInMigration = options?.updateVersionInMigration ?? defaultUpdateVersion;
+      const targetVersion = toVersion ?? schema.version;
+
+      return compile(fromVersion, targetVersion, updateVersionInMigration);
     },
   };
 }

@@ -23,6 +23,11 @@
       "types": "./dist/adapters/generic-sql/driver-config.d.ts",
       "default": "./dist/adapters/generic-sql/driver-config.js"
     },
+    "./sql-driver": {
+      "development": "./src/sql-driver/sql-driver.ts",
+      "types": "./dist/sql-driver/sql-driver.d.ts",
+      "default": "./dist/sql-driver/sql-driver.js"
+    },
     "./dialects": {
       "development": "./src/sql-driver/dialects/dialects.ts",
       "types": "./dist/sql-driver/dialects/dialects.d.ts",

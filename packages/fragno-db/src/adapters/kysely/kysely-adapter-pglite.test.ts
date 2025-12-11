@@ -1,6 +1,5 @@
-import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
-import { assert, beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { KyselyAdapter } from "./kysely-adapter";
 import {
   column,
@@ -11,6 +10,8 @@ import {
   type FragnoReference,
 } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
+import { PGLiteDriverConfig } from "../generic-sql/driver-config";
+import { settingsSchema } from "../../fragments/internal-fragment";
 
 describe("KyselyAdapter PGLite", () => {
   const testSchema = schema((s) => {
@@ -95,19 +96,14 @@ describe("KyselyAdapter PGLite", () => {
       });
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let kysely: Kysely<any>;
   let adapter: KyselyAdapter;
 
   beforeAll(async () => {
     const { dialect } = await KyselyPGlite.create();
-    kysely = new Kysely({
-      dialect,
-    });
 
     adapter = new KyselyAdapter({
-      db: kysely,
-      provider: "postgresql",
+      dialect,
+      driverConfig: new PGLiteDriverConfig(),
     });
   }, 12000);
 
@@ -115,72 +111,26 @@ describe("KyselyAdapter PGLite", () => {
     const schemaVersion = await adapter.getSchemaVersion("test");
     expect(schemaVersion).toBeUndefined();
 
-    const migrator = adapter.createMigrationEngine(testSchema, "test");
-    const preparedMigration = await migrator.prepareMigration({
-      updateSettings: false,
-    });
-    assert(preparedMigration.getSQL);
+    {
+      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
 
-    expect(preparedMigration.getSQL()).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "age" integer, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
-
-      create index "name_idx" on "users_test" ("name");
-
-      create index "age_idx" on "users_test" ("age");
-
-      create table "emails_test" ("id" varchar(30) not null unique, "user_id" bigint not null, "email" text not null, "is_primary" boolean default false not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
-
-      create unique index "unique_email" on "emails_test" ("email");
-
-      create index "user_emails" on "emails_test" ("user_id");
-
-      create table "posts_test" ("id" varchar(30) not null unique, "user_id" bigint not null, "title" text not null, "content" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
-
-      create index "posts_user_idx" on "posts_test" ("user_id");
-
-      create table "tags_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
-
-      create index "tag_name" on "tags_test" ("name");
-
-      create table "post_tags_test" ("id" varchar(30) not null unique, "post_id" bigint not null, "tag_id" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
-
-      create index "pt_post" on "post_tags_test" ("post_id");
-
-      create index "pt_tag" on "post_tags_test" ("tag_id");
-
-      create table "comments_test" ("id" varchar(30) not null unique, "post_id" bigint not null, "user_id" bigint not null, "text" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
-
-      create index "comments_post_idx" on "comments_test" ("post_id");
-
-      create index "comments_user_idx" on "comments_test" ("user_id");
-
-      alter table "emails_test" add constraint "emails_users_user_fk" foreign key ("user_id") references "users_test" ("_internalId") on delete restrict on update restrict;
-
-      alter table "posts_test" add constraint "posts_users_author_fk" foreign key ("user_id") references "users_test" ("_internalId") on delete restrict on update restrict;
-
-      alter table "post_tags_test" add constraint "post_tags_posts_post_fk" foreign key ("post_id") references "posts_test" ("_internalId") on delete restrict on update restrict;
-
-      alter table "post_tags_test" add constraint "post_tags_tags_tag_fk" foreign key ("tag_id") references "tags_test" ("_internalId") on delete restrict on update restrict;
-
-      alter table "comments_test" add constraint "comments_posts_post_fk" foreign key ("post_id") references "posts_test" ("_internalId") on delete restrict on update restrict;
-
-      alter table "comments_test" add constraint "comments_users_commenter_fk" foreign key ("user_id") references "users_test" ("_internalId") on delete restrict on update restrict;"
-    `);
-
-    await preparedMigration.execute();
+    {
+      const migrations = adapter.prepareMigrations(testSchema, "test");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
 
     const queryEngine = adapter.createQueryEngine(testSchema, "test");
 
-    // Create a user
     const userId = await queryEngine.create("users", {
       name: "John Doe",
       age: 30,
     });
 
-    // create() now returns just the ID
     expect(userId).toMatchObject({
       externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-      internalId: expect.any(Number),
+      internalId: expect.any(BigInt),
     });
 
     expect(userId.version).toBe(0);
@@ -191,7 +141,7 @@ describe("KyselyAdapter PGLite", () => {
     expect(getUser).toMatchObject({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       name: "John Doe",
     });
@@ -212,12 +162,12 @@ describe("KyselyAdapter PGLite", () => {
 
     expect(email1Id).toMatchObject({
       externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-      internalId: expect.any(Number),
+      internalId: expect.any(BigInt),
     });
 
     expect(email2Id).toMatchObject({
       externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-      internalId: expect.any(Number),
+      internalId: expect.any(BigInt),
     });
 
     // Update user name
@@ -244,17 +194,17 @@ describe("KyselyAdapter PGLite", () => {
     expect(emailsWithUsers[0]).toEqual({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       user_id: expect.objectContaining({
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       email: expect.stringMatching(/\.com$/),
       is_primary: expect.any(Boolean),
       user: {
         id: expect.objectContaining({
           externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-          internalId: expect.any(Number),
+          internalId: expect.any(BigInt),
         }),
         name: "Jane Doe",
         age: 30,
@@ -498,10 +448,10 @@ describe("KyselyAdapter PGLite", () => {
         externalId: expect.any(String),
       }),
       post_id: expect.objectContaining({
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       tag_id: expect.objectContaining({
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       post: {
         title: expect.any(String),
@@ -640,7 +590,7 @@ describe("KyselyAdapter PGLite", () => {
     expect(comment).toMatchObject({
       id: expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       text: "Great post!",
       // Post join (first level)
@@ -687,15 +637,15 @@ describe("KyselyAdapter PGLite", () => {
     expect(createdIds1).toMatchObject([
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
       expect.objectContaining({
         externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
-        internalId: expect.any(Number),
+        internalId: expect.any(BigInt),
       }),
     ]);
 

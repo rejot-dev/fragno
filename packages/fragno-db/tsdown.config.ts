@@ -12,6 +12,7 @@ export default defineConfig({
     "./src/adapters/drizzle/generate.ts",
     "./src/adapters/generic-sql/generic-sql-adapter.ts",
     "./src/adapters/generic-sql/driver-config.ts",
+    "./src/sql-driver/sql-driver.ts",
     "./src/sql-driver/dialects/dialects.ts",
     "./src/sql-driver/dialects/durable-object-dialect.ts",
     "./src/query/unit-of-work.ts",

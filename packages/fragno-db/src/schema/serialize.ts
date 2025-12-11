@@ -328,6 +328,10 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
     return BigInt(value);
   }
 
+  if (col.type === "bigint" && typeof value === "number") {
+    return BigInt(value);
+  }
+
   if (col.type === "binary" && value instanceof Buffer) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   }

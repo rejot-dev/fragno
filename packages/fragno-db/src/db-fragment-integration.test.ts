@@ -1,4 +1,3 @@
-import { Kysely } from "kysely";
 import { SQLocalKysely } from "sqlocal/kysely";
 import { assert, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -9,6 +8,7 @@ import { defineRoutes } from "@fragno-dev/core/route";
 import { withDatabase } from "./with-database";
 import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
 import { ConcurrencyConflictError } from "./query/execute-unit-of-work";
+import { SQLocalDriverConfig } from "./adapters/generic-sql/driver-config";
 
 describe.sequential("Database Fragment Integration", () => {
   // Schema 1: Users fragment
@@ -181,8 +181,6 @@ describe.sequential("Database Fragment Integration", () => {
   ]);
 
   let adapter: KyselyAdapter;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let kysely: Kysely<any>;
   let usersFragment: ReturnType<typeof instantiateUsersFragment>;
   let ordersFragment: ReturnType<typeof instantiateOrdersFragment>;
 
@@ -212,23 +210,21 @@ describe.sequential("Database Fragment Integration", () => {
   beforeAll(async () => {
     // Create in-memory SQLite database with Kysely
     const { dialect } = new SQLocalKysely(":memory:");
-    kysely = new Kysely({
-      dialect,
-    });
-
     adapter = new KyselyAdapter({
-      db: kysely,
-      provider: "sqlite",
+      dialect,
+      driverConfig: new SQLocalDriverConfig(),
     });
 
     // Run migrations for both schemas
-    const usersMigrator = adapter.createMigrationEngine(usersSchema, "users");
-    const usersPrep = await usersMigrator.prepareMigration({ updateSettings: false });
-    await usersPrep.execute();
+    const usersPreparedMigrations = adapter.prepareMigrations(usersSchema, "users");
+    await usersPreparedMigrations.execute(0, usersSchema.version, {
+      updateVersionInMigration: false,
+    });
 
-    const ordersMigrator = adapter.createMigrationEngine(ordersSchema, "orders");
-    const ordersPrep = await ordersMigrator.prepareMigration({ updateSettings: false });
-    await ordersPrep.execute();
+    const ordersPreparedMigrations = adapter.prepareMigrations(ordersSchema, "orders");
+    await ordersPreparedMigrations.execute(0, ordersSchema.version, {
+      updateVersionInMigration: false,
+    });
 
     // Instantiate fragments with shared database adapter
     const options: FragnoPublicConfigWithDatabase = {

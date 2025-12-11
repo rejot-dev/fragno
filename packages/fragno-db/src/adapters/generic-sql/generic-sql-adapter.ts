@@ -6,12 +6,10 @@ import {
   type DatabaseContextStorage,
   type TableNameMapper,
 } from "../adapters";
-import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
+import type { CompiledQuery, Dialect, QueryResult } from "../../sql-driver/sql-driver";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { sql } from "../../sql-driver/sql";
 import type { AnySchema } from "../../schema/create";
-import type { Migrator } from "../../migration-engine/create";
-import type { SchemaGenerator } from "../../schema-generator/schema-generator";
 import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { AbstractQuery } from "../../query/query";
 import { createExecutor } from "./generic-sql-uow-executor";
@@ -78,12 +76,8 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   }
 
   async isConnectionHealthy(): Promise<boolean> {
-    const result = await this.#driver.executeQuery(sql`SELECT 1 as healthy`.build());
+    const result = await this.#driver.executeQuery(sql`SELECT 1 as healthy`.compile(this.dialect));
     return result.rows[0]["healthy"] === 1;
-  }
-
-  createMigrationEngine(_schema: AnySchema, _namespace: string): Migrator {
-    throw new Error("Not implemented");
   }
 
   prepareMigrations<T extends AnySchema>(schema: T, namespace: string): PreparedMigrations {
@@ -96,19 +90,26 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     });
   }
 
-  createSchemaGenerator(_fragments: { schema: AnySchema; namespace: string }[]): SchemaGenerator {
-    throw new Error("Not implemented");
-  }
-
   createTableNameMapper(namespace: string): TableNameMapper {
     return createTableNameMapper(namespace, false);
   }
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {
     const key = `${namespace}.schema_version`;
-    const result = await this.#driver.executeQuery(
-      sql`SELECT value FROM fragno_db_settings WHERE key = ${key}`.build(),
+    const query = sql`SELECT value FROM fragno_db_settings WHERE key = ${key};`.compile(
+      this.dialect,
     );
+
+    let result: QueryResult<Record<string, unknown>>;
+    try {
+      result = await this.#driver.executeQuery(query);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("fragno_db_settings")) {
+        return undefined;
+      }
+      throw error;
+    }
+
     const value = result.rows[0]["value"];
 
     if (!value) {

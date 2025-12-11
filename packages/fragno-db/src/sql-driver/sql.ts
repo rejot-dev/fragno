@@ -1,47 +1,57 @@
-import type { CompiledQuery } from "./sql-driver";
+import type { CompiledQuery, Dialect } from "./sql-driver";
+import {
+  sql as kyselySql,
+  type QueryExecutor,
+  type CompiledQuery as KyselyCompiledQuery,
+} from "kysely";
 
+/**
+ * Wrapper around Kysely's RawBuilder that provides a compile() method with a dialect parameter.
+ */
 export class RawBuilder {
-  #sql: string;
-  #parameters: unknown[];
+  #kyselyBuilder: ReturnType<typeof kyselySql>;
 
-  constructor(sql: string, parameters: unknown[] = []) {
-    this.#sql = sql;
-    this.#parameters = parameters;
+  constructor(kyselyBuilder: ReturnType<typeof kyselySql>) {
+    this.#kyselyBuilder = kyselyBuilder;
   }
 
-  get sql(): string {
-    return this.#sql;
-  }
+  /**
+   * Compiles the SQL query using the provided Kysely dialect.
+   * Creates a minimal query executor with the dialect's adapter and query compiler.
+   *
+   * @param dialect - Kysely dialect (e.g., SqliteDialect, PostgresDialect, MysqlDialect)
+   * @returns Compiled query with SQL string and parameters
+   */
+  compile(dialect: Dialect): CompiledQuery {
+    const queryCompiler = dialect.createQueryCompiler();
 
-  get parameters(): unknown[] {
-    return this.#parameters;
-  }
-
-  build(): CompiledQuery {
-    return {
-      sql: this.#sql,
-      parameters: this.#parameters,
-    };
+    return this.#kyselyBuilder.compile({
+      getExecutor(): QueryExecutor {
+        return {
+          transformQuery(node, _queryId) {
+            return node;
+          },
+          compileQuery(node, queryId) {
+            return queryCompiler.compileQuery(node, queryId) as KyselyCompiledQuery;
+          },
+        } as QueryExecutor;
+      },
+    });
   }
 }
 
 /**
  * Tagged template function for building SQL queries with parameters.
+ * Wraps Kysely's sql function to provide a compile() method without arguments.
  *
  * @example
  * ```ts
  * const userId = 123;
  * const query = sql`SELECT * FROM users WHERE id = ${userId}`;
+ * const compiled = query.compile();
  * ```
  */
 export function sql(strings: TemplateStringsArray, ...values: unknown[]): RawBuilder {
-  let sqlString = strings[0];
-  const parameters: unknown[] = [];
-
-  for (let i = 0; i < values.length; i++) {
-    sqlString += `?${strings[i + 1]}`;
-    parameters.push(values[i]);
-  }
-
-  return new RawBuilder(sqlString, parameters);
+  const kyselyBuilder = kyselySql(strings, ...values);
+  return new RawBuilder(kyselyBuilder);
 }

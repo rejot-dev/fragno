@@ -1,8 +1,8 @@
-import { Kysely } from "kysely";
 import { SQLocalKysely } from "sqlocal/kysely";
 import { beforeAll, describe, expect, it } from "vitest";
 import { KyselyAdapter } from "./kysely-adapter";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 
 describe("KyselyAdapter SQLite", () => {
   const testSchema = schema((s) => {
@@ -33,27 +33,18 @@ describe("KyselyAdapter SQLite", () => {
       });
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let kysely: Kysely<any>;
   let adapter: KyselyAdapter;
 
   beforeAll(async () => {
     const { dialect } = new SQLocalKysely(":memory:");
-    kysely = new Kysely({
-      dialect,
-    });
-
     adapter = new KyselyAdapter({
-      db: kysely,
-      provider: "sqlite",
+      dialect,
+      driverConfig: new SQLocalDriverConfig(),
     });
 
     // Run migrations
-    const migrator = adapter.createMigrationEngine(testSchema, "test");
-    const preparedMigration = await migrator.prepareMigration({
-      updateSettings: false,
-    });
-    await preparedMigration.execute();
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test");
+    await preparedMigrations.execute(0, testSchema.version, { updateVersionInMigration: false });
   });
 
   // TODO(Wilco): The SQLocal adapter does not return the number of affected rows for updates/deletes.
