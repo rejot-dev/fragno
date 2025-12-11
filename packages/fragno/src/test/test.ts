@@ -6,7 +6,11 @@ import {
   type FragmentDefinition,
   type ServiceConstructorFn,
 } from "../api/fragment-definition-builder";
-import { instantiateFragment, type FragnoInstantiatedFragment } from "../api/fragment-instantiator";
+import {
+  instantiateFragment,
+  type FragnoInstantiatedFragment,
+  type AnyFragnoInstantiatedFragment,
+} from "../api/fragment-instantiator";
 import type { BoundServices } from "../api/bind-services";
 
 // Re-export for convenience
@@ -47,6 +51,8 @@ export function withTestUtils() {
     TServiceThisContext extends RequestThisContext,
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
+    TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+    TInstantiatedFragment extends AnyFragnoInstantiatedFragment = AnyFragnoInstantiatedFragment,
   >(
     builder: FragmentDefinitionBuilder<
       TConfig,
@@ -58,7 +64,9 @@ export function withTestUtils() {
       TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
-      TRequestStorage
+      TRequestStorage,
+      TLinkedFragments,
+      TInstantiatedFragment
     >,
   ): FragmentDefinitionBuilder<
     TConfig,
@@ -70,7 +78,9 @@ export function withTestUtils() {
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments,
+    TInstantiatedFragment
   > => {
     // Get the current base services factory
     const currentBaseDef = builder.build();
@@ -113,7 +123,9 @@ export function withTestUtils() {
       TPrivateServices,
       TServiceThisContext,
       THandlerThisContext,
-      TRequestStorage
+      TRequestStorage,
+      TLinkedFragments,
+      TInstantiatedFragment
     >(builder.name, {
       dependencies: currentBaseDef.dependencies,
       baseServices: newBaseServices,
@@ -122,6 +134,7 @@ export function withTestUtils() {
       serviceDependencies: currentBaseDef.serviceDependencies,
       createRequestStorage: currentBaseDef.createRequestStorage,
       createThisContext: currentBaseDef.createThisContext,
+      creator: currentBaseDef.creator,
     });
   };
 }
@@ -200,6 +213,8 @@ export function createFragmentForTest<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+  TInstantiatedFragment extends AnyFragnoInstantiatedFragment = AnyFragnoInstantiatedFragment,
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -211,18 +226,21 @@ export function createFragmentForTest<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments,
+    TInstantiatedFragment
   >,
   routesOrFactories: TRoutesOrFactories,
   options: CreateFragmentForTestOptions<TConfig, TOptions, TServiceDependencies>,
-): FragnoInstantiatedFragment<
-  FlattenRouteFactories<TRoutesOrFactories>,
-  TDeps,
-  BoundServices<TBaseServices & TServices>,
-  TServiceThisContext,
-  THandlerThisContext,
-  TRequestStorage
-> {
+): TInstantiatedFragment &
+  FragnoInstantiatedFragment<
+    FlattenRouteFactories<TRoutesOrFactories>,
+    TDeps,
+    BoundServices<TBaseServices & TServices>,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage
+  > {
   const { config, options: fragmentOptions = {} as TOptions, serviceImplementations } = options;
 
   // Use default mountRoute for testing if not provided

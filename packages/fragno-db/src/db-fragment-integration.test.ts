@@ -182,6 +182,7 @@ describe.sequential("Database Fragment Integration", () => {
 
   let adapter: KyselyAdapter;
   let usersFragment: ReturnType<typeof instantiateUsersFragment>;
+  //   ^?
   let ordersFragment: ReturnType<typeof instantiateOrdersFragment>;
 
   // Shared state between tests

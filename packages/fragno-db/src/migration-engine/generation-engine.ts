@@ -11,6 +11,7 @@ import {
   SETTINGS_NAMESPACE,
 } from "../fragments/internal-fragment";
 import { instantiate } from "@fragno-dev/core";
+import { addDatabaseMethods } from "../with-database";
 
 export interface GenerationEngineResult {
   schema: string;
@@ -108,20 +109,20 @@ export async function generateMigrationsOrSchema<
   }
 
   // Use the internal fragment for settings management
-  const internalFragment = instantiate(internalFragmentDef)
-    .withConfig({})
-    .withOptions({ databaseAdapter: adapter })
-    .build();
+  const internalFragment = addDatabaseMethods(
+    instantiate(internalFragmentDef)
+      .withConfig({})
+      .withOptions({ databaseAdapter: adapter })
+      .build(),
+  );
 
   let settingsSourceVersion: number;
   try {
-    const result = await internalFragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const v = internalFragment.services.settingsService.get(SETTINGS_NAMESPACE, "version");
-        await executeRetrieve();
+    const result = await internalFragment.uow(async ({ executeRetrieve }) => {
+      const v = internalFragment.services.settingsService.get(SETTINGS_NAMESPACE, "version");
+      await executeRetrieve();
 
-        return v;
-      });
+      return v;
     });
 
     if (!result) {

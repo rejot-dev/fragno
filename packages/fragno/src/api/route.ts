@@ -182,18 +182,20 @@ export type AnyFragmentDefinition = FragmentDefinition<
   any,
   any,
   any,
+  any,
+  any,
   any
 >;
 
 // Extract config from FragmentDefinition
 export type ExtractFragmentConfig<T> =
-  T extends FragmentDefinition<infer TConfig, any, any, any, any, any, any, any, any, any>
+  T extends FragmentDefinition<infer TConfig, any, any, any, any, any, any, any, any, any, any, any>
     ? TConfig
     : never;
 
 // Extract deps from FragmentDefinition
 export type ExtractFragmentDeps<T> =
-  T extends FragmentDefinition<any, any, infer TDeps, any, any, any, any, any, any, any>
+  T extends FragmentDefinition<any, any, infer TDeps, any, any, any, any, any, any, any, any, any>
     ? TDeps
     : never;
 
@@ -207,6 +209,8 @@ export type ExtractFragmentServices<T> =
     any,
     infer TBaseServices,
     infer TServices,
+    any,
+    any,
     any,
     any,
     any,
@@ -228,6 +232,8 @@ export type ExtractFragmentServiceDeps<T> =
     any,
     any,
     any,
+    any,
+    any,
     any
   >
     ? TServiceDependencies
@@ -244,6 +250,8 @@ export type ExtractFragmentServiceThisContext<T> =
     any,
     any,
     infer TServiceThisContext,
+    any,
+    any,
     any,
     any
   >
@@ -262,6 +270,8 @@ export type ExtractFragmentHandlerThisContext<T> =
     any,
     any,
     infer THandlerThisContext,
+    any,
+    any,
     any
   >
     ? THandlerThisContext

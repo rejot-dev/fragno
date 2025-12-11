@@ -148,6 +148,11 @@ export type { BoundServices } from "@fragno-dev/core";
 export { internalFragmentDef } from "./fragments/internal-fragment";
 export type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
+export {
+  DatabaseFragnoInstantiatedFragment,
+  databaseFragnoInstantiatedFragmentCreator,
+} from "./db-fragment-instantiator";
+
 export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,

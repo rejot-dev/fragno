@@ -7,6 +7,7 @@ import type {
   RequestThisContext,
   FragnoPublicConfig,
   AnyFragnoInstantiatedFragment,
+  ServiceContext,
 } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
@@ -18,6 +19,11 @@ import {
   type AwaitedPromisesInObject,
   type ExecuteRestrictedUnitOfWorkOptions,
 } from "./query/execute-unit-of-work";
+import {
+  databaseFragnoInstantiatedFragmentCreator,
+  type DatabaseFragnoInstantiatedFragment,
+} from "./db-fragment-instantiator";
+import type { AnyFragnoRouteConfig } from "@fragno-dev/core/route";
 
 /**
  * Extended FragnoPublicConfig that includes a database adapter.
@@ -49,6 +55,23 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
    * Create a new Unit of Work for database operations.
    */
   createUnitOfWork: () => IUnitOfWork;
+};
+
+/**
+ * Implicit base service that database fragments get automatically.
+ * This provides a UOW execution method directly on the fragment instance.
+ */
+export type ImplicitDatabaseBaseService = {
+  uow<TResult>(
+    callback: (context: {
+      forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+      executeRetrieve: () => Promise<void>;
+      executeMutate: () => Promise<void>;
+      nonce: string;
+      currentAttempt: number;
+    }) => Promise<TResult> | TResult,
+    options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
+  ): Promise<AwaitedPromisesInObject<TResult>>;
 };
 
 /**
@@ -164,11 +187,11 @@ export class DatabaseFragmentDefinitionBuilder<
   TConfig,
   TDeps,
   TBaseServices,
-  TServices,
+  TServices extends Record<string, unknown>,
   TServiceDependencies,
   TPrivateServices,
-  TServiceThisContext extends RequestThisContext = DatabaseHandlerContext,
-  THandlerThisContext extends RequestThisContext = DatabaseHandlerContext,
+  TServiceThisContext extends DatabaseServiceContext = DatabaseServiceContext,
+  THandlerThisContext extends DatabaseHandlerContext = DatabaseHandlerContext,
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
 > {
   // Store the base builder - we'll replace its storage and context setup when building
@@ -187,6 +210,8 @@ export class DatabaseFragmentDefinitionBuilder<
   >;
   #schema: TSchema;
   #namespace: string;
+
+  #databaseDependencies?: ImplicitDatabaseDependencies<TSchema>;
 
   constructor(
     baseBuilder: FragmentDefinitionBuilder<
@@ -208,6 +233,61 @@ export class DatabaseFragmentDefinitionBuilder<
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
     this.#namespace = namespace ?? baseBuilder.name;
+  }
+
+  #setDatabaseDependencies(dependencies: ImplicitDatabaseDependencies<TSchema>): void {
+    this.#databaseDependencies = dependencies;
+  }
+
+  get databaseDependencies(): ImplicitDatabaseDependencies<TSchema> {
+    if (!this.#databaseDependencies) {
+      throw new Error("Database dependencies not set");
+    }
+
+    return this.#databaseDependencies;
+  }
+
+  /**
+   * Create the uow function that provides UOW execution with retry support.
+   * This is centralized so it can be reused in both base services and handler context.
+   */
+  #createUowFunction(storage: { getStore: () => DatabaseRequestStorage | undefined }) {
+    return async <TResult>(
+      callback: (context: {
+        forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+        executeRetrieve: () => Promise<void>;
+        executeMutate: () => Promise<void>;
+        nonce: string;
+        currentAttempt: number;
+      }) => Promise<TResult> | TResult,
+      options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
+    ): Promise<AwaitedPromisesInObject<TResult>> => {
+      const currentStorage = storage.getStore();
+      if (!currentStorage) {
+        throw new Error("No storage in context. Handler must be called within a request context.");
+      }
+
+      // Wrap callback to ensure it always returns a Promise
+      const wrappedCallback = async (context: {
+        forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+        executeRetrieve: () => Promise<void>;
+        executeMutate: () => Promise<void>;
+        nonce: string;
+        currentAttempt: number;
+      }): Promise<TResult> => {
+        return await callback(context);
+      };
+
+      // Use the UOW from storage - reset it before each attempt for retry support
+      // Cast is safe because IUnitOfWork is actually implemented by UnitOfWork
+      return executeRestrictedUnitOfWork(wrappedCallback, {
+        ...options,
+        createUnitOfWork: () => {
+          currentStorage.uow.reset();
+          return currentStorage.uow as UnitOfWork;
+        },
+      });
+    };
   }
 
   /**
@@ -233,11 +313,11 @@ export class DatabaseFragmentDefinitionBuilder<
     THandlerThisContext,
     TLinkedFragments
   > {
-    // Wrap user function to inject DB context
+    // Wrap user function to inject DB context. We need to do this here so that the user has access
+    // to `db` when creating their own dependencies.
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
       const dbContext = createDatabaseContext(context.options, this.#schema, this.#namespace);
 
-      // Call user function with enriched context
       const userDeps = fn({
         config: context.config,
         options: context.options,
@@ -245,14 +325,14 @@ export class DatabaseFragmentDefinitionBuilder<
         databaseAdapter: dbContext.databaseAdapter,
       });
 
-      // Create implicit dependencies
-      const createUow = () => dbContext.db.createUnitOfWork();
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         db: dbContext.db,
         schema: this.#schema,
         namespace: this.#namespace,
-        createUnitOfWork: createUow,
+        createUnitOfWork: () => dbContext.db.createUnitOfWork(),
       };
+
+      this.#setDatabaseDependencies(implicitDeps);
 
       return {
         ...userDeps,
@@ -389,7 +469,17 @@ export class DatabaseFragmentDefinitionBuilder<
     DatabaseServiceContext,
     DatabaseHandlerContext,
     DatabaseRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    DatabaseFragnoInstantiatedFragment<
+      readonly AnyFragnoRouteConfig[],
+      TDeps,
+      TServices,
+      TServiceThisContext,
+      THandlerThisContext,
+      DatabaseRequestStorage,
+      FragnoPublicConfigWithDatabase,
+      TLinkedFragments
+    >
   > {
     // Ensure dependencies callback always exists for database fragments
     // If no user dependencies were defined, create a minimal one that only adds implicit deps
@@ -399,15 +489,15 @@ export class DatabaseFragmentDefinitionBuilder<
     }): TDeps => {
       const baseDef = this.#baseBuilder.build();
 
-      // In dry run mode, allow user deps to fail gracefully.
-      // This is critical for database fragments because the CLI needs access to the schema
-      // even when user dependencies (like API clients) can't be initialized.
-      // Without this, if user deps fail, we'd lose the implicit database dependencies
-      // (including schema), and the CLI couldn't extract schema information.
       let userDeps;
       try {
         userDeps = baseDef.dependencies?.(context);
       } catch (error) {
+        // In dry run mode, allow user deps to fail gracefully.
+        // This is critical for database fragments because the CLI needs access to the schema
+        // even when user dependencies (like API clients) can't be initialized.
+        // Without this, if user deps fail, we'd lose the implicit database dependencies
+        // (including schema), and the CLI couldn't extract schema information.
         if (process.env["FRAGNO_INIT_DRY_RUN"] === "true") {
           console.warn(
             "Warning: Failed to initialize user dependencies in dry run mode:",
@@ -479,48 +569,9 @@ export class DatabaseFragmentDefinitionBuilder<
         uow: forSchema,
       };
 
-      // Handler context - only executeRestrictedUnitOfWork
-      async function uow<TResult>(
-        callback: (context: {
-          forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
-          executeRetrieve: () => Promise<void>;
-          executeMutate: () => Promise<void>;
-          nonce: string;
-          currentAttempt: number;
-        }) => Promise<TResult> | TResult,
-        options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-      ): Promise<AwaitedPromisesInObject<TResult>> {
-        const currentStorage = storage.getStore();
-        if (!currentStorage) {
-          throw new Error(
-            "No storage in context. Handler must be called within a request context.",
-          );
-        }
-
-        // Wrap callback to ensure it always returns a Promise
-        const wrappedCallback = async (context: {
-          forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
-          executeRetrieve: () => Promise<void>;
-          executeMutate: () => Promise<void>;
-          nonce: string;
-          currentAttempt: number;
-        }): Promise<TResult> => {
-          return await callback(context);
-        };
-
-        // Use the UOW from storage - reset it before each attempt for retry support
-        // Cast is safe because IUnitOfWork is actually implemented by UnitOfWork
-        return executeRestrictedUnitOfWork(wrappedCallback, {
-          ...options,
-          createUnitOfWork: () => {
-            currentStorage.uow.reset();
-            return currentStorage.uow as UnitOfWork;
-          },
-        });
-      }
-
+      // Handler context - use centralized uow function
       const handlerContext: DatabaseHandlerContext = {
-        uow,
+        uow: this.#createUowFunction(storage),
       };
 
       return { serviceContext, handlerContext };
@@ -529,10 +580,53 @@ export class DatabaseFragmentDefinitionBuilder<
     // Build the final definition
     const finalDef = builderWithContext.build();
 
+    // Wrap base service to inject ImplicitDatabaseBaseService (uow method)
+    let wrappedBaseServices = finalDef.baseServices;
+    if (finalDef.baseServices) {
+      const originalBaseServices = finalDef.baseServices;
+
+      wrappedBaseServices = (
+        context: ServiceContext<
+          TConfig,
+          FragnoPublicConfigWithDatabase,
+          TDeps,
+          TServiceDependencies,
+          TPrivateServices,
+          TServiceThisContext
+        >,
+      ) => {
+        const service = originalBaseServices(context);
+
+        // Get storage from the database adapter's context storage
+        // This is the same storage used in withExternalRequestStorage
+        const dbContext = createDatabaseContext(context.options, this.#schema, this.#namespace);
+        const storage = dbContext.databaseAdapter.contextStorage;
+
+        // Inject the uow method using our centralized function
+        return {
+          ...service,
+          uow: this.#createUowFunction(storage),
+        } as TBaseServices & ImplicitDatabaseBaseService;
+      };
+    }
+
     // Return the complete definition with proper typing and dependencies
     return {
       ...finalDef,
       dependencies,
+      baseServices: wrappedBaseServices,
+      creator: databaseFragnoInstantiatedFragmentCreator,
+      // Phantom type to carry the instantiated fragment type (undefined at runtime)
+      $instantiatedFragmentType: undefined as unknown as DatabaseFragnoInstantiatedFragment<
+        readonly AnyFragnoRouteConfig[],
+        TDeps,
+        TServices,
+        TServiceThisContext,
+        THandlerThisContext,
+        DatabaseRequestStorage,
+        FragnoPublicConfigWithDatabase,
+        TLinkedFragments
+      >,
     };
   }
 }

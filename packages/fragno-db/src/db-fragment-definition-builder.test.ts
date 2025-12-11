@@ -115,6 +115,34 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps.schema).toBeDefined();
     });
 
+    it("should inject uow method into base service when providesBaseService is called before extend", () => {
+      const mockAdapter = createMockAdapter();
+
+      const definition = defineFragment("test-frag")
+        .providesBaseService(() => ({
+          myMethod: () => "result",
+        }))
+        .extend(withDatabase(testSchema))
+        .build();
+
+      // oxlint-disable-next-line no-explicit-any
+      const mockContext: any = {
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        deps: {},
+        serviceDeps: {},
+        privateServices: {},
+      };
+
+      const baseService = definition.baseServices!(mockContext);
+
+      // Verify the base service has both the user's method and the implicit uow method
+      expect(baseService.myMethod).toBeDefined();
+      expect(baseService.myMethod()).toBe("result");
+      expect(baseService.uow).toBeDefined();
+      expect(typeof baseService.uow).toBe("function");
+    });
+
     it("should extend before providesService", () => {
       const mockAdapter = createMockAdapter();
 

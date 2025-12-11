@@ -539,7 +539,6 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition).withRoutes([route]).withOptions({}).build();
 
-      // @ts-expect-error - /unknown is not a valid route
       const response = await fragment.callRouteRaw("GET", "/unknown");
 
       expect(response.status).toBe(404);

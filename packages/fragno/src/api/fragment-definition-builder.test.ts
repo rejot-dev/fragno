@@ -451,7 +451,11 @@ describe("FragmentDefinitionBuilder", () => {
         {},
         RequestThisContext,
         RequestThisContext,
-        {}
+        {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any
       >
         ? true
         : false = true;

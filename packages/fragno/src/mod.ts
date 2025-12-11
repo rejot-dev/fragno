@@ -13,11 +13,14 @@ export {
 
 export {
   instantiate,
+  FragnoInstantiatedFragment,
+  defaultFragnoInstantiatedFragmentCreator,
   type FragmentInstantiationBuilder,
-  type FragnoInstantiatedFragment,
   type AnyFragnoInstantiatedFragment,
   type BoundServices,
   type InstantiatedFragmentFromDefinition,
+  type FragnoInstantiatedFragmentCreator,
+  type FragmentCreationParams,
 } from "./api/fragment-instantiator";
 
 // ============================================================================

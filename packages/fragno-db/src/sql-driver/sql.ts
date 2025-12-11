@@ -34,6 +34,7 @@ export class RawBuilder {
           compileQuery(node, queryId) {
             return queryCompiler.compileQuery(node, queryId) as KyselyCompiledQuery;
           },
+          // Kysely's RawBuilder will only call transformQuery and compileQuery if the query is a raw query.
         } as QueryExecutor;
       },
     });
@@ -42,13 +43,16 @@ export class RawBuilder {
 
 /**
  * Tagged template function for building SQL queries with parameters.
- * Wraps Kysely's sql function to provide a compile() method without arguments.
+ * Wraps Kysely's sql function to provide a compile(dialect: Dialect) method.
  *
  * @example
  * ```ts
+ * import { SqliteDialect } from 'kysely';
+ *
+ * const dialect = new SqliteDialect({ database: ... });
  * const userId = 123;
  * const query = sql`SELECT * FROM users WHERE id = ${userId}`;
- * const compiled = query.compile();
+ * const compiled = query.compile(dialect);
  * ```
  */
 export function sql(strings: TemplateStringsArray, ...values: unknown[]): RawBuilder {

@@ -1141,7 +1141,11 @@ export function createClientBuilder<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    // oxlint-disable-next-line no-explicit-any
+    any,
+    // oxlint-disable-next-line no-explicit-any
+    any
   >,
   publicConfig: FragnoPublicClientConfig,
   routesOrFactories: TRoutesOrFactories,

@@ -43,7 +43,7 @@ export type { BoundServices };
  */
 export type InstantiatedFragmentFromDefinition<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TDef extends FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any>,
+  TDef extends FragmentDefinition<any, any, any, any, any, any, any, any, any, any, any, any>,
 > =
   TDef extends FragmentDefinition<
     infer _TConfig,
@@ -56,7 +56,8 @@ export type InstantiatedFragmentFromDefinition<
     infer TServiceThisContext,
     infer THandlerThisContext,
     infer TRequestStorage,
-    infer TLinkedFragments
+    infer TLinkedFragments,
+    infer _TInstantiatedFragment
   >
     ? FragnoInstantiatedFragment<
         readonly AnyFragnoRouteConfig[], // Routes are dynamic, so we use a generic array
@@ -144,6 +145,117 @@ export interface FragnoFragmentSharedConfig<
   name: string;
   routes: TRoutes;
 }
+
+export interface FragmentCreationParams<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
+  TRequestStorage = {},
+  TOptions extends FragnoPublicConfig = FragnoPublicConfig,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+> {
+  name: string;
+  routes: TRoutes;
+  deps: TDeps;
+  services: TServices;
+  mountRoute: string;
+  serviceThisContext?: TServiceThisContext;
+  handlerThisContext?: THandlerThisContext;
+  storage: RequestContextStorage<TRequestStorage>;
+  createRequestStorage?: () => TRequestStorage;
+  options: TOptions;
+  linkedFragments?: TLinkedFragments;
+}
+
+export type AnyFragnoInstantiatedFragmentCreator = FragnoInstantiatedFragmentCreator<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any
+>;
+
+export interface FragnoInstantiatedFragmentCreator<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TDeps,
+  TServices extends Record<string, unknown>,
+  TServiceThisContext extends RequestThisContext,
+  THandlerThisContext extends RequestThisContext,
+  TRequestStorage = {},
+  TOptions extends FragnoPublicConfig = FragnoPublicConfig,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+> {
+  create(
+    params: FragmentCreationParams<
+      TRoutes,
+      TDeps,
+      TServices,
+      TServiceThisContext,
+      THandlerThisContext,
+      TRequestStorage,
+      TOptions,
+      TLinkedFragments
+    >,
+  ): FragnoInstantiatedFragment<
+    TRoutes,
+    TDeps,
+    TServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    TOptions,
+    TLinkedFragments
+  >;
+}
+
+export const defaultFragnoInstantiatedFragmentCreator = {
+  create<
+    TRoutes extends readonly AnyFragnoRouteConfig[],
+    TDeps,
+    TServices extends Record<string, unknown>,
+    TServiceThisContext extends RequestThisContext,
+    THandlerThisContext extends RequestThisContext,
+    TRequestStorage = {},
+    TOptions extends FragnoPublicConfig = FragnoPublicConfig,
+    TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+  >(params: {
+    name: string;
+    routes: TRoutes;
+    deps: TDeps;
+    services: TServices;
+    mountRoute: string;
+    serviceThisContext?: TServiceThisContext;
+    handlerThisContext?: THandlerThisContext;
+    storage: RequestContextStorage<TRequestStorage>;
+    createRequestStorage?: () => TRequestStorage;
+    options: TOptions;
+    linkedFragments?: TLinkedFragments;
+  }): FragnoInstantiatedFragment<
+    TRoutes,
+    TDeps,
+    TServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    TOptions,
+    TLinkedFragments
+  > {
+    return new FragnoInstantiatedFragment(params);
+  },
+};
 
 /**
  * Instantiated fragment class with encapsulated state.
@@ -681,6 +793,7 @@ export function instantiateFragment<
   const TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   const TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  const TInstantiatedFragment extends AnyFragnoInstantiatedFragment,
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -693,23 +806,25 @@ export function instantiateFragment<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   >,
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
   options: TOptions,
   serviceImplementations?: TServiceDependencies,
   instantiationOptions?: InstantiationOptions,
-): FragnoInstantiatedFragment<
-  FlattenRouteFactories<TRoutesOrFactories>,
-  TDeps,
-  BoundServices<TBaseServices & TServices>,
-  TServiceThisContext,
-  THandlerThisContext,
-  TRequestStorage,
-  TOptions,
-  TLinkedFragments
-> {
+): TInstantiatedFragment &
+  FragnoInstantiatedFragment<
+    FlattenRouteFactories<TRoutesOrFactories>,
+    TDeps,
+    BoundServices<TBaseServices & TServices>,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    TOptions,
+    TLinkedFragments
+  > {
   const { dryRun = false } = instantiationOptions ?? {};
 
   // 1. Validate service dependencies
@@ -914,10 +1029,11 @@ export function instantiateFragment<
     ? () => definition.createRequestStorage!({ config, options, deps })
     : undefined;
 
-  // 13. Create and return fragment instance
+  // 13. Create and return fragment instance using the creator
   // Pass bound services so they have access to serviceContext via 'this'
   // Handlers get handlerContext which may have more capabilities than serviceContext
-  return new FragnoInstantiatedFragment({
+  const creator = definition.creator ?? defaultFragnoInstantiatedFragmentCreator;
+  return creator.create({
     name: definition.name,
     routes,
     deps,
@@ -929,7 +1045,7 @@ export function instantiateFragment<
     createRequestStorage: createRequestStorageWithContext,
     options,
     linkedFragments: linkedFragmentInstances,
-  });
+  }) as TInstantiatedFragment;
 }
 
 /**
@@ -1044,6 +1160,7 @@ export class FragmentInstantiationBuilder<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  const TInstantiatedFragment extends AnyFragnoInstantiatedFragment,
 > implements IFragmentInstantiationBuilder
 {
   #definition: FragmentDefinition<
@@ -1057,7 +1174,8 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   >;
   #config?: TConfig;
   #routes?: TRoutesOrFactories;
@@ -1076,7 +1194,8 @@ export class FragmentInstantiationBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >,
     routes?: TRoutesOrFactories,
   ) {
@@ -1098,7 +1217,8 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     return this.#definition;
   }
@@ -1149,7 +1269,8 @@ export class FragmentInstantiationBuilder<
     THandlerThisContext,
     TRequestStorage,
     TNewRoutes,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     const newBuilder = new FragmentInstantiationBuilder(this.#definition, routes);
     // Preserve config, options, and services from the current instance
@@ -1178,16 +1299,7 @@ export class FragmentInstantiationBuilder<
   /**
    * Build and return the instantiated fragment
    */
-  build(): FragnoInstantiatedFragment<
-    FlattenRouteFactories<TRoutesOrFactories>,
-    TDeps,
-    BoundServices<TBaseServices & TServices>,
-    TServiceThisContext,
-    THandlerThisContext,
-    TRequestStorage,
-    TOptions,
-    TLinkedFragments
-  > {
+  build(): TInstantiatedFragment {
     // This variable is set by the frango-cli when extracting database schemas
     const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
 
@@ -1226,6 +1338,7 @@ export function instantiate<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  const TInstantiatedFragment extends AnyFragnoInstantiatedFragment,
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -1238,7 +1351,8 @@ export function instantiate<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   >,
 ): FragmentInstantiationBuilder<
   TConfig,
@@ -1252,7 +1366,8 @@ export function instantiate<
   THandlerThisContext,
   TRequestStorage,
   readonly [],
-  TLinkedFragments
+  TLinkedFragments,
+  TInstantiatedFragment
 > {
   return new FragmentInstantiationBuilder(definition);
 }

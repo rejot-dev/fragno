@@ -4,6 +4,7 @@ import type { RequestContextStorage } from "./request-context-storage";
 import type {
   FragnoInstantiatedFragment,
   AnyFragnoInstantiatedFragment,
+  AnyFragnoInstantiatedFragmentCreator,
 } from "./fragment-instantiator";
 
 /**
@@ -115,8 +116,9 @@ export interface FragmentDefinition<
   TPrivateServices,
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
-  TRequestStorage = {},
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+  TRequestStorage,
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  TInstantiatedFragment extends AnyFragnoInstantiatedFragment,
 > {
   name: string;
 
@@ -231,10 +233,13 @@ export interface FragmentDefinition<
     [K in keyof TLinkedFragments]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
   };
 
+  creator?: AnyFragnoInstantiatedFragmentCreator;
+
   $serviceThisContext?: TServiceThisContext;
   $handlerThisContext?: THandlerThisContext;
   $requestStorage?: TRequestStorage;
   $linkedFragments?: TLinkedFragments;
+  $instantiatedFragmentType?: TInstantiatedFragment;
 }
 
 /**
@@ -253,6 +258,7 @@ export class FragmentDefinitionBuilder<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+  TInstantiatedFragment extends AnyFragnoInstantiatedFragment = AnyFragnoInstantiatedFragment,
 > {
   #name: string;
   #dependencies?: (context: { config: TConfig; options: TOptions }) => TDeps;
@@ -309,6 +315,7 @@ export class FragmentDefinitionBuilder<
   #linkedFragments?: {
     [K in keyof TLinkedFragments]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
   };
+  #creator?: AnyFragnoInstantiatedFragmentCreator;
 
   constructor(
     name: string,
@@ -371,6 +378,7 @@ export class FragmentDefinitionBuilder<
           TServiceDependencies
         >;
       };
+      creator?: AnyFragnoInstantiatedFragmentCreator;
     },
   ) {
     this.#name = name;
@@ -384,6 +392,7 @@ export class FragmentDefinitionBuilder<
       this.#createThisContext = state.createThisContext;
       this.#getExternalStorage = state.getExternalStorage;
       this.#linkedFragments = state.linkedFragments;
+      this.#creator = state.creator;
     }
   }
 
@@ -426,7 +435,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     // Warn if we're discarding existing configuration
     if (
@@ -454,7 +464,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: fn,
       baseServices: undefined,
@@ -466,6 +477,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: undefined,
       getExternalStorage: undefined,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -494,7 +506,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     return new FragmentDefinitionBuilder<
       TConfig,
@@ -507,7 +520,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: fn,
@@ -518,6 +532,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: this.#createThisContext,
       getExternalStorage: this.#getExternalStorage,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -547,7 +562,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     // Type assertion needed because TypeScript can't verify object spread with mapped types
     const newNamedServices = {
@@ -576,7 +592,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -587,6 +604,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: this.#createThisContext,
       getExternalStorage: this.#getExternalStorage,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -619,7 +637,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     // Type assertion needed because TypeScript can't verify object spread with mapped types
     const newPrivateServices = {
@@ -648,7 +667,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -658,6 +678,7 @@ export class FragmentDefinitionBuilder<
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -677,7 +698,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     // Type assertion needed because TypeScript can't verify object spread with mapped types
     const newServiceDependencies = {
@@ -698,7 +720,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -708,6 +731,7 @@ export class FragmentDefinitionBuilder<
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -727,7 +751,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     // Type assertion needed because TypeScript can't verify object spread with mapped types
     const newServiceDependencies = {
@@ -750,7 +775,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -760,6 +786,7 @@ export class FragmentDefinitionBuilder<
       createRequestStorage: this.#createRequestStorage,
       createThisContext: this.#createThisContext,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -802,7 +829,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TNewRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     // getExternalStorage can coexist with createRequestStorage (they work together)
     // Cast is safe when storage type changes: the external storage container adapts to hold the new type
@@ -825,7 +853,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TNewRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -837,6 +866,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: undefined,
       getExternalStorage: preservedExternalStorage,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -873,7 +903,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TNewStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     return new FragmentDefinitionBuilder<
       TConfig,
@@ -886,7 +917,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TNewStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -898,6 +930,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: undefined,
       getExternalStorage: getStorage,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -937,7 +970,8 @@ export class FragmentDefinitionBuilder<
     TNewServiceThisContext,
     TNewHandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     return new FragmentDefinitionBuilder<
       TConfig,
@@ -950,7 +984,8 @@ export class FragmentDefinitionBuilder<
       TNewServiceThisContext,
       TNewHandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TLinkedFragments,
+      TInstantiatedFragment
     >(this.#name, {
       dependencies: this.#dependencies,
       baseServices: this.#baseServices,
@@ -961,6 +996,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: fn,
       getExternalStorage: this.#getExternalStorage,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     });
   }
 
@@ -986,7 +1022,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments & { [K in TName]: ReturnType<TCallback> }
+    TLinkedFragments & { [K in TName]: ReturnType<TCallback> },
+    TInstantiatedFragment
   > {
     const newLinkedFragments = {
       ...this.#linkedFragments,
@@ -1006,6 +1043,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: this.#createThisContext,
       getExternalStorage: this.#getExternalStorage,
       linkedFragments: newLinkedFragments,
+      creator: this.#creator,
     }) as FragmentDefinitionBuilder<
       TConfig,
       TOptions,
@@ -1017,7 +1055,8 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments & { [K in TName]: ReturnType<TCallback> }
+      TLinkedFragments & { [K in TName]: ReturnType<TCallback> },
+      TInstantiatedFragment
     >;
   }
 
@@ -1043,7 +1082,8 @@ export class FragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TLinkedFragments,
+    TInstantiatedFragment
   > {
     return {
       name: this.#name,
@@ -1056,6 +1096,7 @@ export class FragmentDefinitionBuilder<
       createThisContext: this.#createThisContext,
       getExternalStorage: this.#getExternalStorage,
       linkedFragments: this.#linkedFragments,
+      creator: this.#creator,
     };
   }
 }
@@ -1069,6 +1110,7 @@ export function defineFragment<
   TServiceThisContext extends RequestThisContext = RequestThisContext,
   THandlerThisContext extends RequestThisContext = RequestThisContext,
   TRequestStorage = {},
+  TInstantiatedFragment extends AnyFragnoInstantiatedFragment = AnyFragnoInstantiatedFragment,
 >(
   name: string,
 ): FragmentDefinitionBuilder<
@@ -1082,7 +1124,8 @@ export function defineFragment<
   TServiceThisContext,
   THandlerThisContext,
   TRequestStorage,
-  {}
+  {},
+  TInstantiatedFragment
 > {
   return new FragmentDefinitionBuilder(name);
 }
