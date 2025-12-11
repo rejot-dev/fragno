@@ -1,29 +1,35 @@
-import { Kysely, SqliteDialect } from "kysely";
-import { describe, expect, it, beforeAll } from "vitest";
-import { execute } from "./execute";
-import type { MigrationOperation } from "../../../migration-engine/shared";
-import type { KyselyConfig } from "../kysely-adapter";
-import { SqliteMigrationExecutor } from "./execute-sqlite";
+import { describe, expect, it } from "vitest";
+import type { MigrationOperation } from "../../../../migration-engine/shared";
+import { createColdKysely } from "../cold-kysely";
+import { SQLiteSQLGenerator } from "./sqlite";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type KyselyAny = Kysely<any>;
+describe("SQLiteSQLGenerator", () => {
+  const coldKysely = createColdKysely("sqlite");
+  const generator = new SQLiteSQLGenerator(coldKysely, "sqlite");
 
-function assertSingleResult<T>(result: T | T[]): asserts result is T {
-  if (Array.isArray(result)) {
-    throw new Error("Expected single result, got array");
+  /**
+   * Helper to compile a single operation and extract the main SQL statement.
+   * SQLite preprocessing adds PRAGMA statement, so main statement is at index 1.
+   */
+  function compileOne(operation: MigrationOperation): string {
+    const statements = generator.compile([operation]);
+    // SQLite adds PRAGMA defer_foreign_keys at the beginning
+    expect(statements.length).toBeGreaterThanOrEqual(2);
+    expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+    return statements[1].sql;
   }
-}
 
-describe("execute() - SQLite", () => {
-  let db: KyselyAny;
-  let config: KyselyConfig;
-
-  beforeAll(async () => {
-    // Create a Kysely instance with a SqliteDialect, but not actually connected to a database
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    db = new Kysely({ dialect: new SqliteDialect({} as any) });
-    config = { db, provider: "sqlite" };
-  });
+  /**
+   * Helper to compile a single operation and extract all main SQL statements.
+   * For alter-table operations that generate multiple statements.
+   */
+  function compileMany(operation: MigrationOperation): string[] {
+    const statements = generator.compile([operation]);
+    expect(statements.length).toBeGreaterThanOrEqual(1);
+    expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+    // Return everything except pragma statement
+    return statements.slice(1).map((s) => s.sql);
+  }
 
   describe("create-table", () => {
     it("should generate SQL for simple table with columns", () => {
@@ -52,14 +58,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "users" ("id" integer not null unique, "name" text not null, "email" text not null)"`,
       );
     });
@@ -81,14 +81,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test_types" ("col_int" integer not null unique, "col_bigint" blob not null, "col_decimal" real not null, "col_bool" integer not null, "col_date" integer not null, "col_timestamp" integer not null, "col_json" text not null, "col_binary" blob not null, "col_varchar" text not null)"`,
       );
     });
@@ -104,14 +98,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "nullable_test" ("id" integer not null unique, "optional_name" text, "optional_age" integer)"`,
       );
     });
@@ -146,14 +134,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "defaults_test" ("id" integer not null unique, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" integer default true not null)"`,
       );
     });
@@ -174,14 +156,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "timestamps_test" ("id" integer not null unique, "created_at" integer default CURRENT_TIMESTAMP not null)"`,
       );
     });
@@ -197,14 +173,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null)"`,
       );
     });
@@ -220,14 +190,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "items" ("id" integer not null unique, "_internalId" integer not null primary key autoincrement, "name" text not null)"`,
       );
     });
@@ -241,14 +205,8 @@ describe("execute() - SQLite", () => {
         to: "new_name",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(`"alter table "old_name" rename to "new_name""`);
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"alter table "old_name" rename to "new_name""`);
     });
   });
 
@@ -259,14 +217,8 @@ describe("execute() - SQLite", () => {
         name: "to_drop",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(`"drop table "to_drop""`);
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"drop table "to_drop""`);
     });
   });
 
@@ -288,17 +240,9 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
         `"alter table "test_table" add column "new_column" text"`,
       );
     });
@@ -330,19 +274,12 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(2);
-      expect(results[0].compile().sql).toMatchInlineSnapshot(
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(2);
+      expect(statements[0]).toMatchInlineSnapshot(
         `"alter table "test_table" add column "col1" text"`,
       );
-      expect(results[1].compile().sql).toMatchInlineSnapshot(
+      expect(statements[1]).toMatchInlineSnapshot(
         `"alter table "test_table" add column "col2" integer default 0 not null"`,
       );
     });
@@ -362,17 +299,9 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
         `"alter table "test_table" rename column "old_name" to "new_name""`,
       );
     });
@@ -391,17 +320,9 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
         `"alter table "test_table" drop column "to_drop""`,
       );
     });
@@ -429,11 +350,9 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow("SQLite doesn't support updating columns. Recreate the table instead.");
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support updating columns. Recreate the table instead.",
+      );
     });
 
     it("should throw error when trying to update nullable constraint", () => {
@@ -457,11 +376,9 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow("SQLite doesn't support updating columns. Recreate the table instead.");
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support updating columns. Recreate the table instead.",
+      );
     });
 
     it("should throw error when trying to update default value", () => {
@@ -486,11 +403,9 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow("SQLite doesn't support updating columns. Recreate the table instead.");
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support updating columns. Recreate the table instead.",
+      );
     });
 
     it("should throw error when trying to update ID column", () => {
@@ -514,11 +429,7 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow(
+      expect(() => generator.compile([operation])).toThrow(
         "ID columns cannot be updated. Not every database supports updating primary keys and often requires workarounds.",
       );
     });
@@ -545,11 +456,9 @@ describe("execute() - SQLite", () => {
       };
 
       // SQLite throws error before checking if it's a no-op
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow("SQLite doesn't support updating columns. Recreate the table instead.");
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support updating columns. Recreate the table instead.",
+      );
     });
   });
 
@@ -566,12 +475,8 @@ describe("execute() - SQLite", () => {
         },
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow(
-        "SQLite doesn't support modifying foreign keys directly. Use `recreate-table` instead.",
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support modifying foreign keys",
       );
     });
 
@@ -587,12 +492,8 @@ describe("execute() - SQLite", () => {
         },
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow(
-        "SQLite doesn't support modifying foreign keys directly. Use `recreate-table` instead.",
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support modifying foreign keys",
       );
     });
   });
@@ -605,12 +506,8 @@ describe("execute() - SQLite", () => {
         name: "posts_user_id_fk",
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow(
-        "SQLite doesn't support modifying foreign keys directly. Use `recreate-table` instead.",
+      expect(() => generator.compile([operation])).toThrow(
+        "SQLite doesn't support modifying foreign keys",
       );
     });
   });
@@ -625,16 +522,8 @@ describe("execute() - SQLite", () => {
         unique: false,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create index "idx_email" on "test_table" ("email")"`,
-      );
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"create index "idx_email" on "test_table" ("email")"`);
     });
 
     it("should generate SQL for unique index", () => {
@@ -646,14 +535,8 @@ describe("execute() - SQLite", () => {
         unique: true,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create unique index "idx_unique_email" on "test_table" ("email")"`,
       );
     });
@@ -667,14 +550,8 @@ describe("execute() - SQLite", () => {
         unique: false,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create index "idx_email_name" on "test_table" ("email", "name")"`,
       );
     });
@@ -688,14 +565,8 @@ describe("execute() - SQLite", () => {
         unique: true,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create unique index "idx_unique_email_name" on "test_table" ("email", "name")"`,
       );
     });
@@ -709,71 +580,14 @@ describe("execute() - SQLite", () => {
         name: "idx_email",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(`"drop index if exists "idx_email""`);
-    });
-  });
-
-  describe("custom operations", () => {
-    it("should handle custom operations via callback", () => {
-      const operation: MigrationOperation = {
-        type: "custom",
-        customType: "test-operation",
-        data: "test-data",
-      };
-
-      let customCallbackCalled = false;
-
-      const result = execute(operation, config, (op) => {
-        customCallbackCalled = true;
-        expect(op).toEqual(operation);
-
-        // Return a kysely query
-        return db.schema.createTable("custom_table").addColumn("id", "integer");
-      });
-
-      expect(customCallbackCalled).toBe(true);
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain("create table");
-      expect(compiled.sql).toContain("custom_table");
-    });
-
-    it("should support custom operations returning array of nodes", () => {
-      const operation: MigrationOperation = {
-        type: "custom",
-        customType: "multi-operation",
-      };
-
-      const results = execute(operation, config, () => {
-        return [
-          db.schema.createTable("table1").addColumn("id", "integer"),
-          db.schema.createTable("table2").addColumn("id", "integer"),
-        ];
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(2);
-      expect(results[0].compile().sql).toContain("table1");
-      expect(results[1].compile().sql).toContain("table2");
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"drop index if exists "idx_email" on "test_table""`);
     });
   });
 
   describe("complex migration scenarios", () => {
     it("should generate correct SQL for full schema migration", () => {
-      // 1. Create users table
-      const createUsers = execute(
+      const operations: MigrationOperation[] = [
         {
           type: "create-table",
           name: "users",
@@ -783,20 +597,6 @@ describe("execute() - SQLite", () => {
             { name: "name", type: "string", isNullable: false, role: "regular" },
           ],
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(createUsers);
-
-      expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
-      );
-
-      // 2. Add unique index on email
-      const addIndex = execute(
         {
           type: "add-index",
           table: "users",
@@ -804,20 +604,6 @@ describe("execute() - SQLite", () => {
           name: "idx_unique_email",
           unique: true,
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(addIndex);
-
-      expect(addIndex.compile().sql).toMatchInlineSnapshot(
-        `"create unique index "idx_unique_email" on "users" ("email")"`,
-      );
-
-      // 3. Create posts table
-      const createPosts = execute(
         {
           type: "create-table",
           name: "posts",
@@ -828,23 +614,6 @@ describe("execute() - SQLite", () => {
             { name: "content", type: "string", isNullable: false, role: "regular" },
           ],
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(createPosts);
-
-      expect(createPosts.compile().sql).toMatchInlineSnapshot(
-        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
-      );
-
-      // 4. Note: Cannot add foreign key after table creation in SQLite
-      // Foreign keys must be defined in the CREATE TABLE statement
-
-      // 5. Alter posts table to add a new column
-      const alterResults = execute(
         {
           type: "alter-table",
           name: "posts",
@@ -861,17 +630,22 @@ describe("execute() - SQLite", () => {
             },
           ],
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
+      ];
+
+      const statements = generator.compile(operations);
+      // PRAGMA + 4 operations
+      expect(statements).toHaveLength(5);
+      expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+      expect(statements[1].sql).toMatchInlineSnapshot(
+        `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
       );
-
-      if (!Array.isArray(alterResults)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(alterResults[0].compile().sql).toMatchInlineSnapshot(
+      expect(statements[2].sql).toMatchInlineSnapshot(
+        `"create unique index "idx_unique_email" on "users" ("email")"`,
+      );
+      expect(statements[3].sql).toMatchInlineSnapshot(
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
+      );
+      expect(statements[4].sql).toMatchInlineSnapshot(
         `"alter table "posts" add column "published" integer default false not null"`,
       );
     });
@@ -902,24 +676,13 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(3);
-      expect(results[0].compile().sql).toMatchInlineSnapshot(
-        `"alter table "users" add column "age" integer"`,
-      );
-      expect(results[1].compile().sql).toMatchInlineSnapshot(
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(3);
+      expect(statements[0]).toMatchInlineSnapshot(`"alter table "users" add column "age" integer"`);
+      expect(statements[1]).toMatchInlineSnapshot(
         `"alter table "users" rename column "name" to "full_name""`,
       );
-      expect(results[2].compile().sql).toMatchInlineSnapshot(
-        `"alter table "users" drop column "old_field""`,
-      );
+      expect(statements[2]).toMatchInlineSnapshot(`"alter table "users" drop column "old_field""`);
     });
   });
 
@@ -931,14 +694,8 @@ describe("execute() - SQLite", () => {
         columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain('"user-profiles"');
+      const sql = compileOne(operation);
+      expect(sql).toContain('"user-profiles"');
     });
 
     it("should handle column names with special characters", () => {
@@ -951,14 +708,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain('"user-name"');
+      const sql = compileOne(operation);
+      expect(sql).toContain('"user-name"');
     });
 
     it("should properly escape string default values", () => {
@@ -977,14 +728,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test" ("id" integer not null unique, "status" text default 'it''s pending' not null)"`,
       );
     });
@@ -1012,21 +757,15 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test" ("id" integer not null unique, "is_active" integer default true not null, "is_deleted" integer default false not null)"`,
       );
     });
   });
 
   describe("SQLite-specific behavior", () => {
-    it("should handle bigint as integer (SQLite doesn't have true bigint)", () => {
+    it("should handle bigint as blob (SQLite stores bigint as blob)", () => {
       const operation: MigrationOperation = {
         type: "create-table",
         name: "test",
@@ -1036,15 +775,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain("integer");
-      expect(compiled.sql).not.toContain("bigint");
+      const sql = compileOne(operation);
+      expect(sql).toContain("blob");
     });
 
     it("should handle date/timestamp as integer (SQLite stores dates as integers)", () => {
@@ -1058,14 +790,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test" ("id" integer not null unique, "birth_date" integer not null, "created_at" integer not null)"`,
       );
     });
@@ -1080,14 +806,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test" ("id" integer not null unique, "metadata" text not null)"`,
       );
     });
@@ -1102,14 +822,8 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test" ("id" integer not null unique, "file_data" blob not null)"`,
       );
     });
@@ -1124,49 +838,10 @@ describe("execute() - SQLite", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
         `"create table "test" ("id" integer not null unique, "price" real not null)"`,
       );
-    });
-  });
-
-  describe("foreign key limitations", () => {
-    it("should document that foreign keys must be in CREATE TABLE for SQLite", () => {
-      // This test documents SQLite's limitation:
-      // Foreign keys MUST be defined in the CREATE TABLE statement
-      // They cannot be added with ALTER TABLE ADD FOREIGN KEY
-
-      const createTableWithFKOperation: MigrationOperation = {
-        type: "custom",
-        customType: "create-table-with-fk",
-      };
-
-      const result = execute(createTableWithFKOperation, config, () => {
-        // In practice, you would use Kysely's schema builder to create
-        // a table with foreign key constraints inline
-        return db.schema
-          .createTable("posts")
-          .addColumn("id", "integer", (col) => col.notNull().unique())
-          .addColumn("user_id", "integer", (col) =>
-            col.notNull().references("users.id").onDelete("cascade"),
-          )
-          .addColumn("title", "text", (col) => col.notNull());
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain("create table");
-      expect(compiled.sql).toContain("posts");
-      expect(compiled.sql).toContain("user_id");
-      expect(compiled.sql).toContain("references");
     });
   });
 
@@ -1198,28 +873,38 @@ describe("execute() - SQLite", () => {
         },
       ];
 
-      const executor = new SqliteMigrationExecutor(db, "sqlite");
-      const preprocessed = executor.preprocessOperations(operations);
+      const preprocessed = generator.preprocess(operations);
 
-      // Should have 2 operations (2 create-table, FK merged into posts table)
-      expect(preprocessed).toHaveLength(2);
+      // PRAGMA + 2 create-table operations (FK merged into posts table)
+      expect(preprocessed).toHaveLength(3);
 
-      // First operation should be create users table
-      expect(preprocessed[0]).toMatchObject({
+      // First should be pragma
+      expect(preprocessed[0]).toEqual({ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" });
+
+      // Second operation should be create users table
+      expect(preprocessed[1]).toMatchObject({
         type: "create-table",
         name: "users",
       });
 
-      // Second operation should be create posts table with inline FK
-      expect(preprocessed[1]).toMatchObject({
+      // Third operation should be create posts table with inline FK
+      expect(preprocessed[2]).toMatchObject({
         type: "create-table",
         name: "posts",
       });
 
-      if (preprocessed[1].type === "create-table") {
-        expect(preprocessed[1].metadata?.inlineForeignKeys).toBeDefined();
-        expect(preprocessed[1].metadata?.inlineForeignKeys).toHaveLength(1);
-        expect(preprocessed[1].metadata?.inlineForeignKeys?.[0]).toMatchObject({
+      if (preprocessed[2].type === "create-table") {
+        const metadata = preprocessed[2].metadata as {
+          inlineForeignKeys?: {
+            name: string;
+            columns: string[];
+            referencedTable: string;
+            referencedColumns: string[];
+          }[];
+        };
+        expect(metadata?.inlineForeignKeys).toBeDefined();
+        expect(metadata?.inlineForeignKeys).toHaveLength(1);
+        expect(metadata?.inlineForeignKeys?.[0]).toMatchObject({
           name: "posts_users_author_fk",
           columns: ["author_id"],
           referencedTable: "users",
@@ -1229,39 +914,46 @@ describe("execute() - SQLite", () => {
     });
 
     it("should generate SQL with inline foreign key constraints", () => {
-      const operation: MigrationOperation = {
-        type: "create-table",
-        name: "posts",
-        columns: [
-          { name: "id", type: "integer", isNullable: false, role: "internal-id" },
-          { name: "author_id", type: "integer", isNullable: false, role: "reference" },
-          { name: "title", type: "string", isNullable: false, role: "regular" },
-        ],
-        metadata: {
-          inlineForeignKeys: [
-            {
-              name: "posts_users_author_fk",
-              columns: ["author_id"],
-              referencedTable: "users",
-              referencedColumns: ["id"],
-            },
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "users",
+          columns: [{ name: "id", type: "integer", isNullable: false, role: "internal-id" }],
+        },
+        {
+          type: "create-table",
+          name: "posts",
+          columns: [
+            { name: "id", type: "integer", isNullable: false, role: "internal-id" },
+            { name: "author_id", type: "integer", isNullable: false, role: "reference" },
+            { name: "title", type: "string", isNullable: false, role: "regular" },
           ],
         },
-      };
+        {
+          type: "add-foreign-key",
+          table: "posts",
+          value: {
+            name: "posts_users_author_fk",
+            columns: ["author_id"],
+            referencedTable: "users",
+            referencedColumns: ["id"],
+          },
+        },
+      ];
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
+      const statements = generator.compile(operations);
 
-      assertSingleResult(result);
+      // PRAGMA + 2 create-table operations
+      expect(statements).toHaveLength(3);
+      expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
 
-      const compiled = result.compile();
-      // Should contain the foreign key constraint
-      expect(compiled.sql).toContain("posts_users_author_fk");
-      expect(compiled.sql).toContain("foreign key");
-      expect(compiled.sql).toContain("author_id");
-      expect(compiled.sql).toContain("references");
-      expect(compiled.sql).toContain("users");
+      // Posts table should contain inline FK constraint
+      const postsSql = statements[2].sql;
+      expect(postsSql).toContain("posts_users_author_fk");
+      expect(postsSql).toContain("foreign key");
+      expect(postsSql).toContain("author_id");
+      expect(postsSql).toContain("references");
+      expect(postsSql).toContain("users");
     });
 
     it("should keep add-foreign-key operations for existing tables (will throw error)", () => {
@@ -1283,14 +975,13 @@ describe("execute() - SQLite", () => {
         },
       ];
 
-      const executor = new SqliteMigrationExecutor(db, "sqlite");
-      const preprocessed = executor.preprocessOperations(operations);
+      const preprocessed = generator.preprocess(operations);
 
-      // Should have 2 operations (create-table + add-foreign-key)
-      expect(preprocessed).toHaveLength(2);
+      // PRAGMA + create-table + add-foreign-key
+      expect(preprocessed).toHaveLength(3);
 
-      // Second operation should still be add-foreign-key (not merged)
-      expect(preprocessed[1]).toMatchObject({
+      // Third operation should still be add-foreign-key (not merged)
+      expect(preprocessed[2]).toMatchObject({
         type: "add-foreign-key",
         table: "posts",
       });
@@ -1339,25 +1030,131 @@ describe("execute() - SQLite", () => {
         },
       ];
 
-      const executor = new SqliteMigrationExecutor(db, "sqlite");
-      const preprocessed = executor.preprocessOperations(operations);
+      const preprocessed = generator.preprocess(operations);
 
-      // Should have 3 operations (3 create-table, both FKs merged into posts)
-      expect(preprocessed).toHaveLength(3);
+      // PRAGMA + 3 create-table operations (both FKs merged into posts)
+      expect(preprocessed).toHaveLength(4);
 
       // Posts table should have both foreign keys merged
-      const postsOp = preprocessed[2];
+      const postsOp = preprocessed[3];
       expect(postsOp).toMatchObject({
         type: "create-table",
         name: "posts",
       });
 
       if (postsOp.type === "create-table") {
-        expect(postsOp.metadata?.inlineForeignKeys).toBeDefined();
-        expect(postsOp.metadata?.inlineForeignKeys).toHaveLength(2);
-        expect(postsOp.metadata?.inlineForeignKeys?.[0].name).toBe("posts_users_author_fk");
-        expect(postsOp.metadata?.inlineForeignKeys?.[1].name).toBe("posts_categories_category_fk");
+        const metadata = postsOp.metadata as { inlineForeignKeys?: { name: string }[] };
+        expect(metadata?.inlineForeignKeys).toBeDefined();
+        expect(metadata?.inlineForeignKeys).toHaveLength(2);
+        expect(metadata?.inlineForeignKeys?.[0].name).toBe("posts_users_author_fk");
+        expect(metadata?.inlineForeignKeys?.[1].name).toBe("posts_categories_category_fk");
       }
+    });
+  });
+
+  describe("table name mapping", () => {
+    const mapper = {
+      toPhysical: (name: string) => `prefix_${name}`,
+      toLogical: (name: string) => name.replace("prefix_", ""),
+    };
+
+    it("should apply table name mapping to create-table", () => {
+      const operation: MigrationOperation = {
+        type: "create-table",
+        name: "users",
+        columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
+      };
+
+      const statements = generator.compile([operation], mapper);
+      expect(statements[1].sql).toMatchInlineSnapshot(
+        `"create table "prefix_users" ("id" integer not null unique)"`,
+      );
+    });
+
+    it("should apply table name mapping to indexes", () => {
+      const operation: MigrationOperation = {
+        type: "add-index",
+        table: "users",
+        columns: ["email"],
+        name: "idx_email",
+        unique: true,
+      };
+
+      const statements = generator.compile([operation], mapper);
+      expect(statements[1].sql).toMatchInlineSnapshot(
+        `"create unique index "idx_email_prefix_users" on "prefix_users" ("email")"`,
+      );
+    });
+  });
+
+  describe("preprocessing", () => {
+    it("should add PRAGMA and handle FK merging", () => {
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "users",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+      ];
+
+      const preprocessed = generator.preprocess(operations);
+      expect(preprocessed.length).toBe(2);
+      expect(preprocessed[0]).toEqual({ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" });
+      expect(preprocessed[1]).toEqual(operations[0]);
+    });
+
+    it("should return empty array for empty operations", () => {
+      const preprocessed = generator.preprocess([]);
+      expect(preprocessed).toHaveLength(0);
+    });
+  });
+
+  describe("getDefaultValue", () => {
+    it("should return literal value for all column types", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "status",
+        type: "string",
+        isNullable: false,
+        role: "regular",
+        default: { value: "active" },
+      });
+
+      expect(defaultValue).toBeDefined();
+    });
+
+    it("should return CURRENT_TIMESTAMP for dbSpecial: now", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "created_at",
+        type: "timestamp",
+        isNullable: false,
+        role: "regular",
+        default: { dbSpecial: "now" },
+      });
+
+      expect(defaultValue).toBeDefined();
+    });
+
+    it("should return undefined for runtime defaults", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "id",
+        type: "string",
+        isNullable: false,
+        role: "regular",
+        default: { runtime: "cuid" },
+      });
+
+      expect(defaultValue).toBeUndefined();
+    });
+
+    it("should return undefined when no default is set", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "name",
+        type: "string",
+        isNullable: false,
+        role: "regular",
+      });
+
+      expect(defaultValue).toBeUndefined();
     });
   });
 });

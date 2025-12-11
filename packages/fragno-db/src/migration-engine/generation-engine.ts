@@ -7,8 +7,8 @@ import {
 import {
   internalFragmentDef,
   settingsSchema,
-  SETTINGS_TABLE_NAME,
   SETTINGS_NAMESPACE,
+  getSchemaVersionFromDatabase,
 } from "../fragments/internal-fragment";
 import { instantiate } from "@fragno-dev/core";
 
@@ -113,26 +113,10 @@ export async function generateMigrationsOrSchema<
     .withOptions({ databaseAdapter: adapter })
     .build();
 
-  let settingsSourceVersion: number;
-  try {
-    const result = await internalFragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const v = internalFragment.services.settingsService.get(SETTINGS_NAMESPACE, "version");
-        await executeRetrieve();
-
-        return v;
-      });
-    });
-
-    if (!result) {
-      settingsSourceVersion = 0;
-    } else {
-      settingsSourceVersion = parseInt(result.value);
-    }
-  } catch {
-    // Settings table doesn't exist yet (first migration)
-    settingsSourceVersion = 0;
-  }
+  const settingsSourceVersion = await getSchemaVersionFromDatabase(
+    internalFragment,
+    SETTINGS_NAMESPACE,
+  );
 
   const generatedFiles: GenerationInternalResult[] = [];
 
@@ -253,26 +237,10 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     .withOptions({ databaseAdapter: adapter })
     .build();
 
-  let settingsSourceVersion: number;
-  try {
-    const result = await internalFragment.inContext(async function () {
-      return this.uow(async ({ forSchema, executeRetrieve }) => {
-        const uow = forSchema(settingsSchema);
-        const findOp = uow.find(SETTINGS_TABLE_NAME, (b) =>
-          b.whereIndex("unique_key", (eb) => eb("key", "=", `${SETTINGS_NAMESPACE}.version`)),
-        );
-
-        await executeRetrieve();
-
-        const [results] = await findOp.retrievalPhase;
-        return results?.[0];
-      });
-    });
-    settingsSourceVersion = result ? parseInt(result.value) : 0;
-  } catch {
-    // Settings table doesn't exist yet (first migration)
-    settingsSourceVersion = 0;
-  }
+  const settingsSourceVersion = await getSchemaVersionFromDatabase(
+    internalFragment,
+    SETTINGS_NAMESPACE,
+  );
 
   // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
   const settingsPreparedMigrations = adapter.prepareMigrations(settingsSchema, "");
@@ -303,8 +271,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
 
   for (const fragnoDb of sortedDatabases) {
     const preparedMigrations = adapter.prepareMigrations(fragnoDb.schema, fragnoDb.namespace);
-    const currentVersionStr = await adapter.getSchemaVersion(fragnoDb.namespace);
-    const currentVersion = currentVersionStr ? parseInt(currentVersionStr) : 0;
+    const currentVersion = await getSchemaVersionFromDatabase(internalFragment, fragnoDb.namespace);
     const targetVersion = fragnoDb.schema.version;
 
     if (currentVersion < targetVersion) {

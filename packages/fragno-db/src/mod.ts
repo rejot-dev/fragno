@@ -1,6 +1,5 @@
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AnySchema } from "./schema/create";
-import type { AbstractQuery } from "./query/query";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
 import type { FragnoInstantiatedFragment, AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
@@ -56,41 +55,6 @@ export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
 
   get [fragnoDatabaseFakeSymbol](): typeof fragnoDatabaseFakeSymbol {
     return fragnoDatabaseFakeSymbol;
-  }
-
-  async createClient(): Promise<AbstractQuery<T, TUOWConfig>> {
-    const dbVersion = await this.#adapter.getSchemaVersion(this.#namespace);
-    if (dbVersion !== this.#schema.version.toString()) {
-      throw new Error(
-        `Database is not at expected version. Did you forget to run migrations?` +
-          ` Current version: ${dbVersion}, Expected version: ${this.#schema.version}`,
-      );
-    }
-
-    return this.#adapter.createQueryEngine(this.#schema, this.#namespace);
-  }
-
-  async runMigrations(): Promise<boolean> {
-    if (!this.#adapter.prepareMigrations) {
-      throw new Error("Migration engine not supported for this adapter.");
-    }
-
-    // Get the current version from the database
-    const currentVersionStr = await this.#adapter.getSchemaVersion(this.#namespace);
-    const currentVersion = currentVersionStr ? parseInt(currentVersionStr) : 0;
-    const targetVersion = this.#schema.version;
-
-    // Check if migration is needed
-    if (currentVersion >= targetVersion) {
-      return false;
-    }
-
-    const preparedMigrations = this.#adapter.prepareMigrations(this.#schema, this.#namespace);
-    const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion);
-
-    await preparedMigrations.execute(currentVersion, targetVersion);
-
-    return compiledMigration.statements.length > 0;
   }
 
   get namespace() {

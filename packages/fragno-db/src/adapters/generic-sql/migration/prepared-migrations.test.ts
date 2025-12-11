@@ -487,3 +487,175 @@ describe("PreparedMigrations - Integration", () => {
     );
   });
 });
+
+describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
+  test("PostgreSQL: migration 0 -> 2 (create users table and add age + indexes)", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(0, 2, { updateVersionInMigration: true });
+    expect(sql).toMatchInlineSnapshot(`
+      "create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      alter table "users_test" add column "age" integer;
+
+      create index "name_idx_users_test" on "users_test" ("name");
+
+      create index "age_idx_users_test" on "users_test" ("age");
+
+      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '2');"
+    `);
+  });
+
+  test("PostgreSQL: migration 0 -> 4 (full schema with posts and FK)", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
+    expect(sql).toMatchInlineSnapshot(`
+      "create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      alter table "users_test" add column "age" integer;
+
+      create index "name_idx_users_test" on "users_test" ("name");
+
+      create index "age_idx_users_test" on "users_test" ("age");
+
+      create table "posts_test" ("id" varchar(30) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      alter table "posts_test" add constraint "posts_users_author_fk" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
+
+      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+    `);
+  });
+
+  test("PostgreSQL: migration 1 -> 2 (add age column and indexes only)", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(1, 2, { updateVersionInMigration: true });
+    expect(sql).toMatchInlineSnapshot(`
+      "alter table "users_test" add column "age" integer;
+
+      create index "name_idx_users_test" on "users_test" ("name");
+
+      create index "age_idx_users_test" on "users_test" ("age");
+
+      update "fragno_db_settings" set "value" = '2' where "key" = 'test.schema_version';"
+    `);
+  });
+
+  test("PostgreSQL: migration 2 -> 3 (add posts table)", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(2, 3, { updateVersionInMigration: true });
+    expect(sql).toMatchInlineSnapshot(`
+      "create table "posts_test" ("id" varchar(30) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+
+      update "fragno_db_settings" set "value" = '3' where "key" = 'test.schema_version';"
+    `);
+  });
+
+  test("SQLite: migration 0 -> 4 with FK merging", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "sqlite",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
+    expect(sql).toMatchInlineSnapshot(`
+      "PRAGMA defer_foreign_keys = ON;
+
+      create table "users_test" ("id" text not null unique, "name" text not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null);
+
+      alter table "users_test" add column "age" integer;
+
+      create index "name_idx_users_test" on "users_test" ("name");
+
+      create index "age_idx_users_test" on "users_test" ("age");
+
+      create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, constraint "posts_users_author_fk" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
+
+      insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+    `);
+  });
+
+  test("MySQL: migration 0 -> 4 with FK checks disabled", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "mysql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
+    expect(sql).toMatchInlineSnapshot(`
+      "SET FOREIGN_KEY_CHECKS = 0;
+
+      create table \`users_test\` (\`id\` varchar(30) not null unique, \`name\` text not null, \`_internalId\` bigint not null primary key auto_increment, \`_version\` integer default 0 not null);
+
+      alter table \`users_test\` add column \`age\` integer;
+
+      create index \`name_idx_users_test\` on \`users_test\` (\`name\`);
+
+      create index \`age_idx_users_test\` on \`users_test\` (\`age\`);
+
+      create table \`posts_test\` (\`id\` varchar(30) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null primary key auto_increment, \`_version\` integer default 0 not null);
+
+      alter table \`posts_test\` add constraint \`posts_users_author_fk\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
+
+      SET FOREIGN_KEY_CHECKS = 1;
+
+      insert into \`fragno_db_settings\` (\`id\`, \`key\`, \`value\`) values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
+    `);
+  });
+
+  test("compile returns CompiledMigration with statements array", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const compiled = prepared.compile(0, 2, { updateVersionInMigration: true });
+    expect(compiled.statements).toBeDefined();
+    expect(compiled.statements.length).toBeGreaterThan(0);
+    // Should have: create table, add column, 2 indexes, version insert
+    expect(compiled.statements.length).toBe(5);
+  });
+
+  test("getSQL with updateVersionInMigration=false excludes version statement", () => {
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      mapper: createTableNameMapper("test"),
+    });
+
+    const sql = prepared.getSQL(0, 1, { updateVersionInMigration: false });
+    expect(sql).not.toContain("fragno_db_settings");
+    expect(sql).toMatchInlineSnapshot(
+      `"create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"`,
+    );
+  });
+});

@@ -13,7 +13,7 @@ import type { AnySchema } from "../../schema/create";
 import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { AbstractQuery } from "../../query/query";
 import { createExecutor } from "./generic-sql-uow-executor";
-import { createKyselyUOWDecoder } from "../kysely/kysely-query";
+import { createKyselyUOWDecoder } from "./uow-decoder";
 import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
 import type { DriverConfig } from "./driver-config";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";

@@ -1,28 +1,30 @@
-import { Kysely, MysqlDialect } from "kysely";
-import { describe, expect, it, beforeAll } from "vitest";
-import { execute } from "./execute";
-import type { MigrationOperation } from "../../../migration-engine/shared";
-import type { KyselyConfig } from "../kysely-adapter";
+import { describe, expect, it } from "vitest";
+import type { MigrationOperation } from "../../../../migration-engine/shared";
+import { createColdKysely } from "../cold-kysely";
+import { PostgresSQLGenerator } from "./postgres";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type KyselyAny = Kysely<any>;
+describe("PostgresSQLGenerator", () => {
+  const coldKysely = createColdKysely("postgresql");
+  const generator = new PostgresSQLGenerator(coldKysely, "postgresql");
 
-function assertSingleResult<T>(result: T | T[]): asserts result is T {
-  if (Array.isArray(result)) {
-    throw new Error("Expected single result, got array");
+  /**
+   * Helper to compile a single operation and extract the SQL statement.
+   * PostgreSQL doesn't wrap operations, so we get direct results.
+   */
+  function compileOne(operation: MigrationOperation): string {
+    const statements = generator.compile([operation]);
+    expect(statements.length).toBe(1);
+    return statements[0].sql;
   }
-}
 
-describe("execute() - MySQL", () => {
-  let db: KyselyAny;
-  let config: KyselyConfig;
-
-  beforeAll(async () => {
-    // Create a Kysely instance with a MysqlDialect, but not actually connected to a database
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    db = new Kysely({ dialect: new MysqlDialect({} as any) });
-    config = { db, provider: "mysql" };
-  });
+  /**
+   * Helper to compile a single operation and extract all SQL statements.
+   * For alter-table operations that generate multiple statements.
+   */
+  function compileMany(operation: MigrationOperation): string[] {
+    const statements = generator.compile([operation]);
+    return statements.map((s) => s.sql);
+  }
 
   describe("create-table", () => {
     it("should generate SQL for simple table with columns", () => {
@@ -51,15 +53,30 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "users" ("id" integer not null unique, "name" text not null, "email" text not null)"`,
+      );
+    });
 
-      assertSingleResult(result);
+    it("should generate SQL for table with id column with runtime default", () => {
+      const operation: MigrationOperation = {
+        type: "create-table",
+        name: "users",
+        columns: [
+          {
+            name: "id",
+            type: "varchar(30)",
+            isNullable: false,
+            role: "external-id",
+            default: { runtime: "cuid" },
+          },
+        ],
+      };
 
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`id\` integer not null unique, \`name\` text not null, \`email\` text not null)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "users" ("id" varchar(30) not null unique)"`,
       );
     });
 
@@ -80,15 +97,9 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`test_types\` (\`col_int\` integer not null unique, \`col_bigint\` bigint not null, \`col_decimal\` decimal not null, \`col_bool\` boolean not null, \`col_date\` date not null, \`col_timestamp\` timestamp not null, \`col_json\` json not null, \`col_binary\` longblob not null, \`col_varchar\` varchar(255) not null)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "test_types" ("col_int" integer not null unique, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamp not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
       );
     });
 
@@ -103,15 +114,9 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`nullable_test\` (\`id\` integer not null unique, \`optional_name\` text, \`optional_age\` integer)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "nullable_test" ("id" integer not null unique, "optional_name" text, "optional_age" integer)"`,
       );
     });
 
@@ -145,15 +150,9 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`defaults_test\` (\`id\` integer not null unique, \`status\` text not null, \`count\` integer default 0 not null, \`is_active\` boolean default true not null)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "defaults_test" ("id" integer not null unique, "status" text default 'pending' not null, "count" integer default 0 not null, "is_active" boolean default true not null)"`,
       );
     });
 
@@ -173,15 +172,9 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`timestamps_test\` (\`id\` integer not null unique, \`created_at\` timestamp default CURRENT_TIMESTAMP not null)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "timestamps_test" ("id" integer not null unique, "created_at" timestamp default CURRENT_TIMESTAMP not null)"`,
       );
     });
 
@@ -196,37 +189,39 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null)"`,
+      );
+    });
 
-      assertSingleResult(result);
+    it("should generate SQL for table with internal-id column (bigserial)", () => {
+      const operation: MigrationOperation = {
+        type: "create-table",
+        name: "users",
+        columns: [
+          { name: "_internalId", type: "bigint", isNullable: false, role: "internal-id" },
+          { name: "name", type: "string", isNullable: false, role: "regular" },
+        ],
+      };
 
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "users" ("_internalId" bigserial not null primary key, "name" text not null)"`,
       );
     });
   });
 
   describe("rename-table", () => {
-    it("should generate SQL for MySQL rename", () => {
+    it("should generate SQL for PostgreSQL rename", () => {
       const operation: MigrationOperation = {
         type: "rename-table",
         from: "old_name",
         to: "new_name",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`old_name\` rename to \`new_name\`"`,
-      );
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"alter table "old_name" rename to "new_name""`);
     });
   });
 
@@ -237,14 +232,8 @@ describe("execute() - MySQL", () => {
         name: "to_drop",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(`"drop table \`to_drop\`"`);
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"drop table "to_drop""`);
     });
   });
 
@@ -266,18 +255,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` add column \`new_column\` text"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" add column "new_column" text"`,
       );
     });
 
@@ -308,20 +289,13 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(2);
-      expect(results[0].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` add column \`col1\` text"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(2);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" add column "col1" text"`,
       );
-      expect(results[1].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` add column \`col2\` integer default 0 not null"`,
+      expect(statements[1]).toMatchInlineSnapshot(
+        `"alter table "test_table" add column "col2" integer default 0 not null"`,
       );
     });
   });
@@ -340,18 +314,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` rename column \`old_name\` to \`new_name\`"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" rename column "old_name" to "new_name""`,
       );
     });
   });
@@ -369,24 +335,16 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` drop column \`to_drop\`"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" drop column "to_drop""`,
       );
     });
   });
 
   describe("alter-table - update-column", () => {
-    it("should generate SQL to update column data type (MySQL doesn't use USING clause)", () => {
+    it("should generate SQL to update column data type (PostgreSQL uses USING clause)", () => {
       const operation: MigrationOperation = {
         type: "alter-table",
         name: "test_table",
@@ -407,18 +365,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` integer"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"ALTER TABLE "test_table" ALTER COLUMN "test_col" TYPE integer USING ("test_col"::integer)"`,
       );
     });
 
@@ -443,18 +393,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text not null"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "test_col" set not null"`,
       );
     });
 
@@ -479,18 +421,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "test_col" drop not null"`,
       );
     });
 
@@ -516,18 +450,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text not null"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "test_col" set default 'default_value'"`,
       );
     });
 
@@ -552,18 +478,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` text"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "test_col" drop default"`,
       );
     });
 
@@ -589,17 +507,16 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      expect(results[0].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`test_col\` integer default 0 not null"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(3);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"ALTER TABLE "test_table" ALTER COLUMN "test_col" TYPE integer USING ("test_col"::integer)"`,
+      );
+      expect(statements[1]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "test_col" set not null"`,
+      );
+      expect(statements[2]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "test_col" set default 0"`,
       );
     });
 
@@ -624,11 +541,7 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      expect(() => {
-        execute(operation, config, () => {
-          throw new Error("No custom operations");
-        });
-      }).toThrow(
+      expect(() => generator.compile([operation])).toThrow(
         "ID columns cannot be updated. Not every database supports updating primary keys and often requires workarounds.",
       );
     });
@@ -654,16 +567,9 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
+      const statements = compileMany(operation);
       // No-op should return empty array
-      expect(results).toHaveLength(0);
+      expect(statements).toHaveLength(0);
     });
 
     it("should generate SQL for timestamp default", () => {
@@ -688,18 +594,10 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(1);
-      const compiled = results[0].compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`updated_at\` timestamp default CURRENT_TIMESTAMP not null"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(1);
+      expect(statements[0]).toMatchInlineSnapshot(
+        `"alter table "test_table" alter column "updated_at" set default CURRENT_TIMESTAMP"`,
       );
     });
   });
@@ -717,15 +615,9 @@ describe("execute() - MySQL", () => {
         },
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` add constraint \`posts_user_id_fk\` foreign key (\`user_id\`) references \`users\` (\`id\`) on delete restrict on update restrict"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"alter table "posts" add constraint "posts_user_id_fk" foreign key ("user_id") references "users" ("id") on delete restrict on update restrict"`,
       );
     });
 
@@ -741,15 +633,9 @@ describe("execute() - MySQL", () => {
         },
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` add constraint \`posts_user_fk\` foreign key (\`org_id\`, \`user_id\`) references \`users\` (\`org_id\`, \`user_id\`) on delete restrict on update restrict"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"alter table "posts" add constraint "posts_user_fk" foreign key ("org_id", "user_id") references "users" ("org_id", "user_id") on delete restrict on update restrict"`,
       );
     });
   });
@@ -762,15 +648,9 @@ describe("execute() - MySQL", () => {
         name: "posts_user_id_fk",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` drop constraint \`posts_user_id_fk\`"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"alter table "posts" drop constraint if exists "posts_user_id_fk""`,
       );
     });
   });
@@ -785,16 +665,8 @@ describe("execute() - MySQL", () => {
         unique: false,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create index \`idx_email\` on \`test_table\` (\`email\`)"`,
-      );
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"create index "idx_email" on "test_table" ("email")"`);
     });
 
     it("should generate SQL for unique index", () => {
@@ -806,15 +678,9 @@ describe("execute() - MySQL", () => {
         unique: true,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create unique index \`idx_unique_email\` on \`test_table\` (\`email\`)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create unique index "idx_unique_email" on "test_table" ("email")"`,
       );
     });
 
@@ -827,15 +693,9 @@ describe("execute() - MySQL", () => {
         unique: false,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create index \`idx_email_name\` on \`test_table\` (\`email\`, \`name\`)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create index "idx_email_name" on "test_table" ("email", "name")"`,
       );
     });
 
@@ -848,15 +708,9 @@ describe("execute() - MySQL", () => {
         unique: true,
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create unique index \`idx_unique_email_name\` on \`test_table\` (\`email\`, \`name\`)"`,
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create unique index "idx_unique_email_name" on "test_table" ("email", "name")"`,
       );
     });
   });
@@ -869,71 +723,14 @@ describe("execute() - MySQL", () => {
         name: "idx_email",
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(`"drop index if exists \`idx_email\`"`);
-    });
-  });
-
-  describe("custom operations", () => {
-    it("should handle custom operations via callback", () => {
-      const operation: MigrationOperation = {
-        type: "custom",
-        customType: "test-operation",
-        data: "test-data",
-      };
-
-      let customCallbackCalled = false;
-
-      const result = execute(operation, config, (op) => {
-        customCallbackCalled = true;
-        expect(op).toEqual(operation);
-
-        // Return a kysely query
-        return db.schema.createTable("custom_table").addColumn("id", "integer");
-      });
-
-      expect(customCallbackCalled).toBe(true);
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain("create table");
-      expect(compiled.sql).toContain("custom_table");
-    });
-
-    it("should support custom operations returning array of nodes", () => {
-      const operation: MigrationOperation = {
-        type: "custom",
-        customType: "multi-operation",
-      };
-
-      const results = execute(operation, config, () => {
-        return [
-          db.schema.createTable("table1").addColumn("id", "integer"),
-          db.schema.createTable("table2").addColumn("id", "integer"),
-        ];
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(2);
-      expect(results[0].compile().sql).toContain("table1");
-      expect(results[1].compile().sql).toContain("table2");
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(`"drop index if exists "idx_email" on "test_table""`);
     });
   });
 
   describe("complex migration scenarios", () => {
     it("should generate correct SQL for full schema migration", () => {
-      // 1. Create users table
-      const createUsers = execute(
+      const operations: MigrationOperation[] = [
         {
           type: "create-table",
           name: "users",
@@ -943,20 +740,6 @@ describe("execute() - MySQL", () => {
             { name: "name", type: "string", isNullable: false, role: "regular" },
           ],
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(createUsers);
-
-      expect(createUsers.compile().sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`id\` integer not null unique, \`email\` text not null, \`name\` text not null)"`,
-      );
-
-      // 2. Add unique index on email
-      const addIndex = execute(
         {
           type: "add-index",
           table: "users",
@@ -964,20 +747,6 @@ describe("execute() - MySQL", () => {
           name: "idx_unique_email",
           unique: true,
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(addIndex);
-
-      expect(addIndex.compile().sql).toMatchInlineSnapshot(
-        `"create unique index \`idx_unique_email\` on \`users\` (\`email\`)"`,
-      );
-
-      // 3. Create posts table
-      const createPosts = execute(
         {
           type: "create-table",
           name: "posts",
@@ -988,20 +757,6 @@ describe("execute() - MySQL", () => {
             { name: "content", type: "string", isNullable: false, role: "regular" },
           ],
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(createPosts);
-
-      expect(createPosts.compile().sql).toMatchInlineSnapshot(
-        `"create table \`posts\` (\`id\` integer not null unique, \`user_id\` integer not null, \`title\` text not null, \`content\` text not null)"`,
-      );
-
-      // 4. Add foreign key
-      const addFk = execute(
         {
           type: "add-foreign-key",
           table: "posts",
@@ -1012,20 +767,6 @@ describe("execute() - MySQL", () => {
             referencedColumns: ["id"],
           },
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
-      );
-
-      assertSingleResult(addFk);
-
-      expect(addFk.compile().sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` add constraint \`posts_user_id_fk\` foreign key (\`user_id\`) references \`users\` (\`id\`) on delete restrict on update restrict"`,
-      );
-
-      // 5. Alter posts table to add a new column
-      const alterResults = execute(
         {
           type: "alter-table",
           name: "posts",
@@ -1042,18 +783,24 @@ describe("execute() - MySQL", () => {
             },
           ],
         },
-        config,
-        () => {
-          throw new Error("No custom operations");
-        },
+      ];
+
+      const statements = generator.compile(operations);
+      expect(statements).toHaveLength(5);
+      expect(statements[0].sql).toMatchInlineSnapshot(
+        `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
       );
-
-      if (!Array.isArray(alterResults)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(alterResults[0].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`posts\` add column \`published\` boolean default false not null"`,
+      expect(statements[1].sql).toMatchInlineSnapshot(
+        `"create unique index "idx_unique_email" on "users" ("email")"`,
+      );
+      expect(statements[2].sql).toMatchInlineSnapshot(
+        `"create table "posts" ("id" integer not null unique, "user_id" integer not null, "title" text not null, "content" text not null)"`,
+      );
+      expect(statements[3].sql).toMatchInlineSnapshot(
+        `"alter table "posts" add constraint "posts_user_id_fk" foreign key ("user_id") references "users" ("id") on delete restrict on update restrict"`,
+      );
+      expect(statements[4].sql).toMatchInlineSnapshot(
+        `"alter table "posts" add column "published" boolean default false not null"`,
       );
     });
 
@@ -1083,24 +830,13 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const results = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      if (!Array.isArray(results)) {
-        throw new Error("Expected array of results");
-      }
-
-      expect(results).toHaveLength(3);
-      expect(results[0].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`users\` add column \`age\` integer"`,
+      const statements = compileMany(operation);
+      expect(statements).toHaveLength(3);
+      expect(statements[0]).toMatchInlineSnapshot(`"alter table "users" add column "age" integer"`);
+      expect(statements[1]).toMatchInlineSnapshot(
+        `"alter table "users" rename column "name" to "full_name""`,
       );
-      expect(results[1].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`users\` rename column \`name\` to \`full_name\`"`,
-      );
-      expect(results[2].compile().sql).toMatchInlineSnapshot(
-        `"alter table \`users\` drop column \`old_field\`"`,
-      );
+      expect(statements[2]).toMatchInlineSnapshot(`"alter table "users" drop column "old_field""`);
     });
   });
 
@@ -1112,14 +848,8 @@ describe("execute() - MySQL", () => {
         columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain("`user-profiles`");
+      const sql = compileOne(operation);
+      expect(sql).toContain('"user-profiles"');
     });
 
     it("should handle column names with special characters", () => {
@@ -1132,14 +862,8 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
-      });
-
-      assertSingleResult(result);
-
-      const compiled = result.compile();
-      expect(compiled.sql).toContain("`user-name`");
+      const sql = compileOne(operation);
+      expect(sql).toContain('"user-name"');
     });
 
     it("should properly escape string default values", () => {
@@ -1158,16 +882,127 @@ describe("execute() - MySQL", () => {
         ],
       };
 
-      const result = execute(operation, config, () => {
-        throw new Error("No custom operations");
+      const sql = compileOne(operation);
+      expect(sql).toMatchInlineSnapshot(
+        `"create table "test" ("id" integer not null unique, "status" text default 'it''s pending' not null)"`,
+      );
+    });
+  });
+
+  describe("table name mapping", () => {
+    const mapper = {
+      toPhysical: (name: string) => `prefix_${name}`,
+      toLogical: (name: string) => name.replace("prefix_", ""),
+    };
+
+    it("should apply table name mapping to create-table", () => {
+      const operation: MigrationOperation = {
+        type: "create-table",
+        name: "users",
+        columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
+      };
+
+      const statements = generator.compile([operation], mapper);
+      expect(statements[0].sql).toMatchInlineSnapshot(
+        `"create table "prefix_users" ("id" integer not null unique)"`,
+      );
+    });
+
+    it("should apply table name mapping to foreign keys", () => {
+      const operation: MigrationOperation = {
+        type: "add-foreign-key",
+        table: "posts",
+        value: {
+          name: "posts_user_id_fk",
+          columns: ["user_id"],
+          referencedTable: "users",
+          referencedColumns: ["id"],
+        },
+      };
+
+      const statements = generator.compile([operation], mapper);
+      expect(statements[0].sql).toMatchInlineSnapshot(
+        `"alter table "prefix_posts" add constraint "posts_user_id_fk" foreign key ("user_id") references "prefix_users" ("id") on delete restrict on update restrict"`,
+      );
+    });
+
+    it("should apply table name mapping to indexes", () => {
+      const operation: MigrationOperation = {
+        type: "add-index",
+        table: "users",
+        columns: ["email"],
+        name: "idx_email",
+        unique: true,
+      };
+
+      const statements = generator.compile([operation], mapper);
+      expect(statements[0].sql).toMatchInlineSnapshot(
+        `"create unique index "idx_email_prefix_users" on "prefix_users" ("email")"`,
+      );
+    });
+  });
+
+  describe("preprocessing", () => {
+    it("should not modify operations (PostgreSQL doesn't need preprocessing)", () => {
+      const operations: MigrationOperation[] = [
+        {
+          type: "create-table",
+          name: "users",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+      ];
+
+      const preprocessed = generator.preprocess(operations);
+      expect(preprocessed).toEqual(operations);
+    });
+  });
+
+  describe("getDefaultValue", () => {
+    it("should return literal value for all column types", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "status",
+        type: "string",
+        isNullable: false,
+        role: "regular",
+        default: { value: "active" },
       });
 
-      assertSingleResult(result);
+      expect(defaultValue).toBeDefined();
+    });
 
-      const compiled = result.compile();
-      expect(compiled.sql).toMatchInlineSnapshot(
-        `"create table \`test\` (\`id\` integer not null unique, \`status\` text not null)"`,
-      );
+    it("should return CURRENT_TIMESTAMP for dbSpecial: now", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "created_at",
+        type: "timestamp",
+        isNullable: false,
+        role: "regular",
+        default: { dbSpecial: "now" },
+      });
+
+      expect(defaultValue).toBeDefined();
+    });
+
+    it("should return undefined for runtime defaults", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "id",
+        type: "string",
+        isNullable: false,
+        role: "regular",
+        default: { runtime: "cuid" },
+      });
+
+      expect(defaultValue).toBeUndefined();
+    });
+
+    it("should return undefined when no default is set", () => {
+      const defaultValue = generator.getDefaultValue({
+        name: "name",
+        type: "string",
+        isNullable: false,
+        role: "regular",
+      });
+
+      expect(defaultValue).toBeUndefined();
     });
   });
 });
