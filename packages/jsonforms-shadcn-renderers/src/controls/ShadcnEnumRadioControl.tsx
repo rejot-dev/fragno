@@ -1,0 +1,58 @@
+import type { ControlProps, OwnPropsOfEnum, RankedTester } from "@jsonforms/core";
+import { and, isEnumControl, optionIs, rankWith } from "@jsonforms/core";
+import { withJsonFormsEnumProps } from "@jsonforms/react";
+import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
+import { ShadcnRadioGroup } from "../shadcn-controls/ShadcnRadioGroup";
+
+export const ShadcnEnumRadioControl = ({
+  data,
+  visible,
+  label,
+  id,
+  enabled,
+  uischema,
+  schema,
+  rootSchema,
+  handleChange,
+  errors,
+  path,
+  config,
+  description,
+  options,
+}: ControlProps & OwnPropsOfEnum) => {
+  const isValid = errors.length === 0;
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Field data-invalid={!isValid || undefined} data-disabled={!enabled || undefined}>
+      <FieldLabel>{label}</FieldLabel>
+      {description && <FieldDescription>{description}</FieldDescription>}
+      <ShadcnRadioGroup
+        id={`${id}-input`}
+        data={data}
+        enabled={enabled}
+        visible={visible}
+        path={path}
+        uischema={uischema}
+        schema={schema}
+        rootSchema={rootSchema}
+        handleChange={handleChange}
+        errors={errors}
+        config={config}
+        isValid={isValid}
+        options={options ?? []}
+      />
+      {!isValid && <FieldError errors={[{ message: errors }]} />}
+    </Field>
+  );
+};
+
+export const shadcnEnumRadioControlTester: RankedTester = rankWith(
+  20,
+  and(isEnumControl, optionIs("format", "radio")),
+);
+
+export const ShadcnEnumRadioControlContext = withJsonFormsEnumProps(ShadcnEnumRadioControl);
