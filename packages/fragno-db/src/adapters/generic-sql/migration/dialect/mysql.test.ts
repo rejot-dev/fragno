@@ -85,7 +85,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`test_types\` (\`col_int\` integer not null unique, \`col_bigint\` bigint not null, \`col_decimal\` decimal not null, \`col_bool\` boolean not null, \`col_date\` date not null, \`col_timestamp\` timestamp not null, \`col_json\` json not null, \`col_binary\` longblob not null, \`col_varchar\` varchar(255) not null)"`,
+        `"create table \`test_types\` (\`col_int\` integer not null unique, \`col_bigint\` bigint not null, \`col_decimal\` decimal not null, \`col_bool\` boolean not null, \`col_date\` date not null, \`col_timestamp\` datetime not null, \`col_json\` json not null, \`col_binary\` longblob not null, \`col_varchar\` varchar(255) not null)"`,
       );
     });
 
@@ -161,7 +161,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`timestamps_test\` (\`id\` integer not null unique, \`created_at\` timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table \`timestamps_test\` (\`id\` integer not null unique, \`created_at\` datetime default CURRENT_TIMESTAMP not null)"`,
       );
     });
 
@@ -579,7 +579,7 @@ describe("MySQLSQLGenerator", () => {
       const statements = compileMany(operation);
       expect(statements).toHaveLength(1);
       expect(statements[0]).toMatchInlineSnapshot(
-        `"alter table \`test_table\` modify column \`updated_at\` timestamp default CURRENT_TIMESTAMP not null"`,
+        `"alter table \`test_table\` modify column \`updated_at\` datetime default CURRENT_TIMESTAMP not null"`,
       );
     });
   });

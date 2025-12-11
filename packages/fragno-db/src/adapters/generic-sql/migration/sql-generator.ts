@@ -12,10 +12,10 @@ import type {
   ColumnOperation,
   MigrationOperation,
 } from "../../../migration-engine/shared";
-import { schemaToDBType } from "../../../schema/type-conversion/type-mapping";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { SupportedDatabase } from "../driver-config";
+import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KyselyAny = Kysely<any>;
@@ -37,10 +37,12 @@ export interface CompilableQuery {
 export abstract class SQLGenerator {
   protected readonly db: KyselyAny;
   protected readonly database: SupportedDatabase;
+  protected readonly typeMapper: ReturnType<typeof createSQLTypeMapper>;
 
   constructor(db: KyselyAny, database: SupportedDatabase) {
     this.db = db;
     this.database = database;
+    this.typeMapper = createSQLTypeMapper(database);
   }
 
   /**
@@ -399,7 +401,7 @@ export abstract class SQLGenerator {
    * Get the database type string for a column.
    */
   protected getDBType(col: ColumnInfo): string {
-    return schemaToDBType(col, this.database);
+    return this.typeMapper.getDatabaseType(col);
   }
 
   /**
