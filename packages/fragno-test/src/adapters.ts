@@ -7,13 +7,13 @@ import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
-import type { AbstractQuery } from "@fragno-dev/db/query";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
 import { createCommonTestContextMethods } from ".";
 import { PGLiteDriverConfig, SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 import { internalFragmentDef } from "@fragno-dev/db";
+import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 
 // Adapter configuration types
 export interface KyselySqliteAdapter {
@@ -41,7 +41,7 @@ export interface SchemaConfig {
 
 // Internal test context extends BaseTestContext with getOrm (not exposed publicly)
 interface InternalTestContext extends BaseTestContext {
-  getOrm: <TSchema extends AnySchema>(namespace: string) => AbstractQuery<TSchema>;
+  getOrm: <TSchema extends AnySchema>(namespace: string) => SimpleQueryInterface<TSchema>;
 }
 
 // Conditional return types based on adapter (adapter-specific properties only)
@@ -89,7 +89,7 @@ export async function createKyselySqliteAdapter(
 
     // Run migrations for all schemas in order
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string, AbstractQuery<any, any>>();
+    const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       // Run migrations
@@ -177,7 +177,7 @@ export async function createKyselyPgliteAdapter(
 
     // Run migrations for all schemas in order
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string, AbstractQuery<any, any>>();
+    const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       // Run migrations
@@ -274,7 +274,7 @@ export async function createDrizzlePgliteAdapter(
 
     // Run migrations for all schemas
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string, AbstractQuery<any, any>>();
+    const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
 
     const databaseDeps = internalFragmentDef.dependencies?.({
       config: {},

@@ -8,12 +8,15 @@ import {
   InternalIdColumn,
 } from "../../schema/create";
 import type { SQLProvider } from "../../shared/providers";
-import { schemaToDBType, type DBTypeLiteral } from "../../schema/serialize";
 import {
   createTableNameMapper,
   sanitizeNamespace,
   type TableNameMapper,
 } from "../shared/table-name-mapper";
+import {
+  schemaToDBType,
+  type DatabaseTypeLiteral,
+} from "../../schema/type-conversion/type-mapping";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -147,7 +150,7 @@ function getColumnTypeFunction(
  */
 function mapDBTypeToDrizzleFunction(
   ctx: GeneratorContext,
-  dbType: DBTypeLiteral,
+  dbType: DatabaseTypeLiteral,
   column: AnyColumn,
   customTypes: string[],
 ): ColumnTypeFunction {

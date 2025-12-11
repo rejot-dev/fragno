@@ -4,8 +4,8 @@ import { DrizzleAdapter } from "./drizzle-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it, assert } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
-import { executeUnitOfWork } from "../../query/execute-unit-of-work";
-import { ExponentialBackoffRetryPolicy } from "../../query/retry-policy";
+import { executeUnitOfWork } from "../../query/unit-of-work/execute-unit-of-work";
+import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
 import { settingsSchema } from "../../fragments/internal-fragment";
 

@@ -1,5 +1,5 @@
 import type { AnyTable } from "../../../schema/create";
-import type { AnySelectClause } from "../../../query/query";
+import type { AnySelectClause } from "../../../query/simple-query-interface";
 
 /**
  * Maps a select clause to SQL column names with optional aliases.

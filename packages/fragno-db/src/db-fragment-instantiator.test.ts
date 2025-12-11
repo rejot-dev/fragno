@@ -4,7 +4,7 @@ import { defineRoutes } from "@fragno-dev/core/route";
 import { withDatabase } from "./with-database";
 import { schema, idColumn, column } from "./schema/create";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type { AbstractQuery } from "./query/query";
+import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import { z } from "zod";
 
@@ -56,7 +56,7 @@ function createMockAdapter(): DatabaseAdapter {
       };
     }),
     type: "mock",
-  } as unknown as AbstractQuery<TestSchema>;
+  } as unknown as SimpleQueryInterface<TestSchema>;
 
   return {
     createQueryEngine: vi.fn(() => mockdb),

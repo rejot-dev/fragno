@@ -1,5 +1,5 @@
 import { describe, it, expect, assert, expectTypeOf } from "vitest";
-import { column, schema, idColumn, FragnoId } from "../schema/create";
+import { column, schema, idColumn, FragnoId } from "../../schema/create";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -7,8 +7,8 @@ import {
   type InferIdColumnName,
   type IndexColumns,
 } from "./unit-of-work";
-import { createIndexedBuilder } from "./condition-builder";
-import type { AbstractQuery } from "./query";
+import { createIndexedBuilder } from "../condition-builder";
+import type { SimpleQueryInterface } from "../simple-query-interface";
 
 // Mock compiler and executor for testing
 function createMockCompiler(): UOWCompiler<unknown> {
@@ -648,7 +648,7 @@ describe("IndexedConditionBuilder", () => {
       );
       const uow = baseUow.forSchema(typeTestSchema);
       expectTypeOf<keyof typeof typeTestSchema.tables>().toEqualTypeOf<"users">();
-      type _Query = AbstractQuery<typeof typeTestSchema>;
+      type _Query = SimpleQueryInterface<typeof typeTestSchema>;
       expectTypeOf<Parameters<_Query["create"]>[0]>().toEqualTypeOf<"users">();
 
       expectTypeOf<Parameters<typeof uow.find>[0]>().toEqualTypeOf<"users">();

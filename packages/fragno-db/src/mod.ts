@@ -91,21 +91,21 @@ export {
   type UOWCompiler,
   type UOWExecutor,
   type UOWDecoder,
-} from "./query/unit-of-work";
+} from "./query/unit-of-work/unit-of-work";
 
 export {
   type RetryPolicy,
   NoRetryPolicy,
   ExponentialBackoffRetryPolicy,
   LinearBackoffRetryPolicy,
-} from "./query/retry-policy";
+} from "./query/unit-of-work/retry-policy";
 
 export {
   executeUnitOfWork,
   type ExecuteUnitOfWorkResult,
   type ExecuteUnitOfWorkCallbacks,
   type ExecuteUnitOfWorkOptions,
-} from "./query/execute-unit-of-work";
+} from "./query/unit-of-work/execute-unit-of-work";
 
 export type { BoundServices } from "@fragno-dev/core";
 

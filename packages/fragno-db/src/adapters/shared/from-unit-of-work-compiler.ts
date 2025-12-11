@@ -1,4 +1,4 @@
-import type { AbstractQuery, TableToUpdateValues } from "../../query/query";
+import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type {
   CompiledMutation,
@@ -6,8 +6,8 @@ import type {
   UOWDecoder,
   UOWExecutor,
   ValidIndexName,
-} from "../../query/unit-of-work";
-import { UnitOfWork } from "../../query/unit-of-work";
+} from "../../query/unit-of-work/unit-of-work";
+import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
 
@@ -109,7 +109,7 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
  *
  * @param schema - The database schema definition
  * @param factory - Factory containing compiler, executor, decoder, and optional configuration
- * @returns An AbstractQuery instance for performing database operations
+ * @returns An SimpleQueryInterface instance for performing database operations
  *
  * @example
  * ```ts
@@ -129,7 +129,7 @@ class UpdateManySpecialBuilder<TTable extends AnyTable> {
 export function fromUnitOfWorkCompiler<T extends AnySchema>(
   schema: T,
   factory: UnitOfWorkFactory,
-): AbstractQuery<T, UnitOfWorkConfig> {
+): SimpleQueryInterface<T, UnitOfWorkConfig> {
   const { compiler, executor, decoder, uowConfig, schemaNamespaceMap } = factory;
 
   function createUOW(opts: { name?: string; config?: UnitOfWorkConfig }) {
@@ -311,5 +311,5 @@ export function fromUnitOfWorkCompiler<T extends AnySchema>(
         },
       });
     },
-  } as AbstractQuery<T, UnitOfWorkConfig>;
+  } as SimpleQueryInterface<T, UnitOfWorkConfig>;
 }

@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
+import type { SimpleQueryInterface, TableToInsertValues } from "@fragno-dev/db/query";
 import type {
   Logger,
   StripeFragmentConfig,
@@ -30,7 +30,7 @@ const asExternalSubscription = <T extends { id: { externalId: string }; status: 
 
 function createStripeServices(
   deps: StripeFragmentDeps,
-  db: AbstractQuery<typeof stripeSchema>,
+  db: SimpleQueryInterface<typeof stripeSchema>,
 ): StripeFragmentServices {
   const services: StripeFragmentServices = {
     getStripeClient(): Stripe {

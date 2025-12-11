@@ -7,7 +7,7 @@ import type {
   DrizzlePgliteAdapter,
 } from "./adapters";
 import type { DatabaseAdapter } from "@fragno-dev/db";
-import type { AbstractQuery } from "@fragno-dev/db/query";
+import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 
 // Re-export utilities from @fragno-dev/core/test
 export {
@@ -42,7 +42,7 @@ export interface BaseTestContext {
  * Internal interface with getOrm for adapter implementations
  */
 export interface InternalTestContextMethods {
-  getOrm: <TSchema extends AnySchema>(namespace: string) => AbstractQuery<TSchema>;
+  getOrm: <TSchema extends AnySchema>(namespace: string) => SimpleQueryInterface<TSchema>;
 }
 
 /**
@@ -51,7 +51,7 @@ export interface InternalTestContextMethods {
  */
 export function createCommonTestContextMethods(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string, AbstractQuery<any>>,
+  ormMap: Map<string, SimpleQueryInterface<any>>,
 ): InternalTestContextMethods {
   return {
     getOrm: <TSchema extends AnySchema>(namespace: string) => {
@@ -59,7 +59,7 @@ export function createCommonTestContextMethods(
       if (!orm) {
         throw new Error(`No ORM found for namespace: ${namespace}`);
       }
-      return orm as AbstractQuery<TSchema>;
+      return orm as SimpleQueryInterface<TSchema>;
     },
   };
 }

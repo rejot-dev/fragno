@@ -2,7 +2,7 @@ import { Kysely, PostgresDialect } from "kysely";
 import { beforeAll, describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
 import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
-import { ReferenceSubquery } from "../../../query/result-transform";
+import { ReferenceSubquery } from "../../../query/value-encoding";
 
 describe("where-builder", () => {
   const testSchema = schema((s) => {

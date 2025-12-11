@@ -6,7 +6,7 @@ import {
 } from "./db-fragment-definition-builder";
 import { withDatabase } from "./with-database";
 import { schema, column, idColumn } from "./schema/create";
-import type { AbstractQuery } from "./query/query";
+import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
 
 // Create a test schema
@@ -29,7 +29,7 @@ function createMockAdapter(): DatabaseAdapter {
       executeRetrieve: vi.fn(),
       executeMutations: vi.fn(),
     })),
-  } as unknown as AbstractQuery<TestSchema>;
+  } as unknown as SimpleQueryInterface<TestSchema>;
 
   return {
     createQueryEngine: vi.fn(() => mockdb),

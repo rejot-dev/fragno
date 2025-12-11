@@ -39,9 +39,9 @@
       "default": "./dist/sql-driver/dialects/durable-object-dialect.js"
     },
     "./query": {
-      "development": "./src/query/query.ts",
-      "types": "./dist/query/query.d.ts",
-      "default": "./dist/query/query.js"
+      "development": "./src/query/simple-query-interface.ts",
+      "types": "./dist/query/simple-query-interface.d.ts",
+      "default": "./dist/query/simple-query-interface.js"
     },
     "./adapters": {
       "development": "./src/adapters/adapters.ts",
@@ -69,9 +69,9 @@
       "default": "./dist/adapters/generic-sql/generic-sql-adapter.js"
     },
     "./unit-of-work": {
-      "development": "./src/query/unit-of-work.ts",
-      "types": "./dist/query/unit-of-work.d.ts",
-      "default": "./dist/query/unit-of-work.js"
+      "development": "./src/query/unit-of-work/unit-of-work.ts",
+      "types": "./dist/query/unit-of-work/unit-of-work.d.ts",
+      "default": "./dist/query/unit-of-work/unit-of-work.js"
     },
     "./cursor": {
       "development": "./src/query/cursor.ts",

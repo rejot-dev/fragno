@@ -8,7 +8,11 @@ import {
   schema,
   SchemaBuilder,
 } from "./create";
-import type { RawColumnValues, TableToColumnValues, TableToInsertValues } from "../query/query";
+import type {
+  RawColumnValues,
+  TableToColumnValues,
+  TableToInsertValues,
+} from "../query/simple-query-interface";
 
 describe("create", () => {
   it("should create a table with columns using callback pattern", () => {

@@ -1,14 +1,14 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { column, FragnoId, idColumn, referenceColumn, schema } from "../schema/create";
 import type {
-  AbstractQuery,
+  SimpleQueryInterface,
   FindFirstOptions,
   FindManyOptions,
   JoinBuilder,
   OrderBy,
   SelectClause,
   TableToInsertValues,
-} from "./query";
+} from "./simple-query-interface";
 import type { ConditionBuilder } from "./condition-builder";
 
 describe("query type tests", () => {
@@ -91,8 +91,8 @@ describe("query type tests", () => {
     });
   });
 
-  describe("AbstractQuery methods", () => {
-    type Query = AbstractQuery<TestSchema>;
+  describe("SimpleQueryInterface methods", () => {
+    type Query = SimpleQueryInterface<TestSchema>;
 
     describe("findFirst", () => {
       it("should return all columns when select is true or undefined", () => {
@@ -257,7 +257,7 @@ describe("query type tests", () => {
 
   describe("table name type checking", () => {
     it("should only allow valid table names", () => {
-      const _query = {} as AbstractQuery<TestSchema>;
+      const _query = {} as SimpleQueryInterface<TestSchema>;
 
       // Valid table names
       type UsersParam = Parameters<typeof _query.find<"users">>;
@@ -272,7 +272,7 @@ describe("query type tests", () => {
 
   describe("column type inference", () => {
     it("should correctly infer column types for users table", () => {
-      const _query = {} as AbstractQuery<TestSchema>;
+      const _query = {} as SimpleQueryInterface<TestSchema>;
       type Result = Awaited<ReturnType<typeof _query.findFirst<"users">>>;
       type User = Exclude<Result, null>;
 
@@ -284,7 +284,7 @@ describe("query type tests", () => {
     });
 
     it("should correctly infer column types for posts table", () => {
-      const _query = {} as AbstractQuery<TestSchema>;
+      const _query = {} as SimpleQueryInterface<TestSchema>;
       type Result = Awaited<ReturnType<typeof _query.findFirst<"posts">>>;
       type Post = Exclude<Result, null>;
 
@@ -297,7 +297,7 @@ describe("query type tests", () => {
     });
 
     it("should correctly infer column types for comments table", () => {
-      const _query = {} as AbstractQuery<TestSchema>;
+      const _query = {} as SimpleQueryInterface<TestSchema>;
       type Result = Awaited<ReturnType<typeof _query.findFirst<"comments">>>;
       type Comment = Exclude<Result, null>;
 
@@ -311,7 +311,7 @@ describe("query type tests", () => {
 
   describe("complex scenarios", () => {
     it("should handle multiple table operations with correct types", () => {
-      const _query = {} as AbstractQuery<TestSchema>;
+      const _query = {} as SimpleQueryInterface<TestSchema>;
 
       // Create user return type
       type UserResult = Awaited<ReturnType<typeof _query.create<"users">>>;

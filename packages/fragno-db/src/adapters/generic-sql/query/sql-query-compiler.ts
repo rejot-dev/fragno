@@ -14,7 +14,7 @@ import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import { buildWhere, fullSQLName, processReferenceSubqueries } from "./where-builder";
 import { mapSelect, extendSelect } from "./select-builder";
-import { encodeValues } from "../../../query/result-transform";
+import { encodeValues } from "../../../query/value-encoding";
 import type { CompiledJoin } from "../../../query/orm/orm";
 
 /**

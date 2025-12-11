@@ -1,6 +1,13 @@
-import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn, Relation } from "../schema/create";
-import { FragnoId } from "../schema/create";
-import type { Condition, ConditionBuilder } from "./condition-builder";
+import type {
+  AnySchema,
+  AnyTable,
+  Index,
+  IdColumn,
+  AnyColumn,
+  Relation,
+} from "../../schema/create";
+import { FragnoId } from "../../schema/create";
+import type { Condition, ConditionBuilder } from "../condition-builder";
 import type {
   SelectClause,
   TableToInsertValues,
@@ -8,12 +15,12 @@ import type {
   SelectResult,
   ExtractSelect,
   ExtractJoinOut,
-} from "./query";
-import { buildCondition } from "./condition-builder";
-import type { CompiledJoin } from "./orm/orm";
-import type { CursorResult } from "./cursor";
-import { Cursor } from "./cursor";
-import type { Prettify } from "../util/types";
+} from "../simple-query-interface";
+import { buildCondition } from "../condition-builder";
+import type { CompiledJoin } from "../orm/orm";
+import type { CursorResult } from "../cursor";
+import { Cursor } from "../cursor";
+import type { Prettify } from "../../util/types";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining

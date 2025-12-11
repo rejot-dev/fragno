@@ -1,4 +1,8 @@
-import type { CompiledMutation, MutationResult, UOWExecutor } from "../../query/unit-of-work";
+import type {
+  CompiledMutation,
+  MutationResult,
+  UOWExecutor,
+} from "../../query/unit-of-work/unit-of-work";
 import type { CompiledQuery, QueryResult } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 

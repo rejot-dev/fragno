@@ -7,7 +7,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { defineRoutes } from "@fragno-dev/core/route";
 import { withDatabase } from "./with-database";
 import type { FragnoPublicConfigWithDatabase } from "./db-fragment-definition-builder";
-import { ConcurrencyConflictError } from "./query/execute-unit-of-work";
+import { ConcurrencyConflictError } from "./query/unit-of-work/execute-unit-of-work";
 import { SQLocalDriverConfig } from "./adapters/generic-sql/driver-config";
 
 describe.sequential("Database Fragment Integration", () => {

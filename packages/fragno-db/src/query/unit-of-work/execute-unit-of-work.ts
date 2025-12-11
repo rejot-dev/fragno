@@ -1,7 +1,7 @@
-import type { AnySchema } from "../schema/create";
+import type { AnySchema } from "../../schema/create";
 import type { TypedUnitOfWork, IUnitOfWork } from "./unit-of-work";
 import { NoRetryPolicy, ExponentialBackoffRetryPolicy, type RetryPolicy } from "./retry-policy";
-import type { FragnoId } from "../schema/create";
+import type { FragnoId } from "../../schema/create";
 
 /**
  * Error thrown when a Unit of Work execution fails due to optimistic concurrency conflict.

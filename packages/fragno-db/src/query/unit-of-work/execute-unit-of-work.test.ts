@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, assert, expectTypeOf } from "vitest";
-import { schema, idColumn, FragnoId } from "../schema/create";
+import { schema, idColumn, FragnoId } from "../../schema/create";
 import {
   createUnitOfWork,
   type TypedUnitOfWork,

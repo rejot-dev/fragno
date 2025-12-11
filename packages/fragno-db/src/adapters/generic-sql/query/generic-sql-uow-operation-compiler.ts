@@ -6,7 +6,7 @@ import type {
   RetrievalOperation,
   MutationOperation,
   CompiledMutation,
-} from "../../../query/unit-of-work";
+} from "../../../query/unit-of-work/unit-of-work";
 import type { AnyColumn, AnySchema } from "../../../schema/create";
 import { buildCondition } from "../../../query/condition-builder";
 import { createSQLQueryCompiler } from "./create-sql-query-compiler";
@@ -14,7 +14,7 @@ import { SQLQueryCompiler } from "./sql-query-compiler";
 import { buildCursorCondition } from "./cursor-utils";
 import type { Condition } from "../../../query/condition-builder";
 import { buildFindOptions } from "../../../query/orm/orm";
-import type { AnySelectClause } from "../../../query/query";
+import type { AnySelectClause } from "../../../query/simple-query-interface";
 import { createColdKysely } from "../migration/cold-kysely";
 
 /**

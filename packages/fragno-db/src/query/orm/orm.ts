@@ -4,7 +4,7 @@ import type {
   FindManyOptions,
   JoinBuilder,
   OrderBy,
-} from "../query";
+} from "../simple-query-interface";
 import { buildCondition, type Condition } from "../condition-builder";
 import type { AnyColumn, AnyRelation, AnyTable } from "../../schema/create";
 

@@ -14,7 +14,7 @@ import {
   type SchemaConfig,
 } from "./adapters";
 import type { DatabaseAdapter } from "@fragno-dev/db";
-import type { AbstractQuery } from "@fragno-dev/db/query";
+import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { BaseTestContext } from ".";
 
 // BoundServices is an internal type that strips 'this' parameters from service methods
@@ -69,7 +69,7 @@ interface FragmentResult<
     FragnoPublicConfig,
     TLinkedFragments
   >["callRoute"];
-  db: AbstractQuery<TSchema>;
+  db: SimpleQueryInterface<TSchema>;
 }
 
 // Safe: Catch-all for any fragment result type

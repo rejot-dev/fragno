@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { schema, idColumn, type FragnoId, referenceColumn } from "../schema/create";
+import { schema, idColumn, type FragnoId, referenceColumn } from "../../schema/create";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -8,7 +8,7 @@ import {
   type MutationOperation,
   type CompiledMutation,
 } from "./unit-of-work";
-import type { AnySchema } from "../schema/create";
+import type { AnySchema } from "../../schema/create";
 
 // Mock compiler that tracks operations
 function createMockCompiler(): UOWCompiler<string> {

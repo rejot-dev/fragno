@@ -1,5 +1,5 @@
 import type { AnyColumn } from "../schema/create";
-import { deserialize, serialize } from "../schema/serialize";
+import { deserialize, serialize } from "../schema/type-conversion/serialize";
 import type { SQLProvider } from "../shared/providers";
 
 /**

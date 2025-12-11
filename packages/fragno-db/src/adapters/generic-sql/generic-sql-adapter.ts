@@ -11,7 +11,7 @@ import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { sql } from "../../sql-driver/sql";
 import type { AnySchema } from "../../schema/create";
 import { createTableNameMapper } from "../shared/table-name-mapper";
-import type { AbstractQuery } from "../../query/query";
+import type { SimpleQueryInterface } from "../../query/simple-query-interface";
 import { createExecutor } from "./generic-sql-uow-executor";
 import { createKyselyUOWDecoder } from "./uow-decoder";
 import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
@@ -126,7 +126,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   createQueryEngine<T extends AnySchema>(
     schema: T,
     namespace: string,
-  ): AbstractQuery<T, UnitOfWorkConfig> {
+  ): SimpleQueryInterface<T, UnitOfWorkConfig> {
     this.#schemaNamespaceMap.set(schema, namespace);
 
     const operationCompiler = new GenericSQLUOWOperationCompiler(this.driverConfig, (ns) =>

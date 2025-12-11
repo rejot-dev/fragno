@@ -5,7 +5,7 @@ import type {
   RetrievalOperation,
   MutationOperation,
   UOWCompiler,
-} from "../../query/unit-of-work";
+} from "../../query/unit-of-work/unit-of-work";
 import { Cursor } from "../../query/cursor";
 import type { DriverConfig } from "../generic-sql/driver-config";
 import { createTableNameMapper, type TableNameMapper } from "./table-name-mapper";

@@ -1,8 +1,8 @@
-import type { AbstractQuery } from "../query/query";
+import type { SimpleQueryInterface } from "../query/simple-query-interface";
 import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
-import type { IUnitOfWork } from "../query/unit-of-work";
+import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
@@ -42,7 +42,7 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   createQueryEngine: <const T extends AnySchema>(
     schema: T,
     namespace: string,
-  ) => AbstractQuery<T, TUOWConfig>;
+  ) => SimpleQueryInterface<T, TUOWConfig>;
 
   prepareMigrations?: <const T extends AnySchema>(
     schema: T,

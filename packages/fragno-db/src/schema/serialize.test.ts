@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { column, FragnoId } from "./create";
-import { dbToSchemaType, deserialize, schemaToDBType, serialize } from "./serialize";
+import { dbToSchemaType, schemaToDBType } from "./type-conversion/type-mapping";
+import { deserialize, serialize } from "./type-conversion/serialize";
 
 describe("serialize", () => {
   describe("dbToSchemaType", () => {

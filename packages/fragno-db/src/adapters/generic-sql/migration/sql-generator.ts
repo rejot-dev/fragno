@@ -12,7 +12,7 @@ import type {
   ColumnOperation,
   MigrationOperation,
 } from "../../../migration-engine/shared";
-import { schemaToDBType } from "../../../schema/serialize";
+import { schemaToDBType } from "../../../schema/type-conversion/type-mapping";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { SupportedDatabase } from "../driver-config";

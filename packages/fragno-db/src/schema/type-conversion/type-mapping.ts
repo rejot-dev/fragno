@@ -1,6 +1,5 @@
-import type { SQLProvider } from "../shared/providers";
-import type { AnyColumn } from "./create";
-import { FragnoId, FragnoReference } from "./create";
+import type { SQLProvider } from "../../shared/providers";
+import type { AnyColumn } from "../create";
 
 export interface AdditionalColumnMetadata {
   length?: number;
@@ -9,7 +8,13 @@ export interface AdditionalColumnMetadata {
 }
 
 /**
- * Get the possible column types that the raw DB type can map to.
+ * Map a database column type to possible schema column types.
+ * Used for schema introspection and migration validation.
+ *
+ * @param dbType - The database column type (e.g., "integer", "varchar")
+ * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
+ * @param additional - Additional metadata like length, precision, scale
+ * @returns Array of possible schema types that could map to this database type
  */
 export function dbToSchemaType(
   dbType: string,
@@ -137,7 +142,7 @@ export function dbToSchemaType(
 /**
  * Database type literals that can be returned by schemaToDBType
  */
-export type DBTypeLiteral =
+export type DatabaseTypeLiteral =
   // PostgreSQL/CockroachDB types
   | "bigserial"
   | "serial"
@@ -166,10 +171,18 @@ export type DBTypeLiteral =
   // varchar with length parameter
   | `varchar(${number})`;
 
+/**
+ * Map a schema column type to the appropriate database column type.
+ * Used for generating CREATE TABLE statements and migrations.
+ *
+ * @param column - The column schema definition
+ * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
+ * @returns The database-specific column type
+ */
 export function schemaToDBType(
   column: AnyColumn | Pick<AnyColumn, "type">,
   provider: SQLProvider,
-): DBTypeLiteral {
+): DatabaseTypeLiteral {
   const { type } = column;
 
   // Handle internal ID columns with auto-increment
@@ -276,136 +289,4 @@ export function schemaToDBType(
   }
 
   throw new Error(`cannot handle ${provider} ${type}`);
-}
-
-const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
-
-/**
- * Parse from driver value
- */
-export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvider) {
-  if (value === null) {
-    return null;
-  }
-
-  if (!supportJson.includes(provider) && col.type === "json" && typeof value === "string") {
-    return JSON.parse(value);
-  }
-
-  if (
-    provider === "sqlite" &&
-    (col.type === "timestamp" || col.type === "date") &&
-    (typeof value === "number" || typeof value === "string")
-  ) {
-    return new Date(value);
-  }
-
-  if (
-    (provider === "postgresql" || provider === "cockroachdb") &&
-    (col.type === "timestamp" || col.type === "date") &&
-    typeof value === "string"
-  ) {
-    return new Date(value);
-  }
-
-  if (
-    provider === "mysql" &&
-    (col.type === "timestamp" || col.type === "date") &&
-    typeof value === "string"
-  ) {
-    return new Date(value);
-  }
-
-  if (col.type === "bool" && typeof value === "number") {
-    return value === 1;
-  }
-
-  if (col.type === "bigint" && value instanceof Buffer) {
-    return value.readBigInt64BE(0);
-  }
-
-  if (col.type === "bigint" && typeof value === "string") {
-    return BigInt(value);
-  }
-
-  if (col.type === "bigint" && typeof value === "number") {
-    return BigInt(value);
-  }
-
-  if (col.type === "binary" && value instanceof Buffer) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  }
-
-  return value;
-}
-
-/**
- * Encode to driver value
- *
- * @param skipDriverConversions - Skip driver-level type conversions (Date->number, boolean->0/1, bigint->Buffer).
- *                                 Set to true when using ORMs like Drizzle that handle these conversions internally.
- */
-export function serialize(
-  value: unknown,
-  col: AnyColumn,
-  provider: SQLProvider,
-  skipDriverConversions = false,
-) {
-  if (value === null) {
-    return null;
-  }
-
-  // Handle FragnoReference objects (for reference columns)
-  if (value instanceof FragnoReference) {
-    return value.internalId;
-  }
-
-  // Handle FragnoId objects
-  if (value instanceof FragnoId) {
-    // For external ID columns, use the external ID
-    if (col.role === "external-id") {
-      return value.externalId;
-    }
-    // For internal ID columns, use the internal ID (must be present)
-    if (col.role === "internal-id") {
-      if (!value.internalId) {
-        throw new Error(`FragnoId must have internalId for internal-id column ${col.name}`);
-      }
-      return value.internalId;
-    }
-    // For reference columns, prefer internal ID if available
-    if (col.role === "reference") {
-      return value.databaseId;
-    }
-    // Default to external ID for other columns
-    return value.externalId;
-  }
-
-  if (!supportJson.includes(provider) && col.type === "json") {
-    return JSON.stringify(value);
-  }
-
-  // Skip driver-specific type conversions when using ORMs that handle them internally
-  if (!skipDriverConversions) {
-    if (provider === "sqlite" && value instanceof Date) {
-      return value.getTime();
-    }
-
-    if (provider === "sqlite" && typeof value === "boolean") {
-      return value ? 1 : 0;
-    }
-
-    if (provider === "sqlite" && typeof value === "bigint") {
-      const buf = Buffer.alloc(8);
-      buf.writeBigInt64BE(value);
-      return buf;
-    }
-  }
-
-  // most drivers accept Buffer
-  if (col.type === "binary" && value instanceof Uint8Array) {
-    return Buffer.from(value);
-  }
-
-  return value;
 }

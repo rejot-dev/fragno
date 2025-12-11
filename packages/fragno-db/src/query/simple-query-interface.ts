@@ -6,7 +6,7 @@ import type {
   UpdateBuilder,
   DeleteBuilder,
   UpdateManyBuilder,
-} from "./unit-of-work";
+} from "./unit-of-work/unit-of-work";
 import type { Prettify } from "../util/types";
 import type { CursorResult } from "./cursor";
 
@@ -132,7 +132,7 @@ export type FindManyOptions<
     }
   : {});
 
-export interface AbstractQuery<TSchema extends AnySchema, TUOWConfig = void> {
+export interface SimpleQueryInterface<TSchema extends AnySchema, TUOWConfig = void> {
   /**
    * Find multiple records using a builder pattern
    */

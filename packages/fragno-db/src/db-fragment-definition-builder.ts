@@ -1,8 +1,8 @@
 import type { AnySchema } from "./schema/create";
-import type { AbstractQuery } from "./query/query";
+import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type { IUnitOfWork } from "./query/unit-of-work";
-import { TypedUnitOfWork, UnitOfWork } from "./query/unit-of-work";
+import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
+import { TypedUnitOfWork, UnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
   FragnoPublicConfig,
@@ -17,7 +17,7 @@ import {
   executeRestrictedUnitOfWork,
   type AwaitedPromisesInObject,
   type ExecuteRestrictedUnitOfWorkOptions,
-} from "./query/execute-unit-of-work";
+} from "./query/unit-of-work/execute-unit-of-work";
 
 /**
  * Extended FragnoPublicConfig that includes a database adapter.
@@ -36,7 +36,7 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
   /**
    * Database query engine for the fragment's schema.
    */
-  db: AbstractQuery<TSchema>;
+  db: SimpleQueryInterface<TSchema>;
   /**
    * The schema definition for this fragment.
    */
@@ -121,7 +121,7 @@ export type DatabaseFragmentContext<TSchema extends AnySchema> = {
   /**
    * ORM query engine for the fragment's schema.
    */
-  db: AbstractQuery<TSchema>;
+  db: SimpleQueryInterface<TSchema>;
 };
 
 /**
@@ -218,7 +218,7 @@ export class DatabaseFragmentDefinitionBuilder<
     fn: (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
-      db: AbstractQuery<TSchema>;
+      db: SimpleQueryInterface<TSchema>;
       databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     }) => TNewDeps,
   ): DatabaseFragmentDefinitionBuilder<

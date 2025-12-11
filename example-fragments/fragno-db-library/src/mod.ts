@@ -3,7 +3,7 @@ import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { z } from "zod";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
-import type { AbstractQuery, TableToInsertValues } from "@fragno-dev/db/query";
+import type { SimpleQueryInterface, TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
@@ -50,7 +50,7 @@ export const commentFragmentDef = defineFragment<CommentFragmentConfig>("fragno-
   })
   .build();
 
-export function createFragnoDatabaseLibrary(db: AbstractQuery<typeof commentSchema>) {
+export function createFragnoDatabaseLibrary(db: SimpleQueryInterface<typeof commentSchema>) {
   const internal = {
     createComment: (comment: TableToInsertValues<typeof commentSchema.tables.comment>) => {
       return db.create("comment", comment);

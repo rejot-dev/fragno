@@ -1,10 +1,10 @@
 import { sql, type BinaryOperator } from "kysely";
 import { type AnyColumn, type AnyTable, Column } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
-import { serialize } from "../../../schema/serialize";
+import { serialize } from "../../../schema/type-conversion/serialize";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { SupportedDatabase } from "../driver-config";
-import { ReferenceSubquery } from "../../../query/result-transform";
+import { ReferenceSubquery } from "../../../query/value-encoding";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
 /**
