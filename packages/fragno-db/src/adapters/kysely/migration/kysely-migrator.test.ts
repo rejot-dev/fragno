@@ -1,7 +1,11 @@
-import { Kysely, PostgresDialect, SqliteDialect } from "kysely";
+import { DummyDriver, PostgresAdapter, SqliteAdapter } from "kysely";
 import { describe, expect, beforeAll, test } from "vitest";
 import { KyselyAdapter } from "../kysely-adapter";
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
+import {
+  BetterSQLite3DriverConfig,
+  NodePostgresDriverConfig,
+} from "../../generic-sql/driver-config";
 
 describe("KyselyMigrator", () => {
   const testSchema = schema((s) => {
@@ -28,26 +32,30 @@ describe("KyselyMigrator", () => {
       });
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let db: Kysely<any>;
   let adapter: KyselyAdapter;
 
   beforeAll(async () => {
-    // Create a Kysely instance with a PostgresDialect, but not actually connected to a database
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    db = new Kysely({ dialect: new PostgresDialect({} as any) });
-    adapter = new KyselyAdapter({ db, provider: "postgresql" });
+    adapter = new KyselyAdapter({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
+      },
+      driverConfig: new NodePostgresDriverConfig(),
+    });
   });
 
   test("generate SQL for migration 0 -> 1 (create users table)", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-    const preparedMigration = await migrator.prepareMigrationTo(1, {
-      updateSettings: true,
-      fromVersion: 0,
-    });
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
+    const compiledMigration = preparedMigrations.compile(0, 1, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBeGreaterThan(0);
-    const sql = preparedMigration.getSQL?.();
+    expect(compiledMigration.statements.length).toBeGreaterThan(0);
+    const sql = preparedMigrations.getSQL(0, 1, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
       "create table "users_test_namespace" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
@@ -57,67 +65,58 @@ describe("KyselyMigrator", () => {
   });
 
   test("generate SQL for migration 0 -> 2 (create users table and add age)", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-    const preparedMigration = await migrator.prepareMigrationTo(2, {
-      updateSettings: true,
-      fromVersion: 0,
-    });
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
+    const compiledMigration = preparedMigrations.compile(0, 2, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBeGreaterThan(0);
-    const sql = preparedMigration.getSQL?.();
+    expect(compiledMigration.statements.length).toBeGreaterThan(0);
+    const sql = preparedMigrations.getSQL(0, 2, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
       "create table "users_test_namespace" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       alter table "users_test_namespace" add column "age" integer;
 
-      create index "name_idx" on "users_test_namespace" ("name");
+      create index "name_idx_users_test_namespace" on "users_test_namespace" ("name");
 
-      create index "age_idx" on "users_test_namespace" ("age");
+      create index "age_idx_users_test_namespace" on "users_test_namespace" ("age");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('jprP_43K5uMwxAFiepbbrQ', 'test_namespace.schema_version', '2');"
     `);
   });
 
   test("generate SQL for migration 1 -> 2 (add age column and indexes)", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-    const preparedMigration = await migrator.prepareMigrationTo(2, {
-      updateSettings: true,
-      fromVersion: 1,
-    });
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
+    const compiledMigration = preparedMigrations.compile(1, 2, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBeGreaterThan(0);
-    const sql = preparedMigration.getSQL?.();
+    expect(compiledMigration.statements.length).toBeGreaterThan(0);
+    const sql = preparedMigrations.getSQL(1, 2, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
       "alter table "users_test_namespace" add column "age" integer;
 
-      create index "name_idx" on "users_test_namespace" ("name");
+      create index "name_idx_users_test_namespace" on "users_test_namespace" ("name");
 
-      create index "age_idx" on "users_test_namespace" ("age");
+      create index "age_idx_users_test_namespace" on "users_test_namespace" ("age");
 
       update "fragno_db_settings" set "value" = '2' where "key" = 'test_namespace.schema_version';"
     `);
   });
 
   test("generate SQL for migration 0 -> 3 (full schema)", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-    const preparedMigration = await migrator.prepareMigrationTo(3, {
-      updateSettings: true,
-      fromVersion: 0,
-    });
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
+    const compiledMigration = preparedMigrations.compile(0, 3, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBeGreaterThan(0);
-    const sql = preparedMigration.getSQL?.();
+    expect(compiledMigration.statements.length).toBeGreaterThan(0);
+    const sql = preparedMigrations.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
       "create table "users_test_namespace" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       alter table "users_test_namespace" add column "age" integer;
 
-      create index "name_idx" on "users_test_namespace" ("name");
+      create index "name_idx_users_test_namespace" on "users_test_namespace" ("name");
 
-      create index "age_idx" on "users_test_namespace" ("age");
+      create index "age_idx_users_test_namespace" on "users_test_namespace" ("age");
 
       create table "posts_test_namespace" ("id" varchar(30) not null unique, "title" text not null, "user_id" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
@@ -126,14 +125,11 @@ describe("KyselyMigrator", () => {
   });
 
   test("generate SQL for migration 2 -> 3 (add posts table)", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-    const preparedMigration = await migrator.prepareMigrationTo(3, {
-      updateSettings: true,
-      fromVersion: 2,
-    });
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
+    const compiledMigration = preparedMigrations.compile(2, 3, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBeGreaterThan(0);
-    const sql = preparedMigration.getSQL?.();
+    expect(compiledMigration.statements.length).toBeGreaterThan(0);
+    const sql = preparedMigrations.getSQL(2, 3, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
     expect(sql).toMatchInlineSnapshot(`
       "create table "posts_test_namespace" ("id" varchar(30) not null unique, "title" text not null, "user_id" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
@@ -143,38 +139,28 @@ describe("KyselyMigrator", () => {
   });
 
   test("generate empty SQL for migration 2 -> 2 (no changes)", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
-    const preparedMigration = await migrator.prepareMigrationTo(2, {
-      updateSettings: true,
-      fromVersion: 2,
-    });
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
+    const compiledMigration = preparedMigrations.compile(2, 2, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBe(0);
-    const sql = preparedMigration.getSQL?.();
-    expect(sql).toBeDefined();
+    expect(compiledMigration.statements.length).toBe(0);
+    const sql = preparedMigrations.getSQL(2, 2, { updateVersionInMigration: true });
     expect(sql).toBe("");
   });
 
   test("throw error for backward migration", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
 
-    await expect(
-      migrator.prepareMigrationTo(1, {
-        updateSettings: true,
-        fromVersion: 2,
-      }),
-    ).rejects.toThrow("Cannot migrate backwards");
+    expect(() => preparedMigrations.compile(2, 1, { updateVersionInMigration: true })).toThrow(
+      "Cannot migrate backwards",
+    );
   });
 
   test("throw error for version beyond schema", async () => {
-    const migrator = adapter.createMigrationEngine(testSchema, "test_namespace");
+    const preparedMigrations = adapter.prepareMigrations(testSchema, "test_namespace");
 
-    await expect(
-      migrator.prepareMigrationTo(10, {
-        updateSettings: true,
-        fromVersion: 0,
-      }),
-    ).rejects.toThrow("schema only has version 4");
+    expect(() => preparedMigrations.compile(0, 10, { updateVersionInMigration: true })).toThrow(
+      "exceeds schema version",
+    );
   });
 });
 
@@ -195,28 +181,33 @@ describe("KyselyMigrator - SQLite Foreign Key Merging", () => {
       });
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let db: Kysely<any>;
   let adapter: KyselyAdapter;
 
   beforeAll(async () => {
     // Create a Kysely instance with SQLite dialect
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    db = new Kysely({ dialect: new SqliteDialect({} as any) });
-    adapter = new KyselyAdapter({ db, provider: "sqlite" });
+    adapter = new KyselyAdapter({
+      dialect: {
+        createAdapter: () => new SqliteAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
+      },
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
   });
 
   test("SQLite should merge foreign keys into create-table operations", async () => {
-    const migrator = adapter.createMigrationEngine(userExampleSchema, "test");
+    const preparedMigrations = adapter.prepareMigrations(userExampleSchema, "test");
 
     // Migrate from 0 -> 3 (all tables + FK in one batch)
-    const preparedMigration = await migrator.prepareMigrationTo(3, {
-      updateSettings: true,
-      fromVersion: 0,
-    });
+    const compiledMigration = preparedMigrations.compile(0, 3, { updateVersionInMigration: true });
 
-    expect(preparedMigration.operations.length).toBeGreaterThan(0);
-    const sql = preparedMigration.getSQL?.();
+    expect(compiledMigration.statements.length).toBeGreaterThan(0);
+    const sql = preparedMigrations.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
 
     // The SQL should have PRAGMA defer_foreign_keys
@@ -237,14 +228,9 @@ describe("KyselyMigrator - SQLite Foreign Key Merging", () => {
   });
 
   test("SQLite FK merging full schema verification", async () => {
-    const migrator = adapter.createMigrationEngine(userExampleSchema, "test");
+    const preparedMigrations = adapter.prepareMigrations(userExampleSchema, "test");
 
-    const preparedMigration = await migrator.prepareMigrationTo(3, {
-      updateSettings: true,
-      fromVersion: 0,
-    });
-
-    const sql = preparedMigration.getSQL?.();
+    const sql = preparedMigrations.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toBeDefined();
 
     // Verify the complete SQL snapshot

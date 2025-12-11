@@ -1,4 +1,5 @@
 import { createId } from "../id";
+import { inspect } from "node:util";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
@@ -546,6 +547,10 @@ export class FragnoId {
 
   valueOf(): string {
     return this.#externalId;
+  }
+
+  [inspect.custom](): string {
+    return `FragnoId { externalId: ${this.#externalId}, internalId: ${this.#internalId?.toString()} }`;
   }
 }
 

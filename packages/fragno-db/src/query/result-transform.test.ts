@@ -769,7 +769,7 @@ describe("decodeResult", () => {
       assert(fragnoId instanceof FragnoId);
 
       expect(fragnoId.externalId).toBe("user123");
-      expect(fragnoId.internalId).toBe(456);
+      expect(fragnoId.internalId).toBe(456n);
       expect(result["name"]).toBe("John");
     });
 
@@ -827,7 +827,7 @@ describe("decodeResult", () => {
       expect(mysqlResult["id"]).toBeInstanceOf(FragnoId);
 
       expect((sqliteResult["id"] as FragnoId).externalId).toBe("user123");
-      expect((sqliteResult["id"] as FragnoId).internalId).toBe(456);
+      expect((sqliteResult["id"] as FragnoId).internalId).toBe(456n);
     });
 
     it("should create FragnoId in relation data when both IDs present", () => {
@@ -850,7 +850,7 @@ describe("decodeResult", () => {
       const author: Record<string, unknown> = result["author"] as Record<string, unknown>;
       assert(author["id"] instanceof FragnoId);
       expect(author["id"].externalId).toBe("user123");
-      expect(author["id"].internalId).toBe(456);
+      expect(author["id"].internalId).toBe(456n);
       expect(author["name"]).toBe("Alice");
     });
 
@@ -896,7 +896,7 @@ describe("decodeResult", () => {
 
       expect(result["id"]).toBeInstanceOf(FragnoId);
       expect((result["id"] as FragnoId).externalId).toBe("user123");
-      expect((result["id"] as FragnoId).internalId).toBe(456);
+      expect((result["id"] as FragnoId).internalId).toBe(456n);
       expect(result["name"]).toBe("Alice");
       expect(result["email"]).toBe("alice@example.com");
       expect(result["age"]).toBe(30);
@@ -917,7 +917,7 @@ describe("decodeResult", () => {
 
       expect(result["id"]).toBeInstanceOf(FragnoId);
       expect((result["id"] as FragnoId).externalId).toBe("user123");
-      expect((result["id"] as FragnoId).internalId).toBe(789);
+      expect((result["id"] as FragnoId).internalId).toBe(789n);
       expect(result["name"]).toBe("John");
     });
   });

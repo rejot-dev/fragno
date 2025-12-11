@@ -71,15 +71,26 @@ export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
   }
 
   async runMigrations(): Promise<boolean> {
-    if (!this.#adapter.createMigrationEngine) {
+    if (!this.#adapter.prepareMigrations) {
       throw new Error("Migration engine not supported for this adapter.");
     }
 
-    const migrator = this.#adapter.createMigrationEngine(this.#schema, this.#namespace);
-    const preparedMigration = await migrator.prepareMigration();
-    await preparedMigration.execute();
+    // Get the current version from the database
+    const currentVersionStr = await this.#adapter.getSchemaVersion(this.#namespace);
+    const currentVersion = currentVersionStr ? parseInt(currentVersionStr) : 0;
+    const targetVersion = this.#schema.version;
 
-    return preparedMigration.operations.length > 0;
+    // Check if migration is needed
+    if (currentVersion >= targetVersion) {
+      return false;
+    }
+
+    const preparedMigrations = this.#adapter.prepareMigrations(this.#schema, this.#namespace);
+    const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion);
+
+    await preparedMigrations.execute(currentVersion, targetVersion);
+
+    return compiledMigration.statements.length > 0;
   }
 
   get namespace() {

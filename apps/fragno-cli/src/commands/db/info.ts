@@ -26,28 +26,24 @@ export const infoCommand = define({
           namespace: string;
           schemaVersion: number;
           migrationSupport: boolean;
-          currentVersion?: number;
-          pendingVersions?: number;
+          currentVersion?: string;
+          pendingVersions?: string;
           status?: string;
         } = {
           namespace: fragnoDb.namespace,
           schemaVersion: fragnoDb.schema.version,
-          migrationSupport: !!fragnoDb.adapter.createMigrationEngine,
+          migrationSupport: !!fragnoDb.adapter.prepareMigrations,
         };
 
         // Get current database version if migrations are supported
-        if (fragnoDb.adapter.createMigrationEngine) {
-          const migrator = fragnoDb.adapter.createMigrationEngine(
-            fragnoDb.schema,
-            fragnoDb.namespace,
-          );
-          const currentVersion = await migrator.getVersion();
+        if (fragnoDb.adapter.prepareMigrations) {
+          const currentVersion = await fragnoDb.adapter.getSchemaVersion(fragnoDb.namespace);
           info.currentVersion = currentVersion;
-          info.pendingVersions = fragnoDb.schema.version - currentVersion;
+          // info.pendingVersions = fragnoDb.schema.version - currentVersion;
 
-          if (info.pendingVersions > 0) {
-            info.status = `Pending (${info.pendingVersions} migration(s))`;
-          } else if (info.pendingVersions === 0) {
+          if (info.schemaVersion.toString() !== info.currentVersion) {
+            info.status = `Migrations pending`;
+          } else {
             info.status = "Up to date";
           }
         } else {
@@ -112,12 +108,7 @@ export const infoCommand = define({
       console.log("Note: These adapters do not support migrations.");
       console.log("Use 'fragno-cli db generate' to generate schema files.");
     } else {
-      const hasPendingMigrations = dbInfos.some(
-        (info) => info.pendingVersions && info.pendingVersions > 0,
-      );
-      if (hasPendingMigrations) {
-        console.log("Run 'fragno-cli db migrate <target>' to apply pending migrations.");
-      }
+      console.log("Run 'fragno-cli db migrate <target>' to apply pending migrations.");
     }
   },
 });

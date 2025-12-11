@@ -1,6 +1,5 @@
 import type { FragnoDatabase } from "../mod";
 import type { AnySchema } from "../schema/create";
-import type { PreparedMigration } from "./create";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
@@ -25,7 +24,6 @@ export interface GenerationInternalResult {
   namespace: string;
   fromVersion: number;
   toVersion: number;
-  preparedMigration?: PreparedMigration;
 }
 
 export interface ExecuteMigrationResult {
@@ -96,10 +94,10 @@ export async function generateMigrationsOrSchema<
     ];
   }
 
-  // Otherwise, use migration engine for individual generation (e.g., Kysely)
-  if (!adapter.createMigrationEngine) {
+  // Otherwise, use migration engine for individual generation (e.g., Kysely, GenericSQL)
+  if (!adapter.prepareMigrations) {
     throw new Error(
-      "Adapter does not support migration-based schema generation. Ensure your adapter implements createMigrationEngine.",
+      "Adapter does not support migration-based schema generation. Ensure your adapter implements prepareMigrations.",
     );
   }
 
@@ -139,21 +137,14 @@ export async function generateMigrationsOrSchema<
   const generatedFiles: GenerationInternalResult[] = [];
 
   // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsMigrator = adapter.createMigrationEngine(settingsSchema, "");
+  const settingsPreparedMigrations = adapter.prepareMigrations(settingsSchema, "");
   const settingsTargetVersion = settingsSchema.version;
 
   // Generate settings table migration
-  const settingsMigration = await settingsMigrator.prepareMigrationTo(settingsTargetVersion, {
-    fromVersion: settingsSourceVersion,
-  });
-
-  if (!settingsMigration.getSQL) {
-    throw new Error(
-      "Migration engine does not support SQL generation. Ensure your adapter's migration engine provides getSQL().",
-    );
-  }
-
-  const settingsSql = settingsMigration.getSQL();
+  const settingsSql = settingsPreparedMigrations.getSQL(
+    settingsSourceVersion,
+    settingsTargetVersion,
+  );
 
   if (settingsSql.trim()) {
     generatedFiles.push({
@@ -162,7 +153,6 @@ export async function generateMigrationsOrSchema<
       namespace: "", // Empty namespace for settings table
       fromVersion: settingsSourceVersion,
       toVersion: settingsTargetVersion,
-      preparedMigration: settingsMigration,
     });
   }
 
@@ -171,29 +161,19 @@ export async function generateMigrationsOrSchema<
     const dbAdapter = db.adapter;
 
     // Use migration engine
-    if (!dbAdapter.createMigrationEngine) {
+    if (!dbAdapter.prepareMigrations) {
       throw new Error(
         `Adapter for ${db.namespace} does not support schema generation. ` +
-          `Ensure your adapter implements either createSchemaGenerator or createMigrationEngine.`,
+          `Ensure your adapter implements either createSchemaGenerator or prepareMigrations.`,
       );
     }
 
-    const migrator = dbAdapter.createMigrationEngine(db.schema, db.namespace);
+    const preparedMigrations = dbAdapter.prepareMigrations(db.schema, db.namespace);
     const targetVersion = options?.toVersion ?? db.schema.version;
     const sourceVersion = options?.fromVersion ?? 0;
 
     // Generate migration from source to target version
-    const preparedMigration = await migrator.prepareMigrationTo(targetVersion, {
-      fromVersion: sourceVersion,
-    });
-
-    if (!preparedMigration.getSQL) {
-      throw new Error(
-        "Migration engine does not support SQL generation. Ensure your adapter's migration engine provides getSQL().",
-      );
-    }
-
-    const sql = preparedMigration.getSQL();
+    const sql = preparedMigrations.getSQL(sourceVersion, targetVersion);
 
     // If no migrations needed, skip this fragment
     if (sql.trim()) {
@@ -203,7 +183,6 @@ export async function generateMigrationsOrSchema<
         namespace: db.namespace,
         fromVersion: sourceVersion,
         toVersion: targetVersion,
-        preparedMigration: preparedMigration,
       });
     }
   }
@@ -230,7 +209,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   const adapter = firstDb.adapter;
 
   // Validate adapter supports migrations
-  if (!adapter.createMigrationEngine) {
+  if (!adapter.prepareMigrations) {
     throw new Error(
       "Adapter does not support running migrations. The adapter only supports schema generation.\n" +
         "Try using 'generateMigrationsOrSchema' instead to generate schema files.",
@@ -264,7 +243,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     namespace: string;
     fromVersion: number;
     toVersion: number;
-    preparedMigration: PreparedMigration;
+    execute: () => Promise<void>;
   }> = [];
 
   // 1. Prepare settings table migration
@@ -296,21 +275,25 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   }
 
   // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsMigrator = adapter.createMigrationEngine(settingsSchema, "");
+  const settingsPreparedMigrations = adapter.prepareMigrations(settingsSchema, "");
   const settingsTargetVersion = settingsSchema.version;
 
   if (settingsSourceVersion < settingsTargetVersion) {
-    const settingsMigration = await settingsMigrator.prepareMigrationTo(settingsTargetVersion, {
-      fromVersion: settingsSourceVersion,
-      updateSettings: true,
-    });
+    const compiledMigration = settingsPreparedMigrations.compile(
+      settingsSourceVersion,
+      settingsTargetVersion,
+      { updateVersionInMigration: true },
+    );
 
-    if (settingsMigration.operations.length > 0) {
+    if (compiledMigration.statements.length > 0) {
       migrationsToExecute.push({
         namespace: "", // Empty namespace for settings table
         fromVersion: settingsSourceVersion,
         toVersion: settingsTargetVersion,
-        preparedMigration: settingsMigration,
+        execute: () =>
+          settingsPreparedMigrations.execute(settingsSourceVersion, settingsTargetVersion, {
+            updateVersionInMigration: true,
+          }),
       });
     }
   }
@@ -319,21 +302,25 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   const sortedDatabases = [...databases].sort((a, b) => a.namespace.localeCompare(b.namespace));
 
   for (const fragnoDb of sortedDatabases) {
-    const migrator = adapter.createMigrationEngine(fragnoDb.schema, fragnoDb.namespace);
-    const currentVersion = await migrator.getVersion();
+    const preparedMigrations = adapter.prepareMigrations(fragnoDb.schema, fragnoDb.namespace);
+    const currentVersionStr = await adapter.getSchemaVersion(fragnoDb.namespace);
+    const currentVersion = currentVersionStr ? parseInt(currentVersionStr) : 0;
     const targetVersion = fragnoDb.schema.version;
 
     if (currentVersion < targetVersion) {
-      const preparedMigration = await migrator.prepareMigrationTo(targetVersion, {
-        updateSettings: true,
+      const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion, {
+        updateVersionInMigration: true,
       });
 
-      if (preparedMigration.operations.length > 0) {
+      if (compiledMigration.statements.length > 0) {
         migrationsToExecute.push({
           namespace: fragnoDb.namespace,
           fromVersion: currentVersion,
           toVersion: targetVersion,
-          preparedMigration: preparedMigration,
+          execute: () =>
+            preparedMigrations.execute(currentVersion, targetVersion, {
+              updateVersionInMigration: true,
+            }),
         });
       }
     }
@@ -341,7 +328,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
 
   // 3. Execute all migrations in order
   for (const migration of migrationsToExecute) {
-    await migration.preparedMigration.execute();
+    await migration.execute();
     results.push({
       namespace: migration.namespace,
       didMigrate: true,

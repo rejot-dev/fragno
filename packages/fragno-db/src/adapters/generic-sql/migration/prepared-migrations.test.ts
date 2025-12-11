@@ -155,8 +155,9 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
       },
     ]);
 
-    // FK should be merged into posts create-table
-    expect(operations.length).toBe(2);
+    // FK should be merged into posts create-table, plus pragma statement
+    expect(operations.length).toBe(3);
+    expect(operations[0]).toEqual({ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" });
     const postsOp = operations.find((op) => op.type === "create-table" && op.name === "posts");
     expect(postsOp).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,11 +194,12 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
       { toPhysical: (n) => `${n}_test`, toLogical: (n) => n.replace("_test", "") },
     );
 
-    expect(statements.length).toBe(2);
-    expect(statements[0].sql).toMatchInlineSnapshot(
+    expect(statements.length).toBe(3);
+    expect(statements[0].sql).toMatchInlineSnapshot(`"PRAGMA defer_foreign_keys = ON"`);
+    expect(statements[1].sql).toMatchInlineSnapshot(
       `"create table "users_test" ("id" text not null unique)"`,
     );
-    expect(statements[1].sql).toMatchInlineSnapshot(
+    expect(statements[2].sql).toMatchInlineSnapshot(
       `"create table "posts_test" ("id" text not null unique, "authorId" integer not null, constraint "posts_users_author_fk" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict)"`,
     );
   });
@@ -236,7 +238,8 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
       undefined,
     );
 
-    expect(statements[0].sql).toMatchInlineSnapshot(
+    expect(statements[0].sql).toMatchInlineSnapshot(`"PRAGMA defer_foreign_keys = ON"`);
+    expect(statements[1].sql).toMatchInlineSnapshot(
       `"create table "users" ("_internalId" integer not null primary key autoincrement)"`,
     );
   });

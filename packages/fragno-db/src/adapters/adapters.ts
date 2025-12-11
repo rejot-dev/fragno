@@ -1,4 +1,3 @@
-import type { Migrator } from "../migration-engine/create";
 import type { AbstractQuery } from "../query/query";
 import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
@@ -44,8 +43,6 @@ export interface DatabaseAdapter<TUOWConfig = void> {
     schema: T,
     namespace: string,
   ) => AbstractQuery<T, TUOWConfig>;
-
-  createMigrationEngine?: <const T extends AnySchema>(schema: T, namespace: string) => Migrator;
 
   prepareMigrations?: <const T extends AnySchema>(
     schema: T,

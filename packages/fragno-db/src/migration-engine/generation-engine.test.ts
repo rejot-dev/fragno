@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from "vitest";
-import { Kysely, PostgresDialect } from "kysely";
+import { DummyDriver, MysqlAdapter, PostgresAdapter, SqliteAdapter } from "kysely";
 import {
   postProcessMigrationFilenames,
   type GenerationInternalResult,
@@ -8,32 +8,30 @@ import {
 import { KyselyAdapter } from "../adapters/kysely/kysely-adapter";
 import { column, idColumn, schema, type AnySchema } from "../schema/create";
 import { FragnoDatabase } from "../mod";
+import {
+  MySQL2DriverConfig,
+  NodePostgresDriverConfig,
+  SQLocalDriverConfig,
+} from "../adapters/generic-sql/driver-config";
 
 describe("generateMigrationsOrSchema - kysely", () => {
   const mockDate = new Date("2025-10-24T12:00:00Z");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let db: Kysely<any>;
   let adapter: KyselyAdapter;
 
   beforeAll(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    db = new Kysely({ dialect: new PostgresDialect({} as any) });
-
-    // Mock Kysely transaction to prevent actual database connections
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.spyOn(db, "transaction").mockReturnValue({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      execute: async (callback: any) => {
-        // Return a mock transaction executor that returns empty results
-        const mockTx = {
-          executeQuery: async () => ({ rows: [] }),
-        };
-        return callback(mockTx);
+    adapter = new KyselyAdapter({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
-
-    adapter = new KyselyAdapter({ db, provider: "postgresql" });
+      driverConfig: new NodePostgresDriverConfig(),
+    });
 
     // Mock the adapter methods
     vi.spyOn(adapter, "isConnectionHealthy").mockResolvedValue(true);
@@ -296,23 +294,19 @@ describe("generateMigrationsOrSchema - kysely", () => {
   });
 
   it("should include MySQL-specific foreign key checks in generated SQL", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mysqlDb = new Kysely({ dialect: new PostgresDialect({} as any) });
-
-    // Mock Kysely transaction to prevent actual database connections
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.spyOn(mysqlDb, "transaction").mockReturnValue({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      execute: async (callback: any) => {
-        const mockTx = {
-          executeQuery: async () => ({ rows: [] }),
-        };
-        return callback(mockTx);
+    const mysqlAdapter = new KyselyAdapter({
+      dialect: {
+        createAdapter: () => new MysqlAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
-
-    const mysqlAdapter = new KyselyAdapter({ db: mysqlDb, provider: "mysql" });
+      driverConfig: new MySQL2DriverConfig(),
+    });
 
     vi.spyOn(mysqlAdapter, "isConnectionHealthy").mockResolvedValue(true);
     vi.spyOn(mysqlAdapter, "getSchemaVersion").mockResolvedValue(undefined);
@@ -345,23 +339,19 @@ describe("generateMigrationsOrSchema - kysely", () => {
   });
 
   it("should include SQLite-specific pragma in generated SQL", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sqliteDb = new Kysely({ dialect: new PostgresDialect({} as any) });
-
-    // Mock Kysely transaction to prevent actual database connections
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    vi.spyOn(sqliteDb, "transaction").mockReturnValue({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      execute: async (callback: any) => {
-        const mockTx = {
-          executeQuery: async () => ({ rows: [] }),
-        };
-        return callback(mockTx);
+    const sqliteAdapter = new KyselyAdapter({
+      dialect: {
+        createAdapter: () => new SqliteAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
-
-    const sqliteAdapter = new KyselyAdapter({ db: sqliteDb, provider: "sqlite" });
+      driverConfig: new SQLocalDriverConfig(),
+    });
 
     vi.spyOn(sqliteAdapter, "isConnectionHealthy").mockResolvedValue(true);
     vi.spyOn(sqliteAdapter, "getSchemaVersion").mockResolvedValue(undefined);

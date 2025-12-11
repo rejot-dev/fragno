@@ -46,10 +46,10 @@ export const generateCommand = define({
     const { databases: allFragnoDatabases, adapter } = await importFragmentFiles(targetPaths);
 
     // Check if adapter supports any form of schema generation
-    if (!adapter.createSchemaGenerator && !adapter.createMigrationEngine) {
+    if (!adapter.createSchemaGenerator && !adapter.prepareMigrations) {
       throw new Error(
         `The adapter does not support schema generation. ` +
-          `Please use an adapter that implements either createSchemaGenerator or createMigrationEngine.`,
+          `Please use an adapter that implements either createSchemaGenerator or prepareMigrations.`,
       );
     }
 

@@ -10,7 +10,7 @@ describe("SQLocal", () => {
 
     const adapter = new SqlDriverAdapter(dialect);
 
-    const query = sql`SELECT 5`.build();
+    const query = sql`SELECT 5`.compile(dialect);
     const result = await adapter.executeQuery(query);
     expect(result.rows).toEqual([{ 5: 5 }]);
 
@@ -24,16 +24,16 @@ describe("SQLocal", () => {
     const adapter = new SqlDriverAdapter(dialect);
 
     // Create table outside transaction
-    await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER, name TEXT)`.build());
+    await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER, name TEXT)`.compile(dialect));
 
     // Execute queries in transaction
     await adapter.transaction(async (trx) => {
-      await trx.executeQuery(sql`INSERT INTO test VALUES (1, 'Alice')`.build());
-      await trx.executeQuery(sql`INSERT INTO test VALUES (2, 'Bob')`.build());
+      await trx.executeQuery(sql`INSERT INTO test VALUES (1, 'Alice')`.compile(dialect));
+      await trx.executeQuery(sql`INSERT INTO test VALUES (2, 'Bob')`.compile(dialect));
     });
 
     // Verify data persists after transaction
-    const result = await adapter.executeQuery(sql`SELECT * FROM test ORDER BY id`.build());
+    const result = await adapter.executeQuery(sql`SELECT * FROM test ORDER BY id`.compile(dialect));
     expect(result.rows).toEqual([
       { id: 1, name: "Alice" },
       { id: 2, name: "Bob" },
@@ -47,20 +47,22 @@ describe("SQLocal", () => {
     const adapter = new SqlDriverAdapter(dialect);
 
     // Create table outside transaction
-    await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)`.build());
-    await adapter.executeQuery(sql`INSERT INTO test VALUES (1, 'Alice')`.build());
+    await adapter.executeQuery(
+      sql`CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)`.compile(dialect),
+    );
+    await adapter.executeQuery(sql`INSERT INTO test VALUES (1, 'Alice')`.compile(dialect));
 
     // Try to execute queries in transaction with duplicate key error
     await expect(
       adapter.transaction(async (trx) => {
-        await trx.executeQuery(sql`INSERT INTO test VALUES (2, 'Bob')`.build());
+        await trx.executeQuery(sql`INSERT INTO test VALUES (2, 'Bob')`.compile(dialect));
         // This should cause a duplicate key error
-        await trx.executeQuery(sql`INSERT INTO test VALUES (1, 'Charlie')`.build());
+        await trx.executeQuery(sql`INSERT INTO test VALUES (1, 'Charlie')`.compile(dialect));
       }),
     ).rejects.toThrow();
 
     // Verify Bob was not inserted (transaction rolled back)
-    const result = await adapter.executeQuery(sql`SELECT * FROM test ORDER BY id`.build());
+    const result = await adapter.executeQuery(sql`SELECT * FROM test ORDER BY id`.compile(dialect));
     expect(result.rows).toEqual([{ id: 1, name: "Alice" }]);
 
     await adapter.destroy();
@@ -85,10 +87,14 @@ describe("SQLocal", () => {
 
     const adapterWithPlugin = adapter.withPlugin(metadataPlugin);
 
-    await adapterWithPlugin.executeQuery(sql`CREATE TABLE test (id INTEGER, name TEXT)`.build());
-    await adapterWithPlugin.executeQuery(sql`INSERT INTO test VALUES (1, 'Alice')`.build());
+    await adapterWithPlugin.executeQuery(
+      sql`CREATE TABLE test (id INTEGER, name TEXT)`.compile(dialect),
+    );
+    await adapterWithPlugin.executeQuery(
+      sql`INSERT INTO test VALUES (1, 'Alice')`.compile(dialect),
+    );
 
-    const result = await adapterWithPlugin.executeQuery(sql`SELECT * FROM test`.build());
+    const result = await adapterWithPlugin.executeQuery(sql`SELECT * FROM test`.compile(dialect));
 
     expect(result.rows).toEqual([{ id: 1, name: "Alice", __metadata: { transformed: true } }]);
 
@@ -100,7 +106,7 @@ describe("SQLocal", () => {
     const adapter = new SqlDriverAdapter(dialect);
 
     // Execute some queries
-    await adapter.executeQuery(sql`SELECT 1`.build());
+    await adapter.executeQuery(sql`SELECT 1`.compile(dialect));
 
     // Destroy should complete without error
     await expect(adapter.destroy()).resolves.toBeUndefined();

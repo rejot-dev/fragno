@@ -34,11 +34,15 @@ const errors = {
 export class SQLiteSQLGenerator extends SQLGenerator {
   /**
    * SQLite preprocessing: merge add-foreign-key operations into create-table operations
-   * when both exist in the same batch.
+   * when both exist in the same batch, and add pragma for deferred foreign keys.
    *
    * SQLite requires foreign keys to be defined at table creation time.
    */
   override preprocess(operations: MigrationOperation[]): MigrationOperation[] {
+    if (operations.length === 0) {
+      return operations;
+    }
+
     const result: MigrationOperation[] = [];
     const createTableIndices = new Map<string, number>();
     const foreignKeysByTable = new Map<
@@ -82,7 +86,8 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       }
     }
 
-    return result;
+    // Add pragma at the beginning for deferred foreign key checking
+    return [{ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" }, ...result];
   }
 
   override applyAutoIncrement(builder: ColumnDefinitionBuilder): ColumnDefinitionBuilder {

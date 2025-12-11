@@ -4,56 +4,54 @@ The KyselyAdapter connects Fragno's database API to your Kysely database instanc
 
 ```typescript @fragno-imports
 import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-import { Kysely } from "kysely";
-import type { Dialect } from "kysely";
+import {
+  PGLiteDriverConfig,
+  SQLocalDriverConfig,
+  BetterSQLite3DriverConfig,
+} from "@fragno-dev/db/drivers";
+import { SqliteDialect, PostgresDialect, MysqlDialect } from "@fragno-dev/db/dialects";
+import type { Dialect } from "@fragno-dev/db/sql-driver";
+import SQLite from "better-sqlite3";
+import { KyselyPGlite } from "kysely-pglite";
 ```
 
 ## Basic Setup
 
-Create a KyselyAdapter with your Kysely database instance and provider.
+Create a KyselyAdapter with your Kysely dialect and driver configuration.
 
 ```typescript @fragno-test:basic-setup types-only
-interface MyDatabase {
-  users: {
-    id: string;
-    email: string;
-    name: string;
-  };
-  posts: {
-    id: string;
-    title: string;
-    content: string;
-    authorId: string;
-  };
-}
-
-declare const dialect: Dialect;
-
-export const db = new Kysely<MyDatabase>({
-  dialect,
+const dialect = new SqliteDialect({
+  database: new SQLite(":memory:"),
 });
 
 export const adapter = new KyselyAdapter({
-  db,
-  provider: "postgresql",
+  dialect,
+  driverConfig: new BetterSQLite3DriverConfig(),
 });
 ```
 
-The adapter requires your Kysely instance and the database provider (`"postgresql"`, `"mysql"`, or
-`"sqlite"`).
+The adapter requires:
 
-## Factory Function
+- `dialect`: A Kysely dialect instance for your database
+- `driverConfig`: A driver configuration matching your database type (`PGLiteDriverConfig`,
+  `SQLocalDriverConfig`, or `BetterSQLite3DriverConfig`)
 
-For async database initialization, pass a factory function instead of a direct instance.
+## First Party Kysely Dialects
 
-```typescript @fragno-test:factory-function types-only
-async function createDatabase() {
-  // Async initialization logic
-  return new Kysely({ dialect: {} as Dialect });
-}
+Fragno re-exports the "first party" Kysely dialects for SQLite, PostgreSQL, and MySQL. This means
+you can use these dialects without installing them yourself.
+
+```typescript @fragno-test:first-party-kysely-dialects types-only
+import { SqliteDialect, PostgresDialect, MysqlDialect } from "@fragno-dev/db/dialects";
+```
+
+## PGLite Example
+
+```typescript @fragno-test:postgresql-example types-only
+const { dialect } = await KyselyPGlite.create();
 
 export const adapter = new KyselyAdapter({
-  db: createDatabase,
-  provider: "postgresql",
+  dialect,
+  driverConfig: new PGLiteDriverConfig(),
 });
 ```

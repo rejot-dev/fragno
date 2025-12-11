@@ -12,7 +12,7 @@ import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
 import { createCommonTestContextMethods } from ".";
-import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
+import { PGLiteDriverConfig, SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 import { internalFragmentDef } from "@fragno-dev/db";
 
 // Adapter configuration types
@@ -83,8 +83,8 @@ export async function createKyselySqliteAdapter(
 
     // Create KyselyAdapter
     const adapter = new KyselyAdapter({
-      db: kysely,
-      provider: "sqlite",
+      dialect,
+      driverConfig: new SQLocalDriverConfig(),
     });
 
     // Run migrations for all schemas in order
@@ -93,15 +93,12 @@ export async function createKyselySqliteAdapter(
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       // Run migrations
-      const migrator = adapter.createMigrationEngine(schema, namespace);
-      const preparedMigration = migrateToVersion
-        ? await migrator.prepareMigrationTo(migrateToVersion, {
-            updateSettings: false,
-          })
-        : await migrator.prepareMigration({
-            updateSettings: false,
-          });
-      await preparedMigration.execute();
+      const preparedMigrations = adapter.prepareMigrations(schema, namespace);
+      if (migrateToVersion !== undefined) {
+        await preparedMigrations.execute(0, migrateToVersion, { updateVersionInMigration: false });
+      } else {
+        await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
+      }
 
       // Create ORM instance and store in map
       const orm = adapter.createQueryEngine(schema, namespace);
@@ -174,8 +171,8 @@ export async function createKyselyPgliteAdapter(
 
     // Create KyselyAdapter
     const adapter = new KyselyAdapter({
-      db: kysely,
-      provider: "postgresql",
+      dialect: kyselyPglite.dialect,
+      driverConfig: new PGLiteDriverConfig(),
     });
 
     // Run migrations for all schemas in order
@@ -184,15 +181,12 @@ export async function createKyselyPgliteAdapter(
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       // Run migrations
-      const migrator = adapter.createMigrationEngine(schema, namespace);
-      const preparedMigration = migrateToVersion
-        ? await migrator.prepareMigrationTo(migrateToVersion, {
-            updateSettings: false,
-          })
-        : await migrator.prepareMigration({
-            updateSettings: false,
-          });
-      await preparedMigration.execute();
+      const preparedMigrations = adapter.prepareMigrations(schema, namespace);
+      if (migrateToVersion !== undefined) {
+        await preparedMigrations.execute(0, migrateToVersion, { updateVersionInMigration: false });
+      } else {
+        await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
+      }
 
       // Create ORM instance and store in map
       const orm = adapter.createQueryEngine(schema, namespace);
@@ -291,9 +285,13 @@ export async function createDrizzlePgliteAdapter(
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
-    for (const { schema, namespace } of schemas) {
+    for (const { schema, namespace, migrateToVersion } of schemas) {
       const preparedMigrations = adapter.prepareMigrations(schema, namespace);
-      await preparedMigrations.executeWithDriver(adapter.driver, 0);
+      if (migrateToVersion !== undefined) {
+        await preparedMigrations.execute(0, migrateToVersion, { updateVersionInMigration: false });
+      } else {
+        await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
+      }
 
       // Create ORM instance and store in map
       const orm = adapter.createQueryEngine(schema, namespace);

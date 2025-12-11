@@ -42,7 +42,12 @@ export interface Driver {
   destroy(): Promise<void>;
 }
 
+export interface QueryCompiler {
+  compileQuery(node: unknown, queryId: unknown): CompiledQuery;
+}
+
 export interface Dialect {
   createDriver(): Driver;
   createAdapter(): DialectAdapter;
+  createQueryCompiler(): QueryCompiler;
 }

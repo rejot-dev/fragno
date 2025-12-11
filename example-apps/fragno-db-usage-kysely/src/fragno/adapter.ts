@@ -1,10 +1,11 @@
 import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-import { db } from "../database";
+import { dialect } from "../database";
+import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
 
 export function createAdapter() {
   return new KyselyAdapter({
-    db,
-    provider: "postgresql",
+    dialect: dialect,
+    driverConfig: new PGLiteDriverConfig(),
   });
 }
 export const adapter = createAdapter();
