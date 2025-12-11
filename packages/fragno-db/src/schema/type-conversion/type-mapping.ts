@@ -1,4 +1,4 @@
-import type { SQLProvider } from "../../shared/providers";
+import type { SupportedDatabase } from "../../adapters/generic-sql/driver-config";
 import type { AnyColumn } from "../create";
 
 export interface AdditionalColumnMetadata {
@@ -8,146 +8,12 @@ export interface AdditionalColumnMetadata {
 }
 
 /**
- * Map a database column type to possible schema column types.
- * Used for schema introspection and migration validation.
- *
- * @param dbType - The database column type (e.g., "integer", "varchar")
- * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
- * @param additional - Additional metadata like length, precision, scale
- * @returns Array of possible schema types that could map to this database type
+ * PostgreSQL-specific database types
  */
-export function dbToSchemaType(
-  dbType: string,
-  provider: SQLProvider,
-  additional: AdditionalColumnMetadata,
-): (AnyColumn["type"] | "varchar(n)")[] {
-  dbType = dbType.toLowerCase();
-  if (provider === "sqlite") {
-    switch (dbType) {
-      case "integer":
-        return ["bool", "date", "timestamp", "bigint", "integer"];
-      case "text":
-        return ["json", "string", "bigint", "varchar(n)"];
-      case "real":
-      case "numeric":
-        return ["decimal"];
-      case "blob":
-        return ["bigint", "binary"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  if (provider === "postgresql" || provider === "cockroachdb") {
-    switch (dbType) {
-      case "decimal":
-      case "real":
-      case "numeric":
-      case "double precision":
-        return ["decimal"];
-      case "timestamp":
-      case "timestamptz":
-        return ["timestamp"];
-      case "varchar": {
-        const len = additional.length;
-        if (len != null) {
-          return [`varchar(${len})`];
-        }
-        return ["string"];
-      }
-      case "text":
-        return ["string"];
-      case "boolean":
-      case "bool":
-        return ["bool"];
-      case "bytea":
-        return ["binary"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  if (provider === "mysql") {
-    switch (dbType) {
-      case "bool":
-      case "boolean":
-        return ["bool"];
-      case "integer":
-      case "int":
-        return ["integer"];
-      case "decimal":
-      case "numeric":
-      case "float":
-      case "double":
-        return ["decimal"];
-      case "datetime":
-        return ["timestamp"];
-      case "varchar": {
-        const len = additional.length;
-        if (len != null) {
-          return [`varchar(${len})`];
-        }
-        return ["string"];
-      }
-      case "text":
-        return ["string"];
-      case "longblob":
-      case "blob":
-      case "mediumblob":
-      case "tinyblob":
-        return ["binary"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  if (provider === "mssql") {
-    switch (dbType) {
-      case "int":
-        return ["integer"];
-      case "decimal":
-      case "float":
-      case "real":
-      case "numeric":
-        return ["decimal"];
-      case "bit":
-        return ["bool"];
-      case "datetime":
-      case "datetime2":
-        return ["timestamp"];
-      case "nvarchar":
-      case "varchar": {
-        const len = additional.length;
-        if (len != null) {
-          return [`varchar(${len})`];
-        }
-        return ["string", "json"];
-      }
-      case "ntext":
-      case "text":
-      case "varchar(max)":
-      case "nvarchar(max)":
-        return ["string", "json"];
-      case "binary":
-      case "varbinary":
-        return ["binary"];
-      default:
-        return [dbType as AnyColumn["type"]];
-    }
-  }
-
-  throw new Error(`unhandled database provider: ${provider}`);
-}
-
-/**
- * Database type literals that can be returned by schemaToDBType
- */
-export type DatabaseTypeLiteral =
-  // PostgreSQL/CockroachDB types
+export type PostgreSQLDatabaseType =
   | "bigserial"
   | "serial"
   | "boolean"
-  | "bool"
   | "json"
   | "text"
   | "bytea"
@@ -157,136 +23,131 @@ export type DatabaseTypeLiteral =
   | "integer"
   | "decimal"
   | "date"
-  // MySQL types
-  | "longblob"
-  | "datetime"
-  // SQLite types
-  | "blob"
-  | "real"
-  // MSSQL types
-  | "bit"
-  | "int"
-  | "varbinary(max)"
-  | "varchar(max)"
-  // varchar with length parameter
   | `varchar(${number})`;
 
 /**
- * Map a schema column type to the appropriate database column type.
- * Used for generating CREATE TABLE statements and migrations.
- *
- * @param column - The column schema definition
- * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
- * @returns The database-specific column type
+ * MySQL-specific database types
  */
-export function schemaToDBType(
-  column: AnyColumn | Pick<AnyColumn, "type">,
-  provider: SQLProvider,
-): DatabaseTypeLiteral {
-  const { type } = column;
+export type MySQLDatabaseType =
+  | "bigint"
+  | "boolean"
+  | "text"
+  | "longblob"
+  | "integer"
+  | "decimal"
+  | "date"
+  | "datetime"
+  | "json"
+  | "timestamp"
+  | `varchar(${number})`;
 
-  // Handle internal ID columns with auto-increment
-  if ("role" in column && column.role === "internal-id") {
-    if (provider === "postgresql" || provider === "cockroachdb") {
-      return "bigserial";
-    }
-    if (provider === "mysql") {
-      return "bigint";
-    }
-    if (provider === "sqlite") {
-      return "integer"; // SQLite uses INTEGER for auto-increment
-    }
-    if (provider === "mssql") {
-      return "bigint";
-    }
+/**
+ * SQLite-specific database types
+ */
+export type SQLiteDatabaseType = "integer" | "blob" | "text" | "real";
+
+/**
+ * Union of all database-specific types
+ */
+export type DatabaseTypeLiteral = PostgreSQLDatabaseType | MySQLDatabaseType | SQLiteDatabaseType;
+
+/**
+ * Abstract base class for SQL type mapping.
+ *
+ * Similar to SQLQueryCompiler and SQLGenerator, this class provides a framework
+ * for mapping schema column types to database-specific column types.
+ *
+ * Each database dialect extends this class and implements abstract methods
+ * for each column type. The base class handles the switch statement logic.
+ *
+ * @template TDatabaseType - The specific database type union for this dialect
+ */
+export abstract class SQLTypeMapper<TDatabaseType extends DatabaseTypeLiteral> {
+  protected readonly database: SupportedDatabase;
+
+  constructor(database: SupportedDatabase) {
+    this.database = database;
   }
 
-  if ("role" in column && column.role === "reference") {
-    if (provider === "sqlite") {
-      return "integer";
-    }
-    // Other providers use bigint for references
-  }
+  /**
+   * Get the database type for internal ID columns.
+   */
+  protected abstract getInternalIdType(): TDatabaseType;
 
-  if (provider === "sqlite") {
+  // Abstract methods for each column type that dialects must implement
+  protected abstract mapInteger(column: AnyColumn | Pick<AnyColumn, "type">): TDatabaseType;
+  protected abstract mapBigint(column: AnyColumn | Pick<AnyColumn, "type">): TDatabaseType;
+  protected abstract mapString(): TDatabaseType;
+  protected abstract mapVarchar(length: number): TDatabaseType;
+  protected abstract mapBinary(): TDatabaseType;
+  protected abstract mapBool(): TDatabaseType;
+  protected abstract mapDecimal(): TDatabaseType;
+  protected abstract mapTimestamp(): TDatabaseType;
+  protected abstract mapDate(): TDatabaseType;
+  protected abstract mapJson(): TDatabaseType;
+
+  /**
+   * Map a column type to a database-specific type.
+   * Contains the central switch statement that delegates to abstract methods.
+   */
+  protected mapColumnType(column: AnyColumn | Pick<AnyColumn, "type">): TDatabaseType {
+    const { type } = column;
+
+    // Handle varchar with length parameter
+    if (typeof type === "string" && type.startsWith("varchar")) {
+      const match = type.match(/^varchar\((\d+)\)$/);
+      if (match) {
+        const length = parseInt(match[1], 10);
+        return this.mapVarchar(length);
+      }
+      throw new Error(
+        `Invalid varchar format: "${type}". Expected format: varchar(number), e.g., varchar(255)`,
+      );
+    }
+
     switch (type) {
       case "integer":
-      case "timestamp":
-      case "date":
-      case "bool":
-        return "integer";
-      case "binary":
+        return this.mapInteger(column);
       case "bigint":
-        return "blob";
-      case "json":
+        return this.mapBigint(column);
       case "string":
-        return "text";
+        return this.mapString();
+      case "binary":
+        return this.mapBinary();
+      case "bool":
+        return this.mapBool();
       case "decimal":
-        return "real";
-      default:
-        // sqlite doesn't support varchar
-        if (type.startsWith("varchar")) {
-          return "text";
-        }
-    }
-  }
-
-  if (provider === "mssql") {
-    switch (type) {
-      case "bool":
-        return "bit";
+        return this.mapDecimal();
       case "timestamp":
-        return "datetime";
-      case "integer":
-        return "int";
-      case "string":
-        return "varchar(max)";
-      case "binary":
-        return "varbinary(max)";
-      // only 2025 preview supports JSON natively
+        return this.mapTimestamp();
+      case "date":
+        return this.mapDate();
       case "json":
-        return "varchar(max)";
+        return this.mapJson();
       default:
-        if (type.startsWith("varchar")) {
-          return type as `varchar(${number})`;
-        }
-        return type;
+        // TypeScript should ensure we never reach here
+        throw new Error(`Unsupported column type: ${type}`);
     }
   }
 
-  if (provider === "postgresql" || provider === "cockroachdb") {
-    switch (type) {
-      case "bool":
-        return "boolean";
-      case "json":
-        return "json";
-      case "string":
-        return "text";
-      case "binary":
-        return "bytea";
-      default:
-        if (type.startsWith("varchar")) {
-          return type as `varchar(${number})`;
-        }
-        return type;
+  /**
+   * Map a schema column type to the appropriate database column type.
+   * Used for generating CREATE TABLE statements and migrations.
+   *
+   * Handles common cases like internal-id columns,
+   * then delegates to mapColumnType for other types.
+   *
+   * @param column - The column schema definition
+   * @returns The database-specific column type
+   */
+  getDatabaseType(column: AnyColumn | Pick<AnyColumn, "type">): TDatabaseType {
+    // Handle internal ID columns with auto-increment
+    if ("role" in column && column.role === "internal-id") {
+      return this.getInternalIdType();
     }
-  }
 
-  if (provider === "mysql") {
-    switch (type) {
-      case "bool":
-        return "boolean";
-      case "string":
-        return "text";
-      case "binary":
-        return "longblob";
-      default:
-        if (type.startsWith("varchar")) {
-          return type as `varchar(${number})`;
-        }
-        return type;
-    }
+    // Delegate to type mapping logic
+    // This includes reference columns, which should use their specified type
+    return this.mapColumnType(column);
   }
-
-  throw new Error(`cannot handle ${provider} ${type}`);
 }

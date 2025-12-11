@@ -13,10 +13,8 @@ import {
   sanitizeNamespace,
   type TableNameMapper,
 } from "../shared/table-name-mapper";
-import {
-  schemaToDBType,
-  type DatabaseTypeLiteral,
-} from "../../schema/type-conversion/type-mapping";
+import { type DatabaseTypeLiteral } from "../../schema/type-conversion/type-mapping";
+import { createSQLTypeMapper } from "../../schema/type-conversion/create-sql-type-mapper";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -105,10 +103,11 @@ function generateCustomType(
 
 function generateBinaryCustomType(ctx: GeneratorContext, customTypes: string[]): string {
   const name = "customBinary";
+  const typeMapper = createSQLTypeMapper(ctx.provider);
   const code = generateCustomType(ctx, name, {
     dataType: "Uint8Array",
     driverDataType: "Buffer",
-    databaseDataType: schemaToDBType({ type: "binary" }, ctx.provider),
+    databaseDataType: typeMapper.getDatabaseType({ type: "binary" }),
     fromDriverCode: "return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)",
     toDriverCode: `return value instanceof Buffer? value : Buffer.from(value)`,
   });
@@ -131,15 +130,16 @@ interface ColumnTypeFunction {
 
 /**
  * Maps SQL database types to Drizzle function names and parameters.
- * Uses schemaToDBType as the source of truth for type conversion.
+ * Uses SQLTypeMapper as the source of truth for type conversion.
  */
 function getColumnTypeFunction(
   ctx: GeneratorContext,
   column: AnyColumn,
   customTypes: string[],
 ): ColumnTypeFunction {
-  // Get the canonical database type from schemaToDBType
-  const dbType = schemaToDBType(column, ctx.provider);
+  // Get the canonical database type from type mapper
+  const typeMapper = createSQLTypeMapper(ctx.provider);
+  const dbType = typeMapper.getDatabaseType(column);
 
   // Map database types to Drizzle function names
   return mapDBTypeToDrizzleFunction(ctx, dbType, column, customTypes);

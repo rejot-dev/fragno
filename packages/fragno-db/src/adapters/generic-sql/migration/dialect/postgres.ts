@@ -26,7 +26,7 @@ export class PostgresSQLGenerator extends SQLGenerator {
 
   /**
    * PostgreSQL uses SERIAL/BIGSERIAL types for auto-increment,
-   * which is already handled in schemaToDBType. No builder modification needed.
+   * which is already handled in PostgreSQLTypeMapper. No builder modification needed.
    */
   override applyAutoIncrement(builder: ColumnDefinitionBuilder): ColumnDefinitionBuilder {
     return builder;
