@@ -51,11 +51,13 @@ function createMockExecutor() {
 }
 
 function createMockDecoder(): UOWDecoder {
-  return (rawResults, operations) => {
-    if (rawResults.length !== operations.length) {
-      throw new Error("rawResults and operations must have the same length");
-    }
-    return rawResults;
+  return {
+    decode(rawResults, operations) {
+      if (rawResults.length !== operations.length) {
+        throw new Error("rawResults and operations must have the same length");
+      }
+      return rawResults;
+    },
   };
 }
 

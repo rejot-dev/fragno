@@ -26,11 +26,13 @@ function createMockExecutor() {
 }
 
 function createMockDecoder(): UOWDecoder {
-  return (rawResults, operations) => {
-    if (rawResults.length !== operations.length) {
-      throw new Error("rawResults and operations must have the same length");
-    }
-    return rawResults;
+  return {
+    decode(rawResults, operations) {
+      if (rawResults.length !== operations.length) {
+        throw new Error("rawResults and operations must have the same length");
+      }
+      return rawResults;
+    },
   };
 }
 
@@ -117,6 +119,50 @@ describe("FindBuilder", () => {
     assert(op.type === "find");
     expect(op.options.before).toBe(cursor);
     expect(op.options.pageSize).toBe(5);
+  });
+
+  it("should throw RangeError for pageSize <= 0", () => {
+    const testSchema = schema((s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
+    );
+
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(0));
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(-1));
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(-10));
+    }).toThrow(RangeError);
+  });
+
+  it("should throw RangeError for non-integer pageSize", () => {
+    const testSchema = schema((s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
+    );
+
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(1.5));
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(3.14));
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(NaN));
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary").pageSize(Infinity));
+    }).toThrow(RangeError);
   });
 
   it("should throw if index doesn't exist", () => {
@@ -404,6 +450,51 @@ describe("FindBuilder", () => {
     const joinOptions = op.options.joins![0]!.options;
     assert(joinOptions !== false);
     expect(joinOptions.limit).toBe(5);
+  });
+
+  it("should throw RangeError for invalid pageSize in join", () => {
+    const testSchema = schema((s) =>
+      s
+        .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("userId", column("string"))
+            .addColumn("title", "string")
+            .createIndex("idx_user", ["userId"]),
+        )
+        .addReference("user", {
+          type: "one",
+          from: { table: "posts", column: "userId" },
+          to: { table: "users", column: "id" },
+        }),
+    );
+
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .find("posts", (b) =>
+          b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.pageSize(0))),
+        );
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .find("posts", (b) =>
+          b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.pageSize(-5))),
+        );
+    }).toThrow(RangeError);
+
+    expect(() => {
+      uow
+        .forSchema(testSchema)
+        .find("posts", (b) =>
+          b.whereIndex("primary").join((jb) => jb["user"]((builder) => builder.pageSize(2.5))),
+        );
+    }).toThrow(RangeError);
   });
 
   it("should support nested joins", () => {

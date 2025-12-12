@@ -118,7 +118,11 @@ function createMockCompiler(): UOWCompiler<unknown> {
 
 // Mock decoder that returns raw results as-is
 function createMockDecoder(): UOWDecoder {
-  return (rawResults) => rawResults;
+  return {
+    decode(rawResults) {
+      return rawResults;
+    },
+  };
 }
 
 // Helper to create a UOW factory that tracks how many times it's called

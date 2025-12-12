@@ -1,7 +1,7 @@
 import type { AnyTable } from "../schema/create";
-import type { SQLProvider } from "../shared/providers";
 import { deserialize } from "../schema/type-conversion/serialize";
 import { FragnoId, FragnoReference } from "../schema/create";
+import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 
 /**
  * Decodes a database result record to application format.
@@ -14,7 +14,7 @@ import { FragnoId, FragnoReference } from "../schema/create";
  *
  * @param result - The raw database result record
  * @param table - The table schema definition containing column and relation information
- * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
+ * @param driverConfig - The driver configuration containing database type information
  * @returns A record in application format with deserialized values
  *
  * @example
@@ -22,7 +22,7 @@ import { FragnoId, FragnoReference } from "../schema/create";
  * const decoded = decodeResult(
  *   { user_id: 123, created_at: 1234567890, 'posts:title': 'Hello' },
  *   userTable,
- *   'sqlite'
+ *   driverConfig
  * );
  * // Returns: { userId: 123, createdAt: Date, posts: { title: 'Hello' } }
  * ```
@@ -30,7 +30,7 @@ import { FragnoId, FragnoReference } from "../schema/create";
 export function decodeResult(
   result: Record<string, unknown>,
   table: AnyTable,
-  provider: SQLProvider,
+  driverConfig: DriverConfig,
 ): Record<string, unknown> {
   const output: Record<string, unknown> = {};
   // First pass: collect all column values
@@ -51,7 +51,7 @@ export function decodeResult(
       }
 
       // Store all column values (including hidden ones for FragnoId creation)
-      columnValues[k] = deserialize(value, col, provider);
+      columnValues[k] = deserialize(value, col, driverConfig.databaseType);
       continue;
     }
 
@@ -77,7 +77,7 @@ export function decodeResult(
     }
 
     // Recursively decode the relation data
-    output[relationName] = decodeResult(relationData[relationName], relation.table, provider);
+    output[relationName] = decodeResult(relationData[relationName], relation.table, driverConfig);
   }
 
   // Second pass: create output with FragnoId objects where appropriate
