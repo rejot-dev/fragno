@@ -31,7 +31,7 @@
   },
   "homepage": "https://fragno.dev",
   "license": "MIT",
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@10.25.0",
   "private": true,
   "scripts": {
     "dev": "turbo watch --ui tui dev",

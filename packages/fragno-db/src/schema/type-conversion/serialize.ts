@@ -117,6 +117,11 @@ export function serialize(
     }
 
     if (provider === "sqlite" && typeof value === "bigint") {
+      // SQLite special case: internal-id and reference columns use integer, not blob
+      // These should be converted to numbers for SQLite
+      if (col.role === "reference" || col.role === "internal-id") {
+        return Number(value);
+      }
       const buf = Buffer.alloc(8);
       buf.writeBigInt64BE(value);
       return buf;

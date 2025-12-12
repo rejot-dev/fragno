@@ -40,12 +40,11 @@ describe("encodeValues", () => {
   const postsTable = testSchema.tables.posts;
 
   describe("basic encoding", () => {
-    it("should encode string values", () => {
+    it("should resolve string values", () => {
       const result = encodeValues(
         { id: "user1", name: "John", email: "john@example.com" },
         usersTable,
         false,
-        "sqlite",
       );
 
       expect(result).toEqual({
@@ -55,63 +54,45 @@ describe("encodeValues", () => {
       });
     });
 
-    it("should encode integer values", () => {
-      const result = encodeValues({ age: 25 }, usersTable, false, "sqlite");
+    it("should resolve integer values", () => {
+      const result = encodeValues({ age: 25 }, usersTable, false);
 
       expect(result).toEqual({ age: 25 });
     });
 
-    it("should encode boolean values for sqlite", () => {
-      const result = encodeValues({ isActive: true }, usersTable, false, "sqlite");
+    it("should resolve boolean values (not serialized)", () => {
+      const result = encodeValues({ isActive: true }, usersTable, false);
 
-      expect(result).toEqual({ isActive: 1 });
-    });
-
-    it("should encode boolean values for postgresql", () => {
-      const result = encodeValues({ isActive: true }, usersTable, false, "postgresql");
-
+      // Boolean stays as boolean (not converted to 0/1)
       expect(result).toEqual({ isActive: true });
     });
   });
 
   describe("date encoding", () => {
-    it("should encode Date to number for sqlite", () => {
+    it("should keep Date as Date (not serialized)", () => {
       const date = new Date("2024-01-15T10:30:00Z");
-      const result = encodeValues({ createdAt: date }, usersTable, false, "sqlite");
+      const result = encodeValues({ createdAt: date }, usersTable, false);
 
-      expect(result).toEqual({ createdAt: date.getTime() });
-    });
-
-    it("should keep Date as Date for postgresql", () => {
-      const date = new Date("2024-01-15T10:30:00Z");
-      const result = encodeValues({ createdAt: date }, usersTable, false, "postgresql");
-
-      expect(result).toEqual({ createdAt: date });
-    });
-
-    it("should keep Date as Date for mysql", () => {
-      const date = new Date("2024-01-15T10:30:00Z");
-      const result = encodeValues({ createdAt: date }, usersTable, false, "mysql");
-
+      // Date stays as Date (serialization happens later in encoder)
       expect(result).toEqual({ createdAt: date });
     });
   });
 
   describe("nullable columns", () => {
     it("should handle null values", () => {
-      const result = encodeValues({ age: null }, usersTable, false, "sqlite");
+      const result = encodeValues({ age: null }, usersTable, false);
 
       expect(result).toEqual({ age: null });
     });
 
     it("should omit undefined values", () => {
-      const result = encodeValues({ age: undefined }, usersTable, false, "sqlite");
+      const result = encodeValues({ age: undefined }, usersTable, false);
 
       expect(result).toEqual({});
     });
 
     it("should handle nullable timestamp", () => {
-      const result = encodeValues({ publishedAt: null }, postsTable, false, "sqlite");
+      const result = encodeValues({ publishedAt: null }, postsTable, false);
 
       expect(result).toEqual({ publishedAt: null });
     });
@@ -119,12 +100,7 @@ describe("encodeValues", () => {
 
   describe("default value generation", () => {
     it("should generate runtime defaults when generateDefault is true", () => {
-      const result = encodeValues(
-        { title: "Test Post", userId: "user1" },
-        postsTable,
-        true,
-        "sqlite",
-      );
+      const result = encodeValues({ title: "Test Post", userId: "user1" }, postsTable, true);
 
       expect(result["title"]).toBe("Test Post");
       expect(result["userId"]).toBeInstanceOf(ReferenceSubquery);
@@ -135,12 +111,7 @@ describe("encodeValues", () => {
     });
 
     it("should not generate default values when generateDefault is false", () => {
-      const result = encodeValues(
-        { title: "Test Post", userId: "user1" },
-        postsTable,
-        false,
-        "sqlite",
-      );
+      const result = encodeValues({ title: "Test Post", userId: "user1" }, postsTable, false);
 
       expect(result).toEqual({
         title: "Test Post",
@@ -153,7 +124,6 @@ describe("encodeValues", () => {
         { title: "Test Post", userId: "user1", viewCount: 100 },
         postsTable,
         true,
-        "sqlite",
       );
 
       expect(result["viewCount"]).toBe(100);
@@ -161,7 +131,7 @@ describe("encodeValues", () => {
   });
 
   describe("complete record encoding", () => {
-    it("should encode all fields correctly", () => {
+    it("should resolve all fields correctly (without serialization)", () => {
       const date = new Date("2024-01-15T10:30:00Z");
       const result = encodeValues(
         {
@@ -174,24 +144,24 @@ describe("encodeValues", () => {
         },
         usersTable,
         false,
-        "sqlite",
       );
 
+      // Values are resolved but NOT serialized (Date stays as Date, boolean stays as boolean)
       expect(result).toEqual({
         id: "user1",
         name: "Alice",
         email: "alice@example.com",
         age: 30,
-        isActive: 0,
-        createdAt: date.getTime(),
+        isActive: false, // Not serialized to 0
+        createdAt: date, // Not serialized to timestamp
       });
     });
   });
 
   describe("FragnoId encoding", () => {
-    it("should encode FragnoId with external ID only", () => {
+    it("should resolve FragnoId with external ID only", () => {
       const fragnoId = FragnoId.fromExternal("user123", 1);
-      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false, "postgresql");
+      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false);
 
       expect(result).toEqual({
         id: "user123",
@@ -199,13 +169,13 @@ describe("encodeValues", () => {
       });
     });
 
-    it("should encode FragnoId with both IDs", () => {
+    it("should resolve FragnoId with both IDs", () => {
       const fragnoId = new FragnoId({
         externalId: "user123",
         internalId: BigInt(456),
         version: 1,
       });
-      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false, "postgresql");
+      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false);
 
       expect(result).toEqual({
         id: "user123",
@@ -213,20 +183,15 @@ describe("encodeValues", () => {
       });
     });
 
-    it("should encode FragnoId in reference columns", () => {
+    it("should resolve FragnoId in reference columns", () => {
       const fragnoId = new FragnoId({
         externalId: "user123",
         internalId: BigInt(456),
         version: 1,
       });
-      const result = encodeValues(
-        { title: "Test Post", userId: fragnoId },
-        postsTable,
-        false,
-        "postgresql",
-      );
+      const result = encodeValues({ title: "Test Post", userId: fragnoId }, postsTable, false);
 
-      // Reference columns should use the internal ID (bigint)
+      // Reference columns should use the internal ID (bigint, not serialized)
       expect(result).toEqual({
         title: "Test Post",
         userId: BigInt(456),
@@ -238,12 +203,7 @@ describe("encodeValues", () => {
         externalId: "user123",
         version: 1,
       });
-      const result = encodeValues(
-        { title: "Test Post", userId: fragnoId },
-        postsTable,
-        false,
-        "postgresql",
-      );
+      const result = encodeValues({ title: "Test Post", userId: fragnoId }, postsTable, false);
 
       // FragnoId without internalId should be converted to ReferenceSubquery for database lookup
       expect(result["title"]).toBe("Test Post");
@@ -259,125 +219,15 @@ describe("encodeValues", () => {
       });
       const testData = { id: fragnoId, name: "John" };
 
-      // Test across providers
-      const sqliteResult = encodeValues(testData, usersTable, false, "sqlite");
-      const postgresqlResult = encodeValues(testData, usersTable, false, "postgresql");
-      const mysqlResult = encodeValues(testData, usersTable, false, "mysql");
+      // Test that provider-agnostic resolution works
+      const result = encodeValues(testData, usersTable, false);
 
-      expect(sqliteResult).toEqual({ id: "user123", name: "John" });
-      expect(postgresqlResult).toEqual({ id: "user123", name: "John" });
-      expect(mysqlResult).toEqual({ id: "user123", name: "John" });
-    });
-  });
-
-  describe("skipDriverConversions parameter", () => {
-    it("should skip Date to number conversion for sqlite when skipDriverConversions is true", () => {
-      const date = new Date("2024-01-15T10:30:00Z");
-      const result = encodeValues({ createdAt: date }, usersTable, false, "sqlite", true);
-
-      // Date should remain as Date object, not converted to timestamp
-      expect(result).toEqual({ createdAt: date });
+      expect(result).toEqual({ id: "user123", name: "John" });
     });
 
-    it("should skip boolean to number conversion for sqlite when skipDriverConversions is true", () => {
-      const result = encodeValues({ isActive: true }, usersTable, false, "sqlite", true);
-
-      // Boolean should remain as boolean, not converted to 1
-      expect(result).toEqual({ isActive: true });
-    });
-
-    it("should skip bigint to Buffer conversion for sqlite when skipDriverConversions is true", () => {
-      const schemaWithBigInt = schema((s) => {
-        return s.addTable("items", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("count", column("bigint"));
-        });
-      });
-
-      const result = encodeValues(
-        { count: BigInt(12345) },
-        schemaWithBigInt.tables.items,
-        false,
-        "sqlite",
-        true,
-      );
-
-      // BigInt should remain as bigint, not converted to Buffer
-      expect(result).toEqual({ count: BigInt(12345) });
-    });
-
-    it("should still perform conversions for sqlite when skipDriverConversions is false", () => {
-      const date = new Date("2024-01-15T10:30:00Z");
-      const result = encodeValues(
-        { createdAt: date, isActive: true },
-        usersTable,
-        false,
-        "sqlite",
-        false,
-      );
-
-      // Conversions should happen as normal
-      expect(result).toEqual({ createdAt: date.getTime(), isActive: 1 });
-    });
-
-    it("should not affect PostgreSQL encoding (no conversions to skip)", () => {
-      const date = new Date("2024-01-15T10:30:00Z");
-      const resultWithSkip = encodeValues(
-        { createdAt: date },
-        usersTable,
-        false,
-        "postgresql",
-        true,
-      );
-      const resultWithoutSkip = encodeValues(
-        { createdAt: date },
-        usersTable,
-        false,
-        "postgresql",
-        false,
-      );
-
-      // Both should be the same since PostgreSQL doesn't do these conversions
-      expect(resultWithSkip).toEqual({ createdAt: date });
-      expect(resultWithoutSkip).toEqual({ createdAt: date });
-    });
-
-    it("should work with complete record encoding when skipDriverConversions is true", () => {
-      const date = new Date("2024-01-15T10:30:00Z");
-      const result = encodeValues(
-        {
-          id: "user1",
-          name: "Alice",
-          email: "alice@example.com",
-          age: 30,
-          isActive: false,
-          createdAt: date,
-        },
-        usersTable,
-        false,
-        "sqlite",
-        true,
-      );
-
-      // All values should remain in their original types
-      expect(result).toEqual({
-        id: "user1",
-        name: "Alice",
-        email: "alice@example.com",
-        age: 30,
-        isActive: false, // Not converted to 0
-        createdAt: date, // Not converted to timestamp
-      });
-    });
-
-    it("should still handle FragnoId and ReferenceSubquery correctly with skipDriverConversions", () => {
+    it("should handle ReferenceSubquery correctly", () => {
       const fragnoId = FragnoId.fromExternal("user123", 1);
-      const result = encodeValues(
-        { id: fragnoId, name: "John" },
-        usersTable,
-        false,
-        "sqlite",
-        true,
-      );
+      const result = encodeValues({ id: fragnoId, name: "John" }, usersTable, false);
 
       // FragnoId handling should still work
       expect(result).toEqual({
@@ -390,8 +240,6 @@ describe("encodeValues", () => {
         { title: "Test Post", userId: "user_external_id" },
         postsTable,
         false,
-        "sqlite",
-        true,
       );
 
       expect(refResult["title"]).toBe("Test Post");
