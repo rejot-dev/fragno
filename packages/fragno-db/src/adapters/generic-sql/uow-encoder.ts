@@ -1,6 +1,9 @@
 import type { AnyTable, AnyColumn } from "../../schema/create";
 import type { DriverConfig } from "./driver-config";
-import { serialize } from "../../schema/type-conversion/serialize";
+import {
+  createSQLSerializer,
+  type SQLSerializer,
+} from "../../query/serialize/create-sql-serializer";
 import { encodeValues } from "../../query/value-encoding";
 import { processReferenceSubqueries } from "./query/where-builder";
 import type { TableNameMapper } from "../shared/table-name-mapper";
@@ -18,7 +21,7 @@ import type { Kysely } from "kysely";
  * This class mirrors the UnitOfWorkDecoder pattern for symmetry.
  */
 export class UnitOfWorkEncoder {
-  readonly #driverConfig: DriverConfig;
+  readonly #serializer: SQLSerializer;
   readonly #db: Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   readonly #mapper?: TableNameMapper;
 
@@ -27,7 +30,7 @@ export class UnitOfWorkEncoder {
     db: Kysely<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     mapper?: TableNameMapper,
   ) {
-    this.#driverConfig = driverConfig;
+    this.#serializer = createSQLSerializer(driverConfig);
     this.#db = db;
     this.#mapper = mapper;
   }
@@ -104,7 +107,7 @@ export class UnitOfWorkEncoder {
       }
 
       // Serialize the value using the column definition and database type
-      result[dbColumnName] = serialize(value, col, this.#driverConfig.databaseType);
+      result[dbColumnName] = this.#serializer.serialize(value, col);
     }
 
     return result;

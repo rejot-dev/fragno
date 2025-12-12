@@ -130,7 +130,7 @@ export abstract class SQLQueryCompiler {
    * Build WHERE clause from a condition tree.
    */
   protected buildWhereClause(condition: Condition, eb: AnyExpressionBuilder, table: AnyTable) {
-    return buildWhere(condition, eb, this.database, this.mapper, table);
+    return buildWhere(condition, eb, this.driverConfig, this.mapper, table);
   }
 
   /**

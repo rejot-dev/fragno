@@ -18,6 +18,7 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
 
   abstract readonly supportsReturning: boolean;
   abstract readonly supportsRowsAffected: boolean;
+  abstract readonly supportsJson: boolean;
 }
 
 export class SQLocalDriverConfig extends DriverConfig<"sqlocal"> {
@@ -25,6 +26,7 @@ export class SQLocalDriverConfig extends DriverConfig<"sqlocal"> {
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
   override readonly supportsRowsAffected = false;
+  override readonly supportsJson = false;
 }
 
 export class CloudflareDurableObjectsDriverConfig extends DriverConfig<"cloudflare_durable_objects"> {
@@ -32,6 +34,7 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig<"cloudfla
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
   override readonly supportsRowsAffected = false;
+  override readonly supportsJson = false;
 }
 
 export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
@@ -39,6 +42,7 @@ export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
   override readonly supportsRowsAffected = true;
+  override readonly supportsJson = false;
 }
 
 export class NodePostgresDriverConfig extends DriverConfig<"pg"> {
@@ -46,6 +50,7 @@ export class NodePostgresDriverConfig extends DriverConfig<"pg"> {
   override readonly databaseType = "postgresql";
   override readonly supportsReturning = true;
   override readonly supportsRowsAffected = true;
+  override readonly supportsJson = true;
 }
 
 export class PGLiteDriverConfig extends DriverConfig<"pglite"> {
@@ -53,6 +58,7 @@ export class PGLiteDriverConfig extends DriverConfig<"pglite"> {
   override readonly databaseType = "postgresql";
   override readonly supportsReturning = true;
   override readonly supportsRowsAffected = false;
+  override readonly supportsJson = true;
 }
 
 export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
@@ -60,4 +66,5 @@ export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
   override readonly databaseType = "mysql";
   override readonly supportsReturning = false;
   override readonly supportsRowsAffected = false;
+  override readonly supportsJson = true;
 }

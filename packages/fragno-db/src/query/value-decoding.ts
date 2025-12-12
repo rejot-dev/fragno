@@ -1,5 +1,5 @@
 import type { AnyTable } from "../schema/create";
-import { deserialize } from "../schema/type-conversion/serialize";
+import { createSQLSerializer } from "./serialize/create-sql-serializer";
 import { FragnoId, FragnoReference } from "../schema/create";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 
@@ -32,6 +32,7 @@ export function decodeResult(
   table: AnyTable,
   driverConfig: DriverConfig,
 ): Record<string, unknown> {
+  const serializer = createSQLSerializer(driverConfig);
   const output: Record<string, unknown> = {};
   // First pass: collect all column values
   const columnValues: Record<string, unknown> = {};
@@ -51,7 +52,7 @@ export function decodeResult(
       }
 
       // Store all column values (including hidden ones for FragnoId creation)
-      columnValues[k] = deserialize(value, col, driverConfig.databaseType);
+      columnValues[k] = serializer.deserialize(value, col);
       continue;
     }
 

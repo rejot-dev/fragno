@@ -1,6 +1,46 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { column, referenceColumn, internalIdColumn } from "./create";
-import { deserialize, serialize } from "./type-conversion/serialize";
+import { createSQLSerializer } from "../query/serialize/create-sql-serializer";
+import type { AnyColumn } from "./create";
+import type { DriverConfig, SupportedDatabase } from "../adapters/generic-sql/driver-config";
+
+// Helper to create a mock DriverConfig for testing
+function createMockDriverConfig(provider: string): DriverConfig {
+  const supportsJson =
+    provider === "postgresql" || provider === "cockroachdb" || provider === "mysql";
+  const database: SupportedDatabase =
+    provider === "cockroachdb"
+      ? "postgresql"
+      : provider === "mssql"
+        ? "sqlite"
+        : (provider as SupportedDatabase);
+
+  return {
+    driverType: "sqlocal",
+    databaseType: database,
+    supportsReturning: true,
+    supportsRowsAffected: true,
+    supportsJson,
+  };
+}
+
+// Helper functions for testing
+function deserialize(value: unknown, col: AnyColumn, provider: string) {
+  const driverConfig = createMockDriverConfig(provider);
+  const serializer = createSQLSerializer(driverConfig);
+  return serializer.deserialize(value, col);
+}
+
+function serialize(
+  value: unknown,
+  col: AnyColumn,
+  provider: string,
+  skipDriverConversions = false,
+) {
+  const driverConfig = createMockDriverConfig(provider);
+  const serializer = createSQLSerializer(driverConfig);
+  return serializer.serialize(value, col, skipDriverConversions);
+}
 
 describe("serialize", () => {
   describe("deserialize", () => {
@@ -49,7 +89,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00+05:30"; // India Standard Time
         const result = deserialize(time, timestampCol, "sqlite");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T09:00:00.000Z");
       });
 
@@ -57,7 +97,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00-08:00"; // Pacific Time
         const result = deserialize(time, timestampCol, "sqlite");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T22:30:00.000Z");
       });
 
@@ -68,7 +108,7 @@ describe("serialize", () => {
         const numericTimestamp = specificDate.getTime();
 
         const result = deserialize(numericTimestamp, timestampCol, "sqlite");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.getTime()).toBe(numericTimestamp);
         expect(result.toISOString()).toBe("2024-06-15T12:00:00.000Z");
       });
@@ -78,6 +118,7 @@ describe("serialize", () => {
         // Start with a date with timezone info
         const originalTime = "2024-06-15T14:30:00+02:00";
         const deserialized = deserialize(originalTime, timestampCol, "sqlite");
+        assert.instanceOf(deserialized, Date);
 
         // SQLite would store this as a number
         const numericValue = deserialized.getTime();
@@ -85,7 +126,7 @@ describe("serialize", () => {
         // Deserialize the numeric value back
         const roundTrip = deserialize(numericValue, timestampCol, "sqlite");
 
-        expect(roundTrip).toBeInstanceOf(Date);
+        assert.instanceOf(roundTrip, Date);
         expect(roundTrip.getTime()).toBe(deserialized.getTime());
         expect(roundTrip.toISOString()).toBe(deserialized.toISOString());
       });
@@ -114,7 +155,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00+05:30"; // India Standard Time
         const result = deserialize(time, timestampCol, "postgresql");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T09:00:00.000Z");
       });
 
@@ -122,7 +163,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00-08:00"; // Pacific Time
         const result = deserialize(time, timestampCol, "postgresql");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T22:30:00.000Z");
       });
 
@@ -130,7 +171,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:45.123+01:00"; // Central European Time
         const result = deserialize(time, timestampCol, "postgresql");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T13:30:45.123Z");
         expect(result.getTime()).toBe(new Date("2024-06-15T13:30:45.123Z").getTime());
       });
@@ -145,6 +186,10 @@ describe("serialize", () => {
         const utcResult = deserialize(utcTime, timestampCol, "postgresql");
         const estResult = deserialize(estTime, timestampCol, "postgresql");
         const jstResult = deserialize(jstTime, timestampCol, "postgresql");
+
+        assert.instanceOf(utcResult, Date);
+        assert.instanceOf(estResult, Date);
+        assert.instanceOf(jstResult, Date);
 
         // All should represent the same absolute time
         expect(utcResult.getTime()).toBe(estResult.getTime());
@@ -176,7 +221,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00+05:30"; // India Standard Time
         const result = deserialize(time, timestampCol, "mysql");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T09:00:00.000Z");
       });
 
@@ -184,7 +229,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00-08:00"; // Pacific Time
         const result = deserialize(time, timestampCol, "mysql");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T22:30:00.000Z");
       });
 
@@ -192,7 +237,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:45.123+01:00"; // Central European Time
         const result = deserialize(time, timestampCol, "mysql");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T13:30:45.123Z");
       });
 
@@ -206,6 +251,10 @@ describe("serialize", () => {
         const utcResult = deserialize(utcTime, timestampCol, "mysql");
         const cstResult = deserialize(cstTime, timestampCol, "mysql");
         const pstResult = deserialize(pstTime, timestampCol, "mysql");
+
+        assert.instanceOf(utcResult, Date);
+        assert.instanceOf(cstResult, Date);
+        assert.instanceOf(pstResult, Date);
 
         // All should represent the same absolute time
         expect(utcResult.getTime()).toBe(cstResult.getTime());
@@ -231,7 +280,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00+05:30"; // India Standard Time
         const result = deserialize(time, timestampCol, "cockroachdb");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T09:00:00.000Z");
       });
 
@@ -239,7 +288,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:00-08:00"; // Pacific Time
         const result = deserialize(time, timestampCol, "cockroachdb");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T22:30:00.000Z");
       });
 
@@ -247,7 +296,7 @@ describe("serialize", () => {
         const timestampCol = column("timestamp");
         const time = "2024-06-15T14:30:45.123+01:00"; // Central European Time
         const result = deserialize(time, timestampCol, "cockroachdb");
-        expect(result).toBeInstanceOf(Date);
+        assert.instanceOf(result, Date);
         expect(result.toISOString()).toBe("2024-06-15T13:30:45.123Z");
       });
 
@@ -261,6 +310,10 @@ describe("serialize", () => {
         const utcResult = deserialize(utcTime, timestampCol, "cockroachdb");
         const aestResult = deserialize(aestTime, timestampCol, "cockroachdb");
         const brtResult = deserialize(brtTime, timestampCol, "cockroachdb");
+
+        assert.instanceOf(utcResult, Date);
+        assert.instanceOf(aestResult, Date);
+        assert.instanceOf(brtResult, Date);
 
         // All should represent the same absolute time
         expect(utcResult.getTime()).toBe(aestResult.getTime());
@@ -309,8 +362,8 @@ describe("serialize", () => {
         const binaryCol = column("binary");
         const buffer = Buffer.from([1, 2, 3, 4]);
         const result = deserialize(buffer, binaryCol, "postgresql");
-        expect(result).toBeInstanceOf(Uint8Array);
-        expect(Array.from(result as Uint8Array)).toEqual([1, 2, 3, 4]);
+        assert.instanceOf(result, Uint8Array);
+        expect(Array.from(result)).toEqual([1, 2, 3, 4]);
       });
     });
   });
@@ -362,8 +415,8 @@ describe("serialize", () => {
       it("should convert bigint to Buffer", () => {
         const bigintValue = 123456789n;
         const result = serialize(bigintValue, column("bigint"), "sqlite");
-        expect(result).toBeInstanceOf(Buffer);
-        expect((result as Buffer).readBigInt64BE(0)).toBe(bigintValue);
+        assert.instanceOf(result, Buffer);
+        expect(result.readBigInt64BE(0)).toBe(bigintValue);
       });
     });
 
@@ -372,8 +425,8 @@ describe("serialize", () => {
         const binaryCol = column("binary");
         const uint8 = new Uint8Array([1, 2, 3, 4]);
         const result = serialize(uint8, binaryCol, "postgresql");
-        expect(result).toBeInstanceOf(Buffer);
-        expect(Array.from(result as Buffer)).toEqual([1, 2, 3, 4]);
+        assert.instanceOf(result, Buffer);
+        expect(Array.from(result)).toEqual([1, 2, 3, 4]);
       });
 
       it("should handle Buffer as-is", () => {
@@ -381,7 +434,7 @@ describe("serialize", () => {
         const buffer = Buffer.from([1, 2, 3, 4]);
         const result = serialize(buffer, binaryCol, "mysql");
         // Buffer is also a Uint8Array, so it should be converted
-        expect(result).toBeInstanceOf(Buffer);
+        assert.instanceOf(result, Buffer);
       });
     });
 
@@ -406,7 +459,7 @@ describe("serialize", () => {
         // With skipDriverConversions: passes through Date
         const withoutConversion = serialize(date, timestampCol, "sqlite", true);
         expect(withoutConversion).toBe(date);
-        expect(withoutConversion).toBeInstanceOf(Date);
+        assert.instanceOf(withoutConversion, Date);
       });
 
       it("should skip boolean to number conversion for SQLite when enabled", () => {
@@ -427,8 +480,8 @@ describe("serialize", () => {
 
         // Default behavior: converts to Buffer
         const withConversion = serialize(bigintValue, bigintCol, "sqlite", false);
-        expect(withConversion).toBeInstanceOf(Buffer);
-        expect((withConversion as Buffer).readBigInt64BE(0)).toBe(bigintValue);
+        assert.instanceOf(withConversion, Buffer);
+        expect(withConversion.readBigInt64BE(0)).toBe(bigintValue);
 
         // With skipDriverConversions: passes through bigint
         const withoutConversion = serialize(bigintValue, bigintCol, "sqlite", true);
@@ -481,12 +534,12 @@ describe("serialize", () => {
 
         // Binary conversion happens regardless of skipDriverConversions
         const withConversion = serialize(uint8, binaryCol, "sqlite", false);
-        expect(withConversion).toBeInstanceOf(Buffer);
-        expect(Array.from(withConversion as Buffer)).toEqual([1, 2, 3, 4]);
+        assert.instanceOf(withConversion, Buffer);
+        expect(Array.from(withConversion)).toEqual([1, 2, 3, 4]);
 
         const withoutConversion = serialize(uint8, binaryCol, "sqlite", true);
-        expect(withoutConversion).toBeInstanceOf(Buffer);
-        expect(Array.from(withoutConversion as Buffer)).toEqual([1, 2, 3, 4]);
+        assert.instanceOf(withoutConversion, Buffer);
+        expect(Array.from(withoutConversion)).toEqual([1, 2, 3, 4]);
       });
     });
   });
