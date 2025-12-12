@@ -31,6 +31,7 @@ describe("UnitOfWorkEncoder", () => {
       readonly databaseType = "sqlite" as const;
       readonly supportsReturning = true;
       readonly supportsRowsAffected = true;
+      readonly supportsJson = false;
     })();
 
     // Mock Kysely instance (only needed for reference subquery processing)
@@ -120,6 +121,7 @@ describe("UnitOfWorkEncoder", () => {
       readonly databaseType = "postgresql" as const;
       readonly supportsReturning = true;
       readonly supportsRowsAffected = true;
+      readonly supportsJson = true;
     })();
 
     // Mock Kysely instance
@@ -164,6 +166,7 @@ describe("UnitOfWorkEncoder", () => {
       readonly databaseType = "mysql" as const;
       readonly supportsReturning = false;
       readonly supportsRowsAffected = true;
+      readonly supportsJson = true;
     })();
 
     // Mock Kysely instance

@@ -1,7 +1,7 @@
 import type { AnyColumn } from "../schema/create";
-import { deserialize, serialize } from "../schema/type-conversion/serialize";
+import { createSQLSerializer } from "./serialize/create-sql-serializer";
 import { resolveFragnoIdValue } from "./value-encoding";
-import type { SQLProvider } from "../shared/providers";
+import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 
 /**
  * Cursor object containing all information needed for pagination
@@ -217,7 +217,7 @@ export function createCursorFromRecord(
  *
  * @param cursor - The cursor object
  * @param indexColumns - The columns that make up the index
- * @param provider - The SQL provider
+ * @param driverConfig - The driver configuration
  * @returns Serialized values ready for database queries
  *
  * @example
@@ -225,15 +225,16 @@ export function createCursorFromRecord(
  * const serialized = serializeCursorValues(
  *   cursor,
  *   [table.columns.createdAt],
- *   "postgresql"
+ *   driverConfig
  * );
  * ```
  */
 export function serializeCursorValues(
   cursor: Cursor,
   indexColumns: AnyColumn[],
-  provider: SQLProvider,
+  driverConfig: DriverConfig,
 ): Record<string, unknown> {
+  const serializer = createSQLSerializer(driverConfig);
   const serialized: Record<string, unknown> = {};
 
   for (const col of indexColumns) {
@@ -241,12 +242,12 @@ export function serializeCursorValues(
     if (value !== undefined) {
       // First deserialize from JSON format to application format
       // (e.g., "2025-11-07T09:36:57.959Z" string → Date object)
-      const deserialized = deserialize(value, col, provider);
+      const deserialized = serializer.deserialize(value, col);
       // Resolve FragnoId/FragnoReference to primitive values (if present)
       const resolved = resolveFragnoIdValue(deserialized, col);
       // Then serialize to database format
       // (e.g., Date → database driver format)
-      serialized[col.ormName] = serialize(resolved, col, provider);
+      serialized[col.ormName] = serializer.serialize(resolved, col);
     }
   }
 

@@ -7,9 +7,9 @@ import {
   FragnoReference,
 } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
-import { serialize } from "../../../schema/type-conversion/serialize";
+import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
-import type { SupportedDatabase } from "../driver-config";
+import type { DriverConfig } from "../driver-config";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
@@ -44,10 +44,12 @@ export function fullSQLName(column: AnyColumn, mapper?: TableNameMapper): string
 export function buildWhere(
   condition: Condition,
   eb: AnyExpressionBuilder,
-  database: SupportedDatabase,
+  driverConfig: DriverConfig,
   mapper?: TableNameMapper,
   table?: AnyTable,
 ): AnyExpressionWrapper {
+  const serializer = createSQLSerializer(driverConfig);
+
   if (condition.type === "compare") {
     const left = condition.a;
     const op = condition.operator;
@@ -103,12 +105,12 @@ export function buildWhere(
         } else {
           // Other values - resolve and serialize
           const resolvedVal = resolveFragnoIdValue(val, left);
-          val = serialize(resolvedVal, left, database);
+          val = serializer.serialize(resolvedVal, left);
         }
       } else {
         // Non-reference columns - resolve FragnoId/FragnoReference and serialize
         const resolvedVal = resolveFragnoIdValue(val, left);
-        val = serialize(resolvedVal, left, database);
+        val = serializer.serialize(resolvedVal, left);
       }
     }
 
@@ -160,14 +162,14 @@ export function buildWhere(
 
   // Nested conditions
   if (condition.type === "and") {
-    return eb.and(condition.items.map((v) => buildWhere(v, eb, database, mapper, table)));
+    return eb.and(condition.items.map((v) => buildWhere(v, eb, driverConfig, mapper, table)));
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, database, mapper, table));
+    return eb.not(buildWhere(condition.item, eb, driverConfig, mapper, table));
   }
 
-  return eb.or(condition.items.map((v) => buildWhere(v, eb, database, mapper, table)));
+  return eb.or(condition.items.map((v) => buildWhere(v, eb, driverConfig, mapper, table)));
 }
 
 /**

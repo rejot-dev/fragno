@@ -3,6 +3,18 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
 import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
 import { ReferenceSubquery } from "../../../query/value-encoding";
+import type { DriverConfig, SupportedDatabase } from "../driver-config";
+
+// Helper to create a mock DriverConfig for testing
+function createMockDriverConfig(database: SupportedDatabase): DriverConfig {
+  return {
+    driverType: "pg",
+    databaseType: database,
+    supportsReturning: true,
+    supportsRowsAffected: true,
+    supportsJson: database === "postgresql" || database === "mysql",
+  };
+}
 
 describe("where-builder", () => {
   const testSchema = schema((s) => {
@@ -118,7 +130,7 @@ describe("where-builder", () => {
           b: "John",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.name",
@@ -135,7 +147,7 @@ describe("where-builder", () => {
           b: 18,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.age",
@@ -152,7 +164,7 @@ describe("where-builder", () => {
           b: 65,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.age",
@@ -169,7 +181,7 @@ describe("where-builder", () => {
           b: true,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.isActive",
@@ -186,7 +198,7 @@ describe("where-builder", () => {
           b: 21,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.age",
@@ -203,7 +215,7 @@ describe("where-builder", () => {
           b: 65,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.age",
@@ -222,7 +234,7 @@ describe("where-builder", () => {
           b: "john",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.name",
@@ -239,7 +251,7 @@ describe("where-builder", () => {
           b: "admin",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.name",
@@ -256,7 +268,7 @@ describe("where-builder", () => {
           b: "admin",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.email",
@@ -273,7 +285,7 @@ describe("where-builder", () => {
           b: "test",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.email",
@@ -290,7 +302,7 @@ describe("where-builder", () => {
           b: "@example.com",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.email",
@@ -307,7 +319,7 @@ describe("where-builder", () => {
           b: "@spam.com",
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.email",
@@ -327,7 +339,7 @@ describe("where-builder", () => {
         };
 
         const eb = createMockEB();
-        const result = buildWhere(condition, eb, "postgresql");
+        const result = buildWhere(condition, eb, createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "compare",
           col: "users.name",
@@ -345,7 +357,7 @@ describe("where-builder", () => {
         };
 
         const eb = createMockEB();
-        const result = buildWhere(condition, eb, "postgresql");
+        const result = buildWhere(condition, eb, createMockDriverConfig("postgresql"));
         // When comparing columns, the value should be wrapped with concat
         expect(result).toHaveProperty("type", "compare");
         expect(result).toHaveProperty("col", "users.name");
@@ -373,7 +385,7 @@ describe("where-builder", () => {
           ],
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "and",
           conditions: [
@@ -402,7 +414,7 @@ describe("where-builder", () => {
           ],
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "or",
           conditions: [
@@ -423,7 +435,7 @@ describe("where-builder", () => {
           },
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toEqual({
           type: "not",
           condition: { type: "compare", col: "users.isActive", op: "=", val: false },
@@ -460,7 +472,7 @@ describe("where-builder", () => {
           ],
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toHaveProperty("type", "and");
         expect(result).toHaveProperty("conditions");
         const conditions = (result as unknown as { conditions: unknown[] }).conditions;
@@ -510,7 +522,7 @@ describe("where-builder", () => {
           ],
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toHaveProperty("type", "and");
         expect(result).toHaveProperty("conditions");
       });
@@ -526,7 +538,13 @@ describe("where-builder", () => {
         };
 
         const eb = createMockEB();
-        const result = buildWhere(condition, eb, "postgresql", undefined, postsTable);
+        const result = buildWhere(
+          condition,
+          eb,
+          createMockDriverConfig("postgresql"),
+          undefined,
+          postsTable,
+        );
 
         // Should generate a subquery
         expect(result).toHaveProperty("type", "compare");
@@ -549,7 +567,13 @@ describe("where-builder", () => {
           b: 12345n,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql", undefined, postsTable);
+        const result = buildWhere(
+          condition,
+          createMockEB(),
+          createMockDriverConfig("postgresql"),
+          undefined,
+          postsTable,
+        );
 
         // Should not generate a subquery for bigint
         expect(result).toEqual({
@@ -574,7 +598,13 @@ describe("where-builder", () => {
         };
 
         const eb = createMockEB();
-        const result = buildWhere(condition, eb, "postgresql", mapper, postsTable);
+        const result = buildWhere(
+          condition,
+          eb,
+          createMockDriverConfig("postgresql"),
+          mapper,
+          postsTable,
+        );
 
         // Should use the mapped table name in subquery
         const val = (result as unknown as { val: Record<string, unknown> }).val;
@@ -591,7 +621,7 @@ describe("where-builder", () => {
           b: true,
         };
 
-        const result = buildWhere(condition, createMockEB(), "postgresql");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("postgresql"));
         expect(result).toHaveProperty("val", true);
       });
 
@@ -603,7 +633,7 @@ describe("where-builder", () => {
           b: false,
         };
 
-        const result = buildWhere(condition, createMockEB(), "sqlite");
+        const result = buildWhere(condition, createMockEB(), createMockDriverConfig("sqlite"));
         // SQLite might serialize booleans differently
         expect(result).toHaveProperty("op", "=");
       });

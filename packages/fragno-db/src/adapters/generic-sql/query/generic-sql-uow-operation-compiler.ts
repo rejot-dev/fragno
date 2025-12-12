@@ -115,7 +115,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       indexColumns,
       orderDirection,
       !!after,
-      this.driverConfig.databaseType,
+      this.driverConfig,
     );
 
     // Combine user where clause with cursor condition

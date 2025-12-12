@@ -1,7 +1,7 @@
 import type { AnyColumn } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import { decodeCursor, serializeCursorValues, type Cursor } from "../../../query/cursor";
-import type { SupportedDatabase } from "../driver-config";
+import type { DriverConfig } from "../driver-config";
 
 /**
  * Build a cursor condition for pagination.
@@ -14,7 +14,7 @@ import type { SupportedDatabase } from "../driver-config";
  * @param indexColumns - Columns used in the index for ordering
  * @param orderDirection - Direction of ordering (asc/desc)
  * @param isAfter - True for "after" cursor (forward pagination), false for "before" (backward)
- * @param database - Database type for value serialization
+ * @param driverConfig - The driver configuration for value serialization
  * @returns A Condition object for the cursor, or undefined if no cursor
  * @throws Error if multi-column cursors are not supported by the implementation
  */
@@ -23,7 +23,7 @@ export function buildCursorCondition(
   indexColumns: AnyColumn[],
   orderDirection: "asc" | "desc",
   isAfter: boolean,
-  database: SupportedDatabase,
+  driverConfig: DriverConfig,
 ): Condition | undefined {
   if (!cursor || indexColumns.length === 0) {
     return undefined;
@@ -31,7 +31,7 @@ export function buildCursorCondition(
 
   // Decode cursor if it's a string, otherwise use it as-is
   const cursorObj = typeof cursor === "string" ? decodeCursor(cursor) : cursor;
-  const serializedValues = serializeCursorValues(cursorObj, indexColumns, database);
+  const serializedValues = serializeCursorValues(cursorObj, indexColumns, driverConfig);
 
   // Determine comparison operator based on direction and after/before
   const useGreaterThan =

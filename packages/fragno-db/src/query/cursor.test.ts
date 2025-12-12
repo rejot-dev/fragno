@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { decodeCursor, createCursorFromRecord, serializeCursorValues, Cursor } from "./cursor";
 import { column, idColumn, schema } from "../schema/create";
+import type { DriverConfig, SupportedDatabase } from "../adapters/generic-sql/driver-config";
+
+// Helper to create a mock DriverConfig for testing
+function createMockDriverConfig(database: SupportedDatabase): DriverConfig {
+  return {
+    driverType: "pg",
+    databaseType: database,
+    supportsReturning: true,
+    supportsRowsAffected: true,
+    supportsJson: database === "postgresql" || database === "mysql",
+  };
+}
 
 describe("Cursor utilities", () => {
   describe("Cursor class encode and decode", () => {
@@ -245,7 +257,11 @@ describe("Cursor utilities", () => {
       });
 
       const indexColumns = [table.columns.id, table.columns.age];
-      const serialized = serializeCursorValues(cursor, indexColumns, "postgresql");
+      const serialized = serializeCursorValues(
+        cursor,
+        indexColumns,
+        createMockDriverConfig("postgresql"),
+      );
 
       expect(serialized).toHaveProperty("id", "user123");
       expect(serialized).toHaveProperty("age", 25);
@@ -267,7 +283,11 @@ describe("Cursor utilities", () => {
       });
 
       const indexColumns = [table.columns.id, table.columns.name];
-      const serialized = serializeCursorValues(cursor, indexColumns, "postgresql");
+      const serialized = serializeCursorValues(
+        cursor,
+        indexColumns,
+        createMockDriverConfig("postgresql"),
+      );
 
       expect(serialized).toHaveProperty("id", "user123");
       expect(serialized).not.toHaveProperty("name");
@@ -307,7 +327,11 @@ describe("Cursor utilities", () => {
       const decoded = decodeCursor(cursor.encode());
 
       // Serialize the values
-      const serialized = serializeCursorValues(decoded, indexColumns, "postgresql");
+      const serialized = serializeCursorValues(
+        decoded,
+        indexColumns,
+        createMockDriverConfig("postgresql"),
+      );
 
       // Should preserve the values
       expect(serialized["score"]).toBe(42);
@@ -350,7 +374,11 @@ describe("Cursor utilities", () => {
       expect(decoded.indexValues["createdAt"]).toBe("2025-11-07T09:36:57.959Z");
 
       // Serialize should convert it back to Date for the database
-      const serialized = serializeCursorValues(decoded, indexColumns, "postgresql");
+      const serialized = serializeCursorValues(
+        decoded,
+        indexColumns,
+        createMockDriverConfig("postgresql"),
+      );
 
       // For PostgreSQL, Date objects should be passed through as-is
       expect(serialized["createdAt"]).toBeInstanceOf(Date);
@@ -388,7 +416,11 @@ describe("Cursor utilities", () => {
       const decoded = decodeCursor(cursor.encode());
 
       // Serialize should convert string back to Date, then to timestamp number for SQLite
-      const serialized = serializeCursorValues(decoded, indexColumns, "sqlite");
+      const serialized = serializeCursorValues(
+        decoded,
+        indexColumns,
+        createMockDriverConfig("sqlite"),
+      );
 
       // For SQLite, Date should be converted to timestamp number
       expect(typeof serialized["createdAt"]).toBe("number");
@@ -426,7 +458,11 @@ describe("Cursor utilities", () => {
       const decoded = decodeCursor(cursor.encode());
 
       // Serialize for MySQL
-      const serialized = serializeCursorValues(decoded, indexColumns, "mysql");
+      const serialized = serializeCursorValues(
+        decoded,
+        indexColumns,
+        createMockDriverConfig("mysql"),
+      );
 
       // For MySQL, Date objects should be passed through as-is
       expect(serialized["createdAt"]).toBeInstanceOf(Date);
