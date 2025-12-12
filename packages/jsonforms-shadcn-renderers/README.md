@@ -3,7 +3,8 @@
 ## Install
 
 ```npm
-pnpm add @fragno-dev/jsonforms-shadcn-renderers
+pnpm add @fragno-dev/jsonforms-shadcn-renderers \
+         @jsonforms/react
 ```
 
 Make sure you have all of these shadcn components added to your project:
