@@ -2,6 +2,8 @@
 
 @import "tw-animate-css";
 
+@source "../node_modules/@fragno-dev/jsonforms-shadcn-renderers";
+
 @custom-variant dark (&:is(.dark *));
 
 code {

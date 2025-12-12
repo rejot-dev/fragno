@@ -1,13 +1,9 @@
 import { createStripeFragment } from "@fragno-dev/stripe";
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "./auth/auth";
-import { KyselyPGlite } from "kysely-pglite";
-import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
-
-const { dialect } = new KyselyPGlite(db.$client);
+import { adapter } from "./adapter";
 
 export const stripeFragment = createStripeFragment(
   {
@@ -47,9 +43,6 @@ export const stripeFragment = createStripeFragment(
     enableAdminRoutes: true,
   },
   {
-    databaseAdapter: new DrizzleAdapter({
-      dialect,
-      driverConfig: new PGLiteDriverConfig(),
-    }),
+    databaseAdapter: adapter,
   },
 );

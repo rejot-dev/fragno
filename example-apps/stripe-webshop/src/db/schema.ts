@@ -1,2 +1,2 @@
 export * from "./auth.schema";
-export * from "./subscriptions.schema";
+export * from "./fragno.schema";

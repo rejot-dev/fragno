@@ -10,22 +10,34 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as ShadcnFormsRouteImport } from './routes/shadcn-forms'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CheckRouteImport } from './routes/check'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FormSlugRouteImport } from './routes/form/$slug'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedStripeRouteImport } from './routes/_authenticated/stripe'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedPlansRouteImport } from './routes/_authenticated/plans'
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
+import { Route as AuthenticatedFormsIndexRouteImport } from './routes/_authenticated/forms/index'
 import { Route as ApiSubscriptionStatusRouteImport } from './routes/api/subscription/status'
 import { Route as ApiStripeSplatRouteImport } from './routes/api/stripe/$'
+import { Route as ApiFormsSplatRouteImport } from './routes/api/forms/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AuthenticatedFormsNewRouteImport } from './routes/_authenticated/forms/new'
+import { Route as AuthenticatedFormsFormIdSubmissionsRouteImport } from './routes/_authenticated/forms/$formId.submissions'
+import { Route as AuthenticatedFormsFormIdEditRouteImport } from './routes/_authenticated/forms/$formId.edit'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShadcnFormsRoute = ShadcnFormsRouteImport.update({
+  id: '/shadcn-forms',
+  path: '/shadcn-forms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -45,6 +57,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FormSlugRoute = FormSlugRouteImport.update({
+  id: '/form/$slug',
+  path: '/form/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
@@ -72,6 +89,11 @@ const AuthenticatedCheckoutRoute = AuthenticatedCheckoutRouteImport.update({
   path: '/checkout',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFormsIndexRoute = AuthenticatedFormsIndexRouteImport.update({
+  id: '/forms/',
+  path: '/forms/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const ApiSubscriptionStatusRoute = ApiSubscriptionStatusRouteImport.update({
   id: '/api/subscription/status',
   path: '/api/subscription/status',
@@ -82,39 +104,75 @@ const ApiStripeSplatRoute = ApiStripeSplatRouteImport.update({
   path: '/api/stripe/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFormsSplatRoute = ApiFormsSplatRouteImport.update({
+  id: '/api/forms/$',
+  path: '/api/forms/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedFormsNewRoute = AuthenticatedFormsNewRouteImport.update({
+  id: '/forms/new',
+  path: '/forms/new',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFormsFormIdSubmissionsRoute =
+  AuthenticatedFormsFormIdSubmissionsRouteImport.update({
+    id: '/forms/$formId/submissions',
+    path: '/forms/$formId/submissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFormsFormIdEditRoute =
+  AuthenticatedFormsFormIdEditRouteImport.update({
+    id: '/forms/$formId/edit',
+    path: '/forms/$formId/edit',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/check': typeof CheckRoute
   '/login': typeof LoginRoute
+  '/shadcn-forms': typeof ShadcnFormsRoute
   '/signup': typeof SignupRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/plans': typeof AuthenticatedPlansRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/stripe': typeof AuthenticatedStripeRoute
   '/users': typeof AuthenticatedUsersRoute
+  '/form/$slug': typeof FormSlugRoute
+  '/forms/new': typeof AuthenticatedFormsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/forms/$': typeof ApiFormsSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
+  '/forms': typeof AuthenticatedFormsIndexRoute
+  '/forms/$formId/edit': typeof AuthenticatedFormsFormIdEditRoute
+  '/forms/$formId/submissions': typeof AuthenticatedFormsFormIdSubmissionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/check': typeof CheckRoute
   '/login': typeof LoginRoute
+  '/shadcn-forms': typeof ShadcnFormsRoute
   '/signup': typeof SignupRoute
   '/checkout': typeof AuthenticatedCheckoutRoute
   '/plans': typeof AuthenticatedPlansRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/stripe': typeof AuthenticatedStripeRoute
   '/users': typeof AuthenticatedUsersRoute
+  '/form/$slug': typeof FormSlugRoute
+  '/forms/new': typeof AuthenticatedFormsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/forms/$': typeof ApiFormsSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
+  '/forms': typeof AuthenticatedFormsIndexRoute
+  '/forms/$formId/edit': typeof AuthenticatedFormsFormIdEditRoute
+  '/forms/$formId/submissions': typeof AuthenticatedFormsFormIdSubmissionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -122,15 +180,22 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/check': typeof CheckRoute
   '/login': typeof LoginRoute
+  '/shadcn-forms': typeof ShadcnFormsRoute
   '/signup': typeof SignupRoute
   '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/_authenticated/plans': typeof AuthenticatedPlansRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/stripe': typeof AuthenticatedStripeRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
+  '/form/$slug': typeof FormSlugRoute
+  '/_authenticated/forms/new': typeof AuthenticatedFormsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/forms/$': typeof ApiFormsSplatRoute
   '/api/stripe/$': typeof ApiStripeSplatRoute
   '/api/subscription/status': typeof ApiSubscriptionStatusRoute
+  '/_authenticated/forms/': typeof AuthenticatedFormsIndexRoute
+  '/_authenticated/forms/$formId/edit': typeof AuthenticatedFormsFormIdEditRoute
+  '/_authenticated/forms/$formId/submissions': typeof AuthenticatedFormsFormIdSubmissionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -138,44 +203,65 @@ export interface FileRouteTypes {
     | '/'
     | '/check'
     | '/login'
+    | '/shadcn-forms'
     | '/signup'
     | '/checkout'
     | '/plans'
     | '/profile'
     | '/stripe'
     | '/users'
+    | '/form/$slug'
+    | '/forms/new'
     | '/api/auth/$'
+    | '/api/forms/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
+    | '/forms'
+    | '/forms/$formId/edit'
+    | '/forms/$formId/submissions'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/check'
     | '/login'
+    | '/shadcn-forms'
     | '/signup'
     | '/checkout'
     | '/plans'
     | '/profile'
     | '/stripe'
     | '/users'
+    | '/form/$slug'
+    | '/forms/new'
     | '/api/auth/$'
+    | '/api/forms/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
+    | '/forms'
+    | '/forms/$formId/edit'
+    | '/forms/$formId/submissions'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/check'
     | '/login'
+    | '/shadcn-forms'
     | '/signup'
     | '/_authenticated/checkout'
     | '/_authenticated/plans'
     | '/_authenticated/profile'
     | '/_authenticated/stripe'
     | '/_authenticated/users'
+    | '/form/$slug'
+    | '/_authenticated/forms/new'
     | '/api/auth/$'
+    | '/api/forms/$'
     | '/api/stripe/$'
     | '/api/subscription/status'
+    | '/_authenticated/forms/'
+    | '/_authenticated/forms/$formId/edit'
+    | '/_authenticated/forms/$formId/submissions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -183,8 +269,11 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   CheckRoute: typeof CheckRoute
   LoginRoute: typeof LoginRoute
+  ShadcnFormsRoute: typeof ShadcnFormsRoute
   SignupRoute: typeof SignupRoute
+  FormSlugRoute: typeof FormSlugRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiFormsSplatRoute: typeof ApiFormsSplatRoute
   ApiStripeSplatRoute: typeof ApiStripeSplatRoute
   ApiSubscriptionStatusRoute: typeof ApiSubscriptionStatusRoute
 }
@@ -196,6 +285,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shadcn-forms': {
+      id: '/shadcn-forms'
+      path: '/shadcn-forms'
+      fullPath: '/shadcn-forms'
+      preLoaderRoute: typeof ShadcnFormsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -224,6 +320,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/form/$slug': {
+      id: '/form/$slug'
+      path: '/form/$slug'
+      fullPath: '/form/$slug'
+      preLoaderRoute: typeof FormSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/users': {
@@ -261,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCheckoutRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/forms/': {
+      id: '/_authenticated/forms/'
+      path: '/forms'
+      fullPath: '/forms'
+      preLoaderRoute: typeof AuthenticatedFormsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/api/subscription/status': {
       id: '/api/subscription/status'
       path: '/api/subscription/status'
@@ -275,12 +385,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStripeSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/forms/$': {
+      id: '/api/forms/$'
+      path: '/api/forms/$'
+      fullPath: '/api/forms/$'
+      preLoaderRoute: typeof ApiFormsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/forms/new': {
+      id: '/_authenticated/forms/new'
+      path: '/forms/new'
+      fullPath: '/forms/new'
+      preLoaderRoute: typeof AuthenticatedFormsNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/forms/$formId/submissions': {
+      id: '/_authenticated/forms/$formId/submissions'
+      path: '/forms/$formId/submissions'
+      fullPath: '/forms/$formId/submissions'
+      preLoaderRoute: typeof AuthenticatedFormsFormIdSubmissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/forms/$formId/edit': {
+      id: '/_authenticated/forms/$formId/edit'
+      path: '/forms/$formId/edit'
+      fullPath: '/forms/$formId/edit'
+      preLoaderRoute: typeof AuthenticatedFormsFormIdEditRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
@@ -291,6 +429,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedStripeRoute: typeof AuthenticatedStripeRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
+  AuthenticatedFormsNewRoute: typeof AuthenticatedFormsNewRoute
+  AuthenticatedFormsIndexRoute: typeof AuthenticatedFormsIndexRoute
+  AuthenticatedFormsFormIdEditRoute: typeof AuthenticatedFormsFormIdEditRoute
+  AuthenticatedFormsFormIdSubmissionsRoute: typeof AuthenticatedFormsFormIdSubmissionsRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -299,6 +441,11 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedStripeRoute: AuthenticatedStripeRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRoute,
+  AuthenticatedFormsNewRoute: AuthenticatedFormsNewRoute,
+  AuthenticatedFormsIndexRoute: AuthenticatedFormsIndexRoute,
+  AuthenticatedFormsFormIdEditRoute: AuthenticatedFormsFormIdEditRoute,
+  AuthenticatedFormsFormIdSubmissionsRoute:
+    AuthenticatedFormsFormIdSubmissionsRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -310,8 +457,11 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   CheckRoute: CheckRoute,
   LoginRoute: LoginRoute,
+  ShadcnFormsRoute: ShadcnFormsRoute,
   SignupRoute: SignupRoute,
+  FormSlugRoute: FormSlugRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiFormsSplatRoute: ApiFormsSplatRoute,
   ApiStripeSplatRoute: ApiStripeSplatRoute,
   ApiSubscriptionStatusRoute: ApiSubscriptionStatusRoute,
 }
