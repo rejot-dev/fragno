@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { column, FragnoId } from "./create";
+import { column } from "./create";
 import { deserialize, serialize } from "./type-conversion/serialize";
 
 describe("serialize", () => {
@@ -390,95 +390,6 @@ describe("serialize", () => {
         expect(serialize("test", column("string"), "postgresql")).toBe("test");
         expect(serialize(42, column("integer"), "mysql")).toBe(42);
         expect(serialize(3.14, column("decimal"), "mssql")).toBe(3.14);
-      });
-    });
-
-    describe("FragnoId handling", () => {
-      it("should serialize FragnoId for external-id column", () => {
-        const externalIdCol = column("string");
-        externalIdCol.role = "external-id";
-        const fragnoId = FragnoId.fromExternal("user123", 0);
-
-        expect(serialize(fragnoId, externalIdCol, "postgresql")).toBe("user123");
-        expect(serialize(fragnoId, externalIdCol, "sqlite")).toBe("user123");
-        expect(serialize(fragnoId, externalIdCol, "mysql")).toBe("user123");
-      });
-
-      it("should serialize FragnoId for internal-id column", () => {
-        const internalIdCol = column("bigint");
-        internalIdCol.role = "internal-id";
-        const fragnoId = new FragnoId({
-          externalId: "user123",
-          internalId: BigInt(456),
-          version: 0,
-        });
-
-        expect(serialize(fragnoId, internalIdCol, "postgresql")).toBe(BigInt(456));
-        expect(serialize(fragnoId, internalIdCol, "sqlite")).toBe(BigInt(456));
-        expect(serialize(fragnoId, internalIdCol, "mysql")).toBe(BigInt(456));
-      });
-
-      it("should throw error when FragnoId lacks internal ID for internal-id column", () => {
-        const internalIdCol = column("bigint");
-        internalIdCol.role = "internal-id";
-        const fragnoId = FragnoId.fromExternal("user123", 0);
-
-        expect(() => serialize(fragnoId, internalIdCol, "postgresql")).toThrow(
-          "FragnoId must have internalId for internal-id column",
-        );
-      });
-
-      it("should serialize FragnoId for reference column (prefer internal ID)", () => {
-        const referenceCol = column("bigint");
-        referenceCol.role = "reference";
-        const fragnoId = new FragnoId({
-          externalId: "user123",
-          internalId: BigInt(456),
-          version: 0,
-        });
-
-        expect(serialize(fragnoId, referenceCol, "postgresql")).toBe(BigInt(456));
-        expect(serialize(fragnoId, referenceCol, "sqlite")).toBe(BigInt(456));
-        expect(serialize(fragnoId, referenceCol, "mysql")).toBe(BigInt(456));
-      });
-
-      it("should fallback to external ID for reference column when internal ID unavailable", () => {
-        const referenceCol = column("bigint");
-        referenceCol.role = "reference";
-        const fragnoId = FragnoId.fromExternal("user123", 0);
-
-        expect(serialize(fragnoId, referenceCol, "postgresql")).toBe("user123");
-        expect(serialize(fragnoId, referenceCol, "sqlite")).toBe("user123");
-      });
-
-      it("should serialize FragnoId for regular column (use external ID)", () => {
-        const regularCol = column("string");
-        regularCol.role = "regular";
-        const fragnoId = new FragnoId({
-          externalId: "user123",
-          internalId: BigInt(456),
-          version: 0,
-        });
-
-        expect(serialize(fragnoId, regularCol, "postgresql")).toBe("user123");
-        expect(serialize(fragnoId, regularCol, "mysql")).toBe("user123");
-      });
-
-      it("should handle FragnoId serialization with different providers", () => {
-        const externalIdCol = column("string");
-        externalIdCol.role = "external-id";
-        const fragnoId = new FragnoId({
-          externalId: "user123",
-          internalId: BigInt(456),
-          version: 0,
-        });
-
-        // Test across different providers
-        expect(serialize(fragnoId, externalIdCol, "sqlite")).toBe("user123");
-        expect(serialize(fragnoId, externalIdCol, "postgresql")).toBe("user123");
-        expect(serialize(fragnoId, externalIdCol, "mysql")).toBe("user123");
-        expect(serialize(fragnoId, externalIdCol, "mssql")).toBe("user123");
-        expect(serialize(fragnoId, externalIdCol, "cockroachdb")).toBe("user123");
       });
     });
   });

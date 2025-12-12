@@ -13,7 +13,7 @@ import type { AnySchema } from "../../schema/create";
 import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { SimpleQueryInterface } from "../../query/simple-query-interface";
 import { createExecutor } from "./generic-sql-uow-executor";
-import { createKyselyUOWDecoder } from "./uow-decoder";
+import { UnitOfWorkDecoder } from "./uow-decoder";
 import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
 import type { DriverConfig } from "./driver-config";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
@@ -136,7 +136,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     const factory: UnitOfWorkFactory = {
       compiler: createUOWCompilerFromOperationCompiler(operationCompiler),
       executor: createExecutor(this.#driver, false),
-      decoder: createKyselyUOWDecoder(this.driverConfig.databaseType),
+      decoder: new UnitOfWorkDecoder(this.driverConfig),
       uowConfig: this.uowConfig,
       schemaNamespaceMap: this.#schemaNamespaceMap,
     };

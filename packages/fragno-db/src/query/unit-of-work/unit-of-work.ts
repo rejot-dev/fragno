@@ -284,7 +284,7 @@ export interface UOWDecoder<TRawInput = unknown> {
    * @param operations - Array of retrieval operations that produced these results
    * @returns Decoded results in application format
    */
-  (rawResults: TRawInput[], operations: RetrievalOperation<AnySchema>[]): unknown[];
+  decode(rawResults: TRawInput[], operations: RetrievalOperation<AnySchema>[]): unknown[];
 }
 
 /**
@@ -426,8 +426,12 @@ export class FindBuilder<
 
   /**
    * Set the number of results per page
+   * @throws {RangeError} If size is not a positive integer
    */
   pageSize(size: number): this {
+    if (!Number.isInteger(size) || size <= 0) {
+      throw new RangeError(`pageSize must be a positive integer, received: ${size}`);
+    }
     this.#pageSizeValue = size;
     return this;
   }
@@ -726,8 +730,12 @@ export class JoinFindBuilder<
 
   /**
    * Set the number of results to return
+   * @throws {RangeError} If size is not a positive integer
    */
   pageSize(size: number): this {
+    if (!Number.isInteger(size) || size <= 0) {
+      throw new RangeError(`pageSize must be a positive integer, received: ${size}`);
+    }
     this.#pageSizeValue = size;
     return this;
   }
@@ -1383,7 +1391,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
       const rawResults = await this.#executor.executeRetrievalPhase(retrievalBatch);
 
-      const results = this.#decoder(rawResults, this.#retrievalOps);
+      const results = this.#decoder.decode(rawResults, this.#retrievalOps);
 
       // Store results and transition to mutation phase
       this.#retrievalResults = results;

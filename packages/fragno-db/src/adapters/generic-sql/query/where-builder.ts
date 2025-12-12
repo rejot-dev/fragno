@@ -1,10 +1,16 @@
 import { sql, type BinaryOperator } from "kysely";
-import { type AnyColumn, type AnyTable, Column } from "../../../schema/create";
+import {
+  type AnyColumn,
+  type AnyTable,
+  Column,
+  FragnoId,
+  FragnoReference,
+} from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import { serialize } from "../../../schema/type-conversion/serialize";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { SupportedDatabase } from "../driver-config";
-import { ReferenceSubquery } from "../../../query/value-encoding";
+import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
 /**
@@ -48,24 +54,61 @@ export function buildWhere(
     let val = condition.b;
 
     if (!(val instanceof Column)) {
-      if (left.role === "reference" && typeof val === "string" && table) {
-        const relation = Object.values(table.relations).find((rel) =>
-          rel.on.some(([localCol]) => localCol === left.ormName),
-        );
-        if (relation) {
-          const refTable = relation.table;
-          const internalIdCol = refTable.getInternalIdColumn();
-          const idCol = refTable.getIdColumn();
-          const physicalTableName = mapper ? mapper.toPhysical(refTable.ormName) : refTable.ormName;
+      // Handle reference columns specially
+      if (left.role === "reference" && table) {
+        if (typeof val === "string") {
+          // String external ID - create subquery to lookup internal ID
+          const relation = Object.values(table.relations).find((rel) =>
+            rel.on.some(([localCol]) => localCol === left.ormName),
+          );
+          if (relation) {
+            const refTable = relation.table;
+            const internalIdCol = refTable.getInternalIdColumn();
+            const idCol = refTable.getIdColumn();
+            const physicalTableName = mapper
+              ? mapper.toPhysical(refTable.ormName)
+              : refTable.ormName;
 
-          val = eb
-            .selectFrom(physicalTableName)
-            .select(internalIdCol.name)
-            .where(idCol.name, "=", val)
-            .limit(1);
+            val = eb
+              .selectFrom(physicalTableName)
+              .select(internalIdCol.name)
+              .where(idCol.name, "=", val)
+              .limit(1);
+          }
+        } else if (val instanceof FragnoId && val.internalId !== undefined) {
+          // FragnoId with internal ID - use it directly (no serialization needed)
+          val = val.internalId;
+        } else if (val instanceof FragnoId && val.internalId === undefined) {
+          // FragnoId without internal ID - create subquery using external ID
+          const relation = Object.values(table.relations).find((rel) =>
+            rel.on.some(([localCol]) => localCol === left.ormName),
+          );
+          if (relation) {
+            const refTable = relation.table;
+            const internalIdCol = refTable.getInternalIdColumn();
+            const idCol = refTable.getIdColumn();
+            const physicalTableName = mapper
+              ? mapper.toPhysical(refTable.ormName)
+              : refTable.ormName;
+
+            val = eb
+              .selectFrom(physicalTableName)
+              .select(internalIdCol.name)
+              .where(idCol.name, "=", val.externalId)
+              .limit(1);
+          }
+        } else if (val instanceof FragnoReference) {
+          // FragnoReference - use internal ID directly (no serialization needed)
+          val = val.internalId;
+        } else {
+          // Other values - resolve and serialize
+          const resolvedVal = resolveFragnoIdValue(val, left);
+          val = serialize(resolvedVal, left, database);
         }
       } else {
-        val = serialize(val, left, database);
+        // Non-reference columns - resolve FragnoId/FragnoReference and serialize
+        const resolvedVal = resolveFragnoIdValue(val, left);
+        val = serialize(resolvedVal, left, database);
       }
     }
 

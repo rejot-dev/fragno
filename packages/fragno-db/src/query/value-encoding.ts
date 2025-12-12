@@ -1,7 +1,7 @@
-import type { AnyTable } from "../schema/create";
+import type { AnyTable, AnyColumn } from "../schema/create";
 import type { SQLProvider } from "../shared/providers";
 import { serialize } from "../schema/type-conversion/serialize";
-import { FragnoId } from "../schema/create";
+import { FragnoId, FragnoReference } from "../schema/create";
 import { generateRuntimeDefault } from "./column-defaults";
 
 /**
@@ -26,6 +26,53 @@ export class ReferenceSubquery {
   get externalIdValue() {
     return this.#externalIdValue;
   }
+}
+
+/**
+ * Resolves FragnoId or FragnoReference objects to their appropriate primitive values.
+ *
+ * This function handles the Fragno ID system's conversion to database values:
+ * - FragnoReference objects are resolved to their internal IDs
+ * - FragnoId objects are resolved based on the column role:
+ *   - external-id: uses the external ID
+ *   - internal-id: uses the internal ID (must be present)
+ *   - reference: uses databaseId (internal ID if available, else external ID)
+ *   - other: uses the external ID by default
+ *
+ * @param value - The value to resolve (may be FragnoId, FragnoReference, or any other value)
+ * @param col - The column schema definition
+ * @returns The resolved primitive value, or the original value if not a FragnoId/FragnoReference
+ * @throws Error if internal ID is required but not available
+ * @internal
+ */
+export function resolveFragnoIdValue(value: unknown, col: AnyColumn): unknown {
+  // Handle FragnoReference objects (for reference columns)
+  if (value instanceof FragnoReference) {
+    return value.internalId;
+  }
+
+  // Handle FragnoId objects
+  if (value instanceof FragnoId) {
+    // For external ID columns, use the external ID
+    if (col.role === "external-id") {
+      return value.externalId;
+    }
+    // For internal ID columns, use the internal ID (must be present)
+    if (col.role === "internal-id") {
+      if (!value.internalId) {
+        throw new Error(`FragnoId must have internalId for internal-id column ${col.name}`);
+      }
+      return value.internalId;
+    }
+    // For reference columns, prefer internal ID if available, else external ID
+    if (col.role === "reference") {
+      return value.databaseId;
+    }
+    // Default to external ID for other columns
+    return value.externalId;
+  }
+
+  return value;
 }
 
 /**
@@ -79,39 +126,45 @@ export function encodeValues(
     }
 
     if (value !== undefined) {
-      // Handle string references and FragnoId objects
+      // Handle reference columns: strings or FragnoIds without internal IDs need subqueries
       if (col.role === "reference") {
+        let needsSubquery = false;
+        let externalIdForSubquery: string | undefined;
+
         if (typeof value === "string") {
-          // String external ID - generate subquery
+          // String external ID - needs subquery
+          needsSubquery = true;
+          externalIdForSubquery = value;
+        } else if (value instanceof FragnoId && value.internalId === undefined) {
+          // FragnoId without internal ID - needs subquery
+          needsSubquery = true;
+          externalIdForSubquery = value.externalId;
+        } else if (value instanceof FragnoId && value.internalId !== undefined) {
+          // FragnoId with internal ID - use it directly without serialization
+          // Internal IDs are already in database format (bigint), no driver conversion needed
+          result[col.name] = value.internalId;
+          continue;
+        } else if (value instanceof FragnoReference) {
+          // FragnoReference - use internal ID directly without serialization
+          result[col.name] = value.internalId;
+          continue;
+        }
+
+        if (needsSubquery) {
           const relation = Object.values(table.relations).find((rel) =>
             rel.on.some(([localCol]) => localCol === k),
           );
           if (relation) {
-            result[col.name] = new ReferenceSubquery(relation.table, value);
+            result[col.name] = new ReferenceSubquery(relation.table, externalIdForSubquery!);
             continue;
           }
           throw new Error(`Reference column ${k} not found in table ${table.name}`);
-        } else if (value instanceof FragnoId) {
-          // FragnoId object
-          if (value.internalId !== undefined) {
-            // If internal ID is populated, use it directly (no subquery needed)
-            result[col.name] = value.internalId;
-            continue;
-          } else {
-            // If internal ID is not populated, use external ID via subquery
-            const relation = Object.values(table.relations).find((rel) =>
-              rel.on.some(([localCol]) => localCol === k),
-            );
-            if (relation) {
-              result[col.name] = new ReferenceSubquery(relation.table, value.externalId);
-              continue;
-            }
-            throw new Error(`Reference column ${k} not found in table ${table.name}`);
-          }
         }
       }
 
-      result[col.name] = serialize(value, col, provider, skipDriverConversions);
+      // Resolve FragnoId/FragnoReference to primitive values before serialization
+      const resolvedValue = resolveFragnoIdValue(value, col);
+      result[col.name] = serialize(resolvedValue, col, provider, skipDriverConversions);
     }
   }
 

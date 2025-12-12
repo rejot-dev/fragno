@@ -94,7 +94,9 @@ describe("UnitOfWork type tests", () => {
       executeRetrievalPhase: async () => [],
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
-    const mockDecoder = () => [];
+    const mockDecoder = {
+      decode: () => [],
+    };
     return new UnitOfWork(mockCompiler, mockExecutor, mockDecoder).forSchema(testSchema);
   }
 

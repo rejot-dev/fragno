@@ -1,5 +1,6 @@
 import type { AnyColumn } from "../schema/create";
 import { deserialize, serialize } from "../schema/type-conversion/serialize";
+import { resolveFragnoIdValue } from "./value-encoding";
 import type { SQLProvider } from "../shared/providers";
 
 /**
@@ -241,9 +242,11 @@ export function serializeCursorValues(
       // First deserialize from JSON format to application format
       // (e.g., "2025-11-07T09:36:57.959Z" string → Date object)
       const deserialized = deserialize(value, col, provider);
+      // Resolve FragnoId/FragnoReference to primitive values (if present)
+      const resolved = resolveFragnoIdValue(deserialized, col);
       // Then serialize to database format
       // (e.g., Date → database driver format)
-      serialized[col.ormName] = serialize(deserialized, col, provider);
+      serialized[col.ormName] = serialize(resolved, col, provider);
     }
   }
 

@@ -1,6 +1,5 @@
 import type { SQLProvider } from "../../shared/providers";
 import type { AnyColumn } from "../create";
-import { FragnoId, FragnoReference } from "../create";
 
 const supportJson: SQLProvider[] = ["postgresql", "cockroachdb", "mysql"];
 
@@ -80,10 +79,13 @@ export function deserialize(value: unknown, col: AnyColumn, provider: SQLProvide
  * Handles provider-specific type conversions:
  * - SQLite: Date → number, boolean → 0/1, BigInt → Buffer
  * - JSON stringification for non-native JSON databases
- * - FragnoId/FragnoReference → appropriate ID values
  * - Uint8Array → Buffer for binary columns
  *
- * @param value - The application value to serialize
+ * Note: This function expects FragnoId/FragnoReference objects to be resolved
+ * to primitive values before calling. Use resolveFragnoIdValue() from
+ * value-encoding.ts for this purpose.
+ *
+ * @param value - The application value to serialize (should not be FragnoId/FragnoReference)
  * @param col - The column schema definition
  * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
  * @param skipDriverConversions - Skip driver-level type conversions (Date->number, boolean->0/1, bigint->Buffer).
@@ -98,32 +100,6 @@ export function serialize(
 ) {
   if (value === null) {
     return null;
-  }
-
-  // Handle FragnoReference objects (for reference columns)
-  if (value instanceof FragnoReference) {
-    return value.internalId;
-  }
-
-  // Handle FragnoId objects
-  if (value instanceof FragnoId) {
-    // For external ID columns, use the external ID
-    if (col.role === "external-id") {
-      return value.externalId;
-    }
-    // For internal ID columns, use the internal ID (must be present)
-    if (col.role === "internal-id") {
-      if (!value.internalId) {
-        throw new Error(`FragnoId must have internalId for internal-id column ${col.name}`);
-      }
-      return value.internalId;
-    }
-    // For reference columns, prefer internal ID if available
-    if (col.role === "reference") {
-      return value.databaseId;
-    }
-    // Default to external ID for other columns
-    return value.externalId;
   }
 
   if (!supportJson.includes(provider) && col.type === "json") {
