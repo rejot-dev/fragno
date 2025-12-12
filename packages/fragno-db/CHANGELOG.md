@@ -1,5 +1,17 @@
 # @fragno-dev/db
 
+## 0.1.16
+
+### Patch Changes
+
+- 8429960: Refactor DrizzleAdapter to extend GenericSQLAdapter
+- a46b59c: Add Cloudflare Durable Objects SQL dialect support
+- fcce048: feat: use "dry run" mode when searching for database schemas to be more lenient when
+  instantiating a Fragment
+- 147bdd6: Add migrate() helper and fragment type utilities
+- f9ae2d3: fix: database namespace generation
+- f3b7084: Simplify PreparedMigrations API to auto-execute migrations
+
 ## 0.1.15
 
 ### Patch Changes
