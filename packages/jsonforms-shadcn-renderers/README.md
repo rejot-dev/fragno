@@ -49,6 +49,9 @@ const config = defineConfig({
       "@/lib": path.resolve(__dirname, "./src/lib"),
     },
   },
+  ssr: {
+    noExternal: ["@fragno-dev/jsonforms-shadcn-renderers"],
+  },
 });
 
 export default config;

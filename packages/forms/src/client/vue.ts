@@ -1,7 +1,7 @@
 import { useFragno } from "@fragno-dev/core/vue";
-import { createExampleFragmentClients } from "..";
+import { createFormsClients } from "..";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
-export function createExampleFragmentClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createExampleFragmentClients(config));
+export function createFormsClient(config: FragnoPublicClientConfig = {}) {
+  return useFragno(createFormsClients(config));
 }

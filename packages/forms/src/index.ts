@@ -1,123 +1,50 @@
-import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
-import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
-import type { TableToInsertValues } from "@fragno-dev/db/query";
-import { noteSchema } from "./schema";
+import { createClientBuilder } from "@fragno-dev/core/client";
+import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { instantiate } from "@fragno-dev/core";
+import { publicRoutes, adminRoutes } from "./routes";
+import { formsFragmentDef } from "./definition";
+import type { Form, Response } from "./models";
 
-// NOTE: We use zod here for defining schemas, but any StandardSchema library can be used!
-//       For a complete list see:
-// https://github.com/standard-schema/standard-schema#what-schema-libraries-implement-the-spec
-import { z } from "zod";
-
-export interface ExampleConfig {
-  // Add any server-side configuration here if needed
+export interface FormsConfig {
+  onFormCreated?: (form: Omit<Form, "version" | "createdAt" | "updatedAt">) => void;
+  onResponseSubmitted?: (response: Response) => void;
 }
 
-const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
-  .extend(withDatabase(noteSchema))
-  .providesBaseService(({ deps }) => {
-    return {
-      createNote: async (note: TableToInsertValues<typeof noteSchema.tables.note>) => {
-        const id = await deps.db.create("note", note);
-        return {
-          ...note,
-          id: id.valueOf(),
-          createdAt: note.createdAt ?? new Date(),
-        };
-      },
-      getNotes: () => {
-        return deps.db.find("note", (b) => b);
-      },
-      getNotesByUser: (userId: string) => {
-        return deps.db.find("note", (b) =>
-          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", userId)),
-        );
-      },
-    };
-  })
-  .build();
+export const routes = [publicRoutes, adminRoutes] as const;
 
-const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
-  ({ services, defineRoute }) => {
-    return [
-      defineRoute({
-        method: "GET",
-        path: "/notes",
-        queryParameters: ["userId"],
-        outputSchema: z.array(
-          z.object({
-            id: z.string(),
-            content: z.string(),
-            userId: z.string(),
-            createdAt: z.date(),
-          }),
-        ),
-        handler: async ({ query }, { json }) => {
-          const userId = query.get("userId");
-
-          if (userId) {
-            const notes = await services.getNotesByUser(userId);
-            return json(
-              notes.map((note) => ({
-                id: note.id.valueOf(),
-                content: note.content,
-                userId: note.userId,
-                createdAt: note.createdAt,
-              })),
-            );
-          }
-
-          const notes = await services.getNotes();
-          return json(
-            notes.map((note) => ({
-              id: note.id.valueOf(),
-              content: note.content,
-              userId: note.userId,
-              createdAt: note.createdAt,
-            })),
-          );
-        },
-      }),
-
-      defineRoute({
-        method: "POST",
-        path: "/notes",
-        inputSchema: z.object({ content: z.string(), userId: z.string() }),
-        outputSchema: z.object({
-          id: z.string(),
-          content: z.string(),
-          userId: z.string(),
-          createdAt: z.date(),
-        }),
-        errorCodes: [],
-        handler: async ({ input }, { json }) => {
-          const { content, userId } = await input.valid();
-
-          const note = await services.createNote({ content, userId });
-          return json(note);
-        },
-      }),
-    ];
-  },
-);
-
-export function createExampleFragment(
-  config: ExampleConfig = {},
+export function createFormsFragment(
+  config: FormsConfig = {},
   options: FragnoPublicConfigWithDatabase,
 ) {
-  return instantiate(exampleFragmentDefinition)
+  return instantiate(formsFragmentDef)
     .withConfig(config)
-    .withRoutes([exampleRoutesFactory])
+    .withRoutes(routes)
     .withOptions(options)
     .build();
 }
 
-export function createExampleFragmentClients(fragnoConfig: FragnoPublicClientConfig) {
-  const b = createClientBuilder(exampleFragmentDefinition, fragnoConfig, [exampleRoutesFactory]);
+export function createFormsClients(fragnoConfig: FragnoPublicClientConfig) {
+  const b = createClientBuilder(formsFragmentDef, fragnoConfig, routes);
 
   return {
-    useNotes: b.createHook("/notes"),
-    useCreateNote: b.createMutator("POST", "/notes"),
+    // Public
+    useForm: b.createHook("/:slug"),
+    useSubmitForm: b.createMutator("POST", "/:slug/submit"),
+
+    // Admin - Forms
+    useForms: b.createHook("/admin/forms"),
+    useCreateForm: b.createMutator("POST", "/admin/forms"),
+    useUpdateForm: b.createMutator("PUT", "/admin/forms/:id"),
+    useDeleteForm: b.createMutator("DELETE", "/admin/forms/:id"),
+
+    // Admin - Submissions
+    useSubmissions: b.createHook("/admin/forms/:id/submissions"),
+    useSubmission: b.createHook("/admin/submissions/:id"),
+    useDeleteSubmission: b.createMutator("DELETE", "/admin/submissions/:id"),
   };
 }
+
+export { formsFragmentDef } from "./definition";
+export type { SubmissionSortOptions } from "./definition";
 export type { FragnoRouteConfig } from "@fragno-dev/core";
