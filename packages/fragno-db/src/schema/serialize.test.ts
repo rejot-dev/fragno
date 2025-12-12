@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { column } from "./create";
+import { column, referenceColumn, internalIdColumn } from "./create";
 import { deserialize, serialize } from "./type-conversion/serialize";
 
 describe("serialize", () => {
@@ -390,6 +390,103 @@ describe("serialize", () => {
         expect(serialize("test", column("string"), "postgresql")).toBe("test");
         expect(serialize(42, column("integer"), "mysql")).toBe(42);
         expect(serialize(3.14, column("decimal"), "mssql")).toBe(3.14);
+      });
+    });
+
+    describe("skipDriverConversions", () => {
+      it("should skip Date to number conversion for SQLite when enabled", () => {
+        const date = new Date("2024-01-01T00:00:00.000Z");
+        const timestampCol = column("timestamp");
+
+        // Default behavior: converts to number
+        const withConversion = serialize(date, timestampCol, "sqlite", false);
+        expect(withConversion).toBe(date.getTime());
+        expect(typeof withConversion).toBe("number");
+
+        // With skipDriverConversions: passes through Date
+        const withoutConversion = serialize(date, timestampCol, "sqlite", true);
+        expect(withoutConversion).toBe(date);
+        expect(withoutConversion).toBeInstanceOf(Date);
+      });
+
+      it("should skip boolean to number conversion for SQLite when enabled", () => {
+        const boolCol = column("bool");
+
+        // Default behavior: converts to 0/1
+        expect(serialize(true, boolCol, "sqlite", false)).toBe(1);
+        expect(serialize(false, boolCol, "sqlite", false)).toBe(0);
+
+        // With skipDriverConversions: passes through boolean
+        expect(serialize(true, boolCol, "sqlite", true)).toBe(true);
+        expect(serialize(false, boolCol, "sqlite", true)).toBe(false);
+      });
+
+      it("should skip bigint to Buffer conversion for SQLite when enabled", () => {
+        const bigintValue = 123456789n;
+        const bigintCol = column("bigint");
+
+        // Default behavior: converts to Buffer
+        const withConversion = serialize(bigintValue, bigintCol, "sqlite", false);
+        expect(withConversion).toBeInstanceOf(Buffer);
+        expect((withConversion as Buffer).readBigInt64BE(0)).toBe(bigintValue);
+
+        // With skipDriverConversions: passes through bigint
+        const withoutConversion = serialize(bigintValue, bigintCol, "sqlite", true);
+        expect(withoutConversion).toBe(bigintValue);
+        expect(typeof withoutConversion).toBe("bigint");
+      });
+
+      it("should skip reference column bigint to Number conversion for SQLite when enabled", () => {
+        const bigintValue = 123456789n;
+        const refCol = referenceColumn();
+
+        // Default behavior: converts to Number for reference columns
+        const withConversion = serialize(bigintValue, refCol, "sqlite", false);
+        expect(withConversion).toBe(123456789);
+        expect(typeof withConversion).toBe("number");
+
+        // With skipDriverConversions: passes through bigint
+        const withoutConversion = serialize(bigintValue, refCol, "sqlite", true);
+        expect(withoutConversion).toBe(bigintValue);
+        expect(typeof withoutConversion).toBe("bigint");
+      });
+
+      it("should skip internal-id column bigint to Number conversion for SQLite when enabled", () => {
+        const bigintValue = 123456789n;
+        const internalIdCol = internalIdColumn();
+
+        // Default behavior: converts to Number for internal-id columns
+        const withConversion = serialize(bigintValue, internalIdCol, "sqlite", false);
+        expect(withConversion).toBe(123456789);
+        expect(typeof withConversion).toBe("number");
+
+        // With skipDriverConversions: passes through bigint
+        const withoutConversion = serialize(bigintValue, internalIdCol, "sqlite", true);
+        expect(withoutConversion).toBe(bigintValue);
+        expect(typeof withoutConversion).toBe("bigint");
+      });
+
+      it("should still handle JSON stringification when skipDriverConversions is enabled", () => {
+        const jsonCol = column("json");
+        const obj = { key: "value" };
+
+        // JSON stringification happens regardless of skipDriverConversions
+        expect(serialize(obj, jsonCol, "sqlite", false)).toBe('{"key":"value"}');
+        expect(serialize(obj, jsonCol, "sqlite", true)).toBe('{"key":"value"}');
+      });
+
+      it("should still handle binary conversion when skipDriverConversions is enabled", () => {
+        const binaryCol = column("binary");
+        const uint8 = new Uint8Array([1, 2, 3, 4]);
+
+        // Binary conversion happens regardless of skipDriverConversions
+        const withConversion = serialize(uint8, binaryCol, "sqlite", false);
+        expect(withConversion).toBeInstanceOf(Buffer);
+        expect(Array.from(withConversion as Buffer)).toEqual([1, 2, 3, 4]);
+
+        const withoutConversion = serialize(uint8, binaryCol, "sqlite", true);
+        expect(withoutConversion).toBeInstanceOf(Buffer);
+        expect(Array.from(withoutConversion as Buffer)).toEqual([1, 2, 3, 4]);
       });
     });
   });

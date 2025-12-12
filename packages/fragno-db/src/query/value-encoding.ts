@@ -1,6 +1,4 @@
 import type { AnyTable, AnyColumn } from "../schema/create";
-import type { SQLProvider } from "../shared/providers";
-import { serialize } from "../schema/type-conversion/serialize";
 import { FragnoId, FragnoReference } from "../schema/create";
 import { generateRuntimeDefault } from "./column-defaults";
 
@@ -59,7 +57,7 @@ export function resolveFragnoIdValue(value: unknown, col: AnyColumn): unknown {
     }
     // For internal ID columns, use the internal ID (must be present)
     if (col.role === "internal-id") {
-      if (!value.internalId) {
+      if (value.internalId === undefined) {
         throw new Error(`FragnoId must have internalId for internal-id column ${col.name}`);
       }
       return value.internalId;
@@ -76,37 +74,36 @@ export function resolveFragnoIdValue(value: unknown, col: AnyColumn): unknown {
 }
 
 /**
- * Encodes a record of values from the application format to database format.
+ * Encodes a record of values from the application format to resolved format.
  *
- * This function transforms object keys to match SQL column names and serializes
- * values according to the database provider's requirements (e.g., converting
- * JavaScript Date objects to numbers for SQLite).
+ * This function:
+ * - Transforms object keys from ORM names to database column names
+ * - Resolves FragnoId/FragnoReference objects to primitive values
+ * - Generates default values for undefined columns
+ * - Creates ReferenceSubquery markers for external ID lookups
+ *
+ * Note: This function does NOT serialize values (Date → number, bigint → Buffer, etc.).
+ * Use UnitOfWorkEncoder.encode() to apply driver-specific serialization after this step.
  *
  * @param values - The record of values to encode in application format
  * @param table - The table schema definition containing column information
  * @param generateDefault - Whether to generate default values for undefined columns
- * @param provider - The SQL provider (sqlite, postgresql, mysql, etc.)
- * @param skipDriverConversions - Skip driver-level type conversions (Date->number, boolean->0/1, bigint->Buffer).
- *                                 Set to true when using ORMs like Drizzle that handle these conversions internally.
- * @returns A record with database-compatible column names and serialized values
+ * @returns A record with database column names and resolved (but not serialized) values
  *
  * @example
  * ```ts
  * const encoded = encodeValues(
  *   { userId: 123, createdAt: new Date() },
  *   userTable,
- *   true,
- *   'sqlite'
+ *   true
  * );
- * // Returns: { user_id: 123, created_at: 1234567890 }
+ * // Returns: { user_id: 123, created_at: Date } (not yet serialized)
  * ```
  */
 export function encodeValues(
   values: Record<string, unknown>,
   table: AnyTable,
   generateDefault: boolean,
-  provider: SQLProvider,
-  skipDriverConversions = false,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -140,12 +137,11 @@ export function encodeValues(
           needsSubquery = true;
           externalIdForSubquery = value.externalId;
         } else if (value instanceof FragnoId && value.internalId !== undefined) {
-          // FragnoId with internal ID - use it directly without serialization
-          // Internal IDs are already in database format (bigint), no driver conversion needed
+          // FragnoId with internal ID - use it directly (will be serialized later)
           result[col.name] = value.internalId;
           continue;
         } else if (value instanceof FragnoReference) {
-          // FragnoReference - use internal ID directly without serialization
+          // FragnoReference - use internal ID directly (will be serialized later)
           result[col.name] = value.internalId;
           continue;
         }
@@ -162,9 +158,9 @@ export function encodeValues(
         }
       }
 
-      // Resolve FragnoId/FragnoReference to primitive values before serialization
+      // Resolve FragnoId/FragnoReference to primitive values (serialization happens later)
       const resolvedValue = resolveFragnoIdValue(value, col);
-      result[col.name] = serialize(resolvedValue, col, provider, skipDriverConversions);
+      result[col.name] = resolvedValue;
     }
   }
 

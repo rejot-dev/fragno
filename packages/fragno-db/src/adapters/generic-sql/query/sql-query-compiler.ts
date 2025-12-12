@@ -12,10 +12,10 @@ import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
-import { buildWhere, fullSQLName, processReferenceSubqueries } from "./where-builder";
+import { buildWhere, fullSQLName } from "./where-builder";
 import { mapSelect, extendSelect } from "./select-builder";
-import { encodeValues } from "../../../query/value-encoding";
 import type { CompiledJoin } from "../../../query/orm/orm";
+import { UnitOfWorkEncoder } from "../uow-encoder";
 
 /**
  * Type helpers for Kysely query builders.
@@ -88,12 +88,14 @@ export abstract class SQLQueryCompiler {
   protected readonly driverConfig: DriverConfig;
   protected readonly database: SupportedDatabase;
   protected readonly mapper?: TableNameMapper;
+  protected readonly encoder: UnitOfWorkEncoder;
 
   constructor(db: AnyKysely, driverConfig: DriverConfig, mapper?: TableNameMapper) {
     this.db = db;
     this.driverConfig = driverConfig;
     this.database = driverConfig.databaseType;
     this.mapper = mapper;
+    this.encoder = new UnitOfWorkEncoder(driverConfig, db, mapper);
   }
 
   /**
@@ -272,12 +274,16 @@ export abstract class SQLQueryCompiler {
    * Compile a CREATE (INSERT) query.
    */
   compileCreate(table: AnyTable, values: Record<string, unknown>): CompiledQuery {
-    const encodedValues = encodeValues(values, table, true, this.database);
-    const processedValues = processReferenceSubqueries(encodedValues, this.db, this.mapper);
+    // Encode application values to database format (resolves FragnoId, generates defaults, serializes)
+    const encodedValues = this.encoder.encodeForDatabase({
+      values,
+      table,
+      generateDefaults: true,
+    });
 
     let insert: AnyInsertQueryBuilder = this.db
       .insertInto(this.getTableName(table))
-      .values(processedValues);
+      .values(encodedValues);
 
     // Apply RETURNING if supported
     if (this.driverConfig.supportsReturning) {
@@ -292,13 +298,17 @@ export abstract class SQLQueryCompiler {
    * Compile an UPDATE query.
    */
   compileUpdate(table: AnyTable, options: UpdateCompilerOptions): CompiledQuery {
-    const encoded = encodeValues(options.set, table, false, this.database);
-    const processed = processReferenceSubqueries(encoded, this.db, this.mapper);
+    const encoded = this.encoder.encodeForDatabase({
+      values: options.set,
+      table,
+      generateDefaults: false,
+    });
 
+    // Add version increment (must be added after encoding, as a raw SQL expression)
     const versionCol = table.getVersionColumn();
-    processed[versionCol.name] = sql.raw(`COALESCE(${versionCol.name}, 0) + 1`);
+    encoded[versionCol.name] = sql.raw(`COALESCE(${versionCol.name}, 0) + 1`);
 
-    let query = this.db.updateTable(this.getTableName(table)).set(processed);
+    let query = this.db.updateTable(this.getTableName(table)).set(encoded);
 
     if (options.where) {
       query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
