@@ -8,6 +8,20 @@
       "when": 1761751599515,
       "tag": "0000_furry_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764694186439,
+      "tag": "0001_fresh_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765211273311,
+      "tag": "0002_young_viper",
+      "breakpoints": true
     }
   ]
 }

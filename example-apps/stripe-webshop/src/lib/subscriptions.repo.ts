@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { subscription_stripe } from "@/db/subscriptions.schema";
+import { subscription_stripe } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getPlanByStripePriceId } from "@/lib/plans";
 

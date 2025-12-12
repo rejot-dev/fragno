@@ -61,6 +61,15 @@ export default function Header() {
               >
                 Plans
               </Link>
+              <Link
+                to="/forms"
+                className="rounded px-2 py-1 text-sm transition-colors hover:bg-gray-600/50"
+                activeProps={{
+                  className: "bg-gray-600 font-semibold",
+                }}
+              >
+                Forms
+              </Link>
             </div>
             <Button variant="outline" size="sm" onClick={handleSignOut} className="text-gray-900">
               Sign Out

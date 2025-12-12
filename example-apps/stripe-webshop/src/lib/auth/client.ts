@@ -4,7 +4,7 @@ import { adminClient } from "better-auth/client/plugins";
 import type { CustomAuth } from "@/lib/auth/auth";
 
 export const authClient = createAuthClient({
-  baseURL: process.env["BETTER_AUTH_URL"] || "http://localhost:3000",
+  baseURL: process.env["BETTER_AUTH_URL"],
   plugins: [customSessionClient<CustomAuth>(), adminClient()],
 });
 

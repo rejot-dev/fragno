@@ -1,4 +1,14 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
 import { baseConfig } from "@fragno-private/vitest-config";
+import tsconfigPaths from "vite-tsconfig-paths";
 
-export default defineConfig(baseConfig);
+export default mergeConfig(
+  baseConfig,
+  defineConfig({
+    plugins: [tsconfigPaths()],
+    test: {
+      environment: "jsdom",
+      setupFiles: ["./src/test-setup.ts"],
+    },
+  }),
+);

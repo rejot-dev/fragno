@@ -1,3 +1,4 @@
+import path from "path";
 import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -19,6 +20,9 @@ const config = defineConfig({
       // Fix globby/unicorn-magic incompatibility in Vite's dep optimization
       // unicorn-magic exports toPath only from node.js, not default.js
       "unicorn-magic": "unicorn-magic/node",
+      // Required for @fragno-dev/jsonforms-shadcn-renderers to resolve shadcn components
+      "@/components": path.resolve(__dirname, "./src/components"),
+      "@/lib": path.resolve(__dirname, "./src/lib"),
     },
   },
   // Needed for 'Could not resolve "#tanstack-router-entry"' type errors
