@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { UnitOfWorkEncoder } from "./uow-encoder";
 import { schema, column, idColumn, referenceColumn } from "../../schema/create";
-import { DriverConfig } from "./driver-config";
+import {
+  BetterSQLite3DriverConfig,
+  MySQL2DriverConfig,
+  NodePostgresDriverConfig,
+} from "./driver-config";
 
 describe("UnitOfWorkEncoder", () => {
   const testSchema = schema((s) => {
@@ -26,13 +30,7 @@ describe("UnitOfWorkEncoder", () => {
   const postsTable = testSchema.tables.posts;
 
   describe("SQLite encoding", () => {
-    const sqliteConfig = new (class extends DriverConfig {
-      readonly driverType = "better-sqlite3" as const;
-      readonly databaseType = "sqlite" as const;
-      readonly supportsReturning = true;
-      readonly supportsRowsAffected = true;
-      readonly supportsJson = false;
-    })();
+    const sqliteConfig = new BetterSQLite3DriverConfig();
 
     // Mock Kysely instance (only needed for reference subquery processing)
     const db = {} as any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -116,13 +114,7 @@ describe("UnitOfWorkEncoder", () => {
   });
 
   describe("PostgreSQL encoding", () => {
-    const postgresConfig = new (class extends DriverConfig {
-      readonly driverType = "pg" as const;
-      readonly databaseType = "postgresql" as const;
-      readonly supportsReturning = true;
-      readonly supportsRowsAffected = true;
-      readonly supportsJson = true;
-    })();
+    const postgresConfig = new NodePostgresDriverConfig();
 
     // Mock Kysely instance
     const db = {} as any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -161,13 +153,7 @@ describe("UnitOfWorkEncoder", () => {
   });
 
   describe("MySQL encoding", () => {
-    const mysqlConfig = new (class extends DriverConfig {
-      readonly driverType = "mysql2" as const;
-      readonly databaseType = "mysql" as const;
-      readonly supportsReturning = false;
-      readonly supportsRowsAffected = true;
-      readonly supportsJson = true;
-    })();
+    const mysqlConfig = new MySQL2DriverConfig();
 
     // Mock Kysely instance
     const db = {} as any; // eslint-disable-line @typescript-eslint/no-explicit-any

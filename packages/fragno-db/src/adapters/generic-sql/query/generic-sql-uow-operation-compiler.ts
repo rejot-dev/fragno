@@ -220,7 +220,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query,
-      expectedAffectedRows: op.checkVersion ? 1 : null,
+      expectedAffectedRows: op.checkVersion ? 1n : null,
       expectedReturnedRows: null,
     };
   }
@@ -260,7 +260,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query,
-      expectedAffectedRows: op.checkVersion ? 1 : null,
+      expectedAffectedRows: op.checkVersion ? 1n : null,
       expectedReturnedRows: null,
     };
   }

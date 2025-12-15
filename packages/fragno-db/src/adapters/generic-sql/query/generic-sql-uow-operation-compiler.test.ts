@@ -255,7 +255,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result!.query.sql).toMatchInlineSnapshot(
       `"update "users" set "name" = ?, "_version" = COALESCE(_version, 0) + 1 where ("users"."id" = ? and "users"."_version" = ?)"`,
     );
-    expect(result!.expectedAffectedRows).toBe(1);
+    expect(result!.expectedAffectedRows).toBe(1n);
   });
 
   test("compileDelete operation", () => {
@@ -461,7 +461,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.query.sql).toMatchInlineSnapshot(
         `"delete from "users" where ("users"."id" = ? and "users"."_version" = ?)"`,
       );
-      expect(result!.expectedAffectedRows).toBe(1);
+      expect(result!.expectedAffectedRows).toBe(1n);
     });
   });
 

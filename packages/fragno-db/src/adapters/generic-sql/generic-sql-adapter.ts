@@ -135,7 +135,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
 
     const factory: UnitOfWorkFactory = {
       compiler: createUOWCompilerFromOperationCompiler(operationCompiler),
-      executor: createExecutor(this.#driver, false),
+      executor: createExecutor(this.#driver, this.driverConfig, false),
       decoder: new UnitOfWorkDecoder(this.driverConfig),
       uowConfig: this.uowConfig,
       schemaNamespaceMap: this.#schemaNamespaceMap,

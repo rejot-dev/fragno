@@ -1,17 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { SQLiteSerializer } from "./sqlite-serializer";
 import type { AnyColumn } from "../../../schema/create";
-import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
+import { BetterSQLite3DriverConfig } from "../../../adapters/generic-sql/driver-config";
 
 describe("SQLiteSerializer", () => {
-  const mockDriverConfig: DriverConfig = {
-    driverType: "better-sqlite3",
-    databaseType: "sqlite",
-    supportsReturning: true,
-    supportsRowsAffected: true,
-    supportsJson: false,
-  };
-
+  const mockDriverConfig = new BetterSQLite3DriverConfig();
   const serializer = new SQLiteSerializer(mockDriverConfig);
 
   describe("serializeBigInt", () => {

@@ -1,18 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { decodeCursor, createCursorFromRecord, serializeCursorValues, Cursor } from "./cursor";
 import { column, idColumn, schema } from "../schema/create";
-import type { DriverConfig, SupportedDatabase } from "../adapters/generic-sql/driver-config";
-
-// Helper to create a mock DriverConfig for testing
-function createMockDriverConfig(database: SupportedDatabase): DriverConfig {
-  return {
-    driverType: "pg",
-    databaseType: database,
-    supportsReturning: true,
-    supportsRowsAffected: true,
-    supportsJson: database === "postgresql" || database === "mysql",
-  };
-}
+import {
+  BetterSQLite3DriverConfig,
+  MySQL2DriverConfig,
+  NodePostgresDriverConfig,
+} from "../adapters/generic-sql/driver-config";
 
 describe("Cursor utilities", () => {
   describe("Cursor class encode and decode", () => {
@@ -260,7 +253,7 @@ describe("Cursor utilities", () => {
       const serialized = serializeCursorValues(
         cursor,
         indexColumns,
-        createMockDriverConfig("postgresql"),
+        new NodePostgresDriverConfig(),
       );
 
       expect(serialized).toHaveProperty("id", "user123");
@@ -286,7 +279,7 @@ describe("Cursor utilities", () => {
       const serialized = serializeCursorValues(
         cursor,
         indexColumns,
-        createMockDriverConfig("postgresql"),
+        new NodePostgresDriverConfig(),
       );
 
       expect(serialized).toHaveProperty("id", "user123");
@@ -330,7 +323,7 @@ describe("Cursor utilities", () => {
       const serialized = serializeCursorValues(
         decoded,
         indexColumns,
-        createMockDriverConfig("postgresql"),
+        new NodePostgresDriverConfig(),
       );
 
       // Should preserve the values
@@ -377,7 +370,7 @@ describe("Cursor utilities", () => {
       const serialized = serializeCursorValues(
         decoded,
         indexColumns,
-        createMockDriverConfig("postgresql"),
+        new NodePostgresDriverConfig(),
       );
 
       // For PostgreSQL, Date objects should be passed through as-is
@@ -419,7 +412,7 @@ describe("Cursor utilities", () => {
       const serialized = serializeCursorValues(
         decoded,
         indexColumns,
-        createMockDriverConfig("sqlite"),
+        new BetterSQLite3DriverConfig(),
       );
 
       // For SQLite, Date should be converted to timestamp number
@@ -458,11 +451,7 @@ describe("Cursor utilities", () => {
       const decoded = decodeCursor(cursor.encode());
 
       // Serialize for MySQL
-      const serialized = serializeCursorValues(
-        decoded,
-        indexColumns,
-        createMockDriverConfig("mysql"),
-      );
+      const serialized = serializeCursorValues(decoded, indexColumns, new MySQL2DriverConfig());
 
       // For MySQL, Date objects should be passed through as-is
       expect(serialized["createdAt"]).toBeInstanceOf(Date);

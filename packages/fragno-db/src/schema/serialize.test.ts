@@ -2,26 +2,21 @@ import { assert, describe, expect, it } from "vitest";
 import { column, referenceColumn, internalIdColumn } from "./create";
 import { createSQLSerializer } from "../query/serialize/create-sql-serializer";
 import type { AnyColumn } from "./create";
-import type { DriverConfig, SupportedDatabase } from "../adapters/generic-sql/driver-config";
+import type { DriverConfig } from "../adapters/generic-sql/driver-config";
+import {
+  BetterSQLite3DriverConfig,
+  NodePostgresDriverConfig,
+  MySQL2DriverConfig,
+} from "../adapters/generic-sql/driver-config";
 
-// Helper to create a mock DriverConfig for testing
 function createMockDriverConfig(provider: string): DriverConfig {
-  const supportsJson =
-    provider === "postgresql" || provider === "cockroachdb" || provider === "mysql";
-  const database: SupportedDatabase =
-    provider === "cockroachdb"
-      ? "postgresql"
-      : provider === "mssql"
-        ? "sqlite"
-        : (provider as SupportedDatabase);
-
-  return {
-    driverType: "sqlocal",
-    databaseType: database,
-    supportsReturning: true,
-    supportsRowsAffected: true,
-    supportsJson,
-  };
+  if (provider === "postgresql" || provider === "cockroachdb") {
+    return new NodePostgresDriverConfig();
+  }
+  if (provider === "mysql") {
+    return new MySQL2DriverConfig();
+  }
+  return new BetterSQLite3DriverConfig();
 }
 
 // Helper functions for testing

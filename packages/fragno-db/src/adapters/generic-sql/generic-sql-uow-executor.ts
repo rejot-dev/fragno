@@ -3,42 +3,15 @@ import type {
   MutationResult,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import type { CompiledQuery, QueryResult } from "../../sql-driver/sql-driver";
+import type { CompiledQuery } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
-
-function getAffectedRows(result: QueryResult<unknown>): number {
-  const affectedRows =
-    result.numAffectedRows ??
-    result.numChangedRows ??
-    // PGLite returns `affectedRows` instead of `numAffectedRows` or `numChangedRows`
-    ("affectedRows" in result &&
-    (typeof result["affectedRows"] === "number" || typeof result["affectedRows"] === "bigint")
-      ? result["affectedRows"]
-      : undefined) ??
-    // SQLite via SQLocal returns `numUpdatedRows` as BigInt
-    ("numUpdatedRows" in result &&
-    (typeof result["numUpdatedRows"] === "number" || typeof result["numUpdatedRows"] === "bigint")
-      ? result["numUpdatedRows"]
-      : undefined);
-
-  if (affectedRows === undefined) {
-    throw new Error(`No affected rows found: ${JSON.stringify(result)}`);
-  }
-
-  if (typeof affectedRows === "bigint" && affectedRows > Number.MAX_SAFE_INTEGER) {
-    throw new Error(
-      `affectedRows BigInt value ${affectedRows.toString()} exceeds JS safe integer range`,
-    );
-  }
-
-  return Number(affectedRows);
-}
+import type { DriverConfig } from "./driver-config";
+import { ResultInterpreter } from "./result-interpreter";
 
 export async function executeRetrieval(
   adapter: SqlDriverAdapter,
   retrievalBatch: CompiledQuery[],
 ): Promise<unknown[]> {
-  // If no retrieval operations, return empty array immediately
   if (retrievalBatch.length === 0) {
     return [];
   }
@@ -57,16 +30,16 @@ export async function executeRetrieval(
 
 export async function executeMutation(
   adapter: SqlDriverAdapter,
+  driverConfig: DriverConfig,
   mutationBatch: CompiledMutation<CompiledQuery>[],
 ): Promise<MutationResult> {
-  // If there are no mutations, return success immediately
   if (mutationBatch.length === 0) {
     return { success: true, createdInternalIds: [] };
   }
 
   const createdInternalIds: (bigint | null)[] = [];
+  const resultInterpreter = new ResultInterpreter(driverConfig);
 
-  // Execute mutation batch in a transaction
   try {
     await adapter.transaction(async (tx) => {
       for (const compiledMutation of mutationBatch) {
@@ -99,7 +72,7 @@ export async function executeMutation(
           }
         } else if (compiledMutation.expectedAffectedRows !== null) {
           // Check affected rows for updates/deletes
-          const affectedRows = getAffectedRows(result);
+          const affectedRows = resultInterpreter.getAffectedRows(result);
 
           if (affectedRows !== compiledMutation.expectedAffectedRows) {
             // Version conflict detected - the UPDATE/DELETE didn't affect the expected number of rows
@@ -140,6 +113,7 @@ export async function executeMutation(
 
 export function createExecutor(
   adapter: SqlDriverAdapter,
+  driverConfig: DriverConfig,
   dryRun?: boolean,
 ): UOWExecutor<CompiledQuery, unknown> {
   return {
@@ -160,7 +134,7 @@ export function createExecutor(
         };
       }
 
-      return executeMutation(adapter, mutationBatch);
+      return executeMutation(adapter, driverConfig, mutationBatch);
     },
   };
 }

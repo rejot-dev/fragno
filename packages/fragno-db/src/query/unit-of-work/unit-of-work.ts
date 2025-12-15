@@ -225,7 +225,7 @@ export interface CompiledMutation<TOutput> {
    * If actual affected rows doesn't match, it indicates a version conflict.
    * null means don't check affected rows (e.g., for create operations).
    */
-  expectedAffectedRows: number | null;
+  expectedAffectedRows: bigint | null;
   /**
    * Number of rows this SELECT query must return for the transaction to succeed.
    * Used for check operations to verify version without modifying data.

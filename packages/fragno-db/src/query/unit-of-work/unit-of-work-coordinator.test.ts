@@ -19,7 +19,7 @@ function createMockCompiler(): UOWCompiler<string> {
     compileMutationOperation: (op: MutationOperation<AnySchema>) => {
       return {
         query: `${op.type.toUpperCase()} ${op.table}`,
-        expectedAffectedRows: op.type === "create" ? null : op.type === "check" ? null : 1,
+        expectedAffectedRows: op.type === "create" ? null : op.type === "check" ? null : 1n,
         expectedReturnedRows: op.type === "check" ? 1 : null,
       };
     },
