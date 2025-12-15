@@ -5,7 +5,6 @@ import { source } from "@/lib/source";
 import type * as PageTree from "fumadocs-core/page-tree";
 import browserCollections from "fumadocs-mdx:collections/browser";
 import { baseOptions } from "@/lib/layout.shared";
-import { FragnoCircle as FragnoCircleIcon } from "@/components/logos/fragno-circle";
 import { CopyMarkdownButton } from "@/components/copy-markdown-button";
 import { ViewOptions } from "@/components/page-actions";
 import { getMDXComponents } from "@/lib/mdx-components";
@@ -142,21 +141,23 @@ export default function Page({ loaderData }: Route.ComponentProps) {
   const hydratedTree = hydrateIcons(tree as PageTree.Root);
 
   return (
-    <DocsLayout
-      {...baseOptions()}
-      tree={hydratedTree}
-      nav={{
-        title: (
-          <div className="flex items-center gap-1">
-            <FragnoCircleIcon className="size-12 dark:text-white" />
-            <span className="text-lg font-semibold tracking-tight">Fragno</span>
-          </div>
-        ),
-      }}
+    <div
+      // The docs layout uses `--fd-banner-height` to offset its fixed elements.
+      // Since we render it under the site header (HomeLayout), we bump this so
+      // the sidebar/top controls don't sit behind the header.
+      style={{ ["--fd-banner-height" as never]: "56px" }}
     >
-      <PageDataContext.Provider value={{ url, path, processedMarkdown }}>
-        <Content />
-      </PageDataContext.Provider>
-    </DocsLayout>
+      <DocsLayout
+        {...baseOptions()}
+        tree={hydratedTree}
+        sidebar={{
+          collapsible: false,
+        }}
+      >
+        <PageDataContext.Provider value={{ url, path, processedMarkdown }}>
+          <Content />
+        </PageDataContext.Provider>
+      </DocsLayout>
+    </div>
   );
 }

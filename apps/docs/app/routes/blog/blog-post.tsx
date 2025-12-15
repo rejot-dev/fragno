@@ -273,7 +273,7 @@ const clientLoader = browserCollections.blog.createClientLoader({
               </>
             )}
 
-            <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+            <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
               {/* Back Button */}
               <Link
                 to="/blog"
@@ -289,10 +289,10 @@ const clientLoader = browserCollections.blog.createClientLoader({
               </Link>
 
               {/* Article Header */}
-              <header className="mb-12">
+              <header className="mb-10">
                 <h1
                   className={cn(
-                    "mb-6 max-w-prose text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl",
+                    "mb-5 max-w-prose text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl",
                     heroImage ? "text-white" : "text-gray-900 dark:text-white",
                   )}
                 >
@@ -302,7 +302,7 @@ const clientLoader = browserCollections.blog.createClientLoader({
                 {frontmatter.description && (
                   <p
                     className={cn(
-                      "mb-8 max-w-prose text-xl leading-relaxed",
+                      "mb-6 max-w-prose text-xl leading-relaxed",
                       heroImage ? "text-white/95" : "text-gray-600 dark:text-gray-300",
                     )}
                   >
@@ -313,7 +313,7 @@ const clientLoader = browserCollections.blog.createClientLoader({
                 {/* Article Meta */}
                 <div
                   className={cn(
-                    "flex flex-wrap items-center gap-6 text-sm",
+                    "flex flex-wrap items-center gap-5 text-sm",
                     heroImage ? "text-white/80" : "text-gray-500 dark:text-gray-400",
                   )}
                 >

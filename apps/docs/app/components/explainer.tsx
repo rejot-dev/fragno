@@ -189,7 +189,7 @@ export function FragnoExplainer() {
   };
 
   return (
-    <section className="space-y-18 w-full max-w-5xl">
+    <section className="w-full max-w-5xl space-y-12">
       <style>{`
         ::view-transition-old(layer-card-0),
         ::view-transition-new(layer-card-0) {
@@ -229,12 +229,12 @@ export function FragnoExplainer() {
         with Fragno
       </h2>
 
-      <div className="flex flex-col gap-12 bg-cover bg-center bg-no-repeat md:bg-[url(/road-bg-blue.svg)]">
+      <div className="flex flex-col gap-10 bg-cover bg-center bg-no-repeat md:bg-[url(/road-bg-blue.svg)]">
         {layers.map(({ id, label, subLabel, variant, layerVariant }, index) => (
           <Fragment key={id}>
             {/* Layer card */}
             <div
-              className={`relative flex w-full max-w-xl flex-col gap-6 rounded-2xl bg-gray-100/85 p-6 shadow-sm backdrop-blur-md dark:bg-slate-900/75 ${
+              className={`relative flex w-full max-w-xl flex-col gap-5 rounded-2xl bg-gray-100/85 p-6 shadow-sm backdrop-blur-md dark:bg-slate-900/75 ${
                 index % 2 === 0 ? "md:self-start" : "md:self-end"
               }`}
               style={{

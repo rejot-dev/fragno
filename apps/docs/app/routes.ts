@@ -8,9 +8,8 @@ export default [
     route("blog/:slug", "routes/blog/blog-post.tsx"),
 
     route("docs", "routes/docs/docs-index.tsx"),
+    route("docs/*", "routes/docs/docs-page.tsx"),
   ]),
-
-  route("docs/*", "routes/docs/docs-page.tsx"),
 
   route("code-preview", "routes/code-preview/code-preview-page.tsx"),
   route("og-image", "routes/og-image/og-image-page.tsx"),

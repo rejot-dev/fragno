@@ -30,8 +30,8 @@ export default function ExampleCycler({ className }: { className?: string }) {
   const [codeView, setCodeView] = useState<"backend" | "frontend">("backend");
 
   return (
-    <section className={`mx-auto w-full max-w-7xl px-4 py-16 ${className}`}>
-      <div className="mb-12">
+    <section className={`mx-auto w-full max-w-7xl px-4 py-12 ${className}`}>
+      <div className="mb-8">
         <h2 className="mb-4 text-3xl font-bold">
           It was never this easy to add
           <br /> [

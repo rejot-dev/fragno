@@ -1,7 +1,6 @@
 "use client";
 
-import { Database, ArrowRight } from "lucide-react";
-import { Link } from "react-router";
+import { Database } from "lucide-react";
 import { Kysely } from "@/components/logos/frameworks/kysely";
 import { Drizzle } from "@/components/logos/frameworks/drizzle";
 import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
@@ -183,7 +182,7 @@ describe("auth fragment", async () => {
 
   return (
     <section className="w-full">
-      <div className="mb-12 text-center">
+      <div className="mb-8 text-center">
         <div className="mb-4 inline-flex items-center gap-3 rounded-xl bg-slate-100 px-4 py-2 shadow-sm dark:bg-slate-900">
           <Database className="size-5 text-slate-700 dark:text-slate-300" />
           <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -228,7 +227,7 @@ describe("auth fragment", async () => {
             </CarouselItem>
           ))}
         </CarouselContent>
-        <div className="mt-8 flex h-5 items-center justify-center gap-2.5">
+        <div className="mt-6 flex h-5 items-center justify-center gap-2.5">
           {carouselItems.map((item, index) => (
             <button
               key={item.id}
@@ -248,29 +247,23 @@ describe("auth fragment", async () => {
         </div>
       </Carousel>
 
-      <div className="mt-12 flex flex-col items-center justify-center gap-6 sm:flex-row">
+      <div className="mt-8 flex flex-col items-center justify-center gap-6 sm:flex-row">
         <div className="flex items-center gap-3">
-          <span className="text-fd-muted-foreground text-sm font-medium">Works with</span>
+          <span className="text-fd-muted-foreground text-sm font-medium">Integrates with</span>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 shadow-sm ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10">
-              <Kysely className="size-5" />
-              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">Kysely</span>
+            <div className="text-fd-foreground/90 flex items-center gap-2 rounded-md px-1.5 py-1">
+              <Kysely className="size-5 opacity-80" />
+              <span className="text-sm font-semibold">Kysely</span>
             </div>
-            <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 shadow-sm ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10">
-              <Drizzle className="size-5" />
-              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                Drizzle
-              </span>
+            <span className="text-fd-muted-foreground -mx-1 select-none text-sm font-medium">
+              &
+            </span>
+            <div className="text-fd-foreground/90 flex items-center gap-2 rounded-md px-1.5 py-1">
+              <Drizzle className="size-5 opacity-80" />
+              <span className="text-sm font-semibold">Drizzle</span>
             </div>
           </div>
         </div>
-        <Link
-          to="/docs/fragno/for-library-authors/database-integration/overview"
-          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-        >
-          Learn More
-          <ArrowRight className="size-4" />
-        </Link>
       </div>
     </section>
   );

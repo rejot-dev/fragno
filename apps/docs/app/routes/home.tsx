@@ -93,7 +93,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 function Hero() {
   return (
-    <section className="w-full max-w-5xl space-y-6 py-8 text-center md:py-16">
+    <section className="w-full max-w-5xl space-y-5 py-6 text-center md:py-10">
       <h1 className="text-fd-foreground dark:bg-linear-to-b text-5xl font-extrabold tracking-tight md:text-6xl lg:text-7xl dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
         Full-Stack{" "}
         <span className="text-fd-foreground dark:bg-linear-to-b relative inline-block dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
@@ -118,7 +118,7 @@ function Hero() {
         <br />
         Libraries
       </h1>
-      <p className="text-fd-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-10">
+      <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-9">
         A toolkit for building libraries that bundle database schemas, backend routes, and frontend
         hooks into one package.
       </p>
@@ -183,14 +183,14 @@ function Features() {
       <FeatureCard
         icon={<Target className="size-6" />}
         title="Framework-agnostic"
-        description="Works with React, Vue, Next.js, Nuxt, React Router, and more."
+        description="Works with React, Vue, Svelte, Solid and related full-stack frameworks."
         glowClass="bg-blue-500/10 dark:bg-blue-400/20"
         iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
       <FeatureCard
         icon={<Shield className="size-6" />}
         title="End-to-end type safety"
-        description="From server to client, everything is typed."
+        description="From server to client to database, everything is typed."
         glowClass="bg-blue-500/10 dark:bg-blue-400/20"
         iconClass="bg-blue-500/10 dark:bg-blue-400/20"
       />
@@ -351,11 +351,11 @@ export function Chat() {
         <div className="relative min-w-0 flex-1 overflow-hidden">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-6 -top-16 h-48 w-48 rounded-full bg-gradient-to-br from-blue-400/25 via-transparent to-transparent blur-3xl"
+            className="bg-linear-to-br pointer-events-none absolute -right-6 -top-16 h-48 w-48 rounded-full from-blue-400/25 via-transparent to-transparent blur-3xl"
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute -left-10 bottom-[-60px] h-40 w-56 rounded-full bg-gradient-to-br from-purple-400/20 via-transparent to-transparent blur-3xl"
+            className="bg-linear-to-br pointer-events-none absolute -left-10 bottom-[-60px] h-40 w-56 rounded-full from-purple-400/20 via-transparent to-transparent blur-3xl"
           />
 
           <div className="bg-white/94 relative overflow-hidden rounded-[26px] p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] dark:bg-slate-900/75">
@@ -416,7 +416,7 @@ export function Chat() {
               className={`pointer-events-none absolute inset-0 opacity-30 ${item.background}`}
             />
             <div className="relative flex items-start gap-4">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
+              <span className="bg-linear-to-br flex h-11 w-11 items-center justify-center rounded-xl from-white/80 to-white/40 shadow-sm ring-1 ring-black/5 dark:from-slate-800/80 dark:to-slate-800/40 dark:ring-white/10">
                 {item.icon}
               </span>
               <div>
@@ -633,24 +633,24 @@ function UseCases() {
 export default function HomePage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
   return (
-    <main className="space-y-18 relative flex flex-1 flex-col items-center overflow-x-hidden px-4 py-16 md:px-8">
+    <main className="relative flex flex-1 flex-col items-center space-y-12 overflow-x-hidden px-4 py-10 md:px-8 md:py-12">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div className="bg-linear-to-br opacity-4 mx-auto -mt-20 h-[520px] w-[1000px] from-blue-500 via-sky-400 to-purple-500 blur-3xl dark:opacity-15" />
       </div>
 
       <Hero />
       <FragnoExplainer />
-      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <UseCases />
-      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <Frameworks />
       {/*<WhatFragnoProvides />*/}
-      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <Features />
 
-      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <DatabaseIntegration />
-      <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
 
       <DocsSection />
       <CommunitySection turnstileSitekey={turnstileSitekey} />

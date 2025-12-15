@@ -45,12 +45,12 @@ function DocCard({ href, icon, title, description, variant = "default" }: DocCar
 
 export default function DocsIndexPage() {
   return (
-    <main className="container flex min-h-screen flex-1 flex-col items-center py-16">
+    <main className="container flex min-h-screen flex-1 flex-col items-center py-12">
       <div className="w-full max-w-2xl">
-        <h1 className="mb-12 text-center text-3xl font-semibold md:text-4xl">Documentation</h1>
+        <h1 className="mb-8 text-center text-3xl font-semibold md:text-4xl">Documentation</h1>
 
         {/* Fragno Framework */}
-        <div className="mb-12">
+        <div className="mb-10">
           <DocCard
             href="/docs/fragno"
             icon={<FragnoCircle className="size-6 text-gray-700 dark:text-gray-300" />}
