@@ -8,10 +8,17 @@ import devtoolsJson from "vite-plugin-devtools-json";
 import * as MdxConfig from "./source.config";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import path from "path";
 import type { Plugin } from "vite";
 
 export default defineConfig(() => {
   return {
+    resolve: {
+      alias: {
+        "@/components": path.resolve(__dirname, "./app/components"),
+        "@/lib": path.resolve(__dirname, "./app/lib"),
+      },
+    },
     plugins: [
       mdx(MdxConfig),
       cloudflare({ viteEnvironment: { name: "ssr" } }),

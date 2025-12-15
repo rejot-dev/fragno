@@ -54,6 +54,10 @@
         "name": "MAILING_LIST",
         "class_name": "MailingList",
       },
+      {
+        "name": "FORMS",
+        "class_name": "Forms",
+      },
     ],
   },
   /**
@@ -64,6 +68,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["MailingList"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["Forms"],
     },
   ],
   "rules": [
