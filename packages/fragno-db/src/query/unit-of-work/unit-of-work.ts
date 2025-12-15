@@ -221,6 +221,10 @@ export type MutationOperation<
 export interface CompiledMutation<TOutput> {
   query: TOutput;
   /**
+   * The type of mutation operation (create, update, delete, or check).
+   */
+  op: "create" | "update" | "delete" | "check";
+  /**
    * Number of rows this operation must affect for the transaction to succeed.
    * If actual affected rows doesn't match, it indicates a version conflict.
    * null means don't check affected rows (e.g., for create operations).

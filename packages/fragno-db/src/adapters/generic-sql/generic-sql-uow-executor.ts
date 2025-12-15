@@ -45,32 +45,21 @@ export async function executeMutation(
       for (const compiledMutation of mutationBatch) {
         const result = await tx.executeQuery(compiledMutation.query);
 
-        // Best-effort extraction: Try to get internal ID if available
-        // This is optional - the system works without it by using subqueries for references
-        if (compiledMutation.expectedAffectedRows === null) {
-          if (Array.isArray(result.rows) && result.rows.length > 0) {
-            const row = result.rows[0] as Record<string, unknown>;
-            if ("_internalId" in row || "_internal_id" in row) {
-              const rawId = row["_internalId"] ?? row["_internal_id"];
-              // Normalize to bigint - different drivers return different types for integer columns
-              // TODO(Wilco): Move this to a better place
-              const internalId =
-                typeof rawId === "bigint"
-                  ? rawId
-                  : typeof rawId === "number"
-                    ? BigInt(rawId)
-                    : null;
-              createdInternalIds.push(internalId);
-            } else {
-              // RETURNING supported but _internalId not found - that's okay
-              createdInternalIds.push(null);
-            }
+        // Extract internal ID for INSERT operations
+        if (compiledMutation.op === "create") {
+          // Only try to extract internal ID if driver supports RETURNING
+          // If not supported, push null (expected case - system falls back to subqueries)
+          if (driverConfig.supportsReturning && driverConfig.internalIdColumn) {
+            const internalId = resultInterpreter.getCreatedInternalId(result);
+            createdInternalIds.push(internalId);
           } else {
-            // No rows returned (no RETURNING clause, or SQLite via executeQuery)
-            // This is fine - references will use subqueries based on external IDs
+            // Driver doesn't support RETURNING - this is expected, push null
             createdInternalIds.push(null);
           }
-        } else if (compiledMutation.expectedAffectedRows !== null) {
+        } else if (
+          (compiledMutation.op === "update" || compiledMutation.op === "delete") &&
+          compiledMutation.expectedAffectedRows !== null
+        ) {
           // Check affected rows for updates/deletes
           const affectedRows = resultInterpreter.getAffectedRows(result);
 
@@ -82,16 +71,17 @@ export async function executeMutation(
             );
           }
         }
+        // "check" operations are handled below via expectedReturnedRows
 
         if (compiledMutation.expectedReturnedRows !== null) {
           // For SELECT queries (check operations), verify row count
-          const rowCount = Array.isArray(result.rows) ? result.rows.length : 0;
+          const returnedRowCount = resultInterpreter.getReturnedRowCount(result);
 
-          if (rowCount !== compiledMutation.expectedReturnedRows) {
+          if (returnedRowCount !== BigInt(compiledMutation.expectedReturnedRows)) {
             // Version conflict detected - the SELECT didn't return the expected number of rows
             // This means either the row doesn't exist or the version has changed
             throw new Error(
-              `Version conflict: expected ${compiledMutation.expectedReturnedRows} rows returned, but got ${rowCount}`,
+              `Version conflict: expected ${compiledMutation.expectedReturnedRows} rows returned, but got ${returnedRowCount}`,
             );
           }
         }

@@ -179,6 +179,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query: sqlCompiler.compileCreate(table, op.values),
+      op: "create",
       expectedAffectedRows: null, // creates don't need affected row checks
       expectedReturnedRows: null,
     };
@@ -220,6 +221,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query,
+      op: "update",
       expectedAffectedRows: op.checkVersion ? 1n : null,
       expectedReturnedRows: null,
     };
@@ -260,6 +262,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query,
+      op: "delete",
       expectedAffectedRows: op.checkVersion ? 1n : null,
       expectedReturnedRows: null,
     };
@@ -267,7 +270,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
   override compileCheck(
     op: MutationOperation<AnySchema> & { type: "check" },
-  ): CompiledMutation<CompiledQuery> | null {
+  ): CompiledMutation<CompiledQuery> {
     const sqlCompiler = this.getSQLCompiler(op.namespace);
     const table = this.getTable(op.schema, op.table);
     const idColumn = table.getIdColumn();
@@ -287,6 +290,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query: sqlCompiler.compileCheck(table, condition),
+      op: "check",
       expectedAffectedRows: null,
       expectedReturnedRows: 1, // Check that exactly 1 row was returned
     };

@@ -4,39 +4,35 @@ import {
   type UOWCompiler,
   type UOWDecoder,
   createUnitOfWork,
-  type RetrievalOperation,
-  type MutationOperation,
   type CompiledMutation,
+  type UOWExecutor,
 } from "./unit-of-work";
-import type { AnySchema } from "../../schema/create";
+import { GenericSQLUOWOperationCompiler } from "../../adapters/generic-sql/query/generic-sql-uow-operation-compiler";
+import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
+import { createUOWCompilerFromOperationCompiler } from "../../adapters/shared/uow-operation-compiler";
+import type { CompiledQuery } from "../../sql-driver/sql-driver";
 
-// Mock compiler that tracks operations
-function createMockCompiler(): UOWCompiler<string> {
-  return {
-    compileRetrievalOperation: (op: RetrievalOperation<AnySchema>) => {
-      return `SELECT from ${op.table.ormName}`;
-    },
-    compileMutationOperation: (op: MutationOperation<AnySchema>) => {
-      return {
-        query: `${op.type.toUpperCase()} ${op.table}`,
-        expectedAffectedRows: op.type === "create" ? null : op.type === "check" ? null : 1n,
-        expectedReturnedRows: op.type === "check" ? 1 : null,
-      };
-    },
-  };
+// Create compiler using actual implementation
+function createCompiler(): UOWCompiler<CompiledQuery> {
+  const driverConfig = new BetterSQLite3DriverConfig();
+  const operationCompiler = new GenericSQLUOWOperationCompiler(driverConfig);
+  return createUOWCompilerFromOperationCompiler(operationCompiler);
 }
 
-// Mock executor that tracks execution
-function createMockExecutor() {
+// Mock executor that tracks execution and works with CompiledQuery
+function createMockExecutor(): UOWExecutor<CompiledQuery, unknown> & {
+  getLog: () => string[];
+  clearLog: () => void;
+} {
   const executionLog: string[] = [];
 
   return {
-    executeRetrievalPhase: async (queries: string[]) => {
+    executeRetrievalPhase: async (queries: CompiledQuery[]) => {
       executionLog.push(`RETRIEVAL: ${queries.length} queries`);
       // Return mock results for each query
       return queries.map(() => [{ id: "mock-id", name: "Mock User" }]);
     },
-    executeMutationPhase: async (mutations: CompiledMutation<string>[]) => {
+    executeMutationPhase: async (mutations: CompiledMutation<CompiledQuery>[]) => {
       executionLog.push(`MUTATION: ${mutations.length} mutations`);
       return {
         success: true,
@@ -70,7 +66,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Simulate service method 1: adds retrieval operation via child UOW
     const serviceMethod1 = () => {
@@ -122,7 +118,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Service A: Get user by ID, awaits retrieval phase
     const getUserById = async (userId: string) => {
@@ -207,7 +203,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Service A: Check if user exists
     const validateUser = async (userId: string) => {
@@ -329,7 +325,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Level 1: Handler (root)
     const handler = async () => {
@@ -442,7 +438,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Service method that creates TWO sibling child UOWs
     const processUserOrder = async (email: string) => {
@@ -550,13 +546,13 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     // Create mock executor that returns account data with low balance
     const executionLog: string[] = [];
-    const customExecutor = {
-      executeRetrievalPhase: async (queries: string[]) => {
+    const customExecutor: UOWExecutor<CompiledQuery, unknown> = {
+      executeRetrievalPhase: async (queries: CompiledQuery[]) => {
         executionLog.push(`RETRIEVAL: ${queries.length} queries`);
         // Return mock account data with balance field set to low value
         return queries.map(() => [{ id: "mock-id", userId: "user-1", balance: 100 }]);
       },
-      executeMutationPhase: async (mutations: CompiledMutation<string>[]) => {
+      executeMutationPhase: async (mutations: CompiledMutation<CompiledQuery>[]) => {
         executionLog.push(`MUTATION: ${mutations.length} mutations`);
         return {
           success: true,
@@ -565,7 +561,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
       },
     };
 
-    const parentUow = createUnitOfWork(createMockCompiler(), customExecutor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), customExecutor, createMockDecoder());
 
     // Service: Get account balance
     const getAccountBalance = async (userId: string) => {
@@ -656,7 +652,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Service A: Validates user and throws if not active
     const validateActiveUser = async (userId: string) => {
@@ -728,7 +724,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
   it("should inherit nonce from parent to children for idempotent operations", () => {
     const executor = createMockExecutor();
-    const parentUow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // Parent UOW should have a nonce
     const parentNonce = parentUow.nonce;
@@ -758,8 +754,8 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     const executor = createMockExecutor();
 
     // Create two separate parent UOWs
-    const parentUow1 = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
-    const parentUow2 = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const parentUow1 = createUnitOfWork(createCompiler(), executor, createMockDecoder());
+    const parentUow2 = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
     // They should have different nonces
     expect(parentUow1.nonce).not.toBe(parentUow2.nonce);
@@ -785,14 +781,14 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     // Create executor that throws "table does not exist" error
-    const failingExecutor = {
+    const failingExecutor: UOWExecutor<CompiledQuery, unknown> = {
       executeRetrievalPhase: async () => {
         throw new Error('relation "settings" does not exist');
       },
       executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
     };
 
-    const parentUow = createUnitOfWork(createMockCompiler(), failingExecutor, createMockDecoder());
+    const parentUow = createUnitOfWork(createCompiler(), failingExecutor, createMockDecoder());
 
     // Service method that awaits retrievalPhase (simulating settingsService.get())
     const getSettingValue = async (key: string) => {
