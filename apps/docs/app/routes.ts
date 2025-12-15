@@ -9,6 +9,7 @@ export default [
 
     route("docs", "routes/docs/docs-index.tsx"),
     route("docs/*", "routes/docs/docs-page.tsx"),
+    route("forms", "routes/forms/form-index.tsx"),
   ]),
 
   route("code-preview", "routes/code-preview/code-preview-page.tsx"),
@@ -17,6 +18,7 @@ export default [
   ...prefix("api", [
     route("search", "routes/api/search.ts"),
     route("markdown/*", "routes/api/markdown.ts"),
+    route("forms/*", "routes/api/forms.ts"),
   ]),
   route("sitemap.xml", "routes/sitemap.ts"),
 ] satisfies RouteConfig;
