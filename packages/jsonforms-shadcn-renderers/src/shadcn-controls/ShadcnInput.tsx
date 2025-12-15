@@ -6,10 +6,12 @@ type ShadcnInputProps = Pick<
   CellProps,
   "data" | "id" | "enabled" | "path" | "handleChange" | "schema"
 > &
-  WithClassname;
+  WithClassname & {
+    placeholder?: string;
+  };
 
 export const ShadcnInput = memo(function ShadcnInput(props: ShadcnInputProps) {
-  const { data, className, id, enabled, path, handleChange, schema } = props;
+  const { data, className, id, enabled, path, handleChange, schema, placeholder } = props;
 
   return (
     <Input
@@ -20,6 +22,7 @@ export const ShadcnInput = memo(function ShadcnInput(props: ShadcnInputProps) {
       id={id}
       disabled={!enabled}
       maxLength={schema.maxLength}
+      placeholder={placeholder}
     />
   );
 });
