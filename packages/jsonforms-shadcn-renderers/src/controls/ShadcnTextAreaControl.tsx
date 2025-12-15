@@ -25,6 +25,8 @@ export const ShadcnTextAreaControl = ({
     return null;
   }
 
+  const placeholder = uischema.options?.["placeholder"] as string | undefined;
+
   return (
     <Field data-invalid={!isValid || undefined} data-disabled={!enabled || undefined}>
       <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
@@ -42,6 +44,7 @@ export const ShadcnTextAreaControl = ({
         errors={errors}
         config={config}
         isValid={isValid}
+        placeholder={placeholder}
       />
       {!isValid && <FieldError errors={[{ message: errors }]} />}
     </Field>

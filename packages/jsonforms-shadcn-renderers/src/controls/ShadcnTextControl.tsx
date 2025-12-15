@@ -15,12 +15,15 @@ export const ShadcnTextControl = ({
   errors,
   path,
   description,
+  uischema,
 }: ControlProps) => {
   const isValid = errors.length === 0;
 
   if (!visible) {
     return null;
   }
+
+  const placeholder = uischema.options?.["placeholder"] as string | undefined;
 
   return (
     <Field data-invalid={!isValid || undefined} data-disabled={!enabled || undefined}>
@@ -33,6 +36,7 @@ export const ShadcnTextControl = ({
         path={path}
         schema={schema}
         handleChange={handleChange}
+        placeholder={placeholder}
       />
       {!isValid && <FieldError errors={[{ message: errors }]} />}
     </Field>
