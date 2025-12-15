@@ -214,16 +214,24 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
 
+    // Determine if we should use RETURNING-based checking
+    // Use RETURNING when driver supports it but doesn't support affected rows reporting
+    const useReturningForCheck =
+      op.checkVersion &&
+      this.driverConfig.supportsReturning &&
+      !this.driverConfig.supportsRowsAffected;
+
     const query = sqlCompiler.compileUpdate(table, {
       set: op.set,
       where: conditions,
+      returning: useReturningForCheck,
     });
 
     return {
       query,
       op: "update",
-      expectedAffectedRows: op.checkVersion ? 1n : null,
-      expectedReturnedRows: null,
+      expectedAffectedRows: useReturningForCheck ? null : op.checkVersion ? 1n : null,
+      expectedReturnedRows: useReturningForCheck ? 1 : null,
     };
   }
 
@@ -256,15 +264,23 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const conditions: Condition | undefined =
       conditionsResult === true ? undefined : conditionsResult;
 
+    // Determine if we should use RETURNING-based checking
+    // Use RETURNING when driver supports it but doesn't support affected rows reporting
+    const useReturningForCheck =
+      op.checkVersion &&
+      this.driverConfig.supportsReturning &&
+      !this.driverConfig.supportsRowsAffected;
+
     const query = sqlCompiler.compileDelete(table, {
       where: conditions,
+      returning: useReturningForCheck,
     });
 
     return {
       query,
       op: "delete",
-      expectedAffectedRows: op.checkVersion ? 1n : null,
-      expectedReturnedRows: null,
+      expectedAffectedRows: useReturningForCheck ? null : op.checkVersion ? 1n : null,
+      expectedReturnedRows: useReturningForCheck ? 1 : null,
     };
   }
 

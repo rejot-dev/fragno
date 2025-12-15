@@ -65,6 +65,11 @@ export interface CountCompilerOptions {
 export interface UpdateCompilerOptions {
   where?: Condition;
   set: Record<string, unknown>;
+  /**
+   * Whether to add RETURNING clause to the UPDATE query.
+   * Used for version conflict detection when driver supports RETURNING but not affected rows.
+   */
+  returning?: boolean;
 }
 
 /**
@@ -72,6 +77,11 @@ export interface UpdateCompilerOptions {
  */
 export interface DeleteCompilerOptions {
   where?: Condition;
+  /**
+   * Whether to add RETURNING clause to the DELETE query.
+   * Used for version conflict detection when driver supports RETURNING but not affected rows.
+   */
+  returning?: boolean;
 }
 
 /**
@@ -314,6 +324,12 @@ export abstract class SQLQueryCompiler {
       query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
     }
 
+    // Apply RETURNING if requested and supported
+    // Use sql template tag for literal value (not a column name)
+    if (options.returning && this.driverConfig.supportsReturning) {
+      return query.returning(sql<number>`1`.as("_returned")).compile();
+    }
+
     return query.compile();
   }
 
@@ -325,6 +341,12 @@ export abstract class SQLQueryCompiler {
 
     if (options.where) {
       query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
+    }
+
+    // Apply RETURNING if requested and supported
+    // Use sql template tag for literal value (not a column name)
+    if (options.returning && this.driverConfig.supportsReturning) {
+      return query.returning(sql<number>`1`.as("_returned")).compile();
     }
 
     return query.compile();
