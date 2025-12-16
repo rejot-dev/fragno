@@ -14,7 +14,7 @@ const queryParamsSchema = z.object({
 });
 
 export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefinition).create(
-  ({ services, config, defineRoute }) => {
+  ({ services, defineRoute }) => {
     const parseQueryParams = (query: URLSearchParams) => {
       const params = queryParamsSchema.parse({
         search: query.get("search") || undefined,
@@ -61,16 +61,20 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           hasNextPage: z.boolean(),
           sortBy: sortBySchema,
         }),
-        handler: async ({ query }, { json }) => {
+        handler: async function ({ query }, { json }) {
           const params = parseQueryParams(query);
           const cursor = parseCursor(params.cursor);
 
-          const result = await services.getSubscribers({
-            search: params.search,
-            sortBy: params.sortBy,
-            sortOrder: params.sortOrder,
-            pageSize: params.pageSize,
-            cursor,
+          const result = await this.uow(async ({ executeRetrieve }) => {
+            const result = services.getSubscribers({
+              search: params.search,
+              sortBy: params.sortBy,
+              sortOrder: params.sortOrder,
+              pageSize: params.pageSize,
+              cursor,
+            });
+            await executeRetrieve();
+            return result;
           });
 
           return json({
@@ -94,10 +98,15 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           subscribedAt: z.date(),
           alreadySubscribed: z.boolean(),
         }),
-        handler: async ({ input }, { json }) => {
+        handler: async function ({ input }, { json }) {
           const { email } = await input.valid();
-          const result = await services.subscribe(email);
-          await config.onSubscribe?.(email);
+
+          const result = await this.uow(async ({ executeMutate }) => {
+            const result = services.subscribe(email);
+            await executeMutate();
+            return result;
+          });
+
           return json(result);
         },
       }),

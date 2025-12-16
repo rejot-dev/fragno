@@ -1,20 +1,29 @@
-import { test, describe, expect, beforeEach } from "vitest";
+import { test, describe, expect, beforeEach, vi, assert } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { mailingListFragmentDefinition } from "./definition";
 import { instantiate } from "@fragno-dev/core";
 import { mailingListSchema } from "./schema";
+import { mailingListRoutesFactory } from "./routes";
 
 describe("Mailing List Fragment", async () => {
+  const onSubscribeSpy = vi.fn<(email: string) => Promise<void> | void>();
+
   // Create fragment with test configuration
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
-    .withFragment("mailing-list", instantiate(mailingListFragmentDefinition))
+    .withFragment(
+      "mailing-list",
+      instantiate(mailingListFragmentDefinition)
+        .withConfig({ onSubscribe: onSubscribeSpy })
+        .withRoutes([mailingListRoutesFactory]),
+    )
     .build();
 
   const { services, fragment } = fragments["mailing-list"];
 
   // Reset database before each test for isolation
   beforeEach(async () => {
+    onSubscribeSpy.mockClear();
     await testContext.resetDatabase();
   });
 
@@ -123,6 +132,38 @@ describe("Mailing List Fragment", async () => {
           });
         }),
       ).rejects.toThrow(/Index mismatch/);
+    });
+  });
+
+  describe("Routes", () => {
+    describe("POST /subscribe", () => {
+      test("should call onSubscribe callback", async () => {
+        const response = await fragment.callRoute("POST", "/subscribe", {
+          body: { email: "test@example.com" },
+        });
+
+        assert(response.type === "json");
+        expect(response.data).toMatchObject({
+          id: expect.any(String),
+          email: "test@example.com",
+          // Date is returned as a string because of json serialization
+          subscribedAt: expect.any(String),
+          alreadySubscribed: false,
+        });
+
+        expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");
+        expect(onSubscribeSpy).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe("GET /subscribers", () => {
+      test("should return subscribers", async () => {
+        const response = await fragment.callRoute("GET", "/subscribers");
+        assert(response.type === "json");
+        expect(response.data).toMatchObject({
+          subscribers: expect.any(Array),
+        });
+      });
     });
   });
 });
