@@ -28,6 +28,7 @@ import { validateTurnstileToken } from "@/cloudflare/turnstile";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { FragnoExplainer } from "@/components/explainer";
 import { FragnoLogo3D } from "@/components/fragno-logo-3d";
+import { FragnoLogo3DThree } from "@/components/fragno-logo-3d-three";
 
 export function meta() {
   return [
@@ -641,7 +642,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
       </div>
 
       <Hero />
-      <FragnoLogo3D size={240} dragRotate showRotation className="flex flex-col items-center" />
+      <FragnoLogo3DThree size={240} dragRotate className="flex flex-col items-center" />
       <FragnoExplainer />
       <div className="mt-8 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <UseCases />

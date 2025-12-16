@@ -12,7 +12,7 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: (
         <div className="flex items-center gap-1">
-          <img src="/3d-f.png" alt="Fragno logo" className="mr-2 size-8" />
+          <img src="/f-logo.svg" alt="Fragno logo" className="mr-2 size-10" />
           <span className="text-lg font-semibold tracking-tight">fragno</span>
         </div>
       ),
