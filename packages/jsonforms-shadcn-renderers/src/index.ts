@@ -6,6 +6,7 @@ import type {
 export * from "./controls";
 export * from "./cells";
 export * from "./layouts";
+export * from "./additional";
 export * from "./shadcn-controls";
 
 import {
@@ -79,6 +80,8 @@ import {
   ShadcnCategorizationStepperLayoutContext,
 } from "./layouts";
 
+import { shadcnLabelRendererTester, ShadcnLabelRendererContext } from "./additional";
+
 /**
  * Shadcn renderers for JSON Forms.
  * Register these with JSON Forms to use shadcn/ui components for form rendering.
@@ -106,6 +109,7 @@ export const shadcnRenderers: JsonFormsRendererRegistryEntry[] = [
   { tester: shadcnOneOfEnumControlTester, renderer: ShadcnOneOfEnumControlContext },
   { tester: shadcnSliderControlTester, renderer: ShadcnSliderControlContext },
   { tester: shadcnObjectControlTester, renderer: ShadcnObjectControlContext },
+  { tester: shadcnLabelRendererTester, renderer: ShadcnLabelRendererContext },
 ];
 
 /** Shadcn cells for JSON Forms (lightweight renderers for tables/arrays). */
