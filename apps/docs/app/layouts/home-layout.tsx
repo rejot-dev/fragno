@@ -5,8 +5,9 @@ import { Mail } from "lucide-react";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 import { useSearchContext } from "fumadocs-ui/contexts/search";
 import { Search } from "fumadocs-ui/internal/icons";
+import type { ReactNode } from "react";
 
-function CompactSearchHint() {
+function SearchBar() {
   const { enabled, hotKey, setOpenSearch } = useSearchContext();
   if (!enabled) {
     return null;
@@ -35,17 +36,28 @@ function CompactSearchHint() {
   );
 }
 
-export default function HomeLayoutWithFooter() {
-  const options = baseOptions();
+export default function Layout({ children }: { children?: ReactNode }) {
   const { pathname } = useLocation();
   const isDocsPage = pathname.startsWith("/docs/");
+
+  return <HomeLayoutWithFooter isDocsPage={isDocsPage}>{children}</HomeLayoutWithFooter>;
+}
+
+export function HomeLayoutWithFooter({
+  children,
+  isDocsPage,
+}: {
+  children?: ReactNode;
+  isDocsPage: boolean;
+}) {
+  const options = baseOptions();
 
   return (
     <HomeLayout
       {...options}
       searchToggle={{
         components: {
-          lg: <CompactSearchHint />,
+          lg: <SearchBar />,
         },
       }}
       themeSwitch={{
@@ -53,7 +65,6 @@ export default function HomeLayoutWithFooter() {
       }}
       nav={{
         ...options.nav,
-        // transparentMode: "top",
         title: (
           <div className="flex items-center gap-2">
             <span className="relative">
@@ -139,13 +150,13 @@ export default function HomeLayoutWithFooter() {
         },
       ]}
     >
-      <Outlet />
+      {children ?? <Outlet />}
       <Footer isDocsPage={isDocsPage} />
     </HomeLayout>
   );
 }
 
-function Footer({ isDocsPage }: { isDocsPage: boolean }) {
+export function Footer({ isDocsPage }: { isDocsPage: boolean }) {
   return (
     <footer
       className={`border-t border-gray-200/50 bg-white/50 shadow-sm dark:border-white/10 dark:bg-slate-950/50 ${

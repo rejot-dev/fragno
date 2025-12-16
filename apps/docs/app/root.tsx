@@ -8,8 +8,10 @@ import {
 } from "react-router";
 import { RootProvider } from "fumadocs-ui/provider/react-router";
 import type { Route } from "./+types/root";
+import { NotFoundContent } from "@/components/not-found-content";
 
 import "./app.css";
+import { HomeLayoutWithFooter } from "./layouts/home-layout";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -137,25 +139,22 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   let message = "Oops!";
   let details = "An unexpected error occurred.";
   let stack: string | undefined;
+  let is404 = false;
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error";
-    details =
-      error.status === 404 ? "The requested page could not be found." : error.statusText || details;
+    is404 = error.status === 404;
+    message = is404 ? "404" : "Error";
+    details = is404 ? "The requested page could not be found." : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;
   }
 
   return (
-    <main className="container mx-auto p-4 pt-16">
-      <h1>{message}</h1>
-      <p>{details}</p>
-      {stack && (
-        <pre className="w-full overflow-x-auto p-4">
-          <code>{stack}</code>
-        </pre>
-      )}
-    </main>
+    <RootProvider>
+      <HomeLayoutWithFooter isDocsPage={false}>
+        <NotFoundContent message={message} details={details} stack={stack} is404={is404} />
+      </HomeLayoutWithFooter>
+    </RootProvider>
   );
 }
