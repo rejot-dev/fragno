@@ -131,10 +131,10 @@ function MyDynamicForm() {
 
 ### Additional Renderers
 
-| Feature        | Shadcn | Status |
-| -------------- | ------ | ------ |
-| Label          | -      | ❌     |
-| ListWithDetail | -      | ❌     |
+| Feature        | Shadcn              | Status |
+| -------------- | ------------------- | ------ |
+| Label          | ShadcnLabelRenderer | ✅     |
+| ListWithDetail | -                   | ❌     |
 
 ### Cells (for tables/arrays)
 
