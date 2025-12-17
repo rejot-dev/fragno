@@ -8,6 +8,7 @@ export * from "./cells";
 export * from "./layouts";
 export * from "./additional";
 export * from "./shadcn-controls";
+export * from "./hooks";
 
 import {
   shadcnBooleanControlTester,

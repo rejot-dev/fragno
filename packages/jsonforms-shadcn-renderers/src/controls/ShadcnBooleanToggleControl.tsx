@@ -9,6 +9,7 @@ import {
   FieldContent,
 } from "@/components/ui/field";
 import { ShadcnSwitch } from "../shadcn-controls/ShadcnSwitch";
+import { useTouched } from "../hooks/useTouched";
 
 export const ShadcnBooleanToggleControl = ({
   data,
@@ -25,16 +26,22 @@ export const ShadcnBooleanToggleControl = ({
   config,
   description,
 }: ControlProps) => {
+  const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
   if (!visible) {
     return null;
   }
 
+  const handleChangeWithTouch = (path: string, value: boolean | undefined) => {
+    markTouched();
+    handleChange(path, value);
+  };
+
   return (
     <Field
       orientation="horizontal"
-      data-invalid={!isValid || undefined}
+      data-invalid={(!isValid && showErrors) || undefined}
       data-disabled={!enabled || undefined}
     >
       <ShadcnSwitch
@@ -46,7 +53,7 @@ export const ShadcnBooleanToggleControl = ({
         uischema={uischema}
         schema={schema}
         rootSchema={rootSchema}
-        handleChange={handleChange}
+        handleChange={handleChangeWithTouch}
         errors={errors}
         config={config}
         isValid={isValid}
@@ -54,7 +61,7 @@ export const ShadcnBooleanToggleControl = ({
       <FieldContent>
         <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
         {description && <FieldDescription>{description}</FieldDescription>}
-        {!isValid && <FieldError errors={[{ message: errors }]} />}
+        {!isValid && showErrors && <FieldError errors={[{ message: errors }]} />}
       </FieldContent>
     </Field>
   );

@@ -118,7 +118,7 @@ describe("ShadcnEnumControl", () => {
     expect(trigger).not.toBeDisabled();
   });
 
-  it("should display validation error when field is required and empty", () => {
+  it("should not display validation error before field is touched", () => {
     const requiredSchema: JsonSchema = {
       type: "object",
       properties: {
@@ -140,7 +140,34 @@ describe("ShadcnEnumControl", () => {
       />,
     );
 
+    // Validation error should NOT show until field is touched
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("should display validation error when field has a value (pre-filled)", () => {
+    const requiredSchema: JsonSchema = {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["pending", "active", "completed"],
+          minLength: 100, // Force validation error even with a value
+        },
+      },
+      required: ["status"],
+    };
+
+    render(
+      <JsonForms
+        schema={requiredSchema}
+        uischema={uischema}
+        data={{ status: "active" }}
+        renderers={renderers}
+        validationMode="ValidateAndShow"
+      />,
+    );
+
+    // Validation error SHOULD show when field has a value (pre-filled forms)
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText("is a required property")).toBeInTheDocument();
   });
 });

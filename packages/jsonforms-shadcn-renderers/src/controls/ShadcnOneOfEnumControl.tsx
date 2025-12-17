@@ -3,6 +3,7 @@ import { isOneOfEnumControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsOneOfEnumProps } from "@jsonforms/react";
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
 import { ShadcnSelect } from "../shadcn-controls/ShadcnSelect";
+import { useTouched } from "../hooks/useTouched";
 
 export const ShadcnOneOfEnumControl = ({
   data,
@@ -20,14 +21,23 @@ export const ShadcnOneOfEnumControl = ({
   description,
   options,
 }: ControlProps & OwnPropsOfEnum) => {
+  const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
   if (!visible) {
     return null;
   }
 
+  const handleChangeWithTouch = (path: string, value: string | undefined) => {
+    markTouched();
+    handleChange(path, value);
+  };
+
   return (
-    <Field data-invalid={!isValid || undefined} data-disabled={!enabled || undefined}>
+    <Field
+      data-invalid={(!isValid && showErrors) || undefined}
+      data-disabled={!enabled || undefined}
+    >
       <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
       {description && <FieldDescription>{description}</FieldDescription>}
       <ShadcnSelect
@@ -39,13 +49,13 @@ export const ShadcnOneOfEnumControl = ({
         uischema={uischema}
         schema={schema}
         rootSchema={rootSchema}
-        handleChange={handleChange}
+        handleChange={handleChangeWithTouch}
         errors={errors}
         config={config}
         isValid={isValid}
         options={options ?? []}
       />
-      {!isValid && <FieldError errors={[{ message: errors }]} />}
+      {!isValid && showErrors && <FieldError errors={[{ message: errors }]} />}
     </Field>
   );
 };
