@@ -3,7 +3,7 @@ import { assert, describe, expect, it } from "vitest";
 import { SQLocalDriverConfig } from "./driver-config";
 import { GenericSQLAdapter } from "./generic-sql-adapter";
 import { column, idColumn, schema } from "../../schema/create";
-import { settingsSchema } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("GenericSQLAdapter", () => {
   const testSchema = schema((s) => {
@@ -23,7 +23,7 @@ describe("GenericSQLAdapter", () => {
     const adapter = new GenericSQLAdapter({ dialect, driverConfig });
 
     // Create settings table first (needed for version tracking)
-    const settingsMigrations = adapter.prepareMigrations(settingsSchema, "");
+    const settingsMigrations = adapter.prepareMigrations(internalSchema, "");
     await settingsMigrations.executeWithDriver(adapter.driver, 0);
 
     // Now run the actual test schema migrations (use a different namespace)

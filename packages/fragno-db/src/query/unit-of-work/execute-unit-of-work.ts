@@ -1,5 +1,6 @@
 import type { AnySchema } from "../../schema/create";
 import type { TypedUnitOfWork, IUnitOfWork } from "./unit-of-work";
+import type { HooksMap } from "../../hooks/hooks";
 import { NoRetryPolicy, ExponentialBackoffRetryPolicy, type RetryPolicy } from "./retry-policy";
 import type { FragnoId } from "../../schema/create";
 
@@ -341,6 +342,18 @@ export interface ExecuteRestrictedUnitOfWorkOptions {
    * Abort signal to cancel execution
    */
   signal?: AbortSignal;
+
+  /**
+   * Callback invoked before mutations are executed.
+   * Use this to add additional mutation operations (e.g., hook event records).
+   */
+  onBeforeMutate?: (uow: IUnitOfWork) => void;
+
+  /**
+   * Callback invoked after successful mutation phase.
+   * Use this for post-mutation processing like hook execution.
+   */
+  onSuccess?: (uow: IUnitOfWork) => Promise<void>;
 }
 
 /**
@@ -381,9 +394,12 @@ export interface ExecuteRestrictedUnitOfWorkOptions {
  * );
  * ```
  */
-export async function executeRestrictedUnitOfWork<TResult>(
+export async function executeRestrictedUnitOfWork<TResult, THooks extends HooksMap = {}>(
   callback: (context: {
-    forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+    forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+      schema: S,
+      hooks?: H,
+    ) => TypedUnitOfWork<S, [], unknown, H>;
     executeRetrieve: () => Promise<void>;
     executeMutate: () => Promise<void>;
     nonce: string;
@@ -412,10 +428,9 @@ export async function executeRestrictedUnitOfWork<TResult>(
       // Create a fresh UOW for this attempt
       const baseUow = options.createUnitOfWork();
 
-      // Create context object with forSchema, executeRetrieve, executeMutate, nonce, and currentAttempt
       const context = {
-        forSchema: <S extends AnySchema>(schema: S) => {
-          return baseUow.forSchema(schema);
+        forSchema: <S extends AnySchema, H extends HooksMap = THooks>(schema: S, hooks?: H) => {
+          return baseUow.forSchema(schema, hooks);
         },
         executeRetrieve: async () => {
           await baseUow.executeRetrieve();
@@ -429,9 +444,18 @@ export async function executeRestrictedUnitOfWork<TResult>(
             await baseUow.executeRetrieve();
           }
 
+          // Add hook mutations before executing
+          if (options.onBeforeMutate) {
+            options.onBeforeMutate(baseUow);
+          }
+
           const result = await baseUow.executeMutations();
           if (!result.success) {
             throw new ConcurrencyConflictError();
+          }
+
+          if (options.onSuccess) {
+            await options.onSuccess(baseUow);
           }
         },
         nonce: baseUow.nonce,

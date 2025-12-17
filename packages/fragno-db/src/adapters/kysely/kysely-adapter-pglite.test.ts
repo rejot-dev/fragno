@@ -11,7 +11,7 @@ import {
 } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
 import { PGLiteDriverConfig } from "../generic-sql/driver-config";
-import { settingsSchema } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("KyselyAdapter PGLite", () => {
   const testSchema = schema((s) => {
@@ -112,7 +112,7 @@ describe("KyselyAdapter PGLite", () => {
     expect(schemaVersion).toBeUndefined();
 
     {
-      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      const migrations = adapter.prepareMigrations(internalSchema, "");
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 

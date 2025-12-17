@@ -7,7 +7,7 @@ import { Cursor } from "../../query/cursor";
 import { executeUnitOfWork } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
-import { settingsSchema } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("DrizzleAdapter SQLite", () => {
   const testSchema = schema((s) => {
@@ -108,7 +108,7 @@ describe("DrizzleAdapter SQLite", () => {
 
     // Create settings table first (needed for version tracking)
     {
-      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      const migrations = adapter.prepareMigrations(internalSchema, "");
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 

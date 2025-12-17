@@ -158,6 +158,23 @@ describe("generateSchema and migrate", () => {
       	"_version" integer DEFAULT 0 NOT NULL
       );
 
+      CREATE TABLE "fragno_hooks" (
+      	"id" varchar(30) NOT NULL,
+      	"namespace" text NOT NULL,
+      	"hookName" text NOT NULL,
+      	"payload" json NOT NULL,
+      	"status" text NOT NULL,
+      	"attempts" integer DEFAULT 0 NOT NULL,
+      	"maxAttempts" integer DEFAULT 5 NOT NULL,
+      	"lastAttemptAt" timestamp,
+      	"nextRetryAt" timestamp,
+      	"error" text,
+      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"nonce" text NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
+      	"_version" integer DEFAULT 0 NOT NULL
+      );
+
       CREATE TABLE "users" (
       	"id" varchar(30) NOT NULL,
       	"name" text NOT NULL,
@@ -231,6 +248,8 @@ describe("generateSchema and migrate", () => {
       ALTER TABLE "postTags" ADD CONSTRAINT "postTags_posts_post_fk" FOREIGN KEY ("postId") REFERENCES "public"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
       ALTER TABLE "postTags" ADD CONSTRAINT "postTags_tags_tag_fk" FOREIGN KEY ("tagId") REFERENCES "public"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
+      CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
+      CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
       CREATE UNIQUE INDEX "idx_users_email" ON "users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "users" USING btree ("name");
       CREATE INDEX "idx_users_active" ON "users" USING btree ("isActive");

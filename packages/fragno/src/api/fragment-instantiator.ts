@@ -512,7 +512,6 @@ export class FragnoInstantiatedFragment<
           ? new URLSearchParams(query)
           : new URLSearchParams();
 
-    // Convert headers to Headers if needed
     const requestHeaders =
       headers instanceof Headers ? headers : headers ? new Headers(headers) : new Headers();
 

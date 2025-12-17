@@ -6,7 +6,7 @@ import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
 import { PGLiteDriverConfig } from "../generic-sql/driver-config";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
-import { settingsSchema } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("DrizzleAdapter PGLite", () => {
   let pgliteDatabase: PGlite;
@@ -105,7 +105,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     // Create settings table first (needed for version tracking)
     {
-      const migrations = adapter.prepareMigrations(settingsSchema, "");
+      const migrations = adapter.prepareMigrations(internalSchema, "");
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 

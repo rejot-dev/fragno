@@ -18,6 +18,14 @@ import {
   type AwaitedPromisesInObject,
   type ExecuteRestrictedUnitOfWorkOptions,
 } from "./query/unit-of-work/execute-unit-of-work";
+import {
+  prepareHookMutations,
+  processHooks,
+  type HooksMap,
+  type HookFn,
+  type HookContext,
+} from "./hooks/hooks";
+import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
 /**
  * Extended FragnoPublicConfig that includes a database adapter.
@@ -54,19 +62,19 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
 /**
  * Service context for database fragments - provides restricted UOW access without execute methods.
  */
-export type DatabaseServiceContext = RequestThisContext & {
+export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext & {
   /**
    * Get a typed, restricted Unit of Work for the given schema.
    * @param schema - Schema to get a typed view for
    * @returns TypedUnitOfWork (restricted version without execute methods)
    */
-  uow<TSchema extends AnySchema>(schema: TSchema): TypedUnitOfWork<TSchema, [], unknown>;
+  uow<TSchema extends AnySchema>(schema: TSchema): TypedUnitOfWork<TSchema, [], unknown, THooks>;
 };
 
 /**
  * Handler context for database fragments - provides UOW execution with automatic retry support.
  */
-export type DatabaseHandlerContext = RequestThisContext & {
+export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisContext & {
   /**
    * Execute a Unit of Work with explicit phase control and automatic retry support.
    * This method provides an API where users call forSchema to create a schema-specific
@@ -100,7 +108,10 @@ export type DatabaseHandlerContext = RequestThisContext & {
    */
   uow<TResult>(
     callback: (context: {
-      forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+      forSchema: <TSchema extends AnySchema, H extends HooksMap = THooks>(
+        schema: TSchema,
+        hooks?: H,
+      ) => TypedUnitOfWork<TSchema, [], unknown, H>;
       executeRetrieve: () => Promise<void>;
       executeMutate: () => Promise<void>;
       nonce: string;
@@ -167,6 +178,7 @@ export class DatabaseFragmentDefinitionBuilder<
   TServices,
   TServiceDependencies,
   TPrivateServices,
+  THooks extends HooksMap = {},
   TServiceThisContext extends RequestThisContext = DatabaseHandlerContext,
   THandlerThisContext extends RequestThisContext = DatabaseHandlerContext,
   TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
@@ -187,6 +199,7 @@ export class DatabaseFragmentDefinitionBuilder<
   >;
   #schema: TSchema;
   #namespace: string;
+  #hooksFactory?: (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => THooks;
 
   constructor(
     baseBuilder: FragmentDefinitionBuilder<
@@ -204,10 +217,15 @@ export class DatabaseFragmentDefinitionBuilder<
     >,
     schema: TSchema,
     namespace?: string,
+    hooksFactory?: (context: {
+      config: TConfig;
+      options: FragnoPublicConfigWithDatabase;
+    }) => THooks,
   ) {
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
     this.#namespace = namespace ?? baseBuilder.name;
+    this.#hooksFactory = hooksFactory;
   }
 
   /**
@@ -229,6 +247,7 @@ export class DatabaseFragmentDefinitionBuilder<
     {},
     TServiceDependencies,
     {},
+    THooks,
     TServiceThisContext,
     THandlerThisContext,
     TLinkedFragments
@@ -263,8 +282,12 @@ export class DatabaseFragmentDefinitionBuilder<
     // Create new base builder with wrapped function
     const newBaseBuilder = this.#baseBuilder.withDependencies(wrappedFn);
 
-    // Return new database builder with updated base
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#namespace);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#namespace,
+      this.#hooksFactory,
+    );
   }
 
   providesBaseService<TNewService>(
@@ -285,13 +308,19 @@ export class DatabaseFragmentDefinitionBuilder<
     TServices,
     TServiceDependencies,
     TPrivateServices,
+    THooks,
     TServiceThisContext,
     THandlerThisContext,
     TLinkedFragments
   > {
     const newBaseBuilder = this.#baseBuilder.providesBaseService<TNewService>(fn);
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#namespace);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#namespace,
+      this.#hooksFactory,
+    );
   }
 
   providesService<TServiceName extends string, TService>(
@@ -313,6 +342,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TServices & { [K in TServiceName]: TService },
     TServiceDependencies,
     TPrivateServices,
+    THooks,
     TServiceThisContext,
     THandlerThisContext,
     TLinkedFragments
@@ -322,7 +352,137 @@ export class DatabaseFragmentDefinitionBuilder<
       fn,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#namespace);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#namespace,
+      this.#hooksFactory,
+    );
+  }
+
+  /**
+   * Provide a private service that is only accessible to the fragment author.
+   * Private services are NOT exposed on the fragment instance, but can be used
+   * when defining other services (baseServices, namedServices, and other privateServices).
+   * Private services are instantiated in order, so earlier private services are available
+   * to later ones.
+   */
+  providesPrivateService<TServiceName extends string, TService>(
+    serviceName: TServiceName,
+    fn: ServiceConstructorFn<
+      TConfig,
+      FragnoPublicConfigWithDatabase,
+      TDeps,
+      TServiceDependencies,
+      TPrivateServices,
+      TService,
+      TServiceThisContext
+    >,
+  ): DatabaseFragmentDefinitionBuilder<
+    TSchema,
+    TConfig,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TPrivateServices & { [K in TServiceName]: TService },
+    THooks,
+    TServiceThisContext,
+    THandlerThisContext,
+    TLinkedFragments
+  > {
+    const newBaseBuilder = this.#baseBuilder.providesPrivateService<TServiceName, TService>(
+      serviceName,
+      fn,
+    );
+
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#namespace,
+      this.#hooksFactory,
+    );
+  }
+
+  /**
+   * Define durable hooks for this fragment.
+   * Hooks are automatically persisted and retried on failure.
+   *
+   * @param fn - Function that receives defineHook helper and returns a hooks map
+   * @returns Builder with hooks type set
+   *
+   * @example
+   * ```ts
+   * .provideHooks(({ defineHook, config }) => ({
+   *   onSubscribe: defineHook(async function (payload: { email: string }) {
+   *     // 'this' context available (HookServiceContext with nonce)
+   *     await config.onSubscribe?.(payload.email);
+   *   }),
+   * }))
+   * ```
+   */
+  provideHooks<TNewHooks extends HooksMap>(
+    fn: (context: {
+      config: TConfig;
+      options: FragnoPublicConfigWithDatabase;
+      defineHook: <TPayload>(
+        hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
+      ) => HookFn<TPayload>;
+    }) => TNewHooks,
+  ): DatabaseFragmentDefinitionBuilder<
+    TSchema,
+    TConfig,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TPrivateServices,
+    TNewHooks,
+    DatabaseServiceContext<TNewHooks>,
+    THandlerThisContext,
+    TLinkedFragments
+  > {
+    const defineHook = <TPayload>(
+      hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
+    ): HookFn<TPayload> => {
+      return hook;
+    };
+
+    // Store the hooks factory - it will be called in build() with config/options
+    const hooksFactory = (context: {
+      config: TConfig;
+      options: FragnoPublicConfigWithDatabase;
+    }) => {
+      return fn({
+        config: context.config,
+        options: context.options,
+        defineHook,
+      });
+    };
+
+    // Create new builder with hooks factory stored
+    // Cast is safe: we're only changing THooks and TServiceThisContext type parameters
+    const newBuilder = new DatabaseFragmentDefinitionBuilder(
+      this.#baseBuilder,
+      this.#schema,
+      this.#namespace,
+    ) as unknown as DatabaseFragmentDefinitionBuilder<
+      TSchema,
+      TConfig,
+      TDeps,
+      TBaseServices,
+      TServices,
+      TServiceDependencies,
+      TPrivateServices,
+      TNewHooks,
+      DatabaseServiceContext<TNewHooks>,
+      THandlerThisContext,
+      TLinkedFragments
+    >;
+
+    newBuilder.#hooksFactory = hooksFactory;
+
+    return newBuilder;
   }
 
   /**
@@ -339,13 +499,19 @@ export class DatabaseFragmentDefinitionBuilder<
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService },
     TPrivateServices,
+    THooks,
     TServiceThisContext,
     THandlerThisContext,
     TLinkedFragments
   > {
     const newBaseBuilder = this.#baseBuilder.usesService<TServiceName, TService>(serviceName);
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#namespace);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#namespace,
+      this.#hooksFactory,
+    );
   }
 
   /**
@@ -362,6 +528,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TServices,
     TServiceDependencies & { [K in TServiceName]: TService | undefined },
     TPrivateServices,
+    THooks,
     TServiceThisContext,
     THandlerThisContext,
     TLinkedFragments
@@ -370,7 +537,12 @@ export class DatabaseFragmentDefinitionBuilder<
       serviceName,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#namespace);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#namespace,
+      this.#hooksFactory,
+    );
   }
 
   /**
@@ -386,19 +558,19 @@ export class DatabaseFragmentDefinitionBuilder<
     TServices,
     TServiceDependencies,
     TPrivateServices,
-    DatabaseServiceContext,
-    DatabaseHandlerContext,
+    DatabaseServiceContext<THooks>,
+    DatabaseHandlerContext<THooks>,
     DatabaseRequestStorage,
     TLinkedFragments
   > {
+    const baseDef = this.#baseBuilder.build();
+
     // Ensure dependencies callback always exists for database fragments
     // If no user dependencies were defined, create a minimal one that only adds implicit deps
     const dependencies = (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
     }): TDeps => {
-      const baseDef = this.#baseBuilder.build();
-
       // In dry run mode, allow user deps to fail gracefully.
       // This is critical for database fragments because the CLI needs access to the schema
       // even when user dependencies (like API clients) can't be initialized.
@@ -455,15 +627,29 @@ export class DatabaseFragmentDefinitionBuilder<
       },
     );
 
-    // Services get restricted context (no execute methods), handlers get execution context
+    // Get the internal fragment factory from linked fragments (added by withDatabase)
+    // Cast is safe: withDatabase() guarantees this fragment exists and has the correct type
+    const internalFragmentFactory = baseDef.linkedFragments?.["_fragno_internal"] as (context: {
+      config: TConfig;
+      options: FragnoPublicConfigWithDatabase;
+    }) => InternalFragmentInstance;
+
     const builderWithContext = builderWithStorage.withThisContext<
-      DatabaseServiceContext,
-      DatabaseHandlerContext
-    >(({ storage }) => {
-      // Service context - forSchema method to get restricted typed UOW
+      DatabaseServiceContext<THooks>,
+      DatabaseHandlerContext<THooks>
+    >(({ storage, config, options }) => {
+      // Create hooks config if hooks factory is defined
+      const hooksConfig = this.#hooksFactory
+        ? {
+            hooks: this.#hooksFactory({ config, options }),
+            namespace: this.#namespace,
+            internalFragment: internalFragmentFactory({ config, options }),
+          }
+        : undefined;
+
       function forSchema<TSchema extends AnySchema>(
         schema: TSchema,
-      ): TypedUnitOfWork<TSchema, [], unknown> {
+      ): TypedUnitOfWork<TSchema, [], unknown, THooks> {
         const uow = storage.getStore()?.uow;
         if (!uow) {
           throw new Error(
@@ -471,24 +657,28 @@ export class DatabaseFragmentDefinitionBuilder<
           );
         }
 
-        // Return typed view of restricted UOW
-        return uow.restrict().forSchema(schema);
+        return uow.restrict().forSchema<TSchema, THooks>(schema);
       }
 
-      const serviceContext: DatabaseServiceContext = {
+      const serviceContext: DatabaseServiceContext<THooks> = {
         uow: forSchema,
       };
 
-      // Handler context - only executeRestrictedUnitOfWork
       async function uow<TResult>(
         callback: (context: {
-          forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+          forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+            schema: S,
+            hooks?: H,
+          ) => TypedUnitOfWork<S, [], unknown, H>;
           executeRetrieve: () => Promise<void>;
           executeMutate: () => Promise<void>;
           nonce: string;
           currentAttempt: number;
         }) => Promise<TResult> | TResult,
-        options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
+        execOptions?: Omit<
+          ExecuteRestrictedUnitOfWorkOptions,
+          "createUnitOfWork" | "onBeforeMutate" | "onSuccess"
+        >,
       ): Promise<AwaitedPromisesInObject<TResult>> {
         const currentStorage = storage.getStore();
         if (!currentStorage) {
@@ -497,29 +687,38 @@ export class DatabaseFragmentDefinitionBuilder<
           );
         }
 
-        // Wrap callback to ensure it always returns a Promise
         const wrappedCallback = async (context: {
-          forSchema: <S extends AnySchema>(schema: S) => TypedUnitOfWork<S, [], unknown>;
+          forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+            schema: S,
+            hooks?: H,
+          ) => TypedUnitOfWork<S, [], unknown, H>;
           executeRetrieve: () => Promise<void>;
           executeMutate: () => Promise<void>;
           nonce: string;
           currentAttempt: number;
         }): Promise<TResult> => {
-          return await callback(context);
+          return callback(context);
         };
 
-        // Use the UOW from storage - reset it before each attempt for retry support
-        // Cast is safe because IUnitOfWork is actually implemented by UnitOfWork
         return executeRestrictedUnitOfWork(wrappedCallback, {
-          ...options,
+          ...execOptions,
           createUnitOfWork: () => {
             currentStorage.uow.reset();
+            // Register internal schema for hook mutations
+            if (hooksConfig) {
+              currentStorage.uow.registerSchema(
+                hooksConfig.internalFragment.$internal.deps.schema,
+                hooksConfig.internalFragment.$internal.deps.namespace,
+              );
+            }
             return currentStorage.uow as UnitOfWork;
           },
+          onBeforeMutate: hooksConfig ? (uow) => prepareHookMutations(uow, hooksConfig) : undefined,
+          onSuccess: hooksConfig ? () => processHooks(hooksConfig) : undefined,
         });
       }
 
-      const handlerContext: DatabaseHandlerContext = {
+      const handlerContext: DatabaseHandlerContext<THooks> = {
         uow,
       };
 

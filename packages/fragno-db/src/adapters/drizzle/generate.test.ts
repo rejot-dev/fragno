@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { generateSchema } from "./generate";
-import { settingsSchema } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("generateSchema", () => {
   const testSchema = schema((s) => {
@@ -1072,7 +1072,7 @@ describe("generateSchema", () => {
       // This test verifies generateSchema works correctly with already-deduplicated inputs
       const generated = generateSchema(
         [
-          { namespace: "", schema: settingsSchema }, // Internal fragment (namespace: "")
+          { namespace: "", schema: internalSchema }, // Internal fragment (namespace: "")
           { namespace: "fragment1", schema: fragment1Schema },
           { namespace: "fragment2", schema: fragment2Schema },
         ],

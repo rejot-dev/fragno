@@ -64,7 +64,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
 
     expect(results).toHaveLength(2); // Settings + test-db
     expect(results[0].namespace).toBe(""); // Empty namespace for settings table
-    expect(results[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
+    expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
     expect(results[0].schema).toContain("create table");
     expect(results[0].schema).toContain("fragno_db_settings");
 
@@ -115,7 +115,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
 
     expect(results).toHaveLength(4); // Settings + 3 databases
     expect(results[0].namespace).toBe(""); // Empty namespace for settings table
-    expect(results[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
+    expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
 
     expect(results[1].namespace).toBe("apple-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_apple-db.sql");

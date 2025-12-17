@@ -112,6 +112,8 @@ export type { BoundServices } from "@fragno-dev/core";
 export { internalFragmentDef } from "./fragments/internal-fragment";
 export type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
+export type { HookContext, HooksMap, HookFn, HookPayload, TriggerHookOptions } from "./hooks/hooks";
+
 export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,

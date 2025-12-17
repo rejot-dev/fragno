@@ -2,7 +2,7 @@ import { mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { generateSchema, type SupportedProvider } from "./generate";
 import type { Schema } from "../../schema/create";
-import { settingsSchema } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 
 /**
  * Writes a Fragno schema to a temporary TypeScript file and dynamically imports it.
@@ -42,10 +42,10 @@ export async function writeAndLoadSchema(
   // Always include settings schema first (as done in generation-engine.ts), then the test schema
   // De-duplicate: if the test schema IS the settings schema, don't add it twice
   const fragments: Array<{ namespace: string; schema: Schema }> = [
-    { namespace: "", schema: settingsSchema },
+    { namespace: "", schema: internalSchema },
   ];
 
-  if (schema !== settingsSchema) {
+  if (schema !== internalSchema) {
     fragments.push({ namespace: namespace ?? "", schema });
   }
 

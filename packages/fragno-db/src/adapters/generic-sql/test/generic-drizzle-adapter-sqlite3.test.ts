@@ -11,7 +11,7 @@ import { SqliteDialect } from "kysely";
 import { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
 import { BetterSQLite3DriverConfig } from "../driver-config";
 import { GenericSQLAdapter } from "../generic-sql-adapter";
-import { settingsSchema } from "../../../fragments/internal-fragment";
+import { internalSchema } from "../../../fragments/internal-fragment";
 
 describe("GenericSQLAdapter with DrizzleAdapter better-sqlite3", () => {
   const testSchema = schema((s) => {
@@ -107,7 +107,7 @@ describe("GenericSQLAdapter with DrizzleAdapter better-sqlite3", () => {
     const genericAdapter = new GenericSQLAdapter({ dialect, driverConfig });
 
     {
-      const migrations = genericAdapter.prepareMigrations(settingsSchema, "");
+      const migrations = genericAdapter.prepareMigrations(internalSchema, "");
       await migrations.executeWithDriver(sqlAdapter, 0);
     }
 

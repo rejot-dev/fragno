@@ -14,6 +14,7 @@ import {
   type DatabaseRequestStorage,
 } from "./db-fragment-definition-builder";
 import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
+import type { HooksMap } from "./hooks/hooks";
 
 /**
  * Helper to add database support to a fragment builder.
@@ -69,7 +70,8 @@ export function withDatabase<TSchema extends AnySchema>(
   TServices,
   TServiceDeps,
   TPrivateServices,
-  DatabaseServiceContext,
+  HooksMap,
+  DatabaseServiceContext<HooksMap>,
   DatabaseHandlerContext,
   TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
 > {
@@ -125,7 +127,8 @@ export function withDatabase<TSchema extends AnySchema>(
       TServices,
       TServiceDeps,
       TPrivateServices,
-      DatabaseServiceContext,
+      {}, // Start with empty hooks, provideHooks() will update this
+      DatabaseServiceContext<{}>,
       DatabaseHandlerContext,
       TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
     >(
@@ -137,7 +140,7 @@ export function withDatabase<TSchema extends AnySchema>(
         TServices,
         TServiceDeps,
         TPrivateServices,
-        DatabaseServiceContext,
+        DatabaseServiceContext<{}>,
         DatabaseHandlerContext,
         DatabaseRequestStorage,
         TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
