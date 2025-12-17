@@ -36,8 +36,7 @@ export function createMailingListServer(init: MailingListInit) {
         const { env } = init;
 
         if (!env.RESEND_API_KEY) {
-          console.error("RESEND_API_KEY is not set");
-          return;
+          throw new Error("RESEND_API_KEY is not set");
         }
 
         const prefix = import.meta.env.MODE === "development" ? "[DEVELOPMENT] " : "";
@@ -52,7 +51,10 @@ export function createMailingListServer(init: MailingListInit) {
         );
 
         if (result.type === "error") {
-          console.error("Failed to send email", result.error);
+          console.error("Failed to send email", {
+            error: result.error,
+          });
+          throw new Error(`Failed to send email: ${result.error.message}`);
         } else {
           console.log("Email sent", result.data.id);
         }

@@ -84,3 +84,6 @@ corpus-tests
 
 # Local pre-commit override
 lefthook-local.yml
+
+# .letta directory files
+.letta/
