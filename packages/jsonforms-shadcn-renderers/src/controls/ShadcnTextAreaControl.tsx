@@ -19,6 +19,7 @@ export const ShadcnTextAreaControl = ({
   path,
   config,
   description,
+  required,
 }: ControlProps) => {
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
@@ -39,7 +40,10 @@ export const ShadcnTextAreaControl = ({
       data-invalid={(!isValid && showErrors) || undefined}
       data-disabled={!enabled || undefined}
     >
-      <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
+      <FieldLabel htmlFor={`${id}-input`}>
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </FieldLabel>
       {description && <FieldDescription>{description}</FieldDescription>}
       <ShadcnTextarea
         id={`${id}-input`}
