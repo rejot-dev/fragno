@@ -21,6 +21,7 @@ import type { CompiledJoin } from "../orm/orm";
 import type { CursorResult } from "../cursor";
 import { Cursor } from "../cursor";
 import type { Prettify } from "../../util/types";
+import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
 
 /**
  * Builder for updateMany operations that supports both whereIndex and set chaining
@@ -922,10 +923,21 @@ export interface IUnitOfWork {
   reset(): void;
 
   // Schema-specific view (for cross-schema operations)
-  forSchema<TOtherSchema extends AnySchema>(
+  // The optional hooks parameter is for type inference only - pass your hooks map
+  // to get proper typing for triggerHook. The value is not used at runtime.
+  forSchema<TOtherSchema extends AnySchema, TOtherHooks extends HooksMap = {}>(
     schema: TOtherSchema,
+    hooks?: TOtherHooks,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): TypedUnitOfWork<TOtherSchema, [], any>;
+  ): TypedUnitOfWork<TOtherSchema, [], any, TOtherHooks>;
+
+  // Schema registration (for cross-fragment operations like hooks)
+  registerSchema(schema: AnySchema, namespace: string): void;
+
+  // Hook triggering (schema-agnostic, string-based hook names)
+  triggerHook(hookName: string, payload: unknown, options?: TriggerHookOptions): void;
+
+  getTriggeredHooks(): readonly TriggeredHook[];
 }
 
 /**
@@ -1194,7 +1206,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #compiler: UOWCompiler<unknown>;
   #executor: UOWExecutor<unknown, TRawInput>;
   #decoder: UOWDecoder<TRawInput>;
-  #schemaNamespaceMap?: WeakMap<AnySchema, string>;
+  #schemaNamespaceMap: WeakMap<AnySchema, string>;
 
   #retrievalResults?: unknown[];
   #createdInternalIds: (bigint | null)[] = [];
@@ -1210,6 +1222,9 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   // Child coordination
   #coordinator: UOWChildCoordinator<TRawInput> = new UOWChildCoordinator();
 
+  // Hook triggers
+  #triggeredHooks: TriggeredHook[] = [];
+
   constructor(
     compiler: UOWCompiler<unknown>,
     executor: UOWExecutor<unknown, TRawInput>,
@@ -1221,24 +1236,39 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#compiler = compiler;
     this.#executor = executor;
     this.#decoder = decoder;
-    this.#schemaNamespaceMap = schemaNamespaceMap;
+    this.#schemaNamespaceMap = schemaNamespaceMap ?? new WeakMap();
     this.#name = name;
     this.#config = config;
     this.#nonce = config?.nonce ?? crypto.randomUUID();
   }
 
   /**
+   * Register a schema with its namespace for cross-fragment operations.
+   * This is used for internal fragments like hooks that need to create
+   * records in a different schema during the same transaction.
+   */
+  registerSchema(schema: AnySchema, namespace: string): void {
+    this.#schemaNamespaceMap.set(schema, namespace);
+  }
+
+  /**
    * Get a schema-specific typed view of this UOW for type-safe operations.
    * Returns a wrapper that provides typed operations for the given schema.
    * The namespace is automatically resolved from the schema-namespace map.
+   * The optional hooks parameter is for type inference only - pass your hooks map
+   * to get proper typing for triggerHook. The value is not used at runtime.
    */
-  forSchema<TOtherSchema extends AnySchema, TRawInput>(
+  forSchema<TOtherSchema extends AnySchema, TOtherHooks extends HooksMap = {}>(
     schema: TOtherSchema,
-  ): TypedUnitOfWork<TOtherSchema, [], TRawInput> {
-    // Look up namespace from map
-    const resolvedNamespace = this.#schemaNamespaceMap?.get(schema);
+    _hooks?: TOtherHooks,
+  ): TypedUnitOfWork<TOtherSchema, [], TRawInput, TOtherHooks> {
+    const resolvedNamespace = this.#schemaNamespaceMap.get(schema);
 
-    return new TypedUnitOfWork(schema, resolvedNamespace, this as unknown as UnitOfWork<TRawInput>);
+    return new TypedUnitOfWork<TOtherSchema, [], TRawInput, TOtherHooks>(
+      schema,
+      resolvedNamespace,
+      this,
+    );
   }
 
   /**
@@ -1267,6 +1297,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     child.#mutationPhaseDeferred = this.#mutationPhaseDeferred;
     child.#retrievalError = this.#retrievalError;
     child.#mutationError = this.#mutationError;
+    child.#triggeredHooks = this.#triggeredHooks;
 
     this.#coordinator.addChild(child);
 
@@ -1320,6 +1351,27 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
     // Reset child coordination
     this.#coordinator.reset();
+
+    // Reset hooks
+    this.#triggeredHooks = [];
+  }
+
+  /**
+   * Trigger a hook to be executed after the transaction commits.
+   */
+  triggerHook(hookName: string, payload: unknown, options?: TriggerHookOptions): void {
+    this.#triggeredHooks.push({
+      hookName,
+      payload,
+      options,
+    });
+  }
+
+  /**
+   * Get all triggered hooks for this UOW.
+   */
+  getTriggeredHooks(): ReadonlyArray<TriggeredHook> {
+    return this.#triggeredHooks;
   }
 
   get state(): UOWState {
@@ -1581,6 +1633,7 @@ export class TypedUnitOfWork<
   const TSchema extends AnySchema,
   const TRetrievalResults extends unknown[] = [],
   const TRawInput = unknown,
+  const THooks extends HooksMap = {},
 > implements IUnitOfWork
 {
   #schema: TSchema;
@@ -1667,10 +1720,15 @@ export class TypedUnitOfWork<
     return this.#uow.reset();
   }
 
-  forSchema<TOtherSchema extends AnySchema>(
+  forSchema<TOtherSchema extends AnySchema, TOtherHooks extends HooksMap = {}>(
     schema: TOtherSchema,
-  ): TypedUnitOfWork<TOtherSchema, [], TRawInput> {
-    return this.#uow.forSchema(schema);
+    hooks?: TOtherHooks,
+  ): TypedUnitOfWork<TOtherSchema, [], TRawInput, TOtherHooks> {
+    return this.#uow.forSchema<TOtherSchema, TOtherHooks>(schema, hooks);
+  }
+
+  registerSchema(schema: AnySchema, namespace: string): void {
+    this.#uow.registerSchema(schema, namespace);
   }
 
   compile<TOutput>(compiler: UOWCompiler<TOutput>): {
@@ -1696,14 +1754,16 @@ export class TypedUnitOfWork<
         Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
       >[],
     ],
-    TRawInput
+    TRawInput,
+    THooks
   >;
   find<TTableName extends keyof TSchema["tables"] & string>(
     tableName: TTableName,
   ): TypedUnitOfWork<
     TSchema,
     [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true>[]],
-    TRawInput
+    TRawInput,
+    THooks
   >;
   find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
@@ -1720,7 +1780,8 @@ export class TypedUnitOfWork<
         Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
       >[],
     ],
-    TRawInput
+    TRawInput,
+    THooks
   > {
     const table = this.#schema.tables[tableName];
     if (!table) {
@@ -1768,14 +1829,16 @@ export class TypedUnitOfWork<
         Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
       > | null,
     ],
-    TRawInput
+    TRawInput,
+    THooks
   >;
   findFirst<TTableName extends keyof TSchema["tables"] & string>(
     tableName: TTableName,
   ): TypedUnitOfWork<
     TSchema,
     [...TRetrievalResults, SelectResult<TSchema["tables"][TTableName], {}, true> | null],
-    TRawInput
+    TRawInput,
+    THooks
   >;
   findFirst<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
@@ -1792,7 +1855,8 @@ export class TypedUnitOfWork<
         Extract<ExtractSelect<TBuilderResult>, SelectClause<TSchema["tables"][TTableName]>>
       > | null,
     ],
-    TRawInput
+    TRawInput,
+    THooks
   > {
     const table = this.#schema.tables[tableName];
     if (!table) {
@@ -1845,7 +1909,8 @@ export class TypedUnitOfWork<
         >
       >,
     ],
-    TRawInput
+    TRawInput,
+    THooks
   > {
     const table = this.#schema.tables[tableName];
     if (!table) {
@@ -1999,5 +2064,24 @@ export class TypedUnitOfWork<
       table: tableName,
       id,
     });
+  }
+
+  get $hooks(): THooks {
+    throw new Error("type only");
+  }
+
+  /**
+   * Trigger a hook to be executed after the transaction commits.
+   */
+  triggerHook<K extends keyof THooks & string>(
+    hookName: K,
+    payload: HookPayload<THooks[K]>,
+    options?: TriggerHookOptions,
+  ): void {
+    this.#uow.triggerHook(hookName, payload, options);
+  }
+
+  getTriggeredHooks(): ReadonlyArray<TriggeredHook> {
+    return this.#uow.getTriggeredHooks();
   }
 }

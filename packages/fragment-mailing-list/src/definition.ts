@@ -16,7 +16,12 @@ export interface GetSubscribersParams {
 
 export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("mailing-list")
   .extend(withDatabase(mailingListSchema))
-  .providesBaseService(({ config, defineService }) => {
+  .provideHooks(({ defineHook, config }) => ({
+    onSubscribe: defineHook(async function (payload: { email: string }) {
+      await config.onSubscribe?.(payload.email);
+    }),
+  }))
+  .providesBaseService(({ defineService }) => {
     return defineService({
       subscribe: async function (email: string) {
         // Check if already subscribed
@@ -38,9 +43,9 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
         const subscribedAt = new Date();
         const id = uow.create("subscriber", { email, subscribedAt });
 
-        await uow.mutationPhase;
+        uow.triggerHook("onSubscribe", { email });
 
-        await config.onSubscribe?.(email);
+        await uow.mutationPhase;
 
         return {
           id: id.toString(),

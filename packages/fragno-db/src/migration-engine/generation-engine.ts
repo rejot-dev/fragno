@@ -6,7 +6,7 @@ import {
 } from "../adapters/adapters";
 import {
   internalFragmentDef,
-  settingsSchema,
+  internalSchema,
   SETTINGS_NAMESPACE,
   getSchemaVersionFromDatabase,
 } from "../fragments/internal-fragment";
@@ -66,7 +66,7 @@ export async function generateMigrationsOrSchema<
 
     // Include internal fragment first with empty namespace (settings table has no prefix)
     fragmentsMap.set("", {
-      schema: settingsSchema,
+      schema: internalSchema,
       namespace: "",
     });
 
@@ -121,8 +121,8 @@ export async function generateMigrationsOrSchema<
   const generatedFiles: GenerationInternalResult[] = [];
 
   // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsPreparedMigrations = adapter.prepareMigrations(settingsSchema, "");
-  const settingsTargetVersion = settingsSchema.version;
+  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
+  const settingsTargetVersion = internalSchema.version;
 
   // Generate settings table migration
   const settingsSql = settingsPreparedMigrations.getSQL(
@@ -243,8 +243,8 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   );
 
   // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsPreparedMigrations = adapter.prepareMigrations(settingsSchema, "");
-  const settingsTargetVersion = settingsSchema.version;
+  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
+  const settingsTargetVersion = internalSchema.version;
 
   if (settingsSourceVersion < settingsTargetVersion) {
     const compiledMigration = settingsPreparedMigrations.compile(
