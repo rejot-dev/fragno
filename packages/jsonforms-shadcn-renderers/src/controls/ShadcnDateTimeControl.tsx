@@ -3,6 +3,7 @@ import { isDateTimeControl, rankWith } from "@jsonforms/core";
 import { withJsonFormsControlProps } from "@jsonforms/react";
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
 import { ShadcnDateTimePicker } from "../shadcn-controls/ShadcnDateTimePicker";
+import { useTouched } from "../hooks/useTouched";
 
 export const ShadcnDateTimeControl = ({
   data,
@@ -19,14 +20,23 @@ export const ShadcnDateTimeControl = ({
   config,
   description,
 }: ControlProps) => {
+  const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
   if (!visible) {
     return null;
   }
 
+  const handleChangeWithTouch = (path: string, value: string | undefined) => {
+    markTouched();
+    handleChange(path, value);
+  };
+
   return (
-    <Field data-invalid={!isValid || undefined} data-disabled={!enabled || undefined}>
+    <Field
+      data-invalid={(!isValid && showErrors) || undefined}
+      data-disabled={!enabled || undefined}
+    >
       <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
       {description && <FieldDescription>{description}</FieldDescription>}
       <ShadcnDateTimePicker
@@ -38,12 +48,12 @@ export const ShadcnDateTimeControl = ({
         uischema={uischema}
         schema={schema}
         rootSchema={rootSchema}
-        handleChange={handleChange}
+        handleChange={handleChangeWithTouch}
         errors={errors}
         config={config}
         isValid={isValid}
       />
-      {!isValid && <FieldError errors={[{ message: errors }]} />}
+      {!isValid && showErrors && <FieldError errors={[{ message: errors }]} />}
     </Field>
   );
 };

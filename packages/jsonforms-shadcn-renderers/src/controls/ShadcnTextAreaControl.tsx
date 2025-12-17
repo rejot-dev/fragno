@@ -3,6 +3,7 @@ import { and, isStringControl, optionIs, rankWith } from "@jsonforms/core";
 import { withJsonFormsControlProps } from "@jsonforms/react";
 import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui/field";
 import { ShadcnTextarea } from "../shadcn-controls/ShadcnTextarea";
+import { useTouched } from "../hooks/useTouched";
 
 export const ShadcnTextAreaControl = ({
   data,
@@ -19,6 +20,7 @@ export const ShadcnTextAreaControl = ({
   config,
   description,
 }: ControlProps) => {
+  const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
   if (!visible) {
@@ -27,8 +29,16 @@ export const ShadcnTextAreaControl = ({
 
   const placeholder = uischema.options?.["placeholder"] as string | undefined;
 
+  const handleChangeWithTouch = (path: string, value: string | undefined) => {
+    markTouched();
+    handleChange(path, value);
+  };
+
   return (
-    <Field data-invalid={!isValid || undefined} data-disabled={!enabled || undefined}>
+    <Field
+      data-invalid={(!isValid && showErrors) || undefined}
+      data-disabled={!enabled || undefined}
+    >
       <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
       {description && <FieldDescription>{description}</FieldDescription>}
       <ShadcnTextarea
@@ -40,13 +50,13 @@ export const ShadcnTextAreaControl = ({
         uischema={uischema}
         schema={schema}
         rootSchema={rootSchema}
-        handleChange={handleChange}
+        handleChange={handleChangeWithTouch}
         errors={errors}
         config={config}
         isValid={isValid}
         placeholder={placeholder}
       />
-      {!isValid && <FieldError errors={[{ message: errors }]} />}
+      {!isValid && showErrors && <FieldError errors={[{ message: errors }]} />}
     </Field>
   );
 };
