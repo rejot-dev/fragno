@@ -20,6 +20,7 @@ export const ShadcnEnumRadioControl = ({
   config,
   description,
   options,
+  required,
 }: ControlProps & OwnPropsOfEnum) => {
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
@@ -38,7 +39,10 @@ export const ShadcnEnumRadioControl = ({
       data-invalid={(!isValid && showErrors) || undefined}
       data-disabled={!enabled || undefined}
     >
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel>
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </FieldLabel>
       {description && <FieldDescription>{description}</FieldDescription>}
       <ShadcnRadioGroup
         id={`${id}-input`}

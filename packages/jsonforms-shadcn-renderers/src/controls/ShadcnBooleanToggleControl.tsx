@@ -25,6 +25,7 @@ export const ShadcnBooleanToggleControl = ({
   path,
   config,
   description,
+  required,
 }: ControlProps) => {
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
@@ -59,7 +60,10 @@ export const ShadcnBooleanToggleControl = ({
         isValid={isValid}
       />
       <FieldContent>
-        <FieldLabel htmlFor={`${id}-input`}>{label}</FieldLabel>
+        <FieldLabel htmlFor={`${id}-input`}>
+          {label}
+          {required && <span className="ml-0.5 text-red-500">*</span>}
+        </FieldLabel>
         {description && <FieldDescription>{description}</FieldDescription>}
         {!isValid && showErrors && <FieldError errors={[{ message: errors }]} />}
       </FieldContent>
