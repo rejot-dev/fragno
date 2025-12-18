@@ -1,5 +1,12 @@
 # @fragno-dev/create
 
+## 0.1.5
+
+### Patch Changes
+
+- 68135c4: Update database template to use latest fragno-db UOW API and bump dependency versions in
+  generated fragments
+
 ## 0.1.4
 
 ### Patch Changes
