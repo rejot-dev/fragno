@@ -5,9 +5,9 @@ description: Using Kysely with database-enabled Fragments
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The Kysely adapter integrates Fragno database Fragments with your existing
-[Kysely](https://kysely.dev/) database instance. Kysely is a type-safe SQL query builder for
-TypeScript.
+The Kysely adapter integrates Fragno database Fragments with your database via a Kysely
+[`Dialect`](https://kysely.dev/docs/recipes/connecting-to-databases). Kysely is a type-safe SQL
+query builder for TypeScript.
 
 ## Prerequisites
 
@@ -22,23 +22,32 @@ npm install kysely @fragno-dev/db
 
 ## Adapter Configuration
 
-Create a Kysely adapter that wraps your existing Kysely instance:
+Create a Kysely adapter using a Kysely `Dialect` + a Fragno `driverConfig`:
 
 ```typescript title="lib/database-adapter.ts"
 import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-import { db } from "./database"; // Your existing Kysely instance
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
 
 export const fragmentDbAdapter = new KyselyAdapter({
-  db,
-  provider: "postgresql", // or "mysql", "sqlite"
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
 });
 ```
 
 ### Supported Providers
 
-- `"postgresql"` - PostgreSQL databases, including support for PGLite
-- `"mysql"` - MySQL/MariaDB databases
-- `"sqlite"` - SQLite databases, including support for Cloudflare
+Pick a matching `driverConfig` from `@fragno-dev/db/drivers`:
+
+- **PostgreSQL**: `NodePostgresDriverConfig` or `PGLiteDriverConfig`
+- **MySQL/MariaDB**: `MySQL2DriverConfig`
+- **SQLite**: `BetterSQLite3DriverConfig`, `SQLocalDriverConfig`, or
+  `CloudflareDurableObjectsDriverConfig`
 
 ### Schema Generation & Migration
 

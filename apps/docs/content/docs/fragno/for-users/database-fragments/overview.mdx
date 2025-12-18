@@ -76,15 +76,22 @@ See the adapter-specific pages for detailed setup:
 - [Kysely Integration Guide](/docs/fragno/for-users/database-fragments/kysely)
 - [Drizzle Integration Guide](/docs/fragno/for-users/database-fragments/drizzle)
 
-It will look something like this:
+Adapters are configured with a **Kysely `Dialect`** plus a **Fragno `driverConfig`** (they must
+match).
 
 ```typescript title="lib/database-adapter.ts"
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
-import { db } from "./database"; // Your existing Drizzle instance
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
 
 export const fragmentDbAdapter = new DrizzleAdapter({
-  db,
-  provider: "postgresql", // or "mysql", "sqlite"
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
 });
 ```
 

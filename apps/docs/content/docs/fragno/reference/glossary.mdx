@@ -4,17 +4,17 @@ description: Overview of terms used in the Fragno docs
 icon: NotebookTabs
 ---
 
-| Term                               | Definition                                                                                                                                                      | Area     |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| **Dependencies**                   | Private server-side objects (like database connections, API clients) available to route handlers but not included in client bundles                             | Core     |
-| **Fragment**                       | A full-stack library built with Fragno that contains both server-side API logic and client-side integration code                                                | Core     |
-| **Services**                       | Public server-side functions exposed to Fragment users for use in custom handlers or background tasks                                                           | Core     |
-| **Hooks**                          | React-style functions for reading data from GET routes, created via `createHook`                                                                                | Client   |
-| **Mutators**                       | Client-side functions for modifying data through POST/PUT/DELETE routes, created via `createMutator`                                                            | Client   |
-| **Adapters**                       | Framework-specific integration helpers that convert Fragno's standard handlers to work with specific frameworks                                                 | Server   |
-| **Durable Hooks**                  | Side effects registered during a database transaction that are persisted and executed after commit, with automatic retries on failure                           | Database |
-| **FragnoId**                       | A type that carries both ID and version information, used for optimistic concurrency control in database operations                                             | Database |
-| **Optimistic Concurrency Control** | A concurrency control method that uses version checking to detect conflicts, automatically retrying transactions when conflicts occur                           | Database |
-| **Unit of Work (UOW)**             | A two-phase transaction pattern where services enqueue reads/writes and route handlers execute them atomically, enabling composition and batching               | Database |
-| **Code Splitting**                 | Automatic separation of client and server code during build time, removing server-side dependencies from client bundles                                         | Build    |
-| **Unplugin**                       | A unified plugin system that supports Vite, Rollup, webpack, and other build tools, used by fragment authors throught the `@fragno-dev/unplugin-fragno` package | Build    |
+| Term                               | Definition                                                                                                                                                     | Area     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| **Dependencies**                   | Private server-side objects (like database connections, API clients) available to route handlers but not included in client bundles                            | Core     |
+| **Fragment**                       | A full-stack library built with Fragno that contains both server-side API logic and client-side integration code                                               | Core     |
+| **Services**                       | Public server-side functions exposed to Fragment users for use in custom handlers or background tasks                                                          | Core     |
+| **Hooks**                          | React-style functions for reading data from GET routes, created via `createHook`                                                                               | Client   |
+| **Mutators**                       | Client-side functions for modifying data through POST/PUT/DELETE routes, created via `createMutator`                                                           | Client   |
+| **Adapters**                       | Framework-specific integration helpers that convert Fragno's standard handlers to work with specific frameworks                                                | Server   |
+| **Durable Hooks**                  | Side effects registered during a database transaction that are persisted and executed after commit, with automatic retries on failure                          | Database |
+| **FragnoId**                       | A type that carries both ID and version information, used for optimistic concurrency control in database operations                                            | Database |
+| **Optimistic Concurrency Control** | A concurrency control method that uses version checking to detect conflicts, automatically retrying transactions when conflicts occur                          | Database |
+| **Unit of Work (UOW)**             | A two-phase transaction pattern where services enqueue reads/writes and route handlers execute them atomically, enabling composition and batching              | Database |
+| **Code Splitting**                 | Automatic separation of client and server code during build time, removing server-side dependencies from client bundles                                        | Build    |
+| **Unplugin**                       | A unified plugin system that supports Vite, Rollup, webpack, and other build tools, used by fragment authors through the `@fragno-dev/unplugin-fragno` package | Build    |

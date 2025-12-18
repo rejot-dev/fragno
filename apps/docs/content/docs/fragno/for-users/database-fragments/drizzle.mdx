@@ -5,9 +5,11 @@ description: Using Drizzle ORM with database-enabled Fragments
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The Drizzle adapter integrates Fragno database Fragments with your existing
-[Drizzle ORM](https://orm.drizzle.team/) database instance. Drizzle is a modern, lightweight
-TypeScript ORM.
+The Drizzle adapter integrates Fragno database Fragments with your database.
+
+Note that Fragno executes SQL via **Kysely’s `Dialect` interface** (so we can reuse Kysely/community
+dialects). Drizzle is still the “user-facing” ORM here: the Fragno CLI can generate **Drizzle
+schema** you can import into your Drizzle setup.
 
 ## Prerequisites
 
@@ -22,23 +24,32 @@ npm install drizzle-orm @fragno-dev/db
 
 ## Adapter Configuration
 
-Create a Drizzle adapter that wraps your existing Drizzle instance:
+Create a Drizzle adapter using a Kysely `Dialect` + a Fragno `driverConfig`:
 
 ```typescript title="lib/database-adapter.ts"
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
-import { db } from "./database"; // Your existing Drizzle instance
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
 
 export const fragmentDbAdapter = new DrizzleAdapter({
-  db,
-  provider: "postgresql", // or "mysql", "sqlite"
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
 });
 ```
 
 ### Supported Providers
 
-- `"postgresql"` - PostgreSQL databases, including support for PGLite
-- `"mysql"` - MySQL/MariaDB databases
-- `"sqlite"` - SQLite databases, including support for Cloudflare
+Pick a matching `driverConfig` from `@fragno-dev/db/drivers`:
+
+- **PostgreSQL**: `NodePostgresDriverConfig` or `PGLiteDriverConfig`
+- **MySQL/MariaDB**: `MySQL2DriverConfig`
+- **SQLite**: `BetterSQLite3DriverConfig`, `SQLocalDriverConfig`, or
+  `CloudflareDurableObjectsDriverConfig`
 
 ### Schema Generation & Migration
 
@@ -55,8 +66,8 @@ This example assumes that `comment-fragment-server.ts` exports a `fragment` inst
 this instance to determine the Fragment's database schema. The generated schema is written to
 `schema/comment-fragment-schema.ts` (defined by the `-o` option).
 
-You can then update your `drizzle.config.ts` file to point to the generated schema file in addition
-to your own database schema.
+This output is a **Drizzle schema module**. Point your `drizzle.config.ts` at it (in addition to
+your own schema), or import it into your main schema file.
 
 Optionally, you can update your main schema file to import the generated schema file.
 
