@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/test",
-  "version": "0.1.14",
+  "version": "1.0.0",
   "type": "module",
   "exports": {
     ".": {

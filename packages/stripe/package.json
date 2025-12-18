@@ -1,7 +1,7 @@
 {
   "name": "@fragno-dev/stripe",
   "description": "Stripe integration using Fragno",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "files": [
     "dist"
   ],
@@ -90,7 +90,7 @@
     "svelte": ">=4.0.0",
     "typescript": "^5",
     "vue": ">=3.0.0",
-    "@fragno-dev/db": "^0.1.15"
+    "@fragno-dev/db": "^0.2.0"
   },
   "repository": {
     "type": "git",
