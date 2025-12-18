@@ -1,4 +1,5 @@
 {
   "title": "Database Integration",
-  "pages": ["overview", "defining-schemas", "querying"]
+  "pages": ["overview", "defining-schemas", "querying", "transactions", "durable-hooks"],
+  "defaultOpen": true
 }

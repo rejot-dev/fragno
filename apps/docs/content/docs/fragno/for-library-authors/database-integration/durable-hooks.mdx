@@ -1,0 +1,86 @@
+---
+title: Durable Hooks
+description: Persist side effects in the same transaction and run them after commit with retries
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Durable hooks solve a common problem:
+
+> What if your database transaction commits, but your side effect (email, webhook, API call) fails?
+
+With durable hooks, you **register a hook trigger during the transaction**. The trigger is persisted
+in the database as part of the same commit, and then the hook is executed **after the commit**. If
+execution fails, it’s retried with an exponential backoff policy.
+
+## Defining hooks
+
+Hooks are defined on the fragment definition:
+
+<Callout title="Use defineHook() + function syntax" type="warn">
+  Hook implementations must be created via `defineHook(...)` and written with `function (...) { ... }`
+  (or `async function (...) { ... }`) so the hook `this` context is available and typed. Arrow
+  functions (`() => {}`) don’t have their own `this`, so you won’t be able to access `this.nonce`.
+</Callout>
+
+```typescript
+export const fragmentDef = defineFragment<Config>("my-fragment")
+  .extend(withDatabase(mySchema))
+  .provideHooks(({ defineHook, config }) => ({
+    onSubscribe: defineHook(async function (payload: { email: string }) {
+      // Hook functions run outside the transaction, after commit.
+      // `this.nonce` is a unique idempotency key for this transaction.
+      await config.onSubscribe?.({ nonce: this.nonce, email: payload.email });
+    }),
+  }))
+  .build();
+```
+
+### Hook context (`this`)
+
+Hook functions receive a `this` context that includes:
+
+- `nonce`: a unique nonce for the originating transaction (use for idempotency)
+
+## Triggering hooks from services
+
+Within a service method, trigger a hook using the restricted UOW:
+
+```typescript
+subscribe: async function (email: string) {
+  const uow = this.uow(mySchema);
+
+  uow.create("subscriber", { email, subscribedAt: new Date() });
+
+  // Register side effect to run after commit (and retry on failure)
+  uow.triggerHook("onSubscribe", { email });
+
+  // Wait for the handler to commit
+  await uow.mutationPhase;
+};
+```
+
+The key point is that **the hook trigger is part of your transaction**: if the transaction rolls
+back, the hook trigger is not recorded, so the side effect won’t run.
+
+## Running the transaction in a route handler
+
+Hooks are recorded when the handler runs `executeMutate()`:
+
+```typescript
+await this.uow(async ({ executeMutate }) => {
+  const resultPromise = services.subscribe(email);
+  await executeMutate();
+  return resultPromise;
+});
+```
+
+## Retry behavior
+
+If a hook execution fails, it will be retried with an exponential backoff policy. This makes hooks
+safe for “at least once” delivery, as long as your hook implementation is **idempotent**.
+
+Use the `nonce` to make idempotency easy:
+
+- store processed nonces in your external system
+- or pass the nonce as an idempotency key to third-party APIs that support it

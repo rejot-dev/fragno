@@ -18,7 +18,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 <Callout type="info" title="Something missing?">
   If your favorite framework is missing, let us know by opening an [issue on
-  Github!](https://github.com/rejot-dev/fragno/issues/)
+  GitHub!](https://github.com/rejot-dev/fragno/issues/)
 </Callout>
 
 ## Server-side
@@ -47,6 +47,16 @@ import { Callout } from "fumadocs-ui/components/callout";
 | Drizzle | ✅      |
 | Prisma  | ❌      |
 
-Prisma is not supported yet, but we are working on it. Follow
+Prisma is not currently supported. Follow
 [this issue](https://github.com/rejot-dev/fragno/issues/64) to get updates, and let us know if you'd
 like to see it supported.
+
+### Kysely Dialects
+
+Fragno's data layer executes queries using the Kysely query builder. This is true even when using
+the Drizzle adapter, which is exclusively used to generate schema files to integrate directly with
+the user's existing Drizzle schema.
+
+Kysely's dialect interface is relatively easy to implement, and there are already many first- and
+third-party dialects available. You can find a list of supported dialects
+[here](https://kysely.dev/docs/dialects).

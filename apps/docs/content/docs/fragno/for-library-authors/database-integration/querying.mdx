@@ -5,70 +5,87 @@ description: Using the DB to query and manipulate data
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The `db` object provides a type-safe query interface for all CRUD operations. All methods are fully
-typed based on your schema.
+Fragno DB queries are type-safe and based on your schema. The recommended way to query is via the
+**Unit of Work (UOW)** helpers on the `this` context, so reads/writes can be **composed** and
+**batched** into a single transaction.
 
-## Accessing the DB
+## Querying with `this.uow(...)`
 
-The `db` is available in both `withDependencies()` and `providesService()`:
+There are two places you’ll use UOWs:
+
+- **Services**: `this.uow(schema)` gives a **restricted UOW** that can schedule operations and await
+  `retrievalPhase` / `mutationPhase`.
+- **Route handlers**: `this.uow(callback, options)` controls execution and runs `executeRetrieve()`
+  / `executeMutate()` (with retries on optimistic conflicts).
+
+See [Transactions](/docs/fragno/for-library-authors/database-integration/transactions) for the full
+pattern.
+
+<Callout title="Use function syntax in services" type="warn">
+  Service methods should be defined with `defineService({ ... })` and use `function (...) { ... }`
+  syntax so `this.uow(...)` is available and typed. Arrow functions (`() => {}`) don’t have their
+  own `this`.
+</Callout>
+
+## Finding Records
+
+### Index-Based Queries
+
+All `find(...)` and `findFirst(...)` queries must specify an index using `whereIndex()`. This
+ensures optimal performance and predictable query patterns.
 
 ```typescript
-const fragmentDef = defineFragment("my-fragment")
-  .extend(withDatabase(mySchema))
-  .withDependencies(({ db }) => {
-    // Use in dependencies
-  })
-  .providesBaseService(({ db, deps }) => {
-    // Use in services
-    return {
-      createComment: async (data) => {
-        return db.create("comment", data);
-      },
-    };
-  });
-```
-
-## Index-Based Queries
-
-All queries in Fragno DB must specify an index using `whereIndex()`. This ensures optimal
-performance and predictable query patterns.
-
-```typescript
-// Query using the primary index (ID)
-const users = await db.find("users", (b) =>
-  b.whereIndex("primary", (eb) => eb("id", "=", "user123")),
-);
-
-// Query using a custom index
-const users = await db.find("users", (b) =>
+const uow = this.uow(mySchema).find("users", (b) =>
   b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
 );
+const [users] = await uow.retrievalPhase;
 ```
 
 <Callout title="Why Index-Based Queries?" type="info">
   Requiring indexes for all queries ensures consistent performance and prevents slow table scans.
 </Callout>
 
-## Finding Records
-
 ### Basic Queries
 
+Find all users (table scan using the primary index):
+
 ```typescript
-// Find all users (using primary index)
-const users = await db.find("users", (b) => b.whereIndex("primary"));
+const uow = this.uow(mySchema).find("users", (b) => b.whereIndex("primary"));
+const [users] = await uow.retrievalPhase;
+```
 
-// Find with filtering
-const activeUsers = await db.find("users", (b) =>
-  b.whereIndex("idx_status", (eb) => eb("status", "=", "active")),
+Select specific columns:
+
+```typescript
+const uow = this.uow(mySchema).find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
+const [userNames] = await uow.retrievalPhase;
+```
+
+Count records:
+
+```typescript
+const uow = this.uow(mySchema).find("users", (b) => b.whereIndex("primary").selectCount());
+const [userCount] = await uow.retrievalPhase;
+```
+
+Use `find(...)` when you want **an array of results**:
+
+```typescript
+const uow = this.uow(mySchema).find("users", (b) =>
+  b.whereIndex("idx_email", (eb) => eb("email", "contains", "@example.com")),
 );
+const [users] = await uow.retrievalPhase;
+// users is User[]
+```
 
-// Select specific columns
-const userNames = await db.find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
-// Returns: Array<{ id: FragnoId; name: string }>
+Use `findFirst(...)` when you want **a single row (or null)**:
 
-// Count records
-const userCount = await db.find("users", (b) => b.whereIndex("primary").selectCount());
-// Returns: number
+```typescript
+const uow = this.uow(mySchema).findFirst("users", (b) =>
+  b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
+);
+const [user] = await uow.retrievalPhase;
+// user is User | null
 ```
 
 ### Cursor-Based Pagination
@@ -77,53 +94,18 @@ Use cursor-based pagination for efficient paging through large result sets. Frag
 `findWithCursor()` which automatically generates cursors from query results:
 
 ```typescript
-// Fetch first page with automatic cursor generation
-const firstPage = await db.findWithCursor("users", (b) =>
-  b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
-);
-// Returns: { items: User[], cursor?: Cursor }
-
-// Fetch next page using the returned cursor (simplified - cursor contains all metadata!)
-if (firstPage.cursor) {
-  const nextPage = await db.findWithCursor("users", (b) => b.after(firstPage.cursor));
-}
-
-// Or be explicit with parameters (they must match the cursor):
-if (firstPage.cursor) {
-  const nextPage = await db.findWithCursor("users", (b) =>
-    b.whereIndex("idx_name").after(firstPage.cursor).orderByIndex("idx_name", "asc").pageSize(10),
-  );
-}
-
-// Access the results
-firstPage.items.forEach((user) => {
-  console.log(user.name);
-});
-
-// Send cursor to client (encode to opaque string)
-const cursorForClient = firstPage.cursor?.encode();
-```
-
-**Manual Cursor Creation** (advanced):
-
-If you need more control, you can manually create cursors:
-
-```typescript
-import { Cursor } from "@fragno-dev/db";
-
-// Fetch page with regular find()
-const users = await db.find("users", (b) =>
+const uow = this.uow(mySchema).findWithCursor("users", (b) =>
   b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
 );
 
-// Manually create cursor from last item
-const lastItem = users[users.length - 1];
-const cursor = new Cursor({
-  indexName: "idx_name",
-  orderDirection: "asc",
-  pageSize: 10,
-  indexValues: { name: lastItem.name },
-});
+const [firstPage] = await uow.retrievalPhase;
+
+// firstPage.items
+// firstPage.cursor?.encode()
+
+// Fetch next page
+const uow2 = this.uow(mySchema).findWithCursor("users", (b) => b.after(firstPage.cursor));
+const [nextPage] = await uow2.retrievalPhase;
 ```
 
 <Callout title="When to Use findWithCursor()" type="info">
@@ -136,12 +118,10 @@ const cursor = new Cursor({
 Sort results using indexes:
 
 ```typescript
-// Order by an index
-const users = await db.find("users", (b) =>
-  b
-    .whereIndex("idx_created", (eb) => eb("status", "=", "active"))
-    .orderByIndex("idx_created", "desc"),
+const uow = this.uow(mySchema).find("users", (b) =>
+  b.whereIndex("idx_created").orderByIndex("idx_created", "desc"),
 );
+const [users] = await uow.retrievalPhase;
 ```
 
 ### Joins
@@ -149,188 +129,78 @@ const users = await db.find("users", (b) =>
 Load related data using joins:
 
 ```typescript
-// Join a single relation
-const postsWithAuthor = await db.find("posts", (b) =>
+const uow = this.uow(mySchema).find("posts", (b) =>
   b.whereIndex("primary").join((j) => j.author()),
 );
-
-// Access joined data
-postsWithAuthor.forEach((post) => {
-  console.log(post.title);
-  console.log(post.author?.name); // Typed as User | null
-});
-
-// Join with filtering and selection
-const posts = await db.find("posts", (b) =>
-  b
-    .whereIndex("primary")
-    .join((j) =>
-      j.author((authorBuilder) =>
-        authorBuilder
-          .whereIndex("idx_status", (eb) => eb("status", "=", "active"))
-          .select(["name"]),
-      ),
-    ),
-);
-
-// Nested joins
-const commentsWithPostAndAuthor = await db.find("comments", (b) =>
-  b
-    .whereIndex("primary")
-    .join((j) => j.post((postBuilder) => postBuilder.join((j2) => j2.author()))),
-);
+const [postsWithAuthor] = await uow.retrievalPhase;
 ```
+
+Note: We currently only support simple left joins.
 
 ## Creating Records
 
 ```typescript
-// Create single record
-const userId = await db.create("users", {
+const uow = this.uow(mySchema);
+
+// Schedule create
+const userId = uow.create("users", {
   name: "Alice",
   email: "alice@example.com",
   age: 25,
 });
-// Returns: FragnoId
 
-// Create multiple records
-const userIds = await db.createMany("users", [
-  { name: "Bob", email: "bob@example.com" },
-  { name: "Carol", email: "carol@example.com" },
-]);
-// Returns: FragnoId[]
+// Wait until the handler commits (or call executeMutate() if you're in a handler)
+await uow.mutationPhase;
 
 // Columns with defaultTo$() are auto-populated
-await db.create("posts", {
+uow.create("posts", {
   title: "My Post",
   content: "Content here",
   userId: userId.toString(),
   // createdAt auto-generated via defaultTo$("now")
 });
+await uow.mutationPhase;
 ```
 
 ## Updating Records
 
 ```typescript
 // Update by ID
-await db.update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
+const uow = this.uow(mySchema);
+uow.update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
+await uow.mutationPhase;
 ```
 
 ## Deleting Records
 
 ```typescript
 // Delete by ID
-await db.delete("users", userId);
+const uow = this.uow(mySchema);
+uow.delete("users", userId);
+await uow.mutationPhase;
 ```
 
-## Transactions (Unit of Work)
+## Transactions
 
-Unit of Work provides atomic transactions with a two-phase approach and optimistic concurrency
-control.
+For atomic operations, batching, and the recommended “routes execute, services enqueue” pattern, see
+[Transactions](/docs/fragno/for-library-authors/database-integration/transactions).
 
-### Two-Phase Transactions with Version Checking
+## Alternative: using `db` from dependencies (no multi-operation transactions)
 
-Fragno DB automatically tracks row versions in a hidden `_version` column. The two-phase pattern
-enables safe concurrent updates:
+You can access the `db` object directly inside the `withDependencies()` callback. Operations execute
+immediately as individual queries. This can be convenient for simple tasks, but you lose the key
+benefits of the UOW pattern:
 
-```typescript
-const uow = db.createUnitOfWork();
+- **No multi-operation atomicity** across several reads/writes (no single transaction boundary).
+- **No optimistic concurrency control** via `.check()` (and no automatic retries).
+- **No durable hooks integration**, because hooks are recorded during the UOW mutation phase.
 
-// Phase 1: Retrieval - fetch data with version info
-uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
-uow.find("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
-
-// Execute retrieval phase
-const [users, accounts] = await uow.executeRetrieve();
-
-// Phase 2: Mutation - modify data with version checks
-const user = users[0];
-const account = accounts[0];
-
-// Use .check() for optimistic locking
-uow.update("users", user.id, (b) => b.set({ lastLogin: new Date() }).check());
-uow.update("accounts", account.id, (b) => b.set({ balance: account.balance + 100 }).check());
-
-// Execute mutations atomically
-const { success } = await uow.executeMutations();
-if (!success) {
-  // Version conflict - another transaction modified the data
-  // Retry the entire transaction
-  console.error("Concurrent modification detected");
-}
-```
-
-**How `.check()` works:**
-
-- Only succeeds if the row's `_version` hasn't changed since retrieval
-- Prevents lost updates in concurrent scenarios
-- Requires a `FragnoId` with version info (not a plain string)
-- Returns `success: false` if any version check fails
-
-<Callout title="Version Checking Requires FragnoId" type="warn">
-  `.check()` only works with `FragnoId` objects from query results. String IDs don't contain version
-  information and will throw an error.
-</Callout>
-
-### Getting Created IDs
-
-```typescript
-const uow = db.createUnitOfWork();
-
-uow.create("users", { name: "Alice", email: "alice@example.com" });
-uow.create("users", { name: "Bob", email: "bob@example.com" });
-
-await uow.executeMutations();
-
-// Get IDs of created records
-const createdIds = uow.getCreatedIds();
-console.log(createdIds[0].toString()); // First user's ID
-console.log(createdIds[1].toString()); // Second user's ID
-```
-
-## Wrapping in Services
-
-DB operations won't be available in services (and thus to the user) by default. You can wrap these
-operations in functions as part of the services object. You're also free to expose the `db` object
-directly to the user if you want to, but make sure to think about encapsulation and security before
-you do.
-
-```typescript
-.providesService(({ db }) => {
-  return {
-    createComment: async (data: { content: string; userId: string; postId: string }) => {
-      // Validation
-      if (data.content.length < 10) {
-        throw new Error("Comment too short");
-      }
-
-      // Create with business logic
-      const id = await db.create("comment", {
-        content: data.content,
-        userId: data.userId,
-        postId: data.postId,
-      });
-
-      return { id: id.toString(), ...data };
-    },
-
-    getCommentsByPost: async (postId: string, limit = 20) => {
-      return db.find("comment", (b) =>
-        b
-          .whereIndex("idx_post", (eb) => eb("postId", "=", postId))
-          .orderByIndex("idx_created", "desc")
-          .pageSize(limit),
-      );
-    },
-  };
-})
-```
+Keep `db` usage for cases where you don’t need transactional composition.
 
 ## Next Steps
 
-- Learn about
-  [Defining Schemas](/docs/fragno/for-library-authors/database-integration/defining-schemas)
 - See
   [Dependencies and Services](/docs/fragno/for-library-authors/features/dependencies-and-services)
-  for using DB in context
+  for using the DB in context
 - Check the
   [example-fragments/fragno-db-library](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)

@@ -111,7 +111,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     });
   })
   .providesService("hookService", ({ defineService }) => {
-    // TODO(Wilco): re-implement this better
     return defineService({
       /**
        * Get pending hook events for processing.
