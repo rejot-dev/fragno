@@ -62,13 +62,25 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
         expect(stdout).toBeDefined();
       });
 
-      test("compiles", { timeout: 30000 }, async () => {
-        const { stdout } = await execAsync("pnpm run types:check", {
-          cwd: tempDir,
-          encoding: "utf8",
-        });
-        console.log(stdout);
-        expect(stdout).toBeDefined();
+      test("type checks (compiles)", { timeout: 30000 }, async () => {
+        try {
+          const { stdout } = await execAsync("pnpm run types:check", {
+            cwd: tempDir,
+            encoding: "utf8",
+          });
+          expect(stdout).toBeDefined();
+        } catch (error: unknown) {
+          // When command fails, stdout and stderr are in the error object
+          const execError = error as { stdout?: string; stderr?: string };
+          console.error("TypeScript type check failed:");
+          if (execError.stdout) {
+            console.error(execError.stdout);
+          }
+          if (execError.stderr) {
+            console.error(execError.stderr);
+          }
+          throw error;
+        }
       });
       /*
       FIXME: Skipping this test for rollup:
