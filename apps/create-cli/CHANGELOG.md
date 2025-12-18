@@ -1,5 +1,12 @@
 # create-fragno
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [68135c4]
+  - @fragno-dev/create@0.1.5
+
 ## 0.1.4
 
 ### Patch Changes
