@@ -1,5 +1,28 @@
 # @fragno-dev/cli
 
+## 0.1.21
+
+### Patch Changes
+
+- ca0db15: fix: resolve TSConfig paths when loading Fragment files
+- fcce048: feat: use "dry run" mode when searching for database schemas to be more lenient when
+  instantiating a Fragment
+- f9ae2d3: fix: database namespace generation
+- Updated dependencies [8429960]
+- Updated dependencies [4d897c9]
+- Updated dependencies [a46b59c]
+- Updated dependencies [bc072dd]
+- Updated dependencies [e46d2a7]
+- Updated dependencies [fcce048]
+- Updated dependencies [147bdd6]
+- Updated dependencies [f9ae2d3]
+- Updated dependencies [f3b7084]
+- Updated dependencies [c3870ec]
+- Updated dependencies [75e298f]
+  - @fragno-dev/db@0.2.0
+  - @fragno-dev/core@0.1.11
+  - @fragno-dev/corpus@0.0.7
+
 ## 0.1.20
 
 ### Patch Changes

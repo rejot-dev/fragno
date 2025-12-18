@@ -1,5 +1,28 @@
 # @fragno-dev/db
 
+## 0.2.0
+
+### Minor Changes
+
+- 4d897c9: Add durable hooks system for database fragments. Hooks are automatically persisted and
+  retried on failure, allowing fragment authors to define side effects that execute after successful
+  transaction commits.
+
+### Patch Changes
+
+- 8429960: Refactor DrizzleAdapter to extend GenericSQLAdapter
+- a46b59c: Add Cloudflare Durable Objects SQL dialect support
+- fcce048: feat: use "dry run" mode when searching for database schemas to be more lenient when
+  instantiating a Fragment
+- 147bdd6: Add migrate() helper and fragment type utilities
+- f9ae2d3: fix: database namespace generation
+- f3b7084: Simplify PreparedMigrations API to auto-execute migrations
+- c3870ec: fix: use RETURNING clause for version conflict detection when affected rows unavailable
+
+  Enable version conflict detection for drivers that support RETURNING but don't report affected
+  rows (e.g., SQLocal). When version checking is enabled, UPDATE/DELETE queries now use RETURNING 1
+  to detect if a row was modified, falling back to affected rows when available.
+
 ## 0.1.15
 
 ### Patch Changes

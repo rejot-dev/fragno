@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/cli",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "exports": {
     ".": {
       "development": "./src/cli.ts",

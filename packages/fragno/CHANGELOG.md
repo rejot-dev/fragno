@@ -1,5 +1,17 @@
 # @fragno-dev/core
 
+## 0.1.11
+
+### Patch Changes
+
+- bc072dd: fix: export StandardSchema interface
+- e46d2a7: fix: set `workerd` package exports so Cloudflare Workers import the server bundle while
+  server-side rendering instead of the browser bundle.
+- fcce048: feat: use "dry run" mode when searching for database schemas to be more lenient when
+  instantiating a Fragment
+- 147bdd6: Add migrate() helper and fragment type utilities
+- 75e298f: changed export for development builds
+
 ## 0.1.10
 
 ### Patch Changes
