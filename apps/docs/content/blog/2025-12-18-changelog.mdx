@@ -1,0 +1,194 @@
+---
+title: "Fragno Changelog: Durable Hooks, Improved Cloudflare Support"
+description:
+  "This release introduces durable hooks for reliable side effects, Cloudflare Durable Objects
+  support, and improved developer experience."
+date: "2025-12-18"
+author: "Wilco Kruijer"
+image: "blog-2025-12-18-changelog.jpg"
+---
+
+<Callout type="idea">
+  Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and a
+  database schema into a single package. The goal is to let library authors ship complete features
+  across the full stack.
+  <p>See the [GitHub repository](https://github.com/rejot-dev/fragno) for details.</p>
+</Callout>
+
+# Durable Hooks, Cloudflare Support, and More
+
+Over the past few weeks we've been working on a release focused on Fragno's database layer. The
+headline changes are a durable hooks system, better Cloudflare Durable Objects support, and a set of
+smaller improvements that make database-backed fragments nicer to build and run.
+
+## Durable Hooks
+
+The main addition is **durable hooks** for database fragments. They are a way to register side
+effects during a transaction and run them after a successful commit, with persistence and retries
+built in.
+
+When a fragment needs to trigger an external action (send an email, update a search index, call a
+webhook), you quickly run into a practical question: what happens if your database transaction
+commits, but the side effect fails? The common alternatives tend to be some mix of ad hoc retry
+logic, a job queue, or compensating code that is easy to get subtly wrong.
+
+Durable hooks make that flow explicit. When you trigger a hook during a transaction, the trigger is
+stored in the database as part of that same transaction. After the commit, the hook runs. If it
+fails, it will be retried with exponential backoff (customizable by the user).
+
+### How It Works
+
+Here's how the mailing list fragment uses hooks to notify subscribers:
+
+```typescript
+export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("mailing-list")
+  .extend(withDatabase(mailingListSchema))
+  .provideHooks(({ defineHook, config }) => ({
+    onSubscribe: defineHook(async function (payload: { email: string }) {
+      // onSubscribe is a user-provided function
+      await config.onSubscribe?.(this.nonce, payload.email);
+    }),
+  }))
+  .providesBaseService(({ defineService }) => {
+    return defineService({
+      subscribe: async function (email: string) {
+        // ... validation and database operations ...
+
+        const id = uow.create("subscriber", { email, subscribedAt });
+
+        // Trigger hook, persisted automatically with the transaction
+        uow.triggerHook("onSubscribe", { email });
+
+        await uow.mutationPhase;
+
+        return { id, email, subscribedAt };
+      },
+    });
+  })
+  .build();
+```
+
+The key point is that the trigger is recorded alongside your data changes, and the execution happens
+after the commit. If `config.onSubscribe()` fails, the hook will be retried later. Each execution
+also includes a unique `nonce` for idempotency checks, so retries are safe for operations like API
+calls.
+
+We're dog fooding the mailing list fragment on this website (subscribe on the homepage). Find the
+code on GitHub:
+
+- Mailing list fragment definition:
+  [definition.ts](https://github.com/rejot-dev/fragno/blob/main/packages/fragment-mailing-list/src/definition.ts)
+- Config in Docs app:
+  [mailing-list.ts](https://github.com/rejot-dev/fragno/blob/main/apps/docs/app/fragno/mailing-list.ts)
+- Implementation in Durable Object:
+  [mailing-list.do.ts](https://github.com/rejot-dev/fragno/blob/main/apps/docs/workers/mailing-list.do.ts)
+
+## Cloudflare Durable Objects Support
+
+Fragno now has improved support for Cloudflare Workers with Durable Objects. The new
+`DurableObjectDialect` lets you use Fragno's database layer on top of Durable Objects' SQL storage.
+
+```typescript
+import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+
+const adapter = new DrizzleAdapter({
+  driver: new GenericSQLDriver({
+    dialect: new DurableObjectDialect(env.DURABLE_OBJECT),
+    // ... other config
+  }),
+});
+```
+
+### Migration Helper
+
+Running migrations inside Durable Objects has a few constraints, so this release also adds a
+`migrate()` helper designed for that environment. It gives you an entry point for executing
+migrations:
+
+```typescript
+import { DurableObject } from "cloudflare:workers";
+import { migrate } from "@fragno-dev/db";
+
+export class MailingList extends DurableObject {
+  #fragment: MailingListFragment;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+
+    this.#fragment = createMailingListServer({ env, state });
+
+    // Run migrations automatically on initialization
+    state.blockConcurrencyWhile(async () => {
+      await migrate(this.#fragment);
+    });
+  }
+}
+```
+
+## Kysely-Compatible Query Execution API
+
+We've also refactored the database layer to implement a Kysely-compatible query execution API. That
+change lets Fragno reuse the existing ecosystem of Kysely dialects, rather than re-implementing the
+same database-specific details in multiple places.
+
+Previously, `DrizzleAdapter` implemented its own query execution logic. Now, it extends
+`GenericSQLAdapter`, which implements a Kysely-like interface for query execution. This means you
+can use any Kysely dialect directly with Fragno, whether it's an official dialect , or a
+community-built dialect.
+
+```typescript
+import { SqliteDialect } from "kysely";
+import { DrizzleAdapter, BetterSQLite3DriverConfig } from "@fragno-dev/db";
+
+const adapter = new DrizzleAdapter({
+  dialect: new SqliteDialect(),
+  driverConfig: new BetterSQLite3DriverConfig(),
+});
+```
+
+This refactor also makes it easier to add support for new databases. The new `DurableObjectDialect`
+for Cloudflare Durable Objects, for example, implements Kysely's `Dialect` interface, allowing it to
+work seamlessly with Fragno's query execution system. [^1]
+
+[^1]:
+    The Durable Object dialect is adapted from Ben Allfree's
+    [kysely-do](https://github.com/benallfree/kysely-do), but we added support for transactions.
+
+## Improved Developer Experience
+
+### Fragment Loading Without Database Connections
+
+The CLI can now load fragments without requiring an active database connection or environment
+variables. This "dry run" mode lets the CLI extract schema information and generate migration files
+without fully initializing your fragment.
+
+Previously, running `fragno-cli db generate` required you to provide all environment variables and
+ensure your database was accessible. This was inconvenient during development or in CI environments
+where you might want to run SQL migrations.
+
+Now, the CLI intelligently loads fragment files by:
+
+- Properly resolving TypeScript path mappings (`@/` aliases and `tsconfig.json` configurations)
+- Using dry run mode to skip full fragment initialization
+- Extracting only the schema information needed for code generation
+
+## Bug Fixes and Improvements
+
+### Version Conflict Detection
+
+Version conflict detection now works correctly with SQL drivers that support `RETURNING` clauses but
+don't report affected rows (like SQLocal). UPDATE and DELETE queries now use `RETURNING 1` to detect
+row modifications when needed, ensuring optimistic concurrency control works reliably across all
+supported database adapters.
+
+### Cloudflare Workers Bundle Fix
+
+Fixed an issue where Cloudflare Workers would incorrectly load the browser bundle instead of the
+server bundle during server-side rendering. The `workerd` export condition is now properly
+configured in `@fragno-dev/core`, ensuring the correct bundle is loaded in Cloudflare's runtime.
+
+## Learn More
+
+That's it for now! If you want to learn more, you're already in the right place. Check out the
+[documentation](/docs) for more information and please star the
+[GitHub repository](https://github.com/rejot-dev/fragno)!
