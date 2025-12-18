@@ -1,0 +1,248 @@
+---
+title: Transactions
+description: Use the Unit of Work (UOW) helpers to batch reads/writes and keep handlers atomic
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+In the Fragno database layer, transactions are built around a **two-phase Unit of Work (UOW)**
+pattern:
+
+- **Retrieval phase**: schedule reads, then execute them together
+- **Mutation phase**: schedule writes, then execute them atomically
+
+The important architectural rule is:
+
+- **Route handlers control transaction execution**
+- **Services only enqueue database operations and wait for execution**
+
+This lets you call **multiple service methods inside one transaction**, and the DB work will be
+batched.
+
+## Route handlers: control the transaction boundary
+
+In route handlers (or any “handler context”), you get a helper `this.uow(...)` that:
+
+- creates a UOW for the request
+- lets you explicitly run `executeRetrieve()` and `executeMutate()`
+- **automatically retries** the whole callback on optimistic concurrency conflicts
+- **awaits promises** in the returned object (one level deep)
+
+Example pattern (from the mailing-list fragment):
+
+```typescript
+const result = await this.uow(async ({ executeRetrieve }) => {
+  const resultPromise = services.getSubscribers({
+    search,
+    sortBy,
+    sortOrder,
+    pageSize,
+    cursor,
+  });
+
+  // Executes all reads scheduled by services
+  await executeRetrieve();
+
+  // Return the promise; Fragno awaits it for you (one level deep)
+  return resultPromise;
+});
+```
+
+### Reads vs writes
+
+- **Read-only work**: call `executeRetrieve()`
+- **Write work (create/update/delete)**: call `executeMutate()`
+  - If you didn’t call `executeRetrieve()` yet, `executeMutate()` will run it first.
+
+## Services: enqueue work on a restricted UOW
+
+In services, you typically **don’t start transactions**. Instead you get a restricted UOW via
+`this.uow(schema)`:
+
+- **Important**: Services should be defined via `defineService(...)` and use `function` syntax (not
+  arrow functions) so `this` is correctly bound and typed.
+
+<Callout title="Use defineService() + function syntax" type="warn">
+  To use `this.uow(...)` in services, define your service methods via `defineService({ ... })` and
+  write them with `function (...) { ... }` (or `async function (...) { ... }`). Arrow functions
+  (`() => {}`) don’t have their own `this`, so `this.uow` won’t be available/typed.
+</Callout>
+
+- you can call things like `find(...)`, `findWithCursor(...)`, `create(...)`, `update(...)`, etc.
+- you can `await uow.retrievalPhase` / `await uow.mutationPhase`
+- you **cannot** commit/execute phases yourself (that stays in the handler)
+
+Example pattern (mailing-list `subscribe()`):
+
+```typescript
+subscribe: async function (email: string) {
+  const uow = this.uow(mailingListSchema).find("subscriber", (b) =>
+    b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
+  );
+
+  const [existing] = await uow.retrievalPhase;
+  if (existing.length > 0) {
+    return { alreadySubscribed: true };
+  }
+
+  uow.create("subscriber", { email, subscribedAt: new Date() });
+
+  // Wait for the handler to run executeMutate()
+  await uow.mutationPhase;
+
+  return { alreadySubscribed: false };
+};
+```
+
+### Why this design?
+
+Because services can’t “own” the transaction, you can safely do:
+
+- call multiple service methods
+- execute retrieval once
+- execute mutation once
+
+…and the underlying DB operations are batched and committed atomically by the handler.
+
+## Optimistic concurrency with `.check()`
+
+Fragno DB supports **optimistic concurrency control** using a hidden `_version` column. When you
+read a row through the ORM/UOW, its `id` is a `FragnoId` that also carries version information.
+
+Calling `.check()` on a mutation tells Fragno:
+
+> “Only apply this update/delete if the row’s version is still the one I read.”
+
+If the row was modified by another transaction in between, the mutation phase will fail and the
+handler-level `this.uow(...)` will retry the whole callback (up to the retry policy).
+
+### `update(...).check()` / `delete(...).check()`
+
+You can enable version checking on updates and deletes:
+
+```typescript
+updateUser: async function (userId: FragnoId) {
+  const uow = this.uow(mySchema);
+  uow.update("users", userId, (b) => b.set({ name: "New name" }).check());
+  await uow.mutationPhase;
+}
+```
+
+### Standalone `uow.check(table, id)`
+
+Sometimes you want to assert that a record hasn’t changed _without_ updating it (e.g. guard related
+rows before writing):
+
+```typescript
+transfer: async function (from: FragnoId, to: FragnoId) {
+  const uow = this.uow(mySchema);
+  uow.check("accounts", from);
+  uow.check("accounts", to);
+  uow.create("transfers", { fromAccountId: from.toString(), toAccountId: to.toString() });
+  await uow.mutationPhase;
+}
+```
+
+### Important: `.check()` requires a `FragnoId`, not a string
+
+`.check()` **throws** if you try to use it with a plain string ID, because a string doesn’t contain
+version information:
+
+- ✅ `uow.update("users", user.id, (b) => b.set(...).check())` (where `user.id` came from a query)
+- ❌ `uow.update("users", "user-123", (b) => b.set(...).check())`
+
+You _can_ update/delete using a string ID **without** `.check()` (no version guard), but that means
+last-write-wins.
+
+### End-to-end example: handler controls execution, service performs the transfer
+
+This is the same “two-phase + `.check()`” flow as the classic UOW example, but structured in the
+recommended way:
+
+- **Route handler**: owns the transaction boundary and phase execution
+- **Service**: enqueues reads/writes and uses `.check()` for optimistic locking
+
+```typescript
+import { ExponentialBackoffRetryPolicy } from "@fragno-dev/db";
+
+// Route handler (handler context) - controls transaction execution
+defineRoute({
+  method: "POST",
+  path: "/transfer",
+  handler: async function ({ input }, { json }) {
+    const { fromAccountId, toAccountId, amount } = await input.valid();
+
+    const result = await this.uow(
+      async ({ executeMutate }) => {
+        const resultPromise = services.transferBetweenAccounts({
+          fromAccountId,
+          toAccountId,
+          amount,
+        });
+
+        // Executes retrieval automatically (if needed), then executes writes atomically.
+        await executeMutate();
+
+        return resultPromise;
+      },
+      {
+        // Custom retry policy for optimistic concurrency conflicts
+        retryPolicy: new ExponentialBackoffRetryPolicy({
+          maxRetries: 5,
+          initialDelayMs: 10,
+          maxDelayMs: 250,
+        }),
+      },
+    );
+
+    return json(result);
+  },
+});
+
+defineService({
+  transferBetweenAccounts: async function (args: {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+  }) {
+    const { fromAccountId, toAccountId, amount } = args;
+
+    // Phase 1: schedule retrievals
+    const uow = this.uow(mySchema)
+      .findFirst("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", fromAccountId)))
+      .findFirst("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", toAccountId)));
+
+    // Wait until the handler runs executeMutate() (it runs retrieval first if needed)
+    const [from, to] = await uow.retrievalPhase;
+
+    if (!from || !to) {
+      return { ok: false };
+    }
+
+    if (from.balance < amount) {
+      return { ok: false };
+    }
+
+    // Phase 2: schedule mutations (with version checks)
+    uow.update("accounts", from.id, (b) => b.set({ balance: from.balance - amount }).check());
+    uow.update("accounts", to.id, (b) => b.set({ balance: to.balance + amount }).check());
+
+    // Wait until the handler commits the transaction
+    // On optimistic conflicts, the handler automatically retries the whole transaction.
+    await uow.mutationPhase;
+
+    return { ok: true };
+  },
+});
+```
+
+## Retries and side effects
+
+`this.uow(...)` automatically retries the whole callback on optimistic concurrency conflicts.
+
+That means you should **avoid side effects** (sending emails, webhooks, etc.) inside the UOW
+callback or service code that runs during the transaction.
+
+Use [Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks) for that:
+they record the side effect request in the same transaction and execute it **after commit**, with
+retries.

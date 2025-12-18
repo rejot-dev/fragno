@@ -15,7 +15,10 @@ their existing database connection.
 - **Type-Safe ORM**: Full TypeScript type inference for queries
 - **User-Owned Database**: Fragment users provide their database adapter
 - **ORM Agnostic**: Works with Kysely or Drizzle
+- **Transactional**: All database operations support ACID transactions
 - **Automatic Migrations**: Schema versioning and migration generation
+- **Durable Hooks** (outbox pattern): Trigger durable hooks when database operations are performed,
+  allowing the user to take action after a successful commit.
 - **Namespaced Tables**: Prevents conflicts with user tables
 
 <Callout title="Optional Feature" type="info">
@@ -45,18 +48,22 @@ export interface CommentFragmentConfig {
 
 const commentFragmentDef = defineFragment<CommentFragmentConfig>("comment-fragment")
   .extend(withDatabase(commentSchema))
-  .providesBaseService(({ db }) => {
-    return {
-      createComment: async (data) => {
-        const id = await db.create("comment", data);
+  .providesBaseService(({ defineService }) => {
+    return defineService({
+      createComment: async function (data) {
+        const uow = this.uow(commentSchema);
+        const id = uow.create("comment", data);
+        await uow.mutationPhase;
         return { id: id.toJSON(), ...data };
       },
-      getComments: async (postId: string) => {
-        return db.find("comment", (b) =>
+      getComments: async function (postId: string) {
+        const uow = this.uow(commentSchema).find("comment", (b) =>
           b.whereIndex("idx_post", (eb) => eb("postId", "=", postId)),
         );
+        const [comments] = await uow.retrievalPhase;
+        return comments;
       },
-    };
+    });
   })
   .build();
 
@@ -78,6 +85,39 @@ export function createCommentFragment(
   `DatabaseAdapter` in the options.
 </Callout>
 
+## Querying using transactions
+
+In Fragno DB, database operations are always executed through a **Unit of Work (UOW)** transaction
+pattern. Services enqueue reads/writes on a UOW, and the route handler executes them as a single
+transaction.
+
+This design is important because it:
+
+- **Makes composition easy**: a handler can combine multiple service calls (even across multiple
+  Fragments) and commit them together
+- **Amortises database round-trips**: work can be batched into fewer DB interactions for significant
+  speed-ups for most applications
+- **Doesn't block the database**: interactive transactions can block the database with locks, in the
+  UOW pattern this cannot happen.
+- **Enables Durable Hooks**: hooks are recorded in the same transaction and run after commit
+  ([Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks))
+
+## `this` context in services vs handlers
+
+- **Services** get `this.uow(schema)`: a restricted UOW used to schedule operations and await
+  `retrievalPhase` / `mutationPhase`.
+- **Handlers** get `this.uow(callback, options)`: controls the transaction boundary and executes the
+  phases (including retries on optimistic conflicts).
+
+See [Transactions](/docs/fragno/for-library-authors/database-integration/transactions) for the full
+pattern and examples.
+
+<Callout title="Why defineService()?" type="info">
+  `defineService()` is required to correctly bind and type the service `this` context. It ensures
+  `this.uow(...)` is available at runtime, and TypeScript understands the `this` type inside service
+  methods (when using `function () {}` syntax).
+</Callout>
+
 ## Next Steps
 
 - Learn about
@@ -85,6 +125,9 @@ export function createCommentFragment(
   the append-only log approach
 - Explore the [Querying](/docs/fragno/for-library-authors/database-integration/querying) API for
   CRUD operations
+- Learn how to structure
+  [Transactions](/docs/fragno/for-library-authors/database-integration/transactions) and side
+  effects with [Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks)
 - See the
   [example-fragments/fragno-db-library](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)
   for a complete example
