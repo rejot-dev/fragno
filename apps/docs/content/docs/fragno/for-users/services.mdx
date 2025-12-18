@@ -31,10 +31,15 @@ export async function myBackgroundProcess() {
 ## Calling Route Handlers Directly
 
 In some cases, you may need to call a Fragment's route handler directly from your server-side code
-and receive a full `Response` object with headers (such as `Set-Cookie`). This is particularly
-useful in frameworks like React Router and Remix where you handle requests in server actions.
+and either:
 
-Use `callRoute()` instead of services when you need:
+- get a **typed parsed result** (`callRoute()`), or
+- get the **raw `Response`** (`callRouteRaw()`) to forward headers/cookies.
+
+This is particularly useful in frameworks like React Router and Remix where you handle requests in
+server actions.
+
+Use route calls instead of services when you need:
 
 - Access to response headers (cookies, custom headers, etc.)
 - Full control over the HTTP response
@@ -48,8 +53,8 @@ import { authFragment } from "../lib/auth-fragment-server";
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
 
-  // Call the route handler directly by method and path
-  const response = await authFragment.callRoute("POST", "/sign-in", {
+  // Use callRouteRaw() when you want to return a real Response (with headers)
+  const response = await authFragment.callRouteRaw("POST", "/sign-in", {
     body: {
       email: formData.get("email") as string,
       password: formData.get("password") as string,
@@ -68,8 +73,8 @@ import { authFragment } from "@/lib/auth-fragment-server";
 import { cookies } from "next/headers";
 
 export async function signIn(formData: FormData) {
-  // Call the route handler directly by method and path
-  const response = await authFragment.callRoute("POST", "/sign-in", {
+  // Use callRouteRaw() when you need response headers (e.g. Set-Cookie)
+  const response = await authFragment.callRouteRaw("POST", "/sign-in", {
     body: {
       email: formData.get("email"),
       password: formData.get("password"),
@@ -91,7 +96,8 @@ export async function signIn(formData: FormData) {
 ### API Reference
 
 ```typescript
-fragment.callRoute(method, path, options?): Promise<Response>
+fragment.callRoute(method, path, options?): Promise<FragnoResponse<TOutput>>
+fragment.callRouteRaw(method, path, options?): Promise<Response>
 ```
 
 **Parameters:**
@@ -104,12 +110,17 @@ fragment.callRoute(method, path, options?): Promise<Response>
   - `query`: Query parameters as object or URLSearchParams
   - `headers`: Request headers as object or Headers
 
-**Returns:** A `Promise<Response>` with the full HTTP response including headers
+**Returns:**
+
+- `callRoute()`: a `Promise<FragnoResponse<T>>` (discriminated union:
+  `"json" | "jsonStream" | "empty" | "error"`)
+- `callRouteRaw()`: a `Promise<Response>` (raw fetch response, for forwarding headers/cookies)
 
 **Type Safety:** The method and path parameters are strongly typed based on the fragment's available
 routes. TypeScript will provide autocomplete and type checking for the path and options.
 
 <Callout type="info">
-  Unlike services, `callRoute()` validates input using the route's schema and provides full HTTP
-  semantics including status codes, headers, and response body.
+  Unlike services, both `callRoute()` and `callRouteRaw()` validate input using the route's schema.
+  Use `callRoute()` for a parsed, typed result; use `callRouteRaw()` when you need the raw
+  `Response` (headers/cookies/streaming control).
 </Callout>
