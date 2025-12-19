@@ -1287,8 +1287,6 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     );
     child.#coordinator.setAsRestricted(this, this.#coordinator);
 
-    // Share state with parent
-    child.#state = this.#state;
     child.#retrievalOps = this.#retrievalOps;
     child.#mutationOps = this.#mutationOps;
     child.#retrievalResults = this.#retrievalResults;
@@ -1375,7 +1373,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   }
 
   get state(): UOWState {
-    return this.#state;
+    return this.#coordinator.parent?.state ?? this.#state;
   }
 
   get name(): string | undefined {
@@ -1536,9 +1534,9 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * Add a retrieval operation (used by TypedUnitOfWork)
    */
   addRetrievalOperation(op: RetrievalOperation<AnySchema>): number {
-    if (this.#state !== "building-retrieval") {
+    if (this.state !== "building-retrieval") {
       throw new Error(
-        `Cannot add retrieval operation in state ${this.#state}. Must be in building-retrieval state.`,
+        `Cannot add retrieval operation in state ${this.state}. Must be in building-retrieval state.`,
       );
     }
     this.#retrievalOps.push(op);
@@ -1550,7 +1548,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * Add a mutation operation (used by TypedUnitOfWork)
    */
   addMutationOperation(op: MutationOperation<AnySchema>): void {
-    if (this.#state === "executed") {
+    if (this.state === "executed") {
       throw new Error(`Cannot add mutation operation in executed state.`);
     }
     this.#mutationOps.push(op);
@@ -1565,9 +1563,9 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * @returns Array of FragnoIds in the same order as create() calls
    */
   getCreatedIds(): FragnoId[] {
-    if (this.#state !== "executed") {
+    if (this.state !== "executed") {
       throw new Error(
-        `getCreatedIds() can only be called after executeMutations(). Current state: ${this.#state}`,
+        `getCreatedIds() can only be called after executeMutations(). Current state: ${this.state}`,
       );
     }
 
