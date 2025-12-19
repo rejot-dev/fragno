@@ -5,7 +5,7 @@
 
 
 # Regex to validate the type pattern
-REGEX="^((Merge[ a-z-]* branch.*)|(Revert*)|((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.*\))?!?: .*))"
+REGEX="^((Merge[ a-z-]* branch.*)|(Revert*)|(fixup! .*)|((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.*\))?!?: .*))"
 
 FILE=`cat $1` # File containing the commit message
 
