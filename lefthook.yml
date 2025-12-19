@@ -15,3 +15,8 @@ pre-commit:
         pnpm exec turbo run --output-logs new-only --no-daemon --filter='!./example-apps/**'
         --filter='!@fragno-dev/create' build types:check test
       glob: "{*.ts,*.tsx,tsconfig.json}"
+
+commit-msg:
+  commands:
+    "Check commit message format":
+      run: scripts/commit-msg {1}
