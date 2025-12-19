@@ -28,6 +28,7 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
         const uow = this.uow(mailingListSchema).find("subscriber", (b) =>
           b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
         );
+
         const [existing] = await uow.retrievalPhase;
 
         if (existing.length > 0) {
@@ -47,8 +48,13 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
 
         await uow.mutationPhase;
 
+        const internalId = uow
+          .getCreatedIds()
+          .find((createdId) => createdId.externalId === id.externalId)?.internalId;
+
         return {
           id: id.toString(),
+          internalId,
           email,
           subscribedAt,
           alreadySubscribed: false,

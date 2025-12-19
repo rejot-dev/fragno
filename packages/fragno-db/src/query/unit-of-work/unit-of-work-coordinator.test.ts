@@ -860,4 +860,58 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     expect(createdIds).toHaveLength(1);
     expect(createdIds[0].externalId).toBe(productId.externalId);
   });
+
+  it("should preserve internal IDs in child UOW when using two-phase pattern with mutationPhase await", async () => {
+    const testSchema = schema((s) =>
+      s.addTable("orders", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("customerId", "string")
+          .addColumn("total", "integer"),
+      ),
+    );
+
+    const executor = createMockExecutor();
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
+
+    // Service method that uses two-phase pattern (common with hooks/async operations)
+    // This simulates a service that creates a record and needs to return the internal ID
+    const createOrder = async (customerId: string, total: number) => {
+      const childUow = parentUow.restrict();
+      const typedUow = childUow.forSchema(testSchema);
+
+      const orderId = typedUow.create("orders", { customerId, total });
+
+      // Service awaits mutationPhase to coordinate with parent execution
+      await childUow.mutationPhase;
+
+      // After mutationPhase resolves, service should be able to get internal IDs
+      const createdIds = childUow.getCreatedIds();
+      const foundId = createdIds.find((id) => id.externalId === orderId.externalId);
+
+      return {
+        externalId: orderId.externalId,
+        internalId: foundId?.internalId,
+      };
+    };
+
+    // Handler orchestrates the service call and mutation execution
+    const handler = async () => {
+      const orderPromise = createOrder("customer-123", 9999);
+
+      // Execute mutations - this should resolve the service's mutationPhase await
+      await parentUow.executeMutations();
+
+      // Now the service can complete and return the result with internal ID
+      return await orderPromise;
+    };
+
+    const result = await handler();
+
+    // The key assertion: internal ID should be defined (not undefined)
+    // This tests that child UOW preserves shared reference to parent's createdInternalIds array
+    expect(result.internalId).toBeDefined();
+    expect(typeof result.internalId).toBe("bigint");
+    expect(result.internalId).toBeGreaterThan(0n);
+  });
 });

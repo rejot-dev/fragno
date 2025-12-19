@@ -1,4 +1,4 @@
-import { test, describe, expect, beforeEach, vi, assert } from "vitest";
+import { test, describe, expect, beforeEach, vi, assert, beforeAll } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { mailingListFragmentDefinition } from "./definition";
 import { instantiate } from "@fragno-dev/core";
@@ -136,6 +136,10 @@ describe("Mailing List Fragment", async () => {
   });
 
   describe("Routes", () => {
+    beforeAll(async () => {
+      await testContext.resetDatabase();
+    });
+
     describe("POST /subscribe", () => {
       test("should call onSubscribe callback", async () => {
         const response = await fragment.callRoute("POST", "/subscribe", {
@@ -149,10 +153,18 @@ describe("Mailing List Fragment", async () => {
           // Date is returned as a string because of json serialization
           subscribedAt: expect.any(String),
           alreadySubscribed: false,
+          internalId: expect.any(Number),
         });
 
         expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");
         expect(onSubscribeSpy).toHaveBeenCalledTimes(1);
+
+        const result = await fragments["mailing-list"].db.find("subscriber", (b) =>
+          b.whereIndex("primary"),
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0].email).toBe("test@example.com");
       });
     });
 

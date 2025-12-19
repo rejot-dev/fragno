@@ -530,6 +530,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     const createdPostIds = createPostUow.getCreatedIds();
     expect(createdPostIds).toHaveLength(1);
+    expect(createdPostIds[0].internalId).toBeDefined();
     const postId = createdPostIds[0];
 
     // Retrieve the specific post we just created by its ID

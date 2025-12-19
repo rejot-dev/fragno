@@ -1500,7 +1500,9 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       this.#state = "executed";
 
       if (result.success) {
-        this.#createdInternalIds = result.createdInternalIds;
+        // Mutate array in-place to preserve shared references with child UOWs
+        this.#createdInternalIds.length = 0;
+        this.#createdInternalIds.push(...result.createdInternalIds);
       }
 
       // Resolve the mutation phase promise to unblock waiting service methods

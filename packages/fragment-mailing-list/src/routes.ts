@@ -97,6 +97,7 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           email: z.string(),
           subscribedAt: z.date(),
           alreadySubscribed: z.boolean(),
+          internalId: z.number().optional(),
         }),
         handler: async function ({ input }, { json }) {
           const { email } = await input.valid();
@@ -107,7 +108,10 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
             return result;
           });
 
-          return json(result);
+          return json({
+            ...result,
+            internalId: Number(result.internalId),
+          });
         },
       }),
     ];
