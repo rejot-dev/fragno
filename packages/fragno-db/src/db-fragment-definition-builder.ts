@@ -675,10 +675,7 @@ export class DatabaseFragmentDefinitionBuilder<
           nonce: string;
           currentAttempt: number;
         }) => Promise<TResult> | TResult,
-        execOptions?: Omit<
-          ExecuteRestrictedUnitOfWorkOptions,
-          "createUnitOfWork" | "onBeforeMutate" | "onSuccess"
-        >,
+        execOptions?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
       ): Promise<AwaitedPromisesInObject<TResult>> {
         const currentStorage = storage.getStore();
         if (!currentStorage) {
@@ -700,6 +697,10 @@ export class DatabaseFragmentDefinitionBuilder<
           return callback(context);
         };
 
+        // Chain user callbacks with internal hook system callbacks
+        const userOnBeforeMutate = execOptions?.onBeforeMutate;
+        const userOnSuccess = execOptions?.onSuccess;
+
         return executeRestrictedUnitOfWork(wrappedCallback, {
           ...execOptions,
           createUnitOfWork: () => {
@@ -713,8 +714,26 @@ export class DatabaseFragmentDefinitionBuilder<
             }
             return currentStorage.uow as UnitOfWork;
           },
-          onBeforeMutate: hooksConfig ? (uow) => prepareHookMutations(uow, hooksConfig) : undefined,
-          onSuccess: hooksConfig ? () => processHooks(hooksConfig) : undefined,
+          onBeforeMutate: (uow) => {
+            // Call internal hook system callback first
+            if (hooksConfig) {
+              prepareHookMutations(uow, hooksConfig);
+            }
+            // Then call user callback if provided
+            if (userOnBeforeMutate) {
+              userOnBeforeMutate(uow);
+            }
+          },
+          onSuccess: async (uow) => {
+            // Call internal hook system callback first
+            if (hooksConfig) {
+              await processHooks(hooksConfig);
+            }
+            // Then call user callback if provided
+            if (userOnSuccess) {
+              await userOnSuccess(uow);
+            }
+          },
         });
       }
 

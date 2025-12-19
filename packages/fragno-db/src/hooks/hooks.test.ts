@@ -53,25 +53,37 @@ describe("Hook System", () => {
       const hooks: HooksMap = {
         onTest: vi.fn(),
       };
+      const onSuccess = vi.fn();
+      const onBeforeMutate = vi.fn();
 
       await internalFragment.inContext(async function () {
-        await this.uow(async ({ forSchema, executeMutate }) => {
-          const uow = forSchema(internalSchema, hooks);
+        await this.uow(
+          async ({ forSchema, executeMutate }) => {
+            const uow = forSchema(internalSchema, hooks);
 
-          // Trigger a hook
-          uow.triggerHook("onTest", { data: "test" });
+            // Trigger a hook
+            uow.triggerHook("onTest", { data: "test" });
 
-          // Prepare hook mutations
-          prepareHookMutations(uow, {
-            hooks,
-            namespace,
-            internalFragment,
-            defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-          });
+            // Prepare hook mutations
+            prepareHookMutations(uow, {
+              hooks,
+              namespace,
+              internalFragment,
+              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            });
 
-          await executeMutate();
-        });
+            await executeMutate();
+          },
+          {
+            onSuccess,
+            onBeforeMutate,
+          },
+        );
       });
+
+      // Verify callbacks were executed
+      expect(onSuccess).toHaveBeenCalledOnce();
+      expect(onBeforeMutate).toHaveBeenCalledOnce();
 
       // Verify hook was created
       const events = await internalFragment.inContext(async function () {
