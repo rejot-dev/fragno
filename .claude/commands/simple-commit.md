@@ -69,6 +69,9 @@ session.
   - Build tooling or CI updates
   - Development workflow improvements
   - Example app changes (unless they demonstrate new features)
+- In changesets, wrap line breaks at 100 characters.
+- Also add feat/fix/etc prefix to changeset description.
+- ALWAYS use patch release unless explicitly asked for a major or minor release.
 
 The goal is a git history that tells a clear story and allows easy debugging, reverting, and
 cherry-picking.
