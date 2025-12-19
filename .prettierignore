@@ -7,3 +7,4 @@ example-apps/stripe-webshop/src/db/auth.schema.ts
 example-apps/stripe-webshop/src/db/subscriptions.schema.ts
 example-apps/stripe-webshop/src/routeTree.gen.ts
 packages/stripe/src/webhook/test-events
+worker-configuration.d.ts
