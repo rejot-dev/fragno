@@ -246,3 +246,16 @@ callback or service code that runs during the transaction.
 Use [Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks) for that:
 they record the side effect request in the same transaction and execute it **after commit**, with
 retries.
+
+## Error handling
+
+**Handlers are responsible for error handling**, not services:
+
+- **Handlers** call `executeRetrieve()` / `executeMutate()` and should catch errors from these calls
+- **Services** await `retrievalPhase` / `mutationPhase` to coordinate their logic, but don't catch
+  errors
+- If an execute method throws, the handler catches it; service promises waiting on phase execution
+  are abandoned
+
+This design keeps error handling centralized at the transaction boundary (the handler), where you
+have the full context to decide how to respond to the user.

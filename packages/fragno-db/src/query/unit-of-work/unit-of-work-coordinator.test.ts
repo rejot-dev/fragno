@@ -769,7 +769,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     expect(child1.nonce).not.toBe(child2.nonce);
   });
 
-  it.skip("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {
+  it("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {
     const testSchema = schema((s) =>
       s.addTable("settings", (t) =>
         t
