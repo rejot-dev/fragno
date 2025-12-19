@@ -264,7 +264,7 @@ export function FragnoExplainer() {
               </div>
 
               {/* Bottom row: button (only for fragment layer) */}
-              {index === layers.length - 1 && example?.link && (
+              {index === layers.length - 1 && "link" in example && (
                 <Link
                   to={example.link}
                   className="inline-flex max-w-md items-center justify-center gap-4 self-center rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
