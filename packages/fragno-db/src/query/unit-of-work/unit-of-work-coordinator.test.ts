@@ -828,4 +828,36 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     expect(await deferred.promise).toContain('relation "settings" does not exist');
   });
+
+  it("should allow child UOW to call getCreatedIds() after parent executes mutations", async () => {
+    const testSchema = schema((s) =>
+      s.addTable("products", (t) =>
+        t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("price", "integer"),
+      ),
+    );
+
+    const executor = createMockExecutor();
+    const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
+
+    // Service method that creates a product using a child UOW and returns the child
+    const createProduct = (name: string, price: number) => {
+      const childUow = parentUow.restrict();
+      const productId = childUow.forSchema(testSchema).create("products", { name, price });
+      // Return both the child UOW and the product ID reference
+      return { childUow, productId };
+    };
+
+    // Call service to create a product via child UOW
+    const { childUow, productId } = createProduct("Widget", 1999);
+
+    // Parent executes mutations
+    await parentUow.executeMutations();
+
+    // Child should be able to call getCreatedIds() after parent has executed
+    // This tests that child checks parent's state, not its own stale state
+    const createdIds = childUow.getCreatedIds();
+
+    expect(createdIds).toHaveLength(1);
+    expect(createdIds[0].externalId).toBe(productId.externalId);
+  });
 });
