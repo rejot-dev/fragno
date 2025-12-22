@@ -309,13 +309,11 @@ export async function executeUnitOfWork<
         return { success: false, reason: "conflict" };
       }
 
-      // Wait before retrying
       const delayMs = retryPolicy.getDelayMs(attempt);
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
 
-      // Increment attempt counter for next iteration
       attempt++;
     } catch (error) {
       // An error was thrown during execution
@@ -354,6 +352,57 @@ export interface ExecuteRestrictedUnitOfWorkOptions {
    * Use this for post-mutation processing like hook execution.
    */
   onSuccess?: (uow: IUnitOfWork) => Promise<void>;
+}
+
+/**
+ * Context provided to handler tx callbacks
+ */
+export interface TxPhaseContext<THooks extends HooksMap> {
+  /**
+   * Get a typed Unit of Work for the given schema
+   */
+  forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+    schema: S,
+    hooks?: H,
+  ) => TypedUnitOfWork<S, [], unknown, H>;
+}
+
+/**
+ * Handler callbacks for tx() - SYNCHRONOUS ONLY (no Promise return allowed)
+ * This prevents accidentally awaiting services in the wrong place
+ */
+export interface HandlerTxCallbacks<TRetrieveResult, TMutationResult, THooks extends HooksMap> {
+  /**
+   * Retrieval phase callback - schedules retrievals and optionally calls services
+   * Must be synchronous - cannot await promises
+   */
+  retrieve?: (context: TxPhaseContext<THooks>) => TRetrieveResult;
+  /**
+   * Mutation phase callback - receives retrieve result, schedules mutations
+   * Must be synchronous - cannot await promises (but may return a promise to be awaited)
+   */
+  mutate?: (context: TxPhaseContext<THooks>, retrieveResult: TRetrieveResult) => TMutationResult;
+}
+
+export interface ServiceTxCallbacks<
+  TSchema extends AnySchema,
+  TRetrievalResults extends unknown[],
+  TMutationResult,
+  THooks extends HooksMap,
+> {
+  /**
+   * Retrieval phase callback - schedules retrievals, returns typed UOW
+   */
+  retrieve?: (
+    uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
+  ) => TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>;
+  /**
+   * Mutation phase callback - receives retrieval results, schedules mutations and hooks
+   */
+  mutate?: (
+    uow: TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>,
+    results: TRetrievalResults,
+  ) => TMutationResult | Promise<TMutationResult>;
 }
 
 /**
@@ -491,14 +540,273 @@ export async function executeRestrictedUnitOfWork<TResult, THooks extends HooksM
         });
       }
 
-      // Wait before retrying
       const delayMs = retryPolicy.getDelayMs(attempt);
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
 
-      // Increment attempt counter for next iteration
       attempt++;
     }
   }
+}
+
+/**
+ * Execute a transaction with array syntax (handler context).
+ * Takes a factory function that creates an array of service promises, enabling proper retry support.
+ *
+ * @param servicesFactory - Function that creates an array of service promises
+ * @param options - Configuration including UOW factory, retry policy, and abort signal
+ * @returns Promise resolving to array of awaited service results
+ *
+ * @example
+ * ```ts
+ * const [result1, result2] = await executeTxArray(
+ *   () => [
+ *     executeServiceTx(schema, callbacks1, uow),
+ *     executeServiceTx(schema, callbacks2, uow)
+ *   ],
+ *   { createUnitOfWork }
+ * );
+ * ```
+ */
+export async function executeTxArray<T extends readonly unknown[]>(
+  servicesFactory: () => readonly [...{ [K in keyof T]: Promise<T[K]> }],
+  options: ExecuteRestrictedUnitOfWorkOptions,
+): Promise<{ [K in keyof T]: T[K] }> {
+  const retryPolicy =
+    options.retryPolicy ??
+    new ExponentialBackoffRetryPolicy({
+      maxRetries: 5,
+      initialDelayMs: 10,
+      maxDelayMs: 100,
+    });
+  const signal = options.signal;
+  let attempt = 0;
+
+  while (true) {
+    // Check if aborted before starting attempt
+    if (signal?.aborted) {
+      throw new Error("Unit of Work execution aborted");
+    }
+
+    try {
+      // Create a fresh UOW for this attempt
+      const baseUow = options.createUnitOfWork();
+
+      // Call factory to create fresh service promises for this attempt
+      const services = servicesFactory();
+
+      await baseUow.executeRetrieve();
+
+      if (options.onBeforeMutate) {
+        options.onBeforeMutate(baseUow);
+      }
+
+      const result = await baseUow.executeMutations();
+      if (!result.success) {
+        throw new ConcurrencyConflictError();
+      }
+
+      if (options.onSuccess) {
+        await options.onSuccess(baseUow);
+      }
+
+      // Now await all service promises - they should all resolve now that mutations executed
+      const results = await Promise.all(services);
+      return results as { [K in keyof T]: T[K] };
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new Error("Unit of Work execution aborted");
+      }
+
+      // Only retry concurrency conflicts, not other errors
+      if (!(error instanceof ConcurrencyConflictError)) {
+        throw error;
+      }
+
+      if (!retryPolicy.shouldRetry(attempt, error, signal)) {
+        if (signal?.aborted) {
+          throw new Error("Unit of Work execution aborted");
+        }
+        throw new Error("Unit of Work execution failed: optimistic concurrency conflict", {
+          cause: error,
+        });
+      }
+
+      const delayMs = retryPolicy.getDelayMs(attempt);
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
+      attempt++;
+    }
+  }
+}
+
+/**
+ * Execute a transaction with callback syntax (handler context).
+ * Callbacks are synchronous only to prevent accidentally awaiting services in wrong place.
+ *
+ * @param callbacks - Object containing retrieve and mutate callbacks
+ * @param options - Configuration including UOW factory, retry policy, and abort signal
+ * @returns Promise resolving to the mutation result with promises awaited 1 level deep
+ */
+export async function executeTxCallbacks<
+  TRetrieveResult,
+  TMutationResult,
+  THooks extends HooksMap = {},
+>(
+  callbacks: HandlerTxCallbacks<TRetrieveResult, TMutationResult, THooks>,
+  options: ExecuteRestrictedUnitOfWorkOptions,
+): Promise<AwaitedPromisesInObject<TMutationResult>> {
+  const retryPolicy =
+    options.retryPolicy ??
+    new ExponentialBackoffRetryPolicy({
+      maxRetries: 5,
+      initialDelayMs: 10,
+      maxDelayMs: 100,
+    });
+  const signal = options.signal;
+  let attempt = 0;
+
+  while (true) {
+    // Check if aborted before starting attempt
+    if (signal?.aborted) {
+      throw new Error("Unit of Work execution aborted");
+    }
+
+    try {
+      // Create a fresh UOW for this attempt
+      const baseUow = options.createUnitOfWork();
+
+      const context: TxPhaseContext<THooks> = {
+        forSchema: <S extends AnySchema, H extends HooksMap = THooks>(schema: S, hooks?: H) => {
+          return baseUow.forSchema(schema, hooks);
+        },
+      };
+
+      let retrieveResult: TRetrieveResult;
+      if (callbacks.retrieve) {
+        retrieveResult = callbacks.retrieve(context);
+      } else {
+        retrieveResult = undefined as TRetrieveResult;
+      }
+
+      await baseUow.executeRetrieve();
+
+      let mutationResult: TMutationResult;
+      if (callbacks.mutate) {
+        mutationResult = callbacks.mutate(context, retrieveResult);
+      } else {
+        mutationResult = retrieveResult as unknown as TMutationResult;
+      }
+
+      const awaitedMutationResult = await awaitPromisesInObject(mutationResult);
+
+      if (options.onBeforeMutate) {
+        options.onBeforeMutate(baseUow);
+      }
+
+      const result = await baseUow.executeMutations();
+      if (!result.success) {
+        throw new ConcurrencyConflictError();
+      }
+
+      if (options.onSuccess) {
+        await options.onSuccess(baseUow);
+      }
+
+      return awaitedMutationResult;
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new Error("Unit of Work execution aborted");
+      }
+
+      // Only retry concurrency conflicts, not other errors
+      if (!(error instanceof ConcurrencyConflictError)) {
+        throw error;
+      }
+
+      if (!retryPolicy.shouldRetry(attempt, error, signal)) {
+        if (signal?.aborted) {
+          throw new Error("Unit of Work execution aborted");
+        }
+        throw new Error("Unit of Work execution failed: optimistic concurrency conflict", {
+          cause: error,
+        });
+      }
+
+      const delayMs = retryPolicy.getDelayMs(attempt);
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
+      attempt++;
+    }
+  }
+}
+
+/**
+ * Execute a transaction for service context.
+ * Service callbacks can be async for ergonomic async work.
+ *
+ * @param schema - Schema to use for the transaction
+ * @param callbacks - Object containing retrieve and mutate callbacks
+ * @param baseUow - Base Unit of Work (restricted) to use
+ * @returns Promise resolving to the mutation result with promises awaited 1 level deep
+ */
+export async function executeServiceTx<
+  TSchema extends AnySchema,
+  TRetrievalResults extends unknown[],
+  TMutationResult,
+  THooks extends HooksMap,
+>(
+  schema: TSchema,
+  callbacks: ServiceTxCallbacks<TSchema, TRetrievalResults, TMutationResult, THooks>,
+  baseUow: IUnitOfWork,
+): Promise<AwaitedPromisesInObject<TMutationResult>> {
+  const typedUow = baseUow.restrict({ readyFor: "none" }).forSchema<TSchema, THooks>(schema);
+
+  let retrievalUow: TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>;
+  try {
+    if (callbacks.retrieve) {
+      retrievalUow = callbacks.retrieve(typedUow);
+    } else {
+      // Safe cast: when there's no retrieve callback, TRetrievalResults should be []
+      retrievalUow = typedUow as unknown as TypedUnitOfWork<
+        TSchema,
+        TRetrievalResults,
+        unknown,
+        THooks
+      >;
+    }
+  } catch (error) {
+    typedUow.signalReadyForRetrieval();
+    typedUow.signalReadyForMutation();
+    throw error;
+  }
+
+  typedUow.signalReadyForRetrieval();
+
+  // Safe cast: retrievalPhase returns the correct type based on the UOW's type parameters
+  const results = (await retrievalUow.retrievalPhase) as TRetrievalResults;
+
+  let mutationResult: TMutationResult;
+  try {
+    if (callbacks.mutate) {
+      mutationResult = await callbacks.mutate(retrievalUow, results);
+    } else {
+      // Safe cast: when there's no mutate callback, TMutationResult should be void
+      mutationResult = undefined as TMutationResult;
+    }
+  } catch (error) {
+    typedUow.signalReadyForMutation();
+    throw error;
+  }
+
+  typedUow.signalReadyForMutation();
+
+  await retrievalUow.mutationPhase;
+
+  return await awaitPromisesInObject(mutationResult);
 }

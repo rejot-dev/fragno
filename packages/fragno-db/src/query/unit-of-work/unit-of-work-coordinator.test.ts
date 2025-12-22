@@ -914,4 +914,166 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     expect(typeof result.internalId).toBe("bigint");
     expect(result.internalId).toBeGreaterThan(0n);
   });
+
+  it("should fail when handler executes mutations before service finishes scheduling them (anti-pattern)", async () => {
+    const testSchema = schema((s) =>
+      s.addTable("totp_secret", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("userId", "string")
+          .addColumn("secret", "string")
+          .addColumn("backupCodes", "string")
+          .createIndex("idx_totp_user", ["userId"]),
+      ),
+    );
+
+    // Create executor that returns empty results (no existing record)
+    const customExecutor: UOWExecutor<CompiledQuery, unknown> = {
+      executeRetrievalPhase: async (queries: CompiledQuery[]) => {
+        // Return empty array for each query (no existing records)
+        return queries.map(() => []);
+      },
+      executeMutationPhase: async (mutations: CompiledMutation<CompiledQuery>[]) => {
+        return {
+          success: true,
+          createdInternalIds: mutations.map(() => BigInt(Math.floor(Math.random() * 1000))),
+        };
+      },
+    };
+
+    const parentUow = createUnitOfWork(createCompiler(), customExecutor, createMockDecoder());
+
+    // Service that has async work AFTER awaiting retrievalPhase but BEFORE scheduling mutations
+    // This is a problematic pattern that can lead to race conditions
+    const enableTotp = async (userId: string) => {
+      const childUow = parentUow.restrict();
+      const typedUow = childUow
+        .forSchema(testSchema)
+        .findFirst("totp_secret", (b) =>
+          b.whereIndex("idx_totp_user", (eb) => eb("userId", "=", userId)),
+        );
+
+      // Service awaits retrieval phase
+      const [existing] = await typedUow.retrievalPhase;
+
+      if (existing) {
+        throw new Error("TOTP already enabled");
+      }
+
+      // Simulate async work (like hashing backup codes) that yields control
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // By the time we get here, if the handler has already called executeMutate(),
+      // the UOW will be in "executed" state and this will fail
+      typedUow.create("totp_secret", {
+        userId,
+        secret: "TESTSECRET123",
+        backupCodes: "[]",
+      });
+
+      await typedUow.mutationPhase;
+
+      return { success: true };
+    };
+
+    // ANTI-PATTERN: Handler executes both phases immediately without awaiting service
+    const badHandler = async () => {
+      // Call service - returns promise immediately
+      const resultPromise = enableTotp("user-123");
+
+      // Execute retrieval phase
+      await parentUow.executeRetrieve();
+
+      // Execute mutation phase BEFORE service has finished scheduling mutations
+      // This is the bug - service is still running async work and hasn't scheduled mutations yet
+      await parentUow.executeMutations();
+
+      // Now await service promise - but it's too late, UOW is already in "executed" state
+      return await resultPromise;
+    };
+
+    // This should throw "Cannot add mutation operation in executed state"
+    await expect(badHandler()).rejects.toThrow("Cannot add mutation operation in executed state");
+  });
+
+  it("should succeed when handler awaits service promise between phases (correct pattern)", async () => {
+    const testSchema = schema((s) =>
+      s.addTable("totp_secret", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("userId", "string")
+          .addColumn("secret", "string")
+          .addColumn("backupCodes", "string")
+          .createIndex("idx_totp_user", ["userId"]),
+      ),
+    );
+
+    // Create executor that returns empty results (no existing record)
+    const customExecutor: UOWExecutor<CompiledQuery, unknown> = {
+      executeRetrievalPhase: async (queries: CompiledQuery[]) => {
+        return queries.map(() => []);
+      },
+      executeMutationPhase: async (mutations: CompiledMutation<CompiledQuery>[]) => {
+        return {
+          success: true,
+          createdInternalIds: mutations.map(() => BigInt(Math.floor(Math.random() * 1000))),
+        };
+      },
+    };
+
+    const parentUow = createUnitOfWork(createCompiler(), customExecutor, createMockDecoder());
+
+    // Same service as before - has async work between retrieval and mutation scheduling
+    const enableTotp = async (userId: string) => {
+      const childUow = parentUow.restrict();
+      const typedUow = childUow
+        .forSchema(testSchema)
+        .findFirst("totp_secret", (b) =>
+          b.whereIndex("idx_totp_user", (eb) => eb("userId", "=", userId)),
+        );
+
+      const [existing] = await typedUow.retrievalPhase;
+
+      if (existing) {
+        throw new Error("TOTP already enabled");
+      }
+
+      // Simulate async work (like hashing backup codes)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Schedule mutation - this will work because handler waits for service to finish
+      typedUow.create("totp_secret", {
+        userId,
+        secret: "TESTSECRET123",
+        backupCodes: "[]",
+      });
+
+      return { success: true };
+    };
+
+    // CORRECT PATTERN: Handler awaits service promise between phase executions
+    const goodHandler = async () => {
+      // Call service first - it schedules retrieval operations synchronously
+      const resultPromise = enableTotp("user-123");
+
+      // Execute retrieval phase - service can now continue past its retrieval await
+      await parentUow.executeRetrieve();
+
+      // Wait for service to finish - it will schedule mutations
+      const result = await resultPromise;
+
+      // Execute mutations that service scheduled
+      await parentUow.executeMutations();
+
+      return result;
+    };
+
+    // This should succeed without errors
+    const result = await goodHandler();
+    expect(result.success).toBe(true);
+
+    // Verify operations were registered
+    expect(parentUow.getRetrievalOperations()).toHaveLength(1);
+    expect(parentUow.getMutationOperations()).toHaveLength(1);
+  });
 });

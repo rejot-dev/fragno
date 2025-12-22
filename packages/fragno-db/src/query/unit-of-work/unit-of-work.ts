@@ -917,7 +917,11 @@ export interface IUnitOfWork {
   getCreatedIds(): FragnoId[];
 
   // Parent-child relationships
-  restrict(): IUnitOfWork;
+  restrict(options?: { readyFor?: "mutation" | "retrieval" | "none" }): IUnitOfWork;
+
+  // Coordination for restricted UOWs
+  signalReadyForRetrieval(): void;
+  signalReadyForMutation(): void;
 
   // Reset for retry support
   reset(): void;
@@ -1275,8 +1279,15 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * Create a restricted child UOW that cannot execute phases.
    * The child shares the same operation storage but must signal readiness
    * before the parent can execute each phase.
+   *
+   * @param options.readyFor - Controls automatic readiness signaling:
+   *   - "mutation" (default): Signals ready for both retrieval and mutation immediately
+   *   - "retrieval": Signals ready for retrieval only
+   *   - "none": No automatic signaling, caller must signal manually
    */
-  restrict(): UnitOfWork<TRawInput> {
+  restrict(options?: { readyFor?: "mutation" | "retrieval" | "none" }): UnitOfWork<TRawInput> {
+    const readyFor = options?.readyFor ?? "mutation";
+
     const child = new UnitOfWork(
       this.#compiler,
       this.#executor,
@@ -1299,10 +1310,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
     this.#coordinator.addChild(child);
 
-    // For synchronous usage (the common case), immediately signal readiness
-    // This allows services called directly from handlers to work without explicit signaling
-    child.signalReadyForRetrieval();
-    child.signalReadyForMutation();
+    // Signal readiness based on options
+    if (readyFor === "mutation" || readyFor === "retrieval") {
+      child.signalReadyForRetrieval();
+    }
+    if (readyFor === "mutation") {
+      child.signalReadyForMutation();
+    }
 
     return child;
   }
@@ -1712,8 +1726,16 @@ export class TypedUnitOfWork<
     return this.#uow.executeMutations();
   }
 
-  restrict(): IUnitOfWork {
-    return this.#uow.restrict();
+  restrict(options?: { readyFor?: "mutation" | "retrieval" | "none" }): IUnitOfWork {
+    return this.#uow.restrict(options);
+  }
+
+  signalReadyForRetrieval(): void {
+    this.#uow.signalReadyForRetrieval();
+  }
+
+  signalReadyForMutation(): void {
+    this.#uow.signalReadyForMutation();
   }
 
   reset(): void {

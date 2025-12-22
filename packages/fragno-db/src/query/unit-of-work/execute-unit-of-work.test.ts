@@ -3,11 +3,18 @@ import { schema, idColumn, FragnoId } from "../../schema/create";
 import {
   createUnitOfWork,
   type TypedUnitOfWork,
+  type IUnitOfWork,
   type UOWCompiler,
   type UOWDecoder,
   type UOWExecutor,
 } from "./unit-of-work";
-import { executeUnitOfWork, executeRestrictedUnitOfWork } from "./execute-unit-of-work";
+import {
+  executeUnitOfWork,
+  executeRestrictedUnitOfWork,
+  executeTxArray,
+  executeTxCallbacks,
+  executeServiceTx,
+} from "./execute-unit-of-work";
 import {
   ExponentialBackoffRetryPolicy,
   LinearBackoffRetryPolicy,
@@ -1305,6 +1312,553 @@ describe("executeRestrictedUnitOfWork", () => {
       // Verify no unhandled rejection occurred
       // If the test completes without throwing, the promise rejection was properly handled
       expect(await deferred.promise).toContain('relation "settings" does not exist');
+    });
+  });
+
+  describe("executeTxArray", () => {
+    it("should execute multiple service promises and await them before mutations", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      let retrievalExecuted = false;
+      let servicesResolved = false;
+
+      const result = await executeTxArray(
+        () => [
+          Promise.resolve().then(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            servicesResolved = true;
+            return { result1: "value1" };
+          }),
+          Promise.resolve().then(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return { result2: "value2" };
+          }),
+        ],
+        {
+          createUnitOfWork: () => {
+            const uow = createUnitOfWork(compiler, executor, decoder);
+            const originalExecuteRetrieve = uow.executeRetrieve.bind(uow);
+            uow.executeRetrieve = async () => {
+              retrievalExecuted = true;
+              return originalExecuteRetrieve();
+            };
+            return uow;
+          },
+        },
+      );
+
+      expect(retrievalExecuted).toBe(true);
+      expect(servicesResolved).toBe(true);
+      expect(result).toEqual([{ result1: "value1" }, { result2: "value2" }]);
+    });
+
+    it("should retry on concurrency conflict", async () => {
+      const compiler = createMockCompiler();
+      let attemptCount = 0;
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => {
+          attemptCount++;
+          if (attemptCount < 2) {
+            return { success: false };
+          }
+          return {
+            success: true,
+            createdInternalIds: [],
+          };
+        },
+      };
+      const decoder = createMockDecoder();
+
+      const result = await executeTxArray(() => [Promise.resolve({ result: "value" })], {
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+        retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+      });
+
+      expect(attemptCount).toBe(2);
+      expect(result).toEqual([{ result: "value" }]);
+    });
+
+    it("should throw if retries exhausted", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({ success: false }),
+      };
+      const decoder = createMockDecoder();
+
+      await expect(
+        executeTxArray(() => [Promise.resolve({ result: "value" })], {
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+          retryPolicy: new NoRetryPolicy(),
+        }),
+      ).rejects.toThrow("optimistic concurrency conflict");
+    });
+  });
+
+  describe("executeTxCallbacks", () => {
+    it("should execute retrieve and mutate callbacks in order", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const executionOrder: string[] = [];
+
+      const result = await executeTxCallbacks(
+        {
+          retrieve: ({ forSchema }) => {
+            executionOrder.push("retrieve");
+            const uow = forSchema(testSchema);
+            uow.find("users", (b) => b.whereIndex("idx_email"));
+            return { servicePromise: Promise.resolve({ value: "result" }) };
+          },
+          mutate: ({ forSchema }, { servicePromise }) => {
+            executionOrder.push("mutate");
+            const uow = forSchema(testSchema);
+            uow.create("users", { email: "test@example.com", name: "Test", balance: 0 });
+            return servicePromise;
+          },
+        },
+        {
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+        },
+      );
+
+      expect(executionOrder).toEqual(["retrieve", "mutate"]);
+      expect(result).toEqual({ value: "result" });
+    });
+
+    it("should handle retrieve-only transactions", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [
+          [
+            {
+              id: FragnoId.fromExternal("1", 1),
+              email: "test@example.com",
+              name: "Test",
+              balance: 0,
+            },
+          ],
+        ],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const result = await executeTxCallbacks(
+        {
+          retrieve: ({ forSchema }) => {
+            const uow = forSchema(testSchema);
+            uow.find("users", (b) => b.whereIndex("idx_email"));
+            return { users: [] };
+          },
+        },
+        {
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+        },
+      );
+
+      expect(result).toEqual({ users: [] });
+    });
+
+    it("should handle mutate-only transactions", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [BigInt(1)],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const result = await executeTxCallbacks(
+        {
+          mutate: ({ forSchema }) => {
+            const uow = forSchema(testSchema);
+            uow.create("users", { email: "test@example.com", name: "Test", balance: 0 });
+            return { created: true };
+          },
+        },
+        {
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+        },
+      );
+
+      expect(result).toEqual({ created: true });
+    });
+
+    it("should await promises returned from mutate callback", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const result = await executeTxCallbacks(
+        {
+          mutate: () => {
+            return Promise.resolve({ value: "async result" });
+          },
+        },
+        {
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+        },
+      );
+
+      expect(result).toEqual({ value: "async result" });
+    });
+
+    it("should retry on concurrency conflict", async () => {
+      const compiler = createMockCompiler();
+      let attemptCount = 0;
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => {
+          attemptCount++;
+          if (attemptCount < 2) {
+            return { success: false };
+          }
+          return {
+            success: true,
+            createdInternalIds: [],
+          };
+        },
+      };
+      const decoder = createMockDecoder();
+
+      const result = await executeTxCallbacks(
+        {
+          mutate: () => ({ value: "result" }),
+        },
+        {
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+          retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+        },
+      );
+
+      expect(attemptCount).toBe(2);
+      expect(result).toEqual({ value: "result" });
+    });
+  });
+
+  describe("executeServiceTx", () => {
+    it("should execute service transaction with retrieve and mutate", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [
+          [
+            {
+              id: FragnoId.fromExternal("1", 1),
+              email: "test@example.com",
+              name: "Test",
+              balance: 100,
+            },
+          ],
+        ],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const baseUow = createUnitOfWork(compiler, executor, decoder);
+      const restrictedUow = baseUow.restrict();
+
+      // Start service tx
+      const servicePromise = executeServiceTx(
+        testSchema,
+        {
+          retrieve: (uow) => {
+            return uow.findFirst("users", (b) => b.whereIndex("idx_email"));
+          },
+          mutate: async (uow, [user]) => {
+            if (!user) {
+              return { ok: false };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10)); // Async work
+            uow.update("users", user.id, (b) => b.set({ balance: user.balance - 10 }));
+            return { ok: true, newBalance: user.balance - 10 };
+          },
+        },
+        restrictedUow,
+      );
+
+      // Simulate handler executing phases concurrently with service
+      // Yield to let service start awaiting retrievalPhase
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Execute retrieve phase
+      await baseUow.executeRetrieve();
+
+      // Wait for service mutate callback to schedule mutations
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Execute mutation phase
+      await baseUow.executeMutations();
+
+      // Wait for service to complete
+      const serviceResult = await servicePromise;
+      expect(serviceResult).toEqual({ ok: true, newBalance: 90 });
+    });
+
+    it("should handle async mutate callback", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[]],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [BigInt(1)],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const baseUow = createUnitOfWork(compiler, executor, decoder);
+      const restrictedUow = baseUow.restrict();
+
+      // Simulate handler executing phases concurrently with service
+      const handlerSimulation = (async () => {
+        // Yield to let service start
+        await Promise.resolve();
+        // Execute retrieve phase
+        await baseUow.executeRetrieve();
+        // Wait for service mutate callback to schedule mutations
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        // Execute mutation phase
+        await baseUow.executeMutations();
+      })();
+
+      // Start service tx
+      const servicePromise = executeServiceTx(
+        testSchema,
+        {
+          retrieve: (uow) => {
+            return uow.find("users", (b) => b.whereIndex("idx_email"));
+          },
+          mutate: async (uow) => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            uow.create("users", { email: "new@example.com", name: "New", balance: 0 });
+            return { created: true };
+          },
+        },
+        restrictedUow,
+      );
+
+      // Wait for both handler and service to complete
+      await Promise.all([handlerSimulation, servicePromise]);
+
+      const serviceResult = await servicePromise;
+      expect(serviceResult).toEqual({ created: true });
+    });
+
+    it("should prevent anti-pattern: service async work completes before mutations execute", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[]],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [BigInt(1)],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      const baseUow = createUnitOfWork(compiler, executor, decoder);
+      const restrictedUow = baseUow.restrict();
+
+      let asyncWorkCompleted = false;
+      let mutationScheduled = false;
+
+      // Simulate handler executing phases concurrently with service
+      const handlerSimulation = (async () => {
+        // Yield to let service start
+        await Promise.resolve();
+        // Execute retrieve phase
+        await baseUow.executeRetrieve();
+        // Wait for service mutate callback to schedule mutations (including async work)
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        // Execute mutation phase
+        await baseUow.executeMutations();
+      })();
+
+      // Start service tx
+      const servicePromise = executeServiceTx(
+        testSchema,
+        {
+          retrieve: (uow) => {
+            return uow.find("users", (b) => b.whereIndex("idx_email"));
+          },
+          mutate: async (uow) => {
+            // Simulate async work (like hashing backup codes)
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            asyncWorkCompleted = true;
+
+            // Schedule mutation
+            uow.create("users", { email: "test@example.com", name: "Test", balance: 0 });
+            mutationScheduled = true;
+            return { success: true };
+          },
+        },
+        restrictedUow,
+      );
+
+      // Wait for both handler and service to complete
+      await Promise.all([handlerSimulation, servicePromise]);
+
+      expect(asyncWorkCompleted).toBe(true);
+      expect(mutationScheduled).toBe(true);
+    });
+  });
+
+  describe("executeTxArray with executeServiceTx", () => {
+    it("should execute a single service promise created with executeServiceTx", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [
+          [
+            {
+              id: FragnoId.fromExternal("1", 1),
+              email: "user1@example.com",
+              name: "User 1",
+              balance: 100,
+            },
+          ],
+        ],
+        executeMutationPhase: async () => ({
+          success: true,
+          createdInternalIds: [],
+        }),
+      };
+      const decoder = createMockDecoder();
+
+      let currentUow: IUnitOfWork | null = null;
+
+      // Execute the service promise using executeTxArray
+      const result = await executeTxArray(
+        () => [
+          executeServiceTx(
+            testSchema,
+            {
+              retrieve: (uow) => {
+                return uow.findFirst("users", (b) => b.whereIndex("idx_email"));
+              },
+              mutate: async (uow, [user]) => {
+                if (!user) {
+                  return { ok: false };
+                }
+                // simulate async work
+                await new Promise((resolve) => setTimeout(resolve, 10));
+
+                uow.update("users", user.id, (b) => b.set({ balance: user.balance + 50 }));
+                return { ok: true, newBalance: user.balance + 50 };
+              },
+            },
+            currentUow!,
+          ),
+        ],
+        {
+          createUnitOfWork: () => {
+            currentUow = createUnitOfWork(compiler, executor, decoder);
+            return currentUow;
+          },
+        },
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ ok: true, newBalance: 150 });
+    });
+
+    it("should retry and eventually succeed when mutations fail on first attempts", async () => {
+      const compiler = createMockCompiler();
+      let executionAttemptCount = 0;
+      let factoryCallCount = 0;
+
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [
+          [
+            {
+              id: FragnoId.fromExternal("1", 1),
+              email: "user1@example.com",
+              name: "User 1",
+              balance: 100,
+            },
+          ],
+        ],
+        executeMutationPhase: async () => {
+          executionAttemptCount++;
+          // Fail on first 2 attempts, succeed on 3rd
+          if (executionAttemptCount < 3) {
+            return { success: false };
+          }
+          return {
+            success: true,
+            createdInternalIds: [],
+          };
+        },
+      };
+      const decoder = createMockDecoder();
+
+      let currentUow: IUnitOfWork | null = null;
+
+      const result = await executeTxArray(
+        () => {
+          factoryCallCount++;
+          return [
+            executeServiceTx(
+              testSchema,
+              {
+                retrieve: (uow) => {
+                  return uow.findFirst("users", (b) => b.whereIndex("idx_email"));
+                },
+                mutate: async (uow, [user]) => {
+                  if (!user) {
+                    return { ok: false };
+                  }
+                  // simulate async work
+                  await new Promise((resolve) => setTimeout(resolve, 10));
+
+                  uow.update("users", user.id, (b) => b.set({ balance: user.balance + 50 }));
+                  return { ok: true, newBalance: user.balance + 50, attempt: factoryCallCount };
+                },
+              },
+              currentUow!,
+            ),
+          ];
+        },
+        {
+          createUnitOfWork: () => {
+            currentUow = createUnitOfWork(compiler, executor, decoder);
+            return currentUow;
+          },
+          retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+        },
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ ok: true, newBalance: 150, attempt: 3 });
+      expect(factoryCallCount).toBe(3); // Factory called 3 times (once per attempt)
+      expect(executionAttemptCount).toBe(3); // 3 execution attempts total
     });
   });
 });
