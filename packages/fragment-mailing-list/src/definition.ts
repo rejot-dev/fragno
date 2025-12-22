@@ -24,41 +24,37 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
   .providesBaseService(({ defineService }) => {
     return defineService({
       subscribe: async function (email: string) {
-        // Check if already subscribed
-        const uow = this.uow(mailingListSchema).find("subscriber", (b) =>
-          b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
-        );
+        return this.tx(mailingListSchema, {
+          retrieve: (uow) => {
+            // Check if already subscribed
+            return uow.find("subscriber", (b) =>
+              b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
+            );
+          },
+          mutate: (uow, [existing]) => {
+            if (existing.length > 0) {
+              const subscriber = existing[0];
+              return {
+                id: subscriber.id.toString(),
+                email: subscriber.email,
+                subscribedAt: subscriber.subscribedAt,
+                alreadySubscribed: true,
+              };
+            }
 
-        const [existing] = await uow.retrievalPhase;
+            const subscribedAt = new Date();
+            const id = uow.create("subscriber", { email, subscribedAt });
 
-        if (existing.length > 0) {
-          const subscriber = existing[0];
-          return {
-            id: subscriber.id.toString(),
-            email: subscriber.email,
-            subscribedAt: subscriber.subscribedAt,
-            alreadySubscribed: true,
-          };
-        }
+            uow.triggerHook("onSubscribe", { email });
 
-        const subscribedAt = new Date();
-        const id = uow.create("subscriber", { email, subscribedAt });
-
-        uow.triggerHook("onSubscribe", { email });
-
-        await uow.mutationPhase;
-
-        const internalId = uow
-          .getCreatedIds()
-          .find((createdId) => createdId.externalId === id.externalId)?.internalId;
-
-        return {
-          id: id.toString(),
-          internalId,
-          email,
-          subscribedAt,
-          alreadySubscribed: false,
-        };
+            return {
+              id: id.toString(),
+              email,
+              subscribedAt,
+              alreadySubscribed: false,
+            };
+          },
+        });
       },
       getSubscribers: async function ({
         search,
@@ -77,39 +73,42 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
         const effectiveSortOrder = cursor ? cursor.orderDirection : sortOrder;
         const effectivePageSize = cursor ? cursor.pageSize : pageSize;
 
-        const uow = this.uow(mailingListSchema).findWithCursor("subscriber", (b) => {
-          // When searching, we must filter by email and can only use the email index
-          if (search) {
-            const query = b
-              .whereIndex("idx_subscriber_email", (eb) => eb("email", "contains", search))
-              .orderByIndex("idx_subscriber_email", effectiveSortOrder)
-              .pageSize(effectivePageSize);
+        return this.tx(mailingListSchema, {
+          retrieve: (uow) => {
+            return uow.findWithCursor("subscriber", (b) => {
+              // When searching, we must filter by email and can only use the email index
+              if (search) {
+                const query = b
+                  .whereIndex("idx_subscriber_email", (eb) => eb("email", "contains", search))
+                  .orderByIndex("idx_subscriber_email", effectiveSortOrder)
+                  .pageSize(effectivePageSize);
 
-            // Add cursor for pagination continuation
-            return cursor ? query.after(cursor) : query;
-          }
+                // Add cursor for pagination continuation
+                return cursor ? query.after(cursor) : query;
+              }
 
-          // When not searching, use the appropriate index for sorting
-          const query = b
-            .whereIndex(indexName)
-            .orderByIndex(indexName, effectiveSortOrder)
-            .pageSize(effectivePageSize);
+              // When not searching, use the appropriate index for sorting
+              const query = b
+                .whereIndex(indexName)
+                .orderByIndex(indexName, effectiveSortOrder)
+                .pageSize(effectivePageSize);
 
-          // Add cursor for pagination continuation
-          return cursor ? query.after(cursor) : query;
+              // Add cursor for pagination continuation
+              return cursor ? query.after(cursor) : query;
+            });
+          },
+          mutate: (_uow, [subscribers]) => {
+            return {
+              subscribers: subscribers.items.map((subscriber) => ({
+                id: subscriber.id.toString(),
+                email: subscriber.email,
+                subscribedAt: subscriber.subscribedAt,
+              })),
+              cursor: subscribers.cursor,
+              hasNextPage: subscribers.hasNextPage,
+            };
+          },
         });
-
-        const [subscribers] = await uow.retrievalPhase;
-
-        return {
-          subscribers: subscribers.items.map((subscriber) => ({
-            id: subscriber.id.toString(),
-            email: subscriber.email,
-            subscribedAt: subscriber.subscribedAt,
-          })),
-          cursor: subscribers.cursor,
-          hasNextPage: subscribers.hasNextPage,
-        };
       },
     });
   })

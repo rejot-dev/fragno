@@ -44,11 +44,8 @@ describe("Mailing List Fragment", async () => {
       test("should add a new subscriber", async () => {
         // TODO(Wilco): would be nice to have a helper function for inContext -> uow
         const result = await fragment.inContext(async function () {
-          return this.uow(async ({ executeMutate }) => {
-            const result = services.subscribe("test@example.com");
-            await executeMutate();
-            return result;
-          });
+          const [result] = await this.tx(() => [services.subscribe("test@example.com")]);
+          return result;
         });
 
         expect(result).toMatchObject({
@@ -57,15 +54,12 @@ describe("Mailing List Fragment", async () => {
           subscribedAt: expect.any(Date),
           alreadySubscribed: false,
         });
-      });
+      }, 2000);
 
       test("should return existing subscriber if already subscribed", async () => {
         const initialSubscriber = await fragment.inContext(async function () {
-          return this.uow(async ({ executeMutate }) => {
-            const result = services.subscribe("test@example.com");
-            await executeMutate();
-            return result;
-          });
+          const [result] = await this.tx(() => [services.subscribe("test@example.com")]);
+          return result;
         });
 
         expect(initialSubscriber).toMatchObject({
@@ -76,11 +70,8 @@ describe("Mailing List Fragment", async () => {
         });
 
         const resubscribe = await fragment.inContext(async function () {
-          return this.uow(async ({ executeMutate }) => {
-            const result = services.subscribe("test@example.com");
-            await executeMutate();
-            return result;
-          });
+          const [result] = await this.tx(() => [services.subscribe("test@example.com")]);
+          return result;
         });
 
         expect(resubscribe).toMatchObject({
@@ -98,25 +89,23 @@ describe("Mailing List Fragment", async () => {
     test("should throw index mismatch error when sortBy changes between pagination requests", async () => {
       // Create some test subscribers
       await fragment.inContext(async function () {
-        return this.uow(async ({ executeMutate }) => {
-          services.subscribe("alice@example.com");
-          services.subscribe("bob@example.com");
-          services.subscribe("charlie@example.com");
-          await executeMutate();
-        });
+        await this.tx(() => [
+          services.subscribe("alice@example.com"),
+          services.subscribe("bob@example.com"),
+          services.subscribe("charlie@example.com"),
+        ]);
       });
 
       // First page with sortBy="email"
-      const firstPage = await fragment.inContext(function () {
-        return this.uow(async ({ executeRetrieve }) => {
-          const result = services.getSubscribers({
+      const firstPage = await fragment.inContext(async function () {
+        const [result] = await this.tx(() => [
+          services.getSubscribers({
             sortBy: "email",
             sortOrder: "asc",
             pageSize: 1,
-          });
-          await executeRetrieve();
-          return result;
-        });
+          }),
+        ]);
+        return result;
       });
 
       expect(firstPage.cursor).toBeDefined();
@@ -124,12 +113,14 @@ describe("Mailing List Fragment", async () => {
       // Try to get next page with different sortBy (should throw index mismatch)
       await expect(
         fragment.inContext(function () {
-          return services.getSubscribers({
-            sortBy: "subscribedAt", // Changed from "email"
-            sortOrder: "asc",
-            pageSize: 1,
-            cursor: firstPage.cursor,
-          });
+          return this.tx(() => [
+            services.getSubscribers({
+              sortBy: "subscribedAt", // Changed from "email"
+              sortOrder: "asc",
+              pageSize: 1,
+              cursor: firstPage.cursor,
+            }),
+          ]);
         }),
       ).rejects.toThrow(/Index mismatch/);
     });
@@ -153,7 +144,6 @@ describe("Mailing List Fragment", async () => {
           // Date is returned as a string because of json serialization
           subscribedAt: expect.any(String),
           alreadySubscribed: false,
-          internalId: expect.any(Number),
         });
 
         expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");

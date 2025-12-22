@@ -65,17 +65,15 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           const params = parseQueryParams(query);
           const cursor = parseCursor(params.cursor);
 
-          const result = await this.uow(async ({ executeRetrieve }) => {
-            const result = services.getSubscribers({
+          const [result] = await this.tx(() => [
+            services.getSubscribers({
               search: params.search,
               sortBy: params.sortBy,
               sortOrder: params.sortOrder,
               pageSize: params.pageSize,
               cursor,
-            });
-            await executeRetrieve();
-            return result;
-          });
+            }),
+          ]);
 
           return json({
             subscribers: result.subscribers,
@@ -97,21 +95,13 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           email: z.string(),
           subscribedAt: z.date(),
           alreadySubscribed: z.boolean(),
-          internalId: z.number().optional(),
         }),
         handler: async function ({ input }, { json }) {
           const { email } = await input.valid();
 
-          const result = await this.uow(async ({ executeMutate }) => {
-            const result = services.subscribe(email);
-            await executeMutate();
-            return result;
-          });
+          const [result] = await this.tx(() => [services.subscribe(email)]);
 
-          return json({
-            ...result,
-            internalId: Number(result.internalId),
-          });
+          return json(result);
         },
       }),
     ];
