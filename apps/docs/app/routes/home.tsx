@@ -630,6 +630,69 @@ function UseCases() {
   );
 }
 
+function StripeShowcase() {
+  return (
+    <section className="w-full max-w-5xl">
+      <Link
+        to="/docs/stripe"
+        className="group relative block overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl md:p-12 dark:bg-slate-950/60 dark:ring-white/10"
+      >
+        <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-violet-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-violet-400/15" />
+        <div className="relative flex flex-col items-center gap-6 text-center md:flex-row md:text-left">
+          <div className="flex-1 space-y-3">
+            <p className="text-fd-muted-foreground text-sm font-medium">Stripe Fragment</p>
+            <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+              <span className="bg-linear-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent dark:from-violet-400 dark:to-purple-400">
+                Subscriptions
+              </span>
+              , Out of the Box
+            </h2>
+            <p className="text-fd-muted-foreground max-w-xl text-lg">
+              Stripe Checkout, webhooks, and subscription management. Just add your API keys.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors group-hover:bg-violet-700">
+            Explore Stripe Fragment
+            <span className="transition-transform group-hover:translate-x-0.5">→</span>
+          </div>
+        </div>
+      </Link>
+    </section>
+  );
+}
+
+function FormsShowcase() {
+  return (
+    <section className="w-full max-w-5xl">
+      <Link
+        to="/forms"
+        className="group relative block overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl md:p-12 dark:bg-slate-950/60 dark:ring-white/10"
+      >
+        <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-blue-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-blue-400/15" />
+        <div className="relative flex flex-col items-center gap-6 text-center md:flex-row md:text-left">
+          <div className="flex-1 space-y-3">
+            <p className="text-fd-muted-foreground text-sm font-medium">Form Fragment</p>
+            <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+              <span className="bg-linear-to-r from-blue-600 to-sky-500 bg-clip-text text-transparent dark:from-blue-400 dark:to-sky-400">
+                Forms
+              </span>
+              , Simplified
+            </h2>
+            <p className="text-fd-muted-foreground max-w-xl text-lg">
+              Build forms and collect responses. Based on open standards. Add to any application.
+              Bring your own design.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors group-hover:bg-blue-700">
+            Explore Form Fragment
+            <span className="transition-transform group-hover:translate-x-0.5">→</span>
+          </div>
+        </div>
+      </Link>
+    </section>
+  );
+}
+
 export default function HomePage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
   return (
@@ -642,6 +705,17 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
       <FragnoExplainer />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <UseCases />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <section className="w-full max-w-5xl space-y-6">
+        <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl">
+          Fragment Showcase
+        </h2>
+        <p className="text-fd-muted-foreground mx-auto max-w-prose text-center text-lg">
+          Fragments built on top of Fragno that you can start using today.
+        </p>
+        <StripeShowcase />
+        <FormsShowcase />
+      </section>
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <Frameworks />
       {/*<WhatFragnoProvides />*/}
