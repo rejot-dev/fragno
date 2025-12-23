@@ -4,6 +4,8 @@ import { SurveyAboutForms } from "../../components/survey-about-forms";
 import { FormDemo } from "../../components/form-demo";
 import type { Route } from "./+types/form-index";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
+import { Link } from "react-router";
+import { GitHub } from "@/components/logos/github";
 
 export function meta() {
   return [
@@ -66,6 +68,23 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
             Build forms and collect responses. Based on open standards. Add to any application.
             Bring your own design.
           </p>
+          <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
+            <Link
+              to="/docs/forms"
+              className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+            >
+              View Docs
+            </Link>
+            <a
+              href="https://github.com/rejot-dev/fragno"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-lg border border-gray-300 px-6 py-3 font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <GitHub className="size-4" />
+              Star on GitHub
+            </a>
+          </div>
         </section>
 
         {/* Bento Grid */}
@@ -124,14 +143,12 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
           </h2>
           <p className="text-fd-muted-foreground text-lg">
             Render forms using your existing component library. Use our{" "}
-            <a
-              href="https://www.npmjs.com/package/@fragno-dev/jsonforms-shadcn-renderers"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              to="/docs/forms/shadcn-renderer"
               className="text-blue-600 underline dark:text-blue-400"
             >
               shadcn/ui renderer
-            </a>{" "}
+            </Link>{" "}
             or choose one of the community JSONForms renderers.
           </p>
           <ul className="text-fd-muted-foreground mx-auto max-w-md space-y-3 text-left text-base">
@@ -186,6 +203,9 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
 
         {/* Survey About Forms */}
         {isClient && <SurveyAboutForms turnstileSitekey={turnstileSitekey} />}
+
+        {/* For linking to the form */}
+        <div id="survey" />
       </div>
     </main>
   );

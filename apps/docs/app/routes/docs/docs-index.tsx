@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, ClipboardList } from "lucide-react";
 import { Stripe } from "@/components/logos/stripe";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 import type { ReactNode } from "react";
@@ -75,6 +75,12 @@ export default function DocsIndexPage() {
             icon={<Stripe className="size-6 text-gray-700 dark:text-gray-300" />}
             title="Stripe Fragment"
             description="Batteries included integration for Stripe Subscriptions"
+          />
+          <DocCard
+            href="/docs/forms"
+            icon={<ClipboardList className="size-6 text-gray-700 dark:text-gray-300" />}
+            title="Form Fragment"
+            description="Create forms and collect responses"
           />
           <DocCard
             href="https://rejot.dev/contact/"

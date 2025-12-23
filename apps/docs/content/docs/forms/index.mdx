@@ -1,0 +1,256 @@
+---
+title: Quickstart
+description: Build forms and collect responses directly in your application.
+icon: Album
+---
+
+import { FormsDemoCallout } from "@/components/forms-demo-callout";
+
+## Overview
+
+The form fragment built on top of Fragno provides a complete form management and response collection
+system built on open standards: JSON Schema and JSON Forms.
+
+<FormsDemoCallout />
+
+Rendering forms can be done by using one of the [official](https://jsonforms.io/docs/renderer-sets)
+or [community-made](https://jsonforms.io/community/#community-projects) JSON Forms renderers or our
+very own [shadcn/ui renderer](/docs/forms/shadcn-renderer) (React only).
+
+## Installation
+
+Install the Form fragment and Fragno db package:
+
+```npm
+npm install @fragno-dev/forms @fragno-dev/db
+```
+
+## Server Setup
+
+### 1. Initialize the database adapter
+
+You must initialize the appropriate database adapter for use with the form fragment. If you already
+have other fragments configured, you can reuse the same adapter here. For additional details on
+setting the adapter see
+[our Fragno DB docs](/docs/fragno/for-users/database-fragments/overview#choose-your-adapter).
+
+The example below uses DrizzleORM in combination with PostgreSQL, but adapters for other databases
+and ORMs are also available.
+
+```ts title="db.ts"
+import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
+
+export const fragmentDbAdapter = new DrizzleAdapter({
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
+});
+```
+
+### 2. Create the Fragment Instance
+
+Create a file to instantiate the fragment server:
+
+```typescript title="lib/forms.ts"
+import { createFormsFragment } from "@fragno-dev/forms";
+import { fragmentDbAdapter } from "./db";
+
+export const formsFragment = createFormsFragment(
+  {
+    onFormCreated: async (form) => {
+      console.log(`Form created: ${form.title}`);
+    },
+    onResponseSubmitted: async (response) => {
+      // Send notifications, trigger workflows, etc.
+      console.log(`New submission for form ${response.formId}`);
+    },
+
+    // Optional: Define forms in code
+    staticForms: [],
+  },
+  { databaseAdapter: fragmentDbAdapter },
+);
+```
+
+[Static forms](/docs/forms/static-forms) are useful when you want to version control your form
+definitions alongside application code. All other forms are created dynamically through the API (see
+`useCreateForm` hook).
+
+### 3. Mount the Fragment Routes
+
+The fragment provides HTTP routes that need to be mounted in your application. How you do this
+depends on your framework. See [Frameworks](/docs/fragno/reference/frameworks) for supported
+frameworks.
+
+<include>../../.includes/forms/mount-routes.md</include>
+
+### 4. Run Database Migrations
+
+The fragment adds `form` and `response` tables to your database. Generate the schema using the
+`fragno-cli`:
+
+```npm
+# Generate schema file
+npx fragno-cli db generate lib/forms.ts -o db/forms.schema.ts
+```
+
+### 5. Secure admin routes
+
+Use [middleware](/docs/fragno/for-users/middleware) to secure the administrative routes.
+
+```typescript title="lib/forms.ts"
+import { createFormsFragment } from "@fragno-dev/forms";
+
+export const formsFragment = createFormsFragment(
+  {
+    // ... your config
+  },
+  { databaseAdapter },
+).withMiddleware(async ({ path, headers }, { error }) => {
+  const isAdmin = getUser(headers).role === "admin"; // Using your authentication system
+
+  if (path.startsWith("/admin") && !isAdmin) {
+    return error({ message: "Not authorized", code: "NOT_AUTHORIZED" }, 401);
+  }
+});
+```
+
+## Client Setup
+
+Create a client instance to use the fragment in your frontend:
+
+<include>../../.includes/forms/create-client.md</include>
+
+The client exposes hooks for both public and admin operations:
+
+**Public hooks:**
+
+- `useForm`: Fetch a form by slug
+- `useSubmitForm`: Submit a response to a form
+
+**Admin hooks:**
+
+- `useForms`: List all forms
+- `useCreateForm`: Create a new form
+- `useUpdateForm`: Update an existing form
+- `useDeleteForm`: Delete a form
+- `useSubmissions`: List submissions for a form
+- `useSubmission`: Get a single submission
+- `useDeleteSubmission`: Delete a submission
+
+## Creating a Form
+
+Forms can be created dynamically at runtime using the admin hooks, or defined statically in code
+(see [Static Forms](/docs/forms/static-forms)).
+
+<Callout>
+  We do not provide a visual form builder at this moment. Let [us know](/forms#survey) if that is
+  something you'd like to see!
+</Callout>
+
+<Callout>
+  LLMs are very good at generating JSON Schema and JSON Forms UI Schema definitions.
+</Callout>
+
+To create a form using the `useCreateForm` hook:
+
+```typescript title="components/form-builder.tsx"
+import { formsClient } from "@/lib/forms-client";
+
+export function FormBuilder() {
+  const { mutate: createForm, loading, error } = formsClient.useCreateForm();
+
+  const handleCreate = async () => {
+    const result = await createForm({
+      body: {
+        title: "Contact Us",
+        slug: "contact",
+        status: "open",
+        dataSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", minLength: 1 },
+            email: { type: "string", format: "email" },
+            message: { type: "string", minLength: 10 },
+          },
+          required: ["name", "email", "message"],
+        },
+        uiSchema: {
+          type: "VerticalLayout",
+          elements: [
+            { type: "Control", scope: "#/properties/name" },
+            { type: "Control", scope: "#/properties/email" },
+            { type: "Control", scope: "#/properties/message", options: { multi: true } },
+          ],
+        },
+      },
+    });
+
+    if (result.success) {
+      console.log("Form created with ID:", result.data);
+    }
+  };
+
+  return (
+    <button onClick={handleCreate} disabled={loading}>
+      {loading ? "Creating..." : "Create Form"}
+    </button>
+  );
+}
+```
+
+## Submitting a Form
+
+Here's how to fetch a form and submit a response:
+
+```typescript title="components/contact-form.tsx"
+import { formsClient } from "@/lib/forms-client";
+
+export function ContactForm() {
+  const { data: form, loading: formLoading } = formsClient.useForm({
+    pathParams: { slug: "contact" },
+  });
+  const { mutate: submit, loading: submitting } = formsClient.useSubmitForm();
+
+  const handleSubmit = async (formData: Record<string, unknown>) => {
+    const result = await submit({
+      pathParams: { slug: "contact" },
+      body: { data: formData },
+    });
+
+    if (result.success) {
+      // Submission successful, result.data contains the response ID
+      console.log("Submitted:", result.data);
+    }
+  };
+
+  if (formLoading || !form) return <div>Loading...</div>;
+
+  // Render form using form.dataSchema and form.uiSchema
+  // See "Rendering Forms" section below
+  return <div>{/* Your form UI */}</div>;
+}
+```
+
+For public-facing forms, consider adding bot protection. The submission body accepts an optional
+`securityToken` field that you can use for services like
+[Cloudflare Turnstile](/docs/forms/guides/cloudflare-turnstile). Validate the token
+[in middleware](/docs/fragno/for-users/middleware) before processing the submission.
+
+## Rendering Forms
+
+The Form fragment stores forms using [JSON Schema](https://json-schema.org/) for data validation and
+[JSONForms UI Schema](https://jsonforms.io/) for layout. This gives you flexibility in how you
+render forms.
+
+[JSONForms](https://jsonforms.io/) is a library that renders forms from these schemas. It supports
+multiple renderer sets including Material UI, Vanilla, and custom implementations.
+
+For shadcn/ui projects, we provide a dedicated renderer package. See the
+[ShadCN Renderer](/docs/forms/shadcn-renderer) page for setup instructions.

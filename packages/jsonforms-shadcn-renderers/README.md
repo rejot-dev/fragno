@@ -91,68 +91,7 @@ function MyDynamicForm() {
 }
 ```
 
-## Features
+## Compatibility
 
-### Controls
-
-| Feature                   | Shadcn                     | Status |
-| ------------------------- | -------------------------- | ------ |
-| Boolean (checkbox)        | ShadcnBooleanControl       | ✅     |
-| Boolean (toggle/switch)   | ShadcnBooleanToggleControl | ✅     |
-| Text                      | ShadcnTextControl          | ✅     |
-| Textarea (multi-line)     | ShadcnTextAreaControl      | ✅     |
-| Integer                   | ShadcnIntegerControl       | ✅     |
-| Number                    | ShadcnNumberControl        | ✅     |
-| Slider                    | ShadcnSliderControl        | ✅     |
-| Date                      | ShadcnDateControl          | ✅     |
-| Time                      | ShadcnTimeControl          | ✅     |
-| DateTime                  | ShadcnDateTimeControl      | ✅     |
-| Enum (select)             | ShadcnEnumControl          | ✅     |
-| Enum (radio)              | ShadcnEnumRadioControl     | ✅     |
-| OneOf Enum (select)       | ShadcnOneOfEnumControl     | ✅     |
-| OneOf Enum (radio)        | -                          | ❌     |
-| Object (nested)           | ShadcnObjectControl        | ✅     |
-| Array (table)             | -                          | ❌     |
-| Array (expandable panels) | -                          | ❌     |
-| AllOf                     | -                          | ❌     |
-| AnyOf                     | -                          | ❌     |
-| OneOf (polymorphic)       | -                          | ❌     |
-| Enum Array (multi-select) | -                          | ❌     |
-| AnyOf String/Enum         | -                          | ❌     |
-| Native inputs             | -                          | ❌     |
-
-### Layouts
-
-| Feature                  | Shadcn                            | Status |
-| ------------------------ | --------------------------------- | ------ |
-| Vertical                 | ShadcnVerticalLayout              | ✅     |
-| Horizontal               | ShadcnHorizontalLayout            | ✅     |
-| Group                    | ShadcnGroupLayout                 | ✅     |
-| Categorization (tabs)    | ShadcnCategorizationLayout        | ✅     |
-| Categorization (stepper) | ShadcnCategorizationStepperLayout | ✅     |
-| Array Layout             | -                                 | ❌     |
-
-### Additional Renderers
-
-| Feature        | Shadcn              | Status |
-| -------------- | ------------------- | ------ |
-| Label          | ShadcnLabelRenderer | ✅     |
-| ListWithDetail | -                   | ❌     |
-
-### Cells (for tables/arrays)
-
-| Feature        | Shadcn                  | Status |
-| -------------- | ----------------------- | ------ |
-| Boolean        | ShadcnBooleanCell       | ✅     |
-| Boolean Toggle | ShadcnBooleanToggleCell | ✅     |
-| Text           | ShadcnTextCell          | ✅     |
-| Integer        | ShadcnIntegerCell       | ✅     |
-| Number         | ShadcnNumberCell        | ✅     |
-| Number Format  | -                       | ❌     |
-| Date           | ShadcnDateCell          | ✅     |
-| Time           | ShadcnTimeCell          | ✅     |
-| DateTime       | ShadcnDateTimeCell      | ✅     |
-| Enum           | ShadcnEnumCell          | ✅     |
-| Enum Radio     | ShadcnEnumRadioCell     | ✅     |
-| OneOf Enum     | ShadcnOneOfEnumCell     | ✅     |
-| Slider         | ShadcnSliderCell        | ✅     |
+See [this page on our docs](https://fragno.dev/docs/forms/shadcn-renderer#supported-features) for
+all JSONforms primitives we support.

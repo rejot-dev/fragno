@@ -1,0 +1,173 @@
+---
+title: shadcn/ui Renderer
+description: Render JSONForms with shadcn/ui components
+icon: ShadCNUI
+---
+
+import { FormsDemoCallout } from "@/components/forms-demo-callout";
+
+## Overview
+
+The `@fragno-dev/jsonforms-shadcn-renderers` package provides a JSONForms renderer built for
+shadcn/ui components. Use it to render forms from the Form fragment with a consistent shadcn/ui look
+and feel.
+
+<FormsDemoCallout />
+
+Because shadcn/ui inherently vendors components, we rely on the bundler to resolve component imports
+in your project.
+
+## Installation
+
+Install the renderer package alongside JSONForms React:
+
+```npm
+npm install @fragno-dev/jsonforms-shadcn-renderers @jsonforms/react
+```
+
+### Required ShadCN Components
+
+The renderers use these shadcn/ui components. Add them to your project:
+
+```bash
+npx shadcn@latest add button \
+    calendar \
+    card \
+    checkbox \
+    field \
+    input \
+    label \
+    popover \
+    radio-group \
+    select \
+    slider \
+    switch \
+    tabs \
+    textarea
+```
+
+## Configuration
+
+### Vite
+
+The renderers import shadcn components from `@/components/ui/*`. Configure Vite to resolve these
+imports:
+
+```ts title="vite.config.ts"
+import { defineConfig } from "vite";
+import path from "path";
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      "@/components": path.resolve(__dirname, "./src/components"),
+      "@/lib": path.resolve(__dirname, "./src/lib"),
+    },
+  },
+  ssr: {
+    noExternal: ["@fragno-dev/jsonforms-shadcn-renderers"],
+  },
+});
+```
+
+### Tailwind CSS
+
+Include the package in your Tailwind sources so the renderer classes are included in your build:
+
+```css title="app.css"
+@source "../node_modules/@fragno-dev/jsonforms-shadcn-renderers";
+```
+
+See the
+[Tailwind docs on source detection](https://tailwindcss.com/docs/detecting-classes-in-source-files#explicitly-registering-sources)
+for more details.
+
+## Usage
+
+Use the `shadcnRenderers` and `shadcnCells` with the JSONForms component:
+
+```tsx title="components/dynamic-form.tsx"
+import { useState } from "react";
+import { JsonForms } from "@jsonforms/react";
+import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
+
+interface DynamicFormProps {
+  schema: Record<string, unknown>;
+  uiSchema: Record<string, unknown>;
+  onSubmit: (data: Record<string, unknown>) => void;
+}
+
+export function DynamicForm({ schema, uiSchema, onSubmit }: DynamicFormProps) {
+  const [data, setData] = useState({});
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(data);
+      }}
+    >
+      <JsonForms
+        schema={schema}
+        uischema={uiSchema}
+        data={data}
+        renderers={shadcnRenderers}
+        cells={shadcnCells}
+        onChange={({ data }) => setData(data)}
+      />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
+
+### With the Form Fragment
+
+Combine the renderer with the Form fragment client:
+
+```tsx title="components/contact-form.tsx"
+import { useState } from "react";
+import { JsonForms } from "@jsonforms/react";
+import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
+import { formsClient } from "@/lib/forms-client";
+
+export function ContactForm() {
+  const [formData, setFormData] = useState({});
+  const { data: form, loading: formLoading } = formsClient.useForm({
+    pathParams: { slug: "contact" },
+  });
+  const { mutate: submit, loading: submitting } = formsClient.useSubmitForm();
+
+  if (formLoading || !form) return <div>Loading...</div>;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submit({
+      pathParams: { slug: "contact" },
+      body: { data: formData },
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <JsonForms
+        schema={form.dataSchema}
+        uischema={form.uiSchema}
+        data={formData}
+        renderers={shadcnRenderers}
+        cells={shadcnCells}
+        onChange={({ data }) => setFormData(data ?? {})}
+      />
+      <button type="submit" disabled={submitting}>
+        {submitting ? "Submitting..." : "Submit"}
+      </button>
+    </form>
+  );
+}
+```
+
+## Supported Features
+
+JSONforms primitives supported by this renderer.
+
+<include>../../.includes/forms/shadcn-features.md</include>

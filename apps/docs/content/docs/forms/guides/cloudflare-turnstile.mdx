@@ -1,0 +1,171 @@
+---
+title: Cloudflare Turnstile
+description: Protect form submissions with Cloudflare Turnstile
+icon: ShieldCheck
+---
+
+## Overview
+
+[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) is a CAPTCHA alternative that
+protects your forms from bots without frustrating users. This guide shows how to add Turnstile
+validation to your Form fragment using middleware.
+
+## Prerequisites
+
+- A Cloudflare account with Turnstile enabled
+- Your Turnstile site key (for the frontend widget)
+- Your Turnstile secret key (for server-side validation)
+
+## Server Setup
+
+### 1. Create a Turnstile Validation Function
+
+Create a utility function to validate Turnstile tokens against the Cloudflare API on your backend.
+See
+[Cloudflare documentation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
+for up-to-date information on how to validate a token.
+
+```typescript title="lib/turnstile.ts"
+const SECRET_KEY = "your-secret-key";
+
+async function validateTurnstile(token, remoteip) {
+  try {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        secret: SECRET_KEY,
+        response: token,
+        remoteip: remoteip,
+      }),
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error("Turnstile validation error:", error);
+    return { success: false, "error-codes": ["internal-error"] };
+  }
+}
+```
+
+### 2. Add Middleware to the Fragment
+
+Use the `withMiddleware` method to intercept form submissions and validate the Turnstile token
+before processing:
+
+```typescript title="lib/forms.ts"
+import { createFormsFragment } from "@fragno-dev/forms";
+import { validateTurnstile } from "./turnstile";
+
+export const formsFragment = createFormsFragment(
+  {
+    // ... your config
+  },
+  { databaseAdapter },
+).withMiddleware(async ({ path, ifMatchesRoute, headers }, { error }) => {
+  // Only validate on form submissions
+  const submitResult = await ifMatchesRoute("POST", "/:slug/submit", async ({ input }) => {
+    const { securityToken } = await input.valid();
+
+    if (!securityToken) {
+      return error({ message: "Missing securityToken in body", code: "TURNSTILE_REQUIRED" }, 400);
+    }
+
+    const ipAddress = headers.get("CF-Connecting-IP");
+
+    const result = await validateTurnstile(securityToken, ipAddress);
+    if (!result.success) {
+      return error({ message: "Turnstile validation failed", code: "TURNSTILE_FAILED" }, 403);
+    }
+  });
+
+  if (submitResult) {
+    return submitResult;
+  }
+
+  return undefined;
+});
+```
+
+The `ifMatchesRoute` helper lets you run validation logic only for specific routes. The
+`securityToken` field is already part of the form submission schema, so clients can pass it
+alongside the form data.
+
+## Client Setup
+
+### 1. Add the Turnstile Widget
+
+You'll need to embed the Cloudflare widget on your page, for details on how to do this see the
+[Cloudflare docs](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/).
+
+For the example below we'll use React with the Turnstile component provided by the
+`@marsidev/react-turnstile` package.
+
+### 2. Include the Token in Submissions
+
+Render the Turnstile widget and pass the returned token to the `securityToken` field on submit.
+
+```tsx title="components/turnstile-form.tsx"
+import { useState } from "react";
+import { JsonForms } from "@jsonforms/react";
+import { Turnstile } from "@marsidev/react-turnstile";
+import { formsClient } from "@/lib/forms-client";
+
+export function FormSubmitPage({ slug }: { slug: string }) {
+  const [formData, setFormData] = useState({});
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>(undefined);
+
+  // Get form definition
+  const { data: form } = formsClient.useForm({
+    path: { slug },
+  });
+
+  // Form submission mutator hook
+  const {
+    mutate: submitForm,
+    loading: submitLoading,
+    error: submitError,
+    data: responseId,
+  } = formsClient.useSubmitForm();
+
+  const handleSubmit = async () => {
+    await submitForm({
+      path: { slug },
+      body: {
+        data: formData,
+        securityToken: turnstileToken,
+      },
+    });
+  };
+
+  if (responseId) {
+    return <p>Form submitted successfully!</p>;
+  }
+
+  return (
+    <>
+      {form && (
+        <JsonForms
+          schema={form.dataSchema}
+          uischema={form.uiSchema}
+          data={formData}
+          onChange={({ data }) => setFormData(data)}
+        />
+      )}
+
+      <Turnstile siteKey="your-site-key" onSuccess={setTurnstileToken} />
+
+      {submitError && <p>{submitError.message}</p>}
+
+      <button disabled={submitLoading} onClick={handleSubmit}>
+        {submitLoading ? "Submitting..." : "Submit"}
+      </button>
+    </>
+  );
+}
+```
+
+That should be it.
