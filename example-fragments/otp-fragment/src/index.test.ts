@@ -24,24 +24,22 @@ describe("OTP Fragment", () => {
       const otpService = fragments.otp.services.otp;
 
       const code = await testCtx.inContext(async function () {
-        return this.uow(async ({ executeMutate }) => {
-          const code = otpService.generateOTP("user-123");
-
-          await executeMutate();
-
-          return code;
+        const code = await this.handlerTx({
+          deps: () => [otpService.generateOTP("user-123")] as const,
+          success: ({ depsResult: [result] }) => result,
         });
+        return code;
       });
 
       expect(code).toMatch(/^\d{6}$/);
 
       // Verify OTP in a separate UOW context with automatic phase execution
       const isValid = await testCtx.inContext(async function () {
-        return this.uow(async ({ executeMutate }) => {
-          const isValidPromise = otpService.verifyOTP("user-123", code);
-          await executeMutate();
-          return isValidPromise;
+        const isValid = await this.handlerTx({
+          deps: () => [otpService.verifyOTP("user-123", code)] as const,
+          success: ({ depsResult: [result] }) => result,
         });
+        return isValid;
       });
       expect(isValid).toBe(true);
     });

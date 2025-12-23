@@ -1,8 +1,9 @@
 import { defineFragment, defineRoute, defineRoutes, instantiate } from "@fragno-dev/core";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import type { FragnoPublicConfigWithDatabase, TxResult } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db";
 import { otpSchema, authSchema } from "./schema";
 import z from "zod";
+import { generateId } from "@fragno-dev/db/schema";
 
 /**
  * OTP Service interface that can be used by other fragments
@@ -13,7 +14,7 @@ export interface IOTPService {
    * @param userId - User ID to generate OTP for
    * @returns The generated OTP code
    */
-  generateOTP(userId: string): string;
+  generateOTP(userId: string): TxResult<string>;
 
   /**
    * Verify an OTP code
@@ -21,7 +22,7 @@ export interface IOTPService {
    * @param code - OTP code to verify
    * @returns true if valid, false otherwise
    */
-  verifyOTP(userId: string, code: string): Promise<boolean>;
+  verifyOTP(userId: string, code: string): TxResult<boolean>;
 }
 
 export interface OTPConfig {
@@ -39,52 +40,63 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
   .extend(withDatabase(otpSchema))
   .providesService("otp", ({ defineService }) =>
     defineService({
-      generateOTP: function (userId: string): string {
-        const uow = this.uow(otpSchema);
+      generateOTP: function (userId: string) {
         const code = generateOTPCode();
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
 
-        uow.create("otp_code", {
-          userId,
-          code,
-          expiresAt,
-          verified: false,
+        return this.serviceTx(otpSchema, {
+          mutate: ({ uow }) => {
+            uow.create("otp_code", {
+              userId,
+              code,
+              expiresAt,
+              verified: false,
+            });
+            return code;
+          },
         });
-
-        return code;
       },
-      verifyOTP: async function (userId: string, code: string): Promise<boolean> {
-        const uow = this.uow(otpSchema).find("otp_code", (b) =>
-          b
-            .whereIndex("idx_otp_user", (eb) => eb("userId", "=", userId))
-            .select(["id", "code", "expiresAt", "verified"]),
-        );
+      verifyOTP: function (userId: string, code: string) {
+        return this.serviceTx(otpSchema, {
+          retrieve: (uow) => {
+            return uow.find("otp_code", (b) =>
+              b
+                .whereIndex("idx_otp_user", (eb) => eb("userId", "=", userId))
+                .select(["id", "code", "expiresAt", "verified"]),
+            );
+          },
+          retrieveSuccess: ([otpCodes]) => {
+            // Find the matching OTP code
+            type OTPCode = (typeof otpCodes)[number];
+            const otpCode = otpCodes.find((otp: OTPCode) => "code" in otp && otp.code === code);
+            if (!otpCode || !("code" in otpCode)) {
+              return { valid: false, otpCode: null };
+            }
 
-        // Wait for retrieval phase to complete and get the typed results
-        const [otpCodes] = await uow.retrievalPhase;
+            // Check if the code has expired
+            if (new Date(otpCode.expiresAt) < new Date()) {
+              return { valid: false, otpCode: null };
+            }
 
-        // Find the matching OTP code
-        type OTPCode = (typeof otpCodes)[number];
-        const otpCode = otpCodes.find((otp: OTPCode) => "code" in otp && otp.code === code);
-        if (!otpCode || !("code" in otpCode)) {
-          return false;
-        }
+            // Check if the code has already been verified
+            if (otpCode.verified) {
+              return { valid: false, otpCode: null };
+            }
 
-        // Check if the code has expired
-        if (new Date(otpCode.expiresAt) < new Date()) {
-          return false;
-        }
+            return { valid: true, otpCode };
+          },
+          mutate: ({ uow, retrieveResult }) => {
+            if (!retrieveResult.valid || !retrieveResult.otpCode) {
+              return false;
+            }
 
-        // Check if the code has already been verified
-        if (otpCode.verified) {
-          return false;
-        }
+            // Mark the code as verified
+            uow.update("otp_code", retrieveResult.otpCode.id, (b) => b.set({ verified: true }));
 
-        // Mark the code as verified
-        uow.update("otp_code", otpCode.id, (b) => b.set({ verified: true }));
-
-        return true;
+            return true;
+          },
+        });
       },
     }),
   )
@@ -105,12 +117,9 @@ const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(({ services,
       handler: async function ({ input }, { json }) {
         const { userId, code } = await input.valid();
 
-        const verified = await this.uow(async ({ executeMutate }) => {
-          const verified = services.otp.verifyOTP(userId, code);
-
-          await executeMutate();
-
-          return verified;
+        const verified = await this.handlerTx({
+          deps: () => [services.otp.verifyOTP(userId, code)] as const,
+          success: ({ depsResult: [result] }) => result,
         });
 
         return json({ verified });
@@ -144,74 +153,83 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment"
       /**
        * Create a user with email verification using OTP
        */
-      createUserWithOTP: async function (email: string, password: string) {
-        const uow = this.uow(authSchema);
-
+      createUserWithOTP: function (email: string, password: string) {
         // Hash password (simplified - in real app use bcrypt/argon2)
         const passwordHash = `hashed_${password}`;
 
-        const userId = uow.create("user", {
-          email,
-          passwordHash,
-          emailVerified: false,
+        const userId = generateId(authSchema, "user");
+
+        return this.serviceTx(authSchema, {
+          // Generate OTP if service is available
+          deps: () => [serviceDeps.otp?.generateOTP(userId.externalId)],
+          mutate: ({ uow }) => {
+            uow.create("user", {
+              id: userId,
+              email,
+              passwordHash,
+              emailVerified: false,
+            });
+
+            return {
+              userId: userId.valueOf(),
+              email,
+              emailVerified: false,
+            };
+          },
+          success: ({ depsResult: [otpCode], mutateResult }) => {
+            return {
+              ...mutateResult,
+              otpCode,
+            };
+          },
         });
-
-        // Generate OTP if service is available
-        let otpCode: string | null = null;
-        if (serviceDeps.otp) {
-          // Cross-schema UOW: the OTP service will use the same UOW context
-          // The promise will resolve after the handler executes phases
-          otpCode = serviceDeps.otp.generateOTP(userId.toString());
-        }
-
-        return {
-          userId: userId.valueOf(),
-          email,
-          emailVerified: false,
-          otpCode, // In real app, send via email instead of returning
-        };
       },
 
       createUser: function (email: string, password: string) {
-        const uow = this.uow(authSchema);
-        const userId = uow.create("user", {
-          email,
-          passwordHash: `hashed_${password}`, // fake hash
-          emailVerified: false,
-        });
+        return this.serviceTx(authSchema, {
+          mutate: ({ uow }) => {
+            const userId = uow.create("user", {
+              email,
+              passwordHash: `hashed_${password}`, // fake hash
+              emailVerified: false,
+            });
 
-        return {
-          id: userId.valueOf(),
-          email,
-          emailVerified: false,
-        };
+            return {
+              id: userId.valueOf(),
+              email,
+              emailVerified: false,
+            };
+          },
+        });
       },
 
       /**
        * Get user by email
        */
-      getUserByEmail: async function (email: string) {
-        const uow = this.uow(authSchema).find("user", (b) =>
-          b
-            .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
-            .select(["id", "email", "emailVerified"])
-            .pageSize(1),
-        );
+      getUserByEmail: function (email: string) {
+        return this.serviceTx(authSchema, {
+          retrieve: (uow) => {
+            return uow.find("user", (b) =>
+              b
+                .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
+                .select(["id", "email", "emailVerified"])
+                .pageSize(1),
+            );
+          },
+          retrieveSuccess: ([users]) => {
+            const user = users[0] ?? null;
 
-        // Wait for retrieval phase to complete and get the typed results
-        const [users] = await uow.retrievalPhase;
+            if (!user) {
+              return null;
+            }
 
-        const user = users[0] ?? null;
-
-        if (!user) {
-          return null;
-        }
-
-        return {
-          id: user.id.valueOf(),
-          email: user.email,
-          emailVerified: user.emailVerified,
-        };
+            return {
+              id: user.id.valueOf(),
+              email: user.email,
+              emailVerified: user.emailVerified,
+            };
+          },
+        });
       },
     });
   })
@@ -260,13 +278,16 @@ const authRoutesFactory = defineRoutes(authFragmentDefinition).create(
             emailVerified: z.boolean(),
           })
           .nullable(),
-        handler: async ({ query }, { json, error }) => {
+        handler: async function ({ query }, { json, error }) {
           const email = query.get("email");
           if (!email) {
             return error({ message: "Email required", code: "email_required" }, 400);
           }
 
-          const user = await services.getUserByEmail(email);
+          const user = await this.handlerTx({
+            deps: () => [services.getUserByEmail(email)] as const,
+            success: ({ depsResult: [result] }) => result,
+          });
 
           if (!user) {
             return error({ message: "User not found", code: "user_not_found" }, 404);
@@ -295,22 +316,27 @@ const authRoutesFactory = defineRoutes(authFragmentDefinition).create(
         handler: async function ({ input }, { json }) {
           const { email, password } = await input.valid();
 
-          const result = await this.uow(async ({ executeMutate }) => {
-            // Schedule operations (don't await yet)
-            const user = services.createUser(email, password);
-            const otpCode = serviceDeps.otp?.generateOTP(user.id) ?? null;
-
-            await executeMutate();
-
-            return {
-              userId: user.id,
-              email: user.email,
-              emailVerified: user.emailVerified,
-              otpCode,
-            };
+          // Create user first
+          const user = await this.handlerTx({
+            deps: () => [services.createUser(email, password)] as const,
+            success: ({ depsResult: [result] }) => result,
           });
 
-          return json(result);
+          // Then generate OTP if service is available
+          let otpCode: string | null = null;
+          if (serviceDeps.otp) {
+            otpCode = await this.handlerTx({
+              deps: () => [serviceDeps.otp!.generateOTP(user.id)] as const,
+              success: ({ depsResult: [code] }) => code,
+            });
+          }
+
+          return json({
+            userId: user.id,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            otpCode,
+          });
         },
       }),
     ];
@@ -324,7 +350,6 @@ const randomRoute = defineRoute({
     random: z.number().min(0).max(1000),
   }),
   handler: async function (_, { json }) {
-    console.log("random route", this);
     return json({ random: Math.floor(Math.random() * 1000) });
   },
 });

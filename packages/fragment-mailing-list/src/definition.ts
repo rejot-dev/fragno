@@ -23,15 +23,15 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
   }))
   .providesBaseService(({ defineService }) => {
     return defineService({
-      subscribe: async function (email: string) {
-        return this.tx(mailingListSchema, {
+      subscribe: function (email: string) {
+        return this.serviceTx(mailingListSchema, {
           retrieve: (uow) => {
             // Check if already subscribed
             return uow.find("subscriber", (b) =>
               b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
             );
           },
-          mutate: (uow, [existing]) => {
+          mutate: ({ uow, retrieveResult: [existing] }) => {
             if (existing.length > 0) {
               const subscriber = existing[0];
               return {
@@ -56,7 +56,7 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
           },
         });
       },
-      getSubscribers: async function ({
+      getSubscribers: function ({
         search,
         sortBy,
         sortOrder,
@@ -73,7 +73,7 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
         const effectiveSortOrder = cursor ? cursor.orderDirection : sortOrder;
         const effectivePageSize = cursor ? cursor.pageSize : pageSize;
 
-        return this.tx(mailingListSchema, {
+        return this.serviceTx(mailingListSchema, {
           retrieve: (uow) => {
             return uow.findWithCursor("subscriber", (b) => {
               // When searching, we must filter by email and can only use the email index
@@ -97,7 +97,7 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
               return cursor ? query.after(cursor) : query;
             });
           },
-          mutate: (_uow, [subscribers]) => {
+          mutate: ({ retrieveResult: [subscribers] }) => {
             return {
               subscribers: subscribers.items.map((subscriber) => ({
                 id: subscriber.id.toString(),

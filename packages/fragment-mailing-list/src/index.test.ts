@@ -43,9 +43,11 @@ describe("Mailing List Fragment", async () => {
     describe("subscribe", () => {
       test("should add a new subscriber", async () => {
         // TODO(Wilco): would be nice to have a helper function for inContext -> uow
-        const result = await fragment.inContext(async function () {
-          const [result] = await this.tx(() => [services.subscribe("test@example.com")]);
-          return result;
+        const result = await fragment.inContext(function () {
+          return this.handlerTx({
+            deps: () => [services.subscribe("test@example.com")],
+            success: ({ depsResult: [result] }) => result,
+          });
         });
 
         expect(result).toMatchObject({
@@ -57,9 +59,11 @@ describe("Mailing List Fragment", async () => {
       }, 2000);
 
       test("should return existing subscriber if already subscribed", async () => {
-        const initialSubscriber = await fragment.inContext(async function () {
-          const [result] = await this.tx(() => [services.subscribe("test@example.com")]);
-          return result;
+        const initialSubscriber = await fragment.inContext(function () {
+          return this.handlerTx({
+            deps: () => [services.subscribe("test@example.com")],
+            success: ({ depsResult: [result] }) => result,
+          });
         });
 
         expect(initialSubscriber).toMatchObject({
@@ -69,9 +73,11 @@ describe("Mailing List Fragment", async () => {
           alreadySubscribed: false,
         });
 
-        const resubscribe = await fragment.inContext(async function () {
-          const [result] = await this.tx(() => [services.subscribe("test@example.com")]);
-          return result;
+        const resubscribe = await fragment.inContext(function () {
+          return this.handlerTx({
+            deps: () => [services.subscribe("test@example.com")],
+            success: ({ depsResult: [result] }) => result,
+          });
         });
 
         expect(resubscribe).toMatchObject({
@@ -88,24 +94,28 @@ describe("Mailing List Fragment", async () => {
   describe("getSubscribers - Pagination", () => {
     test("should throw index mismatch error when sortBy changes between pagination requests", async () => {
       // Create some test subscribers
-      await fragment.inContext(async function () {
-        await this.tx(() => [
-          services.subscribe("alice@example.com"),
-          services.subscribe("bob@example.com"),
-          services.subscribe("charlie@example.com"),
-        ]);
+      await fragment.inContext(function () {
+        return this.handlerTx({
+          deps: () => [
+            services.subscribe("alice@example.com"),
+            services.subscribe("bob@example.com"),
+            services.subscribe("charlie@example.com"),
+          ],
+        });
       });
 
       // First page with sortBy="email"
-      const firstPage = await fragment.inContext(async function () {
-        const [result] = await this.tx(() => [
-          services.getSubscribers({
-            sortBy: "email",
-            sortOrder: "asc",
-            pageSize: 1,
-          }),
-        ]);
-        return result;
+      const firstPage = await fragment.inContext(function () {
+        return this.handlerTx({
+          deps: () => [
+            services.getSubscribers({
+              sortBy: "email",
+              sortOrder: "asc",
+              pageSize: 1,
+            }),
+          ],
+          success: ({ depsResult: [result] }) => result,
+        });
       });
 
       expect(firstPage.cursor).toBeDefined();
@@ -113,14 +123,16 @@ describe("Mailing List Fragment", async () => {
       // Try to get next page with different sortBy (should throw index mismatch)
       await expect(
         fragment.inContext(function () {
-          return this.tx(() => [
-            services.getSubscribers({
-              sortBy: "subscribedAt", // Changed from "email"
-              sortOrder: "asc",
-              pageSize: 1,
-              cursor: firstPage.cursor,
-            }),
-          ]);
+          return this.handlerTx({
+            deps: () => [
+              services.getSubscribers({
+                sortBy: "subscribedAt", // Changed from "email"
+                sortOrder: "asc",
+                pageSize: 1,
+                cursor: firstPage.cursor,
+              }),
+            ],
+          });
         }),
       ).rejects.toThrow(/Index mismatch/);
     });

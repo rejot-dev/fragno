@@ -29,11 +29,19 @@ function createMockAdapter(): DatabaseAdapter {
             findMany: vi.fn(),
           })),
           restrict: vi.fn(() => createMockRestrictedUow()),
+          signalReadyForRetrieval: vi.fn(),
+          signalReadyForMutation: vi.fn(),
+          retrievalPhase: Promise.resolve([]),
+          mutationPhase: Promise.resolve(),
         })),
         restrict: vi.fn(() => createMockRestrictedUow()),
         table: vi.fn(() => ({
           findMany: vi.fn(),
         })),
+        signalReadyForRetrieval: vi.fn(),
+        signalReadyForMutation: vi.fn(),
+        retrievalPhase: Promise.resolve([]),
+        mutationPhase: Promise.resolve(),
       });
 
       return {
@@ -43,16 +51,22 @@ function createMockAdapter(): DatabaseAdapter {
             findMany: vi.fn(),
           })),
           restrict: vi.fn(() => createMockRestrictedUow()),
+          signalReadyForRetrieval: vi.fn(),
+          signalReadyForMutation: vi.fn(),
+          retrievalPhase: Promise.resolve([]),
+          mutationPhase: Promise.resolve(),
         })),
         restrict: vi.fn(() => createMockRestrictedUow()),
-        executeRetrieve: vi.fn(),
-        executeMutations: vi.fn(),
+        executeRetrieve: vi.fn(async () => {}),
+        executeMutations: vi.fn(async () => ({ success: true })),
         commit: vi.fn(),
         rollback: vi.fn(),
         reset: vi.fn(),
         table: vi.fn(() => ({
           findMany: vi.fn(),
         })),
+        nonce: "test-nonce",
+        state: "building-retrieval",
       };
     }),
     type: "mock",
@@ -69,7 +83,7 @@ function createMockAdapter(): DatabaseAdapter {
 
 describe("db-fragment-instantiator", () => {
   describe("Unit of Work in request context", () => {
-    it("should provide executeRestrictedUnitOfWork on this context in route handlers", async () => {
+    it("should provide handlerTx on this context in route handlers", async () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .build();
@@ -79,10 +93,10 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/test",
           handler: async function (_input, { json }) {
-            // Access executeRestrictedUnitOfWork from this context
-            expect(this.uow).toBeDefined();
+            // Access handlerTx from this context
+            expect(this.handlerTx).toBeDefined();
 
-            return json({ hasExecuteMethod: !!this.uow });
+            return json({ hasExecuteMethod: !!this.handlerTx });
           },
         }),
       ]);
@@ -99,7 +113,7 @@ describe("db-fragment-instantiator", () => {
       expect(data).toEqual({ hasExecuteMethod: true });
     });
 
-    it("should provide schema-typed UOW via executeRestrictedUnitOfWork", async () => {
+    it("should provide schema-typed UOW via handlerTx", async () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .build();
@@ -109,9 +123,11 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/test",
           handler: async function (_input, { json }) {
-            const result = await this.uow(async ({ forSchema }) => {
-              const uow = forSchema(testSchema);
-              return { hasSchemaUow: !!uow };
+            const result = await this.handlerTx({
+              mutate: ({ forSchema }) => {
+                const uow = forSchema(testSchema);
+                return { hasSchemaUow: !!uow };
+              },
             });
 
             return json(result);
@@ -189,7 +205,7 @@ describe("db-fragment-instantiator", () => {
   });
 
   describe("database operations with UOW", () => {
-    it("should allow accessing schema-typed UOW in handlers via executeRestrictedUnitOfWork", async () => {
+    it("should allow accessing schema-typed UOW in handlers via handlerTx", async () => {
       const testSchemaWithCounter = schema((s) => {
         return s.addTable("counters", (t) => {
           return t.addColumn("id", idColumn()).addColumn("value", column("integer"));
@@ -205,10 +221,12 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/counters",
           handler: async function (_input, { json }) {
-            const result = await this.uow(async ({ forSchema }) => {
-              const uow = forSchema(testSchemaWithCounter);
-              // Verify that we can access the UOW
-              return { hasCountersTable: !!uow };
+            const result = await this.handlerTx({
+              mutate: ({ forSchema }) => {
+                const uow = forSchema(testSchemaWithCounter);
+                // Verify that we can access the UOW
+                return { hasCountersTable: !!uow };
+              },
             });
 
             return json(result);
@@ -230,14 +248,17 @@ describe("db-fragment-instantiator", () => {
   });
 
   describe("service integration with UOW", () => {
-    it("should allow services to access UOW via forSchema", async () => {
+    it("should allow services to access UOW via serviceTx", async () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .providesBaseService(({ defineService }) =>
           defineService({
             checkTypedUowExists: function () {
-              const uow = this.uow(testSchema);
-              return !!uow;
+              return this.serviceTx(testSchema, {
+                mutate: ({ uow }) => {
+                  return !!uow;
+                },
+              });
             },
           }),
         )
@@ -249,7 +270,10 @@ describe("db-fragment-instantiator", () => {
           path: "/check",
           outputSchema: z.object({ hasTypedUow: z.boolean() }),
           handler: async function (_input, { json }) {
-            const hasTypedUow = services.checkTypedUowExists();
+            const hasTypedUow = await this.handlerTx({
+              deps: () => [services.checkTypedUowExists()] as const,
+              success: ({ depsResult: [result] }) => result,
+            });
             return json({ hasTypedUow });
           },
         }),
@@ -266,73 +290,18 @@ describe("db-fragment-instantiator", () => {
       assert(response.type === "json");
       expect(response.data).toEqual({ hasTypedUow: true });
     });
-
-    it.skip("should share same UOW across multiple service calls from handler", async () => {
-      const definition = defineFragment("test-db-fragment")
-        .extend(withDatabase(testSchema))
-        .providesService("helpers", ({ defineService }) =>
-          defineService({
-            logUow: function () {
-              return this.uow(testSchema);
-            },
-          }),
-        )
-        .providesService("main", ({ defineService }) =>
-          defineService({
-            markUow: function () {
-              return this.uow(testSchema);
-            },
-          }),
-        )
-        .build();
-
-      const routes = defineRoutes(definition).create(({ services, defineRoute }) => [
-        defineRoute({
-          method: "GET",
-          path: "/nested",
-          handler: async function (_input, { json }) {
-            // Mark the UOW with an ID
-            const uow1 = services.main.markUow();
-            const uow2 = services.helpers.logUow();
-            const uow3 = services.main.markUow();
-
-            console.log({
-              x: uow1 === uow2,
-              y: uow2 === uow3,
-              z: uow1 === uow3,
-            });
-
-            return json({
-              same: uow1 === uow2 && uow2 === uow3,
-            });
-          },
-        }),
-      ]);
-
-      const mockAdapter = createMockAdapter();
-      const fragment = instantiate(definition)
-        .withRoutes([routes])
-        .withOptions({ mountRoute: "/api", databaseAdapter: mockAdapter })
-        .build();
-
-      const response = await fragment.handler(new Request("http://localhost/api/nested"));
-      const data = await response.json();
-
-      expect(data).toEqual({
-        same: true,
-      });
-    });
   });
 
   describe("inContext with database fragments", () => {
-    it("should allow calling services with UOW via inContext", () => {
+    it("should allow calling services with UOW via inContext", async () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .providesBaseService(({ defineService }) =>
           defineService({
             getUowExists: function () {
-              const uow = this.uow(testSchema);
-              return !!uow;
+              return this.serviceTx(testSchema, {
+                mutate: ({ uow }) => !!uow,
+              });
             },
           }),
         )
@@ -343,7 +312,12 @@ describe("db-fragment-instantiator", () => {
         .withOptions({ databaseAdapter: mockAdapter })
         .build();
 
-      const result = fragment.inContext(() => fragment.services.getUowExists());
+      const result = await fragment.inContext(async function () {
+        return await this.handlerTx({
+          deps: () => [fragment.services.getUowExists()] as const,
+          success: ({ depsResult: [exists] }) => exists,
+        });
+      });
       expect(result).toBe(true);
     });
   });
@@ -370,9 +344,11 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/test",
           handler: async function (_input, { json }) {
-            const result = await this.uow(async ({ forSchema }) => {
-              const uow = forSchema(testSchema);
-              return { hasUow: !!uow };
+            const result = await this.handlerTx({
+              mutate: ({ forSchema }) => {
+                const uow = forSchema(testSchema);
+                return { hasUow: !!uow };
+              },
             });
             return json(result);
           },
@@ -518,13 +494,15 @@ describe("db-fragment-instantiator", () => {
       }).toThrow("Database fragment requires a database adapter");
     });
 
-    it("should throw when forSchema called outside request context", () => {
+    it("should throw when serviceTx called outside request context", () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .providesBaseService(({ defineService }) =>
           defineService({
             tryGetUow: function () {
-              return this.uow(testSchema);
+              return this.serviceTx(testSchema, {
+                mutate: ({ uow }) => uow,
+              });
             },
           }),
         )

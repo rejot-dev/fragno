@@ -65,15 +65,18 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           const params = parseQueryParams(query);
           const cursor = parseCursor(params.cursor);
 
-          const [result] = await this.tx(() => [
-            services.getSubscribers({
-              search: params.search,
-              sortBy: params.sortBy,
-              sortOrder: params.sortOrder,
-              pageSize: params.pageSize,
-              cursor,
-            }),
-          ]);
+          const result = await this.handlerTx({
+            deps: () => [
+              services.getSubscribers({
+                search: params.search,
+                sortBy: params.sortBy,
+                sortOrder: params.sortOrder,
+                pageSize: params.pageSize,
+                cursor,
+              }),
+            ],
+            success: ({ depsResult: [result] }) => result,
+          });
 
           return json({
             subscribers: result.subscribers,
@@ -99,7 +102,10 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
         handler: async function ({ input }, { json }) {
           const { email } = await input.valid();
 
-          const [result] = await this.tx(() => [services.subscribe(email)]);
+          const result = await this.handlerTx({
+            deps: () => [services.subscribe(email)],
+            success: ({ depsResult: [result] }) => result,
+          });
 
           return json(result);
         },

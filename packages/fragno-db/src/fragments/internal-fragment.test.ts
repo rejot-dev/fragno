@@ -49,10 +49,10 @@ describe("Internal Fragment", () => {
 
   it("should get undefined for non-existent key", async () => {
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
-        await executeRetrieve();
-        return await valuePromise;
+      return await this.handlerTx({
+        deps: () =>
+          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        success: ({ depsResult: [value] }) => value,
       });
     });
 
@@ -61,22 +61,18 @@ describe("Internal Fragment", () => {
 
   it("should set and get a value", async () => {
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        const setPromise = fragment.services.settingsService.set(
-          SETTINGS_NAMESPACE,
-          "test-key",
-          "test-value",
-        );
-        await executeMutate();
-        await setPromise;
+      await this.handlerTx({
+        deps: () => [
+          fragment.services.settingsService.set(SETTINGS_NAMESPACE, "test-key", "test-value"),
+        ],
       });
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
-        await executeRetrieve();
-        return await valuePromise;
+      return await this.handlerTx({
+        deps: () =>
+          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        success: ({ depsResult: [value] }) => value,
       });
     });
 
@@ -88,22 +84,19 @@ describe("Internal Fragment", () => {
 
   it("should update an existing value", async () => {
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        const setPromise = fragment.services.settingsService.set(
-          SETTINGS_NAMESPACE,
-          "test-key",
-          "updated-value",
-        );
-        await executeMutate();
-        await setPromise;
+      await this.handlerTx({
+        deps: () =>
+          [
+            fragment.services.settingsService.set(SETTINGS_NAMESPACE, "test-key", "updated-value"),
+          ] as const,
       });
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
-        await executeRetrieve();
-        return await valuePromise;
+      return await this.handlerTx({
+        deps: () =>
+          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        success: ({ depsResult: [value] }) => value,
       });
     });
 
@@ -116,10 +109,10 @@ describe("Internal Fragment", () => {
   it("should delete a value", async () => {
     // First get the ID
     const setting = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
-        await executeRetrieve();
-        return await valuePromise;
+      return await this.handlerTx({
+        deps: () =>
+          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        success: ({ depsResult: [value] }) => value,
       });
     });
 
@@ -127,19 +120,17 @@ describe("Internal Fragment", () => {
 
     // Delete it
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        const deletePromise = fragment.services.settingsService.delete(setting!.id);
-        await executeMutate();
-        await deletePromise;
+      await this.handlerTx({
+        deps: () => [fragment.services.settingsService.delete(setting!.id)] as const,
       });
     });
 
     // Verify it's gone
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const valuePromise = fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key");
-        await executeRetrieve();
-        return await valuePromise;
+      return await this.handlerTx({
+        deps: () =>
+          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        success: ({ depsResult: [value] }) => value,
       });
     });
 
@@ -188,41 +179,41 @@ describe("Hook Service", () => {
     const nonce = "test-nonce-1";
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onTest",
-          payload: { test: "data" },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 5,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onTest",
-          payload: { test: "already-completed-data" },
-          status: "completed",
-          attempts: 0,
-          maxAttempts: 5,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        await executeMutate();
+      await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onTest",
+            payload: { test: "data" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+          uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onTest",
+            payload: { test: "already-completed-data" },
+            status: "completed",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        },
       });
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const eventsPromise = fragment.services.hookService.getPendingHookEvents("test-namespace");
-        await executeRetrieve();
-        return await eventsPromise;
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        success: ({ depsResult: [result] }) => result,
       });
     });
 
@@ -241,40 +232,35 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        eventId = uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onComplete",
-          payload: { test: "data" },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 5,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        await executeMutate();
+      await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          eventId = uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onComplete",
+            payload: { test: "data" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        },
       });
     });
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        fragment.services.hookService.markHookCompleted(eventId);
-        await executeMutate();
+      await this.handlerTx({
+        deps: () => [fragment.services.hookService.markHookCompleted(eventId)] as const,
       });
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeRetrieve }) => {
-        const uow = forSchema(internalSchema);
-        const findUow = uow.find("fragno_hooks", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
-        );
-        await executeRetrieve();
-        const [events] = await findUow.retrievalPhase;
-        return events?.[0];
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
+        success: ({ depsResult: [event] }) => event,
       });
     });
 
@@ -288,40 +274,35 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        eventId = uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onProcess",
-          payload: { test: "data" },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 5,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        await executeMutate();
+      return this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          eventId = uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onProcess",
+            payload: { test: "data" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        },
       });
     });
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        fragment.services.hookService.markHookProcessing(eventId);
-        await executeMutate();
+      await this.handlerTx({
+        deps: () => [fragment.services.hookService.markHookProcessing(eventId)] as const,
       });
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeRetrieve }) => {
-        const uow = forSchema(internalSchema);
-        const findUow = uow.find("fragno_hooks", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
-        );
-        await executeRetrieve();
-        const [events] = await findUow.retrievalPhase;
-        return events?.[0];
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
+        success: ({ depsResult: [event] }) => event,
       });
     });
 
@@ -335,42 +316,41 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        eventId = uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onFail",
-          payload: { test: "data" },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 5,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        await executeMutate();
+      const createdId = await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onFail",
+            payload: { test: "data" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        },
       });
+      eventId = createdId;
     });
 
     const retryPolicy = new ExponentialBackoffRetryPolicy({ maxRetries: 3 });
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        fragment.services.hookService.markHookFailed(eventId, "Test error", 0, retryPolicy);
-        await executeMutate();
+      await this.handlerTx({
+        deps: () =>
+          [
+            fragment.services.hookService.markHookFailed(eventId, "Test error", 0, retryPolicy),
+          ] as const,
       });
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeRetrieve }) => {
-        const uow = forSchema(internalSchema);
-        const findUow = uow.find("fragno_hooks", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
-        );
-        await executeRetrieve();
-        const [events] = await findUow.retrievalPhase;
-        return events?.[0];
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
+        success: ({ depsResult: [event] }) => event,
       });
     });
 
@@ -387,47 +367,46 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        eventId = uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onMaxFail",
-          payload: { test: "data" },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 1,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        await executeMutate();
+      const createdId = await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onMaxFail",
+            payload: { test: "data" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 1,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        },
       });
+      eventId = createdId;
     });
 
     const retryPolicy = new NoRetryPolicy();
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ executeMutate }) => {
-        fragment.services.hookService.markHookFailed(
-          eventId,
-          "Max attempts reached",
-          0,
-          retryPolicy,
-        );
-        await executeMutate();
+      await this.handlerTx({
+        deps: () =>
+          [
+            fragment.services.hookService.markHookFailed(
+              eventId,
+              "Max attempts reached",
+              0,
+              retryPolicy,
+            ),
+          ] as const,
       });
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeRetrieve }) => {
-        const uow = forSchema(internalSchema);
-        const findUow = uow.find("fragno_hooks", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
-        );
-        await executeRetrieve();
-        const [events] = await findUow.retrievalPhase;
-        return events?.[0];
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
+        success: ({ depsResult: [event] }) => event,
       });
     });
 
@@ -444,29 +423,30 @@ describe("Hook Service", () => {
     const pastTime = new Date(Date.now() - 10000);
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        eventId = uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onStale",
-          payload: { test: "stale" },
-          status: "pending",
-          attempts: 1,
-          maxAttempts: 5,
-          lastAttemptAt: pastTime,
-          nextRetryAt: pastTime,
-          error: "Previous error",
-          nonce,
-        });
-        await executeMutate();
+      const createdId = await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onStale",
+            payload: { test: "stale" },
+            status: "pending",
+            attempts: 1,
+            maxAttempts: 5,
+            lastAttemptAt: pastTime,
+            nextRetryAt: pastTime,
+            error: "Previous error",
+            nonce,
+          });
+        },
       });
+      eventId = createdId;
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const eventsPromise = fragment.services.hookService.getPendingHookEvents("test-namespace");
-        await executeRetrieve();
-        return await eventsPromise;
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        success: ({ depsResult: [result] }) => result,
       });
     });
 
@@ -480,29 +460,29 @@ describe("Hook Service", () => {
     const nonce = "test-nonce-7";
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        uow.create("fragno_hooks", {
-          namespace: "other-namespace",
-          hookName: "onOther",
-          payload: { test: "other" },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 5,
-          lastAttemptAt: null,
-          nextRetryAt: null,
-          error: null,
-          nonce,
-        });
-        await executeMutate();
+      await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          uow.create("fragno_hooks", {
+            namespace: "other-namespace",
+            hookName: "onOther",
+            payload: { test: "other" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        },
       });
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const eventsPromise = fragment.services.hookService.getPendingHookEvents("test-namespace");
-        await executeRetrieve();
-        return await eventsPromise;
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        success: ({ depsResult: [result] }) => result,
       });
     });
 
@@ -517,29 +497,30 @@ describe("Hook Service", () => {
     const futureTime = new Date(Date.now() + 60000);
 
     await fragment.inContext(async function () {
-      return await this.uow(async ({ forSchema, executeMutate }) => {
-        const uow = forSchema(internalSchema);
-        eventId = uow.create("fragno_hooks", {
-          namespace: "test-namespace",
-          hookName: "onFuture",
-          payload: { test: "future" },
-          status: "pending",
-          attempts: 1,
-          maxAttempts: 5,
-          lastAttemptAt: new Date(),
-          nextRetryAt: futureTime,
-          error: "Previous error",
-          nonce,
-        });
-        await executeMutate();
+      const createdId = await this.handlerTx({
+        mutate: ({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace: "test-namespace",
+            hookName: "onFuture",
+            payload: { test: "future" },
+            status: "pending",
+            attempts: 1,
+            maxAttempts: 5,
+            lastAttemptAt: new Date(),
+            nextRetryAt: futureTime,
+            error: "Previous error",
+            nonce,
+          });
+        },
       });
+      eventId = createdId;
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.uow(async ({ executeRetrieve }) => {
-        const eventsPromise = fragment.services.hookService.getPendingHookEvents("test-namespace");
-        await executeRetrieve();
-        return await eventsPromise;
+      return await this.handlerTx({
+        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        success: ({ depsResult: [result] }) => result,
       });
     });
 
