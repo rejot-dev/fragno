@@ -68,7 +68,7 @@
     "test": "vitest run"
   },
   "type": "module",
-  "private": true,
+  "private": false,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
