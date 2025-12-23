@@ -1,5 +1,7 @@
 import { createId } from "../id";
 
+export { generateId } from "./generate-id";
+
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
 export type AnyRelation = Relation;

@@ -838,6 +838,70 @@ describe("DeleteBuilder with string ID", () => {
   });
 });
 
+describe("generateId", () => {
+  const testSchema = schema((s) =>
+    s.addTable("users", (t) =>
+      t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
+    ),
+  );
+
+  it("should generate a new FragnoId without creating a record", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    const id = uow.forSchema(testSchema).generateId("users");
+
+    expect(id).toBeInstanceOf(FragnoId);
+    expect(id.externalId).toBeDefined();
+    expect(typeof id.externalId).toBe("string");
+    expect(id.externalId.length).toBeGreaterThan(0);
+    expect(id.version).toBe(0);
+
+    // No mutation operations should be added
+    expect(uow.getMutationOperations()).toHaveLength(0);
+  });
+
+  it("should generate unique IDs on each call", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const typedUow = uow.forSchema(testSchema);
+
+    const id1 = typedUow.generateId("users");
+    const id2 = typedUow.generateId("users");
+
+    expect(id1.externalId).not.toBe(id2.externalId);
+  });
+
+  it("should allow using generated ID in create", async () => {
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => ({
+        success: true,
+        createdInternalIds: [1n],
+      }),
+    };
+
+    const uow = createUnitOfWork(createMockCompiler(), executor, createMockDecoder());
+    const typedUow = uow.forSchema(testSchema);
+
+    const id = typedUow.generateId("users");
+    typedUow.create("users", { id, email: "test@example.com", name: "Test" });
+
+    await uow.executeMutations();
+    const createdIds = uow.getCreatedIds();
+
+    expect(createdIds).toHaveLength(1);
+    expect(createdIds[0].externalId).toBe(id.externalId);
+  });
+
+  it("should throw for non-existent table", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+
+    expect(() => {
+      // @ts-expect-error - testing runtime error for non-existent table
+      uow.forSchema(testSchema).generateId("nonexistent");
+    }).toThrow("Table nonexistent not found in schema");
+  });
+});
+
 describe("getCreatedIds", () => {
   const testSchema = schema((s) =>
     s.addTable("users", (t) =>

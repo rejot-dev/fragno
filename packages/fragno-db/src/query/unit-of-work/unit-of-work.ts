@@ -7,6 +7,7 @@ import type {
   Relation,
 } from "../../schema/create";
 import { FragnoId } from "../../schema/create";
+import { generateId } from "../../schema/generate-id";
 import type { Condition, ConditionBuilder } from "../condition-builder";
 import type {
   SelectClause,
@@ -1960,6 +1961,22 @@ export class TypedUnitOfWork<
     // Safe: return type is correctly specified in the method signature
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this as any;
+  }
+
+  /**
+   * Generate a new ID for a table without creating a record.
+   * This is useful when you need to reference an ID before actually creating the record,
+   * or when you need to pass the ID to external services.
+   *
+   * @example
+   * ```ts
+   * const userId = uow.generateId("users");
+   * // Use userId in related records or pass to external services
+   * uow.create("users", { id: userId, name: "John" });
+   * ```
+   */
+  generateId<TableName extends keyof TSchema["tables"] & string>(tableName: TableName): FragnoId {
+    return generateId(this.#schema, tableName);
   }
 
   create<TableName extends keyof TSchema["tables"] & string>(
