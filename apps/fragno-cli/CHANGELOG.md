@@ -1,5 +1,17 @@
 # @fragno-dev/cli
 
+## 0.1.22
+
+### Patch Changes
+
+- Updated dependencies [aecfa70]
+- Updated dependencies [3faac77]
+- Updated dependencies [01a9c6d]
+- Updated dependencies [5028ad3]
+- Updated dependencies [20d824a]
+  - @fragno-dev/db@0.2.1
+  - @fragno-dev/corpus@0.0.7
+
 ## 0.1.21
 
 ### Patch Changes
