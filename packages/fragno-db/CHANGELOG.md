@@ -1,5 +1,22 @@
 # @fragno-dev/db
 
+## 0.2.1
+
+### Patch Changes
+
+- aecfa70: feat(db): allow user callbacks in uow options
+- 3faac77: fix(db): child UOWs not reflecting parent's state after execution
+- 01a9c6d: feat(db): add tx() API for simplified transaction handling
+
+  Add new tx() method to both service and handler contexts that provides a simpler API for
+  transaction handling with automatic retry support. Supports two syntaxes: array syntax for
+  multiple service calls and callback syntax for direct UOW access. Also enhances restrict() to
+  accept options for controlling readiness signaling.
+
+- 5028ad3: fix(db): remove dependency on `node:inspect`
+- 20d824a: fix(db): preserve internal IDs in child UOWs when using two-phase pattern with
+  mutationPhase
+
 ## 0.2.0
 
 ### Minor Changes
