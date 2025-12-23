@@ -2,6 +2,7 @@ import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { InternalFragmentInstance } from "../fragments/internal-fragment";
+import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 
 /**
  * Context available in hook functions via `this`.
@@ -108,72 +109,80 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
   const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
 
+  // Get pending events
+  const pendingEvents = await internalFragment.inContext(async function () {
+    return await this.handlerTx({
+      deps: () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+      success: ({ depsResult: [events] }) => events,
+    });
+  });
+
+  if (pendingEvents.length === 0) {
+    return;
+  }
+
+  // Process events (async work outside transaction)
+  const processedEvents = await Promise.allSettled(
+    pendingEvents.map(async (event) => {
+      const hookFn = hooks[event.hookName];
+      if (!hookFn) {
+        return {
+          eventId: event.id,
+          status: "failed" as const,
+          error: `Hook '${event.hookName}' not found in hooks map`,
+          attempts: event.attempts,
+          maxAttempts: event.maxAttempts,
+        };
+      }
+
+      try {
+        const hookContext: HookContext = { nonce: event.nonce };
+        await hookFn.call(hookContext, event.payload);
+        return {
+          eventId: event.id,
+          status: "completed" as const,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+          eventId: event.id,
+          status: "failed" as const,
+          error: errorMessage,
+          attempts: event.attempts,
+          maxAttempts: event.maxAttempts,
+        };
+      }
+    }),
+  );
+
+  // Mark events as completed/failed
   await internalFragment.inContext(async function () {
-    return await this.uow(async ({ executeRetrieve, executeMutate }) => {
-      const pendingEventsPromise =
-        internalFragment.services.hookService.getPendingHookEvents(namespace);
-      await executeRetrieve();
-
-      const pendingEvents = await pendingEventsPromise;
-
-      if (pendingEvents.length === 0) {
-        return;
-      }
-
-      const processedEvents = await Promise.allSettled(
-        pendingEvents.map(async (event) => {
-          const hookFn = hooks[event.hookName];
-          if (!hookFn) {
-            return {
-              eventId: event.id,
-              status: "failed" as const,
-              error: `Hook '${event.hookName}' not found in hooks map`,
-              attempts: event.attempts,
-              maxAttempts: event.maxAttempts,
-            };
+    await this.handlerTx({
+      deps: () => {
+        const txResults: TxResult<void>[] = [];
+        for (const processedEvent of processedEvents) {
+          if (processedEvent.status === "rejected") {
+            continue;
           }
 
-          try {
-            const hookContext: HookContext = { nonce: event.nonce };
-            await hookFn.call(hookContext, event.payload);
-            return {
-              eventId: event.id,
-              status: "completed" as const,
-            };
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-              eventId: event.id,
-              status: "failed" as const,
-              error: errorMessage,
-              attempts: event.attempts,
-              maxAttempts: event.maxAttempts,
-            };
+          const { eventId, status } = processedEvent.value;
+
+          if (status === "completed") {
+            txResults.push(internalFragment.services.hookService.markHookCompleted(eventId));
+          } else if (status === "failed") {
+            const { error, attempts } = processedEvent.value;
+            txResults.push(
+              internalFragment.services.hookService.markHookFailed(
+                eventId,
+                error,
+                attempts,
+                retryPolicy,
+              ),
+            );
           }
-        }),
-      );
-
-      for (const processedEvent of processedEvents) {
-        if (processedEvent.status === "rejected") {
-          continue;
         }
-
-        const { eventId, status } = processedEvent.value;
-
-        if (status === "completed") {
-          internalFragment.services.hookService.markHookCompleted(eventId);
-        } else if (status === "failed") {
-          const { error, attempts } = processedEvent.value;
-          internalFragment.services.hookService.markHookFailed(
-            eventId,
-            error,
-            attempts,
-            retryPolicy,
-          );
-        }
-      }
-
-      await executeMutate();
+        return txResults;
+      },
     });
   });
 }

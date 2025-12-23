@@ -105,6 +105,7 @@ export {
   type ExecuteUnitOfWorkResult,
   type ExecuteUnitOfWorkCallbacks,
   type ExecuteUnitOfWorkOptions,
+  type TxResult,
 } from "./query/unit-of-work/execute-unit-of-work";
 
 export type { BoundServices } from "@fragno-dev/core";
