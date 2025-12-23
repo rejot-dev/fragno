@@ -93,6 +93,11 @@
     "typescript": "^5",
     "vue": ">=3.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/forms"
+  },
   "homepage": "https://fragno.dev",
   "license": "MIT"
 }
