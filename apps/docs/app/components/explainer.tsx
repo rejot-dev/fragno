@@ -139,6 +139,58 @@ await signIn({
 });`,
     },
   },
+  typeform: {
+    label: "Typeform",
+    link: "/forms",
+    linkCta: "Explore Form Fragment",
+    frontend: {
+      code: `return {
+  useForm: b.createHook("/:slug"),
+  useSubmitForm: b.createMutator("POST", "/:slug/submit"),
+};`,
+    },
+    fragment: {
+      code: `const { data: form } = useForm({
+  path: { slug: "contact" },
+});
+const { mutate: submit } = useSubmitForm();
+
+await submit({
+  path: { slug: "contact" },
+  body: { data: formData },
+});`,
+    },
+    backend: {
+      code: `defineRoute({
+  method: "POST",
+  path: "/:slug/submit",
+  handler: async ({ input, pathParams }, { json }) => {
+    const form = await services.getFormBySlug(pathParams.slug);
+    const responseId = await services.createResponse(
+      form.id, form.version, input.data
+    );
+    return json(responseId);
+  },
+});`,
+    },
+    database: {
+      code: `schema((s) => {
+  return s
+    .addTable("form", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("slug", column("string"))
+        .addColumn("dataSchema", column("json"));
+    })
+    .addTable("response", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("formId", column("string"))
+        .addColumn("data", column("json"));
+    });
+});`,
+    },
+  },
 };
 
 type ExampleKey = keyof typeof examples;

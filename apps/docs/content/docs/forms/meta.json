@@ -1,0 +1,14 @@
+{
+  "title": "Forms",
+  "description": "Form Fragment",
+  "icon": "ClipboardList",
+  "root": true,
+  "pages": [
+    "index",
+    "static-forms",
+    "---Renderers---",
+    "shadcn-renderer",
+    "---Guides---",
+    "...guides"
+  ]
+}

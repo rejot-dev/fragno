@@ -1,6 +1,18 @@
 import { FragnoCircle as FragnoCircleIcon } from "@/components/logos/fragno-circle";
 import { Stripe as StripeIcon } from "@/components/logos/stripe";
-import { Album, TableOfContents, NotebookTabs, Frame, Terminal, CircleHelp } from "lucide-react";
+import { ShadCNUI } from "@/components/logos/shadcn-ui";
+
+import {
+  Album,
+  TableOfContents,
+  NotebookTabs,
+  Frame,
+  Terminal,
+  CircleHelp,
+  ClipboardList,
+  ShieldCheck,
+  FileBraces,
+} from "lucide-react";
 
 /**
  * Icon map: Only import icons actually used in your docs to minimize bundle size.
@@ -11,11 +23,15 @@ export const iconComponents = {
   // Custom icons
   FragnoCircle: FragnoCircleIcon,
   Stripe: StripeIcon,
+  ShadCNUI,
   // Lucide icons (only those used in content)
   Album,
   TableOfContents,
   NotebookTabs,
   Frame,
   Terminal,
+  ClipboardList,
+  ShieldCheck,
+  FileBraces,
   CircleQuestionMark: CircleHelp, // Note: CircleQuestionMark -> CircleHelp in lucide-react
 } as const;

@@ -1,0 +1,93 @@
+---
+title: Static Forms
+description: Define forms in code while storing submissions in the database
+icon: FileBraces
+---
+
+## Overview
+
+The form fragment supports two approaches for defining forms: dynamic forms (schema stored in the
+database) and static forms (schema defined in code). Both approaches store submissions in your
+database.
+
+Static forms are useful when you want to version control your form definitions alongside application
+code.
+
+Static forms are treated by the API the same as a dynamic form, with the exception that UPDATE and
+PATCH routes will not function.
+
+## Static vs Dynamic Forms
+
+| Aspect      | Static Forms                      | Dynamic Forms                     |
+| ----------- | --------------------------------- | --------------------------------- |
+| Schema      | Defined in code, passed to config | Stored in database                |
+| ID          | Developer-defined                 | Auto-generated UUID               |
+| Version     | Developer-managed                 | Auto-incremented on schema update |
+| Status      | Always `static`                   | `draft`, `open`, or `closed`      |
+| Submissions | Stored in database                | Stored in database                |
+| Modifiable  | Yes, with code change             | Yes, through API call             |
+| Source      | Codebase                          | Database                          |
+
+## Defining Static Forms
+
+Static forms are passed to the `createFormsFragment` function through the
+`staticForms: StaticForm[]` key.
+
+```ts
+import type { StaticForm } from "@fragno-dev/forms";
+import { createFormsFragment } from "@fragno-dev/forms";
+
+const myStaticForms: StaticForm[] = [
+  {
+    id: "support-contact-form",
+    slug: "contact",
+    title: "Contact Us",
+    version: 1, // Increment on dataSchema changes
+    description: "Get in touch with our support team.",
+    dataSchema: {
+      /* JSON Schema definition */
+    },
+    uiSchema: {}, // optional
+  },
+];
+
+/* ... */
+
+createFormsFragment(
+  {
+    ...configs,
+    staticForms: myStaticForms,
+  },
+  { databaseAdapter },
+);
+```
+
+## ID, Version, and Slug
+
+### ID
+
+The `id` is a unique identifier for the form. For static forms, this is defined in the code. If you
+change the `id`, then all form submissions for that id will not be linked to your form.
+
+If an `id` clashes with a dynamically created form, the static form takes precedence.
+
+For dynamic forms, the ID is a UUID generated when the form is created through the admin API.
+
+### Version
+
+The `version` tracks schema changes. Incrementing the version on a form will indicate a new data
+schema, but keep past form submissions linked. Submissions keep track of which version of the form
+it was submitted for.
+
+For static forms, the version is managed manually. Increment it when you make changes to your data
+schema.
+
+For dynamic forms, the version auto-increments each time the form is updated through the API.
+
+### Slug
+
+The `slug` is the public-facing identifier used in URLs. Forms are fetched via `/:slug`, so your
+slug becomes part of your public API. Slugs can be changed freely.
+
+Both static and dynamic forms use slugs the same way. If a static form and dynamic form share the
+same slug, the static form takes precedence.
