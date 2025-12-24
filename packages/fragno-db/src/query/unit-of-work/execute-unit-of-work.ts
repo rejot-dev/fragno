@@ -1673,3 +1673,932 @@ export interface TxPhaseContext<THooks extends HooksMap> {
    */
   currentAttempt: number;
 }
+
+// ============================================================================
+// Builder Pattern Types and Classes
+// ============================================================================
+
+/**
+ * Extract service retrieve results from service call dependencies.
+ * Maps over the array to extract TRetrieveSuccessResult from each TxResult.
+ */
+export type ExtractServiceRetrieveResults<T extends readonly unknown[]> = {
+  [K in keyof T]: ExtractTxRetrieveSuccessResult<T[K]>;
+};
+
+/**
+ * Extract final results from service call dependencies.
+ * Maps over the array to extract the final result type from each TxResult.
+ */
+export type ExtractServiceFinalResults<T extends readonly unknown[]> = {
+  [K in keyof T]: ExtractTxFinalResult<T[K]>;
+};
+
+/**
+ * Context passed to service-level mutate callback in builder pattern.
+ */
+export interface ServiceBuilderMutateContext<
+  TSchema extends AnySchema,
+  TRetrieveSuccessResult,
+  TServiceRetrieveResult extends readonly unknown[],
+  THooks extends HooksMap,
+> {
+  /** Unit of work for scheduling mutations */
+  uow: TypedUnitOfWork<TSchema, [], unknown, THooks>;
+  /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
+  retrieveResult: TRetrieveSuccessResult;
+  /** Array of retrieve results from service call dependencies */
+  serviceRetrieveResult: TServiceRetrieveResult;
+}
+
+/**
+ * Context passed to handler-level mutate callback in builder pattern.
+ */
+export interface HandlerBuilderMutateContext<
+  TRetrieveSuccessResult,
+  TServiceRetrieveResult extends readonly unknown[],
+  THooks extends HooksMap,
+> {
+  /** Get a typed Unit of Work for the given schema */
+  forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+    schema: S,
+    hooks?: H,
+  ) => TypedUnitOfWork<S, [], unknown, H>;
+  /** Unique key for this transaction (for idempotency/deduplication) */
+  idempotencyKey: string;
+  /** Current attempt number (0-based) */
+  attemptCount: number;
+  /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
+  retrieveResult: TRetrieveSuccessResult;
+  /** Array of retrieve results from service call dependencies */
+  serviceRetrieveResult: TServiceRetrieveResult;
+}
+
+/**
+ * Context passed to transform callback when mutate IS provided.
+ */
+export interface BuilderTransformContextWithMutate<
+  TRetrieveSuccessResult,
+  TMutateResult,
+  TServiceResult extends readonly unknown[],
+  TServiceRetrieveResult extends readonly unknown[],
+> {
+  /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
+  retrieveResult: TRetrieveSuccessResult;
+  /** Result from mutate callback */
+  mutateResult: TMutateResult;
+  /** Array of final results from service call dependencies */
+  serviceResult: TServiceResult;
+  /** Array of retrieve results from service call dependencies */
+  serviceRetrieveResult: TServiceRetrieveResult;
+}
+
+/**
+ * Context passed to transform callback when mutate is NOT provided.
+ */
+export interface BuilderTransformContextWithoutMutate<
+  TRetrieveSuccessResult,
+  TServiceResult extends readonly unknown[],
+  TServiceRetrieveResult extends readonly unknown[],
+> {
+  /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
+  retrieveResult: TRetrieveSuccessResult;
+  /** No mutate callback was provided */
+  mutateResult: undefined;
+  /** Array of final results from service call dependencies */
+  serviceResult: TServiceResult;
+  /** Array of retrieve results from service call dependencies */
+  serviceRetrieveResult: TServiceRetrieveResult;
+}
+
+/**
+ * Infer the final result type from builder state:
+ * 1. transform → TTransformResult
+ * 2. mutate → AwaitedPromisesInObject<TMutateResult>
+ * 3. transformRetrieve → TRetrieveSuccessResult
+ * 4. retrieve → TRetrieveResults
+ * 5. withServiceCalls → ExtractServiceFinalResults<TServiceCalls>
+ */
+export type InferBuilderResultType<
+  TRetrieveResults extends unknown[],
+  TRetrieveSuccessResult,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TServiceCalls extends readonly (TxResult<any, any> | undefined)[],
+  TMutateResult,
+  TTransformResult,
+  HasTransform extends boolean,
+  HasMutate extends boolean,
+  HasTransformRetrieve extends boolean,
+  HasRetrieve extends boolean,
+> = HasTransform extends true
+  ? TTransformResult
+  : HasMutate extends true
+    ? AwaitedPromisesInObject<TMutateResult>
+    : HasTransformRetrieve extends true
+      ? TRetrieveSuccessResult
+      : HasRetrieve extends true
+        ? TRetrieveResults
+        : ExtractServiceFinalResults<TServiceCalls>;
+
+/**
+ * Infer the retrieve success result type for the builder:
+ * - If transformRetrieve exists: TRetrieveSuccessResult
+ * - Else: TRetrieveResults (raw retrieve results)
+ */
+export type InferBuilderRetrieveSuccessResult<
+  TRetrieveResults extends unknown[],
+  TRetrieveSuccessResult,
+  HasTransformRetrieve extends boolean,
+> = HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults;
+
+/**
+ * Internal state for ServiceTxBuilder
+ */
+interface ServiceTxBuilderState<
+  TSchema extends AnySchema,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TServiceCalls extends readonly (TxResult<any, any> | undefined)[],
+  TRetrieveResults extends unknown[],
+  TRetrieveSuccessResult,
+  TMutateResult,
+  TTransformResult,
+  THooks extends HooksMap,
+> {
+  schema: TSchema;
+  baseUow: IUnitOfWork;
+  hooks?: THooks;
+  withServiceCallsFn?: () => TServiceCalls;
+  retrieveFn?: (
+    uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
+  ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
+  transformRetrieveFn?: (
+    retrieveResult: TRetrieveResults,
+    serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+  ) => TRetrieveSuccessResult;
+  mutateFn?: (
+    ctx: ServiceBuilderMutateContext<
+      TSchema,
+      TRetrieveSuccessResult,
+      ExtractServiceRetrieveResults<TServiceCalls>,
+      THooks
+    >,
+  ) => TMutateResult;
+  transformFn?: (
+    ctx:
+      | BuilderTransformContextWithMutate<
+          TRetrieveSuccessResult,
+          TMutateResult,
+          ExtractServiceFinalResults<TServiceCalls>,
+          ExtractServiceRetrieveResults<TServiceCalls>
+        >
+      | BuilderTransformContextWithoutMutate<
+          TRetrieveSuccessResult,
+          ExtractServiceFinalResults<TServiceCalls>,
+          ExtractServiceRetrieveResults<TServiceCalls>
+        >,
+  ) => TTransformResult;
+}
+
+/**
+ * Builder for service-level transactions.
+ * Uses a fluent API to build up transaction callbacks with proper type inference.
+ *
+ * @example
+ * ```ts
+ * return serviceTxBuilder(schema)
+ *   .withServiceCalls(() => [otherService.getData()])
+ *   .retrieve((uow) => uow.find("users", ...))
+ *   .transformRetrieve(([users]) => users[0])
+ *   .mutate(({ uow, retrieveResult, serviceRetrieveResult }) =>
+ *     uow.create("records", { ... })
+ *   )
+ *   .transform(({ mutateResult, serviceResult }) => ({ id: mutateResult }))
+ *   .build();
+ * ```
+ */
+export class ServiceTxBuilder<
+  TSchema extends AnySchema,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TServiceCalls extends readonly (TxResult<any, any> | undefined)[],
+  TRetrieveResults extends unknown[],
+  TRetrieveSuccessResult,
+  TMutateResult,
+  TTransformResult,
+  HasRetrieve extends boolean,
+  HasTransformRetrieve extends boolean,
+  HasMutate extends boolean,
+  HasTransform extends boolean,
+  THooks extends HooksMap,
+> {
+  readonly #state: ServiceTxBuilderState<
+    TSchema,
+    TServiceCalls,
+    TRetrieveResults,
+    TRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    THooks
+  >;
+
+  constructor(
+    state: ServiceTxBuilderState<
+      TSchema,
+      TServiceCalls,
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >,
+  ) {
+    this.#state = state;
+  }
+
+  /**
+   * Add service call dependencies to execute before this transaction.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withServiceCalls<TNewServiceCalls extends readonly (TxResult<any, any> | undefined)[]>(
+    fn: () => TNewServiceCalls,
+  ): ServiceTxBuilder<
+    TSchema,
+    TNewServiceCalls,
+    TRetrieveResults,
+    TRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new ServiceTxBuilder({
+      ...this.#state,
+      withServiceCallsFn: fn,
+    } as ServiceTxBuilderState<
+      TSchema,
+      TNewServiceCalls,
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Add retrieval operations to the transaction.
+   */
+  retrieve<TNewRetrieveResults extends unknown[]>(
+    fn: (
+      uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
+    ) => TypedUnitOfWork<TSchema, TNewRetrieveResults, unknown, THooks>,
+  ): ServiceTxBuilder<
+    TSchema,
+    TServiceCalls,
+    TNewRetrieveResults,
+    TNewRetrieveResults, // Default TRetrieveSuccessResult to TNewRetrieveResults
+    TMutateResult,
+    TTransformResult,
+    true, // HasRetrieve = true
+    false, // Reset HasTransformRetrieve since retrieve results changed
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new ServiceTxBuilder({
+      ...this.#state,
+      retrieveFn: fn,
+      transformRetrieveFn: undefined, // Clear any existing transformRetrieve since results shape changed
+    } as unknown as ServiceTxBuilderState<
+      TSchema,
+      TServiceCalls,
+      TNewRetrieveResults,
+      TNewRetrieveResults,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Transform retrieve results before passing to mutate.
+   */
+  transformRetrieve<TNewRetrieveSuccessResult>(
+    fn: (
+      retrieveResult: TRetrieveResults,
+      serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+    ) => TNewRetrieveSuccessResult,
+  ): ServiceTxBuilder<
+    TSchema,
+    TServiceCalls,
+    TRetrieveResults,
+    TNewRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    true, // HasTransformRetrieve = true
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new ServiceTxBuilder({
+      ...this.#state,
+      transformRetrieveFn: fn,
+    } as unknown as ServiceTxBuilderState<
+      TSchema,
+      TServiceCalls,
+      TRetrieveResults,
+      TNewRetrieveSuccessResult,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Add mutation operations based on retrieve results.
+   */
+  mutate<TNewMutateResult>(
+    fn: (
+      ctx: ServiceBuilderMutateContext<
+        TSchema,
+        HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+        ExtractServiceRetrieveResults<TServiceCalls>,
+        THooks
+      >,
+    ) => TNewMutateResult,
+  ): ServiceTxBuilder<
+    TSchema,
+    TServiceCalls,
+    TRetrieveResults,
+    HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+    TNewMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    true, // HasMutate = true
+    HasTransform,
+    THooks
+  > {
+    return new ServiceTxBuilder({
+      ...this.#state,
+      mutateFn: fn,
+    } as unknown as ServiceTxBuilderState<
+      TSchema,
+      TServiceCalls,
+      TRetrieveResults,
+      HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+      TNewMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Add final transformation after mutations complete.
+   */
+  transform<TNewTransformResult>(
+    fn: (
+      ctx: HasMutate extends true
+        ? BuilderTransformContextWithMutate<
+            HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+            TMutateResult,
+            ExtractServiceFinalResults<TServiceCalls>,
+            ExtractServiceRetrieveResults<TServiceCalls>
+          >
+        : BuilderTransformContextWithoutMutate<
+            HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+            ExtractServiceFinalResults<TServiceCalls>,
+            ExtractServiceRetrieveResults<TServiceCalls>
+          >,
+    ) => TNewTransformResult,
+  ): ServiceTxBuilder<
+    TSchema,
+    TServiceCalls,
+    TRetrieveResults,
+    HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+    TMutateResult,
+    TNewTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    HasMutate,
+    true, // HasTransform = true
+    THooks
+  > {
+    return new ServiceTxBuilder({
+      ...this.#state,
+      transformFn: fn,
+    } as unknown as ServiceTxBuilderState<
+      TSchema,
+      TServiceCalls,
+      TRetrieveResults,
+      HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+      TMutateResult,
+      TNewTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Build and return the TxResult.
+   */
+  build(): TxResult<
+    InferBuilderResultType<
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TServiceCalls,
+      TMutateResult,
+      TTransformResult,
+      HasTransform,
+      HasMutate,
+      HasTransformRetrieve,
+      HasRetrieve
+    >,
+    InferBuilderRetrieveSuccessResult<
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      HasTransformRetrieve
+    >
+  > {
+    const state = this.#state;
+
+    // Convert builder state to legacy callbacks format
+    const callbacks: ServiceTxCallbacks<
+      TSchema,
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TServiceCalls,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    > = {
+      deps: state.withServiceCallsFn,
+      retrieve: state.retrieveFn,
+      retrieveSuccess: state.transformRetrieveFn,
+      mutate: state.mutateFn
+        ? (ctx) => {
+            // Map old context field names to new ones
+            return state.mutateFn!({
+              uow: ctx.uow,
+              retrieveResult: ctx.retrieveResult,
+              serviceRetrieveResult:
+                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+            });
+          }
+        : undefined,
+      success: state.transformFn
+        ? (ctx) => {
+            // Map old context field names to new ones
+            return state.transformFn!({
+              retrieveResult: ctx.retrieveResult,
+              mutateResult: ctx.mutateResult,
+              serviceResult: ctx.depsResult as ExtractServiceFinalResults<TServiceCalls>,
+              serviceRetrieveResult:
+                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+            } as BuilderTransformContextWithMutate<
+              TRetrieveSuccessResult,
+              TMutateResult,
+              ExtractServiceFinalResults<TServiceCalls>,
+              ExtractServiceRetrieveResults<TServiceCalls>
+            >);
+          }
+        : undefined,
+    };
+
+    // Use the existing createServiceTx implementation
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return createServiceTx(state.schema, callbacks as any, state.baseUow) as unknown as TxResult<
+      InferBuilderResultType<
+        TRetrieveResults,
+        TRetrieveSuccessResult,
+        TServiceCalls,
+        TMutateResult,
+        TTransformResult,
+        HasTransform,
+        HasMutate,
+        HasTransformRetrieve,
+        HasRetrieve
+      >,
+      InferBuilderRetrieveSuccessResult<
+        TRetrieveResults,
+        TRetrieveSuccessResult,
+        HasTransformRetrieve
+      >
+    >;
+  }
+}
+
+/**
+ * Create a new ServiceTxBuilder for the given schema.
+ */
+export function createServiceTxBuilder<TSchema extends AnySchema, THooks extends HooksMap = {}>(
+  schema: TSchema,
+  baseUow: IUnitOfWork,
+  hooks?: THooks,
+): ServiceTxBuilder<
+  TSchema,
+  readonly [],
+  [],
+  [],
+  unknown,
+  unknown,
+  false,
+  false,
+  false,
+  false,
+  THooks
+> {
+  return new ServiceTxBuilder({
+    schema,
+    baseUow,
+    hooks,
+  });
+}
+
+/**
+ * Internal state for HandlerTxBuilder
+ */
+interface HandlerTxBuilderState<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TServiceCalls extends readonly (TxResult<any, any> | undefined)[],
+  TRetrieveResults extends unknown[],
+  TRetrieveSuccessResult,
+  TMutateResult,
+  TTransformResult,
+  THooks extends HooksMap,
+> {
+  options: ExecuteTxOptions;
+  hooks?: THooks;
+  withServiceCallsFn?: () => TServiceCalls;
+  retrieveFn?: (context: {
+    forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+      schema: S,
+      hooks?: H,
+    ) => TypedUnitOfWork<S, [], unknown, H>;
+    idempotencyKey: string;
+    attemptCount: number;
+  }) => TRetrieveResults | void;
+  transformRetrieveFn?: (
+    retrieveResult: TRetrieveResults,
+    serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+  ) => TRetrieveSuccessResult;
+  mutateFn?: (
+    ctx: HandlerBuilderMutateContext<
+      TRetrieveSuccessResult,
+      ExtractServiceRetrieveResults<TServiceCalls>,
+      THooks
+    >,
+  ) => TMutateResult;
+  transformFn?: (
+    ctx:
+      | BuilderTransformContextWithMutate<
+          TRetrieveSuccessResult,
+          TMutateResult,
+          ExtractServiceFinalResults<TServiceCalls>,
+          ExtractServiceRetrieveResults<TServiceCalls>
+        >
+      | BuilderTransformContextWithoutMutate<
+          TRetrieveSuccessResult,
+          ExtractServiceFinalResults<TServiceCalls>,
+          ExtractServiceRetrieveResults<TServiceCalls>
+        >,
+  ) => TTransformResult;
+}
+
+/**
+ * Builder for handler-level transactions.
+ * Uses a fluent API to build up transaction callbacks with proper type inference.
+ *
+ * @example
+ * ```ts
+ * const result = await handlerTxBuilder()
+ *   .withServiceCalls(() => [userService.getUser(id)])
+ *   .mutate(({ forSchema, idempotencyKey, attemptCount, serviceRetrieveResult }) => {
+ *     return forSchema(ordersSchema).create("orders", { ... });
+ *   })
+ *   .transform(({ mutateResult, serviceResult }) => ({ ... }))
+ *   .execute();
+ * ```
+ */
+export class HandlerTxBuilder<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TServiceCalls extends readonly (TxResult<any, any> | undefined)[],
+  TRetrieveResults extends unknown[],
+  TRetrieveSuccessResult,
+  TMutateResult,
+  TTransformResult,
+  HasRetrieve extends boolean,
+  HasTransformRetrieve extends boolean,
+  HasMutate extends boolean,
+  HasTransform extends boolean,
+  THooks extends HooksMap,
+> {
+  readonly #state: HandlerTxBuilderState<
+    TServiceCalls,
+    TRetrieveResults,
+    TRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    THooks
+  >;
+
+  constructor(
+    state: HandlerTxBuilderState<
+      TServiceCalls,
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >,
+  ) {
+    this.#state = state;
+  }
+
+  /**
+   * Add service call dependencies to execute before this transaction.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withServiceCalls<TNewServiceCalls extends readonly (TxResult<any, any> | undefined)[]>(
+    fn: () => TNewServiceCalls,
+  ): HandlerTxBuilder<
+    TNewServiceCalls,
+    TRetrieveResults,
+    TRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      withServiceCallsFn: fn,
+    } as HandlerTxBuilderState<
+      TNewServiceCalls,
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Add retrieval operations to the transaction.
+   */
+  retrieve<TNewRetrieveResults extends unknown[]>(
+    fn: (context: {
+      forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
+        schema: S,
+        hooks?: H,
+      ) => TypedUnitOfWork<S, [], unknown, H>;
+      idempotencyKey: string;
+      attemptCount: number;
+    }) => TNewRetrieveResults | void,
+  ): HandlerTxBuilder<
+    TServiceCalls,
+    TNewRetrieveResults,
+    TNewRetrieveResults, // Default TRetrieveSuccessResult to TNewRetrieveResults
+    TMutateResult,
+    TTransformResult,
+    true, // HasRetrieve = true
+    false, // Reset HasTransformRetrieve since retrieve results changed
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      retrieveFn: fn,
+      transformRetrieveFn: undefined, // Clear any existing transformRetrieve since results shape changed
+    } as unknown as HandlerTxBuilderState<
+      TServiceCalls,
+      TNewRetrieveResults,
+      TNewRetrieveResults,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Transform retrieve results before passing to mutate.
+   */
+  transformRetrieve<TNewRetrieveSuccessResult>(
+    fn: (
+      retrieveResult: TRetrieveResults,
+      serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+    ) => TNewRetrieveSuccessResult,
+  ): HandlerTxBuilder<
+    TServiceCalls,
+    TRetrieveResults,
+    TNewRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    true, // HasTransformRetrieve = true
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      transformRetrieveFn: fn,
+    } as unknown as HandlerTxBuilderState<
+      TServiceCalls,
+      TRetrieveResults,
+      TNewRetrieveSuccessResult,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Add mutation operations based on retrieve results.
+   */
+  mutate<TNewMutateResult>(
+    fn: (
+      ctx: HandlerBuilderMutateContext<
+        HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+        ExtractServiceRetrieveResults<TServiceCalls>,
+        THooks
+      >,
+    ) => TNewMutateResult,
+  ): HandlerTxBuilder<
+    TServiceCalls,
+    TRetrieveResults,
+    HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+    TNewMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    true, // HasMutate = true
+    HasTransform,
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      mutateFn: fn,
+    } as unknown as HandlerTxBuilderState<
+      TServiceCalls,
+      TRetrieveResults,
+      HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+      TNewMutateResult,
+      TTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Add final transformation after mutations complete.
+   */
+  transform<TNewTransformResult>(
+    fn: (
+      ctx: HasMutate extends true
+        ? BuilderTransformContextWithMutate<
+            HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+            TMutateResult,
+            ExtractServiceFinalResults<TServiceCalls>,
+            ExtractServiceRetrieveResults<TServiceCalls>
+          >
+        : BuilderTransformContextWithoutMutate<
+            HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+            ExtractServiceFinalResults<TServiceCalls>,
+            ExtractServiceRetrieveResults<TServiceCalls>
+          >,
+    ) => TNewTransformResult,
+  ): HandlerTxBuilder<
+    TServiceCalls,
+    TRetrieveResults,
+    HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+    TMutateResult,
+    TNewTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    HasMutate,
+    true, // HasTransform = true
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      transformFn: fn,
+    } as unknown as HandlerTxBuilderState<
+      TServiceCalls,
+      TRetrieveResults,
+      HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults,
+      TMutateResult,
+      TNewTransformResult,
+      THooks
+    >);
+  }
+
+  /**
+   * Execute the transaction and return the result.
+   */
+  execute(): Promise<
+    AwaitedPromisesInObject<
+      InferBuilderResultType<
+        TRetrieveResults,
+        TRetrieveSuccessResult,
+        TServiceCalls,
+        TMutateResult,
+        TTransformResult,
+        HasTransform,
+        HasMutate,
+        HasTransformRetrieve,
+        HasRetrieve
+      >
+    >
+  > {
+    const state = this.#state;
+
+    // Convert builder state to legacy callbacks format
+    const callbacks: HandlerTxCallbacks<
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TServiceCalls,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    > = {
+      deps: state.withServiceCallsFn,
+      retrieve: state.retrieveFn
+        ? (context) => {
+            // Map old context field names to new ones
+            return state.retrieveFn!({
+              forSchema: context.forSchema,
+              idempotencyKey: context.nonce,
+              attemptCount: context.currentAttempt,
+            });
+          }
+        : undefined,
+      retrieveSuccess: state.transformRetrieveFn,
+      mutate: state.mutateFn
+        ? (ctx) => {
+            // Map old context field names to new ones
+            return state.mutateFn!({
+              forSchema: ctx.forSchema,
+              idempotencyKey: ctx.nonce,
+              attemptCount: ctx.currentAttempt,
+              retrieveResult: ctx.retrieveResult,
+              serviceRetrieveResult:
+                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+            });
+          }
+        : undefined,
+      success: state.transformFn
+        ? (ctx) => {
+            // Map old context field names to new ones
+            return state.transformFn!({
+              retrieveResult: ctx.retrieveResult,
+              mutateResult: ctx.mutateResult,
+              serviceResult: ctx.depsResult as ExtractServiceFinalResults<TServiceCalls>,
+              serviceRetrieveResult:
+                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+            } as BuilderTransformContextWithMutate<
+              TRetrieveSuccessResult,
+              TMutateResult,
+              ExtractServiceFinalResults<TServiceCalls>,
+              ExtractServiceRetrieveResults<TServiceCalls>
+            >);
+          }
+        : undefined,
+    };
+
+    // Use the existing executeTx implementation
+    return executeTx(callbacks as Parameters<typeof executeTx>[0], state.options) as Promise<
+      AwaitedPromisesInObject<
+        InferBuilderResultType<
+          TRetrieveResults,
+          TRetrieveSuccessResult,
+          TServiceCalls,
+          TMutateResult,
+          TTransformResult,
+          HasTransform,
+          HasMutate,
+          HasTransformRetrieve,
+          HasRetrieve
+        >
+      >
+    >;
+  }
+}
+
+/**
+ * Create a new HandlerTxBuilder with the given options.
+ */
+export function createHandlerTxBuilder<THooks extends HooksMap = {}>(
+  options: ExecuteTxOptions,
+  hooks?: THooks,
+): HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, THooks> {
+  return new HandlerTxBuilder({
+    options,
+    hooks,
+  });
+}

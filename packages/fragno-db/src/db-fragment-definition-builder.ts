@@ -16,9 +16,14 @@ import {
 import {
   createServiceTx,
   executeTx,
+  createServiceTxBuilder,
+  createHandlerTxBuilder,
+  ServiceTxBuilder,
+  HandlerTxBuilder,
   type AwaitedPromisesInObject,
   type ExecuteTxOptions,
   type TxResult,
+  type ExtractDepsFinalResults,
   type ServiceTxCallbacksWithSuccessAndMutate,
   type ServiceTxCallbacksWithSuccessNoMutate,
   type ServiceTxCallbacksWithMutateAndRetrieveSuccess,
@@ -214,6 +219,39 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
     schema: TSchema,
     callbacks: ServiceTxCallbacksWithRetrieveOnly<TSchema, TRetrieveResults, TDeps, THooks>,
   ): TxResult<TRetrieveResults, TRetrieveResults>;
+
+  /**
+   * Create a service-level transaction builder using the fluent API.
+   * Returns a builder that can be chained with withServiceCalls, retrieve, transformRetrieve, mutate, transform, and build.
+   *
+   * @example
+   * ```ts
+   * return this.serviceTxBuilder(schema)
+   *   .withServiceCalls(() => [otherService.getData()])
+   *   .retrieve((uow) => uow.find("users", ...))
+   *   .transformRetrieve(([users]) => users[0])
+   *   .mutate(({ uow, retrieveResult, serviceRetrieveResult }) =>
+   *     uow.create("records", { ... })
+   *   )
+   *   .transform(({ mutateResult, serviceResult }) => ({ id: mutateResult }))
+   *   .build();
+   * ```
+   */
+  serviceTxBuilder<TSchema extends AnySchema>(
+    schema: TSchema,
+  ): ServiceTxBuilder<
+    TSchema,
+    readonly [],
+    [],
+    [],
+    unknown,
+    unknown,
+    false,
+    false,
+    false,
+    false,
+    THooks
+  >;
 };
 
 /**
@@ -343,7 +381,26 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
   handlerTx<TDeps extends readonly (TxResult<any, any> | undefined)[]>(
     callbacks: HandlerTxCallbacksWithDepsOnly<TDeps>,
     options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<{ [K in keyof TDeps]: Awaited<TDeps[K]> }>>;
+  ): Promise<ExtractDepsFinalResults<TDeps>>;
+
+  /**
+   * Create a handler-level transaction builder using the fluent API.
+   * Returns a builder that can be chained with withServiceCalls, retrieve, transformRetrieve, mutate, transform, and execute.
+   *
+   * @example
+   * ```ts
+   * const result = await this.handlerTxBuilder()
+   *   .withServiceCalls(() => [userService.getUser(id)])
+   *   .mutate(({ forSchema, idempotencyKey, attemptCount, serviceRetrieveResult }) => {
+   *     return forSchema(ordersSchema).create("orders", { ... });
+   *   })
+   *   .transform(({ mutateResult, serviceResult }) => ({ ... }))
+   *   .execute();
+   * ```
+   */
+  handlerTxBuilder(
+    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
+  ): HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, THooks>;
 };
 
 /**
@@ -884,8 +941,20 @@ export class DatabaseFragmentDefinitionBuilder<
         return createServiceTx(schema, callbacks, uow);
       }
 
+      // Builder API: serviceTxBuilder using createServiceTxBuilder
+      function serviceTxBuilder<TSchema extends AnySchema>(schema: TSchema) {
+        const uow = storage.getStore()?.uow;
+        if (!uow) {
+          throw new Error(
+            "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
+          );
+        }
+        return createServiceTxBuilder<TSchema, THooks>(schema, uow, hooksConfig?.hooks);
+      }
+
       const serviceContext: DatabaseServiceContext<THooks> = {
         serviceTx,
+        serviceTxBuilder,
       };
 
       // Unified API: handlerTx using executeTx
@@ -938,8 +1007,53 @@ export class DatabaseFragmentDefinitionBuilder<
         });
       }
 
+      // Builder API: handlerTxBuilder using createHandlerTxBuilder
+      function handlerTxBuilder(execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) {
+        const currentStorage = storage.getStore();
+        if (!currentStorage) {
+          throw new Error(
+            "No storage in context. Handler must be called within a request context.",
+          );
+        }
+
+        const userOnBeforeMutate = execOptions?.onBeforeMutate;
+        const userOnAfterMutate = execOptions?.onAfterMutate;
+
+        return createHandlerTxBuilder<THooks>({
+          ...execOptions,
+          createUnitOfWork: () => {
+            currentStorage.uow.reset();
+            if (hooksConfig) {
+              currentStorage.uow.registerSchema(
+                hooksConfig.internalFragment.$internal.deps.schema,
+                hooksConfig.internalFragment.$internal.deps.namespace,
+              );
+            }
+            // Safe cast: currentStorage.uow is always a UnitOfWork instance
+            return currentStorage.uow as UnitOfWork;
+          },
+          onBeforeMutate: (uow) => {
+            if (hooksConfig) {
+              prepareHookMutations(uow, hooksConfig);
+            }
+            if (userOnBeforeMutate) {
+              userOnBeforeMutate(uow);
+            }
+          },
+          onAfterMutate: async (uow) => {
+            if (hooksConfig) {
+              await processHooks(hooksConfig);
+            }
+            if (userOnAfterMutate) {
+              await userOnAfterMutate(uow);
+            }
+          },
+        });
+      }
+
       const handlerContext: DatabaseHandlerContext<THooks> = {
         handlerTx,
+        handlerTxBuilder,
       };
 
       return { serviceContext, handlerContext };
