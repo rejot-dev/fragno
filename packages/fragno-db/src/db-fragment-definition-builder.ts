@@ -2,7 +2,7 @@ import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
-import { TypedUnitOfWork, UnitOfWork } from "./query/unit-of-work/unit-of-work";
+import { UnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
   FragnoPublicConfig,
@@ -14,21 +14,10 @@ import {
   type ServiceConstructorFn,
 } from "@fragno-dev/core";
 import {
-  executeRestrictedUnitOfWork,
-  executeTxArray,
-  executeTxCallbacks,
-  executeTxWithDeps,
-  executeServiceTx,
-  executeServiceTxWithDeps,
   createServiceTx,
   executeTx,
   type AwaitedPromisesInObject,
-  type ExecuteRestrictedUnitOfWorkOptions,
   type ExecuteTxOptions,
-  type LegacyHandlerTxCallbacks,
-  type HandlerTxWithDepsCallbacks,
-  type LegacyServiceTxCallbacks,
-  type ServiceTxResult,
   type TxResult,
   type ServiceTxCallbacksWithSuccessAndMutate,
   type ServiceTxCallbacksWithSuccessNoMutate,
@@ -90,70 +79,6 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
  * Service context for database fragments - provides restricted UOW access without execute methods.
  */
 export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext & {
-  /**
-   * Get a typed, restricted Unit of Work for the given schema.
-   * @param schema - Schema to get a typed view for
-   * @returns TypedUnitOfWork (restricted version without execute methods)
-   */
-  uow<TSchema extends AnySchema>(schema: TSchema): TypedUnitOfWork<TSchema, [], unknown, THooks>;
-
-  /**
-   * Execute a transaction with two-phase callbacks (retrieve + mutate).
-   *
-   * @param schema - Schema to use for the transaction
-   * @param callbacks - Object containing retrieve and mutate callbacks
-   * @returns Promise resolving to retrieval results (if no mutate) or mutation result (if mutate provided)
-   *
-   * @example
-   * ```ts
-   * // With mutate - returns mutation result
-   * return this.tx(schema, {
-   *   retrieve: (uow) => uow.findFirst("users", ...),
-   *   mutate: async (uow, [user]) => {
-   *     await validateUser(user);
-   *     uow.update("users", user.id, ...).check();
-   *     return { ok: true };
-   *   }
-   * });
-   *
-   * // Without mutate - returns retrieval results
-   * const [user] = await this.tx(schema, {
-   *   retrieve: (uow) => uow.findFirst("users", ...),
-   * });
-   * ```
-   */
-  // Overload 1: with mutate callback - returns mutation result
-  tx<TSchema extends AnySchema, TRetrievalResults extends unknown[], TMutationResult>(
-    schema: TSchema,
-    callbacks: {
-      retrieve?: (
-        uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
-      ) => TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>;
-      mutate: (
-        uow: TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>,
-        results: TRetrievalResults,
-      ) => TMutationResult | Promise<TMutationResult>;
-    },
-  ): ServiceTxResult<AwaitedPromisesInObject<TMutationResult>>;
-  // Overload 2: without mutate callback - returns retrieval results
-  tx<TSchema extends AnySchema, TRetrievalResults extends unknown[]>(
-    schema: TSchema,
-    callbacks: {
-      retrieve: (
-        uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
-      ) => TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>;
-      mutate?: undefined;
-    },
-  ): ServiceTxResult<TRetrievalResults>;
-  // Overload 3: Dependencies + mutation syntax (service-to-service composition)
-  // Call other services as dependencies, then use their results in mutate
-  tx<TDeps extends readonly unknown[], TMutationResult>(
-    depsFactory: () => readonly [
-      ...{ [K in keyof TDeps]: ServiceTxResult<TDeps[K]> | PromiseLike<TDeps[K]> },
-    ],
-    callbacks: HandlerTxWithDepsCallbacks<TDeps, TMutationResult, THooks>,
-  ): ServiceTxResult<AwaitedPromisesInObject<TMutationResult>>;
-
   /**
    * Create a service-level transaction using the unified TxResult API.
    * Returns a TxResult that can be composed with other service calls.
@@ -295,102 +220,6 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
  * Handler context for database fragments - provides UOW execution with automatic retry support.
  */
 export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisContext & {
-  /**
-   * Execute a Unit of Work with explicit phase control and automatic retry support.
-   * This method provides an API where users call forSchema to create a schema-specific
-   * UOW, then call executeRetrieve() and executeMutate() to execute the phases. The entire
-   * callback is re-executed on optimistic concurrency conflicts, ensuring retries work properly.
-   * Automatically provides the UOW factory from context.
-   * Promises in the returned object are awaited 1 level deep.
-   *
-   * @param callback - Async function that receives a context with forSchema, executeRetrieve, executeMutate, nonce, and currentAttempt
-   * @param options - Optional configuration for retry policy and abort signal
-   * @returns Promise resolving to the callback's return value with promises awaited 1 level deep
-   * @throws Error if retries are exhausted or callback throws an error
-   *
-   * @example
-   * ```ts
-   * const result = await this.uow(async ({ forSchema, executeRetrieve, executeMutate, nonce, currentAttempt }) => {
-   *   const uow = forSchema(schema);
-   *   const userId = uow.create("users", { name: "John" });
-   *
-   *   // Execute retrieval phase
-   *   await executeRetrieve();
-   *
-   *   const profileId = uow.create("profiles", { userId });
-   *
-   *   // Execute mutation phase
-   *   await executeMutate();
-   *
-   *   return { userId, profileId };
-   * });
-   * ```
-   */
-  uow<TResult>(
-    callback: (context: {
-      forSchema: <TSchema extends AnySchema, H extends HooksMap = THooks>(
-        schema: TSchema,
-        hooks?: H,
-      ) => TypedUnitOfWork<TSchema, [], unknown, H>;
-      executeRetrieve: () => Promise<void>;
-      executeMutate: () => Promise<void>;
-      nonce: string;
-      currentAttempt: number;
-    }) => Promise<TResult> | TResult,
-    options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TResult>>;
-
-  /**
-   * Execute a transaction with automatic retry support.
-   * Provides two overloads: array syntax (common case) and callback syntax (advanced).
-   *
-   * Array syntax - pass a factory function that returns service calls:
-   * ```ts
-   * const [transfer, notify] = await this.tx(
-   *   () => [
-   *     services.transfer({ from, to, amount }),
-   *     services.notify({ userId, message })
-   *   ]
-   * );
-   * ```
-   *
-   * Callback syntax - for handlers that need direct UOW access:
-   * ```ts
-   * const result = await this.tx({
-   *   retrieve: ({ forSchema }) => {
-   *     const uow = forSchema(schema);
-   *     uow.find("users", ...);
-   *     return services.transfer({ ... });
-   *   },
-   *   mutate: ({ forSchema }, transferPromise) => {
-   *     const uow = forSchema(schema);
-   *     uow.create("auditLog", { ... });
-   *     return transferPromise;
-   *   }
-   * });
-   * ```
-   *
-   * Note: Handler callbacks are synchronous only to prevent accidentally awaiting services in wrong place.
-   */
-  // Overload 1: Array syntax (common case) - accepts a factory
-  tx<T extends readonly unknown[]>(
-    servicesFactory: () => readonly [...{ [K in keyof T]: Promise<T[K]> }],
-    options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-  ): Promise<{ [K in keyof T]: T[K] }>;
-  // Overload 2: Callback syntax (advanced, sync callbacks only)
-  tx<TSchema extends AnySchema, TRetrievalResults extends unknown[], TMutationResult>(
-    callbacks: LegacyHandlerTxCallbacks<TSchema, TRetrievalResults, TMutationResult, THooks>,
-    options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TMutationResult>>;
-  // Overload 3: Dependencies + mutation syntax (service-to-service composition)
-  tx<TDeps extends readonly unknown[], TMutationResult>(
-    depsFactory: () => readonly [
-      ...{ [K in keyof TDeps]: ServiceTxResult<TDeps[K]> | PromiseLike<TDeps[K]> },
-    ],
-    callbacks: HandlerTxWithDepsCallbacks<TDeps, TMutationResult, THooks>,
-    options?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TMutationResult>>;
-
   /**
    * Execute a handler-level transaction using the unified TxResult API.
    * Supports multiple callback configurations with proper type inference.
@@ -1043,93 +872,9 @@ export class DatabaseFragmentDefinitionBuilder<
           }
         : undefined;
 
-      function forSchema<TSchema extends AnySchema>(
-        schema: TSchema,
-      ): TypedUnitOfWork<TSchema, [], unknown, THooks> {
-        const uow = storage.getStore()?.uow;
-        if (!uow) {
-          throw new Error(
-            "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
-          );
-        }
-
-        return uow.restrict().forSchema<TSchema, THooks>(schema);
-      }
-
-      // Overload 1: with mutate callback - returns mutation result
-      function serviceTx<
-        TSchema extends AnySchema,
-        TRetrievalResults extends unknown[],
-        TMutationResult,
-      >(
-        schema: TSchema,
-        callbacks: {
-          retrieve?: (
-            uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
-          ) => TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>;
-          mutate: (
-            uow: TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>,
-            results: TRetrievalResults,
-          ) => TMutationResult | Promise<TMutationResult>;
-        },
-      ): ServiceTxResult<AwaitedPromisesInObject<TMutationResult>>;
-      // Overload 2: without mutate callback - returns retrieval results
-      function serviceTx<TSchema extends AnySchema, TRetrievalResults extends unknown[]>(
-        schema: TSchema,
-        callbacks: {
-          retrieve: (
-            uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
-          ) => TypedUnitOfWork<TSchema, TRetrievalResults, unknown, THooks>;
-          mutate?: undefined;
-        },
-      ): ServiceTxResult<TRetrievalResults>;
-      // Overload 3: Dependencies + mutation syntax (service-to-service composition)
-      function serviceTx<TDeps extends readonly unknown[], TMutationResult>(
-        depsFactory: () => readonly [
-          ...{ [K in keyof TDeps]: ServiceTxResult<TDeps[K]> | PromiseLike<TDeps[K]> },
-        ],
-        callbacks: HandlerTxWithDepsCallbacks<TDeps, TMutationResult, THooks>,
-      ): ServiceTxResult<AwaitedPromisesInObject<TMutationResult>>;
-      // Implementation
-      function serviceTx<
-        TSchema extends AnySchema,
-        TDeps extends readonly unknown[],
-        TRetrievalResults extends unknown[],
-        TMutationResult = void,
-      >(
-        schemaOrDepsFactory:
-          | TSchema
-          | (() => readonly [
-              ...{ [K in keyof TDeps]: ServiceTxResult<TDeps[K]> | PromiseLike<TDeps[K]> },
-            ]),
-        callbacks:
-          | LegacyServiceTxCallbacks<TSchema, TRetrievalResults, TMutationResult, THooks>
-          | HandlerTxWithDepsCallbacks<TDeps, TMutationResult, THooks>,
-      ): ServiceTxResult<AwaitedPromisesInObject<TMutationResult> | TRetrievalResults> {
-        const uow = storage.getStore()?.uow;
-        if (!uow) {
-          throw new Error(
-            "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
-          );
-        }
-
-        // Check if using deps pattern (first arg is a function, not a schema)
-        if (typeof schemaOrDepsFactory === "function") {
-          // Deps pattern: schemaOrDepsFactory is a factory function
-          // Type assertion needed: internal implementation extracts retrievalResult from ServiceTxResult
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return executeServiceTxWithDeps(schemaOrDepsFactory, callbacks as any, uow) as any;
-        }
-
-        // Schema pattern: schemaOrDepsFactory is a schema
-        // Type assertion: overloads handle correct return type based on callbacks shape
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return executeServiceTx(schemaOrDepsFactory, callbacks as any, uow) as any;
-      }
-
-      // New unified API: serviceTx using createServiceTx
+      // Unified API: serviceTx using createServiceTx
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      function newServiceTx(schema: AnySchema, callbacks: any): TxResult<any, any> {
+      function serviceTx(schema: AnySchema, callbacks: any): TxResult<any, any> {
         const uow = storage.getStore()?.uow;
         if (!uow) {
           throw new Error(
@@ -1140,206 +885,12 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const serviceContext: DatabaseServiceContext<THooks> = {
-        uow: forSchema,
-        tx: serviceTx,
-        serviceTx: newServiceTx,
+        serviceTx,
       };
 
-      async function uow<TResult>(
-        callback: (context: {
-          forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
-            schema: S,
-            hooks?: H,
-          ) => TypedUnitOfWork<S, [], unknown, H>;
-          executeRetrieve: () => Promise<void>;
-          executeMutate: () => Promise<void>;
-          nonce: string;
-          currentAttempt: number;
-        }) => Promise<TResult> | TResult,
-        execOptions?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-      ): Promise<AwaitedPromisesInObject<TResult>> {
-        const currentStorage = storage.getStore();
-        if (!currentStorage) {
-          throw new Error(
-            "No storage in context. Handler must be called within a request context.",
-          );
-        }
-
-        const wrappedCallback = async (context: {
-          forSchema: <S extends AnySchema, H extends HooksMap = THooks>(
-            schema: S,
-            hooks?: H,
-          ) => TypedUnitOfWork<S, [], unknown, H>;
-          executeRetrieve: () => Promise<void>;
-          executeMutate: () => Promise<void>;
-          nonce: string;
-          currentAttempt: number;
-        }): Promise<TResult> => {
-          return callback(context);
-        };
-
-        const userOnBeforeMutate = execOptions?.onBeforeMutate;
-        const userOnSuccess = execOptions?.onSuccess;
-
-        return executeRestrictedUnitOfWork(wrappedCallback, {
-          ...execOptions,
-          createUnitOfWork: () => {
-            currentStorage.uow.reset();
-            if (hooksConfig) {
-              currentStorage.uow.registerSchema(
-                hooksConfig.internalFragment.$internal.deps.schema,
-                hooksConfig.internalFragment.$internal.deps.namespace,
-              );
-            }
-            // Safe cast: currentStorage.uow is always a UnitOfWork instance
-            return currentStorage.uow as UnitOfWork;
-          },
-          onBeforeMutate: (uow) => {
-            if (hooksConfig) {
-              prepareHookMutations(uow, hooksConfig);
-            }
-            if (userOnBeforeMutate) {
-              userOnBeforeMutate(uow);
-            }
-          },
-          onSuccess: async (uow) => {
-            if (hooksConfig) {
-              await processHooks(hooksConfig);
-            }
-            if (userOnSuccess) {
-              await userOnSuccess(uow);
-            }
-          },
-        });
-      }
-
-      // Handler tx method with three overloads
-      // Overload 1: Array syntax (common case)
-      function handlerTx<T extends readonly unknown[]>(
-        servicesFactory: () => readonly [...{ [K in keyof T]: Promise<T[K]> }],
-        execOptions?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-      ): Promise<{ [K in keyof T]: T[K] }>;
-      // Overload 2: Callback syntax (advanced, sync callbacks only)
-      function handlerTx<
-        TSchema extends AnySchema,
-        TRetrievalResults extends unknown[],
-        TMutationResult,
-      >(
-        callbacks: LegacyHandlerTxCallbacks<TSchema, TRetrievalResults, TMutationResult, THooks>,
-        execOptions?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-      ): Promise<AwaitedPromisesInObject<TMutationResult>>;
-      // Overload 3: Dependencies + mutation syntax (service-to-service composition)
-      function handlerTx<TDeps extends readonly unknown[], TMutationResult>(
-        depsFactory: () => readonly [...{ [K in keyof TDeps]: Promise<TDeps[K]> }],
-        callbacks: HandlerTxWithDepsCallbacks<TDeps, TMutationResult, THooks>,
-        execOptions?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-      ): Promise<AwaitedPromisesInObject<TMutationResult>>;
-      // Implementation
-      async function handlerTx<
-        T extends readonly unknown[],
-        TDeps extends readonly unknown[],
-        TSchema extends AnySchema,
-        TRetrievalResults extends unknown[],
-        TMutationResult,
-      >(
-        factoryOrCallbacks:
-          | (() => readonly [...{ [K in keyof T]: Promise<T[K]> }])
-          | LegacyHandlerTxCallbacks<TSchema, TRetrievalResults, TMutationResult, THooks>,
-        callbacksOrOptions?:
-          | HandlerTxWithDepsCallbacks<TDeps, TMutationResult, THooks>
-          | Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-        execOptions?: Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">,
-      ): Promise<{ [K in keyof T]: T[K] } | AwaitedPromisesInObject<TMutationResult>> {
-        const currentStorage = storage.getStore();
-        if (!currentStorage) {
-          throw new Error(
-            "No storage in context. Handler must be called within a request context.",
-          );
-        }
-
-        // Determine which overload was used
-        const isThreeArgOverload =
-          typeof factoryOrCallbacks === "function" &&
-          callbacksOrOptions !== undefined &&
-          typeof callbacksOrOptions === "object" &&
-          "mutate" in callbacksOrOptions;
-
-        const resolvedExecOptions = isThreeArgOverload
-          ? execOptions
-          : (callbacksOrOptions as
-              | Omit<ExecuteRestrictedUnitOfWorkOptions, "createUnitOfWork">
-              | undefined);
-
-        const userOnBeforeMutate = resolvedExecOptions?.onBeforeMutate;
-        const userOnSuccess = resolvedExecOptions?.onSuccess;
-
-        const createUow = () => {
-          currentStorage.uow.reset();
-
-          if (hooksConfig) {
-            currentStorage.uow.registerSchema(
-              hooksConfig.internalFragment.$internal.deps.schema,
-              hooksConfig.internalFragment.$internal.deps.namespace,
-            );
-          }
-          // Safe cast: currentStorage.uow is always a UnitOfWork instance
-          return currentStorage.uow as UnitOfWork;
-        };
-
-        const options: ExecuteRestrictedUnitOfWorkOptions = {
-          ...resolvedExecOptions,
-          createUnitOfWork: createUow,
-          onBeforeMutate: (uow) => {
-            if (hooksConfig) {
-              prepareHookMutations(uow, hooksConfig);
-            }
-            if (userOnBeforeMutate) {
-              userOnBeforeMutate(uow);
-            }
-          },
-          onSuccess: async (uow) => {
-            if (hooksConfig) {
-              await processHooks(hooksConfig);
-            }
-            if (userOnSuccess) {
-              await userOnSuccess(uow);
-            }
-          },
-        };
-
-        // Check which overload was used
-        if (isThreeArgOverload) {
-          // Overload 3: Dependencies + mutation syntax
-          // Type assertion needed: internal implementation extracts retrievalResult from ServiceTxResult
-          return executeTxWithDeps(
-            factoryOrCallbacks,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            callbacksOrOptions as any,
-            options,
-          ) as unknown as ServiceTxResult<AwaitedPromisesInObject<TMutationResult>>;
-        } else if (typeof factoryOrCallbacks === "function") {
-          // Overload 1: Array syntax
-          return executeTxArray(
-            factoryOrCallbacks as () => readonly [...{ [K in keyof T]: Promise<T[K]> }],
-            options,
-          ) as Promise<{ [K in keyof T]: T[K] }>;
-        } else {
-          // Overload 2: Callback syntax
-          return executeTxCallbacks(
-            factoryOrCallbacks as LegacyHandlerTxCallbacks<
-              TSchema,
-              TRetrievalResults,
-              TMutationResult,
-              THooks
-            >,
-            options,
-          );
-        }
-      }
-
-      // New unified API: handlerTx using executeTx
+      // Unified API: handlerTx using executeTx
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async function newHandlerTx(
+      async function handlerTx(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         callbacks: any,
         execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">,
@@ -1388,9 +939,7 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const handlerContext: DatabaseHandlerContext<THooks> = {
-        uow,
-        tx: handlerTx,
-        handlerTx: newHandlerTx,
+        handlerTx,
       };
 
       return { serviceContext, handlerContext };

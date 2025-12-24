@@ -101,10 +101,9 @@ export {
 } from "./query/unit-of-work/retry-policy";
 
 export {
-  executeUnitOfWork,
-  type ExecuteUnitOfWorkResult,
-  type ExecuteUnitOfWorkCallbacks,
-  type ExecuteUnitOfWorkOptions,
+  executeTx,
+  createServiceTx,
+  ConcurrencyConflictError,
   type TxResult,
 } from "./query/unit-of-work/execute-unit-of-work";
 

@@ -697,7 +697,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(storage.uow).toBeDefined();
     });
 
-    it("should provide DatabaseServiceContext with forSchema and DatabaseHandlerContext with executeRestrictedUnitOfWork", () => {
+    it("should provide DatabaseServiceContext with serviceTx and DatabaseHandlerContext with handlerTx", () => {
       const mockAdapter = createMockAdapter();
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
@@ -716,8 +716,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         storage: mockStorage,
       });
 
-      expect(typeof contexts.serviceContext.uow).toBe("function");
-      expect(typeof contexts.handlerContext.uow).toBe("function");
+      expect(typeof contexts.serviceContext.serviceTx).toBe("function");
+      expect(typeof contexts.handlerContext.handlerTx).toBe("function");
     });
   });
 
