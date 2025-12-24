@@ -1,5 +1,28 @@
 # @fragno-dev/db
 
+## 0.2.2
+
+### Patch Changes
+
+- aca5990: breaking: remove executeUnitOfWork helper in favor of executeTx
+- f150db9: feat: add `generateId(schema, tableName)` utility for pre-generating table IDs without
+  creating records. Also available as `TypedUnitOfWork.generateId(tableName)` convenience method.
+- fe27e33: feat: add new builder pattern for combining UOWs
+- 9753f15: feat: Add unified transaction API with createServiceTx and executeTx
+
+  Introduce a new unified transaction API that consolidates multiple transaction execution patterns
+  into a single `executeTx` function with `TxResult` pattern. This provides better type safety,
+  clearer composition patterns, and support for nested dependencies.
+
+  New APIs:
+  - `createServiceTx`: Create service-level transactions with dependency support
+  - `executeTx`: Handler-level transaction execution with unified callback pattern
+  - `TxResult` type: Branded type for transaction results with dependency tracking
+  - `handlerTx` method: Added to fragment definitions for convenient access
+
+  The old APIs (`executeTxCallbacks`, `executeTxWithDeps`, `executeTxArray`) are deprecated but
+  remain available for backward compatibility.
+
 ## 0.2.1
 
 ### Patch Changes

@@ -90,7 +90,7 @@
     "svelte": ">=4.0.0",
     "typescript": "^5",
     "vue": ">=3.0.0",
-    "@fragno-dev/db": "^0.2.1"
+    "@fragno-dev/db": "^0.2.2"
   },
   "repository": {
     "type": "git",
