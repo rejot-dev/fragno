@@ -1,10 +1,10 @@
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 import { DrizzleAdapter } from "./drizzle-adapter";
-import { beforeAll, describe, expect, expectTypeOf, it, assert } from "vitest";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
-import { executeUnitOfWork } from "../../query/unit-of-work/execute-unit-of-work";
+import { executeTx, createServiceTx } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
@@ -793,7 +793,7 @@ describe("DrizzleAdapter SQLite", () => {
     expect(emptyPage.cursor).toBeUndefined();
   });
 
-  it("should support executeUnitOfWork with retry logic", async () => {
+  it("should support executeTx with retry logic", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create a test user
@@ -807,31 +807,52 @@ describe("DrizzleAdapter SQLite", () => {
       .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Execute UOW User")))
       .executeRetrieve();
 
-    // Use executeUnitOfWork to increment age with optimistic locking
-    const result = await executeUnitOfWork(
+    // Use executeTx to increment age with optimistic locking
+    let currentUow: ReturnType<typeof queryEngine.createUnitOfWork> | null = null;
+
+    // Service that retrieves user by ID
+    const getUserById = (userId: typeof user.id) => {
+      return createServiceTx(
+        testSchema,
+        {
+          retrieve: (uow) =>
+            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+          retrieveSuccess: ([users]) => users[0] ?? null,
+        },
+        currentUow!,
+      );
+    };
+
+    const result = await executeTx(
       {
-        retrieve: (uow) =>
-          uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", user.id))),
-        mutate: (uow, [users]) => {
-          const foundUser = users[0];
+        deps: () => [getUserById(user.id)],
+        mutate: ({ forSchema, depsRetrieveResult: [foundUser] }) => {
+          if (!foundUser) {
+            throw new Error("User not found");
+          }
           const newAge = foundUser.age! + 1;
-          uow.update("users", foundUser.id, (b) => b.set({ age: newAge }).check());
+          forSchema(testSchema).update("users", foundUser.id, (b) =>
+            b.set({ age: newAge }).check(),
+          );
           return { previousAge: foundUser.age, newAge };
         },
-        onSuccess: ({ mutationResult }) => {
+        success: ({ mutateResult }) => {
           // Verify the age was incremented correctly
-          expect(mutationResult.newAge).toBe(mutationResult.previousAge! + 1);
+          expect(mutateResult.newAge).toBe(mutateResult.previousAge! + 1);
+          return mutateResult;
         },
       },
       {
-        createUnitOfWork: () => queryEngine.createUnitOfWork("execute-uow-update"),
+        createUnitOfWork: () => {
+          currentUow = queryEngine.createUnitOfWork("execute-uow-update");
+          return currentUow;
+        },
         retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
       },
     );
 
     // Verify the operation succeeded
-    assert(result.success);
-    expect(result.mutationResult).toEqual({
+    expect(result).toEqual({
       previousAge: 42,
       newAge: 43,
     });
