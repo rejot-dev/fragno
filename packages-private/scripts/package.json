@@ -1,0 +1,26 @@
+{
+  "name": "@fragno-private/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./roll-line": {
+      "types": "./dist/roll-line.d.ts",
+      "default": "./dist/roll-line.js"
+    }
+  },
+  "bin": {
+    "roll-line": "./dist/roll-line.js"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "types:check": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "tsdown": "^0.15.12",
+    "typescript": "^5.9.3"
+  }
+}
