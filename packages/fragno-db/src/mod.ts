@@ -104,7 +104,19 @@ export {
   executeTx,
   createServiceTx,
   ConcurrencyConflictError,
+  // Builder pattern exports
+  ServiceTxBuilder,
+  HandlerTxBuilder,
+  createServiceTxBuilder,
+  createHandlerTxBuilder,
   type TxResult,
+  // Builder context types
+  type ServiceBuilderMutateContext,
+  type HandlerBuilderMutateContext,
+  type BuilderTransformContextWithMutate,
+  type BuilderTransformContextWithoutMutate,
+  type ExtractServiceRetrieveResults,
+  type ExtractServiceFinalResults,
 } from "./query/unit-of-work/execute-unit-of-work";
 
 export type { BoundServices } from "@fragno-dev/core";

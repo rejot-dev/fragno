@@ -3,11 +3,14 @@ import { defineFragment } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
   type ImplicitDatabaseDependencies,
+  type DatabaseHandlerContext,
 } from "./db-fragment-definition-builder";
 import { withDatabase } from "./with-database";
 import { schema, column, idColumn } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
+import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
+import type { TxResult } from "./query/unit-of-work/execute-unit-of-work";
 
 // Create a test schema
 const testSchema = schema((s) => {
@@ -845,43 +848,86 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
-  // describe("defineService", () => {
-  //   it("getUnitOfWork should be available in defineService", () => {
-  //     const mockAdapter = createMockAdapter();
+  describe("serviceTxBuilder hooks propagation", () => {
+    it("should pass hooks to createServiceTxBuilder", () => {
+      const mockAdapter = createMockAdapter();
 
-  //     const definition = withDatabase(testSchema)(defineFragment("db-frag"))
-  //       .withDependencies(() => ({ apiKey: "key" }))
-  //       .providesBaseService(({ deps, defineService }) => {
-  //         expect(deps.apiKey).toBe("key");
-  //         expect(deps.db).toBeDefined();
-  //         expect(defineService).toBeDefined();
+      // Define hooks type
+      type TestHooks = {
+        onUserCreated: (payload: { email: string }) => void;
+      };
 
-  //         return defineService({
-  //           getUsers: function () {
-  //             return typeof this.getUnitOfWork;
-  //           },
-  //         });
-  //       })
-  //       .build();
+      // Create a fragment with hooks
+      const definition = withDatabase(testSchema)(defineFragment("db-frag-with-hooks"))
+        .provideHooks<TestHooks>(({ defineHook }) => ({
+          onUserCreated: defineHook(function (payload: { email: string }) {
+            // Hook implementation
+            console.log("User created:", payload.email);
+          }),
+        }))
+        .build();
 
-  //     expect(definition.baseServices).toBeDefined();
+      // Create a mock storage
+      const mockStorage = {
+        getStore: () => ({
+          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
 
-  //     // Get implicit deps first
-  //     const deps = definition.dependencies!({
-  //       config: {},
-  //       options: { databaseAdapter: mockAdapter },
-  //     });
+      // Spy on createServiceTxBuilder
+      const createServiceTxBuilderSpy = vi.spyOn(executeUnitOfWork, "createServiceTxBuilder");
 
-  //     const services = definition.baseServices!({
-  //       config: {},
-  //       options: { databaseAdapter: mockAdapter },
-  //       deps,
-  //       serviceDeps: {},
-  //       privateServices: {},
-  //       defineService: (svc) => svc,
-  //     });
+      // Get the contexts which includes serviceTxBuilder
+      const contexts = definition.createThisContext!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        deps: {} as any,
+        storage: mockStorage,
+      });
 
-  //     expect(services.getUsers()).toBe("function");
-  //   });
-  // });
+      // Call serviceTxBuilder - this should pass hooks to createServiceTxBuilder
+      contexts.serviceContext.serviceTxBuilder(testSchema);
+
+      // Verify createServiceTxBuilder was called with 3 arguments (schema, uow, hooks)
+      expect(createServiceTxBuilderSpy).toHaveBeenCalledOnce();
+      const callArgs = createServiceTxBuilderSpy.mock.calls[0];
+      expect(callArgs).toHaveLength(3);
+      expect(callArgs[0]).toBe(testSchema); // schema
+      expect(callArgs[1]).toBeDefined(); // uow
+      expect(callArgs[2]).toBeDefined(); // hooks - this is what we're testing
+      expect(callArgs[2]).toHaveProperty("onUserCreated");
+
+      createServiceTxBuilderSpy.mockRestore();
+    });
+  });
+
+  describe("handlerTx return type inference", () => {
+    it("should correctly infer return type for deps-only overload", () => {
+      // This is a TYPE test - we're verifying the return type is correctly inferred
+      // The type should be the extracted final results from TxResult, not the TxResult itself
+
+      // Create mock TxResults with known result types
+      type MockTxResult1 = TxResult<{ userId: string }, { userId: string }>;
+      type MockTxResult2 = TxResult<{ orderId: number }, { orderId: number }>;
+
+      // Simulate calling handlerTx with deps only - this tests the overload type inference
+      // We use a function type to capture what handlerTx would return
+      type DepsOnlyCall = (
+        ctx: DatabaseHandlerContext<{}>,
+      ) => ReturnType<typeof ctx.handlerTx<readonly [MockTxResult1, MockTxResult2]>>;
+
+      // Extract just the return type
+      type DepsOnlyReturnType = ReturnType<DepsOnlyCall>;
+
+      // The return type should be readonly [{ userId: string }, { orderId: number }]
+      // NOT containing TxResult types
+      type AwaitedResult = Awaited<DepsOnlyReturnType>;
+
+      // Verify the first element is { userId: string }, not TxResult
+      expectTypeOf<AwaitedResult[0]>().toEqualTypeOf<{ userId: string }>();
+      expectTypeOf<AwaitedResult[1]>().toEqualTypeOf<{ orderId: number }>();
+    });
+  });
 });
