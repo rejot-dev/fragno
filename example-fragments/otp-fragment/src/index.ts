@@ -68,8 +68,7 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
           })
           .transformRetrieve(([otpCodes]) => {
             // Find the matching OTP code
-            type OTPCode = (typeof otpCodes)[number];
-            const otpCode = otpCodes.find((otp: OTPCode) => "code" in otp && otp.code === code);
+            const otpCode = otpCodes.find((otp) => "code" in otp && otp.code === code);
             if (!otpCode || !("code" in otpCode)) {
               return { valid: false, otpCode: null };
             }
@@ -92,7 +91,9 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
             }
 
             // Mark the code as verified
-            uow.update("otp_code", retrieveResult.otpCode.id, (b) => b.set({ verified: true }));
+            uow.update("otp_code", retrieveResult.otpCode.id, (b) =>
+              b.set({ verified: true }).check(),
+            );
 
             return true;
           })

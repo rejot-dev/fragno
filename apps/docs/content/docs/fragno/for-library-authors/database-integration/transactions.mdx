@@ -1,151 +1,138 @@
 ---
 title: Transactions
-description: Use the Unit of Work (UOW) helpers to batch reads/writes and keep handlers atomic
+description: Use the transaction builders to batch reads/writes and keep handlers atomic
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-In the Fragno database layer, transactions are built around a **two-phase Unit of Work (UOW)**
-pattern:
+In the Fragno database layer, transactions are built around a **two-phase** pattern:
 
 - **Retrieval phase**: schedule reads, then execute them together
 - **Mutation phase**: schedule writes, then execute them atomically
 
-The important architectural rule is:
+In terms of code organization, the important architectural rule is:
 
-- **Route handlers control transaction execution**
-- **Services only enqueue database operations and wait for execution**
+- **Route handlers control transaction execution** via `this.handlerTx()`
+- **Services define reusable operations** via `this.serviceTx(schema)`
 
 This lets you call **multiple service methods inside one transaction**, and the DB work will be
 batched.
 
 ## Route handlers: control the transaction boundary
 
-In route handlers (or any “handler context”), you get a helper `this.uow(...)` that:
-
-- creates a UOW for the request
-- lets you explicitly run `executeRetrieve()` and `executeMutate()`
-- **automatically retries** the whole callback on optimistic concurrency conflicts
-- **awaits promises** in the returned object (one level deep)
-
-Example pattern (from the mailing-list fragment):
+In route handlers, use `this.handlerTx()` to build and execute transactions:
 
 ```typescript
-const result = await this.uow(async ({ executeRetrieve }) => {
-  const resultPromise = services.getSubscribers({
-    search,
-    sortBy,
-    sortOrder,
-    pageSize,
-    cursor,
-  });
-
-  // Executes all reads scheduled by services
-  await executeRetrieve();
-
-  // Return the promise; Fragno awaits it for you (one level deep)
-  return resultPromise;
-});
+const [subscribers] = await this.handlerTx()
+  .withServiceCalls(() => [services.getSubscribers({ search, sortBy, pageSize, cursor })])
+  .execute();
 ```
 
-### Reads vs writes
+The `handlerTx()` builder:
 
-- **Read-only work**: call `executeRetrieve()`
-- **Write work (create/update/delete)**: call `executeMutate()`
-  - If you didn’t call `executeRetrieve()` yet, `executeMutate()` will run it first.
+- **automatically retries** on optimistic concurrency conflicts
+- chains `.retrieve()`, `.mutate()`, `.withServiceCalls()` to compose operations
+- ends with `.execute()` to run the transaction
 
-## Services: enqueue work on a restricted UOW
+## Services: define reusable operations
 
-In services, you typically **don’t start transactions**. Instead you get a restricted UOW via
-`this.uow(schema)`:
-
-- **Important**: Services should be defined via `defineService(...)` and use `function` syntax (not
-  arrow functions) so `this` is correctly bound and typed.
+Services define database operations using `this.serviceTx(schema)`, returning a `TxResult` that
+handlers can execute:
 
 <Callout title="Use defineService() + function syntax" type="warn">
-  To use `this.uow(...)` in services, define your service methods via `defineService({ ... })` and
-  write them with `function (...) { ... }` (or `async function (...) { ... }`). Arrow functions
-  (`() => {}`) don’t have their own `this`, so `this.uow` won’t be available/typed.
+  To use `this.serviceTx(...)` in services, define your service methods via `defineService({ ... })`
+  and write them with `function (...) { ... }`. Arrow functions (`() => {}`) don't have their own
+  `this`, so `this.serviceTx` won't be available/typed.
 </Callout>
-
-- you can call things like `find(...)`, `findWithCursor(...)`, `create(...)`, `update(...)`, etc.
-- you can `await uow.retrievalPhase` / `await uow.mutationPhase`
-- you **cannot** commit/execute phases yourself (that stays in the handler)
 
 Example pattern (mailing-list `subscribe()`):
 
 ```typescript
-subscribe: async function (email: string) {
-  const uow = this.uow(mailingListSchema).find("subscriber", (b) =>
-    b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
-  );
+subscribe: function (email: string) {
+  return this.serviceTx(mailingListSchema)
+    .retrieve((uow) =>
+      uow.find("subscriber", (b) =>
+        b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
+      ),
+    )
+    .mutate(({ uow, retrieveResult: [existing] }) => {
+      if (existing.length > 0) {
+        return { alreadySubscribed: true, id: existing[0].id, email };
+      }
 
-  const [existing] = await uow.retrievalPhase;
-  if (existing.length > 0) {
-    return { alreadySubscribed: true };
-  }
-
-  uow.create("subscriber", { email, subscribedAt: new Date() });
-
-  // Wait for the handler to run executeMutate()
-  await uow.mutationPhase;
-
-  return { alreadySubscribed: false };
-};
+      const id = uow.create("subscriber", { email, subscribedAt: new Date() });
+      return { alreadySubscribed: false, id, email };
+    })
+    .build();
+}
 ```
+
+The `serviceTx()` builder:
+
+- chains `.retrieve()` and `.mutate()` to define operations
+- ends with `.build()` to return a `TxResult`
+- **does not execute** — handlers execute service results via `.withServiceCalls()`
 
 ### Why this design?
 
-Because services can’t “own” the transaction, you can safely do:
+Because services return `TxResult` instead of executing directly, you can:
 
-- call multiple service methods
-- execute retrieval once
-- execute mutation once
+- call multiple service methods in one handler transaction
+- batch all database operations together
+- get automatic retry handling from the handler
 
-…and the underlying DB operations are batched and committed atomically by the handler.
+As a result of these design decisions:
+
+- transactions never block the database
+- database round-trips are amortised
+- every successful transaction only has one round-trip (read-only) or two (read-write)
 
 ## Optimistic concurrency with `.check()`
 
 Fragno DB supports **optimistic concurrency control** using a hidden `_version` column. When you
-read a row through the ORM/UOW, its `id` is a `FragnoId` that also carries version information.
+read a row, its `id` is a `FragnoId` that also carries version information.
 
 Calling `.check()` on a mutation tells Fragno:
 
-> “Only apply this update/delete if the row’s version is still the one I read.”
+> "Only apply this update/delete if the row's version is still the one I read."
 
-If the row was modified by another transaction in between, the mutation phase will fail and the
-handler-level `this.uow(...)` will retry the whole callback (up to the retry policy).
+If the row was modified by another transaction in between, the mutation phase will fail and
+`handlerTx()` will retry the whole transaction (up to the retry policy).
 
 ### `update(...).check()` / `delete(...).check()`
 
 You can enable version checking on updates and deletes:
 
 ```typescript
-updateUser: async function (userId: FragnoId) {
-  const uow = this.uow(mySchema);
-  uow.update("users", userId, (b) => b.set({ name: "New name" }).check());
-  await uow.mutationPhase;
+updateUser: function (userId: FragnoId) {
+  return this.serviceTx(mySchema)
+    .mutate(({ uow }) => {
+      uow.update("users", userId, (b) => b.set({ name: "New name" }).check());
+    })
+    .build();
 }
 ```
 
 ### Standalone `uow.check(table, id)`
 
-Sometimes you want to assert that a record hasn’t changed _without_ updating it (e.g. guard related
+Sometimes you want to assert that a record hasn't changed _without_ updating it (e.g. guard related
 rows before writing):
 
 ```typescript
-transfer: async function (from: FragnoId, to: FragnoId) {
-  const uow = this.uow(mySchema);
-  uow.check("accounts", from);
-  uow.check("accounts", to);
-  uow.create("transfers", { fromAccountId: from.toString(), toAccountId: to.toString() });
-  await uow.mutationPhase;
+transfer: function (from: FragnoId, to: FragnoId) {
+  return this.serviceTx(mySchema)
+    .mutate(({ uow }) => {
+      uow.check("accounts", from);
+      uow.check("accounts", to);
+      uow.create("transfers", { fromAccountId: from.toString(), toAccountId: to.toString() });
+    })
+    .build();
 }
 ```
 
 ### Important: `.check()` requires a `FragnoId`, not a string
 
-`.check()` **throws** if you try to use it with a plain string ID, because a string doesn’t contain
+`.check()` **throws** if you try to use it with a plain string ID, because a string doesn't contain
 version information:
 
 - ✅ `uow.update("users", user.id, (b) => b.set(...).check())` (where `user.id` came from a query)
@@ -156,106 +143,90 @@ last-write-wins.
 
 ### End-to-end example: handler controls execution, service performs the transfer
 
-This is the same “two-phase + `.check()`” flow as the classic UOW example, but structured in the
-recommended way:
-
-- **Route handler**: owns the transaction boundary and phase execution
-- **Service**: enqueues reads/writes and uses `.check()` for optimistic locking
+- **Route handler**: owns the transaction boundary via `handlerTx()`
+- **Service**: defines operations with `.check()` for optimistic locking
 
 ```typescript
 import { ExponentialBackoffRetryPolicy } from "@fragno-dev/db";
 
-// Route handler (handler context) - controls transaction execution
+// Route handler - controls transaction execution
 defineRoute({
   method: "POST",
   path: "/transfer",
   handler: async function ({ input }, { json }) {
     const { fromAccountId, toAccountId, amount } = await input.valid();
 
-    const result = await this.uow(
-      async ({ executeMutate }) => {
-        const resultPromise = services.transferBetweenAccounts({
-          fromAccountId,
-          toAccountId,
-          amount,
-        });
-
-        // Executes retrieval automatically (if needed), then executes writes atomically.
-        await executeMutate();
-
-        return resultPromise;
-      },
-      {
-        // Custom retry policy for optimistic concurrency conflicts
+    const [result] = await this.handlerTx()
+      .withServiceCalls(() => [
+        services.transferBetweenAccounts({ fromAccountId, toAccountId, amount }),
+      ])
+      .execute({
         retryPolicy: new ExponentialBackoffRetryPolicy({
           maxRetries: 5,
           initialDelayMs: 10,
           maxDelayMs: 250,
         }),
-      },
-    );
+      });
 
     return json(result);
   },
 });
 
 defineService({
-  transferBetweenAccounts: async function (args: {
+  transferBetweenAccounts: function (args: {
     fromAccountId: string;
     toAccountId: string;
     amount: number;
   }) {
     const { fromAccountId, toAccountId, amount } = args;
 
-    // Phase 1: schedule retrievals
-    const uow = this.uow(mySchema)
-      .findFirst("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", fromAccountId)))
-      .findFirst("accounts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", toAccountId)));
+    return this.serviceTx(mySchema)
+      .retrieve((uow) =>
+        uow
+          .findFirst("accounts", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", fromAccountId)),
+          )
+          .findFirst("accounts", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", toAccountId)),
+          ),
+      )
+      .mutate(({ uow, retrieveResult: [from, to] }) => {
+        if (!from || !to) {
+          return { ok: false as const };
+        }
 
-    // Wait until the handler runs executeMutate() (it runs retrieval first if needed)
-    const [from, to] = await uow.retrievalPhase;
+        if (from.balance < amount) {
+          return { ok: false as const };
+        }
 
-    if (!from || !to) {
-      return { ok: false };
-    }
+        // Mutations with version checks
+        uow.update("accounts", from.id, (b) => b.set({ balance: from.balance - amount }).check());
+        uow.update("accounts", to.id, (b) => b.set({ balance: to.balance + amount }).check());
 
-    if (from.balance < amount) {
-      return { ok: false };
-    }
-
-    // Phase 2: schedule mutations (with version checks)
-    uow.update("accounts", from.id, (b) => b.set({ balance: from.balance - amount }).check());
-    uow.update("accounts", to.id, (b) => b.set({ balance: to.balance + amount }).check());
-
-    // Wait until the handler commits the transaction
-    // On optimistic conflicts, the handler automatically retries the whole transaction.
-    await uow.mutationPhase;
-
-    return { ok: true };
+        return { ok: true as const };
+      })
+      .build();
   },
 });
 ```
 
 ## Retries and side effects
 
-`this.uow(...)` automatically retries the whole callback on optimistic concurrency conflicts.
+`handlerTx()` automatically retries the whole transaction on optimistic concurrency conflicts.
 
-That means you should **avoid side effects** (sending emails, webhooks, etc.) inside the UOW
-callback or service code that runs during the transaction.
+That means you should **avoid side effects** (sending emails, webhooks, etc.) inside service code
+that runs during the transaction.
 
 Use [Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks) for that:
-they record the side effect request in the same transaction and execute it **after commit**, with
-retries.
+they record the side effect request in the same transaction and execute it **after commit**.
 
 ## Error handling
 
 **Handlers are responsible for error handling**, not services:
 
-- **Handlers** call `executeRetrieve()` / `executeMutate()` and should catch errors from these calls
-- **Services** await `retrievalPhase` / `mutationPhase` to coordinate their logic, but don't catch
-  errors
-- If an execute method throws, the handler catches it; service promises waiting on phase execution
-  are abandoned
+- **Handlers** call `.execute()` and should catch errors
+- **Services** return `TxResult` via `.build()` — they don't execute or handle errors
+- If `.execute()` throws, the handler catches it and decides how to respond
 
 This design keeps error handling centralized at the transaction boundary (the handler), where you
 have the full context to decide how to respond to the user.

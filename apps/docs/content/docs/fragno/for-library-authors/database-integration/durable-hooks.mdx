@@ -11,7 +11,7 @@ Durable hooks solve a common problem:
 
 With durable hooks, you **register a hook trigger during the transaction**. The trigger is persisted
 in the database as part of the same commit, and then the hook is executed **after the commit**. If
-execution fails, it’s retried with an exponential backoff policy.
+execution fails, it's retried with an exponential backoff policy.
 
 ## Defining hooks
 
@@ -20,7 +20,7 @@ Hooks are defined on the fragment definition:
 <Callout title="Use defineHook() + function syntax" type="warn">
   Hook implementations must be created via `defineHook(...)` and written with `function (...) { ... }`
   (or `async function (...) { ... }`) so the hook `this` context is available and typed. Arrow
-  functions (`() => {}`) don’t have their own `this`, so you won’t be able to access `this.nonce`.
+  functions (`() => {}`) don't have their own `this`, so you won't be able to access `this.nonce`.
 </Callout>
 
 ```typescript
@@ -44,41 +44,51 @@ Hook functions receive a `this` context that includes:
 
 ## Triggering hooks from services
 
-Within a service method, trigger a hook using the restricted UOW:
+Within a service method, trigger a hook using `uow.triggerHook()` inside the `mutate` callback:
 
 ```typescript
-subscribe: async function (email: string) {
-  const uow = this.uow(mySchema);
+subscribe: function (email: string) {
+  return this.serviceTx(mySchema)
+    .mutate(({ uow }) => {
+      const id = uow.create("subscriber", { email, subscribedAt: new Date() });
 
-  uow.create("subscriber", { email, subscribedAt: new Date() });
+      // Register side effect to run after commit (and retry on failure)
+      uow.triggerHook("onSubscribe", { email });
 
-  // Register side effect to run after commit (and retry on failure)
-  uow.triggerHook("onSubscribe", { email });
-
-  // Wait for the handler to commit
-  await uow.mutationPhase;
-};
+      return { id, email };
+    })
+    .build();
+}
 ```
 
 The key point is that **the hook trigger is part of your transaction**: if the transaction rolls
-back, the hook trigger is not recorded, so the side effect won’t run.
+back, the hook trigger is not recorded, so the side effect won't run.
 
 ## Running the transaction in a route handler
 
-Hooks are recorded when the handler runs `executeMutate()`:
+Hooks are recorded when the handler executes the transaction:
 
 ```typescript
-await this.uow(async ({ executeMutate }) => {
-  const resultPromise = services.subscribe(email);
-  await executeMutate();
-  return resultPromise;
+defineRoute({
+  method: "POST",
+  path: "/subscribe",
+  handler: async function ({ input }, { json }) {
+    const { email } = await input.valid();
+
+    const result = await this.handlerTx()
+      .withServiceCalls(() => [services.subscribe(email)] as const)
+      .transform(({ serviceResult: [result] }) => result)
+      .execute();
+
+    return json(result);
+  },
 });
 ```
 
 ## Retry behavior
 
 If a hook execution fails, it will be retried with an exponential backoff policy. This makes hooks
-safe for “at least once” delivery, as long as your hook implementation is **idempotent**.
+safe for "at least once" delivery, as long as your hook implementation is **idempotent**.
 
 Use the `nonce` to make idempotency easy:
 
