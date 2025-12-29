@@ -77,6 +77,13 @@ describe("matchPathParams (runtime extraction)", () => {
     expect(matchPathParams("/users/:id", "/users/123/")).toEqual({ id: "123" });
   });
 
+  test("URL decodes named params", () => {
+    expect(matchPathParams("/users/:name", "/users/a%20b")).toEqual({ name: "a b" });
+    expect(matchPathParams("/files/:path", "/files/folder%2Fsubfolder")).toEqual({
+      path: "folder/subfolder",
+    });
+  });
+
   test("pattern longer than path fills empty strings for remaining params", () => {
     // Remaining ":id" becomes empty string
     expect(matchPathParams("/users/:id", "/users")).toEqual({ id: "" });
