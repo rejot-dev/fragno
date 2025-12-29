@@ -900,7 +900,7 @@ export interface IUnitOfWork {
   // Getters (schema-agnostic)
   readonly state: UOWState;
   readonly name: string | undefined;
-  readonly nonce: string;
+  readonly idempotencyKey: string;
   readonly retrievalPhase: Promise<unknown[]>;
   readonly mutationPhase: Promise<void>;
 
@@ -964,7 +964,7 @@ export function createUnitOfWork(
 export interface UnitOfWorkConfig {
   dryRun?: boolean;
   onQuery?: (query: unknown) => void;
-  nonce?: string;
+  idempotencyKey?: string;
 }
 
 /**
@@ -1196,7 +1196,7 @@ class UOWChildCoordinator<TRawInput> {
 export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #name?: string;
   #config?: UnitOfWorkConfig;
-  #nonce: string;
+  #idempotencyKey: string;
 
   #state: UOWState = "building-retrieval";
 
@@ -1240,7 +1240,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#schemaNamespaceMap = schemaNamespaceMap ?? new WeakMap();
     this.#name = name;
     this.#config = config;
-    this.#nonce = config?.nonce ?? crypto.randomUUID();
+    this.#idempotencyKey = config?.idempotencyKey ?? crypto.randomUUID();
   }
 
   /**
@@ -1290,7 +1290,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       this.#executor,
       this.#decoder,
       this.#name,
-      { ...this.#config, nonce: this.#nonce },
+      { ...this.#config, idempotencyKey: this.#idempotencyKey },
       this.#schemaNamespaceMap,
     );
     child.#coordinator.setAsRestricted(this, this.#coordinator);
@@ -1391,8 +1391,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     return this.#name;
   }
 
-  get nonce(): string {
-    return this.#nonce;
+  get idempotencyKey(): string {
+    return this.#idempotencyKey;
   }
 
   /**
@@ -1671,8 +1671,8 @@ export class TypedUnitOfWork<
     return this.#uow.name;
   }
 
-  get nonce(): string {
-    return this.#uow.nonce;
+  get idempotencyKey(): string {
+    return this.#uow.idempotencyKey;
   }
 
   get state() {

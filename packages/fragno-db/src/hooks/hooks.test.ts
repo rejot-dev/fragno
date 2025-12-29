@@ -225,7 +225,7 @@ describe("Hook System", () => {
 
       // Verify hook context (this)
       const hookContext = hookFn.mock.contexts[0] as HookContext;
-      expect(hookContext.nonce).toBe("test-nonce");
+      expect(hookContext.idempotencyKey).toBe("test-nonce");
 
       // Verify event was marked as completed
       const result = await internalFragment.inContext(async function () {

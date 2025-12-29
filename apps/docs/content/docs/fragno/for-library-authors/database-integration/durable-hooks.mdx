@@ -20,7 +20,7 @@ Hooks are defined on the fragment definition:
 <Callout title="Use defineHook() + function syntax" type="warn">
   Hook implementations must be created via `defineHook(...)` and written with `function (...) { ... }`
   (or `async function (...) { ... }`) so the hook `this` context is available and typed. Arrow
-  functions (`() => {}`) don't have their own `this`, so you won't be able to access `this.nonce`.
+  functions (`() => {}`) don't have their own `this`, so you won't be able to access `this.idempotencyKey`.
 </Callout>
 
 ```typescript
@@ -29,8 +29,8 @@ export const fragmentDef = defineFragment<Config>("my-fragment")
   .provideHooks(({ defineHook, config }) => ({
     onSubscribe: defineHook(async function (payload: { email: string }) {
       // Hook functions run outside the transaction, after commit.
-      // `this.nonce` is a unique idempotency key for this transaction.
-      await config.onSubscribe?.({ nonce: this.nonce, email: payload.email });
+      // `this.idempotencyKey` is a unique idempotency key for this transaction.
+      await config.onSubscribe?.({ idempotencyKey: this.idempotencyKey, email: payload.email });
     }),
   }))
   .build();
@@ -40,7 +40,7 @@ export const fragmentDef = defineFragment<Config>("my-fragment")
 
 Hook functions receive a `this` context that includes:
 
-- `nonce`: a unique nonce for the originating transaction (use for idempotency)
+- `idempotencyKey`: a unique idempotency key for the originating transaction (use for idempotency)
 
 ## Triggering hooks from services
 
@@ -90,7 +90,7 @@ defineRoute({
 If a hook execution fails, it will be retried with an exponential backoff policy. This makes hooks
 safe for "at least once" delivery, as long as your hook implementation is **idempotent**.
 
-Use the `nonce` to make idempotency easy:
+Use the `idempotencyKey` to make idempotency easy:
 
-- store processed nonces in your external system
-- or pass the nonce as an idempotency key to third-party APIs that support it
+- store processed idempotency keys in your external system
+- or pass the idempotencyKey as an idempotency key to third-party APIs that support it
