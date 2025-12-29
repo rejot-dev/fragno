@@ -416,6 +416,56 @@ describe("fragment-instantiator", () => {
       expect(data).toEqual({ userId: "123" });
     });
 
+    it("should URL decode path params", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "GET",
+        path: "/users/:name",
+        handler: async (input, { json }) => {
+          return json({ userName: input.pathParams.name });
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      // URL with encoded space: "a%20b" should be decoded to "a b"
+      const request = new Request("http://localhost/api/users/a%20b");
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ userName: "a b" });
+    });
+
+    it("should URL decode path params with special characters", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "GET",
+        path: "/files/:path",
+        handler: async (input, { json }) => {
+          return json({ filePath: input.pathParams.path });
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      // URL with encoded slash: "folder%2Fsubfolder" should be decoded to "folder/subfolder"
+      const request = new Request("http://localhost/api/files/folder%2Fsubfolder");
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ filePath: "folder/subfolder" });
+    });
+
     it("should handle POST requests with body", async () => {
       const definition = defineFragment("test-fragment").build();
 

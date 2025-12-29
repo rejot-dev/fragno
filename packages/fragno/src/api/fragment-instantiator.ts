@@ -432,8 +432,14 @@ export class FragnoInstantiatedFragment<
       }
     }
 
+    // URL decode path params from rou3 (which returns encoded values)
+    const decodedRouteParams: Record<string, string> = {};
+    for (const [key, value] of Object.entries(route.params ?? {})) {
+      decodedRouteParams[key] = decodeURIComponent(value);
+    }
+
     const requestState = new MutableRequestState({
-      pathParams: route.params ?? {},
+      pathParams: decodedRouteParams,
       searchParams: url.searchParams,
       body: requestBody,
       headers: new Headers(req.headers),
