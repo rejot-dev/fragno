@@ -73,14 +73,17 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       get(namespace: string, key: string) {
         const fullKey = `${namespace}.${key}`;
-        return this.serviceTx(internalSchema, {
-          retrieve: (uow) =>
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
             uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
               b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
             ),
-          retrieveSuccess: ([result]): { id: FragnoId; key: string; value: string } | undefined =>
-            result ?? undefined,
-        });
+          )
+          .transformRetrieve(
+            ([result]): { id: FragnoId; key: string; value: string } | undefined =>
+              result ?? undefined,
+          )
+          .build();
       },
 
       /**
@@ -88,13 +91,14 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       set(namespace: string, key: string, value: string) {
         const fullKey = `${namespace}.${key}`;
-        return this.serviceTx(internalSchema, {
-          retrieve: (uow) =>
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
             uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
               b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
             ),
-          retrieveSuccess: ([result]) => result,
-          mutate: ({ uow, retrieveResult }) => {
+          )
+          .transformRetrieve(([result]) => result)
+          .mutate(({ uow, retrieveResult }) => {
             if (retrieveResult) {
               uow.update(SETTINGS_TABLE_NAME, retrieveResult.id, (b) => b.set({ value }).check());
             } else {
@@ -103,17 +107,17 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                 value,
               });
             }
-          },
-        });
+          })
+          .build();
       },
 
       /**
        * Delete a setting by ID.
        */
       delete(id: FragnoId) {
-        return this.serviceTx(internalSchema, {
-          mutate: ({ uow }) => uow.delete(SETTINGS_TABLE_NAME, id),
-        });
+        return this.serviceTx(internalSchema)
+          .mutate(({ uow }) => uow.delete(SETTINGS_TABLE_NAME, id))
+          .build();
       },
     });
   })
@@ -124,14 +128,15 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Returns all pending events for the given namespace that are ready to be processed.
        */
       getPendingHookEvents(namespace: string) {
-        return this.serviceTx(internalSchema, {
-          retrieve: (uow) =>
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_retry", (eb) =>
                 eb.and(eb("namespace", "=", namespace), eb("status", "=", "pending")),
               ),
             ),
-          retrieveSuccess: ([events]) => {
+          )
+          .transformRetrieve(([events]) => {
             const now = new Date();
             // FIXME(Wilco): this should be handled by the database query, but there seems to be an issue.
             const ready = events.filter((event) => {
@@ -149,20 +154,21 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               maxAttempts: event.maxAttempts,
               nonce: event.nonce,
             }));
-          },
-        });
+          })
+          .build();
       },
 
       /**
        * Mark a hook event as completed.
        */
       markHookCompleted(eventId: FragnoId) {
-        return this.serviceTx(internalSchema, {
-          mutate: ({ uow }) =>
+        return this.serviceTx(internalSchema)
+          .mutate(({ uow }) =>
             uow.update("fragno_hooks", eventId, (b) =>
               b.set({ status: "completed", lastAttemptAt: new Date() }).check(),
             ),
-        });
+          )
+          .build();
       },
 
       /**
@@ -172,8 +178,8 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         const newAttempts = attempts + 1;
         const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
 
-        return this.serviceTx(internalSchema, {
-          mutate: ({ uow }) => {
+        return this.serviceTx(internalSchema)
+          .mutate(({ uow }) => {
             if (shouldRetry) {
               const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
               const nextRetryAt = new Date(Date.now() + delayMs);
@@ -200,46 +206,49 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                   .check(),
               );
             }
-          },
-        });
+          })
+          .build();
       },
 
       /**
        * Mark a hook event as processing (to prevent concurrent execution).
        */
       markHookProcessing(eventId: FragnoId) {
-        return this.serviceTx(internalSchema, {
-          mutate: ({ uow }) =>
+        return this.serviceTx(internalSchema)
+          .mutate(({ uow }) =>
             uow.update("fragno_hooks", eventId, (b) =>
               b.set({ status: "processing", lastAttemptAt: new Date() }).check(),
             ),
-        });
+          )
+          .build();
       },
 
       /**
        * Get a hook event by ID (for testing/verification purposes).
        */
       getHookById(eventId: FragnoId) {
-        return this.serviceTx(internalSchema, {
-          retrieve: (uow) =>
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
             uow.findFirst("fragno_hooks", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
             ),
-          retrieveSuccess: ([result]) => result ?? undefined,
-        });
+          )
+          .transformRetrieve(([result]) => result ?? undefined)
+          .build();
       },
 
       /**
        * Get all hook events for a namespace (for testing/verification purposes).
        */
       getHooksByNamespace(namespace: string) {
-        return this.serviceTx(internalSchema, {
-          retrieve: (uow) =>
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_retry", (eb) => eb("namespace", "=", namespace)),
             ),
-          retrieveSuccess: ([events]) => events,
-        });
+          )
+          .transformRetrieve(([events]) => events)
+          .build();
       },
     });
   })
@@ -259,10 +268,12 @@ export async function getSchemaVersionFromDatabase(
 ): Promise<number> {
   try {
     const setting = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.settingsService.get(namespace, "schema_version")] as const,
-        success: ({ depsResult: [result] }) => result,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.settingsService.get(namespace, "schema_version")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
     });
     return setting ? parseInt(setting.value, 10) : 0;
   } catch {

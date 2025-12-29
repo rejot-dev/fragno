@@ -44,10 +44,10 @@ describe("Mailing List Fragment", async () => {
       test("should add a new subscriber", async () => {
         // TODO(Wilco): would be nice to have a helper function for inContext -> uow
         const result = await fragment.inContext(function () {
-          return this.handlerTx({
-            deps: () => [services.subscribe("test@example.com")],
-            success: ({ depsResult: [result] }) => result,
-          });
+          return this.handlerTx()
+            .withServiceCalls(() => [services.subscribe("test@example.com")])
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
         });
 
         expect(result).toMatchObject({
@@ -60,10 +60,10 @@ describe("Mailing List Fragment", async () => {
 
       test("should return existing subscriber if already subscribed", async () => {
         const initialSubscriber = await fragment.inContext(function () {
-          return this.handlerTx({
-            deps: () => [services.subscribe("test@example.com")],
-            success: ({ depsResult: [result] }) => result,
-          });
+          return this.handlerTx()
+            .withServiceCalls(() => [services.subscribe("test@example.com")])
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
         });
 
         expect(initialSubscriber).toMatchObject({
@@ -74,10 +74,10 @@ describe("Mailing List Fragment", async () => {
         });
 
         const resubscribe = await fragment.inContext(function () {
-          return this.handlerTx({
-            deps: () => [services.subscribe("test@example.com")],
-            success: ({ depsResult: [result] }) => result,
-          });
+          return this.handlerTx()
+            .withServiceCalls(() => [services.subscribe("test@example.com")])
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
         });
 
         expect(resubscribe).toMatchObject({
@@ -95,27 +95,27 @@ describe("Mailing List Fragment", async () => {
     test("should throw index mismatch error when sortBy changes between pagination requests", async () => {
       // Create some test subscribers
       await fragment.inContext(function () {
-        return this.handlerTx({
-          deps: () => [
+        return this.handlerTx()
+          .withServiceCalls(() => [
             services.subscribe("alice@example.com"),
             services.subscribe("bob@example.com"),
             services.subscribe("charlie@example.com"),
-          ],
-        });
+          ])
+          .execute();
       });
 
       // First page with sortBy="email"
       const firstPage = await fragment.inContext(function () {
-        return this.handlerTx({
-          deps: () => [
+        return this.handlerTx()
+          .withServiceCalls(() => [
             services.getSubscribers({
               sortBy: "email",
               sortOrder: "asc",
               pageSize: 1,
             }),
-          ],
-          success: ({ depsResult: [result] }) => result,
-        });
+          ])
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
       });
 
       expect(firstPage.cursor).toBeDefined();
@@ -123,16 +123,16 @@ describe("Mailing List Fragment", async () => {
       // Try to get next page with different sortBy (should throw index mismatch)
       await expect(
         fragment.inContext(function () {
-          return this.handlerTx({
-            deps: () => [
+          return this.handlerTx()
+            .withServiceCalls(() => [
               services.getSubscribers({
                 sortBy: "subscribedAt", // Changed from "email"
                 sortOrder: "asc",
                 pageSize: 1,
                 cursor: firstPage.cursor,
               }),
-            ],
-          });
+            ])
+            .execute();
         }),
       ).rejects.toThrow(/Index mismatch/);
     });

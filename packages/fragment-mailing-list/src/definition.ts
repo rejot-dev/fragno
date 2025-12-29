@@ -24,14 +24,14 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
   .providesBaseService(({ defineService }) => {
     return defineService({
       subscribe: function (email: string) {
-        return this.serviceTx(mailingListSchema, {
-          retrieve: (uow) => {
+        return this.serviceTx(mailingListSchema)
+          .retrieve((uow) => {
             // Check if already subscribed
             return uow.find("subscriber", (b) =>
               b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
             );
-          },
-          mutate: ({ uow, retrieveResult: [existing] }) => {
+          })
+          .mutate(({ uow, retrieveResult: [existing] }) => {
             if (existing.length > 0) {
               const subscriber = existing[0];
               return {
@@ -53,8 +53,8 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
               subscribedAt,
               alreadySubscribed: false,
             };
-          },
-        });
+          })
+          .build();
       },
       getSubscribers: function ({
         search,
@@ -73,8 +73,8 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
         const effectiveSortOrder = cursor ? cursor.orderDirection : sortOrder;
         const effectivePageSize = cursor ? cursor.pageSize : pageSize;
 
-        return this.serviceTx(mailingListSchema, {
-          retrieve: (uow) => {
+        return this.serviceTx(mailingListSchema)
+          .retrieve((uow) => {
             return uow.findWithCursor("subscriber", (b) => {
               // When searching, we must filter by email and can only use the email index
               if (search) {
@@ -96,8 +96,8 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
               // Add cursor for pagination continuation
               return cursor ? query.after(cursor) : query;
             });
-          },
-          mutate: ({ retrieveResult: [subscribers] }) => {
+          })
+          .mutate(({ retrieveResult: [subscribers] }) => {
             return {
               subscribers: subscribers.items.map((subscriber) => ({
                 id: subscriber.id.toString(),
@@ -107,8 +107,8 @@ export const mailingListFragmentDefinition = defineFragment<MailingListConfig>("
               cursor: subscribers.cursor,
               hasNextPage: subscribers.hasNextPage,
             };
-          },
-        });
+          })
+          .build();
       },
     });
   })

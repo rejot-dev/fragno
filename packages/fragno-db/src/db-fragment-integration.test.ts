@@ -55,34 +55,31 @@ describe.sequential("Database Fragment Integration", () => {
       return defineService({
         // Creates a user - returns TxResult<FragnoId>
         createUser(name: string, email: string) {
-          return this.serviceTx(usersSchema, {
-            mutate: ({ uow }) => {
-              return uow.create("users", { name, email });
-            },
-          });
+          return this.serviceTx(usersSchema)
+            .mutate(({ uow }) => uow.create("users", { name, email }))
+            .build();
         },
         // Gets a user by ID - returns TxResult<User | null>
         getUserById(userId: FragnoId | string) {
-          return this.serviceTx(usersSchema, {
-            retrieve: (uow) => {
-              return uow.find("users", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", userId)),
-              );
-            },
-            retrieveSuccess: ([users]): { id: FragnoId; name: string; email: string } | null =>
-              users[0] ?? null,
-          });
+          return this.serviceTx(usersSchema)
+            .retrieve((uow) =>
+              uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+            )
+            .transformRetrieve(
+              ([users]): { id: FragnoId; name: string; email: string } | null => users[0] ?? null,
+            )
+            .build();
         },
         // Creates a profile - returns TxResult<FragnoId>
         createProfile(userId: FragnoId | string, bio: string) {
-          return this.serviceTx(usersSchema, {
-            mutate: ({ uow }) => {
-              return uow.create("profiles", {
+          return this.serviceTx(usersSchema)
+            .mutate(({ uow }) =>
+              uow.create("profiles", {
                 user_id: userId,
                 bio,
-              });
-            },
-          });
+              }),
+            )
+            .build();
         },
       });
     })
@@ -96,8 +93,8 @@ describe.sequential("Database Fragment Integration", () => {
       outputSchema: z.object({ userId: z.string(), profileId: z.string() }),
       handler: async function (_input, { json }) {
         // Use handlerTx with mutate to create both user and profile atomically
-        const result = await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        const result = await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(usersSchema);
             const userId = uow.create("users", { name: "John Doe", email: "john@example.com" });
             const profileId = uow.create("profiles", {
@@ -105,8 +102,8 @@ describe.sequential("Database Fragment Integration", () => {
               bio: "Software engineer",
             });
             return { userId, profileId };
-          },
-        });
+          })
+          .execute();
 
         return json(
           { userId: result.userId.externalId, profileId: result.profileId.externalId },
@@ -133,9 +130,9 @@ describe.sequential("Database Fragment Integration", () => {
     .providesService("orderService", ({ defineService, serviceDeps }) => {
       return defineService({
         createOrder(userExternalId: string, productName: string, quantity: number, total: number) {
-          return this.serviceTx(ordersSchema, {
-            deps: () => [serviceDeps.userService.getUserById(userExternalId)] as const,
-            mutate: ({ uow, depsIntermediateResult: [user] }) => {
+          return this.serviceTx(ordersSchema)
+            .withServiceCalls(() => [serviceDeps.userService.getUserById(userExternalId)] as const)
+            .mutate(({ uow, serviceIntermediateResult: [user] }) => {
               if (!user) {
                 throw new Error("User not found");
               }
@@ -148,21 +145,21 @@ describe.sequential("Database Fragment Integration", () => {
                 quantity,
                 total,
               });
-            },
-          });
+            })
+            .build();
         },
         // Gets orders by user - returns TxResult<Order[]>
         getOrdersByUser(userExternalId: string) {
-          return this.serviceTx(ordersSchema, {
-            retrieve: (uow) => {
-              return uow.find("orders", (b) =>
+          return this.serviceTx(ordersSchema)
+            .retrieve((uow) =>
+              uow.find("orders", (b) =>
                 b.whereIndex("orders_user_idx", (eb) =>
                   eb("user_external_id", "=", userExternalId),
                 ),
-              );
-            },
-            retrieveSuccess: ([orders]) => orders,
-          });
+              ),
+            )
+            .transformRetrieve(([orders]) => orders)
+            .build();
         },
       });
     })
@@ -184,20 +181,22 @@ describe.sequential("Database Fragment Integration", () => {
         const body = await input.valid();
 
         try {
-          // Use handlerTx with deps to execute the service TxResult
+          // Use handlerTx with withServiceCalls to execute the service TxResult
           // createOrder validates that the user exists
-          const result = await this.handlerTx({
-            deps: () =>
-              [
-                services.orderService.createOrder(
-                  body.userId,
-                  body.productName,
-                  body.quantity,
-                  body.total,
-                ),
-              ] as const,
-            success: ({ depsResult: [orderId] }) => ({ orderId }),
-          });
+          const result = await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.orderService.createOrder(
+                    body.userId,
+                    body.productName,
+                    body.quantity,
+                    body.total,
+                  ),
+                ] as const,
+            )
+            .transform(({ serviceResult: [orderId] }) => ({ orderId }))
+            .execute();
 
           return json({ orderId: result.orderId.externalId }, { status: 201 });
         } catch (e) {
@@ -274,11 +273,11 @@ describe.sequential("Database Fragment Integration", () => {
 
   it("should verify user was created with profile", async () => {
     const user = await usersFragment.inContext(async function () {
-      // Use handlerTx with deps to execute the service TxResult
-      const result = await this.handlerTx({
-        deps: () => [usersFragment.services.userService.getUserById(userId)] as const,
-        success: ({ depsResult: [user] }) => user,
-      });
+      // Use handlerTx with withServiceCalls to execute the service TxResult
+      const result = await this.handlerTx()
+        .withServiceCalls(() => [usersFragment.services.userService.getUserById(userId)] as const)
+        .transform(({ serviceResult: [user] }) => user)
+        .execute();
       return result;
     });
 
@@ -309,11 +308,13 @@ describe.sequential("Database Fragment Integration", () => {
 
   it("should verify order was created with correct user reference", async () => {
     const orders = await ordersFragment.inContext(async function () {
-      // Use handlerTx with deps to execute the service TxResult
-      const result = await this.handlerTx({
-        deps: () => [ordersFragment.services.orderService.getOrdersByUser(userId)] as const,
-        success: ({ depsResult: [orders] }) => orders,
-      });
+      // Use handlerTx with withServiceCalls to execute the service TxResult
+      const result = await this.handlerTx()
+        .withServiceCalls(
+          () => [ordersFragment.services.orderService.getOrdersByUser(userId)] as const,
+        )
+        .transform(({ serviceResult: [orders] }) => orders)
+        .execute();
       return result;
     });
     expect(orders).toHaveLength(1);
@@ -331,20 +332,24 @@ describe.sequential("Database Fragment Integration", () => {
   it("should verify cross-fragment service integration works bidirectionally", async () => {
     // Orders service should be able to query users via the shared userService
     const ordersByUser = await ordersFragment.inContext(async function () {
-      const result = await this.handlerTx({
-        deps: () => [ordersFragment.services.orderService.getOrdersByUser(userId)] as const,
-        success: ({ depsResult: [orders] }) => orders,
-      });
+      const result = await this.handlerTx()
+        .withServiceCalls(
+          () => [ordersFragment.services.orderService.getOrdersByUser(userId)] as const,
+        )
+        .transform(({ serviceResult: [orders] }) => orders)
+        .execute();
       return result;
     });
     const userFromOrdersContext = await usersFragment.inContext(async function () {
-      const result = await this.handlerTx({
-        deps: () =>
-          [
-            usersFragment.services.userService.getUserById(ordersByUser[0].user_external_id),
-          ] as const,
-        success: ({ depsResult: [user] }) => user,
-      });
+      const result = await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              usersFragment.services.userService.getUserById(ordersByUser[0].user_external_id),
+            ] as const,
+        )
+        .transform(({ serviceResult: [user] }) => user)
+        .execute();
       return result;
     });
 
@@ -374,17 +379,19 @@ describe.sequential("Database Fragment Integration", () => {
   it("should be able to use inContext to call a service", async () => {
     const result = await usersFragment.inContext(async function () {
       // Use handlerTx with multiple deps
-      return await this.handlerTx({
-        deps: () =>
-          [
-            usersFragment.services.userService.getUserById(userId),
-            ordersFragment.services.orderService.getOrdersByUser(userId),
-          ] as const,
-        success: ({ depsResult: [userResult, ordersResult] }) => ({
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              usersFragment.services.userService.getUserById(userId),
+              ordersFragment.services.orderService.getOrdersByUser(userId),
+            ] as const,
+        )
+        .transform(({ serviceResult: [userResult, ordersResult] }) => ({
           user: userResult,
           orders: ordersResult,
-        }),
-      });
+        }))
+        .execute();
     });
 
     expect(result.user).toMatchObject({
@@ -406,8 +413,8 @@ describe.sequential("Database Fragment Integration", () => {
     let firstIdempotencyKey: string;
 
     const result = await usersFragment.inContext(async function () {
-      return await this.handlerTx({
-        mutate: ({ forSchema, idempotencyKey, currentAttempt }) => {
+      return await this.handlerTx()
+        .mutate(({ forSchema, idempotencyKey, currentAttempt }) => {
           if (currentAttempt === 0) {
             firstIdempotencyKey = idempotencyKey;
             // Trigger a conflict by throwing the specific conflict error
@@ -428,8 +435,8 @@ describe.sequential("Database Fragment Integration", () => {
             idempotencyKey,
             currentAttempt,
           };
-        },
-      });
+        })
+        .execute();
     });
 
     // Verify idempotencyKey is a string UUID
@@ -446,18 +453,18 @@ describe.sequential("Database Fragment Integration", () => {
     expect(result.newUserId.externalId).toBeDefined();
   });
 
-  describe("Unified Tx API (serviceTx/handlerTx)", () => {
+  describe("Unified Tx Builder API (serviceTx/handlerTx)", () => {
     it("should use handlerTx with mutate to create records", async () => {
       const result = await usersFragment.inContext(async function () {
-        return await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        return await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const newUserId = forSchema(usersSchema).create("users", {
               name: "Unified API User",
               email: "unified@example.com",
             });
             return { newUserId };
-          },
-        });
+          })
+          .execute();
       });
 
       expect(result.newUserId).toBeDefined();
@@ -466,43 +473,43 @@ describe.sequential("Database Fragment Integration", () => {
 
     it("should use handlerTx with retrieve callback to query data", async () => {
       const result = await usersFragment.inContext(async function () {
-        return await this.handlerTx({
-          retrieve: ({ forSchema }) => {
-            // Query users and return the find handle
-            const usersUow = forSchema(usersSchema);
-            usersUow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)));
-            // Return marker that retrieve was called
-            return ["retrieve-called"] as const;
-          },
-          retrieveSuccess: (retrieveResults) => {
-            // retrieveResults is ["retrieve-called"] from the retrieve callback
-            return { retrieved: true, marker: retrieveResults[0] };
-          },
-        });
+        return await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(usersSchema).find("users", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+            ),
+          )
+          .transformRetrieve(([users]) => {
+            return { retrieved: true, user: users[0] };
+          })
+          .execute();
       });
 
       expect(result.retrieved).toBe(true);
-      expect(result.marker).toBe("retrieve-called");
+      expect(result.user).toMatchObject({
+        id: expect.objectContaining({ externalId: userId }),
+        name: "John Doe",
+      });
     });
 
-    it("should use handlerTx with mutate and success callbacks", async () => {
+    it("should use handlerTx with mutate and transform callbacks", async () => {
       const result = await usersFragment.inContext(async function () {
-        return await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        return await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const newUserId = forSchema(usersSchema).create("users", {
               name: "Success Callback User",
               email: "success-callback@example.com",
             });
             return { newUserId, createdInMutate: true };
-          },
-          success: ({ mutateResult }) => {
+          })
+          .transform(({ mutateResult }) => {
             return {
               userId: mutateResult.newUserId,
               wasCreatedInMutate: mutateResult.createdInMutate,
               processedAt: new Date().toISOString(),
             };
-          },
-        });
+          })
+          .execute();
       });
 
       expect(result.userId).toBeDefined();
@@ -510,21 +517,19 @@ describe.sequential("Database Fragment Integration", () => {
       expect(result.processedAt).toBeDefined();
     });
 
-    it("should use handlerTx with retrieve, mutate, and success callbacks", async () => {
+    it("should use handlerTx with retrieve, mutate, and transform callbacks", async () => {
       const result = await ordersFragment.inContext(async function () {
-        return await this.handlerTx({
-          retrieve: ({ forSchema }) => {
-            // Register a retrieve operation
+        return await this.handlerTx()
+          .retrieve(({ forSchema }) =>
             forSchema(ordersSchema).find("orders", (b) =>
               b.whereIndex("orders_user_idx", (eb) => eb("user_external_id", "=", userId)),
-            );
-            return ["orders-queried"] as const;
-          },
-          retrieveSuccess: (retrieveResults) => {
-            return { queriedOrders: true, marker: retrieveResults[0] };
-          },
-          mutate: ({ forSchema, retrieveResult }) => {
-            expect(retrieveResult.queriedOrders).toBe(true);
+            ),
+          )
+          .transformRetrieve(([orders]) => {
+            return { existingOrders: orders };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            expect(retrieveResult.existingOrders.length).toBeGreaterThan(0);
             const orderId = forSchema(ordersSchema).create("orders", {
               user_external_id: userId,
               product_name: "Full Flow Product",
@@ -532,15 +537,15 @@ describe.sequential("Database Fragment Integration", () => {
               total: 3000,
             });
             return { orderId };
-          },
-          success: ({ mutateResult, retrieveResult }) => {
+          })
+          .transform(({ mutateResult, retrieveResult }) => {
             return {
               orderId: mutateResult.orderId,
-              hadRetrieve: retrieveResult.queriedOrders,
+              hadRetrieve: retrieveResult.existingOrders.length > 0,
               completedAt: new Date().toISOString(),
             };
-          },
-        });
+          })
+          .execute();
       });
 
       expect(result.orderId).toBeDefined();

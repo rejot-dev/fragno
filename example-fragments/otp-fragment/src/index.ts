@@ -45,8 +45,8 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
 
-        return this.serviceTx(otpSchema, {
-          mutate: ({ uow }) => {
+        return this.serviceTx(otpSchema)
+          .mutate(({ uow }) => {
             uow.create("otp_code", {
               userId,
               code,
@@ -54,19 +54,19 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
               verified: false,
             });
             return code;
-          },
-        });
+          })
+          .build();
       },
       verifyOTP: function (userId: string, code: string) {
-        return this.serviceTx(otpSchema, {
-          retrieve: (uow) => {
+        return this.serviceTx(otpSchema)
+          .retrieve((uow) => {
             return uow.find("otp_code", (b) =>
               b
                 .whereIndex("idx_otp_user", (eb) => eb("userId", "=", userId))
                 .select(["id", "code", "expiresAt", "verified"]),
             );
-          },
-          retrieveSuccess: ([otpCodes]) => {
+          })
+          .transformRetrieve(([otpCodes]) => {
             // Find the matching OTP code
             type OTPCode = (typeof otpCodes)[number];
             const otpCode = otpCodes.find((otp: OTPCode) => "code" in otp && otp.code === code);
@@ -85,8 +85,8 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
             }
 
             return { valid: true, otpCode };
-          },
-          mutate: ({ uow, retrieveResult }) => {
+          })
+          .mutate(({ uow, retrieveResult }) => {
             if (!retrieveResult.valid || !retrieveResult.otpCode) {
               return false;
             }
@@ -95,8 +95,8 @@ export const otpFragmentDefinition = defineFragment<OTPConfig>("otp-fragment")
             uow.update("otp_code", retrieveResult.otpCode.id, (b) => b.set({ verified: true }));
 
             return true;
-          },
-        });
+          })
+          .build();
       },
     }),
   )
@@ -117,10 +117,10 @@ const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(({ services,
       handler: async function ({ input }, { json }) {
         const { userId, code } = await input.valid();
 
-        const verified = await this.handlerTx({
-          deps: () => [services.otp.verifyOTP(userId, code)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        const verified = await this.handlerTx()
+          .withServiceCalls(() => [services.otp.verifyOTP(userId, code)] as const)
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
 
         return json({ verified });
       },
@@ -159,35 +159,37 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment"
 
         const userId = generateId(authSchema, "user");
 
-        return this.serviceTx(authSchema, {
-          // Generate OTP if service is available
-          deps: () => [serviceDeps.otp?.generateOTP(userId.externalId)],
-          mutate: ({ uow }) => {
-            uow.create("user", {
-              id: userId,
-              email,
-              passwordHash,
-              emailVerified: false,
-            });
+        return (
+          this.serviceTx(authSchema)
+            // Generate OTP if service is available
+            .withServiceCalls(() => [serviceDeps.otp?.generateOTP(userId.externalId)])
+            .mutate(({ uow }) => {
+              uow.create("user", {
+                id: userId,
+                email,
+                passwordHash,
+                emailVerified: false,
+              });
 
-            return {
-              userId: userId.valueOf(),
-              email,
-              emailVerified: false,
-            };
-          },
-          success: ({ depsResult: [otpCode], mutateResult }) => {
-            return {
-              ...mutateResult,
-              otpCode,
-            };
-          },
-        });
+              return {
+                userId: userId.valueOf(),
+                email,
+                emailVerified: false,
+              };
+            })
+            .transform(({ serviceResult: [otpCode], mutateResult }) => {
+              return {
+                ...mutateResult,
+                otpCode,
+              };
+            })
+            .build()
+        );
       },
 
       createUser: function (email: string, password: string) {
-        return this.serviceTx(authSchema, {
-          mutate: ({ uow }) => {
+        return this.serviceTx(authSchema)
+          .mutate(({ uow }) => {
             const userId = uow.create("user", {
               email,
               passwordHash: `hashed_${password}`, // fake hash
@@ -199,24 +201,24 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment"
               email,
               emailVerified: false,
             };
-          },
-        });
+          })
+          .build();
       },
 
       /**
        * Get user by email
        */
       getUserByEmail: function (email: string) {
-        return this.serviceTx(authSchema, {
-          retrieve: (uow) => {
+        return this.serviceTx(authSchema)
+          .retrieve((uow) => {
             return uow.find("user", (b) =>
               b
                 .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
                 .select(["id", "email", "emailVerified"])
                 .pageSize(1),
             );
-          },
-          retrieveSuccess: ([users]) => {
+          })
+          .transformRetrieve(([users]) => {
             const user = users[0] ?? null;
 
             if (!user) {
@@ -228,8 +230,8 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth-fragment"
               email: user.email,
               emailVerified: user.emailVerified,
             };
-          },
-        });
+          })
+          .build();
       },
     });
   })
@@ -284,10 +286,10 @@ const authRoutesFactory = defineRoutes(authFragmentDefinition).create(
             return error({ message: "Email required", code: "email_required" }, 400);
           }
 
-          const user = await this.handlerTx({
-            deps: () => [services.getUserByEmail(email)] as const,
-            success: ({ depsResult: [result] }) => result,
-          });
+          const user = await this.handlerTx()
+            .withServiceCalls(() => [services.getUserByEmail(email)] as const)
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
 
           if (!user) {
             return error({ message: "User not found", code: "user_not_found" }, 404);
@@ -317,18 +319,18 @@ const authRoutesFactory = defineRoutes(authFragmentDefinition).create(
           const { email, password } = await input.valid();
 
           // Create user first
-          const user = await this.handlerTx({
-            deps: () => [services.createUser(email, password)] as const,
-            success: ({ depsResult: [result] }) => result,
-          });
+          const user = await this.handlerTx()
+            .withServiceCalls(() => [services.createUser(email, password)] as const)
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
 
           // Then generate OTP if service is available
           let otpCode: string | null = null;
           if (serviceDeps.otp) {
-            otpCode = await this.handlerTx({
-              deps: () => [serviceDeps.otp!.generateOTP(user.id)] as const,
-              success: ({ depsResult: [code] }) => code,
-            });
+            otpCode = await this.handlerTx()
+              .withServiceCalls(() => [serviceDeps.otp!.generateOTP(user.id)] as const)
+              .transform(({ serviceResult: [code] }) => code)
+              .execute();
           }
 
           return json({
