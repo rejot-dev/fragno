@@ -5,9 +5,9 @@ import { formsFragmentDef } from "./definition";
 import {
   FormSchema,
   NewFormSchema,
-  NewResponseSchema,
+  NewFormResponseSchema,
   ResponseMetadataSchema,
-  ResponseSchema,
+  FormResponseSchema,
   UpdateFormSchema,
 } from "./models";
 import type { Form } from "./models";
@@ -71,7 +71,7 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
       defineRoute({
         method: "POST",
         path: "/:slug/submit",
-        inputSchema: NewResponseSchema,
+        inputSchema: NewFormResponseSchema,
         outputSchema: z.string(),
         errorCodes: ["NOT_FOUND", "VALIDATION_ERROR", "FORM_NOT_OPEN"] as const,
         handler: async ({ input, pathParams, headers }, { json, error }) => {
@@ -210,7 +210,7 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
         method: "GET",
         path: "/admin/forms/:id/submissions",
         queryParameters: ["sortOrder"] as const,
-        outputSchema: z.array(ResponseSchema),
+        outputSchema: z.array(FormResponseSchema),
         handler: async ({ pathParams, query }, { json }) => {
           const sortOrder = query.get("sortOrder") === "asc" ? "asc" : "desc";
           const responses = await services.listResponses(pathParams.id, {
@@ -224,7 +224,7 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
       defineRoute({
         method: "GET",
         path: "/admin/submissions/:id",
-        outputSchema: ResponseSchema,
+        outputSchema: FormResponseSchema,
         errorCodes: ["NOT_FOUND"] as const,
         handler: async ({ pathParams }, { json, error }) => {
           const response = await services.getResponse(pathParams.id);

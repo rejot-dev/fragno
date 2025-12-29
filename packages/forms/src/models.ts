@@ -8,8 +8,8 @@ export const FormStatusSchema = z.enum(["draft", "open", "closed", "static"]);
 export const FormSchema = z.object({
   id: z.string(),
   title: z.string(),
-  description: z.string().nullable(),
-  slug: z.string(),
+  description: z.string().nullable().optional(),
+  slug: z.string().min(1).max(255).toLowerCase().trim(),
   status: FormStatusSchema,
   dataSchema: JSONSchemaSchema,
   uiSchema: UISchemaElementSchema,
@@ -32,7 +32,7 @@ export const ResponseMetadataSchema = z.object({
   userAgent: z.string().max(4096).nullable(),
 });
 
-export const ResponseSchema = z.object({
+export const FormResponseSchema = z.object({
   id: z.string(),
   formId: z.string().nullable().describe("Form ID (static form ID or database form external ID)"),
   formVersion: z.number(),
@@ -42,7 +42,7 @@ export const ResponseSchema = z.object({
   userAgent: z.string().max(512).nullable(),
 });
 
-export const NewResponseSchema = ResponseSchema.omit({
+export const NewFormResponseSchema = FormResponseSchema.omit({
   id: true,
   submittedAt: true,
   formId: true,
@@ -56,9 +56,9 @@ export const NewResponseSchema = ResponseSchema.omit({
 export type NewForm = z.infer<typeof NewFormSchema>;
 export type UpdateForm = z.infer<typeof UpdateFormSchema>;
 export type Form = z.infer<typeof FormSchema>;
-export type NewResponse = z.infer<typeof NewResponseSchema>;
-export type Response = z.infer<typeof ResponseSchema>;
-export type ResponseMetadata = z.infer<typeof ResponseMetadataSchema>;
+export type NewFormResponse = z.infer<typeof NewFormResponseSchema>;
+export type FormResponse = z.infer<typeof FormResponseSchema>;
+export type FormResponseMetadata = z.infer<typeof ResponseMetadataSchema>;
 export type FormStatus = z.infer<typeof FormStatusSchema>;
 export type JSONSchema = z.infer<typeof JSONSchemaSchema>;
 export type UIElementSchema = z.infer<typeof UISchemaElementSchema>;
