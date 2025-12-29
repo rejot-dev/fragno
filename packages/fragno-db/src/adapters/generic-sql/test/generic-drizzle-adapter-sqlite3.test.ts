@@ -827,7 +827,7 @@ describe("GenericSQLAdapter with DrizzleAdapter better-sqlite3", () => {
     const result = await executeTx(
       {
         deps: () => [getUserById(user.id)],
-        mutate: ({ forSchema, depsRetrieveResult: [foundUser] }) => {
+        mutate: ({ forSchema, depsIntermediateResult: [foundUser] }) => {
           if (!foundUser) {
             throw new Error("User not found");
           }
