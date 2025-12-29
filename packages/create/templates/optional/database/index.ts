@@ -15,7 +15,10 @@ import { z } from "zod";
 
 export interface ExampleConfig {
   // Add any server-side configuration here if needed
-  onNoteCreated?: (nonce: string, payload: { noteId: string; userId: string }) => Promise<void>;
+  onNoteCreated?: (
+    idempotencyKey: string,
+    payload: { noteId: string; userId: string },
+  ) => Promise<void>;
 }
 
 const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragment")
@@ -23,110 +26,104 @@ const exampleFragmentDefinition = defineFragment<ExampleConfig>("example-fragmen
   .provideHooks(({ defineHook, config }) => ({
     onNoteCreated: defineHook(async function (payload: { noteId: string; userId: string }) {
       // Hook runs after transaction commits, with retries on failure
-      // Use this.nonce for idempotency (available via this context)
-      await config.onNoteCreated?.(this.nonce, payload);
+      // Use this.idempotencyKey for idempotency (e.g., deduplicating webhook calls)
+      await config.onNoteCreated?.(this.idempotencyKey, payload);
     }),
   }))
   .providesBaseService(({ defineService }) => {
     return defineService({
-      createNote: async function (
+      createNote: function (
         note: Omit<TableToInsertValues<typeof noteSchema.tables.note>, "userId"> & {
           userId: string;
         },
       ) {
-        const uow = this.uow(noteSchema);
+        return this.serviceTx(noteSchema)
+          .retrieve((uow) =>
+            uow.findFirst("user", (b) =>
+              b.whereIndex("idx_user_email", (eb) => eb("email", "=", note.userId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [user] }) => {
+            if (!user) {
+              throw new Error("User not found");
+            }
 
-        // Find user first to get FragnoId for reference
-        const userUow = uow.findFirst("user", (b) =>
-          b.whereIndex("idx_user_email", (eb) => eb("email", "=", note.userId)),
-        );
-        const [user] = await userUow.retrievalPhase;
+            // Create note with reference to user
+            const noteId = uow.create("note", {
+              content: note.content,
+              userId: user.id,
+            });
 
-        if (!user) {
-          throw new Error("User not found");
-        }
+            // Trigger durable hook (recorded in transaction, executed after commit)
+            uow.triggerHook("onNoteCreated", {
+              noteId: noteId.valueOf(),
+              userId: user.id.valueOf(),
+            });
 
-        // Create note with reference to user
-        const noteId = uow.create("note", {
-          content: note.content,
-          userId: user.id,
-        });
-
-        // Trigger durable hook (recorded in transaction, executed after commit)
-        uow.triggerHook("onNoteCreated", {
-          noteId: noteId.valueOf(),
-          userId: user.id.valueOf(),
-        });
-
-        // Wait for handler to execute mutation phase
-        await uow.mutationPhase;
-
-        return {
-          id: noteId.valueOf(),
-          content: note.content,
-          userId: user.id.valueOf(),
-          createdAt: new Date(),
-        };
+            return {
+              id: noteId.valueOf(),
+              content: note.content,
+              userId: user.id.valueOf(),
+              createdAt: new Date(),
+            };
+          })
+          .build();
       },
-      getNotes: async function () {
-        const uow = this.uow(noteSchema).find("note", (b) =>
-          b.whereIndex("primary").join((j) => j.author()),
-        );
-        const [notes] = await uow.retrievalPhase;
-        return notes;
+      getNotes: function () {
+        return this.serviceTx(noteSchema)
+          .retrieve((uow) =>
+            uow.find("note", (b) => b.whereIndex("primary").join((j) => j.author())),
+          )
+          .transformRetrieve(([notes]) => {
+            return notes;
+          })
+          .build();
       },
-      getNotesByUser: async function (userEmail: string) {
-        const uow = this.uow(noteSchema);
-
-        // First find the user by email
-        const userUow = uow.findFirst("user", (b) =>
-          b.whereIndex("idx_user_email", (eb) => eb("email", "=", userEmail)),
-        );
-        const [user] = await userUow.retrievalPhase;
-
-        if (!user) {
-          return [];
-        }
-
-        // Then find notes by the user's FragnoId
-        // Note: userId is a reference column, FragnoId works directly in whereIndex
-        const notesUow = uow.find("note", (b) =>
-          b.whereIndex("idx_note_user", (eb) => eb("userId", "=", user.id)).join((j) => j.author()),
-        );
-        const [notes] = await notesUow.retrievalPhase;
-        return notes;
+      getNotesByUser: function (userEmail: string) {
+        return this.serviceTx(noteSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("user", (b) =>
+                b.whereIndex("idx_user_email", (eb) => eb("email", "=", userEmail)),
+              )
+              .find("note", (b) => b.whereIndex("primary").join((j) => j.author())),
+          )
+          .transformRetrieve(([user, allNotes]) => {
+            if (!user) {
+              return [];
+            }
+            // Filter notes that belong to this user
+            return allNotes.filter((note) => note.author?.id.toString() === user.id.toString());
+          })
+          .build();
       },
-      updateNote: async function (noteId: string, content: string) {
-        const uow = this.uow(noteSchema);
+      updateNote: function (noteId: string, content: string) {
+        return this.serviceTx(noteSchema)
+          .retrieve((uow) =>
+            uow.findFirst("note", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", noteId)).join((j) => j.author()),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [note] }) => {
+            if (!note) {
+              throw new Error("Note not found");
+            }
 
-        // Find note first to get FragnoId for optimistic concurrency control
-        // Join with author to get user information
-        const noteUow = uow.findFirst("note", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", noteId)).join((j) => j.author()),
-        );
-        const [note] = await noteUow.retrievalPhase;
+            if (!note.author) {
+              throw new Error("Note author not found");
+            }
 
-        if (!note) {
-          throw new Error("Note not found");
-        }
+            // Update with optimistic concurrency control (.check())
+            uow.update("note", note.id, (b) => b.set({ content }).check());
 
-        // Update with optimistic concurrency control (.check())
-        uow.update("note", note.id, (b) => b.set({ content }).check());
-
-        // Wait for handler to execute mutation phase
-        // On optimistic conflict, handler will retry the whole transaction
-        await uow.mutationPhase;
-
-        if (!note.author) {
-          throw new Error("Note author not found");
-        }
-
-        return {
-          id: note.id.valueOf(),
-          content,
-          userId: note.author.id.valueOf(),
-          createdAt: note.createdAt,
-        };
+            return {
+              id: note.id.valueOf(),
+              content,
+              userId: note.author.id.valueOf(),
+              createdAt: note.createdAt,
+            };
+          })
+          .build();
       },
     });
   })
@@ -151,18 +148,11 @@ const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
         handler: async function ({ query }, { json }) {
           const userEmail = query.get("userId"); // Using userId param name for backward compatibility
 
-          const result = await this.uow(async ({ executeRetrieve }) => {
-            const notesPromise = userEmail
-              ? services.getNotesByUser(userEmail)
-              : services.getNotes();
-
-            // Execute all reads scheduled by services
-            await executeRetrieve();
-
-            return notesPromise;
-          });
-
-          const notes = await result;
+          const [notes] = await this.handlerTx()
+            .withServiceCalls(() => [
+              userEmail ? services.getNotesByUser(userEmail) : services.getNotes(),
+            ])
+            .execute();
 
           return json(
             notes
@@ -192,28 +182,17 @@ const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
         handler: async function ({ input }, { json }) {
           const { content, userEmail } = await input.valid();
 
-          // Handler controls transaction execution with retry policy
-          const result = await this.uow(
-            async ({ executeMutate }) => {
-              const notePromise = services.createNote({ content, userId: userEmail });
+          const [note] = await this.handlerTx({
+            // Retry policy for optimistic concurrency conflicts
+            retryPolicy: new ExponentialBackoffRetryPolicy({
+              maxRetries: 5,
+              initialDelayMs: 10,
+              maxDelayMs: 250,
+            }),
+          })
+            .withServiceCalls(() => [services.createNote({ content, userId: userEmail })])
+            .execute();
 
-              // Execute retrieval (if needed) and mutation atomically
-              // On optimistic conflict, this whole callback retries
-              await executeMutate();
-
-              return notePromise;
-            },
-            {
-              // Retry policy for optimistic concurrency conflicts
-              retryPolicy: new ExponentialBackoffRetryPolicy({
-                maxRetries: 5,
-                initialDelayMs: 10,
-                maxDelayMs: 250,
-              }),
-            },
-          );
-
-          const note = await result;
           return json(note);
         },
       }),
@@ -233,27 +212,16 @@ const exampleRoutesFactory = defineRoutes(exampleFragmentDefinition).create(
           const { content } = await input.valid();
           const noteId = pathParams.noteId;
 
-          // Handler controls transaction with optimistic concurrency control
-          const result = await this.uow(
-            async ({ executeMutate }) => {
-              const notePromise = services.updateNote(noteId, content);
+          const [note] = await this.handlerTx({
+            retryPolicy: new ExponentialBackoffRetryPolicy({
+              maxRetries: 5,
+              initialDelayMs: 10,
+              maxDelayMs: 250,
+            }),
+          })
+            .withServiceCalls(() => [services.updateNote(noteId, content)])
+            .execute();
 
-              // Execute with optimistic concurrency control
-              // If note was modified, whole transaction retries
-              await executeMutate();
-
-              return notePromise;
-            },
-            {
-              retryPolicy: new ExponentialBackoffRetryPolicy({
-                maxRetries: 5,
-                initialDelayMs: 10,
-                maxDelayMs: 250,
-              }),
-            },
-          );
-
-          const note = await result;
           return json(note);
         },
       }),

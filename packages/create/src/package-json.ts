@@ -1,9 +1,9 @@
 import type { BuildTools } from "./index";
 
 const fragnoCoreVersion = "0.1.11";
-const fragnoDbVersion = "0.2.0";
+const fragnoDbVersion = "0.2.2";
 const unpluginFragnoVersion = "0.0.7";
-const fragnoCliVersion = "0.1.21";
+const fragnoCliVersion = "0.1.23";
 
 export const basePkg: Record<string, unknown> = {
   dependencies: {
