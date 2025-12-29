@@ -1,5 +1,16 @@
 # @fragno-dev/fragment-mailing-list
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [aca5990]
+- Updated dependencies [f150db9]
+- Updated dependencies [0b373fc]
+- Updated dependencies [fe27e33]
+- Updated dependencies [9753f15]
+  - @fragno-dev/db@0.2.2
+
 ## 0.0.3
 
 ### Patch Changes

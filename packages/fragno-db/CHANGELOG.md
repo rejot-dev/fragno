@@ -1,5 +1,37 @@
 # @fragno-dev/db
 
+## 0.2.2
+
+### Patch Changes
+
+- aca5990: breaking: remove executeUnitOfWork helper in favor of executeTx
+- f150db9: feat: add `generateId(schema, tableName)` utility for pre-generating table IDs without
+  creating records. Also available as `TypedUnitOfWork.generateId(tableName)` convenience method.
+- 0b373fc: refactor: Rename `nonce` to `idempotencyKey` in public APIs
+
+  Rename the `nonce` property to `idempotencyKey` in `HookContext` and `UnitOfWork` interfaces for
+  better clarity and consistency. The database column name remains `nonce` for backward
+  compatibility.
+
+  **Breaking change**: Users accessing `this.nonce` in hook functions or `uow.nonce` in unit of work
+  operations must update to `this.idempotencyKey` and `uow.idempotencyKey` respectively.
+
+- fe27e33: feat: add new builder pattern for combining UOWs
+- 9753f15: feat: Add unified transaction API with createServiceTx and executeTx
+
+  Introduce a new unified transaction API that consolidates multiple transaction execution patterns
+  into a single `executeTx` function with `TxResult` pattern. This provides better type safety,
+  clearer composition patterns, and support for nested dependencies.
+
+  New APIs:
+  - `createServiceTx`: Create service-level transactions with dependency support
+  - `executeTx`: Handler-level transaction execution with unified callback pattern
+  - `TxResult` type: Branded type for transaction results with dependency tracking
+  - `handlerTx` method: Added to fragment definitions for convenient access
+
+  The old APIs (`executeTxCallbacks`, `executeTxWithDeps`, `executeTxArray`) are deprecated but
+  remain available for backward compatibility.
+
 ## 0.2.1
 
 ### Patch Changes

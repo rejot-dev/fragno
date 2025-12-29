@@ -1,5 +1,16 @@
 # @fragno-dev/test
 
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [aca5990]
+- Updated dependencies [f150db9]
+- Updated dependencies [0b373fc]
+- Updated dependencies [fe27e33]
+- Updated dependencies [9753f15]
+  - @fragno-dev/db@0.2.2
+
 ## 1.0.1
 
 ### Patch Changes
