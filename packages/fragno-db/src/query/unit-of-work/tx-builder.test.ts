@@ -232,8 +232,8 @@ describe("ServiceTxBuilder type inference", () => {
       type MutateParam = Parameters<Builder["mutate"]>[0];
       type MutateCtx = Parameters<MutateParam>[0];
 
-      // serviceResult should be a tuple with the retrieve success results
-      expectTypeOf<MutateCtx["serviceResult"]>().toEqualTypeOf<
+      // serviceIntermediateResult should be a tuple with the retrieve success results
+      expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
         readonly [{ userId: string }, number]
       >();
     });
@@ -248,7 +248,7 @@ describe("ServiceTxBuilder type inference", () => {
       expectTypeOf<Extracted>().toEqualTypeOf<readonly [{ userId: string }, undefined]>();
     });
 
-    it("provides serviceResult in transform with final results", () => {
+    it("provides serviceIntermediateResult in transform with final results", () => {
       type ServiceCall = TxResult<{ finalData: string }, { retrieveData: string }>;
       type ServiceCalls = readonly [ServiceCall];
 
@@ -287,7 +287,7 @@ describe("ServiceTxBuilder type inference", () => {
 
       expectTypeOf<Ctx["uow"]>().toExtend<TypedUnitOfWork<TestSchema, [], unknown, {}>>();
       expectTypeOf<Ctx["retrieveResult"]>().toEqualTypeOf<string>();
-      expectTypeOf<Ctx["serviceResult"]>().toEqualTypeOf<readonly []>();
+      expectTypeOf<Ctx["serviceIntermediateResult"]>().toEqualTypeOf<readonly []>();
     });
 
     it("BuilderTransformContextWithMutate has mutateResult defined", () => {
@@ -300,7 +300,7 @@ describe("ServiceTxBuilder type inference", () => {
 
       expectTypeOf<Ctx["retrieveResult"]>().toEqualTypeOf<string>();
       expectTypeOf<Ctx["mutateResult"]>().toEqualTypeOf<{ id: string }>();
-      expectTypeOf<Ctx["serviceResult"]>().toEqualTypeOf<readonly []>();
+      expectTypeOf<Ctx["serviceIntermediateResult"]>().toEqualTypeOf<readonly []>();
       expectTypeOf<Ctx["serviceIntermediateResult"]>().toEqualTypeOf<readonly []>();
     });
 
@@ -309,7 +309,7 @@ describe("ServiceTxBuilder type inference", () => {
 
       expectTypeOf<Ctx["retrieveResult"]>().toEqualTypeOf<string>();
       expectTypeOf<Ctx["mutateResult"]>().toEqualTypeOf<undefined>();
-      expectTypeOf<Ctx["serviceResult"]>().toEqualTypeOf<readonly []>();
+      expectTypeOf<Ctx["serviceIntermediateResult"]>().toEqualTypeOf<readonly []>();
       expectTypeOf<Ctx["serviceIntermediateResult"]>().toEqualTypeOf<readonly []>();
     });
   });
@@ -473,7 +473,7 @@ describe("HandlerTxBuilder type inference", () => {
       expectTypeOf<Ctx["forSchema"]>().toBeFunction();
       // Check length property to verify empty tuple without array method comparison issues
       expectTypeOf<Ctx["retrieveResult"]["length"]>().toEqualTypeOf<0>();
-      expectTypeOf<Ctx["serviceResult"]["length"]>().toEqualTypeOf<0>();
+      expectTypeOf<Ctx["serviceIntermediateResult"]["length"]>().toEqualTypeOf<0>();
     });
 
     it("retrieve context in HandlerTxBuilder has correct type", () => {
@@ -529,7 +529,7 @@ describe("HandlerTxBuilder type inference", () => {
   });
 
   describe("withServiceCalls + mutate flow", () => {
-    it("serviceResult is available in mutate", () => {
+    it("serviceIntermediateResult is available in mutate", () => {
       type ServiceCall = TxResult<number, { user: { id: string } }>;
 
       type Builder = HandlerTxBuilder<
@@ -548,7 +548,7 @@ describe("HandlerTxBuilder type inference", () => {
       type MutateParam = Parameters<Builder["mutate"]>[0];
       type MutateCtx = Parameters<MutateParam>[0];
 
-      expectTypeOf<MutateCtx["serviceResult"]>().toEqualTypeOf<
+      expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
         readonly [{ user: { id: string } }]
       >();
     });
@@ -807,7 +807,9 @@ describe("ServiceTxBuilder method parameter types", () => {
       type MutateCallback = Parameters<BuilderWithServices["mutate"]>[0];
       type MutateCtx = Parameters<MutateCallback>[0];
 
-      expectTypeOf<MutateCtx["serviceResult"]>().toEqualTypeOf<readonly [{ data: number[] }]>();
+      expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
+        readonly [{ data: number[] }]
+      >();
     });
   });
 
@@ -854,7 +856,7 @@ describe("ServiceTxBuilder method parameter types", () => {
       expectTypeOf<TransformCtx["mutateResult"]>().toEqualTypeOf<undefined>();
     });
 
-    it("has serviceResult with final results and serviceResult with retrieve results", () => {
+    it("has serviceResult with final results and serviceIntermediateResult with retrieve results", () => {
       type BuilderWithServices = ServiceTxBuilder<
         TestSchema,
         readonly [TxResult<{ finalValue: number }, { retrieveValue: string }>],
@@ -969,7 +971,7 @@ describe("HandlerTxBuilder method parameter types", () => {
       type MutateCallback = Parameters<BuilderWithServices["mutate"]>[0];
       type MutateCtx = Parameters<MutateCallback>[0];
 
-      expectTypeOf<MutateCtx["serviceResult"]>().toEqualTypeOf<
+      expectTypeOf<MutateCtx["serviceIntermediateResult"]>().toEqualTypeOf<
         readonly [{ user: { id: string } }]
       >();
     });

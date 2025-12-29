@@ -96,7 +96,7 @@ describe("db-fragment-instantiator", () => {
             // Access handlerTx from this context
             expect(this.handlerTx).toBeDefined();
 
-            return json({ hasExecuteMethod: !!this.handlerTx });
+            return json({ hasHandlerTxBuilder: !!this.handlerTx });
           },
         }),
       ]);
@@ -110,7 +110,7 @@ describe("db-fragment-instantiator", () => {
       const response = await fragment.handler(new Request("http://localhost/api/test"));
       const data = await response.json();
 
-      expect(data).toEqual({ hasExecuteMethod: true });
+      expect(data).toEqual({ hasHandlerTxBuilder: true });
     });
 
     it("should provide schema-typed UOW via handlerTx", async () => {
@@ -123,12 +123,12 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/test",
           handler: async function (_input, { json }) {
-            const result = await this.handlerTx({
-              mutate: ({ forSchema }) => {
+            const result = await this.handlerTx()
+              .mutate(({ forSchema }) => {
                 const uow = forSchema(testSchema);
                 return { hasSchemaUow: !!uow };
-              },
-            });
+              })
+              .execute();
 
             return json(result);
           },
@@ -221,13 +221,13 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/counters",
           handler: async function (_input, { json }) {
-            const result = await this.handlerTx({
-              mutate: ({ forSchema }) => {
+            const result = await this.handlerTx()
+              .mutate(({ forSchema }) => {
                 const uow = forSchema(testSchemaWithCounter);
                 // Verify that we can access the UOW
                 return { hasCountersTable: !!uow };
-              },
-            });
+              })
+              .execute();
 
             return json(result);
           },
@@ -254,11 +254,9 @@ describe("db-fragment-instantiator", () => {
         .providesBaseService(({ defineService }) =>
           defineService({
             checkTypedUowExists: function () {
-              return this.serviceTx(testSchema, {
-                mutate: ({ uow }) => {
-                  return !!uow;
-                },
-              });
+              return this.serviceTx(testSchema)
+                .mutate(({ uow }) => !!uow)
+                .build();
             },
           }),
         )
@@ -270,10 +268,10 @@ describe("db-fragment-instantiator", () => {
           path: "/check",
           outputSchema: z.object({ hasTypedUow: z.boolean() }),
           handler: async function (_input, { json }) {
-            const hasTypedUow = await this.handlerTx({
-              deps: () => [services.checkTypedUowExists()] as const,
-              success: ({ depsResult: [result] }) => result,
-            });
+            const hasTypedUow = await this.handlerTx()
+              .withServiceCalls(() => [services.checkTypedUowExists()] as const)
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
             return json({ hasTypedUow });
           },
         }),
@@ -299,9 +297,9 @@ describe("db-fragment-instantiator", () => {
         .providesBaseService(({ defineService }) =>
           defineService({
             getUowExists: function () {
-              return this.serviceTx(testSchema, {
-                mutate: ({ uow }) => !!uow,
-              });
+              return this.serviceTx(testSchema)
+                .mutate(({ uow }) => !!uow)
+                .build();
             },
           }),
         )
@@ -313,10 +311,10 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       const result = await fragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () => [fragment.services.getUowExists()] as const,
-          success: ({ depsResult: [exists] }) => exists,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(() => [fragment.services.getUowExists()] as const)
+          .transform(({ serviceResult: [exists] }) => exists)
+          .execute();
       });
       expect(result).toBe(true);
     });
@@ -344,12 +342,12 @@ describe("db-fragment-instantiator", () => {
           method: "GET",
           path: "/test",
           handler: async function (_input, { json }) {
-            const result = await this.handlerTx({
-              mutate: ({ forSchema }) => {
+            const result = await this.handlerTx()
+              .mutate(({ forSchema }) => {
                 const uow = forSchema(testSchema);
                 return { hasUow: !!uow };
-              },
-            });
+              })
+              .execute();
             return json(result);
           },
         }),
@@ -500,9 +498,9 @@ describe("db-fragment-instantiator", () => {
         .providesBaseService(({ defineService }) =>
           defineService({
             tryGetUow: function () {
-              return this.serviceTx(testSchema, {
-                mutate: ({ uow }) => uow,
-              });
+              return this.serviceTx(testSchema)
+                .mutate(({ uow }) => uow)
+                .build();
             },
           }),
         )

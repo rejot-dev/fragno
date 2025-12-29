@@ -210,7 +210,7 @@ describe("Unified Tx API", () => {
       expect(txResult._internal.callbacks.retrieveSuccess).toBeDefined();
     });
 
-    it("should create a TxResult with deps", () => {
+    it("should create a TxResult with serviceCalls", () => {
       const compiler = createMockCompiler();
       const executor: UOWExecutor<unknown, unknown> = {
         executeRetrievalPhase: async () => [
@@ -237,7 +237,7 @@ describe("Unified Tx API", () => {
       // Create a TxResult that depends on it
       const txResult = createServiceTxBuilder(testSchema, baseUow)
         .withServiceCalls(() => [depTxResult])
-        .mutate(({ uow, serviceResult: [user] }) => {
+        .mutate(({ uow, serviceIntermediateResult: [user] }) => {
           if (!user) {
             throw new Error("User not found");
           }
@@ -246,7 +246,7 @@ describe("Unified Tx API", () => {
         .build();
 
       expect(isTxResult(txResult)).toBe(true);
-      expect(txResult._internal.deps).toHaveLength(1);
+      expect(txResult._internal.serviceCalls).toHaveLength(1);
     });
 
     it("should type mutateResult as non-undefined when success AND mutate are provided", () => {
@@ -355,6 +355,41 @@ describe("Unified Tx API", () => {
   });
 
   describe("executeTx", () => {
+    it("should execute a simple retrieve-only transaction", async () => {
+      const compiler = createMockCompiler();
+      const mockUsers = [
+        {
+          id: FragnoId.fromExternal("1", 1),
+          email: "alice@example.com",
+          name: "Alice",
+          balance: 100,
+        },
+        {
+          id: FragnoId.fromExternal("2", 1),
+          email: "bob@example.com",
+          name: "Bob",
+          balance: 200,
+        },
+      ];
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [mockUsers],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+
+      const [users] = await createHandlerTxBuilder({
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .execute();
+
+      expect(users).toHaveLength(2);
+      expect(users[0].email).toBe("alice@example.com");
+      expect(users[1].name).toBe("Bob");
+    });
+
     it("should execute a simple mutate-only transaction", async () => {
       const compiler = createMockCompiler();
       const executor: UOWExecutor<unknown, unknown> = {
@@ -379,7 +414,7 @@ describe("Unified Tx API", () => {
       expect(result.userId).toBeInstanceOf(FragnoId);
     });
 
-    it("should execute a transaction with deps as retrieve source", async () => {
+    it("should execute a transaction with serviceCalls as retrieve source", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
         id: FragnoId.fromExternal("1", 1),
@@ -416,7 +451,7 @@ describe("Unified Tx API", () => {
       expect(result).toEqual(mockUser);
     });
 
-    it("should execute a transaction with mutate callback using deps", async () => {
+    it("should execute a transaction with mutate callback using serviceCalls", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
         id: FragnoId.fromExternal("1", 1),
@@ -447,7 +482,7 @@ describe("Unified Tx API", () => {
         },
       })
         .withServiceCalls(() => [getUserById()])
-        .mutate(({ forSchema, serviceResult: [user] }) => {
+        .mutate(({ forSchema, serviceIntermediateResult: [user] }) => {
           if (!user) {
             return { ok: false as const };
           }
@@ -497,7 +532,7 @@ describe("Unified Tx API", () => {
         },
       })
         .withServiceCalls(() => [getUserById()])
-        .mutate(({ forSchema, serviceResult: [user] }) => {
+        .mutate(({ forSchema, serviceIntermediateResult: [user] }) => {
           if (!user) {
             return { created: false as const };
           }
@@ -522,7 +557,7 @@ describe("Unified Tx API", () => {
       expect(result.mutationResult?.created).toBe(true);
     });
 
-    it("should execute a transaction with deps (service composition)", async () => {
+    it("should execute a transaction with serviceCalls (service composition)", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
         id: FragnoId.fromExternal("1", 1),
@@ -555,7 +590,7 @@ describe("Unified Tx API", () => {
         },
       })
         .withServiceCalls(() => [getUserById("1")])
-        .mutate(({ forSchema, serviceResult: [user] }) => {
+        .mutate(({ forSchema, serviceIntermediateResult: [user] }) => {
           if (!user) {
             return { ok: false as const };
           }
@@ -575,7 +610,7 @@ describe("Unified Tx API", () => {
       }
     });
 
-    it("should type check deps with undefined (optional service pattern)", async () => {
+    it("should type check serviceCalls with undefined (optional service pattern)", async () => {
       const compiler = createMockCompiler();
       const executor: UOWExecutor<unknown, unknown> = {
         executeRetrievalPhase: async () => [],
@@ -590,13 +625,13 @@ describe("Unified Tx API", () => {
         | { getUser: () => TxResult<{ name: string }, { name: string }> }
         | undefined;
 
-      // This test demonstrates that deps can contain TxResult | undefined
+      // This test demonstrates that serviceCalls can contain TxResult | undefined
       // This is useful for optional service patterns like: optionalService?.method()
       const result = await createHandlerTxBuilder({
         createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
       })
         .withServiceCalls(() => [optionalService?.getUser()])
-        .mutate(({ forSchema, serviceResult: [maybeUser] }) => {
+        .mutate(({ forSchema, serviceIntermediateResult: [maybeUser] }) => {
           // maybeUser is typed as { name: string } | undefined
           // This demonstrates the optional chaining pattern works correctly
           expectTypeOf(maybeUser).toEqualTypeOf<{ name: string } | undefined>();
@@ -619,7 +654,7 @@ describe("Unified Tx API", () => {
       }
     });
 
-    it("should handle deps with mix of TxResult and undefined", async () => {
+    it("should handle serviceCalls with mix of TxResult and undefined", async () => {
       const compiler = createMockCompiler();
       const executor: UOWExecutor<unknown, unknown> = {
         executeRetrievalPhase: async () => [],
@@ -667,10 +702,10 @@ describe("Unified Tx API", () => {
           () =>
             [definedService.createUserAndReturnCode(), optionalService?.generateExtra()] as const,
         )
-        .mutate(({ forSchema, serviceResult }) => {
-          // serviceResult contains the mutation results from deps
-          // (since deps have no retrieveSuccess, the mutate result becomes the retrieve result for dependents)
-          const [createdData, maybeExtra] = serviceResult;
+        .mutate(({ forSchema, serviceIntermediateResult }) => {
+          // serviceIntermediateResult contains the mutation results from service calls
+          // (since service calls have no retrieveSuccess, the mutate result becomes the retrieve result for dependents)
+          const [createdData, maybeExtra] = serviceIntermediateResult;
 
           // Type checks: createdData should have userId and generatedCode
           // maybeExtra should be ExtraData | undefined
@@ -689,7 +724,7 @@ describe("Unified Tx API", () => {
           };
         })
         .transform(({ serviceResult, serviceIntermediateResult, mutateResult }) => {
-          // Verify serviceResult types - these are the FINAL results from deps
+          // Verify serviceResult types - these are the FINAL results from serviceCalls
           const [finalCreatedData, maybeFinalExtra] = serviceResult;
 
           // Type check: serviceResult should have same structure
@@ -946,7 +981,7 @@ describe("Unified Tx API", () => {
           expectTypeOf(ctx.retrieveResult).toEqualTypeOf<"retrieveSuccess result">();
           // mutateResult is NOT | undefined because mutate callback IS provided
           expectTypeOf(ctx.mutateResult).toEqualTypeOf<"mutate result">();
-          // serviceResult and serviceIntermediateResult are empty tuples since no deps callback
+          // serviceResult and serviceIntermediateResult are empty tuples since no service calls callback
           expectTypeOf(ctx.serviceResult).toEqualTypeOf<readonly []>();
           expectTypeOf(ctx.serviceIntermediateResult).toEqualTypeOf<readonly []>();
 
@@ -992,7 +1027,7 @@ describe("Unified Tx API", () => {
       expect(result).toBe("retrieveSuccess result");
     });
 
-    it("should return deps final results when no local callbacks", async () => {
+    it("should return serviceCalls final results when no local callbacks", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
         id: FragnoId.fromExternal("1", 1),
@@ -1016,7 +1051,7 @@ describe("Unified Tx API", () => {
           .build();
       };
 
-      // executeTx with only deps - should return deps' final results
+      // executeTx with only serviceCalls - should return serviceCalls' final results
       const result = await createHandlerTxBuilder({
         createUnitOfWork: () => {
           currentUow = createUnitOfWork(compiler, executor, decoder);
@@ -1030,7 +1065,7 @@ describe("Unified Tx API", () => {
     });
   });
 
-  describe("serviceIntermediateResult vs serviceResult", () => {
+  describe("serviceResult vs serviceIntermediateResult", () => {
     it("serviceIntermediateResult in mutate should contain transformRetrieve results", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
@@ -1065,9 +1100,9 @@ describe("Unified Tx API", () => {
         },
       })
         .withServiceCalls(() => [getUserById()])
-        .mutate(({ serviceResult }) => {
+        .mutate(({ serviceIntermediateResult }) => {
           // Should receive the transformed (transformRetrieve) result
-          capturedServiceIntermediateResult = [...serviceResult];
+          capturedServiceIntermediateResult = [...serviceIntermediateResult];
           return { done: true };
         })
         .execute();
@@ -1120,11 +1155,11 @@ describe("Unified Tx API", () => {
       expect(capturedServiceResult[0]).toEqual({ mutated: true, userId: mockUser.id });
     });
 
-    it("serviceIntermediateResult in transform should contain mutateResult for mutate-only deps (via processTxResultAfterMutate)", async () => {
+    it("serviceResult in transform should contain mutateResult for mutate-only serviceCalls (via processTxResultAfterMutate)", async () => {
       // This test exercises the buggy code path in processTxResultAfterMutate:
-      // When a nested TxResult has a transform callback and its dep is mutate-only,
+      // When a nested TxResult has a transform callback and its serviceCall is mutate-only,
       // the transform callback should receive the mutateResult in
-      // serviceIntermediateResult, NOT the empty array.
+      // serviceResult, NOT the empty array.
       //
       // The key is that the nested service itself (wrapperService) has a transform callback,
       // so processTxResultAfterMutate is called for it.
@@ -1202,8 +1237,8 @@ describe("Unified Tx API", () => {
     });
   });
 
-  describe("nested TxResult deps (service composition)", () => {
-    it("should collect nested deps in dependency order", async () => {
+  describe("nested TxResult serviceCalls (service composition)", () => {
+    it("should collect nested serviceCalls in dependency order", async () => {
       // Simpler test to verify collectAllTxResults works correctly
       const compiler = createMockCompiler();
       const mockUser = {
@@ -1229,7 +1264,7 @@ describe("Unified Tx API", () => {
       let getUserByIdCalled = false;
       let validateUserCalled = false;
 
-      // Simple service that retrieves - no nested deps
+      // Simple service that retrieves - no nested serviceCalls
       const getUserById = (userId: string) => {
         getUserByIdCalled = true;
         if (!currentUow) {
@@ -1243,7 +1278,7 @@ describe("Unified Tx API", () => {
           .build();
       };
 
-      // Service with deps - depends on getUserById
+      // Service with serviceCalls - depends on getUserById
       const validateUser = (userId: string) => {
         validateUserCalled = true;
         if (!currentUow) {
@@ -1252,15 +1287,15 @@ describe("Unified Tx API", () => {
         return (
           createServiceTxBuilder(testSchema, currentUow)
             .withServiceCalls(() => [getUserById(userId)] as const)
-            // mutate callback receives serviceResult
-            .mutate(({ serviceResult: [user] }) => {
+            // mutate callback receives serviceIntermediateResult
+            .mutate(({ serviceIntermediateResult: [user] }) => {
               return { valid: user !== null, user };
             })
             .build()
         );
       };
 
-      // Handler calls executeTx with deps containing validateUser
+      // Handler calls executeTx with serviceCalls containing validateUser
       // This tests 2-level nesting: handler -> validateUser -> getUserById
       const result = await createHandlerTxBuilder({
         createUnitOfWork: () => {
@@ -1285,10 +1320,10 @@ describe("Unified Tx API", () => {
       expect(result.userName).toBe("Test User");
     }, 500);
 
-    it("should handle a TxResult with deps that returns another TxResult", async () => {
+    it("should handle a TxResult with serviceCalls that returns another TxResult", async () => {
       // This test reproduces the integration test scenario where:
-      // - orderService.createOrderWithValidation has deps: () => [userService.getUserById(...)]
-      // - handler has deps: () => [orderService.createOrderWithValidation(...)]
+      // - orderService.createOrderWithValidation has serviceCalls: () => [userService.getUserById(...)]
+      // - handler has serviceCalls: () => [orderService.createOrderWithValidation(...)]
 
       const compiler = createMockCompiler();
       const mockUser = {
@@ -1318,11 +1353,11 @@ describe("Unified Tx API", () => {
           .build();
       };
 
-      // Simulates orderService.createOrderWithValidation - has deps on getUserById
+      // Simulates orderService.createOrderWithValidation - has serviceCalls on getUserById
       const createOrderWithValidation = (userId: string, productName: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .withServiceCalls(() => [getUserById(userId)] as const)
-          .mutate(({ uow, serviceResult: [user] }) => {
+          .mutate(({ uow, serviceIntermediateResult: [user] }) => {
             if (!user) {
               throw new Error("User not found");
             }
@@ -1337,7 +1372,7 @@ describe("Unified Tx API", () => {
           .build();
       };
 
-      // Handler calls executeTx with deps containing the order service
+      // Handler calls executeTx with serviceCalls containing the order service
       const result = await createHandlerTxBuilder({
         createUnitOfWork: () => {
           currentUow = createUnitOfWork(compiler, executor, decoder);
@@ -1359,7 +1394,7 @@ describe("Unified Tx API", () => {
       expect(result.orderId).toBeInstanceOf(FragnoId);
     }, 500); // Set 500ms timeout to catch deadlock
 
-    it("should handle deeply nested TxResult deps (3 levels)", async () => {
+    it("should handle deeply nested TxResult serviceCalls (3 levels)", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
         id: FragnoId.fromExternal("user-1", 1),
@@ -1392,7 +1427,7 @@ describe("Unified Tx API", () => {
       const validateUser = (userId: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .withServiceCalls(() => [getUserById(userId)] as const)
-          .mutate(({ serviceResult: [user] }) => {
+          .mutate(({ serviceIntermediateResult: [user] }) => {
             if (!user) {
               return { valid: false as const, reason: "User not found" };
             }
@@ -1405,7 +1440,7 @@ describe("Unified Tx API", () => {
       const createOrder = (userId: string, productName: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .withServiceCalls(() => [validateUser(userId)] as const)
-          .mutate(({ uow, serviceResult: [validation] }) => {
+          .mutate(({ uow, serviceIntermediateResult: [validation] }) => {
             if (!validation.valid) {
               throw new Error(validation.reason);
             }
@@ -1575,7 +1610,7 @@ describe("Unified Tx API", () => {
   });
 
   describe("error handling in createServiceTx", () => {
-    it("should not cause unhandled rejection when retrieve callback throws synchronously in deps", async () => {
+    it("should not cause unhandled rejection when retrieve callback throws synchronously in serviceCalls", async () => {
       // This test verifies that when a service's retrieve callback throws synchronously,
       // the error is properly propagated without causing an unhandled rejection warning.
       // Without the fix (adding retrievePhase.catch(() => {}) before rejecting and throwing),
@@ -1604,7 +1639,7 @@ describe("Unified Tx API", () => {
           .build();
       };
 
-      // Execute with deps that contain the failing service
+      // Execute with serviceCalls that contain the failing service
       // The error should be properly caught and re-thrown without unhandled rejection
       await expect(
         createHandlerTxBuilder({
@@ -1619,8 +1654,8 @@ describe("Unified Tx API", () => {
       ).rejects.toThrow("Retrieve callback threw synchronously");
     });
 
-    it("should not cause unhandled rejection when deps callback throws synchronously", async () => {
-      // This test verifies that when a service's deps callback throws synchronously,
+    it("should not cause unhandled rejection when serviceCalls callback throws synchronously", async () => {
+      // This test verifies that when a service's serviceCalls callback throws synchronously,
       // the error is properly propagated without causing an unhandled rejection warning.
 
       const compiler = createMockCompiler();
@@ -1637,7 +1672,7 @@ describe("Unified Tx API", () => {
 
       const syncError = new Error("Deps callback threw synchronously");
 
-      // Service that throws synchronously in deps callback
+      // Service that throws synchronously in serviceCalls callback
       const failingService = () => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .withServiceCalls(() => {
@@ -1647,7 +1682,7 @@ describe("Unified Tx API", () => {
           .build();
       };
 
-      // Execute with deps that contain the failing service
+      // Execute with serviceCalls that contain the failing service
       await expect(
         createHandlerTxBuilder({
           createUnitOfWork: () => {
@@ -1663,16 +1698,16 @@ describe("Unified Tx API", () => {
   });
 
   describe("mutate-only service type inference", () => {
-    it("should correctly type serviceResult when dependent service only has mutate (no retrieve)", async () => {
+    it("should correctly type serviceIntermediateResult when dependent service only has mutate (no retrieve)", async () => {
       // This test verifies that when a service has ONLY a mutate callback (no retrieve),
-      // the mutate result is correctly typed as the serviceResult for dependent services.
+      // the mutate result is correctly typed as the serviceIntermediateResult for dependent services.
       //
       // Execution order:
       // 1. generateOTP's retrieve phase runs (empty - no retrieve callback)
       // 2. generateOTP's mutate runs → returns { otpId, code }
-      // 3. sendOTPEmail's mutate runs → serviceResult[0] is { otpId, code }
+      // 3. sendOTPEmail's mutate runs → serviceIntermediateResult[0] is { otpId, code, userId }
       //
-      // Without the InferBuilderRetrieveSuccessResult fix, serviceResult[0] would be
+      // Without the InferBuilderRetrieveSuccessResult fix, serviceIntermediateResult[0] would be
       // typed as `[]` (empty tuple) even though at runtime it's the mutate result.
 
       const compiler = createMockCompiler();
@@ -1711,11 +1746,11 @@ describe("Unified Tx API", () => {
       };
 
       // Service that depends on generateOTP
-      // The key test: serviceResult[0] should be typed as { otpId, code, userId }
+      // The key test: serviceIntermediateResult[0] should be typed as { otpId, code, userId }
       const sendOTPEmail = (userId: string, email: string) => {
         return createServiceTxBuilder(testSchema, currentUow!)
           .withServiceCalls(() => [generateOTP(userId)] as const)
-          .mutate(({ uow, serviceResult: [otpResult] }) => {
+          .mutate(({ uow, serviceIntermediateResult: [otpResult] }) => {
             // RUNTIME CAPTURE: Store the actual runtime value for verification
             capturedOtpResult = otpResult;
 
@@ -1754,8 +1789,8 @@ describe("Unified Tx API", () => {
       expect(result.sent).toBe(true);
       expect(result.forUser).toBe("user-1");
 
-      // RUNTIME VERIFICATION: Verify the actual runtime value of serviceResult
-      // This proves generateOTP's mutate result is actually passed as serviceResult
+      // RUNTIME VERIFICATION: Verify the actual runtime value of serviceIntermediateResult
+      // This proves generateOTP's mutate result is actually passed as serviceIntermediateResult
       expect(capturedOtpResult).not.toBeNull();
       expect(capturedOtpResult).toMatchObject({
         code: "ABC123",
@@ -1764,7 +1799,7 @@ describe("Unified Tx API", () => {
       expect((capturedOtpResult as { otpId: FragnoId }).otpId).toBeInstanceOf(FragnoId);
     });
 
-    it("should correctly type serviceResult with multiple mutate-only deps", async () => {
+    it("should correctly type serviceIntermediateResult with multiple mutate-only service calls", async () => {
       // Test with multiple mutate-only dependencies to verify tuple typing works
 
       const compiler = createMockCompiler();
@@ -1816,7 +1851,7 @@ describe("Unified Tx API", () => {
         .withServiceCalls(
           () => [createAuditLog("user_login"), incrementCounter("login_count")] as const,
         )
-        .mutate(({ serviceResult: [auditResult, counterResult] }) => {
+        .mutate(({ serviceIntermediateResult: [auditResult, counterResult] }) => {
           // RUNTIME CAPTURE: Store the actual runtime values
           capturedAuditResult = auditResult;
           capturedCounterResult = counterResult;

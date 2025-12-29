@@ -3,14 +3,12 @@ import { defineFragment } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
   type ImplicitDatabaseDependencies,
-  type DatabaseHandlerContext,
 } from "./db-fragment-definition-builder";
 import { withDatabase } from "./with-database";
 import { schema, column, idColumn } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
-import type { TxResult } from "./query/unit-of-work/execute-unit-of-work";
 
 // Create a test schema
 const testSchema = schema((s) => {
@@ -848,7 +846,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
-  describe("serviceTxBuilder hooks propagation", () => {
+  describe("serviceTx hooks propagation", () => {
     it("should pass hooks to createServiceTxBuilder", () => {
       const mockAdapter = createMockAdapter();
 
@@ -878,7 +876,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Spy on createServiceTxBuilder
       const createServiceTxBuilderSpy = vi.spyOn(executeUnitOfWork, "createServiceTxBuilder");
 
-      // Get the contexts which includes serviceTxBuilder
+      // Get the contexts which includes serviceTx
       const contexts = definition.createThisContext!({
         config: {},
         options: { databaseAdapter: mockAdapter },
@@ -887,8 +885,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         storage: mockStorage,
       });
 
-      // Call serviceTxBuilder - this should pass hooks to createServiceTxBuilder
-      contexts.serviceContext.serviceTxBuilder(testSchema);
+      // Call serviceTx - this should pass hooks to createServiceTxBuilder
+      contexts.serviceContext.serviceTx(testSchema);
 
       // Verify createServiceTxBuilder was called with 3 arguments (schema, uow, hooks)
       expect(createServiceTxBuilderSpy).toHaveBeenCalledOnce();
@@ -900,34 +898,6 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(callArgs[2]).toHaveProperty("onUserCreated");
 
       createServiceTxBuilderSpy.mockRestore();
-    });
-  });
-
-  describe("handlerTx return type inference", () => {
-    it("should correctly infer return type for deps-only overload", () => {
-      // This is a TYPE test - we're verifying the return type is correctly inferred
-      // The type should be the extracted final results from TxResult, not the TxResult itself
-
-      // Create mock TxResults with known result types
-      type MockTxResult1 = TxResult<{ userId: string }, { userId: string }>;
-      type MockTxResult2 = TxResult<{ orderId: number }, { orderId: number }>;
-
-      // Simulate calling handlerTx with deps only - this tests the overload type inference
-      // We use a function type to capture what handlerTx would return
-      type DepsOnlyCall = (
-        ctx: DatabaseHandlerContext<{}>,
-      ) => ReturnType<typeof ctx.handlerTx<readonly [MockTxResult1, MockTxResult2]>>;
-
-      // Extract just the return type
-      type DepsOnlyReturnType = ReturnType<DepsOnlyCall>;
-
-      // The return type should be readonly [{ userId: string }, { orderId: number }]
-      // NOT containing TxResult types
-      type AwaitedResult = Awaited<DepsOnlyReturnType>;
-
-      // Verify the first element is { userId: string }, not TxResult
-      expectTypeOf<AwaitedResult[0]>().toEqualTypeOf<{ userId: string }>();
-      expectTypeOf<AwaitedResult[1]>().toEqualTypeOf<{ orderId: number }>();
     });
   });
 });

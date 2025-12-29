@@ -2,7 +2,6 @@ import type { AnySchema } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
-import { UnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
   FragnoPublicConfig,
@@ -14,30 +13,11 @@ import {
   type ServiceConstructorFn,
 } from "@fragno-dev/core";
 import {
-  createServiceTx,
-  executeTx,
   createServiceTxBuilder,
   createHandlerTxBuilder,
   ServiceTxBuilder,
   HandlerTxBuilder,
-  type AwaitedPromisesInObject,
   type ExecuteTxOptions,
-  type TxResult,
-  type ExtractDepsFinalResults,
-  type ServiceTxCallbacksWithSuccessAndMutate,
-  type ServiceTxCallbacksWithSuccessNoMutate,
-  type ServiceTxCallbacksWithMutateAndRetrieveSuccess,
-  type ServiceTxCallbacksWithMutateNoRetrieveSuccess,
-  type ServiceTxCallbacksWithMutateOnly,
-  type ServiceTxCallbacksWithRetrieveSuccess,
-  type ServiceTxCallbacksWithRetrieveOnly,
-  type HandlerTxCallbacksWithSuccessMutateDeps,
-  type HandlerTxCallbacksWithSuccessMutateNoDeps,
-  type HandlerTxCallbacksWithSuccessDepsNoMutate,
-  type HandlerTxCallbacksWithSuccessNoDepsNoMutate,
-  type HandlerTxCallbacksWithMutate,
-  type HandlerTxCallbacksWithRetrieveSuccess,
-  type HandlerTxCallbacksWithDepsOnly,
 } from "./query/unit-of-work/execute-unit-of-work";
 import {
   prepareHookMutations,
@@ -85,150 +65,13 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
  */
 export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext & {
   /**
-   * Create a service-level transaction using the unified TxResult API.
-   * Returns a TxResult that can be composed with other service calls.
-   *
-   * @example
-   * ```ts
-   * // Simple retrieve + transform
-   * return this.serviceTx(schema, {
-   *   retrieve: (uow) => uow.find("users", ...),
-   *   transformRetrieve: ([users]) => users[0] ?? null,
-   * });
-   *
-   * // With deps (service composition)
-   * return this.serviceTx(schema, {
-   *   deps: () => [otherService.getData()],
-   *   mutate: ({ uow, depsIntermediateResult: [data] }) => {
-   *     return uow.create("records", { data });
-   *   },
-   * });
-   * ```
-   */
-  // Overload 1a: With success AND mutate - returns TSuccessResult, mutateResult is NOT undefined
-  serviceTx<
-    TSchema extends AnySchema,
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TMutateResult,
-    TSuccessResult,
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithSuccessAndMutate<
-      TSchema,
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      TMutateResult,
-      TSuccessResult,
-      THooks
-    >,
-  ): TxResult<TSuccessResult, TRetrieveSuccessResult>;
-  // Overload 1b: With success but NO mutate - returns TSuccessResult, mutateResult IS undefined
-  serviceTx<
-    TSchema extends AnySchema,
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TSuccessResult,
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithSuccessNoMutate<
-      TSchema,
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      TSuccessResult,
-      THooks
-    >,
-  ): TxResult<TSuccessResult, TRetrieveSuccessResult>;
-  // Overload 2a: With mutate AND retrieveSuccess but no success - returns TMutateResult
-  serviceTx<
-    TSchema extends AnySchema,
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TMutateResult,
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithMutateAndRetrieveSuccess<
-      TSchema,
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      TMutateResult,
-      THooks
-    >,
-  ): TxResult<TMutateResult, TRetrieveSuccessResult>;
-  // Overload 2b: With mutate only (no retrieve/retrieveSuccess) - returns TMutateResult
-  serviceTx<
-    TSchema extends AnySchema,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TMutateResult,
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithMutateOnly<TSchema, TDeps, TMutateResult, THooks>,
-  ): TxResult<TMutateResult, TMutateResult>;
-  // Overload 2c: With mutate and retrieve but NO retrieveSuccess (and no success) -
-  // returns TMutateResult
-  // retrieveResult in mutate is TRetrieveResults (raw array)
-  serviceTx<
-    TSchema extends AnySchema,
-    TRetrieveResults extends unknown[],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TMutateResult,
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithMutateNoRetrieveSuccess<
-      TSchema,
-      TRetrieveResults,
-      TDeps,
-      TMutateResult,
-      THooks
-    >,
-  ): TxResult<TMutateResult, TRetrieveResults>;
-  // Overload 3: With retrieveSuccess but no mutate/success - returns TRetrieveSuccessResult
-  serviceTx<
-    TSchema extends AnySchema,
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithRetrieveSuccess<
-      TSchema,
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      THooks
-    >,
-  ): TxResult<TRetrieveSuccessResult, TRetrieveSuccessResult>;
-  // Overload 4: With retrieve only - returns TRetrieveResults
-  serviceTx<
-    TSchema extends AnySchema,
-    TRetrieveResults extends unknown[],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-  >(
-    schema: TSchema,
-    callbacks: ServiceTxCallbacksWithRetrieveOnly<TSchema, TRetrieveResults, TDeps, THooks>,
-  ): TxResult<TRetrieveResults, TRetrieveResults>;
-
-  /**
    * Create a service-level transaction builder using the fluent API.
    * Returns a builder that can be chained with withServiceCalls, retrieve,
    * transformRetrieve, mutate, transform, and build.
    *
    * @example
    * ```ts
-   * return this.serviceTxBuilder(schema)
+   * return this.serviceTx(schema)
    *   .withServiceCalls(() => [otherService.getData()])
    *   .retrieve((uow) => uow.find("users", ...))
    *   .transformRetrieve(([users]) => users[0])
@@ -239,7 +82,7 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
    *   .build();
    * ```
    */
-  serviceTxBuilder<TSchema extends AnySchema>(
+  serviceTx<TSchema extends AnySchema>(
     schema: TSchema,
   ): ServiceTxBuilder<
     TSchema,
@@ -261,138 +104,13 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
  */
 export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisContext & {
   /**
-   * Execute a handler-level transaction using the unified TxResult API.
-   * Supports multiple callback configurations with proper type inference.
-   *
-   * @example
-   * ```ts
-   * // Simple deps-only - execute service calls
-   * const [user, orders] = await this.handlerTx({
-   *   deps: () => [userService.getUser(id), orderService.getOrders(id)],
-   * });
-   *
-   * // With transform callback
-   * const result = await this.handlerTx({
-   *   deps: () => [userService.getUser(id)],
-   *   mutate: ({ forSchema, depsIntermediateResult: [user] }) => {
-   *     return forSchema(ordersSchema).create("orders", { userId: user.id });
-   *   },
-   *   transform: ({ mutateResult, serviceResult: [user] }) => ({
-   *     orderId: mutateResult,
-   *     userName: user.name,
-   *   }),
-   * });
-   * ```
-   */
-  // Overload 1a: With success, mutate, AND deps
-  handlerTx<
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TMutateResult,
-    TSuccessResult,
-  >(
-    callbacks: HandlerTxCallbacksWithSuccessMutateDeps<
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      TMutateResult,
-      TSuccessResult,
-      THooks
-    >,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TSuccessResult>>;
-  // Overload 1b: With success AND mutate, but NO deps
-  handlerTx<
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    TMutateResult,
-    TSuccessResult,
-  >(
-    callbacks: HandlerTxCallbacksWithSuccessMutateNoDeps<
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TMutateResult,
-      TSuccessResult,
-      THooks
-    >,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TSuccessResult>>;
-  // Overload 1c: With success AND deps, but NO mutate
-  handlerTx<
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TSuccessResult,
-  >(
-    callbacks: HandlerTxCallbacksWithSuccessDepsNoMutate<
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      TSuccessResult,
-      THooks
-    >,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TSuccessResult>>;
-  // Overload 1d: With success but NO deps and NO mutate
-  handlerTx<TRetrieveResults extends unknown[], TRetrieveSuccessResult, TSuccessResult>(
-    callbacks: HandlerTxCallbacksWithSuccessNoDepsNoMutate<
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TSuccessResult,
-      THooks
-    >,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TSuccessResult>>;
-  // Overload 2: With mutate but no success
-  handlerTx<
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-    TMutateResult,
-  >(
-    callbacks: HandlerTxCallbacksWithMutate<
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      TMutateResult,
-      THooks
-    >,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<AwaitedPromisesInObject<TMutateResult>>;
-  // Overload 3: With retrieveSuccess but no mutate/success
-  handlerTx<
-    TRetrieveResults extends unknown[],
-    TRetrieveSuccessResult,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    TDeps extends readonly (TxResult<any, any> | undefined)[],
-  >(
-    callbacks: HandlerTxCallbacksWithRetrieveSuccess<
-      TRetrieveResults,
-      TRetrieveSuccessResult,
-      TDeps,
-      THooks
-    >,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<TRetrieveSuccessResult>;
-  // Overload 4: With deps only
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlerTx<TDeps extends readonly (TxResult<any, any> | undefined)[]>(
-    callbacks: HandlerTxCallbacksWithDepsOnly<TDeps>,
-    options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-  ): Promise<ExtractDepsFinalResults<TDeps>>;
-
-  /**
    * Create a handler-level transaction builder using the fluent API.
    * Returns a builder that can be chained with withServiceCalls, retrieve,
    * transformRetrieve, mutate, transform, and execute.
    *
    * @example
    * ```ts
-   * const result = await this.handlerTxBuilder()
+   * const result = await this.handlerTx()
    *   .withServiceCalls(() => [userService.getUser(id)])
    *   .mutate(({ forSchema, idempotencyKey, currentAttempt, serviceIntermediateResult }) => {
    *     return forSchema(ordersSchema).create("orders", { ... });
@@ -401,7 +119,7 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
    *   .execute();
    * ```
    */
-  handlerTxBuilder(
+  handlerTx(
     options?: Omit<ExecuteTxOptions, "createUnitOfWork">,
   ): HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, THooks>;
 };
@@ -932,20 +650,8 @@ export class DatabaseFragmentDefinitionBuilder<
           }
         : undefined;
 
-      // Unified API: serviceTx using createServiceTx
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      function serviceTx(schema: AnySchema, callbacks: any): TxResult<any, any> {
-        const uow = storage.getStore()?.uow;
-        if (!uow) {
-          throw new Error(
-            "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
-          );
-        }
-        return createServiceTx(schema, callbacks, uow);
-      }
-
-      // Builder API: serviceTxBuilder using createServiceTxBuilder
-      function serviceTxBuilder<TSchema extends AnySchema>(schema: TSchema) {
+      // Builder API: serviceTx using createServiceTxBuilder
+      function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
         const uow = storage.getStore()?.uow;
         if (!uow) {
           throw new Error(
@@ -957,61 +663,10 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const serviceContext: DatabaseServiceContext<THooks> = {
         serviceTx,
-        serviceTxBuilder,
       };
 
-      // Unified API: handlerTx using executeTx
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async function handlerTx(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        callbacks: any,
-        execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ): Promise<any> {
-        const currentStorage = storage.getStore();
-        if (!currentStorage) {
-          throw new Error(
-            "No storage in context. Handler must be called within a request context.",
-          );
-        }
-
-        const userOnBeforeMutate = execOptions?.onBeforeMutate;
-        const userOnAfterMutate = execOptions?.onAfterMutate;
-
-        return executeTx(callbacks, {
-          ...execOptions,
-          createUnitOfWork: () => {
-            currentStorage.uow.reset();
-            if (hooksConfig) {
-              currentStorage.uow.registerSchema(
-                hooksConfig.internalFragment.$internal.deps.schema,
-                hooksConfig.internalFragment.$internal.deps.namespace,
-              );
-            }
-            // Safe cast: currentStorage.uow is always a UnitOfWork instance
-            return currentStorage.uow as UnitOfWork;
-          },
-          onBeforeMutate: (uow) => {
-            if (hooksConfig) {
-              prepareHookMutations(uow, hooksConfig);
-            }
-            if (userOnBeforeMutate) {
-              userOnBeforeMutate(uow);
-            }
-          },
-          onAfterMutate: async (uow) => {
-            if (hooksConfig) {
-              await processHooks(hooksConfig);
-            }
-            if (userOnAfterMutate) {
-              await userOnAfterMutate(uow);
-            }
-          },
-        });
-      }
-
-      // Builder API: handlerTxBuilder using createHandlerTxBuilder
-      function handlerTxBuilder(execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) {
+      // Builder API: handlerTx using createHandlerTxBuilder
+      function handlerTx(execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) {
         const currentStorage = storage.getStore();
         if (!currentStorage) {
           throw new Error(
@@ -1032,8 +687,7 @@ export class DatabaseFragmentDefinitionBuilder<
                 hooksConfig.internalFragment.$internal.deps.namespace,
               );
             }
-            // Safe cast: currentStorage.uow is always a UnitOfWork instance
-            return currentStorage.uow as UnitOfWork;
+            return currentStorage.uow;
           },
           onBeforeMutate: (uow) => {
             if (hooksConfig) {
@@ -1056,7 +710,6 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const handlerContext: DatabaseHandlerContext<THooks> = {
         handlerTx,
-        handlerTxBuilder,
       };
 
       return { serviceContext, handlerContext };

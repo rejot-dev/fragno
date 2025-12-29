@@ -49,11 +49,12 @@ describe("Internal Fragment", () => {
 
   it("should get undefined for non-existent key", async () => {
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () =>
-          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
-        success: ({ depsResult: [value] }) => value,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        )
+        .transform(({ serviceResult: [value] }) => value)
+        .execute();
     });
 
     expect(result).toBeUndefined();
@@ -61,19 +62,20 @@ describe("Internal Fragment", () => {
 
   it("should set and get a value", async () => {
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () => [
+      await this.handlerTx()
+        .withServiceCalls(() => [
           fragment.services.settingsService.set(SETTINGS_NAMESPACE, "test-key", "test-value"),
-        ],
-      });
+        ])
+        .execute();
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () =>
-          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
-        success: ({ depsResult: [value] }) => value,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        )
+        .transform(({ serviceResult: [value] }) => value)
+        .execute();
     });
 
     expect(result).toMatchObject({
@@ -84,20 +86,27 @@ describe("Internal Fragment", () => {
 
   it("should update an existing value", async () => {
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () =>
-          [
-            fragment.services.settingsService.set(SETTINGS_NAMESPACE, "test-key", "updated-value"),
-          ] as const,
-      });
+      await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.settingsService.set(
+                SETTINGS_NAMESPACE,
+                "test-key",
+                "updated-value",
+              ),
+            ] as const,
+        )
+        .execute();
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () =>
-          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
-        success: ({ depsResult: [value] }) => value,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        )
+        .transform(({ serviceResult: [value] }) => value)
+        .execute();
     });
 
     expect(result).toMatchObject({
@@ -109,29 +118,31 @@ describe("Internal Fragment", () => {
   it("should delete a value", async () => {
     // First get the ID
     const setting = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () =>
-          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
-        success: ({ depsResult: [value] }) => value,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        )
+        .transform(({ serviceResult: [value] }) => value)
+        .execute();
     });
 
     expect(setting).toBeDefined();
 
     // Delete it
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () => [fragment.services.settingsService.delete(setting!.id)] as const,
-      });
+      await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.settingsService.delete(setting!.id)] as const)
+        .execute();
     });
 
     // Verify it's gone
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () =>
-          [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
-        success: ({ depsResult: [value] }) => value,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.settingsService.get(SETTINGS_NAMESPACE, "test-key")] as const,
+        )
+        .transform(({ serviceResult: [value] }) => value)
+        .execute();
     });
 
     expect(result).toBeUndefined();
@@ -179,8 +190,8 @@ describe("Hook Service", () => {
     const nonce = "test-nonce-1";
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -206,15 +217,17 @@ describe("Hook Service", () => {
             error: null,
             nonce,
           });
-        },
-      });
+        })
+        .execute();
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        success: ({ depsResult: [result] }) => result,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
     });
 
     expect(events).toHaveLength(1);
@@ -232,8 +245,8 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           eventId = uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -247,21 +260,21 @@ describe("Hook Service", () => {
             error: null,
             nonce,
           });
-        },
-      });
+        })
+        .execute();
     });
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () => [fragment.services.hookService.markHookCompleted(eventId)] as const,
-      });
+      await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.hookService.markHookCompleted(eventId)] as const)
+        .execute();
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
-        success: ({ depsResult: [event] }) => event,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
+        .transform(({ serviceResult: [event] }) => event)
+        .execute();
     });
 
     expect(result).toBeDefined();
@@ -274,8 +287,8 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      return this.handlerTx({
-        mutate: ({ forSchema }) => {
+      return this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           eventId = uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -289,21 +302,23 @@ describe("Hook Service", () => {
             error: null,
             nonce,
           });
-        },
-      });
+        })
+        .execute();
     });
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () => [fragment.services.hookService.markHookProcessing(eventId)] as const,
-      });
+      await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.markHookProcessing(eventId)] as const,
+        )
+        .execute();
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
-        success: ({ depsResult: [event] }) => event,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
+        .transform(({ serviceResult: [event] }) => event)
+        .execute();
     });
 
     expect(result).toBeDefined();
@@ -316,8 +331,8 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      const createdId = await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      const createdId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           return uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -331,27 +346,29 @@ describe("Hook Service", () => {
             error: null,
             nonce,
           });
-        },
-      });
+        })
+        .execute();
       eventId = createdId;
     });
 
     const retryPolicy = new ExponentialBackoffRetryPolicy({ maxRetries: 3 });
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () =>
-          [
-            fragment.services.hookService.markHookFailed(eventId, "Test error", 0, retryPolicy),
-          ] as const,
-      });
+      await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.markHookFailed(eventId, "Test error", 0, retryPolicy),
+            ] as const,
+        )
+        .execute();
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
-        success: ({ depsResult: [event] }) => event,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
+        .transform(({ serviceResult: [event] }) => event)
+        .execute();
     });
 
     expect(result).toBeDefined();
@@ -367,8 +384,8 @@ describe("Hook Service", () => {
     let eventId: FragnoId;
 
     await fragment.inContext(async function () {
-      const createdId = await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      const createdId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           return uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -382,32 +399,34 @@ describe("Hook Service", () => {
             error: null,
             nonce,
           });
-        },
-      });
+        })
+        .execute();
       eventId = createdId;
     });
 
     const retryPolicy = new NoRetryPolicy();
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        deps: () =>
-          [
-            fragment.services.hookService.markHookFailed(
-              eventId,
-              "Max attempts reached",
-              0,
-              retryPolicy,
-            ),
-          ] as const,
-      });
+      await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.markHookFailed(
+                eventId,
+                "Max attempts reached",
+                0,
+                retryPolicy,
+              ),
+            ] as const,
+        )
+        .execute();
     });
 
     const result = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getHookById(eventId)] as const,
-        success: ({ depsResult: [event] }) => event,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.hookService.getHookById(eventId)] as const)
+        .transform(({ serviceResult: [event] }) => event)
+        .execute();
     });
 
     expect(result).toBeDefined();
@@ -423,8 +442,8 @@ describe("Hook Service", () => {
     const pastTime = new Date(Date.now() - 10000);
 
     await fragment.inContext(async function () {
-      const createdId = await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      const createdId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           return uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -438,16 +457,18 @@ describe("Hook Service", () => {
             error: "Previous error",
             nonce,
           });
-        },
-      });
+        })
+        .execute();
       eventId = createdId;
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        success: ({ depsResult: [result] }) => result,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
     });
 
     const staleEvent = events.find((e) => e.id.externalId === eventId.externalId);
@@ -460,8 +481,8 @@ describe("Hook Service", () => {
     const nonce = "test-nonce-7";
 
     await fragment.inContext(async function () {
-      await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           uow.create("fragno_hooks", {
             namespace: "other-namespace",
@@ -475,15 +496,17 @@ describe("Hook Service", () => {
             error: null,
             nonce,
           });
-        },
-      });
+        })
+        .execute();
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        success: ({ depsResult: [result] }) => result,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
     });
 
     const otherEvent = events.find((e) => e.hookName === "onOther");
@@ -497,8 +520,8 @@ describe("Hook Service", () => {
     const futureTime = new Date(Date.now() + 60000);
 
     await fragment.inContext(async function () {
-      const createdId = await this.handlerTx({
-        mutate: ({ forSchema }) => {
+      const createdId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
           const uow = forSchema(internalSchema);
           return uow.create("fragno_hooks", {
             namespace: "test-namespace",
@@ -512,16 +535,18 @@ describe("Hook Service", () => {
             error: "Previous error",
             nonce,
           });
-        },
-      });
+        })
+        .execute();
       eventId = createdId;
     });
 
     const events = await fragment.inContext(async function () {
-      return await this.handlerTx({
-        deps: () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
-        success: ({ depsResult: [result] }) => result,
-      });
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getPendingHookEvents("test-namespace")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
     });
 
     const futureEvent = events.find((e) => e.id.externalId === eventId.externalId);

@@ -4,7 +4,10 @@ import { DrizzleAdapter } from "./drizzle-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
-import { executeTx, createServiceTx } from "../../query/unit-of-work/execute-unit-of-work";
+import {
+  createServiceTxBuilder,
+  createHandlerTxBuilder,
+} from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
@@ -793,7 +796,7 @@ describe("DrizzleAdapter SQLite", () => {
     expect(emptyPage.cursor).toBeUndefined();
   });
 
-  it("should support executeTx with retry logic", async () => {
+  it("should support handlerTx with retry logic", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     // Create a test user
@@ -807,49 +810,41 @@ describe("DrizzleAdapter SQLite", () => {
       .find("users", (b) => b.whereIndex("name_idx", (eb) => eb("name", "=", "Execute UOW User")))
       .executeRetrieve();
 
-    // Use executeTx to increment age with optimistic locking
+    // Use handlerTx to increment age with optimistic locking
     let currentUow: ReturnType<typeof queryEngine.createUnitOfWork> | null = null;
 
     // Service that retrieves user by ID
     const getUserById = (userId: typeof user.id) => {
-      return createServiceTx(
-        testSchema,
-        {
-          retrieve: (uow) =>
-            uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
-          retrieveSuccess: ([users]) => users[0] ?? null,
-        },
-        currentUow!,
-      );
+      return createServiceTxBuilder(testSchema, currentUow!)
+        .retrieve((uow) =>
+          uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .transformRetrieve(([users]) => users[0] ?? null)
+        .build();
     };
 
-    const result = await executeTx(
-      {
-        deps: () => [getUserById(user.id)],
-        mutate: ({ forSchema, depsIntermediateResult: [foundUser] }) => {
-          if (!foundUser) {
-            throw new Error("User not found");
-          }
-          const newAge = foundUser.age! + 1;
-          forSchema(testSchema).update("users", foundUser.id, (b) =>
-            b.set({ age: newAge }).check(),
-          );
-          return { previousAge: foundUser.age, newAge };
-        },
-        success: ({ mutateResult }) => {
-          // Verify the age was incremented correctly
-          expect(mutateResult.newAge).toBe(mutateResult.previousAge! + 1);
-          return mutateResult;
-        },
+    const result = await createHandlerTxBuilder({
+      createUnitOfWork: () => {
+        currentUow = queryEngine.createUnitOfWork("execute-uow-update");
+        return currentUow;
       },
-      {
-        createUnitOfWork: () => {
-          currentUow = queryEngine.createUnitOfWork("execute-uow-update");
-          return currentUow;
-        },
-        retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
-      },
-    );
+      retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+    })
+      .withServiceCalls(() => [getUserById(user.id)])
+      .mutate(({ forSchema, serviceIntermediateResult: [foundUser] }) => {
+        if (!foundUser) {
+          throw new Error("User not found");
+        }
+        const newAge = foundUser.age! + 1;
+        forSchema(testSchema).update("users", foundUser.id, (b) => b.set({ age: newAge }).check());
+        return { previousAge: foundUser.age, newAge };
+      })
+      .transform(({ mutateResult }) => {
+        // Verify the age was incremented correctly
+        expect(mutateResult.newAge).toBe(mutateResult.previousAge! + 1);
+        return mutateResult;
+      })
+      .execute();
 
     // Verify the operation succeeded
     expect(result).toEqual({

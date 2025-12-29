@@ -101,8 +101,6 @@ export {
 } from "./query/unit-of-work/retry-policy";
 
 export {
-  executeTx,
-  createServiceTx,
   ConcurrencyConflictError,
   // Builder pattern exports
   ServiceTxBuilder,

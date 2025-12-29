@@ -32,10 +32,10 @@ export class MailingList extends DurableObject<CloudflareEnv> {
   }> {
     const fragment = this.#fragment;
     return this.#fragment.inContext(async function () {
-      const result = await this.handlerTx({
-        deps: () => [fragment.services.subscribe(email)],
-        success: ({ depsResult: [result] }) => result,
-      });
+      const result = await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.subscribe(email)])
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
       return result;
     });
   }

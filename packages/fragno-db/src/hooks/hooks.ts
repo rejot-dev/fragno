@@ -111,10 +111,12 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
 
   // Get pending events
   const pendingEvents = await internalFragment.inContext(async function () {
-    return await this.handlerTx({
-      deps: () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
-      success: ({ depsResult: [events] }) => events,
-    });
+    return await this.handlerTx()
+      .withServiceCalls(
+        () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+      )
+      .transform(({ serviceResult: [events] }) => events)
+      .execute();
   });
 
   if (pendingEvents.length === 0) {
@@ -157,8 +159,8 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
 
   // Mark events as completed/failed
   await internalFragment.inContext(async function () {
-    await this.handlerTx({
-      deps: () => {
+    await this.handlerTx()
+      .withServiceCalls(() => {
         const txResults: TxResult<void>[] = [];
         for (const processedEvent of processedEvents) {
           if (processedEvent.status === "rejected") {
@@ -182,7 +184,7 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
           }
         }
         return txResults;
-      },
-    });
+      })
+      .execute();
   });
 }

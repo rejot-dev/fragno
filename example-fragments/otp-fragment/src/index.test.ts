@@ -24,10 +24,10 @@ describe("OTP Fragment", () => {
       const otpService = fragments.otp.services.otp;
 
       const code = await testCtx.inContext(async function () {
-        const code = await this.handlerTx({
-          deps: () => [otpService.generateOTP("user-123")] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        const code = await this.handlerTx()
+          .withServiceCalls(() => [otpService.generateOTP("user-123")] as const)
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
         return code;
       });
 
@@ -35,10 +35,10 @@ describe("OTP Fragment", () => {
 
       // Verify OTP in a separate UOW context with automatic phase execution
       const isValid = await testCtx.inContext(async function () {
-        const isValid = await this.handlerTx({
-          deps: () => [otpService.verifyOTP("user-123", code)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        const isValid = await this.handlerTx()
+          .withServiceCalls(() => [otpService.verifyOTP("user-123", code)] as const)
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
         return isValid;
       });
       expect(isValid).toBe(true);

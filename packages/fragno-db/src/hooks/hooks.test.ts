@@ -57,28 +57,25 @@ describe("Hook System", () => {
       const onBeforeMutate = vi.fn();
 
       await internalFragment.inContext(async function () {
-        await this.handlerTx(
-          {
-            mutate: ({ forSchema }) => {
-              const uow = forSchema(internalSchema, hooks);
+        await this.handlerTx({
+          onAfterMutate: onSuccess,
+          onBeforeMutate,
+        })
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
 
-              // Trigger a hook
-              uow.triggerHook("onTest", { data: "test" });
+            // Trigger a hook
+            uow.triggerHook("onTest", { data: "test" });
 
-              // Prepare hook mutations
-              prepareHookMutations(uow, {
-                hooks,
-                namespace,
-                internalFragment,
-                defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
-              });
-            },
-          },
-          {
-            onAfterMutate: onSuccess,
-            onBeforeMutate,
-          },
-        );
+            // Prepare hook mutations
+            prepareHookMutations(uow, {
+              hooks,
+              namespace,
+              internalFragment,
+              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            });
+          })
+          .execute();
       });
 
       // Verify callbacks were executed
@@ -87,11 +84,12 @@ describe("Hook System", () => {
 
       // Verify hook was created
       const events = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () =>
-            [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
       });
 
       expect(events).toHaveLength(1);
@@ -110,8 +108,8 @@ describe("Hook System", () => {
       };
 
       await internalFragment.inContext(async function () {
-        await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema, hooks);
 
             uow.triggerHook("onNoRetry", { data: "test" });
@@ -122,16 +120,17 @@ describe("Hook System", () => {
               internalFragment,
               defaultRetryPolicy: new NoRetryPolicy(),
             });
-          },
-        });
+          })
+          .execute();
       });
 
       const events = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () =>
-            [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
       });
 
       expect(events).toHaveLength(1);
@@ -145,8 +144,8 @@ describe("Hook System", () => {
       };
 
       await internalFragment.inContext(async function () {
-        await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema, hooks);
 
             uow.triggerHook(
@@ -163,16 +162,17 @@ describe("Hook System", () => {
               internalFragment,
               defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 10 }),
             });
-          },
-        });
+          })
+          .execute();
       });
 
       const events = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () =>
-            [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
       });
 
       expect(events[0]?.maxAttempts).toBe(1);
@@ -191,8 +191,8 @@ describe("Hook System", () => {
 
       // Create a pending hook event
       await internalFragment.inContext(async function () {
-        const createdId = await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        const createdId = await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema);
             return uow.create("fragno_hooks", {
               namespace,
@@ -206,8 +206,8 @@ describe("Hook System", () => {
               error: null,
               nonce: "test-nonce",
             });
-          },
-        });
+          })
+          .execute();
         eventId = createdId;
       });
 
@@ -229,10 +229,12 @@ describe("Hook System", () => {
 
       // Verify event was marked as completed
       const result = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () => [internalFragment.services.hookService.getHookById(eventId)] as const,
-          success: ({ depsResult: [event] }) => event,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
       });
 
       expect(result?.status).toBe("completed");
@@ -249,8 +251,8 @@ describe("Hook System", () => {
       let eventId: FragnoId;
 
       await internalFragment.inContext(async function () {
-        const createdId = await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        const createdId = await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema);
             return uow.create("fragno_hooks", {
               namespace,
@@ -264,8 +266,8 @@ describe("Hook System", () => {
               error: null,
               nonce: "test-nonce",
             });
-          },
-        });
+          })
+          .execute();
         eventId = createdId;
       });
 
@@ -279,10 +281,12 @@ describe("Hook System", () => {
       expect(hookFn).toHaveBeenCalledOnce();
 
       const result = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () => [internalFragment.services.hookService.getHookById(eventId)] as const,
-          success: ({ depsResult: [event] }) => event,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
       });
 
       expect(result?.status).toBe("pending");
@@ -301,8 +305,8 @@ describe("Hook System", () => {
       let eventId: FragnoId;
 
       await internalFragment.inContext(async function () {
-        const createdId = await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        const createdId = await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema);
             return uow.create("fragno_hooks", {
               namespace,
@@ -316,8 +320,8 @@ describe("Hook System", () => {
               error: null,
               nonce: "test-nonce",
             });
-          },
-        });
+          })
+          .execute();
         eventId = createdId;
       });
 
@@ -329,10 +333,12 @@ describe("Hook System", () => {
       });
 
       const result = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () => [internalFragment.services.hookService.getHookById(eventId)] as const,
-          success: ({ depsResult: [event] }) => event,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
       });
 
       expect(result?.status).toBe("failed");
@@ -349,8 +355,8 @@ describe("Hook System", () => {
       let eventId: FragnoId;
 
       await internalFragment.inContext(async function () {
-        const createdId = await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        const createdId = await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema);
             return uow.create("fragno_hooks", {
               namespace,
@@ -364,8 +370,8 @@ describe("Hook System", () => {
               error: null,
               nonce: "test-nonce",
             });
-          },
-        });
+          })
+          .execute();
         eventId = createdId;
       });
 
@@ -377,10 +383,12 @@ describe("Hook System", () => {
       });
 
       const result = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () => [internalFragment.services.hookService.getHookById(eventId)] as const,
-          success: ({ depsResult: [event] }) => event,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
       });
 
       expect(result?.status).toBe("failed");
@@ -399,8 +407,8 @@ describe("Hook System", () => {
       };
 
       await internalFragment.inContext(async function () {
-        await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema);
             uow.create("fragno_hooks", {
               namespace,
@@ -438,8 +446,8 @@ describe("Hook System", () => {
               error: null,
               nonce: "nonce-3",
             });
-          },
-        });
+          })
+          .execute();
       });
 
       await processHooks({
@@ -455,11 +463,12 @@ describe("Hook System", () => {
 
       // Verify all were marked as completed
       const events = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () =>
-            [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
       });
 
       const completed = events.filter((e) => e.status === "completed");
@@ -478,8 +487,8 @@ describe("Hook System", () => {
       };
 
       await internalFragment.inContext(async function () {
-        await this.handlerTx({
-          mutate: ({ forSchema }) => {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
             const uow = forSchema(internalSchema);
             uow.create("fragno_hooks", {
               namespace,
@@ -517,8 +526,8 @@ describe("Hook System", () => {
               error: null,
               nonce: "nonce-3",
             });
-          },
-        });
+          })
+          .execute();
       });
 
       await processHooks({
@@ -534,11 +543,12 @@ describe("Hook System", () => {
 
       // Verify hook1 and hook3 were completed, hook2 was marked for retry
       const events = await internalFragment.inContext(async function () {
-        return await this.handlerTx({
-          deps: () =>
-            [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
-          success: ({ depsResult: [result] }) => result,
-        });
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
       });
 
       const completed = events.filter((e) => e.status === "completed");
