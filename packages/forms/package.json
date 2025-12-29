@@ -1,7 +1,7 @@
 {
   "description": "Form builder fragment",
   "name": "@fragno-dev/forms",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "files": [
     "dist"
   ],
