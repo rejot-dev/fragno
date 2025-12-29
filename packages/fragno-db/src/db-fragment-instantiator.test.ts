@@ -65,7 +65,7 @@ function createMockAdapter(): DatabaseAdapter {
         table: vi.fn(() => ({
           findMany: vi.fn(),
         })),
-        nonce: "test-nonce",
+        idempotencyKey: "test-nonce",
         state: "building-retrieval",
       };
     }),

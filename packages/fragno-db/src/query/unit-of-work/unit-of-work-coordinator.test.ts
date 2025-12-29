@@ -722,51 +722,51 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     // If we got here without Node.js throwing an unhandled rejection, the test passes
   });
 
-  it("should inherit nonce from parent to children for idempotent operations", () => {
+  it("should inherit idempotencyKey from parent to children for idempotent operations", () => {
     const executor = createMockExecutor();
     const parentUow = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
-    // Parent UOW should have a nonce
-    const parentNonce = parentUow.nonce;
-    expect(parentNonce).toBeDefined();
-    expect(typeof parentNonce).toBe("string");
-    expect(parentNonce.length).toBeGreaterThan(0);
+    // Parent UOW should have an idempotencyKey
+    const parentIdempotencyKey = parentUow.idempotencyKey;
+    expect(parentIdempotencyKey).toBeDefined();
+    expect(typeof parentIdempotencyKey).toBe("string");
+    expect(parentIdempotencyKey.length).toBeGreaterThan(0);
 
     // Create first child
     const child1 = parentUow.restrict();
-    expect(child1.nonce).toBe(parentNonce);
+    expect(child1.idempotencyKey).toBe(parentIdempotencyKey);
 
     // Create second child (sibling to child1)
     const child2 = parentUow.restrict();
-    expect(child2.nonce).toBe(parentNonce);
+    expect(child2.idempotencyKey).toBe(parentIdempotencyKey);
 
     // Create nested child (child of child1)
     const grandchild = child1.restrict();
-    expect(grandchild.nonce).toBe(parentNonce);
+    expect(grandchild.idempotencyKey).toBe(parentIdempotencyKey);
 
-    // All UOWs in the hierarchy should share the same nonce
-    expect(parentUow.nonce).toBe(child1.nonce);
-    expect(child1.nonce).toBe(child2.nonce);
-    expect(child2.nonce).toBe(grandchild.nonce);
+    // All UOWs in the hierarchy should share the same idempotencyKey
+    expect(parentUow.idempotencyKey).toBe(child1.idempotencyKey);
+    expect(child1.idempotencyKey).toBe(child2.idempotencyKey);
+    expect(child2.idempotencyKey).toBe(grandchild.idempotencyKey);
   });
 
-  it("should generate different nonces for separate UOW hierarchies", () => {
+  it("should generate different idempotencyKeys for separate UOW hierarchies", () => {
     const executor = createMockExecutor();
 
     // Create two separate parent UOWs
     const parentUow1 = createUnitOfWork(createCompiler(), executor, createMockDecoder());
     const parentUow2 = createUnitOfWork(createCompiler(), executor, createMockDecoder());
 
-    // They should have different nonces
-    expect(parentUow1.nonce).not.toBe(parentUow2.nonce);
+    // They should have different idempotencyKeys
+    expect(parentUow1.idempotencyKey).not.toBe(parentUow2.idempotencyKey);
 
-    // But children within each hierarchy should inherit their parent's nonce
+    // But children within each hierarchy should inherit their parent's idempotencyKey
     const child1 = parentUow1.restrict();
     const child2 = parentUow2.restrict();
 
-    expect(child1.nonce).toBe(parentUow1.nonce);
-    expect(child2.nonce).toBe(parentUow2.nonce);
-    expect(child1.nonce).not.toBe(child2.nonce);
+    expect(child1.idempotencyKey).toBe(parentUow1.idempotencyKey);
+    expect(child2.idempotencyKey).toBe(parentUow2.idempotencyKey);
+    expect(child1.idempotencyKey).not.toBe(child2.idempotencyKey);
   });
 
   it("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {

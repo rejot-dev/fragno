@@ -236,7 +236,7 @@ describe("Hook Service", () => {
       payload: { test: "data" },
       attempts: 0,
       maxAttempts: 5,
-      nonce,
+      idempotencyKey: nonce,
     });
   });
 

@@ -152,7 +152,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               payload: event.payload as unknown,
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
-              nonce: event.nonce,
+              idempotencyKey: event.nonce,
             }));
           })
           .build();

@@ -749,7 +749,7 @@ async function executeTx(
         forSchema: <S extends AnySchema, H extends HooksMap = THooks>(schema: S, hooks?: H) => {
           return baseUow.forSchema(schema, hooks);
         },
-        idempotencyKey: baseUow.nonce,
+        idempotencyKey: baseUow.idempotencyKey,
         currentAttempt: attempt,
       };
 

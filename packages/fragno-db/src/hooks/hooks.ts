@@ -6,14 +6,14 @@ import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 
 /**
  * Context available in hook functions via `this`.
- * Contains the nonce for idempotency and database access.
+ * Contains the idempotency key for idempotency and database access.
  */
 export interface HookContext {
   /**
-   * Unique nonce for this transaction.
+   * Unique idempotency key for this transaction.
    * Use this for idempotency checks in your hook implementation.
    */
-  nonce: string;
+  idempotencyKey: string;
 }
 
 /**
@@ -96,7 +96,7 @@ export function prepareHookMutations(uow: IUnitOfWork, config: HookProcessorConf
       lastAttemptAt: null,
       nextRetryAt: null,
       error: null,
-      nonce: uow.nonce,
+      nonce: uow.idempotencyKey,
     });
   }
 }
@@ -138,7 +138,7 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
       }
 
       try {
-        const hookContext: HookContext = { nonce: event.nonce };
+        const hookContext: HookContext = { idempotencyKey: event.idempotencyKey };
         await hookFn.call(hookContext, event.payload);
         return {
           eventId: event.id,
