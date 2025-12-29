@@ -263,13 +263,9 @@ export type MutationResult =
  * Executor interface for Unit of Work operations
  */
 export interface UOWExecutor<TOutput, TRawResult = unknown> {
-  /**
-   * Execute the retrieval phase - all queries run in a single transaction for snapshot isolation
-   */
   executeRetrievalPhase(retrievalBatch: TOutput[]): Promise<TRawResult[]>;
 
   /**
-   * Execute the mutation phase - all queries run in a transaction with version checks
    * Returns success status indicating if mutations completed without conflicts,
    * and internal IDs for create operations (null if database doesn't support RETURNING)
    */

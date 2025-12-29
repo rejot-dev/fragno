@@ -46,7 +46,7 @@ export type ExtractTxFinalResult<T> = T extends undefined
  * Map over deps array to extract retrieve success results from each dep.
  * Preserves tuple structure while extracting the retrieve success result type from each element.
  */
-export type ExtractDepsRetrieveSuccessResults<T extends readonly unknown[]> = {
+export type ExtractDepsIntermediateResults<T extends readonly unknown[]> = {
   [K in keyof T]: ExtractTxRetrieveSuccessResult<T[K]>;
 };
 
@@ -72,7 +72,7 @@ export interface ServiceTxMutateContext<
   /** Result from retrieveSuccess callback (or raw retrieve results if no retrieveSuccess) */
   retrieveResult: TRetrieveSuccessResult;
   /** Array of retrieve success results from dependencies */
-  depsRetrieveResult: TDepsRetrieveSuccessResults;
+  depsIntermediateResult: TDepsRetrieveSuccessResults;
 }
 
 /**
@@ -84,8 +84,8 @@ export interface HandlerTxContext<THooks extends HooksMap> {
     schema: S,
     hooks?: H,
   ) => TypedUnitOfWork<S, [], unknown, H>;
-  /** Nonce for the current transaction attempt */
-  nonce: string;
+  /** Unique key for this transaction attempt (for idempotency/deduplication) */
+  idempotencyKey: string;
   /** Current attempt number (0-based) */
   currentAttempt: number;
 }
@@ -101,7 +101,7 @@ export interface HandlerTxMutateContext<
   /** Result from retrieveSuccess callback (or raw retrieve results if no retrieveSuccess) */
   retrieveResult: TRetrieveSuccessResult;
   /** Array of retrieve success results from dependencies */
-  depsRetrieveResult: TDepsRetrieveSuccessResults;
+  depsIntermediateResult: TDepsRetrieveSuccessResults;
 }
 
 /**
@@ -120,7 +120,7 @@ export interface TxSuccessContextWithMutate<
   /** Array of final results from dependencies */
   depsResult: TDepsFinalResults;
   /** Array of retrieve success results from dependencies (same as what mutate receives) */
-  depsRetrieveResult: TDepsRetrieveResults;
+  depsIntermediateResult: TDepsRetrieveResults;
 }
 
 /**
@@ -138,7 +138,7 @@ export interface TxSuccessContextWithoutMutate<
   /** Array of final results from dependencies */
   depsResult: TDepsFinalResults;
   /** Array of retrieve success results from dependencies (same as what mutate receives) */
-  depsRetrieveResult: TDepsRetrieveResults;
+  depsIntermediateResult: TDepsRetrieveResults;
 }
 
 /**
@@ -196,7 +196,7 @@ export interface ServiceTxCallbacks<
    */
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
 
   /**
@@ -206,7 +206,7 @@ export interface ServiceTxCallbacks<
     ctx: ServiceTxMutateContext<
       TSchema,
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -219,7 +219,7 @@ export interface ServiceTxCallbacks<
       TRetrieveSuccessResult,
       TMutateResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
@@ -245,13 +245,13 @@ export interface ServiceTxCallbacksWithSuccessAndMutate<
   ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate: (
     ctx: ServiceTxMutateContext<
       TSchema,
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -260,7 +260,7 @@ export interface ServiceTxCallbacksWithSuccessAndMutate<
       TRetrieveSuccessResult,
       TMutateResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
@@ -281,21 +281,22 @@ export interface ServiceTxCallbacksWithSuccessNoMutate<
   ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate?: undefined;
   success: (
     ctx: TxSuccessContextWithoutMutate<
       TRetrieveSuccessResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
 
 /**
  * Service callbacks with success callback - returns TSuccessResult
- * @deprecated Use ServiceTxCallbacksWithSuccessAndMutate or ServiceTxCallbacksWithSuccessNoMutate instead
+ * @deprecated Use ServiceTxCallbacksWithSuccessAndMutate or
+ * ServiceTxCallbacksWithSuccessNoMutate instead
  */
 export interface ServiceTxCallbacksWithSuccess<
   TSchema extends AnySchema,
@@ -313,13 +314,13 @@ export interface ServiceTxCallbacksWithSuccess<
   ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate?: (
     ctx: ServiceTxMutateContext<
       TSchema,
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -328,7 +329,7 @@ export interface ServiceTxCallbacksWithSuccess<
       TRetrieveSuccessResult,
       TMutateResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
@@ -349,13 +350,13 @@ export interface ServiceTxCallbacksWithMutateAndRetrieveSuccess<
   ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
   retrieveSuccess: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate: (
     ctx: ServiceTxMutateContext<
       TSchema,
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -384,7 +385,7 @@ export interface ServiceTxCallbacksWithMutateNoRetrieveSuccess<
     ctx: ServiceTxMutateContext<
       TSchema,
       TRetrieveResults,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -406,7 +407,7 @@ export interface ServiceTxCallbacksWithMutateOnly<
   retrieve?: undefined;
   retrieveSuccess?: undefined;
   mutate: (
-    ctx: ServiceTxMutateContext<TSchema, unknown, ExtractDepsRetrieveSuccessResults<TDeps>, THooks>,
+    ctx: ServiceTxMutateContext<TSchema, unknown, ExtractDepsIntermediateResults<TDeps>, THooks>,
   ) => TMutateResult;
   success?: undefined;
 }
@@ -426,7 +427,7 @@ export interface ServiceTxCallbacksWithRetrieveSuccess<
   ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
   retrieveSuccess: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate?: undefined;
   success?: undefined;
@@ -477,7 +478,7 @@ export interface HandlerTxCallbacks<
    */
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
 
   /**
@@ -486,7 +487,7 @@ export interface HandlerTxCallbacks<
   mutate?: (
     ctx: HandlerTxMutateContext<
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -499,7 +500,7 @@ export interface HandlerTxCallbacks<
       TRetrieveSuccessResult,
       TMutateResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
@@ -522,12 +523,12 @@ export interface HandlerTxCallbacksWithSuccessMutateDeps<
   retrieve?: (context: HandlerTxContext<THooks>) => TRetrieveResults | void;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate: (
     ctx: HandlerTxMutateContext<
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -536,7 +537,7 @@ export interface HandlerTxCallbacksWithSuccessMutateDeps<
       TRetrieveSuccessResult,
       TMutateResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
@@ -553,7 +554,7 @@ export interface HandlerTxCallbacksWithSuccessMutateNoDeps<
   retrieve?: (context: HandlerTxContext<THooks>) => TRetrieveResults | void;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: readonly [],
+    depsIntermediateResult: readonly [],
   ) => TRetrieveSuccessResult;
   mutate: (
     ctx: HandlerTxMutateContext<TRetrieveSuccessResult, readonly [], THooks>,
@@ -581,14 +582,14 @@ export interface HandlerTxCallbacksWithSuccessDepsNoMutate<
   retrieve?: (context: HandlerTxContext<THooks>) => TRetrieveResults | void;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate?: undefined;
   success: (
     ctx: TxSuccessContextWithoutMutate<
       TRetrieveSuccessResult,
       ExtractDepsFinalResults<TDeps>,
-      ExtractDepsRetrieveSuccessResults<TDeps>
+      ExtractDepsIntermediateResults<TDeps>
     >,
   ) => TSuccessResult;
 }
@@ -604,7 +605,7 @@ export interface HandlerTxCallbacksWithSuccessNoDepsNoMutate<
   retrieve?: (context: HandlerTxContext<THooks>) => TRetrieveResults | void;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: readonly [],
+    depsIntermediateResult: readonly [],
   ) => TRetrieveSuccessResult;
   mutate?: undefined;
   success: (
@@ -625,12 +626,12 @@ export interface HandlerTxCallbacksWithMutate<
   retrieve?: (context: HandlerTxContext<THooks>) => TRetrieveResults | void;
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate: (
     ctx: HandlerTxMutateContext<
       TRetrieveSuccessResult,
-      ExtractDepsRetrieveSuccessResults<TDeps>,
+      ExtractDepsIntermediateResults<TDeps>,
       THooks
     >,
   ) => TMutateResult;
@@ -649,7 +650,7 @@ export interface HandlerTxCallbacksWithRetrieveSuccess<
   retrieve?: (context: HandlerTxContext<THooks>) => TRetrieveResults | void;
   retrieveSuccess: (
     retrieveResult: TRetrieveResults,
-    depsRetrieveResult: ExtractDepsRetrieveSuccessResults<TDeps>,
+    depsIntermediateResult: ExtractDepsIntermediateResults<TDeps>,
   ) => TRetrieveSuccessResult;
   mutate?: undefined;
   success?: undefined;
@@ -827,7 +828,8 @@ export function createServiceTx<
 ): TxResult<TSuccessResult, TRetrieveSuccessResult>;
 
 // Overload 2: With mutate only (no retrieve/retrieveSuccess) - returns TMutateResult
-// The second generic (TRetrieveSuccessResult for deps) is TMutateResult since there's no retrieve phase
+// The second generic (TRetrieveSuccessResult for deps) is TMutateResult since
+// there's no retrieve phase
 export function createServiceTx<
   TSchema extends AnySchema,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1062,7 +1064,8 @@ export interface ExecuteTxOptions {
 /**
  * Recursively collect all TxResults from a dependency tree.
  * Returns them in a flat array in dependency order (deps before their dependents).
- * Skips undefined values (which can occur with optional service patterns like optionalService?.method()).
+ * Skips undefined values (which can occur with optional service patterns like
+ * optionalService?.method()).
  */
 function collectAllTxResults(
   txResults: readonly (TxResult<unknown> | undefined)[],
@@ -1115,11 +1118,11 @@ async function processTxResultAfterRetrieve<T>(
   // Collect deps' retrieve success results (or mutate results if no retrieve was provided)
   // When a dep has no retrieve/retrieveSuccess but has mutate, its mutate has already run
   // (due to dependency order), so we use its mutate result as the "retrieve success result".
-  const depsRetrieveResults: unknown[] = [];
+  const depsIntermediateResults: unknown[] = [];
   if (internal.deps) {
     for (const dep of internal.deps) {
       if (dep === undefined) {
-        depsRetrieveResults.push(undefined);
+        depsIntermediateResults.push(undefined);
         continue;
       }
 
@@ -1132,11 +1135,11 @@ async function processTxResultAfterRetrieve<T>(
           depInternal.callbacks.mutate
         )
       ) {
-        depsRetrieveResults.push(depInternal.retrieveSuccessResult);
+        depsIntermediateResults.push(depInternal.retrieveSuccessResult);
       } else if (depInternal.mutateResult !== undefined) {
-        depsRetrieveResults.push(depInternal.mutateResult);
+        depsIntermediateResults.push(depInternal.mutateResult);
       } else {
-        depsRetrieveResults.push(depInternal.retrieveSuccessResult);
+        depsIntermediateResults.push(depInternal.retrieveSuccessResult);
       }
     }
   }
@@ -1144,7 +1147,7 @@ async function processTxResultAfterRetrieve<T>(
   if (callbacks.retrieveSuccess) {
     internal.retrieveSuccessResult = callbacks.retrieveSuccess(
       retrieveResults,
-      depsRetrieveResults as ExtractDepsRetrieveSuccessResults<readonly TxResult<unknown>[]>,
+      depsIntermediateResults as ExtractDepsIntermediateResults<readonly TxResult<unknown>[]>,
     );
   } else {
     internal.retrieveSuccessResult = retrieveResults as typeof internal.retrieveSuccessResult;
@@ -1155,11 +1158,12 @@ async function processTxResultAfterRetrieve<T>(
       uow: internal.schema
         ? baseUow.forSchema(internal.schema)
         : (undefined as unknown as TypedUnitOfWork<AnySchema, [], unknown, HooksMap>),
-      // At this point retrieveSuccessResult has been set (either by retrieveSuccess callback or defaulted to retrieveResults)
+      // At this point retrieveSuccessResult has been set (either by retrieveSuccess
+      // callback or defaulted to retrieveResults)
       retrieveResult: internal.retrieveSuccessResult as NonNullable<
         typeof internal.retrieveSuccessResult
       >,
-      depsRetrieveResult: depsRetrieveResults as ExtractDepsRetrieveSuccessResults<
+      depsIntermediateResult: depsIntermediateResults as ExtractDepsIntermediateResults<
         readonly TxResult<unknown>[]
       >,
     };
@@ -1181,12 +1185,12 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
   const internal = txResult._internal;
   const callbacks = internal.callbacks;
 
-  const depsRetrieveResults: unknown[] = [];
+  const depsIntermediateResults: unknown[] = [];
   const depsFinalResults: unknown[] = [];
   if (internal.deps) {
     for (const dep of internal.deps) {
       if (dep === undefined) {
-        depsRetrieveResults.push(undefined);
+        depsIntermediateResults.push(undefined);
         depsFinalResults.push(undefined);
         continue;
       }
@@ -1202,11 +1206,11 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
           depInternal.callbacks.mutate
         )
       ) {
-        depsRetrieveResults.push(depInternal.retrieveSuccessResult);
+        depsIntermediateResults.push(depInternal.retrieveSuccessResult);
       } else if (depInternal.mutateResult !== undefined) {
-        depsRetrieveResults.push(depInternal.mutateResult);
+        depsIntermediateResults.push(depInternal.mutateResult);
       } else {
-        depsRetrieveResults.push(depInternal.retrieveSuccessResult);
+        depsIntermediateResults.push(depInternal.retrieveSuccessResult);
       }
       depsFinalResults.push(depInternal.finalResult);
     }
@@ -1219,7 +1223,7 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
       >,
       mutateResult: internal.mutateResult,
       depsResult: depsFinalResults as ExtractDepsFinalResults<readonly TxResult<unknown>[]>,
-      depsRetrieveResult: depsRetrieveResults as ExtractDepsRetrieveSuccessResults<
+      depsIntermediateResult: depsIntermediateResults as ExtractDepsIntermediateResults<
         readonly TxResult<unknown>[]
       >,
     };
@@ -1255,7 +1259,7 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
  * // With deps
  * const orderId = await executeTx({
  *   deps: () => [userService.getUserById(userId)],
- *   mutate: ({ forSchema, depsRetrieveResult: [user] }) => {
+ *   mutate: ({ forSchema, depsIntermediateResult: [user] }) => {
  *     if (!user) throw new Error("User not found");
  *     return forSchema(ordersSchema).create("orders", { ... });
  *   },
@@ -1421,7 +1425,7 @@ export async function executeTx(
         forSchema: <S extends AnySchema, H extends HooksMap = THooks>(schema: S, hooks?: H) => {
           return baseUow.forSchema(schema, hooks);
         },
-        nonce: baseUow.nonce,
+        idempotencyKey: baseUow.nonce,
         currentAttempt: attempt,
       };
 
@@ -1447,11 +1451,11 @@ export async function executeTx(
         await processTxResultAfterRetrieve(txResult, baseUow);
       }
 
-      const depsRetrieveResults: unknown[] = [];
+      const depsIntermediateResults: unknown[] = [];
       if (deps) {
         for (const dep of deps) {
           if (dep === undefined) {
-            depsRetrieveResults.push(undefined);
+            depsIntermediateResults.push(undefined);
             continue;
           }
           const depInternal = dep._internal;
@@ -1463,11 +1467,11 @@ export async function executeTx(
               depInternal.callbacks.mutate
             )
           ) {
-            depsRetrieveResults.push(depInternal.retrieveSuccessResult);
+            depsIntermediateResults.push(depInternal.retrieveSuccessResult);
           } else if (depInternal.mutateResult !== undefined) {
-            depsRetrieveResults.push(depInternal.mutateResult);
+            depsIntermediateResults.push(depInternal.mutateResult);
           } else {
-            depsRetrieveResults.push(depInternal.retrieveSuccessResult);
+            depsIntermediateResults.push(depInternal.retrieveSuccessResult);
           }
         }
       }
@@ -1477,7 +1481,7 @@ export async function executeTx(
       if (callbacks.retrieveSuccess) {
         retrieveSuccessResult = callbacks.retrieveSuccess(
           retrieveResult,
-          depsRetrieveResults as ExtractDepsRetrieveSuccessResults<TDeps>,
+          depsIntermediateResults as ExtractDepsIntermediateResults<TDeps>,
         );
       } else {
         retrieveSuccessResult = retrieveResult as unknown as TRetrieveSuccessResult;
@@ -1487,12 +1491,12 @@ export async function executeTx(
       if (callbacks.mutate) {
         const mutateCtx: HandlerTxMutateContext<
           TRetrieveSuccessResult,
-          ExtractDepsRetrieveSuccessResults<TDeps>,
+          ExtractDepsIntermediateResults<TDeps>,
           THooks
         > = {
           ...context,
           retrieveResult: retrieveSuccessResult,
-          depsRetrieveResult: depsRetrieveResults as ExtractDepsRetrieveSuccessResults<TDeps>,
+          depsIntermediateResult: depsIntermediateResults as ExtractDepsIntermediateResults<TDeps>,
         };
         mutateResult = callbacks.mutate(mutateCtx);
       }
@@ -1529,7 +1533,7 @@ export async function executeTx(
           retrieveResult: retrieveSuccessResult,
           mutateResult,
           depsResult: depsFinalResults as ExtractDepsFinalResults<TDeps>,
-          depsRetrieveResult: depsRetrieveResults as ExtractDepsRetrieveSuccessResults<TDeps>,
+          depsIntermediateResult: depsIntermediateResults as ExtractDepsIntermediateResults<TDeps>,
         } as Parameters<NonNullable<typeof callbacks.success>>[0];
         finalResult = callbacks.success(successCtx);
       } else if (callbacks.mutate) {
@@ -1665,9 +1669,9 @@ export interface TxPhaseContext<THooks extends HooksMap> {
     hooks?: H,
   ) => TypedUnitOfWork<S, [], unknown, H>;
   /**
-   * Nonce for the current transaction attempt
+   * Idempotency key for the current transaction attempt
    */
-  nonce: string;
+  idempotencyKey: string;
   /**
    * Current attempt number (0-based)
    */
@@ -1700,15 +1704,15 @@ export type ExtractServiceFinalResults<T extends readonly unknown[]> = {
 export interface ServiceBuilderMutateContext<
   TSchema extends AnySchema,
   TRetrieveSuccessResult,
-  TServiceRetrieveResult extends readonly unknown[],
+  TServiceResult extends readonly unknown[],
   THooks extends HooksMap,
 > {
   /** Unit of work for scheduling mutations */
   uow: TypedUnitOfWork<TSchema, [], unknown, THooks>;
   /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
   retrieveResult: TRetrieveSuccessResult;
-  /** Array of retrieve results from service call dependencies */
-  serviceRetrieveResult: TServiceRetrieveResult;
+  /** Array of results from service call dependencies (retrieve results if service has retrieve, mutate result if service only mutates) */
+  serviceResult: TServiceResult;
 }
 
 /**
@@ -1716,7 +1720,7 @@ export interface ServiceBuilderMutateContext<
  */
 export interface HandlerBuilderMutateContext<
   TRetrieveSuccessResult,
-  TServiceRetrieveResult extends readonly unknown[],
+  TServiceResult extends readonly unknown[],
   THooks extends HooksMap,
 > {
   /** Get a typed Unit of Work for the given schema */
@@ -1727,11 +1731,11 @@ export interface HandlerBuilderMutateContext<
   /** Unique key for this transaction (for idempotency/deduplication) */
   idempotencyKey: string;
   /** Current attempt number (0-based) */
-  attemptCount: number;
+  currentAttempt: number;
   /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
   retrieveResult: TRetrieveSuccessResult;
-  /** Array of retrieve results from service call dependencies */
-  serviceRetrieveResult: TServiceRetrieveResult;
+  /** Array of results from service call dependencies (retrieve results if service has retrieve, mutate result if service only mutates) */
+  serviceResult: TServiceResult;
 }
 
 /**
@@ -1740,17 +1744,17 @@ export interface HandlerBuilderMutateContext<
 export interface BuilderTransformContextWithMutate<
   TRetrieveSuccessResult,
   TMutateResult,
-  TServiceResult extends readonly unknown[],
-  TServiceRetrieveResult extends readonly unknown[],
+  TServiceFinalResult extends readonly unknown[],
+  TServiceIntermediateResult extends readonly unknown[],
 > {
   /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
   retrieveResult: TRetrieveSuccessResult;
   /** Result from mutate callback */
   mutateResult: TMutateResult;
-  /** Array of final results from service call dependencies */
-  serviceResult: TServiceResult;
-  /** Array of retrieve results from service call dependencies */
-  serviceRetrieveResult: TServiceRetrieveResult;
+  /** Array of final results from service call dependencies (after success/transform callbacks) */
+  serviceResult: TServiceFinalResult;
+  /** Array of intermediate results from service call dependencies (same as what mutate receives: retrieve results if service has retrieve, mutate result if service only mutates) */
+  serviceIntermediateResult: TServiceIntermediateResult;
 }
 
 /**
@@ -1758,17 +1762,17 @@ export interface BuilderTransformContextWithMutate<
  */
 export interface BuilderTransformContextWithoutMutate<
   TRetrieveSuccessResult,
-  TServiceResult extends readonly unknown[],
-  TServiceRetrieveResult extends readonly unknown[],
+  TServiceFinalResult extends readonly unknown[],
+  TServiceIntermediateResult extends readonly unknown[],
 > {
   /** Result from transformRetrieve callback (or raw retrieve results if no transformRetrieve) */
   retrieveResult: TRetrieveSuccessResult;
   /** No mutate callback was provided */
   mutateResult: undefined;
-  /** Array of final results from service call dependencies */
-  serviceResult: TServiceResult;
-  /** Array of retrieve results from service call dependencies */
-  serviceRetrieveResult: TServiceRetrieveResult;
+  /** Array of final results from service call dependencies (after success/transform callbacks) */
+  serviceResult: TServiceFinalResult;
+  /** Array of intermediate results from service call dependencies (same as what mutate receives: retrieve results if service has retrieve, mutate result if service only mutates) */
+  serviceIntermediateResult: TServiceIntermediateResult;
 }
 
 /**
@@ -1803,13 +1807,25 @@ export type InferBuilderResultType<
 /**
  * Infer the retrieve success result type for the builder:
  * - If transformRetrieve exists: TRetrieveSuccessResult
- * - Else: TRetrieveResults (raw retrieve results)
+ * - Else if retrieve exists: TRetrieveResults (raw retrieve results)
+ * - Else if mutate exists: AwaitedPromisesInObject<TMutateResult>
+ *   (mutate result becomes retrieve result for dependents)
+ * - Else: TRetrieveResults (raw retrieve results, typically [])
  */
 export type InferBuilderRetrieveSuccessResult<
   TRetrieveResults extends unknown[],
   TRetrieveSuccessResult,
+  TMutateResult,
   HasTransformRetrieve extends boolean,
-> = HasTransformRetrieve extends true ? TRetrieveSuccessResult : TRetrieveResults;
+  HasRetrieve extends boolean,
+  HasMutate extends boolean,
+> = HasTransformRetrieve extends true
+  ? TRetrieveSuccessResult
+  : HasRetrieve extends true
+    ? TRetrieveResults
+    : HasMutate extends true
+      ? AwaitedPromisesInObject<TMutateResult>
+      : TRetrieveResults;
 
 /**
  * Internal state for ServiceTxBuilder
@@ -1833,7 +1849,7 @@ interface ServiceTxBuilderState<
   ) => TypedUnitOfWork<TSchema, TRetrieveResults, unknown, THooks>;
   transformRetrieveFn?: (
     retrieveResult: TRetrieveResults,
-    serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+    serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
   ) => TRetrieveSuccessResult;
   mutateFn?: (
     ctx: ServiceBuilderMutateContext<
@@ -1868,11 +1884,11 @@ interface ServiceTxBuilderState<
  * return serviceTxBuilder(schema)
  *   .withServiceCalls(() => [otherService.getData()])
  *   .retrieve((uow) => uow.find("users", ...))
- *   .transformRetrieve(([users]) => users[0])
- *   .mutate(({ uow, retrieveResult, serviceRetrieveResult }) =>
+ *   .transformRetrieve(([users], serviceResult) => users[0])
+ *   .mutate(({ uow, retrieveResult, serviceResult }) =>
  *     uow.create("records", { ... })
  *   )
- *   .transform(({ mutateResult, serviceResult }) => ({ id: mutateResult }))
+ *   .transform(({ mutateResult, serviceResult, serviceIntermediateResult }) => ({ id: mutateResult }))
  *   .build();
  * ```
  */
@@ -1988,7 +2004,7 @@ export class ServiceTxBuilder<
   transformRetrieve<TNewRetrieveSuccessResult>(
     fn: (
       retrieveResult: TRetrieveResults,
-      serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+      serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
     ) => TNewRetrieveSuccessResult,
   ): ServiceTxBuilder<
     TSchema,
@@ -2119,7 +2135,10 @@ export class ServiceTxBuilder<
     InferBuilderRetrieveSuccessResult<
       TRetrieveResults,
       TRetrieveSuccessResult,
-      HasTransformRetrieve
+      TMutateResult,
+      HasTransformRetrieve,
+      HasRetrieve,
+      HasMutate
     >
   > {
     const state = this.#state;
@@ -2139,24 +2158,22 @@ export class ServiceTxBuilder<
       retrieveSuccess: state.transformRetrieveFn,
       mutate: state.mutateFn
         ? (ctx) => {
-            // Map old context field names to new ones
             return state.mutateFn!({
               uow: ctx.uow,
               retrieveResult: ctx.retrieveResult,
-              serviceRetrieveResult:
-                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+              serviceResult:
+                ctx.depsIntermediateResult as ExtractServiceRetrieveResults<TServiceCalls>,
             });
           }
         : undefined,
       success: state.transformFn
         ? (ctx) => {
-            // Map old context field names to new ones
             return state.transformFn!({
               retrieveResult: ctx.retrieveResult,
               mutateResult: ctx.mutateResult,
               serviceResult: ctx.depsResult as ExtractServiceFinalResults<TServiceCalls>,
-              serviceRetrieveResult:
-                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+              serviceIntermediateResult:
+                ctx.depsIntermediateResult as ExtractServiceRetrieveResults<TServiceCalls>,
             } as BuilderTransformContextWithMutate<
               TRetrieveSuccessResult,
               TMutateResult,
@@ -2184,7 +2201,10 @@ export class ServiceTxBuilder<
       InferBuilderRetrieveSuccessResult<
         TRetrieveResults,
         TRetrieveSuccessResult,
-        HasTransformRetrieve
+        TMutateResult,
+        HasTransformRetrieve,
+        HasRetrieve,
+        HasMutate
       >
     >;
   }
@@ -2238,11 +2258,11 @@ interface HandlerTxBuilderState<
       hooks?: H,
     ) => TypedUnitOfWork<S, [], unknown, H>;
     idempotencyKey: string;
-    attemptCount: number;
+    currentAttempt: number;
   }) => TRetrieveResults | void;
   transformRetrieveFn?: (
     retrieveResult: TRetrieveResults,
-    serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+    serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
   ) => TRetrieveSuccessResult;
   mutateFn?: (
     ctx: HandlerBuilderMutateContext<
@@ -2275,7 +2295,7 @@ interface HandlerTxBuilderState<
  * ```ts
  * const result = await handlerTxBuilder()
  *   .withServiceCalls(() => [userService.getUser(id)])
- *   .mutate(({ forSchema, idempotencyKey, attemptCount, serviceRetrieveResult }) => {
+ *   .mutate(({ forSchema, idempotencyKey, currentAttempt, serviceResult }) => {
  *     return forSchema(ordersSchema).create("orders", { ... });
  *   })
  *   .transform(({ mutateResult, serviceResult }) => ({ ... }))
@@ -2358,7 +2378,7 @@ export class HandlerTxBuilder<
         hooks?: H,
       ) => TypedUnitOfWork<S, [], unknown, H>;
       idempotencyKey: string;
-      attemptCount: number;
+      currentAttempt: number;
     }) => TNewRetrieveResults | void,
   ): HandlerTxBuilder<
     TServiceCalls,
@@ -2392,7 +2412,7 @@ export class HandlerTxBuilder<
   transformRetrieve<TNewRetrieveSuccessResult>(
     fn: (
       retrieveResult: TRetrieveResults,
-      serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
+      serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
     ) => TNewRetrieveSuccessResult,
   ): HandlerTxBuilder<
     TServiceCalls,
@@ -2530,37 +2550,34 @@ export class HandlerTxBuilder<
       deps: state.withServiceCallsFn,
       retrieve: state.retrieveFn
         ? (context) => {
-            // Map old context field names to new ones
             return state.retrieveFn!({
               forSchema: context.forSchema,
-              idempotencyKey: context.nonce,
-              attemptCount: context.currentAttempt,
+              idempotencyKey: context.idempotencyKey,
+              currentAttempt: context.currentAttempt,
             });
           }
         : undefined,
       retrieveSuccess: state.transformRetrieveFn,
       mutate: state.mutateFn
         ? (ctx) => {
-            // Map old context field names to new ones
             return state.mutateFn!({
               forSchema: ctx.forSchema,
-              idempotencyKey: ctx.nonce,
-              attemptCount: ctx.currentAttempt,
+              idempotencyKey: ctx.idempotencyKey,
+              currentAttempt: ctx.currentAttempt,
               retrieveResult: ctx.retrieveResult,
-              serviceRetrieveResult:
-                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+              serviceResult:
+                ctx.depsIntermediateResult as ExtractServiceRetrieveResults<TServiceCalls>,
             });
           }
         : undefined,
       success: state.transformFn
         ? (ctx) => {
-            // Map old context field names to new ones
             return state.transformFn!({
               retrieveResult: ctx.retrieveResult,
               mutateResult: ctx.mutateResult,
               serviceResult: ctx.depsResult as ExtractServiceFinalResults<TServiceCalls>,
-              serviceRetrieveResult:
-                ctx.depsRetrieveResult as ExtractServiceRetrieveResults<TServiceCalls>,
+              serviceIntermediateResult:
+                ctx.depsIntermediateResult as ExtractServiceRetrieveResults<TServiceCalls>,
             } as BuilderTransformContextWithMutate<
               TRetrieveSuccessResult,
               TMutateResult,

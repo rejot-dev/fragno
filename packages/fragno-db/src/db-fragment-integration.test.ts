@@ -135,7 +135,7 @@ describe.sequential("Database Fragment Integration", () => {
         createOrder(userExternalId: string, productName: string, quantity: number, total: number) {
           return this.serviceTx(ordersSchema, {
             deps: () => [serviceDeps.userService.getUserById(userExternalId)] as const,
-            mutate: ({ uow, depsRetrieveResult: [user] }) => {
+            mutate: ({ uow, depsIntermediateResult: [user] }) => {
               if (!user) {
                 throw new Error("User not found");
               }
@@ -402,19 +402,19 @@ describe.sequential("Database Fragment Integration", () => {
     });
   });
 
-  it("should provide nonce and currentAttempt in the handlerTx context", async () => {
-    let firstNonce: string;
+  it("should provide idempotencyKey and currentAttempt in the handlerTx context", async () => {
+    let firstIdempotencyKey: string;
 
     const result = await usersFragment.inContext(async function () {
       return await this.handlerTx({
-        mutate: ({ forSchema, nonce, currentAttempt }) => {
+        mutate: ({ forSchema, idempotencyKey, currentAttempt }) => {
           if (currentAttempt === 0) {
-            firstNonce = nonce;
+            firstIdempotencyKey = idempotencyKey;
             // Trigger a conflict by throwing the specific conflict error
             throw new ConcurrencyConflictError();
           }
 
-          expect(nonce).toBe(firstNonce);
+          expect(idempotencyKey).toBe(firstIdempotencyKey);
 
           // Create something to verify the mutation works
           const newUserId = forSchema(usersSchema).create("users", {
@@ -425,17 +425,19 @@ describe.sequential("Database Fragment Integration", () => {
           // Return context data
           return {
             newUserId,
-            nonce,
+            idempotencyKey,
             currentAttempt,
           };
         },
       });
     });
 
-    // Verify nonce is a string UUID
-    expect(result.nonce).toBeDefined();
-    expect(typeof result.nonce).toBe("string");
-    expect(result.nonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    // Verify idempotencyKey is a string UUID
+    expect(result.idempotencyKey).toBeDefined();
+    expect(typeof result.idempotencyKey).toBe("string");
+    expect(result.idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
 
     expect(result.currentAttempt).toBe(1);
 

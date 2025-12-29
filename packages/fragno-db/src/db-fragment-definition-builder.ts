@@ -93,13 +93,13 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
    * // Simple retrieve + transform
    * return this.serviceTx(schema, {
    *   retrieve: (uow) => uow.find("users", ...),
-   *   retrieveSuccess: ([users]) => users[0] ?? null,
+   *   transformRetrieve: ([users]) => users[0] ?? null,
    * });
    *
    * // With deps (service composition)
    * return this.serviceTx(schema, {
    *   deps: () => [otherService.getData()],
-   *   mutate: ({ uow, depsRetrieveResult: [data] }) => {
+   *   mutate: ({ uow, depsIntermediateResult: [data] }) => {
    *     return uow.create("records", { data });
    *   },
    * });
@@ -174,7 +174,8 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
     schema: TSchema,
     callbacks: ServiceTxCallbacksWithMutateOnly<TSchema, TDeps, TMutateResult, THooks>,
   ): TxResult<TMutateResult, TMutateResult>;
-  // Overload 2c: With mutate and retrieve but NO retrieveSuccess (and no success) - returns TMutateResult
+  // Overload 2c: With mutate and retrieve but NO retrieveSuccess (and no success) -
+  // returns TMutateResult
   // retrieveResult in mutate is TRetrieveResults (raw array)
   serviceTx<
     TSchema extends AnySchema,
@@ -222,7 +223,8 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
 
   /**
    * Create a service-level transaction builder using the fluent API.
-   * Returns a builder that can be chained with withServiceCalls, retrieve, transformRetrieve, mutate, transform, and build.
+   * Returns a builder that can be chained with withServiceCalls, retrieve,
+   * transformRetrieve, mutate, transform, and build.
    *
    * @example
    * ```ts
@@ -230,7 +232,7 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
    *   .withServiceCalls(() => [otherService.getData()])
    *   .retrieve((uow) => uow.find("users", ...))
    *   .transformRetrieve(([users]) => users[0])
-   *   .mutate(({ uow, retrieveResult, serviceRetrieveResult }) =>
+   *   .mutate(({ uow, retrieveResult, serviceIntermediateResult }) =>
    *     uow.create("records", { ... })
    *   )
    *   .transform(({ mutateResult, serviceResult }) => ({ id: mutateResult }))
@@ -269,13 +271,13 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
    *   deps: () => [userService.getUser(id), orderService.getOrders(id)],
    * });
    *
-   * // With success callback
+   * // With transform callback
    * const result = await this.handlerTx({
    *   deps: () => [userService.getUser(id)],
-   *   mutate: ({ forSchema, depsRetrieveResult: [user] }) => {
+   *   mutate: ({ forSchema, depsIntermediateResult: [user] }) => {
    *     return forSchema(ordersSchema).create("orders", { userId: user.id });
    *   },
-   *   success: ({ mutateResult, depsResult: [user] }) => ({
+   *   transform: ({ mutateResult, serviceResult: [user] }) => ({
    *     orderId: mutateResult,
    *     userName: user.name,
    *   }),
@@ -385,13 +387,14 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
 
   /**
    * Create a handler-level transaction builder using the fluent API.
-   * Returns a builder that can be chained with withServiceCalls, retrieve, transformRetrieve, mutate, transform, and execute.
+   * Returns a builder that can be chained with withServiceCalls, retrieve,
+   * transformRetrieve, mutate, transform, and execute.
    *
    * @example
    * ```ts
    * const result = await this.handlerTxBuilder()
    *   .withServiceCalls(() => [userService.getUser(id)])
-   *   .mutate(({ forSchema, idempotencyKey, attemptCount, serviceRetrieveResult }) => {
+   *   .mutate(({ forSchema, idempotencyKey, currentAttempt, serviceIntermediateResult }) => {
    *     return forSchema(ordersSchema).create("orders", { ... });
    *   })
    *   .transform(({ mutateResult, serviceResult }) => ({ ... }))
@@ -697,7 +700,7 @@ export class DatabaseFragmentDefinitionBuilder<
    * ```ts
    * .provideHooks(({ defineHook, config }) => ({
    *   onSubscribe: defineHook(async function (payload: { email: string }) {
-   *     // 'this' context available (HookServiceContext with nonce)
+   *     // 'this' context available (HookServiceContext with idempotencyKey)
    *     await config.onSubscribe?.(payload.email);
    *   }),
    * }))
