@@ -15,6 +15,7 @@ icon: NotebookTabs
 | **Durable Hooks**                  | Side effects registered during a database transaction that are persisted and executed after commit, with automatic retries on failure                          | Database |
 | **FragnoId**                       | A type that carries both ID and version information, used for optimistic concurrency control in database operations                                            | Database |
 | **Optimistic Concurrency Control** | A concurrency control method that uses version checking to detect conflicts, automatically retrying transactions when conflicts occur                          | Database |
-| **Unit of Work (UOW)**             | A two-phase transaction pattern where services enqueue reads/writes and route handlers execute them atomically, enabling composition and batching              | Database |
+| **Transaction / UOW**              | A two-phase Unit of Work pattern where reads and writes are batched together and executed atomically, enabling composition across multiple services            | Database |
+| **Tx Builder**                     | A fluent API (`serviceTx`, `handlerTx`) for defining and executing transactions with methods like `.retrieve()`, `.mutate()`, `.transform()`, and `.execute()` | Database |
 | **Code Splitting**                 | Automatic separation of client and server code during build time, removing server-side dependencies from client bundles                                        | Build    |
 | **Unplugin**                       | A unified plugin system that supports Vite, Rollup, webpack, and other build tools, used by fragment authors through the `@fragno-dev/unplugin-fragno` package | Build    |

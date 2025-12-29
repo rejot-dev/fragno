@@ -6,25 +6,31 @@ description: Using the DB to query and manipulate data
 import { Callout } from "fumadocs-ui/components/callout";
 
 Fragno DB queries are type-safe and based on your schema. The recommended way to query is via the
-**Unit of Work (UOW)** helpers on the `this` context, so reads/writes can be **composed** and
-**batched** into a single transaction.
+**Transaction Builder** `this.handlerTx()` in route handlers, so reads/writes can be **composed**
+and **batched** into a single transaction.
 
-## Querying with `this.uow(...)`
+## Using the transaction (`tx`) helper
 
-There are two places you’ll use UOWs:
+In route handlers, use `this.handlerTx()` to build and execute transactions:
 
-- **Services**: `this.uow(schema)` gives a **restricted UOW** that can schedule operations and await
-  `retrievalPhase` / `mutationPhase`.
-- **Route handlers**: `this.uow(callback, options)` controls execution and runs `executeRetrieve()`
-  / `executeMutate()` (with retries on optimistic conflicts).
+```typescript
+handler: async function (_, { json }) {
+  const [users] = await this.handlerTx()
+    .retrieve(({ forSchema }) =>
+      forSchema(mySchema).find("users", (b) => b.whereIndex("primary")),
+    )
+    .execute();
+
+  return json({ users });
+}
+```
 
 See [Transactions](/docs/fragno/for-library-authors/database-integration/transactions) for the full
-pattern.
+pattern including services with `serviceTx`.
 
-<Callout title="Use function syntax in services" type="warn">
-  Service methods should be defined with `defineService({ ... })` and use `function (...) { ... }`
-  syntax so `this.uow(...)` is available and typed. Arrow functions (`() => {}`) don’t have their
-  own `this`.
+<Callout title="Use function syntax in handlers" type="warn">
+  Route handlers should use `async function (...) { ... }` syntax so `this.handlerTx()` is available
+  and typed. Arrow functions (`() => {}`) don't have their own `this`.
 </Callout>
 
 ## Finding Records
@@ -35,10 +41,13 @@ All `find(...)` and `findFirst(...)` queries must specify an index using `whereI
 ensures optimal performance and predictable query patterns.
 
 ```typescript
-const uow = this.uow(mySchema).find("users", (b) =>
-  b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
-);
-const [users] = await uow.retrievalPhase;
+const [users] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("users", (b) =>
+      b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
+    ),
+  )
+  .execute();
 ```
 
 <Callout title="Why Index-Based Queries?" type="info">
@@ -50,41 +59,54 @@ const [users] = await uow.retrievalPhase;
 Find all users (table scan using the primary index):
 
 ```typescript
-const uow = this.uow(mySchema).find("users", (b) => b.whereIndex("primary"));
-const [users] = await uow.retrievalPhase;
+const [users] = await this.handlerTx()
+  .retrieve(({ forSchema }) => forSchema(mySchema).find("users", (b) => b.whereIndex("primary")))
+  .execute();
 ```
 
 Select specific columns:
 
 ```typescript
-const uow = this.uow(mySchema).find("users", (b) => b.whereIndex("primary").select(["id", "name"]));
-const [userNames] = await uow.retrievalPhase;
+const [userNames] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("users", (b) => b.whereIndex("primary").select(["id", "name"])),
+  )
+  .execute();
 ```
 
 Count records:
 
 ```typescript
-const uow = this.uow(mySchema).find("users", (b) => b.whereIndex("primary").selectCount());
-const [userCount] = await uow.retrievalPhase;
+const [userCount] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("users", (b) => b.whereIndex("primary").selectCount()),
+  )
+  .execute();
 ```
 
 Use `find(...)` when you want **an array of results**:
 
 ```typescript
-const uow = this.uow(mySchema).find("users", (b) =>
-  b.whereIndex("idx_email", (eb) => eb("email", "contains", "@example.com")),
-);
-const [users] = await uow.retrievalPhase;
+const [users] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("users", (b) =>
+      b.whereIndex("idx_email", (eb) => eb("email", "contains", "@example.com")),
+    ),
+  )
+  .execute();
 // users is User[]
 ```
 
 Use `findFirst(...)` when you want **a single row (or null)**:
 
 ```typescript
-const uow = this.uow(mySchema).findFirst("users", (b) =>
-  b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
-);
-const [user] = await uow.retrievalPhase;
+const [user] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).findFirst("users", (b) =>
+      b.whereIndex("idx_email", (eb) => eb("email", "=", "user@example.com")),
+    ),
+  )
+  .execute();
 // user is User | null
 ```
 
@@ -94,18 +116,22 @@ Use cursor-based pagination for efficient paging through large result sets. Frag
 `findWithCursor()` which automatically generates cursors from query results:
 
 ```typescript
-const uow = this.uow(mySchema).findWithCursor("users", (b) =>
-  b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
-);
+const [page] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).findWithCursor("users", (b) =>
+      b.whereIndex("idx_name").orderByIndex("idx_name", "asc").pageSize(10),
+    ),
+  )
+  .execute();
 
-const [firstPage] = await uow.retrievalPhase;
+// page.items - the results
+// page.cursor?.encode() - cursor for next page
+// page.hasNextPage - whether more results exist
 
-// firstPage.items
-// firstPage.cursor?.encode()
-
-// Fetch next page
-const uow2 = this.uow(mySchema).findWithCursor("users", (b) => b.after(firstPage.cursor));
-const [nextPage] = await uow2.retrievalPhase;
+// To fetch next page, pass the cursor:
+const [nextPage] = await this.handlerTx()
+  .retrieve(({ forSchema }) => forSchema(mySchema).findWithCursor("users", (b) => b.after(cursor)))
+  .execute();
 ```
 
 <Callout title="When to Use findWithCursor()" type="info">
@@ -118,10 +144,13 @@ const [nextPage] = await uow2.retrievalPhase;
 Sort results using indexes:
 
 ```typescript
-const uow = this.uow(mySchema).find("users", (b) =>
-  b.whereIndex("idx_created").orderByIndex("idx_created", "desc"),
-);
-const [users] = await uow.retrievalPhase;
+const [users] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("users", (b) =>
+      b.whereIndex("idx_created").orderByIndex("idx_created", "desc"),
+    ),
+  )
+  .execute();
 ```
 
 ### Joins
@@ -129,10 +158,11 @@ const [users] = await uow.retrievalPhase;
 Load related data using joins:
 
 ```typescript
-const uow = this.uow(mySchema).find("posts", (b) =>
-  b.whereIndex("primary").join((j) => j.author()),
-);
-const [postsWithAuthor] = await uow.retrievalPhase;
+const [postsWithAuthor] = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).find("posts", (b) => b.whereIndex("primary").join((j) => j.author())),
+  )
+  .execute();
 ```
 
 Note: We currently only support simple left joins.
@@ -140,62 +170,91 @@ Note: We currently only support simple left joins.
 ## Creating Records
 
 ```typescript
-const uow = this.uow(mySchema);
+const { userId } = await this.handlerTx()
+  .mutate(({ forSchema }) => {
+    const uow = forSchema(mySchema);
 
-// Schedule create
-const userId = uow.create("users", {
-  name: "Alice",
-  email: "alice@example.com",
-  age: 25,
-});
+    const userId = uow.create("users", {
+      name: "Alice",
+      email: "alice@example.com",
+      age: 25,
+    });
 
-// Wait until the handler commits (or call executeMutate() if you're in a handler)
-await uow.mutationPhase;
+    // Columns with defaultTo$() are auto-populated
+    uow.create("posts", {
+      title: "My Post",
+      content: "Content here",
+      userId: userId.toString(),
+      // createdAt auto-generated via defaultTo$("now")
+    });
 
-// Columns with defaultTo$() are auto-populated
-uow.create("posts", {
-  title: "My Post",
-  content: "Content here",
-  userId: userId.toString(),
-  // createdAt auto-generated via defaultTo$("now")
-});
-await uow.mutationPhase;
+    return { userId };
+  })
+  .execute();
 ```
 
 ## Updating Records
 
 ```typescript
-// Update by ID
-const uow = this.uow(mySchema);
-uow.update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
-await uow.mutationPhase;
+await this.handlerTx()
+  .mutate(({ forSchema }) => {
+    forSchema(mySchema).update("users", userId, (b) => b.set({ name: "Alice Updated", age: 26 }));
+  })
+  .execute();
 ```
 
 ## Deleting Records
 
 ```typescript
-// Delete by ID
-const uow = this.uow(mySchema);
-uow.delete("users", userId);
-await uow.mutationPhase;
+await this.handlerTx()
+  .mutate(({ forSchema }) => {
+    forSchema(mySchema).delete("users", userId);
+  })
+  .execute();
+```
+
+## Combining Retrieve and Mutate
+
+You can chain `.retrieve()` and `.mutate()` to read data, then use it in mutations:
+
+```typescript
+const { order } = await this.handlerTx()
+  .retrieve(({ forSchema }) =>
+    forSchema(mySchema).findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+    ),
+  )
+  .mutate(({ forSchema, retrieveResult: [user] }) => {
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const orderId = forSchema(mySchema).create("orders", {
+      userId: user.id.toString(),
+      total: 100,
+    });
+
+    return { order: { id: orderId, userId: user.id } };
+  })
+  .execute();
 ```
 
 ## Transactions
 
-For atomic operations, batching, and the recommended “routes execute, services enqueue” pattern, see
+For atomic operations and batching, see
 [Transactions](/docs/fragno/for-library-authors/database-integration/transactions).
 
 ## Alternative: using `db` from dependencies (no multi-operation transactions)
 
 You can access the `db` object directly inside the `withDependencies()` callback. Operations execute
 immediately as individual queries. This can be convenient for simple tasks, but you lose the key
-benefits of the UOW pattern:
+benefits of the transaction builder pattern:
 
 - **No multi-operation atomicity** across several reads/writes (no single transaction boundary).
 - **No optimistic concurrency control** via `.check()` (and no automatic retries).
-- **No durable hooks integration**, because hooks are recorded during the UOW mutation phase.
+- **No durable hooks integration**, because hooks are recorded during the mutation phase.
 
-Keep `db` usage for cases where you don’t need transactional composition.
+Keep `db` usage for cases where you don't need transactional composition.
 
 ## Next Steps
 

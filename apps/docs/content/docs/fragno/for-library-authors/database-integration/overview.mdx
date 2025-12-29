@@ -50,18 +50,21 @@ const commentFragmentDef = defineFragment<CommentFragmentConfig>("comment-fragme
   .extend(withDatabase(commentSchema))
   .providesBaseService(({ defineService }) => {
     return defineService({
-      createComment: async function (data) {
-        const uow = this.uow(commentSchema);
-        const id = uow.create("comment", data);
-        await uow.mutationPhase;
-        return { id: id.toJSON(), ...data };
+      createComment: function (data) {
+        return this.serviceTx(commentSchema)
+          .mutate(({ uow }) => {
+            const id = uow.create("comment", data);
+            return { id: id.toJSON(), ...data };
+          })
+          .build();
       },
-      getComments: async function (postId: string) {
-        const uow = this.uow(commentSchema).find("comment", (b) =>
-          b.whereIndex("idx_post", (eb) => eb("postId", "=", postId)),
-        );
-        const [comments] = await uow.retrievalPhase;
-        return comments;
+      getComments: function (postId: string) {
+        return this.serviceTx(commentSchema)
+          .retrieve((uow) =>
+            uow.find("comment", (b) => b.whereIndex("idx_post", (eb) => eb("postId", "=", postId))),
+          )
+          .transformRetrieve(([comments]) => comments)
+          .build();
       },
     });
   })
@@ -87,9 +90,9 @@ export function createCommentFragment(
 
 ## Querying using transactions
 
-In Fragno DB, database operations are always executed through a **Unit of Work (UOW)** transaction
-pattern. Services enqueue reads/writes on a UOW, and the route handler executes them as a single
-transaction.
+In Fragno DB, database operations are defined using a **builder pattern** and executed as atomic
+transactions. Services define operations using `serviceTx`, and route handlers execute them using
+`handlerTx`.
 
 This design is important because it:
 
@@ -98,24 +101,24 @@ This design is important because it:
 - **Amortises database round-trips**: work can be batched into fewer DB interactions for significant
   speed-ups for most applications
 - **Doesn't block the database**: interactive transactions can block the database with locks, in the
-  UOW pattern this cannot happen.
+  builder pattern this cannot happen.
 - **Enables Durable Hooks**: hooks are recorded in the same transaction and run after commit
   ([Durable Hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks))
 
 ## `this` context in services vs handlers
 
-- **Services** get `this.uow(schema)`: a restricted UOW used to schedule operations and await
-  `retrievalPhase` / `mutationPhase`.
-- **Handlers** get `this.uow(callback, options)`: controls the transaction boundary and executes the
-  phases (including retries on optimistic conflicts).
+- **Services** get `this.serviceTx(schema)`: a builder to define retrieval and mutation operations,
+  returning a `TxResult` via `.build()`.
+- **Handlers** get `this.handlerTx()`: executes service calls as transactions with automatic retries
+  on optimistic conflicts via `.execute()`.
 
 See [Transactions](/docs/fragno/for-library-authors/database-integration/transactions) for the full
 pattern and examples.
 
 <Callout title="Why defineService()?" type="info">
   `defineService()` is required to correctly bind and type the service `this` context. It ensures
-  `this.uow(...)` is available at runtime, and TypeScript understands the `this` type inside service
-  methods (when using `function () {}` syntax).
+  `this.serviceTx(...)` is available at runtime, and TypeScript understands the `this` type inside
+  service methods (when using `function () {}` syntax).
 </Callout>
 
 ## Next Steps
