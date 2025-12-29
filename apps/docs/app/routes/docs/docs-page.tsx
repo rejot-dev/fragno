@@ -11,6 +11,7 @@ import { getMDXComponents } from "@/lib/mdx-components";
 import { createElement, createContext, useContext } from "react";
 import { isMarkdownPreferred } from "fumadocs-core/negotiation";
 import { iconComponents } from "@/lib/icons";
+import { buildMarkdownApiUrl } from "./markdown-redirect";
 
 /**
  * Context to pass loader data to the MDX component
@@ -92,7 +93,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   }
 
   if (isMarkdown) {
-    return Response.redirect(new URL(`/api/markdown/${page.path}`, request.url));
+    return Response.redirect(buildMarkdownApiUrl(slugs, request.url));
   }
 
   const processedMarkdown = await page.data.getText?.("processed");

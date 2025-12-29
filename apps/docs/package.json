@@ -12,12 +12,14 @@
     "types:generate": "wrangler types --env-interface CloudflareEnv && react-router typegen && fumadocs-mdx",
     "db:fragno:generate": "fragno-cli db generate app/fragno/mailing-list.ts -o app/db/mailing-list-do.schema.ts && fragno-cli db generate app/fragno/forms.ts -o app/db/forms-do.schema.ts",
     "db:mailing-list-do:generate": "drizzle-kit generate --config mailing-list-do.drizzle.config.ts",
-    "db:forms-do:generate": "drizzle-kit generate --config forms-do.drizzle.config.ts"
+    "db:forms-do:generate": "drizzle-kit generate --config forms-do.drizzle.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
-    "@fragno-dev/fragment-mailing-list": "workspace:*",
     "@fragno-dev/forms": "workspace:*",
+    "@fragno-dev/fragment-mailing-list": "workspace:*",
     "@fragno-dev/jsonforms-shadcn-renderers": "workspace:*",
     "@jsonforms/core": "^3.7.0",
     "@jsonforms/react": "^3.7.0",
@@ -57,12 +59,14 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.13.5",
+    "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^7.9.5",
     "@tailwindcss/vite": "^4.1.16",
     "@types/mdx": "^2.0.13",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "@vitest/coverage-istanbul": "^3.2.4",
     "drizzle-kit": "^0.31.7",
     "react-router-devtools": "^5.1.3",
     "tailwindcss": "^4.1.16",
@@ -70,6 +74,7 @@
     "vite": "^7.2.0",
     "vite-plugin-devtools-json": "^1.0.0",
     "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4",
     "wrangler": "^4.51.0"
   }
 }
