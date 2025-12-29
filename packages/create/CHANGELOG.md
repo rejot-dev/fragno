@@ -1,5 +1,11 @@
 # @fragno-dev/create
 
+## 0.1.6
+
+### Patch Changes
+
+- 2aa0967: feat: Update database template to use new serviceTx/handlerTx transaction pattern
+
 ## 0.1.5
 
 ### Patch Changes
