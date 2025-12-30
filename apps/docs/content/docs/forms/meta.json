@@ -6,6 +6,7 @@
   "pages": [
     "index",
     "static-forms",
+    "hooks",
     "---Renderers---",
     "shadcn-renderer",
     "---Guides---",

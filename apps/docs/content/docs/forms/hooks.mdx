@@ -1,0 +1,517 @@
+---
+title: Hooks Reference
+description: Complete reference for all Forms fragment hooks.
+icon: Code
+---
+
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+## Overview
+
+The Forms fragment provides hooks for both public form operations and administrative management. All
+hooks are created via the `createFormsClient()` function.
+
+```typescript
+import { formsClient } from "@/lib/forms-client";
+
+// Query hooks return { data, loading, error }
+const { data, loading, error } = formsClient.useForm({ path: { slug: "contact" } });
+
+// Mutation hooks return { mutate, loading, error }
+const { mutate, loading, error } = formsClient.useCreateForm();
+```
+
+## Public Hooks
+
+These hooks are intended for end-users to view and submit forms.
+
+| Route                | Description          | Hook            |
+| -------------------- | -------------------- | --------------- |
+| `GET /:slug`         | Fetch a form by slug | `useForm`       |
+| `POST /:slug/submit` | Submit a response    | `useSubmitForm` |
+
+### useForm
+
+Fetches a form definition by its slug. Returns the form's data schema, UI schema, and metadata.
+
+**Parameters:**
+
+| Name        | Type     | Required | Description                        |
+| ----------- | -------- | -------- | ---------------------------------- |
+| `path.slug` | `string` | Yes      | The form's URL-friendly identifier |
+
+**Returns:** `Form`
+
+<TypeTable
+  type={{
+    id: { description: "Unique identifier", type: "string" },
+    title: { description: "Form title", type: "string" },
+    description: { description: "Form description", type: "string | null" },
+    slug: { description: "URL-friendly identifier", type: "string" },
+    status: { description: "Form status", type: '"draft" | "open" | "closed" | "static"' },
+    dataSchema: { description: "JSON Schema for validation", type: "Record<string, unknown>" },
+    uiSchema: { description: "JSONForms UI Schema", type: "Record<string, unknown> | undefined" },
+    version: { description: "Schema version number", type: "number" },
+    createdAt: { description: "Creation timestamp", type: "Date" },
+    updatedAt: { description: "Last update timestamp", type: "Date" },
+  }}
+/>
+
+**Error Codes:** `NOT_FOUND`
+
+**Example:**
+
+```typescript
+function FormDisplay() {
+  const { data: form, loading, error } = formsClient.useForm({
+    path: { slug: "contact" },
+  });
+
+  if (loading) return <div>Loading form...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  if (!form) return <div>Form not found</div>;
+
+  return (
+    <div>
+      <h1>{form.title}</h1>
+      <p>{form.description}</p>
+      {/* Render form using form.dataSchema and form.uiSchema */}
+    </div>
+  );
+}
+```
+
+### useSubmitForm
+
+Submits a response to a form. The form must have status `open` or `static` to accept submissions.
+
+**Parameters:**
+
+| Name                 | Type                      | Required | Description                                     |
+| -------------------- | ------------------------- | -------- | ----------------------------------------------- |
+| `path.slug`          | `string`                  | Yes      | The form's slug                                 |
+| `body.data`          | `Record<string, unknown>` | Yes      | The form response data                          |
+| `body.securityToken` | `string`                  | No       | Optional bot protection token (e.g., Turnstile) |
+
+**Returns:** `string` (the submission ID)
+
+**Error Codes:** `NOT_FOUND`, `VALIDATION_ERROR`, `FORM_NOT_OPEN`
+
+**Example:**
+
+```typescript
+function ContactForm() {
+  const { mutate: submit, loading, error } = formsClient.useSubmitForm();
+  const [formData, setFormData] = useState({});
+
+  const handleSubmit = async () => {
+    const result = await submit({
+      path: { slug: "contact" },
+      body: {
+        data: formData,
+        // securityToken: turnstileToken, // Optional
+      },
+    });
+
+    if (result.success) {
+      console.log("Submission ID:", result.data);
+    } else {
+      console.error("Error:", result.error.message);
+    }
+  };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+      {/* Form fields */}
+      <button type="submit" disabled={loading}>
+        {loading ? "Submitting..." : "Submit"}
+      </button>
+      {error && <p>Error: {error.message}</p>}
+    </form>
+  );
+}
+```
+
+## Admin Hooks - Forms
+
+These hooks require authentication. Use [middleware](/docs/fragno/for-users/middleware) to secure
+`/admin/*` routes.
+
+| Route                     | Description        | Hook            |
+| ------------------------- | ------------------ | --------------- |
+| `GET /admin/forms`        | List all forms     | `useForms`      |
+| `GET /admin/forms/:id`    | Fetch a form by ID | `useFormById`   |
+| `POST /admin/forms`       | Create a new form  | `useCreateForm` |
+| `PUT /admin/forms/:id`    | Update a form      | `useUpdateForm` |
+| `DELETE /admin/forms/:id` | Delete a form      | `useDeleteForm` |
+
+### useForms
+
+Lists all forms, including both dynamic and static forms.
+
+**Parameters:** None
+
+**Returns:** `Form[]`
+
+**Example:**
+
+```typescript
+function FormsList() {
+  const { data: forms, loading, error } = formsClient.useForms();
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <ul>
+      {forms?.map((form) => (
+        <li key={form.id}>
+          <span>{form.title}</span>
+          <span>Status: {form.status}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### useFormById
+
+Fetches a single form by its ID. Useful when you have the form ID but not the slug.
+
+**Parameters:**
+
+| Name      | Type     | Required | Description          |
+| --------- | -------- | -------- | -------------------- |
+| `path.id` | `string` | Yes      | The form's unique ID |
+
+**Returns:** `Form`
+
+**Error Codes:** `NOT_FOUND`
+
+**Example:**
+
+```typescript
+function FormEditor({ formId }: { formId: string }) {
+  const { data: form, loading, error } = formsClient.useFormById({
+    path: { id: formId },
+  });
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  if (!form) return <div>Form not found</div>;
+
+  return (
+    <div>
+      <h1>Editing: {form.title}</h1>
+      <p>Slug: {form.slug}</p>
+      <p>Version: {form.version}</p>
+      {/* Form editor UI */}
+    </div>
+  );
+}
+```
+
+### useCreateForm
+
+Creates a new dynamic form.
+
+**Parameters:**
+
+| Name               | Type                            | Required | Description                      |
+| ------------------ | ------------------------------- | -------- | -------------------------------- |
+| `body.title`       | `string`                        | Yes      | Form title                       |
+| `body.slug`        | `string`                        | Yes      | URL-friendly identifier (unique) |
+| `body.status`      | `"draft" \| "open" \| "closed"` | Yes      | Form status                      |
+| `body.dataSchema`  | `Record<string, unknown>`       | Yes      | JSON Schema for validation       |
+| `body.uiSchema`    | `Record<string, unknown>`       | No       | JSONForms UI Schema              |
+| `body.description` | `string`                        | No       | Form description                 |
+
+**Returns:** `string` (the new form's ID)
+
+**Example:**
+
+```typescript
+function CreateFormButton() {
+  const { mutate: createForm, loading, error } = formsClient.useCreateForm();
+
+  const handleCreate = async () => {
+    const formId = await createForm({
+      body: {
+        title: "Feedback Survey",
+        slug: "feedback-survey",
+        status: "open",
+        description: "Help us improve our service",
+        dataSchema: {
+          type: "object",
+          properties: {
+            rating: { type: "integer", minimum: 1, maximum: 5 },
+            comments: { type: "string" },
+          },
+          required: ["rating"],
+        },
+        uiSchema: {
+          type: "VerticalLayout",
+          elements: [
+            { type: "Control", scope: "#/properties/rating" },
+            { type: "Control", scope: "#/properties/comments", options: { multi: true } },
+          ],
+        },
+      },
+    });
+  };
+
+  return (
+    <div>
+      <button onClick={handleCreate} disabled={loading}>
+        Create Form
+      </button>
+      {error && <p>Error: {error.message}</p>}
+    </div>
+  );
+}
+```
+
+### useUpdateForm
+
+Updates an existing form. All fields are optional - only include fields you want to change.
+
+<Callout type="warn">
+  Static forms cannot be updated. Attempting to update a static form returns a
+  `STATIC_FORM_READ_ONLY` error.
+</Callout>
+
+<Callout type="info">
+  Changing the `dataSchema` increments the form's version number automatically.
+</Callout>
+
+**Parameters:**
+
+| Name               | Type                            | Required | Description         |
+| ------------------ | ------------------------------- | -------- | ------------------- |
+| `path.id`          | `string`                        | Yes      | The form's ID       |
+| `body.title`       | `string`                        | No       | Updated title       |
+| `body.slug`        | `string`                        | No       | Updated slug        |
+| `body.status`      | `"draft" \| "open" \| "closed"` | No       | Updated status      |
+| `body.dataSchema`  | `Record<string, unknown>`       | No       | Updated JSON Schema |
+| `body.uiSchema`    | `Record<string, unknown>`       | No       | Updated UI Schema   |
+| `body.description` | `string`                        | No       | Updated description |
+
+**Returns:** `boolean`
+
+**Error Codes:** `NOT_FOUND`, `STATIC_FORM_READ_ONLY`
+
+**Example:**
+
+```typescript
+function CloseFormButton({ formId }: { formId: string }) {
+  const { mutate: updateForm, loading, error } = formsClient.useUpdateForm();
+
+  const handleClose = async () => {
+    const success = await updateForm({
+      path: { id: formId },
+      body: { status: "closed" },
+    });
+  };
+
+  return (
+    <div>
+      <button onClick={handleClose} disabled={loading}>
+        Close Form
+      </button>
+      {error && <p>Error: {error.message}</p>}
+    </div>
+  );
+}
+```
+
+### useDeleteForm
+
+Permanently deletes a form. This does not delete associated submissions.
+
+<Callout type="warn">
+  Static forms cannot be deleted. Attempting to delete a static form returns a
+  `STATIC_FORM_READ_ONLY` error.
+</Callout>
+
+**Parameters:**
+
+| Name      | Type     | Required | Description   |
+| --------- | -------- | -------- | ------------- |
+| `path.id` | `string` | Yes      | The form's ID |
+
+**Returns:** `boolean`
+
+**Error Codes:** `NOT_FOUND`, `STATIC_FORM_READ_ONLY`
+
+**Example:**
+
+```typescript
+function DeleteFormButton({ formId }: { formId: string }) {
+  const { mutate: deleteForm, loading, error } = formsClient.useDeleteForm();
+
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this form?")) return;
+
+    const success = await deleteForm({
+      path: { id: formId },
+    });
+  };
+
+  return (
+    <div>
+      <button onClick={handleDelete} disabled={loading}>
+        Delete Form
+      </button>
+      {error && <p>Error: {error.message}</p>}
+    </div>
+  );
+}
+```
+
+## Admin Hooks - Submissions
+
+Hooks for managing form submissions.
+
+| Route                              | Description                 | Hook                  |
+| ---------------------------------- | --------------------------- | --------------------- |
+| `GET /admin/forms/:id/submissions` | List submissions for a form | `useSubmissions`      |
+| `GET /admin/submissions/:id`       | Get a single submission     | `useSubmission`       |
+| `DELETE /admin/submissions/:id`    | Delete a submission         | `useDeleteSubmission` |
+
+### useSubmissions
+
+Lists all submissions for a specific form.
+
+**Parameters:**
+
+| Name              | Type              | Required | Description                               |
+| ----------------- | ----------------- | -------- | ----------------------------------------- |
+| `path.id`         | `string`          | Yes      | The form's ID                             |
+| `query.sortOrder` | `"asc" \| "desc"` | No       | Sort by submission date (default: `desc`) |
+
+**Returns:** `FormResponse[]`
+
+<TypeTable
+  type={{
+    id: { description: "Unique identifier", type: "string" },
+    formId: { description: "Associated form ID", type: "string | null" },
+    formVersion: { description: "Form version at submission time", type: "number" },
+    data: { description: "Submitted form data", type: "Record<string, unknown>" },
+    submittedAt: { description: "Submission timestamp", type: "Date" },
+    ip: { description: "Submitter IP address", type: "string | null" },
+    userAgent: { description: "Submitter user agent", type: "string | null" },
+  }}
+/>
+
+**Example:**
+
+```typescript
+function SubmissionsList({ formId }: { formId: string }) {
+  const { data: submissions, loading, error } = formsClient.useSubmissions({
+    path: { id: formId },
+    query: { sortOrder: "desc" }, // Newest first
+  });
+
+  if (loading) return <div>Loading submissions...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Submitted At</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        {submissions?.map((submission) => (
+          <tr key={submission.id}>
+            <td>{submission.id}</td>
+            <td>{new Date(submission.submittedAt).toLocaleString()}</td>
+            <td>{JSON.stringify(submission.data)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+```
+
+### useSubmission
+
+Fetches a single submission by ID.
+
+**Parameters:**
+
+| Name      | Type     | Required | Description         |
+| --------- | -------- | -------- | ------------------- |
+| `path.id` | `string` | Yes      | The submission's ID |
+
+**Returns:** `FormResponse`
+
+**Error Codes:** `NOT_FOUND`
+
+**Example:**
+
+```typescript
+function SubmissionDetail({ submissionId }: { submissionId: string }) {
+  const { data: submission, loading, error } = formsClient.useSubmission({
+    path: { id: submissionId },
+  });
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  if (!submission) return <div>Submission not found</div>;
+
+  return (
+    <div>
+      <h2>Submission Details</h2>
+      <p>ID: {submission.id}</p>
+      <p>Form ID: {submission.formId}</p>
+      <p>Form Version: {submission.formVersion}</p>
+      <p>Submitted: {new Date(submission.submittedAt).toLocaleString()}</p>
+      <h3>Response Data:</h3>
+      <pre>{JSON.stringify(submission.data, null, 2)}</pre>
+    </div>
+  );
+}
+```
+
+### useDeleteSubmission
+
+Permanently deletes a submission.
+
+**Parameters:**
+
+| Name      | Type     | Required | Description         |
+| --------- | -------- | -------- | ------------------- |
+| `path.id` | `string` | Yes      | The submission's ID |
+
+**Returns:** `boolean`
+
+**Example:**
+
+```typescript
+function DeleteSubmissionButton({ submissionId }: { submissionId: string }) {
+  const { mutate: deleteSubmission, loading, error } = formsClient.useDeleteSubmission();
+
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this submission?")) return;
+
+    const success = await deleteSubmission({
+      path: { id: submissionId },
+    });
+  };
+
+  return (
+    <div>
+      <button onClick={handleDelete} disabled={loading}>
+        Delete
+      </button>
+      {error && <p>Error: {error.message}</p>}
+    </div>
+  );
+}
+```

@@ -202,7 +202,7 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
           if (!success) {
             return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
           }
-          return json(success);
+          return json(true);
         },
       }),
 
