@@ -13,7 +13,7 @@ export const formsSchema = schema((s) => {
           column("string").defaultTo(() => "draft"),
         )
         .addColumn("dataSchema", column("json"))
-        .addColumn("uiSchema", column("json"))
+        .addColumn("uiSchema", column("json").nullable())
         .addColumn(
           "version",
           column("integer").defaultTo(() => 1),

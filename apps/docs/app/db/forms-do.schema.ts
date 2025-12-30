@@ -60,7 +60,7 @@ export const form_forms = sqliteTable(
     slug: text("slug").notNull(),
     status: text("status").notNull().default("draft"),
     dataSchema: blob("dataSchema", { mode: "json" }).notNull(),
-    uiSchema: blob("uiSchema", { mode: "json" }).notNull(),
+    uiSchema: blob("uiSchema", { mode: "json" }),
     version: integer("version").notNull().default(1),
     createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
     updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),

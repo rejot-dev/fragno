@@ -12,7 +12,7 @@ export const FormSchema = z.object({
   slug: z.string().min(1).max(255).toLowerCase().trim(),
   status: FormStatusSchema,
   dataSchema: JSONSchemaSchema,
-  uiSchema: UISchemaElementSchema,
+  uiSchema: UISchemaElementSchema.optional(),
   version: z.number(),
   createdAt: z.date(),
   updatedAt: z.date(),
