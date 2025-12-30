@@ -12,10 +12,10 @@ import type { UISchemaElement } from "@jsonforms/core";
 export interface StaticForm {
   id: string;
   title: string;
-  description: string | null;
+  description?: string;
   slug: string;
   dataSchema: JSONSchema;
-  uiSchema: UISchemaElement;
+  uiSchema?: UISchemaElement;
   version: number;
 }
 
