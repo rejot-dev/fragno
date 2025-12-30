@@ -48,6 +48,7 @@ export function createFormsClients(fragnoConfig: FragnoPublicClientConfig) {
 
     // Admin - Forms
     useForms: b.createHook("/admin/forms"),
+    useFormById: b.createHook("/admin/forms/:id"),
     useCreateForm: b.createMutator("POST", "/admin/forms"),
     useUpdateForm: b.createMutator("PUT", "/admin/forms/:id"),
     useDeleteForm: b.createMutator("DELETE", "/admin/forms/:id"),
