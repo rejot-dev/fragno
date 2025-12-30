@@ -1,5 +1,18 @@
 # @fragno-dev/forms
 
+## 0.1.0
+
+### Minor Changes
+
+- 87baadd: Make UI Schema optional for a form definition (assumes Vertical layout for all fields)
+
+### Patch Changes
+
+- af4d785: Form and response types are now exported
+- Updated dependencies [301e2f8]
+  - @fragno-dev/core@0.2.0
+  - @fragno-dev/db@0.2.2
+
 ## 0.0.3
 
 ### Patch Changes

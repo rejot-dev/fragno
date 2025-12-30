@@ -1,5 +1,11 @@
 # @fragno-dev/core
 
+## 0.2.0
+
+### Minor Changes
+
+- 301e2f8: pathParams in RequestInputContext now returns decoded values
+
 ## 0.1.11
 
 ### Patch Changes
