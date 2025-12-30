@@ -1,5 +1,13 @@
 # @fragno-dev/stripe
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [301e2f8]
+  - @fragno-dev/core@0.2.0
+  - @fragno-dev/db@0.2.2
+
 ## 1.0.0
 
 ### Patch Changes
