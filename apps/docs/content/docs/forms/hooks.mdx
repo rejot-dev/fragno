@@ -44,16 +44,24 @@ Fetches a form definition by its slug. Returns the form's data schema, UI schema
 
 <TypeTable
   type={{
-    id: { description: "Unique identifier", type: "string" },
-    title: { description: "Form title", type: "string" },
-    description: { description: "Form description", type: "string | null" },
-    slug: { description: "URL-friendly identifier", type: "string" },
-    status: { description: "Form status", type: '"draft" | "open" | "closed" | "static"' },
-    dataSchema: { description: "JSON Schema for validation", type: "Record<string, unknown>" },
-    uiSchema: { description: "JSONForms UI Schema", type: "Record<string, unknown> | undefined" },
-    version: { description: "Schema version number", type: "number" },
-    createdAt: { description: "Creation timestamp", type: "Date" },
-    updatedAt: { description: "Last update timestamp", type: "Date" },
+    id: { description: "Unique identifier", type: "string", required: true },
+    title: { description: "Form title", type: "string", required: true },
+    description: { description: "Form description", type: "string" },
+    slug: { description: "URL-friendly identifier", type: "string", required: true },
+    status: {
+      description: "Form status",
+      type: '"draft" | "open" | "closed" | "static"',
+      required: true,
+    },
+    dataSchema: {
+      description: "JSON Schema for validation",
+      type: "Record<string, unknown>",
+      required: true,
+    },
+    uiSchema: { description: "JSONForms UI Schema", type: "Record<string, unknown>" },
+    version: { description: "Data schema version number", type: "number", required: true },
+    createdAt: { description: "Creation timestamp", type: "Date", required: true },
+    updatedAt: { description: "Last update timestamp", type: "Date", required: true },
   }}
 />
 
@@ -394,13 +402,13 @@ Lists all submissions for a specific form.
 
 <TypeTable
   type={{
-    id: { description: "Unique identifier", type: "string" },
-    formId: { description: "Associated form ID", type: "string | null" },
-    formVersion: { description: "Form version at submission time", type: "number" },
-    data: { description: "Submitted form data", type: "Record<string, unknown>" },
-    submittedAt: { description: "Submission timestamp", type: "Date" },
-    ip: { description: "Submitter IP address", type: "string | null" },
-    userAgent: { description: "Submitter user agent", type: "string | null" },
+    id: { description: "Unique identifier", type: "string", required: true },
+    formId: { description: "Associated form ID", type: "string", required: true },
+    formVersion: { description: "Form version at submission time", type: "number", required: true },
+    data: { description: "Submitted form data", type: "Record<string, unknown>", required: true },
+    submittedAt: { description: "Submission timestamp", type: "Date", required: true },
+    ip: { description: "Submitter IP address", type: "string | null", required: true },
+    userAgent: { description: "Submitter user agent", type: "string | null", required: true },
   }}
 />
 
