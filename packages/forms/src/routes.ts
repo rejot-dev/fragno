@@ -148,6 +148,27 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
       }),
 
       defineRoute({
+        method: "GET",
+        path: "/admin/forms/:id",
+        outputSchema: FormSchema,
+        errorCodes: ["NOT_FOUND"] as const,
+        handler: async ({ pathParams }, { json, error }) => {
+          // Check static forms first
+          const staticForm = config.staticForms?.find((f) => f.id === pathParams.id);
+          if (staticForm) {
+            return json(staticAsRegularForm(staticForm));
+          }
+
+          const form = await services.getForm(pathParams.id);
+          if (!form) {
+            return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
+          }
+
+          return json(form);
+        },
+      }),
+
+      defineRoute({
         method: "POST",
         path: "/admin/forms",
         inputSchema: NewFormSchema,
