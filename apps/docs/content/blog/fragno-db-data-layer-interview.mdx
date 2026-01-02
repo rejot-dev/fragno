@@ -1,0 +1,321 @@
+---
+title: "Fragno DB: the interesting bits (interview notes)"
+description:
+  "An interview-style breakdown of what's novel about Fragno's transaction builder, optimistic
+  concurrency, and durable hooks."
+date: "2025-12-30"
+author: "Wilco Kruijer"
+---
+
+# Fragno DB: the interesting bits (interview notes)
+
+This is a filled-in "Step 1" interview questionnaire, focused specifically on the most interesting
+and novel aspects of Fragno's data layer (`@fragno-dev/db`): **composable transaction definitions**,
+**optimistic concurrency with automatic retries**, and **durable hooks (outbox) that run after
+commit**.
+
+## 1) One-liner (thesis + promise)
+
+- **What's the working title?**
+  - "Transactions you can compose: a data layer for full-stack libraries"
+- **In one sentence: what will the reader believe/do differently after reading?**
+  - Stop treating "a transaction" as a block of imperative code; instead, model it as a **composable
+    unit** that libraries can return and apps can **batch, execute, and retry** safely.
+- **What's the "unexpected" claim / contrarian angle (if any)?**
+  - The hardest part of "database support for libraries" isn't CRUD or schema generation -- it's
+    defining **transaction boundaries** and **side effects** in a way that stays safe when users
+    compose multiple libraries together.
+- **What's the single most important takeaway (if they remember only one thing)?**
+  - If you want database-backed libraries to be composable, treat DB work as a **transaction plan**
+    that can be combined with other plans, and only **execute** it at a clear boundary (a request
+    handler) where you can batch work, control retries, and attach post-commit actions.
+
+## 2) Reader + context (avoid the curse of knowledge)
+
+- **Who is the exact reader?**
+  - TypeScript library authors / SDK builders / DX engineers who _could_ ship full-stack integration
+    primitives (not just client helpers) and are exploring what that would take.
+  - Secondary: app developers/platform teams evaluating whether a library can be trusted with DB
+    access.
+- **What do they already know?**
+  - What a transaction is; basic ORM usage; "don't do side effects inside transactions" as a vague
+    rule; the pain of retries/idempotency; HTTP handlers and request lifecycles.
+- **What do they _not_ know yet (but need)?**
+  - Why the typical "service calls `db.transaction(async (tx) => { ... })`" approach becomes a
+    dead-end once you want to compose _multiple_ library operations into _one_ transaction boundary.
+  - Why optimistic concurrency + automatic retries changes how you can structure code (and is a
+    prerequisite for practical composability).
+  - The outbox pattern (durable hooks) and why it's essential when **a library performs DB writes**
+    but **the user needs to hook into those writes** safely (and retryably) after commit.
+- **What environment constraints matter?**
+  - Must work across different DBs and ORMs (Drizzle, Kysely).
+  - Must work across runtime + framework boundaries (Node, serverless, Cloudflare Durable Objects).
+  - Must keep integration surface small: the user owns the DB connection; the fragment provides
+    schema + queries.
+- **What is explicitly out of scope?**
+  - Being a general-purpose ORM replacement.
+  - Exotic query patterns and ad-hoc SQL everywhere (Fragno DB prefers schema-driven, indexed
+    access).
+
+## 3) The hook (why they should care _now_)
+
+- **What problem pain feels familiar to the reader?**
+  - "This library wants to store data... but I don't want it to own my DB connection or force its
+    ORM."
+  - "Giving DB access to libraries feels scary: what if it opens long transactions and ties up my
+    connection pool?"
+  - "Interactive transactions are already tricky in normal apps. In a library, the risk feels worse
+    because the transaction shape isn't under my control."
+- **What's a concrete failure mode / "ugh moment" you've seen in the wild?**
+  - A few endpoints start doing `db.transaction(async (tx) => { ... })` and over time the work
+    inside grows. Under load, transactions live longer than expected, lock contention increases, and
+    the app starts timing out or exhausting the pool.
+  - Someone wants "do A and B atomically". Achieving it means rewriting code to share a single
+    transaction boundary, and error handling becomes the real complexity.
+- **What's the cost of the status quo?**
+  - You avoid letting libraries touch the DB at all, so every integration becomes a bespoke project.
+  - Or you accept that a library can run arbitrary interactive transactions, which can create
+    surprising lock/pool behavior in production.
+  - You still need a user-facing "hook point" for side effects related to DB writes (emails,
+    webhooks, cache invalidations) that is safe under retries.
+- **What story can you open with (1--2 paragraphs) that makes the problem real?**
+  - "Imagine installing a library that offers a full feature (routes + UI helpers) and it asks for
+    access to your database connection. Your first instinct is: no way. Not because you don't trust
+    the author, but because you don't want a random dependency to accidentally lock up your
+    production database."
+- **What's the smallest example that demonstrates the pain in under 60 seconds?**
+  - "A `subscribe(email)` call writes to DB and should trigger an email. Where do you put the email
+    send so it's guaranteed to happen **after commit**, and safe to retry?"
+
+## 4) The "before" picture (current approach)
+
+- **How is this typically solved today?**
+  - There isn't a standard, ergonomic way to let libraries write to _your_ database across stacks.
+  - Most libraries either:
+    - don't touch the DB at all (push the whole persistence problem to the user), or
+    - ship a stack-specific integration (one ORM, one migration tool, one DB), or
+    - expose low-level primitives and ask the user to implement the transactional semantics.
+- **What glue code usually appears, and why?**
+  - It's not always "glue code" - it's **transactional complexity**:
+    - how to combine multiple reads/writes into one atomic unit without turning everything into
+      nested callbacks and shared `tx` threading
+    - how to add retries without duplicating side effects
+    - how to batch DB round-trips (which most apps don't do, even though it matters a lot)
+- **Where does complexity hide?**
+  - Interactive transaction scope creep: the more code you put inside, the harder it is to reason
+    about locks and pool usage.
+  - Performance: N calls -> N round-trips unless you intentionally batch.
+  - Side effects linked to writes: "after commit" semantics is hard without an outbox-ish mechanism.
+- **What do people routinely get wrong?**
+  - They treat interactive transactions as "just wrap it in a transaction" and don't notice how
+    often that becomes a production scaling bottleneck.
+  - They underestimate the cost of "make A and B atomic" once A and B live in different modules.
+- **What trade-offs are they (unknowingly) accepting?**
+  - Either (a) no composition / no batching, or (b) you build a bespoke orchestration layer.
+  - Either (a) side effects can fail silently, or (b) you build a queue/outbox later anyway.
+
+## 5) The core idea (the concept you're teaching)
+
+- **What's the core concept in neutral terms (no Fragno yet)?**
+  - Treat "a transaction" as **a data structure you can compose**, not an imperative block you must
+    execute immediately.
+  - Separate:
+    - **Definition** (what reads/writes should happen, and how they depend on each other)
+    - **Execution** (where the boundary lives, how retries work, what happens after commit)
+- **What are the key terms that must be defined on first use?**
+  - Two-phase transaction (retrieve phase / mutation phase)
+  - Transaction builder
+  - Transaction plan (a description of reads/writes, not immediate execution)
+  - Optimistic concurrency control
+  - Outbox pattern / durable hooks
+  - Idempotency key
+- **What mental model should the reader adopt?**
+  - A service method returns a **recipe**; the handler decides **when to cook**, and is the only
+    place allowed to touch the stove (commit, retries, error handling).
+- **What are the 2--4 sub-ideas that build up to the main idea (in teaching order)?**
+  - Two-phase builder: schedule reads, then schedule writes using read results.
+  - Define DB work as a plan (reusable units), execute it at the handler boundary (one place owns
+    retries, error handling, and batching).
+  - Optimistic concurrency: versions + checks + automatic retries make the plan safe to re-run.
+  - Durable hooks: the library can record "after commit" work while the user implements the effect,
+    and retries are safe via idempotency.
+- **What is the "worked example" you'll use throughout?**
+  - A mailing list fragment:
+    - `subscribe(email)` writes `subscriber` row, triggers `onSubscribe(email)` side effect.
+    - Show what changes when you add concurrency and retries.
+
+## 6) The solution (what you're proposing)
+
+- **What is the proposed approach at a high level?**
+  - A DB layer for library-defined features where:
+    - Libraries define schema + reusable transactional operations.
+    - Execution uses a builder pattern that avoids long-lived interactive transactions and makes
+      batching natural.
+    - Side effects use durable hooks (outbox) so "commit succeeded" implies "side effect will
+      happen" (with retries).
+- **What are the components of the approach?**
+  - **Schema**: fragment-defined, namespaced to avoid conflicts; versioned for migrations.
+  - **Query API**: schema-driven UoW (`uow`) with an index-first query discipline.
+  - **Transaction builders**:
+    - a "define" builder (`serviceTx`) to describe work in reusable functions
+    - an "execute" builder (`handlerTx`) at the request boundary to run work with batching + retries
+  - **Optimistic concurrency**: hidden `_version`, version-carrying IDs, and checks + automatic
+    retries to make transactions safe to re-run.
+  - **Durable hooks**: record triggers during mutation phase; execute after commit with backoff
+    retries.
+- **What are the key design constraints you respected?**
+  - Library-first composition across fragments.
+  - User-owned database connection + ORM agnostic adapters.
+  - Predictable performance (require indexes).
+  - Safety under retries (optimistic concurrency + durable hooks).
+- **What are the non-goals / consciously rejected features?**
+  - Long-lived interactive transactions inside library code (locks + timeouts + footguns).
+  - "Query anything any way" APIs that encourage table scans or unpredictable performance.
+- **What does success look like?**
+  - Library authors can ship DB-backed features without forcing an ORM.
+  - App developers can compose multiple fragment operations into one atomic unit.
+  - Side effects become explicit, reliable, and retry-safe.
+
+## 7) "Why Fragno" (tie the idea to Fragno without making it an ad)
+
+- **Which Fragno idea does this post exemplify?**
+  - Fragments as portable full-stack libraries: the DB layer is the "third slice".
+  - The same philosophy as routes/hooks: define portable building blocks, let the user wire them in.
+- **What does Fragno make _possible_ that's hard otherwise?**
+  - A library can ship DB-backed primitives without owning the user's DB connection, while still
+    giving the integrator a sane execution model (batching, retries, and post-commit hooks).
+- **What does Fragno make _simpler_ (and for whom: library author vs user)?**
+  - Library author: write transactional operations without worrying about interactive transaction
+    footguns.
+  - User: one adapter + mount routes; then compose fragment service calls into a single transaction.
+- **Where does Fragno intentionally _not_ take over?**
+  - The app's identity model and authorization.
+  - The "meaning" of side effects (you implement the hook; Fragno just makes it durable +
+    retryable).
+  - App-specific linking between fragment tables and user tables.
+- **What's the minimal snippet that shows the Fragno "shape" of the solution?**
+
+```typescript
+// Service defines the transactional recipe (does not execute)
+subscribe: function (email: string) {
+  return this.serviceTx(mySchema)
+    .retrieve((uow) =>
+      uow.find("subscriber", (b) =>
+        b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
+      ),
+    )
+    .mutate(({ uow, retrieveResult: [existing] }) => {
+      if (existing.length > 0) return { alreadySubscribed: true };
+      uow.create("subscriber", { email, subscribedAt: new Date() });
+      uow.triggerHook("onSubscribe", { email }); // outbox
+      return { alreadySubscribed: false };
+    })
+    .build();
+}
+```
+
+```typescript
+// Handler owns the boundary + retries
+const [result] = await this.handlerTx()
+  .withServiceCalls(() => [services.subscribe(email)] as const)
+  .execute();
+```
+
+- **If the reader never uses Fragno, what idea should they still steal?**
+  - Avoid long-lived interactive transactions by default, and design APIs where DB work is defined
+    as a plan that can be batched/retried; for side effects, provide an outbox-like "after commit"
+    hook point with idempotency.
+
+## 8) Evidence + credibility (show, don't assert)
+
+- **What concrete artifacts can you include?**
+  - A sequence diagram:
+    - retrieve phase -> mutation phase -> commit -> durable hook execution (with retries).
+  - A small code sample showing `.check()` and automatic handler retries.
+  - A "compose two fragments in one handler" example.
+- **What results can you quantify?**
+  - Deterministic DB round-trips:
+    - Read-only: one round-trip.
+    - Read+write: two round-trips (retrieve, then mutate/commit).
+  - Batching becomes the default instead of the exception (amortized round-trips), without asking
+    users to thread a `tx` object through their whole codebase.
+- **What trade-offs did you encounter and how did you choose?**
+  - Builder-style transactions trade a bit of "directness" for composition, batching, and safety
+    under retries.
+  - Index-first querying trades flexibility for predictable performance.
+- **What's the "gotcha" section?**
+  - If handlers retry, you must not do side effects in services. Use durable hooks.
+  - Optimistic concurrency only works if you carry versions through the read->write flow; in Fragno
+    DB, the retrieval phase gives you versioned IDs and the mutation phase uses those versions when
+    you opt into checks.
+
+## 9) Structure choice (deep dive vs tutorial)
+
+- **Is this a "Problem -> Solution -> Trade-offs" post or a step-by-step tutorial?**
+  - Deep dive: "why this shape exists" is the interesting part.
+- If tutorial: **What are the steps, and how does the reader verify each step worked?**
+  - N/A (but could add a short worked example at the end).
+- If deep dive: **What's the narrative arc?**
+  - Start with "transactions don't compose across libraries"
+  - Introduce "definition vs execution" and the two-phase builder
+  - Add optimistic concurrency + retries
+  - Conclude with durable hooks as the missing piece that makes retries safe
+- **What sections are "scan-friendly" anchors?**
+  - "Why transactions don't compose"
+  - "Two-phase builder: retrieve then mutate"
+  - "Optimistic concurrency + automatic retries"
+  - "Durable hooks (outbox) + idempotency"
+- **Where will you place diagrams to reduce cognitive load?**
+  - Immediately before introducing durable hooks (because "after commit" is easiest to explain with
+    a timeline).
+
+## 10) Reader outcomes (what they can do after)
+
+- **What can the reader do differently after reading?**
+  - Evaluate transaction shapes (interactive vs builder-style) as a first-order design decision.
+  - Recognize when "after commit" hooks need an outbox, and why idempotency keys matter.
+- **What can the reader adapt to their own stack?**
+  - The "recipe + executor" boundary and outbox pattern.
+  - Index-first query discipline as an API design lever.
+- **What checklist/heuristics can they reuse in future decisions?**
+  - If you add retries: what becomes safe to retry, and what must move to "after commit"?
+  - Can two independent operations be composed into one atomic unit without nesting transactions?
+  - Are queries constrained enough to stay predictable under load?
+- **What are 3 crisp takeaways you'll restate near the end?**
+  - Builder-style transactions avoid a class of interactive transaction problems.
+  - Optimistic concurrency + retries make composability practical.
+  - Durable hooks/outbox is the pragmatic way to make "commit implies eventual side effect" true.
+
+## 11) Call to action (helpful next step, not pushy)
+
+- **What should the reader do next in 5 minutes?**
+  - Skim the docs pages:
+    - Transactions
+    - Durable hooks
+    - Querying (especially index-based querying)
+- **Which Fragno doc/page should you link as the "next step"?**
+  - `"/docs/fragno/for-library-authors/database-integration/overview"`
+  - `"/docs/fragno/for-library-authors/database-integration/transactions"`
+  - `"/docs/fragno/for-library-authors/database-integration/durable-hooks"`
+- **What feedback are you asking for (specific questions)?**
+  - "Is this transaction shape intuitive for library authors?"
+  - "What's missing for real-world adoption: migrations workflow, debug tooling, observability?"
+- **What's the "try it yourself" path (repo/example/quickstart)?**
+  - Point to `example-fragments/fragno-db-library` as a complete example.
+
+## 12) Packaging (title/summary/SEO without losing soul)
+
+- **What's the 1--2 sentence description (meta) that sets expectations?**
+  - "A deep dive into why Fragno DB models transactions as composable 'recipes', how optimistic
+    concurrency + retries shapes the architecture, and how durable hooks solve the post-commit side
+    effect problem."
+- **What search query should this post win?**
+  - "composable transactions for libraries"
+  - "outbox pattern idempotency key"
+  - "optimistic concurrency automatic retries TypeScript"
+- **What terms should appear in headings?**
+  - "transaction builder", "optimistic concurrency", "outbox / durable hooks", "idempotency"
+- **What's the one hero diagram/figure that could be shared standalone?**
+  - A timeline diagram:
+    - transaction commit -> durable hook trigger persisted -> hook executed with retries using an
+      idempotency key.

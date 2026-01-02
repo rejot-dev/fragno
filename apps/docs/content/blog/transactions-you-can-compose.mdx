@@ -1,0 +1,298 @@
+---
+title: "How we designed transactions for libraries (Fragno DB)"
+description:
+  "An experience report on building a transaction abstraction for full-stack libraries: no
+  long-lived interactive transactions, user-space OCC, durable hooks, and composability across
+  databases."
+date: "2025-12-30"
+author: "Wilco Kruijer"
+---
+
+<Callout type="idea">
+  Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and a
+  database schema into a single package. The goal is to let library authors ship complete features
+  across the full stack.
+  <p>See the [GitHub repository](https://github.com/rejot-dev/fragno) for details.</p>
+</Callout>
+
+# How we designed transactions for libraries (Fragno DB)
+
+This is an experience report about how we went looking for a transaction abstraction that could work
+for a very unusual use case: **database-backed libraries**.
+
+The spoiler:
+
+- We ended up with a **builder-style transaction plan** (retrieve phase, then mutate phase).
+- We implemented **optimistic concurrency control (OCC) in user space**, inspired by FoundationDB.
+- We added **durable hooks** (outbox) so users can attach "after commit" side effects to
+  library-defined writes.
+
+This post is not a reference guide for `@fragno-dev/db`. It is the reasoning behind its shape.
+
+## Who this is for
+
+If you build SDKs, integrations, or "platform code" that other teams install, you have probably hit
+this tension: you want to ship a complete feature, but **touching the user's database feels risky**.
+
+This post is for that situation.
+
+Assumptions:
+
+- You already know what a database transaction is.
+- You have used an ORM, or you have reviewed code that uses one.
+
+## The problem we were trying to solve
+
+We wanted library authors to be able to define a schema and write queries, while keeping the
+application developer in control:
+
+- The app developer owns the DB connection and the connection pool.
+- The app developer owns operational concerns (timeouts, isolation level, deployment model).
+- The library should not be able to accidentally lock up production by holding long transactions.
+- Multiple library operations should be composable into one atomic unit.
+
+And there is a second requirement that is easy to miss until you ship something real:
+
+- the library performs a DB write
+- the user needs a reliable hook point for side effects tied to that write
+
+Think: "send a confirmation email after subscription is committed".
+
+## Why I did not want interactive transactions
+
+I do not like interactive transactions (`db.transaction(async (tx) => { ... })`) even in normal
+application code. They encourage a style where you keep adding "just one more query" inside a
+callback until the transaction is no longer short-lived.
+
+In a library, this is worse. The integrator cannot easily see when a dependency accidentally starts
+doing too much work in a transaction.
+
+They also hog connections: once the transaction starts, you are holding onto a connection until the
+callback returns. That is not something I want a random dependency to be able to do.
+
+And they make it easy to accidentally do side effects or long-running calculations _after_ the
+transaction has started, which silently increases lock time and pool pressure.
+
+Interactive transactions also make composition feel painful. Once you need "do A and B atomically",
+you often end up threading `tx` through call stacks and refactoring code that used to be cleanly
+separated.
+
+So we started with a bias:
+
+- avoid long-lived interactive transactions by default
+- prefer a transaction abstraction that makes composition the path of least resistance
+
+## The portability constraint: isolation levels are not a library choice
+
+Then we hit a constraint that changed how we thought about correctness.
+
+Fragno DB needs to map transactions to multiple database systems and adapters. Those systems do not
+share identical isolation semantics.
+
+Even within one system, isolation is not something a library should decide. In Postgres, most
+applications run at the default isolation level and never see serialization failures. Retries are
+rarely necessary.
+
+Retries become a real thing when you opt into stronger isolation (for example `SERIALIZABLE`), where
+the database can abort a transaction to preserve serializability.
+
+That creates an awkward question for library code:
+
+- If a library relies on the database to abort transactions for concurrency anomalies, it implicitly
+  relies on an isolation level it does not control.
+
+We wanted an approach where concurrency behavior is predictable without asking the application to
+change isolation levels.
+
+## The direction that clicked: OCC in user space (FoundationDB vibes)
+
+FoundationDB has a design I keep coming back to: treat transactions as something you can retry, and
+implement conflict detection with version checks.
+
+That is the core idea we borrowed:
+
+- reads carry version information
+- writes can assert "only apply if the version I read is still current"
+- if the assertion fails, you retry
+
+In Fragno DB, we implement this in user space with a hidden `_version` column. The important bit is
+not the column itself. It is the fact that the concurrency contract lives above the database system,
+so it can work across adapters and isolation levels.
+
+## The transaction shape we landed on
+
+The abstraction we ended up with has two phases:
+
+- **Retrieval phase**: schedule reads
+- **Mutation phase**: schedule writes based on read results
+
+This sounds like a small refactor. In practice it changes everything:
+
+- you do not keep a transaction open while you run arbitrary application logic
+- you can batch scheduled reads together
+- you can batch scheduled writes together
+- you can safely retry a whole unit of work when conflicts happen
+
+In Fragno DB, you build these plans with `serviceTx(...)` and execute them at the request boundary
+with `handlerTx()`.
+
+## A small worked example: subscribe + post-commit email
+
+Let's use a mailing list subscription.
+
+We want:
+
+1. Create the subscriber if it does not exist
+2. After commit, run a user-provided side effect (send email)
+
+Here is the rough shape in Fragno DB (snippet is illustrative, not copy/paste complete):
+
+```ts
+subscribe: function (email: string) {
+  return this.serviceTx(mailingListSchema)
+    .retrieve((uow) =>
+      uow.find("subscriber", (b) =>
+        b.whereIndex("idx_subscriber_email", (eb) => eb("email", "=", email)),
+      ),
+    )
+    .mutate(({ uow, retrieveResult: [existing] }) => {
+      if (existing.length > 0) return { alreadySubscribed: true };
+
+      uow.create("subscriber", { email, subscribedAt: new Date() });
+      uow.triggerHook("onSubscribe", { email }); // record post-commit hook trigger
+
+      return { alreadySubscribed: false };
+    })
+    .build();
+}
+```
+
+Execution happens at the request boundary:
+
+```ts
+const [result] = await this.handlerTx()
+  .withServiceCalls(() => [services.subscribe(email)] as const)
+  .execute();
+```
+
+This is where the system can centralize retry policies and error handling.
+
+## Durable hooks: the missing piece for libraries
+
+Without durable hooks, libraries tend to fall into one of these options:
+
+- call a callback "after the write" (best effort)
+- ask the user to wire a job queue
+- rely on DB triggers
+
+All three have sharp edges when you want a library to define the write but the user to define the
+effect.
+
+Durable hooks are our answer:
+
+- during the mutation phase, the library records a hook trigger in the database
+- after commit, the hook runs
+- if it fails, it retries with backoff
+- each execution includes an idempotency key (`this.idempotencyKey`)
+
+That makes the contract crisp: if the commit succeeds, the side effect happens eventually (and
+safely under retries).
+
+## OCC and retries: when it matters, and why we still model it
+
+If you only use Postgres at default isolation, you might not see transaction aborts much. You could
+argue retries are not a day-to-day concern.
+
+We still model retries explicitly for two reasons:
+
+1. **Composability**: if you want multiple library operations to compose, you need a safe way to
+   re-run the entire unit when a conflict is detected.
+2. **Portability**: once you target multiple systems and stronger isolation modes, retries become a
+   reality you cannot paper over with "it probably won't happen".
+
+The key point is that our conflict detection does not depend on the database's isolation semantics.
+It is checked in user space via versions.
+
+Concretely, on SQL databases this looks like version-guarded writes:
+
+```sql
+UPDATE TABLE
+SET
+  /* ... */
+,
+  _version = _version + 1
+WHERE
+  id = $id
+  AND _version = $expected_version;
+```
+
+If the update affects 0 rows (or otherwise does not match the expected affected-row count), we treat
+that as a conflict and abort the transaction so it can be retried.
+
+The downside is that you do not always know exactly which statement caused the conflict inside a
+multi-operation transaction. In practice we decided that trade-off is worth it for portability and a
+clear concurrency contract.
+
+## Batching: the thing most applications do not do (but should)
+
+Most application code executes DB queries one by one. It works until latency shows up in the wrong
+place.
+
+A plan-based abstraction makes batching the default:
+
+- read-only transactions take one round-trip
+- read-write transactions take two round-trips (retrieve, then mutate/commit)
+
+This is not a micro-optimization. It is one of the few ways to keep "high-level code" ergonomic
+without paying accidental latency tax for every abstraction layer.
+
+## Alternatives we considered (and why we did not pick them)
+
+### Option 1: interactive transactions everywhere
+
+This is the default in most ORMs. It is convenient, but it optimizes for local simplicity at the
+cost of:
+
+- long-lived transaction creep
+- poor composability without transaction threading
+- unclear retry story once you need stronger guarantees
+
+### Option 2: isolate everything in a job queue
+
+Queues are great. They are not a substitute for "after commit" semantics.
+
+If the DB commit succeeds but enqueue fails, you still need an outbox. Durable hooks makes this part
+explicit.
+
+### Option 3: database triggers
+
+Triggers are not portable across database systems and are hard to ship as a library. They also move
+business logic into a place many teams avoid for good reasons.
+
+## Trade-offs and limitations
+
+Builder-style transactions are not free:
+
+- You trade some flexibility for predictability and composability.
+- You need a structured query API. Fragno DB leans on schema-driven, index-based access.
+- You must design with retries in mind. Durable hooks moves side effects out of the mutation phase.
+
+If your domain requires long-running, interactive, multi-step flows inside one transaction, this
+model will feel constraining. In practice, those flows are often the ones that become fragile under
+load.
+
+## Next steps
+
+If you want the docs version of the concepts in this post:
+
+- [Database integration overview](/docs/fragno/for-library-authors/database-integration/overview)
+- [Transactions](/docs/fragno/for-library-authors/database-integration/transactions)
+- [Durable hooks](/docs/fragno/for-library-authors/database-integration/durable-hooks)
+
+## Feedback I'm looking for
+
+If you build SDKs or platform primitives:
+
+- What would make you comfortable giving a library DB access?
+- Where does your transaction approach break down under load?
+- Do you need observability/debug tooling beyond a durable "after commit" hook point?
