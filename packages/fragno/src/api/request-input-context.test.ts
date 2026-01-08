@@ -493,4 +493,133 @@ describe("RequestContext", () => {
       expect(ctx.query.get("ssr")).toBe("true");
     });
   });
+
+  describe("FormData handling", () => {
+    test("formData() should return FormData when body is FormData", () => {
+      const formData = new FormData();
+      formData.append("file", new Blob(["test"]), "test.txt");
+      formData.append("description", "A test file");
+
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: formData,
+        method: "POST",
+      });
+
+      const result = ctx.formData();
+      expect(result).toBe(formData);
+      expect(result.get("description")).toBe("A test file");
+    });
+
+    test("formData() should throw when body is not FormData", () => {
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: { key: "value" },
+        method: "POST",
+      });
+
+      expect(() => ctx.formData()).toThrow(
+        "Request body is not FormData. Ensure the request was sent with Content-Type: multipart/form-data.",
+      );
+    });
+
+    test("formData() should throw when body is undefined", () => {
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: undefined,
+        method: "POST",
+      });
+
+      expect(() => ctx.formData()).toThrow(
+        "Request body is not FormData. Ensure the request was sent with Content-Type: multipart/form-data.",
+      );
+    });
+
+    test("isFormData() should return true when body is FormData", () => {
+      const formData = new FormData();
+      formData.append("key", "value");
+
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: formData,
+        method: "POST",
+      });
+
+      expect(ctx.isFormData()).toBe(true);
+    });
+
+    test("isFormData() should return false when body is JSON", () => {
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: { key: "value" },
+        method: "POST",
+      });
+
+      expect(ctx.isFormData()).toBe(false);
+    });
+
+    test("isFormData() should return false when body is undefined", () => {
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: undefined,
+        method: "POST",
+      });
+
+      expect(ctx.isFormData()).toBe(false);
+    });
+
+    test("isFormData() should return false when body is Blob", () => {
+      const blob = new Blob(["test content"], { type: "text/plain" });
+
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: blob,
+        method: "POST",
+      });
+
+      expect(ctx.isFormData()).toBe(false);
+    });
+
+    test("Can use isFormData() to conditionally access formData()", () => {
+      const formData = new FormData();
+      formData.append("file", new Blob(["test"]), "test.txt");
+
+      const ctx = new RequestInputContext({
+        path: "/upload",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: formData,
+        method: "POST",
+      });
+
+      if (ctx.isFormData()) {
+        const result = ctx.formData();
+        expect(result.get("file")).toBeInstanceOf(Blob);
+      } else {
+        expect.fail("Should have detected FormData");
+      }
+    });
+  });
 });

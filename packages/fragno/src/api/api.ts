@@ -27,6 +27,14 @@ export type ValidPath<T extends string = string> = T extends `/${infer Rest}`
 
 export interface RequestThisContext {}
 
+/**
+ * Content types that can be accepted by a route.
+ *
+ * - `"application/json"` (default): JSON request body, validated against inputSchema
+ * - `"multipart/form-data"`: FormData request body (file uploads), no schema validation
+ */
+export type RouteContentType = "application/json" | "multipart/form-data";
+
 export interface FragnoRouteConfig<
   TMethod extends HTTPMethod,
   TPath extends string,
@@ -38,6 +46,17 @@ export interface FragnoRouteConfig<
 > {
   method: TMethod;
   path: TPath;
+  /**
+   * The expected content type for this route's request body.
+   *
+   * - `"application/json"` (default): Expects JSON body, will be validated against inputSchema
+   * - `"multipart/form-data"`: Expects FormData body (for file uploads), use `ctx.formData()` in handler
+   *
+   * The server will reject requests with mismatched Content-Type headers.
+   *
+   * @default "application/json"
+   */
+  contentType?: RouteContentType;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   errorCodes?: readonly TErrorCode[];
