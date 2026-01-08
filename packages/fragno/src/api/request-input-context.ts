@@ -154,6 +154,63 @@ export class RequestInputContext<
   }
 
   /**
+   * Access the request body as FormData.
+   *
+   * Use this method when handling file uploads or multipart form submissions.
+   * The request must have been sent with Content-Type: multipart/form-data.
+   *
+   * @throws Error if the request body is not FormData
+   *
+   * @example
+   * ```typescript
+   * defineRoute({
+   *   method: "POST",
+   *   path: "/upload",
+   *   async handler(ctx, res) {
+   *     const formData = ctx.formData();
+   *     const file = formData.get("file") as File;
+   *     const description = formData.get("description") as string;
+   *     // ... process file
+   *   }
+   * });
+   * ```
+   */
+  formData(): FormData {
+    if (!(this.#parsedBody instanceof FormData)) {
+      throw new Error(
+        "Request body is not FormData. Ensure the request was sent with Content-Type: multipart/form-data.",
+      );
+    }
+    return this.#parsedBody;
+  }
+
+  /**
+   * Check if the request body is FormData.
+   *
+   * Useful for routes that accept both JSON and FormData payloads.
+   *
+   * @example
+   * ```typescript
+   * defineRoute({
+   *   method: "POST",
+   *   path: "/upload",
+   *   async handler(ctx, res) {
+   *     if (ctx.isFormData()) {
+   *       const formData = ctx.formData();
+   *       // handle file upload
+   *     } else {
+   *       const json = await ctx.input.valid();
+   *       // handle JSON payload
+   *     }
+   *   }
+   * });
+   * ```
+   */
+  isFormData(): boolean {
+    return this.#parsedBody instanceof FormData;
+  }
+
+  /**
    * Input validation context (only if inputSchema is defined)
    * @remarks `InputContext`
    */

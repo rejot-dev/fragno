@@ -35,4 +35,4 @@ export {
   type RouteFactoryContext,
 } from "./api/route";
 
-export { type FragnoRouteConfig, type RequestThisContext } from "./api/api";
+export { type FragnoRouteConfig, type RequestThisContext, type RouteContentType } from "./api/api";

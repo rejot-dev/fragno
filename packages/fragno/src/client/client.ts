@@ -48,6 +48,128 @@ const MUTATOR_HOOK_SYMBOL = Symbol("fragno-mutator-hook");
 const STORE_SYMBOL = Symbol("fragno-store");
 
 /**
+ * Check if a value contains files that should be sent as FormData.
+ * @internal
+ */
+function containsFiles(value: unknown): boolean {
+  if (value instanceof File || value instanceof Blob) {
+    return true;
+  }
+
+  if (value instanceof FormData) {
+    return true;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).some(
+      (v) => v instanceof File || v instanceof Blob || v instanceof FormData,
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Convert an object containing files to FormData.
+ * Handles nested File/Blob values by appending them directly.
+ * Other values are JSON-stringified.
+ * @internal
+ */
+function toFormData(value: object): FormData {
+  const formData = new FormData();
+
+  for (const [key, val] of Object.entries(value)) {
+    if (val instanceof File) {
+      formData.append(key, val, val.name);
+    } else if (val instanceof Blob) {
+      formData.append(key, val);
+    } else if (val !== undefined && val !== null) {
+      // For non-file values, stringify if needed
+      formData.append(key, typeof val === "string" ? val : JSON.stringify(val));
+    }
+  }
+
+  return formData;
+}
+
+/**
+ * Prepare request body and headers for sending.
+ * Handles FormData (file uploads) vs JSON data.
+ * @internal
+ */
+function prepareRequestBody(body: unknown): { body: BodyInit | undefined; headers?: HeadersInit } {
+  if (body === undefined) {
+    return { body: undefined };
+  }
+
+  // If already FormData, send as-is (browser sets Content-Type with boundary)
+  if (body instanceof FormData) {
+    return { body };
+  }
+
+  // If body is directly a File or Blob, wrap it in FormData
+  if (body instanceof File) {
+    const formData = new FormData();
+    formData.append("file", body, body.name);
+    return { body: formData };
+  }
+
+  if (body instanceof Blob) {
+    const formData = new FormData();
+    formData.append("file", body);
+    return { body: formData };
+  }
+
+  // If object contains files, convert to FormData
+  if (typeof body === "object" && body !== null && containsFiles(body)) {
+    return { body: toFormData(body) };
+  }
+
+  // Otherwise, JSON-stringify
+  return {
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  };
+}
+
+/**
+ * Merge request headers from multiple sources.
+ * Returns undefined if there are no headers to merge.
+ * @internal
+ */
+function mergeRequestHeaders(
+  ...headerSources: (HeadersInit | undefined)[]
+): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  let hasHeaders = false;
+
+  for (const source of headerSources) {
+    if (!source) {
+      continue;
+    }
+
+    if (source instanceof Headers) {
+      for (const [key, value] of source.entries()) {
+        result[key] = value;
+        hasHeaders = true;
+      }
+    } else if (Array.isArray(source)) {
+      for (const [key, value] of source) {
+        result[key] = value;
+        hasHeaders = true;
+      }
+    } else {
+      for (const [key, value] of Object.entries(source)) {
+        result[key] = value;
+        hasHeaders = true;
+      }
+    }
+  }
+
+  return hasHeaders ? result : undefined;
+}
+
+/**
  * Extract only GET routes from a library config's routes array
  * @internal
  */
@@ -944,10 +1066,20 @@ export class ClientBuilder<
 
       let response: Response;
       try {
+        const { body: preparedBody, headers: bodyHeaders } = prepareRequestBody(body);
+
+        // Merge headers: fetcherOptions headers + body-specific headers (e.g., Content-Type for JSON)
+        // For FormData, bodyHeaders is undefined and browser sets Content-Type with boundary automatically
+        const mergedHeaders = mergeRequestHeaders(
+          fetcherOptions?.headers as HeadersInit | undefined,
+          bodyHeaders,
+        );
+
         const requestOptions: RequestInit = {
           ...fetcherOptions,
           method,
-          body: body !== undefined ? JSON.stringify(body) : undefined,
+          body: preparedBody,
+          ...(mergedHeaders ? { headers: mergedHeaders } : {}),
         };
         response = await fetcher(url, requestOptions);
       } catch (error) {

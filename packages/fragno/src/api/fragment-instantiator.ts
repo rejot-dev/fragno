@@ -409,25 +409,66 @@ export class FragnoInstantiatedFragment<
       );
     }
 
-    // Parse request body
+    // Get the expected content type from route config (default: application/json)
+    const routeConfig = route.data as AnyFragnoRouteConfig;
+    const expectedContentType = routeConfig.contentType ?? "application/json";
+
+    // Parse request body based on route's expected content type
     let requestBody: RequestBodyType = undefined;
     let rawBody: string | undefined = undefined;
 
     if (req.body instanceof ReadableStream) {
-      // Clone request to make sure we don't consume body stream
-      const clonedReq = req.clone();
+      const requestContentType = (req.headers.get("content-type") ?? "").toLowerCase();
 
-      // Get raw text
-      rawBody = await clonedReq.text();
+      if (expectedContentType === "multipart/form-data") {
+        // Route expects FormData (file uploads)
+        if (!requestContentType.includes("multipart/form-data")) {
+          return Response.json(
+            {
+              error: `This endpoint expects multipart/form-data, but received: ${requestContentType || "no content-type"}`,
+              code: "UNSUPPORTED_MEDIA_TYPE",
+            },
+            { status: 415 },
+          );
+        }
 
-      // Parse JSON if body is not empty
-      if (rawBody) {
         try {
-          requestBody = JSON.parse(rawBody);
+          requestBody = await req.formData();
         } catch {
-          // If JSON parsing fails, keep body as undefined
-          // This handles cases where body is not JSON
-          requestBody = undefined;
+          return Response.json(
+            { error: "Failed to parse multipart form data", code: "INVALID_REQUEST_BODY" },
+            { status: 400 },
+          );
+        }
+      } else {
+        // Route expects JSON (default)
+        // Note: We're lenient here - we accept requests without Content-Type header
+        // or with application/json. We reject multipart/form-data for JSON routes.
+        if (requestContentType.includes("multipart/form-data")) {
+          return Response.json(
+            {
+              error: `This endpoint expects JSON, but received multipart/form-data. Use a route with contentType: "multipart/form-data" for file uploads.`,
+              code: "UNSUPPORTED_MEDIA_TYPE",
+            },
+            { status: 415 },
+          );
+        }
+
+        // Clone request to make sure we don't consume body stream
+        const clonedReq = req.clone();
+
+        // Get raw text
+        rawBody = await clonedReq.text();
+
+        // Parse JSON if body is not empty
+        if (rawBody) {
+          try {
+            requestBody = JSON.parse(rawBody);
+          } catch {
+            // If JSON parsing fails, keep body as undefined
+            // This handles cases where body is not JSON
+            requestBody = undefined;
+          }
         }
       }
     }

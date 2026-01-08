@@ -500,6 +500,105 @@ describe("fragment-instantiator", () => {
       const data = await response.json();
       expect(data).toEqual({ received: { test: "data" } });
     });
+
+    it("should accept FormData for routes with contentType: multipart/form-data", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "POST",
+        path: "/upload",
+        contentType: "multipart/form-data",
+        handler: async (ctx, { json }) => {
+          const formData = ctx.formData();
+          const description = formData.get("description") as string;
+          return json({ description });
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const formData = new FormData();
+      formData.append("description", "Test file upload");
+
+      const request = new Request("http://localhost/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ description: "Test file upload" });
+    });
+
+    it("should reject FormData for JSON routes (default contentType)", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "POST",
+        path: "/json-only",
+        inputSchema: z.object({ name: z.string() }),
+        handler: async ({ input }, { json }) => {
+          const body = await input.valid();
+          return json(body);
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const formData = new FormData();
+      formData.append("name", "test");
+
+      const request = new Request("http://localhost/api/json-only", {
+        method: "POST",
+        body: formData,
+      });
+
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(415);
+      const data = await response.json();
+      expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+    });
+
+    it("should reject JSON for FormData routes", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "POST",
+        path: "/upload",
+        contentType: "multipart/form-data",
+        handler: async (ctx, { json }) => {
+          // Verify formData() works (would throw if not FormData)
+          ctx.formData();
+          return json({ success: true });
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const request = new Request("http://localhost/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "test" }),
+      });
+
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(415);
+      const data = await response.json();
+      expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+    });
   });
 
   describe("callRoute", () => {
