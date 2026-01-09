@@ -1,5 +1,46 @@
 # @fragno-dev/core
 
+## 0.2.0
+
+### Minor Changes
+
+- 301e2f8: pathParams in RequestInputContext now returns decoded values
+
+### Patch Changes
+
+- f569301: feat(vue): add `createStore` support to Vue client, matching React client functionality.
+  The `useFragno` hook now handles `FragnoStoreData` objects created via `client.createStore()` and
+  transforms them into Vue composables that return reactive store values.
+- 5f6f90e: feat: add FormData file upload support for routes
+
+  Routes can now accept file uploads via FormData by setting `contentType: "multipart/form-data"` on
+  the route definition. The server validates incoming Content-Type headers and rejects mismatched
+  requests with 415 Unsupported Media Type.
+
+  **Route definition:**
+
+  ```typescript
+  defineRoute({
+    method: "POST",
+    path: "/upload",
+    contentType: "multipart/form-data",
+    async handler(ctx, res) {
+      const formData = ctx.formData();
+      const file = formData.get("file") as File;
+      return res.json({ filename: file.name });
+    },
+  });
+  ```
+
+  **New APIs:**
+  - `ctx.formData()` - Access the request body as FormData
+  - `ctx.isFormData()` - Check if the request body is FormData
+  - `RouteContentType` - Type for the `contentType` field ("application/json" |
+    "multipart/form-data")
+
+  **Client-side:** The client automatically detects FormData/File in request bodies and sends them
+  with the correct Content-Type header (letting the browser set the multipart boundary).
+
 ## 0.1.11
 
 ### Patch Changes
