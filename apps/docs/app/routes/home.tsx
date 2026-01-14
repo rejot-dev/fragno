@@ -642,10 +642,10 @@ function StripeShowcase() {
           <div className="flex-1 space-y-3">
             <p className="text-fd-muted-foreground text-sm font-medium">Stripe Fragment</p>
             <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+              Drop in{" "}
               <span className="bg-linear-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent dark:from-violet-400 dark:to-purple-400">
-                Subscriptions
+                Stripe Billing
               </span>
-              , Out of the Box
             </h2>
             <p className="text-fd-muted-foreground max-w-xl text-lg">
               Stripe Checkout, webhooks, and subscription management. Just add your API keys.
