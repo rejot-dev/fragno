@@ -91,32 +91,27 @@ import { useState } from "react";
 import { JsonForms } from "@jsonforms/react";
 import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
 
-interface DynamicFormProps {
-  schema: Record<string, unknown>;
-  uiSchema: Record<string, unknown>;
-  onSubmit: (data: Record<string, unknown>) => void;
-}
-
-export function DynamicForm({ schema, uiSchema, onSubmit }: DynamicFormProps) {
+export function DynamicForm({ schema, uiSchema }: DynamicFormProps) {
   const [data, setData] = useState({});
+  const [errors, setErrors] = useState<{ message?: string }[]>([]);
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit(data);
-      }}
-    >
+    <>
       <JsonForms
         schema={schema}
         uischema={uiSchema}
         data={data}
         renderers={shadcnRenderers}
         cells={shadcnCells}
-        onChange={({ data }) => setData(data)}
+        onChange={({ data, errors }) => {
+          setData(data);
+          setErrors(errors ?? []);
+        }}
       />
-      <button type="submit">Submit</button>
-    </form>
+      <button disabled={errors.length > 0} onClick={handleSubmit}>
+        Submit
+      </button>
+    </>
   );
 }
 ```
@@ -133,35 +128,39 @@ import { formsClient } from "@/lib/forms-client";
 
 export function ContactForm() {
   const [formData, setFormData] = useState({});
+  const [errors, setErrors] = useState<{ message?: string }[]>([]);
   const { data: form, loading: formLoading } = formsClient.useForm({
-    pathParams: { slug: "contact" },
+    path: { slug: "contact" },
   });
-  const { mutate: submit, loading: submitting } = formsClient.useSubmitForm();
+  const { mutate: submit, data: responseId, loading: submitting } = formsClient.useSubmitForm();
 
   if (formLoading || !form) return <div>Loading...</div>;
+  if (responseId) return <div>Thank you for your submission!</div>;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     await submit({
-      pathParams: { slug: "contact" },
+      path: { slug: "contact" },
       body: { data: formData },
     });
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <>
       <JsonForms
         schema={form.dataSchema}
         uischema={form.uiSchema}
         data={formData}
         renderers={shadcnRenderers}
         cells={shadcnCells}
-        onChange={({ data }) => setFormData(data ?? {})}
+        onChange={({ data, errors }) => {
+          setFormData(data ?? {});
+          setErrors(errors ?? []);
+        }}
       />
-      <button type="submit" disabled={submitting}>
+      <button type="submit" disabled={submitting || errors.length > 0} onClick={handleSubmit}>
         {submitting ? "Submitting..." : "Submit"}
       </button>
-    </form>
+    </>
   );
 }
 ```
