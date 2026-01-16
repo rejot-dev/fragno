@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Palette, Database, FileJson, Check } from "lucide-react";
 import { SurveyAboutForms } from "../../components/survey-about-forms";
 import { FormDemo } from "../../components/form-demo";
+import { CopyFormsPromptButton } from "../../components/copy-forms-prompt-button";
 import type { Route } from "./+types/form-index";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { Link } from "react-router";
@@ -84,6 +85,7 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
               <GitHub className="size-4" />
               Star on GitHub
             </a>
+            <CopyFormsPromptButton />
           </div>
         </section>
 
