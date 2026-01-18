@@ -3,7 +3,16 @@ import { decodeCursor } from "@fragno-dev/db";
 import type { TxResult } from "@fragno-dev/db";
 import { z } from "zod";
 import { workflowsFragmentDefinition } from "./definition";
-import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
+import type {
+  InstanceStatus,
+  WorkflowsAuthorizeContext,
+  WorkflowsAuthorizeHook,
+  WorkflowsAuthorizeInstanceCreationContext,
+  WorkflowsAuthorizeManagementContext,
+  WorkflowsAuthorizeRunnerTickContext,
+  WorkflowsAuthorizeSendEventContext,
+  WorkflowsRegistry,
+} from "./workflow";
 
 const workflowNameSchema = z.string().min(1).max(64);
 const identifierSchema = z
@@ -57,6 +66,13 @@ const sendEventSchema = z.object({
   type: identifierSchema,
   payload: z.unknown().optional(),
 });
+
+const runnerTickSchema = z
+  .object({
+    maxInstances: z.coerce.number().int().positive().optional(),
+    maxSteps: z.coerce.number().int().positive().optional(),
+  })
+  .default({});
 
 const instanceStatusOutputSchema = z.object({
   status: instanceStatusSchema,
@@ -125,6 +141,40 @@ const parseCursor = (cursorParam: string | undefined) => {
   }
 };
 
+const buildAuthContext = (
+  context: {
+    method: string;
+    path: string;
+    pathParams: Record<string, string>;
+    query: URLSearchParams;
+    headers: Headers;
+  },
+  input?: unknown,
+): WorkflowsAuthorizeContext => ({
+  method: context.method,
+  path: context.path,
+  pathParams: context.pathParams,
+  query: context.query,
+  headers: context.headers,
+  input,
+});
+
+const authorize = async <TContext extends WorkflowsAuthorizeContext>(
+  hook: WorkflowsAuthorizeHook<TContext> | undefined,
+  context: TContext,
+) => {
+  if (!hook) {
+    return undefined;
+  }
+
+  const result = await hook(context);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  return undefined;
+};
+
 export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).create(
   ({ services, config, defineRoute }) => {
     const knownWorkflowNames = new Set(getWorkflowNames(config.workflows));
@@ -135,10 +185,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
     ) => {
       const parsed = workflowNameSchema.safeParse(workflowName);
       if (!parsed.success || !knownWorkflowNames.has(workflowName)) {
-        return error(
-          { message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" as Code },
-          404,
-        );
+        return error({ message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" as Code }, 404);
       }
       return undefined;
     };
@@ -154,26 +201,17 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       return undefined;
     };
 
-    const handleServiceError = <Code extends string>(
-      err: unknown,
-      error: ErrorResponder<Code>,
-    ) => {
+    const handleServiceError = <Code extends string>(err: unknown, error: ErrorResponder<Code>) => {
       if (!(err instanceof Error)) {
         throw err;
       }
 
       if (err.message === "INSTANCE_NOT_FOUND") {
-        return error(
-          { message: "Instance not found", code: "INSTANCE_NOT_FOUND" as Code },
-          404,
-        );
+        return error({ message: "Instance not found", code: "INSTANCE_NOT_FOUND" as Code }, 404);
       }
 
       if (err.message === "INSTANCE_TERMINAL") {
-        return error(
-          { message: "Instance is terminal", code: "INSTANCE_TERMINAL" as Code },
-          409,
-        );
+        return error({ message: "Instance is terminal", code: "INSTANCE_TERMINAL" as Code }, 409);
       }
 
       if (err.message === "INSTANCE_ID_ALREADY_EXISTS") {
@@ -193,7 +231,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         outputSchema: z.object({
           workflows: z.array(z.object({ name: z.string() })),
         }),
-        handler: async (_context, { json }) => {
+        handler: async (context, { json }) => {
+          const authResponse = await authorize(config.authorizeRequest, buildAuthContext(context));
+          if (authResponse) {
+            return authResponse;
+          }
+
           const workflows = getWorkflowNames(config.workflows).map((name) => ({ name }));
           return json({ workflows });
         },
@@ -212,9 +255,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           cursor: z.string().optional(),
           hasNextPage: z.boolean(),
         }),
-        handler: async function ({ pathParams, query }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams, query } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authResponse = await authorize(config.authorizeRequest, buildAuthContext(context));
+          if (authResponse) {
+            return authResponse;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
@@ -256,15 +304,28 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           details: instanceStatusOutputSchema,
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_ID_ALREADY_EXISTS"],
-        handler: async function ({ pathParams, input }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams, input } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const payload = await input.valid();
+          const authContext = buildAuthContext(context, payload);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
+          const creationAuth = await authorize(config.authorizeInstanceCreation, {
+            ...authContext,
+            workflowName,
+            instances: [{ id: payload.id, params: payload.params }],
+          } satisfies WorkflowsAuthorizeInstanceCreationContext);
+          if (creationAuth) {
+            return creationAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
-
-          const payload = await input.valid();
           if (payload.id) {
             const idError = assertIdentifier(payload.id, "INVALID_INSTANCE_ID", errorResponder);
             if (idError) {
@@ -302,15 +363,31 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           ),
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID"],
-        handler: async function ({ pathParams, input }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams, input } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const payload = await input.valid();
+          const authContext = buildAuthContext(context, payload);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
+          const creationAuth = await authorize(config.authorizeInstanceCreation, {
+            ...authContext,
+            workflowName,
+            instances: payload.instances.map((instance) => ({
+              id: instance.id,
+              params: instance.params,
+            })),
+          } satisfies WorkflowsAuthorizeInstanceCreationContext);
+          if (creationAuth) {
+            return creationAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
-
-          const payload = await input.valid();
           for (const instance of payload.instances) {
             const idError = assertIdentifier(instance.id, "INVALID_INSTANCE_ID", errorResponder);
             if (idError) {
@@ -322,10 +399,10 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             return json({ instances: [] });
           }
 
-          const serviceCall = services.createBatch(
-            workflowName,
-            payload.instances,
-          ) as TxResult<RouteInstanceDetails[], unknown>;
+          const serviceCall = services.createBatch(workflowName, payload.instances) as TxResult<
+            RouteInstanceDetails[],
+            unknown
+          >;
 
           const result = await this.handlerTx()
             .withServiceCalls(() => [serviceCall])
@@ -343,9 +420,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           details: instanceStatusOutputSchema,
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function ({ pathParams }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authResponse = await authorize(config.authorizeRequest, buildAuthContext(context));
+          if (authResponse) {
+            return authResponse;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
@@ -383,9 +465,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           eventsHasNextPage: z.boolean(),
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function ({ pathParams, query }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams, query } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authResponse = await authorize(config.authorizeRequest, buildAuthContext(context));
+          if (authResponse) {
+            return authResponse;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
@@ -454,15 +541,30 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         path: "/workflows/:workflowName/instances/:instanceId/pause",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function ({ pathParams }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authContext = buildAuthContext(context);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
 
           const instanceId = pathParams.instanceId;
+          const managementAuth = await authorize(config.authorizeManagement, {
+            ...authContext,
+            workflowName,
+            instanceId,
+            action: "pause",
+          } satisfies WorkflowsAuthorizeManagementContext);
+          if (managementAuth) {
+            return managementAuth;
+          }
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
           if (idError) {
             return idError;
@@ -483,15 +585,30 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         path: "/workflows/:workflowName/instances/:instanceId/resume",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function ({ pathParams }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authContext = buildAuthContext(context);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
 
           const instanceId = pathParams.instanceId;
+          const managementAuth = await authorize(config.authorizeManagement, {
+            ...authContext,
+            workflowName,
+            instanceId,
+            action: "resume",
+          } satisfies WorkflowsAuthorizeManagementContext);
+          if (managementAuth) {
+            return managementAuth;
+          }
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
           if (idError) {
             return idError;
@@ -512,15 +629,30 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         path: "/workflows/:workflowName/instances/:instanceId/terminate",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function ({ pathParams }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authContext = buildAuthContext(context);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
 
           const instanceId = pathParams.instanceId;
+          const managementAuth = await authorize(config.authorizeManagement, {
+            ...authContext,
+            workflowName,
+            instanceId,
+            action: "terminate",
+          } satisfies WorkflowsAuthorizeManagementContext);
+          if (managementAuth) {
+            return managementAuth;
+          }
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
           if (idError) {
             return idError;
@@ -541,15 +673,30 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         path: "/workflows/:workflowName/instances/:instanceId/restart",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
-        handler: async function ({ pathParams }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const authContext = buildAuthContext(context);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
 
           const instanceId = pathParams.instanceId;
+          const managementAuth = await authorize(config.authorizeManagement, {
+            ...authContext,
+            workflowName,
+            instanceId,
+            action: "restart",
+          } satisfies WorkflowsAuthorizeManagementContext);
+          if (managementAuth) {
+            return managementAuth;
+          }
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
           if (idError) {
             return idError;
@@ -579,21 +726,37 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           "INSTANCE_NOT_FOUND",
           "INSTANCE_TERMINAL",
         ],
-        handler: async function ({ pathParams, input }, { json, error }) {
+        handler: async function (context, { json, error }) {
+          const { pathParams, input } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
+          const payload = await input.valid();
+          const authContext = buildAuthContext(context, payload);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
           const workflowError = assertWorkflowName(workflowName, errorResponder);
           if (workflowError) {
             return workflowError;
           }
 
           const instanceId = pathParams.instanceId;
+          const sendEventAuth = await authorize(config.authorizeSendEvent, {
+            ...authContext,
+            workflowName,
+            instanceId,
+            eventType: payload.type,
+            payload: payload.payload,
+          } satisfies WorkflowsAuthorizeSendEventContext);
+          if (sendEventAuth) {
+            return sendEventAuth;
+          }
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
           if (idError) {
             return idError;
           }
 
-          const payload = await input.valid();
           const typeError = assertIdentifier(payload.type, "INVALID_EVENT_TYPE", errorResponder);
           if (typeError) {
             return typeError;
@@ -614,6 +777,48 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           } catch (err) {
             return handleServiceError(err, errorResponder);
           }
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/_runner/tick",
+        inputSchema: runnerTickSchema,
+        outputSchema: z.object({
+          processed: z.number(),
+        }),
+        handler: async function (context, { json, error }) {
+          const { input } = context;
+          const payload = await input.valid();
+          const authContext = buildAuthContext(context, payload);
+          const requestAuth = await authorize(config.authorizeRequest, authContext);
+          if (requestAuth) {
+            return requestAuth;
+          }
+          const tickAuth = await authorize(config.authorizeRunnerTick, {
+            ...authContext,
+            options: {
+              maxInstances: payload.maxInstances,
+              maxSteps: payload.maxSteps,
+            },
+          } satisfies WorkflowsAuthorizeRunnerTickContext);
+          if (tickAuth) {
+            return tickAuth;
+          }
+
+          if (!config.enableRunnerTick) {
+            return error({ message: "Runner tick disabled", code: "RUNNER_TICK_DISABLED" }, 403);
+          }
+
+          if (!config.runner?.tick) {
+            return error({ message: "Runner not available", code: "RUNNER_NOT_AVAILABLE" }, 503);
+          }
+
+          const processed = await config.runner.tick({
+            maxInstances: payload.maxInstances,
+            maxSteps: payload.maxSteps,
+          });
+
+          return json({ processed: processed ?? 0 });
         },
       }),
     ];

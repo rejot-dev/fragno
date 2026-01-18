@@ -16,15 +16,18 @@
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
-    "db:fragno:generate": "fragno-cli db generate -o src/schema/fragno-schema.ts src/fragno/auth-fragment.ts src/fragno/comment-fragment.ts src/fragno/rating-fragment.ts"
+    "db:fragno:generate": "fragno-cli db generate -o src/schema/fragno-schema.ts src/fragno/auth-fragment.ts src/fragno/comment-fragment.ts src/fragno/rating-fragment.ts src/fragno/workflows-fragment.ts"
   },
   "type": "module",
   "dependencies": {
     "@electric-sql/pglite": "^0.3.10",
+    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragno-db-library": "workspace:*",
+    "@fragno-dev/fragment-workflows": "workspace:*",
     "@fragno-dev/node": "workspace:*",
     "@fragno-dev/simple-auth-fragment": "workspace:*",
+    "@fragno-dev/workflows-dispatcher-node": "workspace:*",
     "drizzle-orm": "^0.44.6",
     "gunshi": "^0.26.3",
     "kysely-pglite": "^0.6.1",

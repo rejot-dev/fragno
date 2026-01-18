@@ -11,6 +11,10 @@ import { commentCommand, commentSubCommands } from "./commands/comment";
 import { ratingCommand, ratingSubCommands } from "./commands/rating";
 import { relationsCommand, relationsSubCommands } from "./commands/relations";
 import { fragment } from "./fragno/auth-fragment";
+import {
+  dispatcher as workflowsDispatcher,
+  fragment as workflowsFragment,
+} from "./fragno/workflows-fragment";
 
 // Clean command
 const cleanCommand: Command = {
@@ -25,15 +29,36 @@ const cleanCommand: Command = {
 // Serve command
 const serveCommand: Command = {
   name: "serve",
-  description: "Start a web server with auth fragment routes",
+  description: "Start a web server with auth + workflows fragment routes",
   run: async () => {
     const port = 3000;
-    const server = createServer(toNodeHandler(fragment.handler));
+    const authHandler = toNodeHandler(fragment.handler);
+    const workflowsHandler = toNodeHandler(workflowsFragment.handler);
+
+    const server = createServer((req, res) => {
+      const url = req.url ?? "";
+
+      if (url.startsWith(fragment.mountRoute)) {
+        return authHandler(req, res);
+      }
+
+      if (url.startsWith(workflowsFragment.mountRoute)) {
+        return workflowsHandler(req, res);
+      }
+
+      res.statusCode = 404;
+      res.end("Not Found");
+    });
 
     server.listen(port, () => {
       console.log(`Server running at http://localhost:${port}`);
       console.log(`Auth fragment mounted at ${fragment.mountRoute}`);
+      console.log(`Workflows fragment mounted at ${workflowsFragment.mountRoute}`);
+      console.log("Workflows dispatcher polling enabled (2s interval).");
+      workflowsDispatcher.startPolling();
     });
+
+    server.on("close", () => workflowsDispatcher.stopPolling());
   },
 };
 
@@ -57,7 +82,7 @@ export const mainCommand: Command = {
     console.log("");
     console.log("Commands:");
     console.log("  clean      Clean the database folder");
-    console.log("  serve      Start a web server with auth fragment routes");
+    console.log("  serve      Start a web server with auth + workflows fragment routes");
     console.log("  user       User management commands");
     console.log("  post       Blog post management commands");
     console.log("  comment    Comment management commands");

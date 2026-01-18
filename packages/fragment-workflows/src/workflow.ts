@@ -86,3 +86,71 @@ export class NonRetryableError extends Error {
     this.name = name ?? "NonRetryableError";
   }
 }
+
+export type WorkflowEnqueuedHookPayload = {
+  workflowName: string;
+  instanceId: string;
+  reason: "create" | "event" | "resume" | "retry" | "wake";
+};
+
+export interface WorkflowsDispatcher {
+  wake: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
+}
+
+export type RunnerTickOptions = {
+  maxInstances?: number;
+  maxSteps?: number;
+};
+
+export interface WorkflowsRunner {
+  tick: (options: RunnerTickOptions) => Promise<number> | number;
+}
+
+export type WorkflowsAuthorizeContext = {
+  method: string;
+  path: string;
+  pathParams: Record<string, string>;
+  query: URLSearchParams;
+  headers: Headers;
+  input?: unknown;
+};
+
+export type WorkflowManagementAction = "pause" | "resume" | "terminate" | "restart";
+
+export type WorkflowsAuthorizeHook<TContext extends WorkflowsAuthorizeContext> = (
+  context: TContext,
+) => Promise<Response | void> | Response | void;
+
+export type WorkflowsAuthorizeInstanceCreationContext = WorkflowsAuthorizeContext & {
+  workflowName: string;
+  instances: { id?: string; params?: unknown }[];
+};
+
+export type WorkflowsAuthorizeManagementContext = WorkflowsAuthorizeContext & {
+  workflowName: string;
+  instanceId: string;
+  action: WorkflowManagementAction;
+};
+
+export type WorkflowsAuthorizeSendEventContext = WorkflowsAuthorizeContext & {
+  workflowName: string;
+  instanceId: string;
+  eventType: string;
+  payload?: unknown;
+};
+
+export type WorkflowsAuthorizeRunnerTickContext = WorkflowsAuthorizeContext & {
+  options: RunnerTickOptions;
+};
+
+export interface WorkflowsFragmentConfig {
+  workflows?: WorkflowsRegistry;
+  dispatcher?: WorkflowsDispatcher;
+  runner?: WorkflowsRunner;
+  enableRunnerTick?: boolean;
+  authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
+  authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;
+  authorizeManagement?: WorkflowsAuthorizeHook<WorkflowsAuthorizeManagementContext>;
+  authorizeSendEvent?: WorkflowsAuthorizeHook<WorkflowsAuthorizeSendEventContext>;
+  authorizeRunnerTick?: WorkflowsAuthorizeHook<WorkflowsAuthorizeRunnerTickContext>;
+}
