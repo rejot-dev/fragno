@@ -178,6 +178,55 @@ describe("PrismaAdapter PGLite", () => {
     expect(typeof totalCount).toBe("number");
   });
 
+  it("should support cursor-based pagination", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const prefix = "Prisma PGLite Manual Cursor";
+
+    const createUow = queryEngine.createUnitOfWork("create-cursor-users");
+    createUow.create("users", { name: `${prefix} A`, age: 20 });
+    createUow.create("users", { name: `${prefix} B`, age: 30 });
+    createUow.create("users", { name: `${prefix} C`, age: 40 });
+    createUow.create("users", { name: `${prefix} D`, age: 50 });
+    createUow.create("users", { name: `${prefix} E`, age: 60 });
+
+    await createUow.executeMutations();
+
+    const [firstPage] = await queryEngine
+      .createUnitOfWork("first-page")
+      .find("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(2),
+      )
+      .executeRetrieve();
+
+    expect(firstPage).toHaveLength(2);
+    expect(firstPage.map((u) => u.name)).toEqual([`${prefix} A`, `${prefix} B`]);
+
+    const lastItem = firstPage[firstPage.length - 1]!;
+    const cursor = new Cursor({
+      indexName: "name_idx",
+      orderDirection: "asc",
+      pageSize: 2,
+      indexValues: { name: lastItem.name },
+    }).encode();
+
+    const [secondPage] = await queryEngine
+      .createUnitOfWork("second-page")
+      .find("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .orderByIndex("name_idx", "asc")
+          .after(cursor)
+          .pageSize(2),
+      )
+      .executeRetrieve();
+
+    expect(secondPage).toHaveLength(2);
+    expect(secondPage.map((u) => u.name)).toEqual([`${prefix} C`, `${prefix} D`]);
+  });
+
   it("should support cursor-based pagination with findWithCursor()", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const prefix = "Prisma PGLite Cursor";
