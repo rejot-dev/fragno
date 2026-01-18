@@ -147,5 +147,43 @@ export const workflowsSchema = schema((s) => {
           ["workflowName", "instanceId", "runNumber"],
           { unique: true },
         );
+    })
+    .addTable("workflow_log", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("workflowName", column("string"))
+        .addColumn("instanceId", column("string"))
+        .addColumn("runNumber", column("integer"))
+        .addColumn("stepKey", column("string").nullable())
+        .addColumn("attempt", column("integer").nullable())
+        .addColumn("level", column("string"))
+        .addColumn("category", column("string"))
+        .addColumn("message", column("string"))
+        .addColumn("data", column("json").nullable())
+        .addColumn("isReplay", column("bool").defaultTo(false))
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_workflow_log_history_createdAt", [
+          "workflowName",
+          "instanceId",
+          "runNumber",
+          "createdAt",
+        ])
+        .createIndex("idx_workflow_log_level_createdAt", [
+          "workflowName",
+          "instanceId",
+          "runNumber",
+          "level",
+          "createdAt",
+        ])
+        .createIndex("idx_workflow_log_category_createdAt", [
+          "workflowName",
+          "instanceId",
+          "runNumber",
+          "category",
+          "createdAt",
+        ]);
     });
 });

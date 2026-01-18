@@ -18,6 +18,7 @@ import type {
   WorkflowsFragmentConfig,
   WorkflowsRegistry,
 } from "./workflow";
+import { parseDurationMs } from "./utils";
 
 export type WorkflowsHistoryStep = {
   id: string;
@@ -48,6 +49,19 @@ export type WorkflowsHistoryEvent = {
   consumedByStepKey: string | null;
 };
 
+export type WorkflowsHistoryLog = {
+  id: string;
+  runNumber: number;
+  stepKey: string | null;
+  attempt: number | null;
+  level: "debug" | "info" | "warn" | "error";
+  category: string;
+  message: string;
+  data: unknown | null;
+  isReplay: boolean;
+  createdAt: Date;
+};
+
 export type WorkflowsHistory = {
   runNumber: number;
   steps: WorkflowsHistoryStep[];
@@ -56,6 +70,9 @@ export type WorkflowsHistory = {
   stepsHasNextPage: boolean;
   eventsCursor?: string;
   eventsHasNextPage: boolean;
+  logs?: WorkflowsHistoryLog[];
+  logsCursor?: string;
+  logsHasNextPage?: boolean;
 };
 
 export type WorkflowsTestClock = WorkflowsClock & {
@@ -110,6 +127,11 @@ export type WorkflowsTestHarness = {
       pageSize?: number;
       stepsCursor?: string;
       eventsCursor?: string;
+      logsCursor?: string;
+      includeLogs?: boolean;
+      logLevel?: "debug" | "info" | "warn" | "error";
+      logCategory?: string;
+      order?: "asc" | "desc";
     },
   ) => Promise<WorkflowsHistory>;
   tick: (options?: RunnerTickOptions) => Promise<number>;
@@ -117,56 +139,6 @@ export type WorkflowsTestHarness = {
     tickOptions?: RunnerTickOptions;
     maxTicks?: number;
   }) => Promise<{ processed: number; ticks: number }>;
-};
-
-const parseDurationMs = (duration: WorkflowDuration): number => {
-  if (typeof duration === "number") {
-    return duration;
-  }
-
-  const trimmed = duration.trim();
-  if (!trimmed) {
-    throw new Error("Invalid duration");
-  }
-
-  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(\w+)?$/i);
-  if (!match) {
-    throw new Error(`Invalid duration: ${duration}`);
-  }
-
-  const value = Number(match[1]);
-  const unit = (match[2] ?? "ms").toLowerCase();
-
-  switch (unit) {
-    case "ms":
-    case "millisecond":
-    case "milliseconds":
-      return value;
-    case "s":
-    case "sec":
-    case "secs":
-    case "second":
-    case "seconds":
-      return value * 1000;
-    case "m":
-    case "min":
-    case "mins":
-    case "minute":
-    case "minutes":
-      return value * 60 * 1000;
-    case "h":
-    case "hr":
-    case "hrs":
-    case "hour":
-    case "hours":
-      return value * 60 * 60 * 1000;
-    case "d":
-    case "day":
-    case "days":
-      return value * 24 * 60 * 60 * 1000;
-    default:
-      throw new Error(`Unsupported duration unit: ${unit}`);
-  }
 };
 
 export const createWorkflowsTestClock = (startAt?: Date | number): WorkflowsTestClock => {
@@ -306,6 +278,11 @@ export async function createWorkflowsTestHarness(
       pageSize?: number;
       stepsCursor?: string;
       eventsCursor?: string;
+      logsCursor?: string;
+      includeLogs?: boolean;
+      logLevel?: "debug" | "info" | "warn" | "error";
+      logCategory?: string;
+      order?: "asc" | "desc";
     },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
@@ -321,6 +298,21 @@ export async function createWorkflowsTestHarness(
     }
     if (historyOptions?.eventsCursor) {
       query["eventsCursor"] = historyOptions.eventsCursor;
+    }
+    if (historyOptions?.logsCursor) {
+      query["logsCursor"] = historyOptions.logsCursor;
+    }
+    if (historyOptions?.includeLogs !== undefined) {
+      query["includeLogs"] = historyOptions.includeLogs ? "true" : "false";
+    }
+    if (historyOptions?.logLevel) {
+      query["logLevel"] = historyOptions.logLevel;
+    }
+    if (historyOptions?.logCategory) {
+      query["logCategory"] = historyOptions.logCategory;
+    }
+    if (historyOptions?.order) {
+      query["order"] = historyOptions.order;
     }
     const response = await fragment.callRoute(
       "GET",
