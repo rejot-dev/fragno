@@ -84,6 +84,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] `do` (cached results + retries + timeouts)
    - [x] `sleep` / `sleepUntil` (schedule wake)
    - [x] `waitForEvent` (buffered event matching + timeout)
+   - [x] Clear timeout timers on success in `#runWithTimeout` (issue #5)
 3. Implement pause/terminate/restart semantics (SPEC §9.4).
 4. Make `POST /_runner/tick` safe under concurrency:
    - multiple callers == distributed runners (SPEC §9.1.1)
