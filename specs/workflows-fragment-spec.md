@@ -1,6 +1,6 @@
 # Fragno Workflows Fragment — SPEC (Draft)
 
-Status: Draft (v0.5 — product decisions captured)
+Status: Draft (v0.7 — CLI/logs decisions locked)
 
 ## 1. Overview
 
@@ -19,6 +19,7 @@ The fragment must:
   - checking instance status
   - pausing/resuming/terminating/restarting instances
   - sending events to running or future `waitForEvent` calls
+  - listing workflow log lines (workflow-authored + engine/system logs)
   - a runner “tick” endpoint for scheduled processing (supported; can be disabled/secured)
 
 ## 2. References
@@ -57,6 +58,8 @@ The fragment must:
 6. **Composable DB transactions**: use Fragno DB (`withDatabase`, `serviceTx`, `handlerTx`).
 7. **Durable hooks**: use Fragno’s durable hooks as an outbox mechanism to reliably signal the
    runner/dispatch mechanism after commits.
+8. **Operational visibility**: expose rich state/history plus durable log lines so operators (and
+   agents) can understand what is happening.
 
 ### 4.2 Non-goals (initial)
 
@@ -115,6 +118,21 @@ Scalability note (future):
 - Keep the option open to scale to **one dispatcher DO per workflow name** (still within a DB
   namespace) if a single namespace-level dispatcher becomes a bottleneck.
 
+### 5.4 Management CLI App (NEW): `apps/fragno-wf` (binary: `fragno-wf`)
+
+Responsibilities:
+
+- Provide a **fully featured workflow management CLI** that talks to the **HTTP API** defined by
+  this fragment (SPEC §11).
+- Work against any deployment target (Node server, Cloudflare DO, etc.) as long as the routes are
+  reachable.
+- Support: listing workflows, listing/inspecting instances (current status + current step/wait),
+  viewing history (optionally including logs), sending events, and pause/resume/restart/terminate.
+- Provide **excellent `--help`** with examples and configuration guidance so an agent can
+  self-serve.
+- Must not require DB access or importing workflow code (HTTP-only).
+- Auth is user-defined; the CLI must support passing **arbitrary headers** (repeatable).
+
 ## 6. User-facing API (Cloudflare-like)
 
 ### 6.1 Workflow definition
@@ -160,7 +178,37 @@ export type WorkflowStepConfig = {
   timeout?: WorkflowDuration; // per attempt
 };
 
+export type WorkflowLogLevel = "debug" | "info" | "warn" | "error";
+
+// Reserved category: "system" (engine/system logs).
+export type WorkflowLogCategory = string;
+
+export type WorkflowLogger = {
+  debug(
+    message: string,
+    data?: unknown,
+    options?: { category?: WorkflowLogCategory },
+  ): Promise<void>;
+  info(
+    message: string,
+    data?: unknown,
+    options?: { category?: WorkflowLogCategory },
+  ): Promise<void>;
+  warn(
+    message: string,
+    data?: unknown,
+    options?: { category?: WorkflowLogCategory },
+  ): Promise<void>;
+  error(
+    message: string,
+    data?: unknown,
+    options?: { category?: WorkflowLogCategory },
+  ): Promise<void>;
+};
+
 export interface WorkflowStep {
+  log: WorkflowLogger;
+
   do<T>(name: string, callback: () => Promise<T> | T): Promise<T>;
   do<T>(name: string, config: WorkflowStepConfig, callback: () => Promise<T> | T): Promise<T>;
 
@@ -174,7 +222,38 @@ export interface WorkflowStep {
 }
 ```
 
-Semantics:
+#### 6.2.1 Durable workflow logs (NEW; structured; workflow + system)
+
+Provide a durable structured logging API that can be surfaced via the history endpoint (behind a
+query param) and the management CLI.
+
+Author-facing API (recommended shape):
+
+```ts
+await step.log.info(
+  "starting run",
+  { requestId: event.payload.requestId },
+  { category: "workflow" },
+);
+
+await step.do("charge customer", async () => {
+  await step.log.info("charging", { amount: 125, currency: "usd" }, { category: "payments" });
+  // ...
+});
+```
+
+Log semantics:
+
+- Log lines are **durable** and stored in the fragment database (see `workflow_log` table, §8.5).
+- Each log line includes structured fields: `level`, `category`, `message`, `data`, and correlation
+  fields (`workflowName`, `instanceId`, `runNumber`, optional `stepKey`/`attempt`).
+- Logs do **not** need to be replay-safe. The engine must store `isReplay` so duplicates (caused by
+  replay) are obvious and filterable in tooling.
+- Category is user-defined; `category="system"` is reserved for engine/system logs (runner state,
+  errors, etc.).
+- Ordering: logs should be returned in insertion order (by `createdAt`/id) with cursor pagination.
+
+Step method semantics:
 
 - `step.do`:
   - Must **cache** its return value (JSON-serializable) per instance + step identity.
@@ -342,7 +421,7 @@ export class ParentWorkflow extends WorkflowEntrypoint {
    - step results + step execution metadata
    - waits (sleep/event)
    - buffered events
-   - (optional) execution history/log records
+   - execution history + durable log records (workflow-authored + optional system)
 2. Services that implement instance lifecycle operations.
 3. API routes (HTTP) that expose these services.
 4. Durable hooks that reliably signal the runner/dispatcher after commits.
@@ -464,6 +543,29 @@ Task lifecycle:
 - `workflow_task` is an **internal durable queue**, not part of the instance history.
 - Implementations should delete tasks once `completed` (or prune them periodically) while keeping
   `workflow_instance`, `workflow_step`, and `workflow_event` forever (infinite retention).
+
+### 8.5 `workflow_log` (NEW; recommended)
+
+Durable log lines emitted by workflow code (and optionally by the engine for system events).
+
+- `id` (FragnoId)
+- `workflowName` (string)
+- `instanceId` (string)
+- `runNumber` (integer)
+- `stepKey` (string, nullable) — step name that produced the log line (when applicable)
+- `attempt` (integer, nullable) — step attempt number (for `step.do`-scoped logs)
+- `level` ("debug" | "info" | "warn" | "error")
+- `category` (string, <= 64 chars; reserved: "system")
+- `message` (string, <= 2048 chars)
+- `data` (json, nullable)
+- `isReplay` (boolean)
+- `createdAt` (timestamp)
+
+Indexes:
+
+- (`workflowName`, `instanceId`, `runNumber`, `createdAt`) // paging/tailing
+- (`workflowName`, `instanceId`, `runNumber`, `level`, `createdAt`) // optional filtering
+- (`workflowName`, `instanceId`, `runNumber`, `category`, `createdAt`) // optional filtering
 
 ## 9. Execution model
 
@@ -631,7 +733,7 @@ State transitions should be Cloudflare-like and idempotent where reasonable.
 - Events can be sent immediately after instance creation; if the instance has not yet reached the
   matching `waitForEvent`, the event must remain buffered.
 - Events sent while an instance is `paused` must be buffered and delivered after resume.
-- Events are scoped to an instance run:
+- Event records are scoped to an instance run:
   - `sendEvent` records events with the instance’s current `runNumber`
   - `waitForEvent` only consumes events for the current `runNumber`
 - When a `waitForEvent(type=X)` is evaluated:
@@ -645,7 +747,7 @@ These are Cloudflare-style guidance and should be documented prominently:
 - **No side effects outside `step.do`**: logic outside steps may re-run on replay/resume.
 - **Make steps idempotent**: steps can retry; ensure external calls are safe to repeat.
 - **Make steps granular**: keep one logical operation per step; avoid multiple unrelated API calls.
-- **Always `await` step calls** (`await step.do`, `await step.sleep`, etc) to avoid dangling
+- **Always `await` step calls** (`await step.do`, `await step.sleep`, etc.) to avoid dangling
   promises.
 - **Keep step return values under 1 MiB**; store large data externally and return references.
 - **Take care with `Promise.race()` / `Promise.any()`**: surround them with `step.do(...)` to ensure
@@ -738,7 +840,36 @@ All routes are mounted under the Fragment’s `mountRoute` (default: `/api/<frag
 ### 11.5 Get instance status
 
 - `GET /workflows/:workflowName/instances/:instanceId`
-  - Returns: `{ id: string; details: InstanceStatus }`
+  - Returns:
+    ```ts
+    {
+      id: string;
+      details: InstanceStatus;
+      meta: {
+        workflowName: string;
+        runNumber: number;
+        params: unknown;
+        pauseRequested: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+        startedAt: Date | null;
+        completedAt: Date | null;
+        currentStep?: {
+          stepKey: string;
+          name: string;
+          type: string;
+          status: string;
+          attempts: number;
+          maxAttempts: number;
+          timeoutMs: number | null;
+          nextRetryAt: Date | null;
+          wakeAt: Date | null;
+          waitEventType: string | null;
+          error?: { name: string; message: string };
+        };
+      };
+    }
+    ```
   - Errors: `INSTANCE_NOT_FOUND`
 
 ### 11.6 Pause / resume / terminate / restart
@@ -773,8 +904,42 @@ All routes are mounted under the Fragment’s `mountRoute` (default: `/api/<frag
 ### 11.8 History / debugging (recommended)
 
 - `GET /workflows/:workflowName/instances/:instanceId/history`
-  - Returns: steps + events summary (capped/paginated)
-  - Requirement: keep full step results + events (no opt-out)
+  - Query:
+    `{ runNumber?: number; pageSize?: number; stepsCursor?: string; eventsCursor?: string; order?: "asc"|"desc"; includeLogs?: boolean; logsCursor?: string; logLevel?: "debug"|"info"|"warn"|"error"; logCategory?: string }`
+  - Returns:
+
+    ```ts
+    {
+      runNumber: number;
+      steps: unknown[];
+      events: unknown[];
+      stepsCursor?: string;
+      stepsHasNextPage: boolean;
+      eventsCursor?: string;
+      eventsHasNextPage: boolean;
+
+      // Only when includeLogs=true
+      logs?: {
+        id: string;
+        runNumber: number;
+        stepKey: string | null;
+        attempt: number | null;
+        level: "debug" | "info" | "warn" | "error";
+        category: string;
+        message: string;
+        data: unknown | null;
+        isReplay: boolean;
+        createdAt: Date;
+      }[];
+      logsCursor?: string;
+      logsHasNextPage?: boolean;
+    }
+    ```
+
+  - Notes:
+    - logs are omitted unless `includeLogs=true`
+    - `category="system"` is reserved for engine/system logs
+    - Requirement: keep full step results + events + logs (no opt-out)
 
 ### 11.9 Runner tick (supported; protect it)
 
@@ -790,6 +955,7 @@ The fragment must not impose a single auth model; instead provide hooks/config:
 - `authorizeRequest?(ctx)`: called by every route; can throw or return an error response.
 - Separate policies for:
   - instance creation
+  - reading instance status/history/logs
   - management operations (pause/resume/terminate/restart)
   - sending events
   - runner tick
@@ -804,6 +970,9 @@ Adopt Cloudflare-compatible defaults where practical:
 - `step.do` name length: <= 256
 - Step result payload max: 1 MiB (enforced at storage boundary)
 - Event payload max: 1 MiB
+- Log message length: <= 2048
+- Log category length: <= 64; reserved: `system`
+- Log data payload max: 1 MiB
 - All params/event payloads/step results must be JSON-serializable; large data must be stored
   externally by the user and returned as references (no built-in blob store in v1).
 - Max steps per run: 1024 (default; configurable)
@@ -830,7 +999,9 @@ At minimum:
 
 - status and error surfaced via `InstanceStatus`
 - a history endpoint for step results/errors and wait reasons
-- optional structured logs written by runner (host-controlled)
+- durable workflow-authored log lines (SPEC §6.2.1, §8.5, §11.8)
+- optional engine/system logs written by the runner (host-controlled; same surface as workflow logs)
+- a first-class management CLI that can consume the above (SPEC §5.4, §17)
 
 ### 14.3 Workflow testability (author-facing)
 
@@ -881,3 +1052,104 @@ Cloudflare-style expectations:
 10. `sendEvent` does not create instances (SPEC §11.7)
 11. Pausing does not freeze sleep/event timeouts (SPEC §9.4)
 12. Step attempt timeouts are best-effort (SPEC §9.3)
+
+## 17. Workflow Management CLI (NEW; app: `fragno-wf`)
+
+We want a **fully featured workflow management CLI** that uses the **workflow fragment HTTP API** to
+inspect and operate workflows end-to-end.
+
+Requirements:
+
+- Lives under `apps/fragno-wf` (SPEC §5.4) and ships the `fragno-wf` binary.
+- Uses only the workflow fragment HTTP routes (no DB access; no importing workflow code).
+- CLI takes the **full workflow fragment base URL** (e.g. `https://host/api/workflows`) rather than
+  composing from host/mount/fragment pieces.
+- Makes it possible to understand:
+  - which workflows exist
+  - which instances are running/waiting/paused/errored
+  - what the current step is (or last step + wait reason)
+  - what happened (history + events + logs)
+- Outputs human-friendly text only (if machine output is needed, call the HTTP API directly).
+- Supports user-defined auth by allowing arbitrary repeatable headers (e.g.
+  `-H "Authorization: ..."`).
+- Provides excellent `--help` so an agent can self-serve:
+  - command tree, options, env vars/config
+  - examples for common operations
+
+Recommended command surface (draft):
+
+- `fragno-wf workflows list` → `GET /workflows`
+- `fragno-wf instances list --workflow <name> [--status <status>]` →
+  `GET /workflows/:workflowName/instances`
+- `fragno-wf instances get --workflow <name> --id <instanceId> [--full]` →
+  `GET /workflows/:workflowName/instances/:instanceId`
+- `fragno-wf instances history --workflow <name> --id <instanceId> [--run <n>] [--include-logs] [--log-level <level>] [--log-category <category>]`
+  → `GET /workflows/:workflowName/instances/:instanceId/history`
+- `fragno-wf instances logs --workflow <name> --id <instanceId> [--run <n>] [--follow] [--log-level <level>] [--log-category <category>]`
+  → `GET /workflows/:workflowName/instances/:instanceId/history` (with `includeLogs=true`)
+- `fragno-wf instances create --workflow <name> [--id <instanceId>] [--params <json>]` →
+  `POST /workflows/:workflowName/instances`
+- `fragno-wf instances pause|resume|restart|terminate --workflow <name> --id <instanceId>` →
+  management routes
+- `fragno-wf instances send-event --workflow <name> --id <instanceId> --type <type> [--payload <json>]`
+  → `POST /events`
+
+Non-goals:
+
+- CLI does not expose `createBatch` or runner tick (call the HTTP API directly if needed).
+
+## 18. Documentation (NEW; separate docs section)
+
+Workflow docs must be **separate from Fragno docs**, similar to existing `Stripe` and `Forms`
+sections.
+
+Requirements:
+
+- Add a top-level docs section at `/docs/workflows` with its own `meta.json`.
+- Wire it into the docs nav (update `apps/docs/content/docs/meta.json` to include `workflows`,
+  similar to `stripe` and `forms`).
+- Provide a landing/quickstart page (similar to Forms’ `index.mdx`) that covers:
+  - installation
+  - defining workflows
+  - mounting routes
+  - running dispatchers/ticks
+  - using the management CLI
+- Recommended initial page structure (draft):
+  - `index` (Quickstart / landing)
+  - `concepts` (durability, determinism, replay, retries)
+  - `routes` (HTTP API reference)
+  - `cli` (CLI reference + examples)
+  - `debugging` (history/logs, common failure modes)
+- Keep `/docs/fragno/for-users/workflows` as a short pointer page to the new docs (avoid broken
+  links), but treat `/docs/workflows` as the source of truth.
+
+## 19. Potential workflow feature additions (brainstorm)
+
+No additional workflow feature additions are planned as part of this spec update. Deferred ideas
+(for later):
+
+1. **Instance labels/tags + query filters** (e.g. `labels: { tenantId, orderId }`) and list/search
+   endpoints.
+2. **Concurrency controls** per workflow (max running instances), plus queue depth visibility.
+3. **Dead-letter / manual retry tooling**: re-enqueue, retry now, reset a step, retry a failed run.
+4. **Signals/queries** (Temporal-like): “send signal” distinct from events; “query current state”
+   without replaying.
+5. **Cron/scheduled workflow triggers** (native schedule definitions).
+6. **OpenTelemetry metrics/tracing** integration (step timings, retries, wait times, error rates).
+7. **Web dashboard** (optional) powered by the same API/CLI primitives.
+8. **Retention policies + GC tooling** (admin-only) for long-running installations.
+
+## 20. Decisions (locked)
+
+- CLI lives under `apps/` as `fragno-wf` (binary: `fragno-wf`).
+- CLI takes the full workflow fragment base URL (e.g. `https://host/api/workflows`).
+- CLI supports arbitrary repeatable headers for user-defined auth.
+- CLI outputs human-friendly text only (no JSON mode).
+- CLI does not expose `createBatch` or runner tick.
+- `instances get` prints a summary by default; `--full` includes params/output and extra metadata.
+- Logs are structured, durable, and may appear during replay; the engine stores `isReplay` to make
+  this clear.
+- Logs are returned via the history endpoint when `includeLogs=true` and include `level` and
+  `category` (reserved: `system`).
+- Logs follow the same retention policy as instances (infinite by default).
+- No additional workflow feature additions are planned right now.
