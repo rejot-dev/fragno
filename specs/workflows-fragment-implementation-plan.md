@@ -114,11 +114,13 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - waitForEvent buffering and timeout
    - retry scheduling semantics
    - pause/resume/terminate/restart
-  - [x] pause does not freeze timers (SPEC §9.4)
+
+- [x] pause does not freeze timers (SPEC §9.4)
+
 3. Add distributed runner tests (must be robust):
    - [x] N parallel runners contending for the same tasks/instances (SPEC §9.1.1)
    - [x] concurrent `POST /_runner/tick` calls against the same DB state
-   - lease expiry + takeover correctness
+   - [x] lease expiry + takeover correctness
    - [x] task ordering: `wake|retry|resume` runs before `run` (SPEC §9.1.2)
    - paused instances are not claimed / no hot-looping (SPEC §9.1.3, §9.4)
 4. Add one end-to-end example workflow (approval + event + sleep), and mount in an example app.

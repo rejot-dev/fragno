@@ -249,6 +249,51 @@ describe("Workflows Runner", async () => {
     expect(instance?.status).toBe("complete");
   });
 
+  test("expired processing lease should allow takeover", async () => {
+    const id = await createInstance("concurrent-workflow", {});
+
+    const task = await db.findFirst("workflow_task", (b) =>
+      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "concurrent-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+        ),
+      ),
+    );
+
+    if (!task) {
+      throw new Error("Expected workflow task");
+    }
+
+    await db.update("workflow_task", task.id, (b) =>
+      b.set({
+        status: "processing",
+        lockOwner: "stale-runner",
+        lockedUntil: new Date(Date.now() - 1000),
+        updatedAt: new Date(),
+      }),
+    );
+
+    const runner = createWorkflowsRunner({
+      db,
+      workflows,
+      runnerId: "fresh-runner",
+    });
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+    expect(concurrentCallCount).toBe(1);
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "concurrent-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(instance?.status).toBe("complete");
+  });
+
   test("tick should prioritize wake/retry/resume before run tasks", async () => {
     const now = new Date();
     const createInstanceRecord = (instanceId: string) =>
@@ -312,10 +357,7 @@ describe("Workflows Runner", async () => {
 
     const waiting = await db.findFirst("workflow_instance", (b) =>
       b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "pause-sleep-workflow"),
-          eb("instanceId", "=", id),
-        ),
+        eb.and(eb("workflowName", "=", "pause-sleep-workflow"), eb("instanceId", "=", id)),
       ),
     );
 
@@ -336,10 +378,7 @@ describe("Workflows Runner", async () => {
 
     const completed = await db.findFirst("workflow_instance", (b) =>
       b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(
-          eb("workflowName", "=", "pause-sleep-workflow"),
-          eb("instanceId", "=", id),
-        ),
+        eb.and(eb("workflowName", "=", "pause-sleep-workflow"), eb("instanceId", "=", id)),
       ),
     );
 
