@@ -9,6 +9,7 @@ import type { WorkflowsFragmentConfig } from "./workflow";
 
 const routes = [workflowsRoutesFactory] as const;
 
+/** Create a workflows fragment with routes, bindings, and database integration. */
 export function createWorkflowsFragment(
   config: WorkflowsFragmentConfig = {},
   fragnoConfig: FragnoPublicConfigWithDatabase,
