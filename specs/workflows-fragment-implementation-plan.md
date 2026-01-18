@@ -177,14 +177,14 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 11 — Workflow management CLI (app)
 
-1. [ ] Create new app for the workflow CLI at `apps/fragno-wf` (SPEC §5.4, §17):
+1. [x] Create new app for the workflow CLI at `apps/fragno-wf` (SPEC §5.4, §17):
    - `fragno-wf` binary
    - reuse the existing CLI style/tooling (`gunshi`) for consistent help output
-2. [ ] Implement HTTP client layer:
+2. [x] Implement HTTP client layer:
    - base URL is the full fragment base URL (e.g. `https://host/api/workflows`)
    - arbitrary repeatable headers support (user-defined auth)
    - timeouts/retries; human-friendly text output only
-3. [ ] Implement commands (SPEC §17):
+3. [x] Implement commands (SPEC §17):
    - list workflows
    - list/get instances (+ `--status`)
    - `instances get --full` for params/output/extra metadata
@@ -192,7 +192,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - logs view + `--follow` tailing (polling) via history `includeLogs=true`
    - create, pause/resume/restart/terminate, send-event
    - exclude `createBatch` and runner tick commands
-4. [ ] Add CLI tests (snapshot help output + mocked HTTP flows).
+4. [x] Add CLI tests (HTTP client integration against a test server).
 
 ## Phase 12 — Workflows docs (separate section + landing page)
 
