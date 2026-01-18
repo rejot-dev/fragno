@@ -20,7 +20,8 @@ export default async function setup() {
     `// Temporary dummy exports
 export const fragno_db_rating_db_schema = {};
 export const fragno_db_comment_db_schema = {};
-export const simple_auth_db_schema = {};\n`,
+export const simple_auth_db_schema = {};
+export const workflows_db_schema = {};\n`,
   );
 
   // Generate schema from fragment
@@ -28,6 +29,7 @@ export const simple_auth_db_schema = {};\n`,
     "src/fragno/comment-fragment.ts",
     "src/fragno/rating-fragment.ts",
     "src/fragno/auth-fragment.ts",
+    "src/fragno/workflows-fragment.ts",
     "-o",
     schemaOut,
   ];
