@@ -212,3 +212,4 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 1. [x] Tests: targeted packages + docs build if available
 2. [x] Lint + types
+3. [x] Re-verified: 2026-01-18 (tests, lint, types; fragno-test + db included)
