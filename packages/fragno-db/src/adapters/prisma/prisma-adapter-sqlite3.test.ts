@@ -2,8 +2,13 @@ import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { PrismaAdapter } from "./prisma-adapter";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
+import {
+  createHandlerTxBuilder,
+  createServiceTxBuilder,
+} from "../../query/unit-of-work/execute-unit-of-work";
+import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
 
@@ -78,6 +83,29 @@ describe("PrismaAdapter SQLite", () => {
       });
   });
 
+  const schema2 = schema((s) => {
+    return s
+      .addTable("products", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("price", column("integer"))
+          .createIndex("name_idx", ["name"]);
+      })
+      .addTable("orders", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("product_id", referenceColumn())
+          .addColumn("quantity", column("integer"))
+          .createIndex("product_orders_idx", ["product_id"]);
+      })
+      .addReference("product", {
+        type: "one",
+        from: { table: "orders", column: "product_id" },
+        to: { table: "products", column: "id" },
+      });
+  });
+
   let adapter: PrismaAdapter;
   let sqliteDatabase: InstanceType<typeof SQLite>;
 
@@ -100,6 +128,11 @@ describe("PrismaAdapter SQLite", () => {
 
     {
       const migrations = adapter.prepareMigrations(testSchema, "namespace");
+      await migrations.executeWithDriver(adapter.driver, 0);
+    }
+
+    {
+      const migrations = adapter.prepareMigrations(schema2, "namespace2");
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
@@ -292,6 +325,85 @@ describe("PrismaAdapter SQLite", () => {
     expect(emptyPage.cursor).toBeUndefined();
   });
 
+  it("should support forSchema for multi-schema queries", async () => {
+    const queryEngine1 = adapter.createQueryEngine(testSchema, "namespace");
+    const queryEngine2 = adapter.createQueryEngine(schema2, "namespace2");
+
+    const createUsersUow = queryEngine1.createUnitOfWork("create-users-for-multi-schema");
+    createUsersUow.create("users", { name: "Prisma Multi Schema User 1", age: 25 });
+    createUsersUow.create("users", { name: "Prisma Multi Schema User 2", age: 30 });
+    const { success: usersSuccess } = await createUsersUow.executeMutations();
+    expect(usersSuccess).toBe(true);
+
+    const createProductsUow = queryEngine2.createUnitOfWork("create-products-for-multi-schema");
+    createProductsUow.create("products", { name: "Prisma Product A", price: 100 });
+    createProductsUow.create("products", { name: "Prisma Product B", price: 200 });
+    const { success: productsSuccess } = await createProductsUow.executeMutations();
+    expect(productsSuccess).toBe(true);
+
+    const uow = queryEngine1.createUnitOfWork("multi-schema-query");
+
+    const view1 = uow
+      .forSchema(testSchema)
+      .find("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "Prisma Multi Schema User"))
+          .select(["id", "name"]),
+      )
+      .find("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "Prisma Multi Schema User"))
+          .select(["name", "age"]),
+      );
+
+    const view2 = uow
+      .forSchema(schema2)
+      .find("products", (b) => b.whereIndex("primary").select(["name", "price"]));
+
+    await uow.executeRetrieve();
+
+    const [users1, users2] = await view1.retrievalPhase;
+    const [user1] = users1;
+    expectTypeOf(user1).toMatchObjectType<{ id: FragnoId; name: string }>();
+
+    const [user2] = users2;
+    expectTypeOf(user2).toMatchObjectType<{ name: string; age: number | null }>();
+
+    const [products] = await view2.retrievalPhase;
+    const [product1] = products;
+    expectTypeOf(product1).toMatchObjectType<{ name: string; price: number }>();
+
+    expect(users1).toHaveLength(2);
+    expect(users1[0]).toMatchObject({
+      id: expect.any(Object),
+      name: "Prisma Multi Schema User 1",
+    });
+    expect(users1[1]).toMatchObject({
+      id: expect.any(Object),
+      name: "Prisma Multi Schema User 2",
+    });
+
+    expect(users2).toHaveLength(2);
+    expect(users2[0]).toMatchObject({
+      name: "Prisma Multi Schema User 1",
+      age: 25,
+    });
+    expect(users2[1]).toMatchObject({
+      name: "Prisma Multi Schema User 2",
+      age: 30,
+    });
+
+    expect(products).toHaveLength(2);
+    expect(products[0]).toMatchObject({
+      name: "Prisma Product A",
+      price: 100,
+    });
+    expect(products[1]).toMatchObject({
+      name: "Prisma Product B",
+      price: 200,
+    });
+  });
+
   it("should support joins", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
@@ -351,6 +463,113 @@ describe("PrismaAdapter SQLite", () => {
     });
   });
 
+  it("should support handlerTx with retry logic", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("create-user-for-execute-uow");
+    createUow.create("users", { name: "Prisma Execute UOW User", age: 42 });
+    await createUow.executeMutations();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-execute-uow")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma Execute UOW User")),
+      )
+      .executeRetrieve();
+
+    let currentUow: ReturnType<typeof queryEngine.createUnitOfWork> | null = null;
+
+    const getUserById = (userId: typeof user.id) => {
+      return createServiceTxBuilder(testSchema, currentUow!)
+        .retrieve((uow) =>
+          uow.find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .transformRetrieve(([users]) => users[0] ?? null)
+        .build();
+    };
+
+    const result = await createHandlerTxBuilder({
+      createUnitOfWork: () => {
+        currentUow = queryEngine.createUnitOfWork("execute-uow-update");
+        return currentUow;
+      },
+      retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+    })
+      .withServiceCalls(() => [getUserById(user.id)])
+      .mutate(({ forSchema, serviceIntermediateResult: [foundUser] }) => {
+        if (!foundUser) {
+          throw new Error("User not found");
+        }
+        const newAge = foundUser.age! + 1;
+        forSchema(testSchema).update("users", foundUser.id, (b) => b.set({ age: newAge }).check());
+        return { previousAge: foundUser.age, newAge };
+      })
+      .transform(({ mutateResult }) => {
+        expect(mutateResult.newAge).toBe(mutateResult.previousAge! + 1);
+        return mutateResult;
+      })
+      .execute();
+
+    expect(result).toEqual({
+      previousAge: 42,
+      newAge: 43,
+    });
+
+    const updatedUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", user.id)),
+    );
+
+    expect(updatedUser).toMatchObject({
+      id: expect.objectContaining({
+        externalId: user.id.externalId,
+        version: 1,
+      }),
+      name: "Prisma Execute UOW User",
+      age: 43,
+    });
+  });
+
+  it("should fail check() when version changes", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-version-conflict");
+    createUserUow.create("users", {
+      name: "Prisma Version Conflict User",
+      age: 40,
+    });
+    await createUserUow.executeMutations();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-version-conflict")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma Version Conflict User")),
+      )
+      .executeRetrieve();
+
+    const updateUow = queryEngine.createUnitOfWork("update-user-version");
+    updateUow.update("users", user.id, (b) => b.set({ age: 41 }));
+    await updateUow.executeMutations();
+
+    const uow = queryEngine.createUnitOfWork("check-stale-version");
+    uow.check("users", user.id);
+    uow.create("posts", {
+      user_id: user.id,
+      title: "Prisma Should Not Be Created",
+      content: "Content",
+    });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(false);
+
+    const [posts] = await queryEngine
+      .createUnitOfWork("get-posts-for-version-conflict")
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .executeRetrieve();
+
+    const conflictPosts = posts.filter((p) => p.title === "Prisma Should Not Be Created");
+    expect(conflictPosts).toHaveLength(0);
+  });
+
   it("should roundtrip Prisma SQLite DateTime, Date, JSON, and BigInt", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const beforeCreate = Date.now();
@@ -384,6 +603,35 @@ describe("PrismaAdapter SQLite", () => {
     const afterFetch = Date.now();
     expect(createdAtMs).toBeGreaterThanOrEqual(beforeCreate - 5 * 60 * 1000);
     expect(createdAtMs).toBeLessThanOrEqual(afterFetch + 5 * 60 * 1000);
+  });
+
+  it("should roundtrip BigInt when sqlite returns bigint values", async () => {
+    sqliteDatabase.defaultSafeIntegers(true);
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const safeIntegerLimit = BigInt(Number.MAX_SAFE_INTEGER);
+    const bigScore = safeIntegerLimit + 42n;
+
+    try {
+      const createUow = queryEngine.createUnitOfWork("create-safe-bigint-event");
+      createUow.create("events", {
+        name: "Safe BigInt",
+        happened_on: new Date("2024-06-17T00:00:00.000Z"),
+        payload: { level: "info", tags: ["sqlite", "safe-bigint"] },
+        big_score: bigScore,
+      });
+      await createUow.executeMutations();
+
+      const [[event]] = await queryEngine
+        .createUnitOfWork("get-safe-bigint-event")
+        .find("events", (b) =>
+          b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Safe BigInt")),
+        )
+        .executeRetrieve();
+
+      expect(event.big_score).toBe(bigScore);
+    } finally {
+      sqliteDatabase.defaultSafeIntegers(false);
+    }
   });
 
   it("should throw when sqlite returns unsafe BigInt numbers", async () => {

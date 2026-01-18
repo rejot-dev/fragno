@@ -250,6 +250,47 @@ describe("PrismaAdapter PGLite", () => {
     expect(result.cursor).toBeInstanceOf(Cursor);
   });
 
+  it("should fail check() when version changes", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-version-conflict");
+    createUserUow.create("users", {
+      name: "Prisma PGLite Version Conflict User",
+      age: 40,
+    });
+    await createUserUow.executeMutations();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-version-conflict")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Version Conflict User")),
+      )
+      .executeRetrieve();
+
+    const updateUow = queryEngine.createUnitOfWork("update-user-version");
+    updateUow.update("users", user.id, (b) => b.set({ age: 41 }));
+    await updateUow.executeMutations();
+
+    const uow = queryEngine.createUnitOfWork("check-stale-version");
+    uow.check("users", user.id);
+    uow.create("posts", {
+      user_id: user.id,
+      title: "Prisma PGLite Should Not Be Created",
+      content: "Content",
+    });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(false);
+
+    const [posts] = await queryEngine
+      .createUnitOfWork("get-posts-for-version-conflict")
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
+      .executeRetrieve();
+
+    const conflictPosts = posts.filter((p) => p.title === "Prisma PGLite Should Not Be Created");
+    expect(conflictPosts).toHaveLength(0);
+  });
+
   it("should roundtrip DateTime, Date, JSON, and BigInt", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const beforeCreate = Date.now();
