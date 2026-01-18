@@ -149,11 +149,11 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 9 — Management surface completeness (CLI-ready)
 
-1. [ ] Extend instance read APIs to return operator-friendly metadata (SPEC §11.5):
+1. [x] Extend instance read APIs to return operator-friendly metadata (SPEC §11.5):
    - `runNumber`, `params`, timestamps, `pauseRequested`
    - `currentStep` summary (last step + wait/retry fields)
-2. [ ] Add service methods for “current step” summary and instance metadata retrieval.
-3. [ ] Add tests covering:
+2. [x] Add service methods for “current step” summary and instance metadata retrieval.
+3. [x] Add tests covering:
    - metadata fields are correct
    - `currentStep` matches the latest step state for `running|waiting|paused`
 
