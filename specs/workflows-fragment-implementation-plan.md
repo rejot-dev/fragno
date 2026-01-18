@@ -145,3 +145,68 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
        `pnpm turbo run test --filter=@fragno-dev/fragment-workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
 2. [x] Lint: `pnpm lint`
 3. [x] Types: `pnpm types:check`
+4. Last verified: 2026-01-18 (tests, lint, types; rerun)
+
+## Phase 9 — Management surface completeness (CLI-ready)
+
+1. [ ] Extend instance read APIs to return operator-friendly metadata (SPEC §11.5):
+   - `runNumber`, `params`, timestamps, `pauseRequested`
+   - `currentStep` summary (last step + wait/retry fields)
+2. [ ] Add service methods for “current step” summary and instance metadata retrieval.
+3. [ ] Add tests covering:
+   - metadata fields are correct
+   - `currentStep` matches the latest step state for `running|waiting|paused`
+
+## Phase 10 — Durable workflow log lines (workflow-authored + optional system logs)
+
+1. [ ] Add `workflow_log` table + indexes to `workflowsSchema` (SPEC §8.5).
+2. [ ] Extend the runner step API to expose a structured logger (SPEC §6.2.1):
+   - add `step.log.<level>(message, data?, { category? })`
+   - persist log lines with `workflowName/instanceId/runNumber/stepKey?/attempt?`
+   - store `isReplay` so replay-emitted logs are obvious/filterable
+   - reserve `category="system"` for engine/system logs (optional but recommended)
+3. [ ] Add services + routes:
+   - [ ] extend `GET /workflows/:workflowName/instances/:instanceId/history` to optionally include
+         logs behind `includeLogs=true`, with independent cursor pagination + filters
+4. [ ] Add tests:
+   - [ ] logs are persisted on successful steps
+   - [ ] logs are persisted on failed attempts + retries
+   - [ ] replay-emitted logs are marked with `isReplay=true`
+   - [ ] history only returns logs when `includeLogs=true`
+   - [ ] log pagination and filtering are stable
+
+## Phase 11 — Workflow management CLI (app)
+
+1. [ ] Create new app for the workflow CLI at `apps/fragno-wf` (SPEC §5.4, §17):
+   - `fragno-wf` binary
+   - reuse the existing CLI style/tooling (`gunshi`) for consistent help output
+2. [ ] Implement HTTP client layer:
+   - base URL is the full fragment base URL (e.g. `https://host/api/workflows`)
+   - arbitrary repeatable headers support (user-defined auth)
+   - timeouts/retries; human-friendly text output only
+3. [ ] Implement commands (SPEC §17):
+   - list workflows
+   - list/get instances (+ `--status`)
+   - `instances get --full` for params/output/extra metadata
+   - history view (steps/events, optionally logs via `--include-logs`)
+   - logs view + `--follow` tailing (polling) via history `includeLogs=true`
+   - create, pause/resume/restart/terminate, send-event
+   - exclude `createBatch` and runner tick commands
+4. [ ] Add CLI tests (snapshot help output + mocked HTTP flows).
+
+## Phase 12 — Workflows docs (separate section + landing page)
+
+1. [ ] Create `/docs/workflows` section (like `forms`/`stripe`) with a landing/quickstart page (SPEC
+       §18).
+2. [ ] Move/duplicate the existing workflows doc from `/docs/fragno/for-users/workflows` into the
+       new section and leave a pointer page behind to avoid breaking links.
+3. [ ] Add docs pages:
+   - API routes reference (status/history/logs)
+   - CLI reference (`fragno-wf`, base URL, headers, examples)
+   - Runner/dispatcher integration guide
+   - Debugging & troubleshooting (common failure modes)
+
+## Phase 13 — Verification (new additions)
+
+1. [ ] Tests: targeted packages + docs build if available
+2. [ ] Lint + types
