@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
@@ -19,6 +19,14 @@ describe("Workflows Runner", async () => {
   let pauseBoundaryStarted: Promise<void>;
   let pauseBoundaryStartedResolve: (() => void) | null = null;
   let pauseBoundaryContinue: (() => void) | null = null;
+  let terminateBoundaryCount = 0;
+  let terminateBoundaryStarted: Promise<void>;
+  let terminateBoundaryStartedResolve: (() => void) | null = null;
+  let terminateBoundaryContinue: (() => void) | null = null;
+  let restartBoundaryCount = 0;
+  let restartBoundaryStarted: Promise<void>;
+  let restartBoundaryStartedResolve: (() => void) | null = null;
+  let restartBoundaryContinue: (() => void) | null = null;
 
   class DemoWorkflow extends WorkflowEntrypoint<unknown, { count: number }> {
     async run(event: WorkflowEvent<{ count: number }>, step: WorkflowStep) {
@@ -43,6 +51,12 @@ describe("Workflows Runner", async () => {
   class TimeoutWorkflow extends WorkflowEntrypoint {
     async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
       return await step.waitForEvent("wait-timeout", { type: "timeout", timeout: "1 s" });
+    }
+  }
+
+  class TimeoutCleanupWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do("cleanup-timeout", { timeout: "1 s" }, () => ({ ok: true }));
     }
   }
 
@@ -109,6 +123,39 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class TerminateBoundaryWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      await step.do("terminate-boundary", () => {
+        terminateBoundaryCount += 1;
+        return new Promise<{ ok: boolean }>((resolve) => {
+          terminateBoundaryContinue = () => resolve({ ok: true });
+          if (terminateBoundaryStartedResolve) {
+            terminateBoundaryStartedResolve();
+          }
+        });
+      });
+
+      return { ok: true };
+    }
+  }
+
+  class RestartBoundaryWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do("restart-boundary", () => {
+        restartBoundaryCount += 1;
+        if (restartBoundaryCount > 1) {
+          return { ok: true };
+        }
+        return new Promise<{ ok: boolean }>((resolve) => {
+          restartBoundaryContinue = () => resolve({ ok: true });
+          if (restartBoundaryStartedResolve) {
+            restartBoundaryStartedResolve();
+          }
+        });
+      });
+    }
+  }
+
   class PriorityWorkflow extends WorkflowEntrypoint {
     async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
       return await step.do("record-order", () => {
@@ -168,11 +215,14 @@ describe("Workflows Runner", async () => {
     demo: { name: "demo-workflow", workflow: DemoWorkflow },
     events: { name: "event-workflow", workflow: EventWorkflow },
     timeout: { name: "timeout-workflow", workflow: TimeoutWorkflow },
+    timeoutCleanup: { name: "timeout-cleanup-workflow", workflow: TimeoutCleanupWorkflow },
     slow: { name: "slow-workflow", workflow: SlowWorkflow },
     retry: { name: "retry-workflow", workflow: RetryWorkflow },
     concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
     pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
     pauseBoundary: { name: "pause-boundary-workflow", workflow: PauseBoundaryWorkflow },
+    terminateBoundary: { name: "terminate-boundary-workflow", workflow: TerminateBoundaryWorkflow },
+    restartBoundary: { name: "restart-boundary-workflow", workflow: RestartBoundaryWorkflow },
     priority: { name: "priority-workflow", workflow: PriorityWorkflow },
     replay: { name: "replay-workflow", workflow: ReplayWorkflow },
     distinct: { name: "distinct-step-workflow", workflow: DistinctStepWorkflow },
@@ -220,6 +270,18 @@ describe("Workflows Runner", async () => {
     pauseBoundaryStartedResolve = null;
     pauseBoundaryStarted = new Promise((resolve) => {
       pauseBoundaryStartedResolve = resolve;
+    });
+    terminateBoundaryCount = 0;
+    terminateBoundaryContinue = null;
+    terminateBoundaryStartedResolve = null;
+    terminateBoundaryStarted = new Promise((resolve) => {
+      terminateBoundaryStartedResolve = resolve;
+    });
+    restartBoundaryCount = 0;
+    restartBoundaryContinue = null;
+    restartBoundaryStartedResolve = null;
+    restartBoundaryStarted = new Promise((resolve) => {
+      restartBoundaryStartedResolve = resolve;
     });
   });
 
@@ -411,6 +473,27 @@ describe("Workflows Runner", async () => {
 
     const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     expect(step).toMatchObject({ stepKey: "wait-timeout", status: "errored" });
+  });
+
+  test("do should clear timeout timers after success", async () => {
+    vi.useFakeTimers();
+    try {
+      const before = vi.getTimerCount();
+      const id = await createInstance("timeout-cleanup-workflow", {});
+
+      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processed).toBe(1);
+
+      const instance = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "timeout-cleanup-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+      expect(instance?.status).toBe("complete");
+      expect(vi.getTimerCount()).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("tick should schedule retries before completing a step", async () => {
@@ -630,6 +713,44 @@ describe("Workflows Runner", async () => {
     expect(priorityOrder).toEqual(["wake-1", "retry-1", "resume-1", "run-1"]);
   });
 
+  test("tick should clean up tasks for terminated instances", async () => {
+    const now = new Date();
+    await db.create("workflow_instance", {
+      workflowName: "demo-workflow",
+      instanceId: "terminated-1",
+      status: "terminated",
+      params: {},
+      pauseRequested: false,
+      retentionUntil: null,
+      runNumber: 0,
+      startedAt: null,
+      completedAt: now,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await db.create("workflow_task", {
+      workflowName: "demo-workflow",
+      instanceId: "terminated-1",
+      runNumber: 0,
+      kind: "run",
+      runAt: now,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 1,
+      lastError: null,
+      lockedUntil: null,
+      lockOwner: null,
+    });
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(0);
+
+    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    expect(tasks).toHaveLength(0);
+  });
+
   test("pause requested during run should stop at step boundary", async () => {
     const id = await createInstance("pause-boundary-workflow", {});
 
@@ -676,6 +797,79 @@ describe("Workflows Runner", async () => {
     );
 
     expect(completed?.status).toBe("complete");
+  });
+
+  test("terminate requested during run should stop without overwriting status", async () => {
+    const id = await createInstance("terminate-boundary-workflow", {});
+
+    const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
+
+    await terminateBoundaryStarted;
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/terminate", {
+      pathParams: { workflowName: "terminate-boundary-workflow", instanceId: id },
+    });
+
+    if (!terminateBoundaryContinue) {
+      throw new Error("terminate boundary continuation missing");
+    }
+    terminateBoundaryContinue();
+
+    const processed = await tickPromise;
+    expect(processed).toBe(0);
+    expect(terminateBoundaryCount).toBe(1);
+
+    const terminated = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "terminate-boundary-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(terminated?.status).toBe("terminated");
+
+    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    expect(tasks).toHaveLength(0);
+  });
+
+  test("restart during run should prevent stale run updates", async () => {
+    const id = await createInstance("restart-boundary-workflow", {});
+
+    const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
+
+    await restartBoundaryStarted;
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/restart", {
+      pathParams: { workflowName: "restart-boundary-workflow", instanceId: id },
+    });
+
+    if (!restartBoundaryContinue) {
+      throw new Error("restart boundary continuation missing");
+    }
+    restartBoundaryContinue();
+
+    const processed = await tickPromise;
+    expect(processed).toBe(0);
+    expect(restartBoundaryCount).toBe(1);
+
+    const queued = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "restart-boundary-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(queued?.status).toBe("queued");
+    expect(queued?.runNumber).toBe(1);
+
+    const processedRestart = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(processedRestart).toBe(1);
+    expect(restartBoundaryCount).toBe(2);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "restart-boundary-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(completed?.status).toBe("complete");
+    expect(completed?.runNumber).toBe(1);
   });
 
   test("pause should not freeze sleep timers", async () => {
