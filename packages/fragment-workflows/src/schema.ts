@@ -83,6 +83,11 @@ export const workflowsSchema = schema((s) => {
           "status",
           "wakeAt",
         ])
+        .createIndex("idx_workflow_step_workflowName_instanceId_status", [
+          "workflowName",
+          "instanceId",
+          "status",
+        ])
         .createIndex("idx_workflow_step_status_nextRetryAt", ["status", "nextRetryAt"]);
     })
     .addTable("workflow_event", (t) => {

@@ -40,12 +40,12 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - `workflow_task` (required; distributed runners)
 2. [x] Provide `withDatabase(workflowsSchema)` integration:
    - follow patterns in `packages/fragment-mailing-list/src/definition.ts`
-3. Add indexes needed for runner queries (SPEC §8).
+3. [x] Add indexes needed for runner queries (SPEC §8).
 4. [x] Add index to support sendEvent waiting-step lookup without runNumber (issue #4).
-5. Add/validate the lease/lock columns needed for distributed runners (task lease only):
+5. [x] Add/validate the lease/lock columns needed for distributed runners (task lease only):
    - task lease (`workflow_task.lockOwner/lockedUntil`)
    - unique active task: (`workflowName`, `instanceId`, `runNumber`) (SPEC §8.4)
-6. Set retention defaults per SPEC §14.1:
+6. [x] Set retention defaults per SPEC §14.1:
    - `retentionUntil = null` (infinite retention) for all instances by default
 
 ## Phase 3 — Services (instance lifecycle + eventing)
@@ -64,9 +64,9 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 1. [x] Add `provideHooks` to the fragment definition (SPEC §10.1).
 2. [x] Define a dispatcher interface in the main package used by `onWorkflowEnqueued` (SPEC §5.1,
        §10.3).
-3. Implement the Node dispatcher package:
+3. [x] Implement the Node dispatcher package:
    - in-process `wake()` + optional polling loop (SPEC §5.2)
-4. Implement the Cloudflare DO dispatcher package:
+4. [x] Implement the Cloudflare DO dispatcher package:
    - Durable Object entrypoint + alarm-driven scheduling (SPEC §5.3)
    - v1 shape: one dispatcher DO per DB namespace; keep option open for per-workflow scaling
 5. [x] Document the HTTP tick integration path:
@@ -86,8 +86,8 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] `sleep` / `sleepUntil` (schedule wake)
    - [x] `waitForEvent` (buffered event matching + timeout)
    - [x] Clear timeout timers on success in `#runWithTimeout` (issue #5)
-3. Implement pause/terminate/restart semantics (SPEC §9.4).
-4. Make `POST /_runner/tick` safe under concurrency:
+3. [x] Implement pause/terminate/restart semantics (SPEC §9.4).
+4. [x] Make `POST /_runner/tick` safe under concurrency:
    - multiple callers == distributed runners (SPEC §9.1.1)
 5. Implement task compaction:
    - [x] delete/prune `workflow_task` rows once `completed` (SPEC §8.4, §14.1)
