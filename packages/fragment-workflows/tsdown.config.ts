@@ -5,7 +5,7 @@ import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
 export default defineConfig([
   {
     ignoreWatch: ["./dist"],
-    entry: "./src/index.ts",
+    entry: ["./src/index.ts", "./src/test.ts"],
     dts: true,
     platform: "node",
     outDir: "./dist/node",

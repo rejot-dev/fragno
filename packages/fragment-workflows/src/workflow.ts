@@ -1,5 +1,9 @@
 export type WorkflowDuration = string | number;
 
+export type WorkflowsClock = {
+  now: () => Date;
+};
+
 export type WorkflowEvent<T> = {
   payload: Readonly<T>;
   timestamp: Date;
@@ -147,6 +151,7 @@ export interface WorkflowsFragmentConfig {
   workflows?: WorkflowsRegistry;
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
+  clock?: WorkflowsClock;
   enableRunnerTick?: boolean;
   authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
   authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;

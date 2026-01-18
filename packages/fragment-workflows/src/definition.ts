@@ -113,8 +113,8 @@ type ListHistoryParams = {
 
 type InstanceDetails = { id: string; details: InstanceStatus };
 
-function generateInstanceId() {
-  const timePart = Date.now().toString(36);
+function generateInstanceId(nowMs: number) {
+  const timePart = nowMs.toString(36);
   const randomPart = Math.random().toString(36).slice(2, 10);
   return `inst_${timePart}_${randomPart}`;
 }
@@ -195,12 +195,14 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       await config.dispatcher?.wake?.(payload);
     }),
   }))
-  .providesBaseService(({ defineService }) => {
+  .providesBaseService(({ defineService, config }) => {
+    const getNow = () => config.clock?.now() ?? new Date();
+
     return defineService({
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
-        const instanceId = options?.id ?? generateInstanceId();
+        const now = getNow();
+        const instanceId = options?.id ?? generateInstanceId(now.getTime());
         const params = options?.params ?? {};
-        const now = new Date();
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -267,7 +269,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           return Promise.resolve([]);
         }
 
-        const now = new Date();
+        const now = getNow();
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -517,7 +519,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   .set({
                     status: "waitingForPause",
                     pauseRequested: true,
-                    updatedAt: new Date(),
+                    updatedAt: getNow(),
                   })
                   .check(),
               );
@@ -536,7 +538,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   .set({
                     status: "paused",
                     pauseRequested: false,
-                    updatedAt: new Date(),
+                    updatedAt: getNow(),
                   })
                   .check(),
               );
@@ -554,7 +556,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       resumeInstance: function (workflowName: string, instanceId: string) {
-        const now = new Date();
+        const now = getNow();
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -639,7 +641,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       terminateInstance: function (workflowName: string, instanceId: string) {
-        const now = new Date();
+        const now = getNow();
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -680,7 +682,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       restartInstance: function (workflowName: string, instanceId: string) {
-        const now = new Date();
+        const now = getNow();
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -747,7 +749,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         instanceId: string,
         options: { type: string; payload?: unknown },
       ) {
-        const now = new Date();
+        const now = getNow();
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -758,7 +760,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 ),
               )
               .find("workflow_step", (b) =>
-                b.whereIndex("idx_workflow_step_status_wakeAt", (eb) =>
+                b.whereIndex("idx_workflow_step_workflowName_instanceId_status", (eb) =>
                   eb.and(
                     eb("workflowName", "=", workflowName),
                     eb("instanceId", "=", instanceId),

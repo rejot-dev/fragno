@@ -126,7 +126,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] task ordering: `wake|retry|resume` runs before `run` (SPEC §9.1.2)
    - [x] paused instances are not claimed / no hot-looping (SPEC §9.1.3, §9.4)
 4. [x] Add one end-to-end example workflow (approval + event + sleep), and mount in an example app.
-5. Add author-facing test harness (Fragno-test integration):
+5. [x] Add author-facing test harness (Fragno-test integration):
    - deterministic runner ticking + `runUntilIdle`
    - controllable clock for `sleep` + timeouts
    - event injection + status/history helpers
