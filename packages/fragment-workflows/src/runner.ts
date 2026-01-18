@@ -595,11 +595,13 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       return null;
     }
 
-    if (task.status !== "pending") {
+    const hasActiveLease = task.lockedUntil ? task.lockedUntil > now : false;
+    const canStealProcessing = task.status === "processing" && !hasActiveLease;
+    if (task.status !== "pending" && !canStealProcessing) {
       return null;
     }
 
-    if (task.lockedUntil && task.lockedUntil > now) {
+    if (task.status === "pending" && hasActiveLease) {
       return null;
     }
 
@@ -860,14 +862,33 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       const maxInstances = tickOptions.maxInstances ?? DEFAULT_MAX_INSTANCES;
       const maxSteps = tickOptions.maxSteps ?? DEFAULT_MAX_STEPS;
 
-      const tasks = await runnerOptions.db.find("workflow_task", (b) =>
-        b
-          .whereIndex("idx_workflow_task_status_runAt", (eb) =>
-            eb.and(eb("status", "=", "pending"), eb("runAt", "<=", now)),
-          )
-          .orderByIndex("idx_workflow_task_status_runAt", "asc")
-          .pageSize(maxInstances * 3),
-      );
+      const [pendingTasks, expiredProcessingTasks] = await Promise.all([
+        runnerOptions.db.find("workflow_task", (b) =>
+          b
+            .whereIndex("idx_workflow_task_status_runAt", (eb) =>
+              eb.and(eb("status", "=", "pending"), eb("runAt", "<=", now)),
+            )
+            .orderByIndex("idx_workflow_task_status_runAt", "asc")
+            .pageSize(maxInstances * 3),
+        ),
+        runnerOptions.db.find("workflow_task", (b) =>
+          b
+            .whereIndex("idx_workflow_task_status_lockedUntil", (eb) =>
+              eb.and(eb("status", "=", "processing"), eb("lockedUntil", "<=", now)),
+            )
+            .orderByIndex("idx_workflow_task_status_lockedUntil", "asc")
+            .pageSize(maxInstances * 3),
+        ),
+      ]);
+
+      const tasksById = new Map<string, WorkflowTaskRecord>();
+      for (const task of pendingTasks) {
+        tasksById.set(String(task.id), task);
+      }
+      for (const task of expiredProcessingTasks) {
+        tasksById.set(String(task.id), task);
+      }
+      const tasks = Array.from(tasksById.values());
 
       tasks.sort((a, b) => {
         const priorityA = PRIORITY_BY_KIND[a.kind] ?? 9;
