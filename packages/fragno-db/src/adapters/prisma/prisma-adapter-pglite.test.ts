@@ -160,6 +160,24 @@ describe("PrismaAdapter PGLite", () => {
     });
   });
 
+  it("should support count operations", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("create-users-count");
+    createUow.create("users", { name: "Prisma PGLite Count 1", age: 21 });
+    createUow.create("users", { name: "Prisma PGLite Count 2", age: 31 });
+    createUow.create("users", { name: "Prisma PGLite Count 3", age: 41 });
+    await createUow.executeMutations();
+
+    const [totalCount] = await queryEngine
+      .createUnitOfWork("count-all")
+      .find("users", (b) => b.whereIndex("primary").selectCount())
+      .executeRetrieve();
+
+    expect(totalCount).toBeGreaterThanOrEqual(3);
+    expect(typeof totalCount).toBe("number");
+  });
+
   it("should support cursor-based pagination with findWithCursor()", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const prefix = "Prisma PGLite Cursor";

@@ -179,6 +179,24 @@ describe("PrismaAdapter SQLite", () => {
     });
   });
 
+  it("should support count operations", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("create-count-users");
+    createUow.create("users", { name: "Prisma SQLite Count 1", age: 20 });
+    createUow.create("users", { name: "Prisma SQLite Count 2", age: 30 });
+    createUow.create("users", { name: "Prisma SQLite Count 3", age: 40 });
+    await createUow.executeMutations();
+
+    const [totalCount] = await queryEngine
+      .createUnitOfWork("count-all")
+      .find("users", (b) => b.whereIndex("primary").selectCount())
+      .executeRetrieve();
+
+    expect(totalCount).toBeGreaterThanOrEqual(3);
+    expect(typeof totalCount).toBe("number");
+  });
+
   it("should support cursor-based pagination", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const prefix = "Prisma SQLite Cursor";
@@ -226,6 +244,52 @@ describe("PrismaAdapter SQLite", () => {
 
     expect(secondPage).toHaveLength(2);
     expect(secondPage.map((u) => u.name)).toEqual([`${prefix} C`, `${prefix} D`]);
+  });
+
+  it("should verify hasNextPage in cursor pagination", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const prefix = "Prisma SQLite HasNextPage";
+
+    for (let i = 1; i <= 15; i++) {
+      await queryEngine.create("users", {
+        name: `${prefix} ${i.toString().padStart(2, "0")}`,
+        age: 20 + i,
+      });
+    }
+
+    const firstPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(firstPage.items).toHaveLength(10);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeInstanceOf(Cursor);
+
+    const secondPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .after(firstPage.cursor!)
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.hasNextPage).toBe(false);
+    expect(secondPage.cursor).toBeUndefined();
+
+    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NoMatchPrefix"))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(10),
+    );
+
+    expect(emptyPage.items).toHaveLength(0);
+    expect(emptyPage.hasNextPage).toBe(false);
+    expect(emptyPage.cursor).toBeUndefined();
   });
 
   it("should support joins", async () => {
@@ -320,5 +384,29 @@ describe("PrismaAdapter SQLite", () => {
     const afterFetch = Date.now();
     expect(createdAtMs).toBeGreaterThanOrEqual(beforeCreate - 5 * 60 * 1000);
     expect(createdAtMs).toBeLessThanOrEqual(afterFetch + 5 * 60 * 1000);
+  });
+
+  it("should throw when sqlite returns unsafe BigInt numbers", async () => {
+    sqliteDatabase.defaultSafeIntegers(false);
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const unsafeBigScore = BigInt(Number.MAX_SAFE_INTEGER) + 2n;
+
+    const createUow = queryEngine.createUnitOfWork("create-unsafe-event");
+    createUow.create("events", {
+      name: "Unsafe BigInt",
+      happened_on: new Date("2024-06-16T00:00:00.000Z"),
+      payload: { level: "warn", tags: ["sqlite", "unsafe-bigint"] },
+      big_score: unsafeBigScore,
+    });
+    await createUow.executeMutations();
+
+    await expect(
+      queryEngine
+        .createUnitOfWork("get-unsafe-event")
+        .find("events", (b) =>
+          b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Unsafe BigInt")),
+        )
+        .executeRetrieve(),
+    ).rejects.toThrow(/Number\.MAX_SAFE_INTEGER/);
   });
 });

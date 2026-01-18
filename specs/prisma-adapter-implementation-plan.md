@@ -104,7 +104,7 @@ Status: complete.
 ## Phase 5 — Tests
 
 Status: complete for required coverage (SQLite + PGLite adapter tests include DateTime/JSON/BigInt
-roundtrips; MySQL tests still optional).
+roundtrips and SQLite unsafe-number BigInt safety checks; MySQL tests still optional).
 
 1. Add snapshot tests similar to Drizzle:
    - `packages/fragno-db/src/adapters/prisma/generate.test.ts`
@@ -135,9 +135,18 @@ roundtrips; MySQL tests still optional).
      - BigInt safety: throw if driver returns an unsafe JS `number` for a BigInt column
      - BigInt success path when driver returns `bigint` (e.g. `sqlocal`; `better-sqlite3` with safe
        integers enabled)
+     - Prisma adapter runtime checks: count operations and cursor `hasNextPage` for SQLite/PGLite
 
 ## Phase 6 — Documentation (recommended before release)
 
 1. Add Prisma adapter docs page (mirrors Drizzle/Kysely pages).
 2. Update frameworks table and database fragments overview to include Prisma.
 3. Add “Prisma schema folder” integration snippet and a single-file fallback.
+
+## Validation (2026-01-18)
+
+Status: complete.
+
+- Prisma adapter SQLite + PGLite tests (vitest run)
+- Repository lint (oxlint)
+- Repository types check (turbo run types:check)
