@@ -17,8 +17,8 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 1. Create the packages per SPEC §5:
    - [x] `packages/fragment-workflows` (`@fragno-dev/fragment-workflows`)
-   - [ ] `packages/workflows-dispatcher-node` (`@fragno-dev/workflows-dispatcher-node`)
-   - [ ] `packages/workflows-dispatcher-cloudflare-do`
+   - [x] `packages/workflows-dispatcher-node` (`@fragno-dev/workflows-dispatcher-node`)
+   - [x] `packages/workflows-dispatcher-cloudflare-do`
          (`@fragno-dev/workflows-dispatcher-cloudflare-do`)
 2. Ensure the main package is runtime-agnostic (SPEC §5.3 note); keep Cloudflare/Node APIs in the
    dispatcher packages.
@@ -49,7 +49,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 3 — Services (instance lifecycle + eventing)
 
-1. Implement core services using `this.serviceTx(schema)` (SPEC §7.1):
+1. [x] Implement core services using `this.serviceTx(schema)` (SPEC §7.1):
    - create instance (+ createBatch)
    - list instances (SPEC §11.2)
    - get status
