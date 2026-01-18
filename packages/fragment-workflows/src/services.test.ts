@@ -3,6 +3,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
+import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
 
 describe("Workflows Fragment Services", async () => {
   const dispatcher = {
@@ -275,6 +276,107 @@ describe("Workflows Fragment Services", async () => {
     await expect(
       runService(() => fragment.services.sendEvent("demo-workflow", created.id, { type: "noop" })),
     ).rejects.toThrow("INSTANCE_TERMINAL");
+  });
+
+  test("getInstanceMetadata and getInstanceCurrentStep should return operator metadata", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", {
+        id: "meta-1",
+        params: { source: "meta-test" },
+      }),
+    );
+
+    const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+
+    const startedAt = new Date("2024-01-02T00:00:00.000Z");
+    const updatedAt = new Date("2024-01-02T00:00:10.000Z");
+
+    await db.update("workflow_instance", instance.id, (b) =>
+      b.set({
+        status: "waiting",
+        pauseRequested: true,
+        startedAt,
+        updatedAt,
+      }),
+    );
+
+    const firstStepAt = new Date("2024-01-02T00:00:20.000Z");
+    const currentStepAt = new Date("2024-01-02T00:00:30.000Z");
+
+    await db.create("workflow_step", {
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      runNumber: 0,
+      stepKey: "step-1",
+      name: "first",
+      type: "do",
+      status: "complete",
+      attempts: 1,
+      maxAttempts: 3,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: null,
+      result: null,
+      errorName: null,
+      errorMessage: null,
+      createdAt: firstStepAt,
+      updatedAt: firstStepAt,
+    });
+
+    await db.create("workflow_step", {
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      runNumber: 0,
+      stepKey: "step-2",
+      name: "await-approval",
+      type: "waitForEvent",
+      status: "waiting",
+      attempts: 0,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: "approved",
+      result: null,
+      errorName: null,
+      errorMessage: null,
+      createdAt: currentStepAt,
+      updatedAt: currentStepAt,
+    });
+
+    const meta = await runService<WorkflowInstanceMetadata>(() =>
+      fragment.services.getInstanceMetadata("demo-workflow", created.id),
+    );
+
+    expect(meta).toMatchObject({
+      workflowName: "demo-workflow",
+      runNumber: 0,
+      params: { source: "meta-test" },
+      pauseRequested: true,
+      completedAt: null,
+    });
+    expect(meta.createdAt).toBeInstanceOf(Date);
+    expect(meta.updatedAt).toBeInstanceOf(Date);
+    expect(meta.startedAt).toBeInstanceOf(Date);
+
+    const currentStep = await runService<WorkflowInstanceCurrentStep | undefined>(() =>
+      fragment.services.getInstanceCurrentStep({
+        workflowName: "demo-workflow",
+        instanceId: created.id,
+        runNumber: meta.runNumber,
+      }),
+    );
+
+    expect(currentStep).toMatchObject({
+      stepKey: "step-2",
+      name: "await-approval",
+      type: "waitForEvent",
+      status: "waiting",
+      attempts: 0,
+      maxAttempts: 1,
+      waitEventType: "approved",
+    });
   });
 
   test("getInstanceRunNumber should return current run", async () => {

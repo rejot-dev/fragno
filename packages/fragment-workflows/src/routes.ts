@@ -85,6 +85,37 @@ const instanceStatusOutputSchema = z.object({
   output: z.unknown().optional(),
 });
 
+const currentStepOutputSchema = z.object({
+  stepKey: z.string(),
+  name: z.string(),
+  type: z.string(),
+  status: z.string(),
+  attempts: z.number(),
+  maxAttempts: z.number(),
+  timeoutMs: z.number().nullable(),
+  nextRetryAt: z.date().nullable(),
+  wakeAt: z.date().nullable(),
+  waitEventType: z.string().nullable(),
+  error: z
+    .object({
+      name: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+});
+
+const instanceMetaOutputSchema = z.object({
+  workflowName: z.string(),
+  runNumber: z.number(),
+  params: z.unknown(),
+  pauseRequested: z.boolean(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  startedAt: z.date().nullable(),
+  completedAt: z.date().nullable(),
+  currentStep: currentStepOutputSchema.optional(),
+});
+
 const historyStepSchema = z.object({
   id: z.string(),
   runNumber: z.number(),
@@ -418,6 +449,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         outputSchema: z.object({
           id: z.string(),
           details: instanceStatusOutputSchema,
+          meta: instanceMetaOutputSchema,
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -440,12 +472,32 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
-            const details = await this.handlerTx()
-              .withServiceCalls(() => [services.getInstanceStatus(workflowName, instanceId)])
+            const { details, meta } = await this.handlerTx()
+              .withServiceCalls(
+                () =>
+                  [
+                    services.getInstanceStatus(workflowName, instanceId),
+                    services.getInstanceMetadata(workflowName, instanceId),
+                  ] as const,
+              )
+              .transform(({ serviceResult: [detailsResult, metaResult] }) => ({
+                details: detailsResult,
+                meta: metaResult,
+              }))
+              .execute();
+
+            const currentStep = await this.handlerTx()
+              .withServiceCalls(() => [
+                services.getInstanceCurrentStep({
+                  workflowName,
+                  instanceId,
+                  runNumber: meta.runNumber,
+                }),
+              ])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json({ id: instanceId, details });
+            return json({ id: instanceId, details, meta: { ...meta, currentStep } });
           } catch (err) {
             return handleServiceError(err, errorResponder);
           }
