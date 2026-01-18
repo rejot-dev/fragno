@@ -589,15 +589,21 @@ class RunnerStep implements WorkflowStep {
       return await callback();
     }
 
-    return await Promise.race([
-      Promise.resolve().then(callback),
-      new Promise<T>((_, reject) => {
-        const timer = setTimeout(() => {
-          clearTimeout(timer);
-          reject(new Error("STEP_TIMEOUT"));
-        }, timeoutMs);
-      }),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(callback),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error("STEP_TIMEOUT"));
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 }
 
