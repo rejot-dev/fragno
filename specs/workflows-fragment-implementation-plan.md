@@ -111,9 +111,9 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 2. Add unit tests for:
    - step caching + replay
    - step caching is keyed by name (SPEC §9.2)
-   - waitForEvent buffering and timeout
-   - retry scheduling semantics
-   - pause/resume/terminate/restart
+   - [x] waitForEvent buffering and timeout
+   - [x] retry scheduling semantics
+   - [x] pause/resume/terminate/restart
 
 - [x] pause does not freeze timers (SPEC §9.4)
 

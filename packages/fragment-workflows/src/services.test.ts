@@ -125,6 +125,82 @@ describe("Workflows Fragment Services", async () => {
     });
   });
 
+  test("terminate should mark instance as terminated", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "terminate-1" }),
+    );
+    dispatcher.wake.mockClear();
+
+    const terminated = await runService<{ status: string }>(() =>
+      fragment.services.terminateInstance("demo-workflow", created.id),
+    );
+
+    expect(terminated.status).toBe("terminated");
+
+    const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(instance).toMatchObject({
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      status: "terminated",
+      pauseRequested: false,
+    });
+    expect(instance.completedAt).toBeInstanceOf(Date);
+    expect(dispatcher.wake).not.toHaveBeenCalled();
+  });
+
+  test("restart should enqueue new run and reset instance state", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "restart-1" }),
+    );
+
+    const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    await db.update("workflow_instance", instance.id, (b) =>
+      b.set({
+        status: "complete",
+        output: { ok: true },
+        errorName: "SomethingWrong",
+        errorMessage: "bad",
+        completedAt: new Date(),
+      }),
+    );
+    dispatcher.wake.mockClear();
+
+    const restarted = await runService<{ status: string }>(() =>
+      fragment.services.restartInstance("demo-workflow", created.id),
+    );
+
+    expect(restarted.status).toBe("queued");
+
+    const [restartedInstance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
+    expect(restartedInstance).toMatchObject({
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      status: "queued",
+      pauseRequested: false,
+      runNumber: 1,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+      startedAt: null,
+      completedAt: null,
+    });
+
+    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    const restartTask = tasks.find((task) => task.runNumber === 1 && task.kind === "run");
+    expect(restartTask).toMatchObject({
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      status: "pending",
+    });
+
+    expect(dispatcher.wake).toHaveBeenCalledTimes(1);
+    expect(dispatcher.wake).toHaveBeenCalledWith({
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      reason: "create",
+    });
+  });
+
   test("sendEvent should buffer and wake waiting instance", async () => {
     const created = await runService<{ id: string }>(() =>
       fragment.services.createInstance("demo-workflow", { id: "event-1" }),
