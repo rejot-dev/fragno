@@ -1,0 +1,49 @@
+{
+  "name": "@fragno-dev/fragno-wf",
+  "version": "0.1.0",
+  "exports": {
+    ".": {
+      "development": "./src/cli.ts",
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
+  "type": "module",
+  "bin": {
+    "fragno-wf": "./bin/run.js"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "gunshi": "^0.26.3"
+  },
+  "devDependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/fragment-workflows": "workspace:*",
+    "@fragno-dev/node": "workspace:*",
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "vitest": "^3.2.4"
+  },
+  "main": "./dist/cli.js",
+  "module": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/fragno-wf"
+  },
+  "homepage": "https://fragno.dev",
+  "license": "MIT"
+}
