@@ -14,6 +14,11 @@ describe("Workflows Runner", async () => {
   let priorityOrder: string[] = [];
   let replayCallCount = 0;
   let distinctCallCount = 0;
+  let pauseBoundaryCount = 0;
+  let pauseResumeCount = 0;
+  let pauseBoundaryStarted: Promise<void>;
+  let pauseBoundaryStartedResolve: (() => void) | null = null;
+  let pauseBoundaryContinue: (() => void) | null = null;
 
   class DemoWorkflow extends WorkflowEntrypoint<unknown, { count: number }> {
     async run(event: WorkflowEvent<{ count: number }>, step: WorkflowStep) {
@@ -83,6 +88,27 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class PauseBoundaryWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      await step.do("pause-boundary", () => {
+        pauseBoundaryCount += 1;
+        return new Promise<{ ok: boolean }>((resolve) => {
+          pauseBoundaryContinue = () => resolve({ ok: true });
+          if (pauseBoundaryStartedResolve) {
+            pauseBoundaryStartedResolve();
+          }
+        });
+      });
+
+      const resumed = await step.do("after-pause", () => {
+        pauseResumeCount += 1;
+        return { ok: true };
+      });
+
+      return resumed;
+    }
+  }
+
   class PriorityWorkflow extends WorkflowEntrypoint {
     async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
       return await step.do("record-order", () => {
@@ -117,6 +143,27 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class ChildWorkflow extends WorkflowEntrypoint<unknown, { parentId: string }> {
+    async run(event: WorkflowEvent<{ parentId: string }>, step: WorkflowStep) {
+      return await step.do("child-run", () => ({
+        parentId: event.payload.parentId,
+      }));
+    }
+  }
+
+  class ParentWorkflow extends WorkflowEntrypoint<unknown, { label: string }> {
+    async run(event: WorkflowEvent<{ label: string }>, step: WorkflowStep) {
+      return await step.do("spawn-child", async () => {
+        const child = await this.workflows["child"].create({
+          id: `child-${event.instanceId}`,
+          params: { parentId: event.instanceId },
+        });
+
+        return { childId: child.id, label: event.payload.label };
+      });
+    }
+  }
+
   const workflows = {
     demo: { name: "demo-workflow", workflow: DemoWorkflow },
     events: { name: "event-workflow", workflow: EventWorkflow },
@@ -125,9 +172,12 @@ describe("Workflows Runner", async () => {
     retry: { name: "retry-workflow", workflow: RetryWorkflow },
     concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
     pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
+    pauseBoundary: { name: "pause-boundary-workflow", workflow: PauseBoundaryWorkflow },
     priority: { name: "priority-workflow", workflow: PriorityWorkflow },
     replay: { name: "replay-workflow", workflow: ReplayWorkflow },
     distinct: { name: "distinct-step-workflow", workflow: DistinctStepWorkflow },
+    child: { name: "child-workflow", workflow: ChildWorkflow },
+    parent: { name: "parent-workflow", workflow: ParentWorkflow },
   };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
@@ -164,6 +214,13 @@ describe("Workflows Runner", async () => {
     priorityOrder = [];
     replayCallCount = 0;
     distinctCallCount = 0;
+    pauseBoundaryCount = 0;
+    pauseResumeCount = 0;
+    pauseBoundaryContinue = null;
+    pauseBoundaryStartedResolve = null;
+    pauseBoundaryStarted = new Promise((resolve) => {
+      pauseBoundaryStartedResolve = resolve;
+    });
   });
 
   test("tick should execute workflow and reuse cached steps", async () => {
@@ -211,6 +268,48 @@ describe("Workflows Runner", async () => {
 
     const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     expect(steps).toHaveLength(2);
+  });
+
+  test("tick should expose workflow bindings for child workflows", async () => {
+    const parentId = await createInstance("parent-workflow", { label: "primary" });
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(processed).toBe(1);
+
+    const parentInstance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "parent-workflow"), eb("instanceId", "=", parentId)),
+      ),
+    );
+
+    expect(parentInstance?.status).toBe("complete");
+    expect(parentInstance?.output).toEqual({
+      childId: `child-${parentId}`,
+      label: "primary",
+    });
+
+    const childInstance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "child-workflow"),
+          eb("instanceId", "=", `child-${parentId}`),
+        ),
+      ),
+    );
+
+    expect(childInstance?.status).toBe("queued");
+
+    const childTask = await db.findFirst("workflow_task", (b) =>
+      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "child-workflow"),
+          eb("instanceId", "=", `child-${parentId}`),
+          eb("runNumber", "=", 0),
+        ),
+      ),
+    );
+
+    expect(childTask?.status).toBe("pending");
   });
 
   test("tick should replay cached steps across ticks", async () => {
@@ -529,6 +628,54 @@ describe("Workflows Runner", async () => {
     }
 
     expect(priorityOrder).toEqual(["wake-1", "retry-1", "resume-1", "run-1"]);
+  });
+
+  test("pause requested during run should stop at step boundary", async () => {
+    const id = await createInstance("pause-boundary-workflow", {});
+
+    const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
+
+    await pauseBoundaryStarted;
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/pause", {
+      pathParams: { workflowName: "pause-boundary-workflow", instanceId: id },
+    });
+
+    if (!pauseBoundaryContinue) {
+      throw new Error("pause boundary continuation missing");
+    }
+    pauseBoundaryContinue();
+
+    const processed = await tickPromise;
+    expect(processed).toBe(1);
+    expect(pauseBoundaryCount).toBe(1);
+    expect(pauseResumeCount).toBe(0);
+
+    const paused = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "pause-boundary-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(paused?.status).toBe("paused");
+
+    const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    expect(tasks).toHaveLength(0);
+
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/resume", {
+      pathParams: { workflowName: "pause-boundary-workflow", instanceId: id },
+    });
+
+    const resumedProcessed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(resumedProcessed).toBe(1);
+    expect(pauseResumeCount).toBe(1);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "pause-boundary-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(completed?.status).toBe("complete");
   });
 
   test("pause should not freeze sleep timers", async () => {
