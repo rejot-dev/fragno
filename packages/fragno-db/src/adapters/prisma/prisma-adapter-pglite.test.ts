@@ -158,6 +158,24 @@ describe("PrismaAdapter PGLite", () => {
       }),
       age: 26,
     });
+
+    const uow2 = queryEngine.createUnitOfWork("update-user-stale");
+    uow2.update("users", initialUserId, (b) => b.set({ age: 27 }).check());
+
+    const { success: success2 } = await uow2.executeMutations();
+    expect(success2).toBe(false);
+
+    const [[unchangedUser]] = await queryEngine
+      .createUnitOfWork("verify-unchanged")
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+      .executeRetrieve();
+
+    expect(unchangedUser).toMatchObject({
+      id: expect.objectContaining({
+        version: 1,
+      }),
+      age: 26,
+    });
   });
 
   it("should support count operations", async () => {
