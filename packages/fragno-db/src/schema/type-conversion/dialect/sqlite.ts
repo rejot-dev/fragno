@@ -1,5 +1,6 @@
 import type { AnyColumn } from "../../create";
 import { SQLTypeMapper, type SQLiteDatabaseType } from "../type-mapping";
+import type { SQLiteProfile } from "../../../adapters/generic-sql/driver-config";
 
 /**
  * SQLite-specific type mapper.
@@ -11,6 +12,13 @@ import { SQLTypeMapper, type SQLiteDatabaseType } from "../type-mapping";
  * - REAL for decimals
  */
 export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
+  private readonly sqliteProfile: SQLiteProfile;
+
+  constructor(database: "sqlite", sqliteProfile: SQLiteProfile = "fragno") {
+    super(database);
+    this.sqliteProfile = sqliteProfile;
+  }
+
   protected getInternalIdType(): SQLiteDatabaseType {
     // SQLite uses INTEGER for auto-increment (INTEGER PRIMARY KEY)
     return "integer";
@@ -23,6 +31,9 @@ export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
   protected mapBigint(column: AnyColumn | Pick<AnyColumn, "type">): SQLiteDatabaseType {
     // SQLite special case: reference columns should use integer even if type is bigint
     if ("role" in column && column.role === "reference") {
+      return "integer";
+    }
+    if (this.sqliteProfile === "prisma") {
       return "integer";
     }
     return "blob";
@@ -50,10 +61,16 @@ export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
   }
 
   protected mapTimestamp(): SQLiteDatabaseType {
+    if (this.sqliteProfile === "prisma") {
+      return "text";
+    }
     return "integer";
   }
 
   protected mapDate(): SQLiteDatabaseType {
+    if (this.sqliteProfile === "prisma") {
+      return "text";
+    }
     return "integer";
   }
 

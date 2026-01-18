@@ -126,7 +126,7 @@ export abstract class SQLSerializer {
   }
 
   // Abstract methods for dialect-specific serialization
-  protected abstract serializeDate(value: Date): Date | number;
+  protected abstract serializeDate(value: Date): Date | number | string;
   protected abstract serializeBoolean(value: boolean): boolean | number;
   protected abstract serializeBigInt(value: bigint, col: AnyColumn): bigint | number | Buffer;
   protected abstract serializeJson(value: unknown): unknown;

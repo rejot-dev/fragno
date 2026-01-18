@@ -85,6 +85,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       schema,
       namespace,
       database: this.driverConfig.databaseType,
+      driverConfig: this.driverConfig,
       mapper: namespace ? this.createTableNameMapper(namespace) : undefined,
       driver: this.#driver,
     });

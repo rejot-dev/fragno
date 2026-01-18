@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { column } from "../create";
+import type { AnyColumn } from "../create";
 import { createSQLTypeMapper } from "./create-sql-type-mapper";
 
 describe("SQLTypeMapper", () => {
@@ -78,6 +79,33 @@ describe("SQLTypeMapper", () => {
 
     it("should convert decimal to real", () => {
       expect(mapper.getDatabaseType(column("decimal"))).toBe("real");
+    });
+  });
+
+  describe("sqlite prisma profile", () => {
+    const mapper = createSQLTypeMapper("sqlite", { sqliteProfile: "prisma" });
+
+    it("should convert timestamp to text", () => {
+      expect(mapper.getDatabaseType(column("timestamp"))).toBe("text");
+    });
+
+    it("should convert date to text", () => {
+      expect(mapper.getDatabaseType(column("date"))).toBe("text");
+    });
+
+    it("should convert bigint to integer", () => {
+      expect(mapper.getDatabaseType(column("bigint"))).toBe("integer");
+    });
+
+    it("should keep reference bigint as integer", () => {
+      const referenceColumn = {
+        name: "userId",
+        type: "bigint",
+        role: "reference",
+        isNullable: false,
+      } as AnyColumn;
+
+      expect(mapper.getDatabaseType(referenceColumn)).toBe("integer");
     });
   });
 

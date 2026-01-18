@@ -8,7 +8,7 @@ import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
 import { MySQLSQLGenerator } from "./dialect/mysql";
 import { executeMigration, type CompiledMigration } from "./executor";
-import type { SupportedDatabase } from "../driver-config";
+import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { Kysely } from "kysely";
 /**
  * Options for executing a migration.
@@ -85,6 +85,7 @@ export interface PreparedMigrationsConfig {
   schema: AnySchema;
   namespace: string;
   database: SupportedDatabase;
+  driverConfig?: DriverConfig;
   mapper?: TableNameMapper;
   driver?: SqlDriverAdapter;
   /**
@@ -102,6 +103,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
     schema,
     namespace,
     database,
+    driverConfig,
     driver,
     updateVersionInMigration: defaultUpdateVersion = true,
   } = config;
@@ -110,7 +112,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
   const coldKysely = createColdKysely(database);
 
   // Create the appropriate SQL generator for the database
-  const generator = createSQLGenerator(database, coldKysely);
+  const generator = createSQLGenerator(database, coldKysely, driverConfig);
 
   /**
    * Internal method to compile a migration for a given version range.
@@ -202,13 +204,14 @@ function createSQLGenerator(
   database: SupportedDatabase,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   coldKysely: Kysely<any>,
+  driverConfig?: DriverConfig,
 ): SQLGenerator {
   switch (database) {
     case "sqlite":
-      return new SQLiteSQLGenerator(coldKysely, database);
+      return new SQLiteSQLGenerator(coldKysely, database, driverConfig);
     case "postgresql":
-      return new PostgresSQLGenerator(coldKysely, database);
+      return new PostgresSQLGenerator(coldKysely, database, driverConfig);
     case "mysql":
-      return new MySQLSQLGenerator(coldKysely, database);
+      return new MySQLSQLGenerator(coldKysely, database, driverConfig);
   }
 }

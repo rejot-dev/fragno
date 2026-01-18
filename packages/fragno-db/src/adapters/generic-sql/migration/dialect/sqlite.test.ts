@@ -2,10 +2,23 @@ import { describe, expect, it } from "vitest";
 import type { MigrationOperation } from "../../../../migration-engine/shared";
 import { createColdKysely } from "../cold-kysely";
 import { SQLiteSQLGenerator } from "./sqlite";
+import { BetterSQLite3DriverConfig } from "../../driver-config";
 
 describe("SQLiteSQLGenerator", () => {
   const coldKysely = createColdKysely("sqlite");
   const generator = new SQLiteSQLGenerator(coldKysely, "sqlite");
+
+  class PrismaSQLiteDriverConfig extends BetterSQLite3DriverConfig {
+    override get sqliteProfile() {
+      return "prisma" as const;
+    }
+  }
+
+  const prismaGenerator = new SQLiteSQLGenerator(
+    coldKysely,
+    "sqlite",
+    new PrismaSQLiteDriverConfig(),
+  );
 
   /**
    * Helper to compile a single operation and extract the main SQL statement.
@@ -159,6 +172,24 @@ describe("SQLiteSQLGenerator", () => {
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
         `"create table "timestamps_test" ("id" integer not null unique, "created_at" integer default CURRENT_TIMESTAMP not null)"`,
+      );
+    });
+
+    it("should use text for timestamp/date in prisma profile", () => {
+      const operation: MigrationOperation = {
+        type: "create-table",
+        name: "prisma_timestamps",
+        columns: [
+          { name: "id", type: "integer", isNullable: false, role: "external-id" },
+          { name: "created_at", type: "timestamp", isNullable: false, role: "regular" },
+          { name: "published_on", type: "date", isNullable: false, role: "regular" },
+        ],
+      };
+
+      const statements = prismaGenerator.compile([operation]);
+      expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+      expect(statements[1].sql).toMatchInlineSnapshot(
+        `"create table "prisma_timestamps" ("id" integer not null unique, "created_at" text not null, "published_on" text not null)"`,
       );
     });
 

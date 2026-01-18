@@ -7,6 +7,15 @@ describe("SQLiteSerializer", () => {
   const mockDriverConfig = new BetterSQLite3DriverConfig();
   const serializer = new SQLiteSerializer(mockDriverConfig);
 
+  class PrismaSQLiteDriverConfig extends BetterSQLite3DriverConfig {
+    override get sqliteProfile() {
+      return "prisma" as const;
+    }
+  }
+
+  const prismaDriverConfig = new PrismaSQLiteDriverConfig();
+  const prismaSerializer = new SQLiteSerializer(prismaDriverConfig);
+
   describe("serializeBigInt", () => {
     describe("for internal-id and reference columns", () => {
       it("should convert safe bigint to number for reference column", () => {
@@ -110,6 +119,19 @@ describe("SQLiteSerializer", () => {
         expect((result as Buffer).length).toBe(8);
       });
 
+      it("should keep bigint for regular column in prisma profile", () => {
+        const col: AnyColumn = {
+          name: "largeNumber",
+          type: "bigint",
+          role: "regular",
+          isNullable: false,
+        } as AnyColumn;
+
+        const result = prismaSerializer["serializeBigInt"](BigInt(789), col);
+        expect(result).toBe(BigInt(789));
+        expect(typeof result).toBe("bigint");
+      });
+
       it("should handle large values outside safe integer range as Buffer", () => {
         const col: AnyColumn = {
           name: "largeNumber",
@@ -135,6 +157,13 @@ describe("SQLiteSerializer", () => {
       const result = serializer["serializeDate"](date);
       expect(result).toBe(date.getTime());
       expect(typeof result).toBe("number");
+    });
+
+    it("should serialize Date to ISO string for prisma profile", () => {
+      const date = new Date("2024-01-01T00:00:00Z");
+      const result = prismaSerializer["serializeDate"](date);
+      expect(result).toBe(date.toISOString());
+      expect(typeof result).toBe("string");
     });
 
     it("should serialize boolean to 0/1", () => {
@@ -178,6 +207,18 @@ describe("SQLiteSerializer", () => {
       expect(() => serializer["deserializeBinary"]("not binary")).toThrow(
         /Cannot deserialize binary/,
       );
+    });
+  });
+
+  describe("deserializeDate", () => {
+    it("should parse CURRENT_TIMESTAMP format as UTC", () => {
+      const date = prismaSerializer["deserializeDate"]("2024-03-10 12:34:56");
+      expect(date.toISOString()).toBe("2024-03-10T12:34:56.000Z");
+    });
+
+    it("should parse CURRENT_TIMESTAMP format with milliseconds as UTC", () => {
+      const date = prismaSerializer["deserializeDate"]("2024-03-10 12:34:56.789");
+      expect(date.toISOString()).toBe("2024-03-10T12:34:56.789Z");
     });
   });
 
@@ -245,6 +286,16 @@ describe("SQLiteSerializer", () => {
     it("should throw error for non-string", () => {
       expect(() => serializer["deserializeString"](123)).toThrow(
         /Cannot deserialize string from value/,
+      );
+    });
+  });
+
+  describe("deserializeBigInt", () => {
+    it("should throw when prisma profile receives unsafe bigint number", () => {
+      const unsafeNumber = Number.MAX_SAFE_INTEGER + 10;
+      expect(() => prismaSerializer["deserializeBigInt"](unsafeNumber)).toThrow(RangeError);
+      expect(() => prismaSerializer["deserializeBigInt"](unsafeNumber)).toThrow(
+        /exceeds Number\.MAX_SAFE_INTEGER/,
       );
     });
   });

@@ -18,7 +18,8 @@ This plan implements `specs/prisma-adapter-spec.md`.
 
 ## Phase 1 — Storage profile plumbing (SQLite)
 
-Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverConfig`.
+Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverConfig`. Status:
+complete (sqliteProfile added; type mapping, migration generation, and runtime serializer updated).
 
 1. Extend `packages/fragno-db/src/adapters/generic-sql/driver-config.ts` with a backwards-compatible
    storage profile surface:

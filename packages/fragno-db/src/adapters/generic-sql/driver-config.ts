@@ -11,6 +11,7 @@ export const supportedDriverTypes = [
 ] as const;
 
 export type SupportedDriverType = (typeof supportedDriverTypes)[number];
+export type SQLiteProfile = "fragno" | "prisma";
 
 export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriverType> {
   abstract readonly driverType: T;
@@ -24,6 +25,14 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
    * Only defined if supportsReturning is true.
    */
   abstract readonly internalIdColumn: string | undefined;
+
+  /**
+   * SQLite storage profile selection.
+   * Defaults to the legacy Fragno profile for backwards compatibility.
+   */
+  get sqliteProfile(): SQLiteProfile {
+    return "fragno";
+  }
 
   get supportsRowsAffected(): boolean {
     return !!this.extractAffectedRows;

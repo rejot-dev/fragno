@@ -14,7 +14,7 @@ import type {
 } from "../../../migration-engine/shared";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
-import type { SupportedDatabase } from "../driver-config";
+import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,10 +39,10 @@ export abstract class SQLGenerator {
   protected readonly database: SupportedDatabase;
   protected readonly typeMapper: ReturnType<typeof createSQLTypeMapper>;
 
-  constructor(db: KyselyAny, database: SupportedDatabase) {
+  constructor(db: KyselyAny, database: SupportedDatabase, driverConfig?: DriverConfig) {
     this.db = db;
     this.database = database;
-    this.typeMapper = createSQLTypeMapper(database);
+    this.typeMapper = createSQLTypeMapper(database, driverConfig);
   }
 
   /**

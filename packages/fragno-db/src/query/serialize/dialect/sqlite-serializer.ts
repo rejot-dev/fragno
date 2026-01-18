@@ -2,6 +2,30 @@ import type { AnyColumn } from "../../../schema/create";
 import { SQLSerializer } from "../sql-serializer";
 import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
 
+const SQLITE_UTC_TIMESTAMP_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/;
+
+function parseSQLiteUtcTimestamp(value: string): Date | null {
+  const match = SQLITE_UTC_TIMESTAMP_REGEX.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day, hour, minute, second, millis] = match;
+  const milliseconds = millis ? Number(millis.padEnd(3, "0")) : 0;
+  return new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      milliseconds,
+    ),
+  );
+}
+
 /**
  * SQLite-specific serializer.
  *
@@ -17,7 +41,10 @@ export class SQLiteSerializer extends SQLSerializer {
     super(driverConfig);
   }
 
-  protected serializeDate(value: Date): number {
+  protected serializeDate(value: Date): number | string {
+    if (this.driverConfig.sqliteProfile === "prisma") {
+      return value.toISOString();
+    }
     return value.getTime();
   }
 
@@ -25,7 +52,7 @@ export class SQLiteSerializer extends SQLSerializer {
     return value ? 1 : 0;
   }
 
-  protected serializeBigInt(value: bigint, col: AnyColumn): number | Buffer {
+  protected serializeBigInt(value: bigint, col: AnyColumn): bigint | number | Buffer {
     // SQLite special case: internal-id and reference columns use integer, not blob
     // These should be converted to numbers for SQLite
     if (col.role === "reference" || col.role === "internal-id") {
@@ -40,6 +67,9 @@ export class SQLiteSerializer extends SQLSerializer {
       }
       return Number(value);
     }
+    if (this.driverConfig.sqliteProfile === "prisma") {
+      return value;
+    }
     const buf = Buffer.alloc(8);
     buf.writeBigInt64BE(value);
     return buf;
@@ -49,7 +79,11 @@ export class SQLiteSerializer extends SQLSerializer {
     if (value instanceof Date) {
       return value;
     }
-    if (typeof value === "number" || typeof value === "string") {
+    if (typeof value === "string") {
+      const parsed = parseSQLiteUtcTimestamp(value);
+      return parsed ?? new Date(value);
+    }
+    if (typeof value === "number") {
       return new Date(value);
     }
     throw new Error(`Cannot deserialize date from value: ${value}`);
@@ -76,6 +110,13 @@ export class SQLiteSerializer extends SQLSerializer {
       return BigInt(value);
     }
     if (typeof value === "number") {
+      if (this.driverConfig.sqliteProfile === "prisma") {
+        if (Math.abs(value) > Number.MAX_SAFE_INTEGER) {
+          throw new RangeError(
+            `Cannot deserialize bigint value ${value}: exceeds Number.MAX_SAFE_INTEGER`,
+          );
+        }
+      }
       return BigInt(value);
     }
     throw new Error(`Cannot deserialize bigint from value: ${value}`);
