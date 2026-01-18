@@ -832,6 +832,25 @@ At minimum:
 - a history endpoint for step results/errors and wait reasons
 - optional structured logs written by runner (host-controlled)
 
+### 14.3 Workflow testability (author-facing)
+
+Workflow authors should be able to test their workflows without spinning up HTTP servers or real
+dispatchers. Provide a **test harness** that integrates with Fragno-test and supports:
+
+- deterministic runner execution driven by `tick()`/`runUntilIdle()` from tests
+- a controllable clock for `sleep` and timeout behavior (advance time explicitly)
+- direct event injection to instances (equivalent to `sendEvent`)
+- access to instance status/history for assertions
+
+The harness should be easy to wire for user-defined workflows such as
+`example-apps/fragno-db-usage-drizzle/src/fragno/workflows-fragment.ts`:
+
+- reuse the same `workflows` registry and schema
+- allow overriding dispatcher/polling with a no-op test dispatcher
+- expose helpers to create instances and advance work in a tight loop
+
+This is **not** a new production runtime; it is a developer-only testing surface.
+
 ## 15. Workflow Code Upgrades (Cloudflare-like)
 
 Workflow code is **code-defined** and may change across deployments. The engine should follow
