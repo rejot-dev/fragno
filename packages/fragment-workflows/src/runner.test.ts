@@ -51,6 +51,13 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class PauseSleepWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      await step.sleep("pause-sleep", "50 ms");
+      return { ok: true };
+    }
+  }
+
   class PriorityWorkflow extends WorkflowEntrypoint {
     async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
       return await step.do("record-order", () => {
@@ -65,6 +72,7 @@ describe("Workflows Runner", async () => {
     events: { name: "event-workflow", workflow: EventWorkflow },
     slow: { name: "slow-workflow", workflow: SlowWorkflow },
     concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
+    pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
     priority: { name: "priority-workflow", workflow: PriorityWorkflow },
   };
 
@@ -294,5 +302,51 @@ describe("Workflows Runner", async () => {
     }
 
     expect(priorityOrder).toEqual(["wake-1", "retry-1", "resume-1", "run-1"]);
+  });
+
+  test("pause should not freeze sleep timers", async () => {
+    const id = await createInstance("pause-sleep-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const waiting = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "pause-sleep-workflow"),
+          eb("instanceId", "=", id),
+        ),
+      ),
+    );
+
+    expect(waiting?.status).toBe("waiting");
+
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/pause", {
+      pathParams: { workflowName: "pause-sleep-workflow", instanceId: id },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/resume", {
+      pathParams: { workflowName: "pause-sleep-workflow", instanceId: id },
+    });
+
+    const resumedProcessed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(resumedProcessed).toBe(1);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "pause-sleep-workflow"),
+          eb("instanceId", "=", id),
+        ),
+      ),
+    );
+
+    expect(completed?.status).toBe("complete");
+    expect(completed?.output).toEqual({ ok: true });
+
+    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(step).toMatchObject({ stepKey: "pause-sleep", status: "completed" });
   });
 });
