@@ -803,6 +803,34 @@ describe("PrismaAdapter SQLite", () => {
     expect(createdAtMs).toBeLessThanOrEqual(afterFetch + 5 * 60 * 1000);
   });
 
+  it("should parse CURRENT_TIMESTAMP strings as UTC", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const tableName = adapter.createTableNameMapper("namespace").toPhysical("events");
+
+    const createUow = queryEngine.createUnitOfWork("create-utc-event");
+    createUow.create("events", {
+      name: "UTC Timestamp",
+      happened_on: new Date("2024-06-15T00:00:00.000Z"),
+      payload: { level: "info", tags: ["sqlite", "utc"] },
+      big_score: 42n,
+    });
+    await createUow.executeMutations();
+
+    sqliteDatabase
+      .prepare(`UPDATE ${tableName} SET created_at = ? WHERE name = ?`)
+      .run("2024-06-15 14:30:00", "UTC Timestamp");
+
+    const [[event]] = await queryEngine
+      .createUnitOfWork("get-utc-event")
+      .find("events", (b) =>
+        b.whereIndex("events_name_idx", (eb) => eb("name", "=", "UTC Timestamp")),
+      )
+      .executeRetrieve();
+
+    expect(event.created_at).toBeInstanceOf(Date);
+    expect(event.created_at.toISOString()).toBe("2024-06-15T14:30:00.000Z");
+  });
+
   it("should roundtrip BigInt when sqlite returns bigint values", async () => {
     sqliteDatabase.defaultSafeIntegers(true);
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
