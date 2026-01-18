@@ -147,7 +147,10 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 3. [x] Types: `pnpm types:check`
 4. Last verified: 2026-01-18 (tests, lint, types; rerun via `pnpm turbo run test ...`, `pnpm lint`,
    `pnpm types:check`)
-5. [x] Re-verified: 2026-01-18 (tests, lint, types; fragno-test + db included)
+5. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+       --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+       --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm lint;
+       pnpm types:check)
 
 ## Phase 9 — Management surface completeness (CLI-ready)
 
