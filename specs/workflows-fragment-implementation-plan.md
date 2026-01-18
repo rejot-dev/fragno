@@ -62,7 +62,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 1. [x] Add `provideHooks` to the fragment definition (SPEC §10.1).
 2. [x] Define a dispatcher interface in the main package used by `onWorkflowEnqueued` (SPEC §5.1,
-   §10.3).
+       §10.3).
 3. Implement the Node dispatcher package:
    - in-process `wake()` + optional polling loop (SPEC §5.2)
 4. Implement the Cloudflare DO dispatcher package:
@@ -74,21 +74,21 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 ## Phase 5 — Runner (execution engine)
 
 1. Implement the “runner core” that can:
-   - claim runnable tasks with OCC + leases (SPEC §9.1.1)
-   - renew task leases while executing (heartbeat) (SPEC §9.1.1)
-   - run the workflow with replay semantics (SPEC §9.2)
-   - persist step states/results, waits, retries, outputs/errors (SPEC §9.3)
-   - schedule/update the single per-run task row (SPEC §9.1.3)
-   - process tasks in Cloudflare-like priority order (SPEC §9.1.2)
+   - [x] claim runnable tasks with OCC + leases (SPEC §9.1.1)
+   - [ ] renew task leases while executing (heartbeat) (SPEC §9.1.1)
+   - [x] run the workflow with replay semantics (SPEC §9.2)
+   - [x] persist step states/results, waits, retries, outputs/errors (SPEC §9.3)
+   - [x] schedule/update the single per-run task row (SPEC §9.1.3)
+   - [x] process tasks in Cloudflare-like priority order (SPEC §9.1.2)
 2. Implement step methods:
-   - `do` (cached results + retries + timeouts)
-   - `sleep` / `sleepUntil` (schedule wake)
-   - `waitForEvent` (buffered event matching + timeout)
+   - [x] `do` (cached results + retries + timeouts)
+   - [x] `sleep` / `sleepUntil` (schedule wake)
+   - [x] `waitForEvent` (buffered event matching + timeout)
 3. Implement pause/terminate/restart semantics (SPEC §9.4).
 4. Make `POST /_runner/tick` safe under concurrency:
    - multiple callers == distributed runners (SPEC §9.1.1)
 5. Implement task compaction:
-   - delete/prune `workflow_task` rows once `completed` (SPEC §8.4, §14.1)
+   - [x] delete/prune `workflow_task` rows once `completed` (SPEC §8.4, §14.1)
 
 ## Phase 6 — HTTP API routes
 
@@ -102,7 +102,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] pause/resume/terminate/restart
    - [x] send event
    - [x] history
-   - [ ] `/_runner/tick`
+   - [x] `/_runner/tick`
 3. Add auth hooks per SPEC §12.
 
 ## Phase 7 — Migrations, tests, and examples
