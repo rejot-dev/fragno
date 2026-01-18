@@ -196,7 +196,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 12 — Workflows docs (separate section + landing page)
 
-1. [ ] Create `/docs/workflows` section (like `forms`/`stripe`) with a landing/quickstart page (SPEC
+1. [x] Create `/docs/workflows` section (like `forms`/`stripe`) with a landing/quickstart page (SPEC
        §18).
 2. [ ] Move/duplicate the existing workflows doc from `/docs/fragno/for-users/workflows` into the
        new section and leave a pointer page behind to avoid breaking links.

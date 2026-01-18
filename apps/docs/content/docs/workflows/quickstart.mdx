@@ -1,0 +1,163 @@
+---
+title: Quickstart
+description: Install and configure the Workflows fragment.
+icon: Album
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+The Workflows fragment provides durable, replayable workflow execution with steps, timers, retries,
+and external events. This quickstart walks through defining a workflow, wiring the runner, and
+exposing routes.
+
+## Installation
+
+Install the fragment, dispatcher, and database packages:
+
+```npm
+npm install @fragno-dev/fragment-workflows @fragno-dev/workflows-dispatcher-node @fragno-dev/db
+```
+
+## Define a Workflow
+
+Create a workflow class and a registry of workflows:
+
+```ts title="lib/workflows.ts"
+import {
+  WorkflowEntrypoint,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "@fragno-dev/fragment-workflows";
+
+type ApprovalParams = {
+  requestId: string;
+  amount: number;
+};
+
+type ApprovalEvent = { approved: boolean };
+
+type FulfillmentEvent = { confirmationId: string };
+
+export class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams> {
+  async run(event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) {
+    const approval = await step.waitForEvent<ApprovalEvent>("approval", {
+      type: "approval",
+      timeout: "15 min",
+    });
+
+    await step.sleep("cooldown", "2 s");
+
+    const fulfillment = await step.waitForEvent<FulfillmentEvent>("fulfillment", {
+      type: "fulfillment",
+      timeout: "15 min",
+    });
+
+    return { request: event.payload, approval, fulfillment };
+  }
+}
+
+export const workflows = {
+  approval: { name: "approval-workflow", workflow: ApprovalWorkflow },
+} as const;
+```
+
+## Create the Fragment Server
+
+Wire the workflow runner, dispatcher, and fragment definition:
+
+```ts title="lib/workflows-fragment.ts"
+import { instantiate } from "@fragno-dev/core";
+import type { DatabaseAdapter } from "@fragno-dev/db";
+import {
+  createWorkflowsRunner,
+  workflowsFragmentDefinition,
+  workflowsRoutesFactory,
+  workflowsSchema,
+} from "@fragno-dev/fragment-workflows";
+import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+import { workflows } from "./workflows";
+
+export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
+  const db = adapter.createQueryEngine(workflowsSchema, "workflows");
+  const runner = createWorkflowsRunner({ db, workflows });
+  const dispatcher = createInProcessDispatcher({
+    wake: () => void runner.tick({ maxInstances: 5, maxSteps: 50 }),
+    pollIntervalMs: 2000,
+  });
+
+  const fragment = instantiate(workflowsFragmentDefinition)
+    .withConfig({ workflows, runner, dispatcher, enableRunnerTick: true })
+    .withRoutes([workflowsRoutesFactory])
+    .withOptions({ databaseAdapter: adapter })
+    .build();
+
+  return { fragment, dispatcher };
+}
+```
+
+<Callout type="info">
+  The in-process dispatcher is ideal for local dev. For Cloudflare deployments use
+  `@fragno-dev/workflows-dispatcher-cloudflare-do`.
+</Callout>
+
+## Mount the Routes
+
+Mount the fragment using your framework adapter. See
+[Integrating a Fragment](/docs/fragno/for-users/integrating-a-fragment) for framework-specific
+examples.
+
+## Run Database Migrations
+
+Generate a schema and run migrations with the Fragno CLI:
+
+```npm
+npx fragno-cli db generate lib/workflows-fragment.ts -o db/workflows.schema.ts
+npx fragno-cli db migrate lib/workflows-fragment.ts
+```
+
+## Test Workflows
+
+Use the test harness to drive the runner with a controllable clock:
+
+```ts title="lib/workflows.test.ts"
+import { createWorkflowsTestHarness } from "@fragno-dev/fragment-workflows/test";
+import { workflows } from "./workflows";
+
+const harness = await createWorkflowsTestHarness({
+  workflows,
+  adapter: { type: "drizzle-pglite" },
+});
+
+const instanceId = await harness.createInstance("approval", {
+  params: { requestId: "req_1", amount: 125 },
+});
+
+await harness.runUntilIdle();
+await harness.sendEvent("approval", instanceId, {
+  type: "approval",
+  payload: { approved: true },
+});
+
+harness.clock.advanceBy("2 s");
+await harness.runUntilIdle();
+```
+
+## Drive the Runner
+
+If you want an external scheduler to drive execution, keep `enableRunnerTick: true` and send
+`POST /_runner/tick` to your fragment:
+
+```ts
+await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ maxInstances: 10, maxSteps: 100 }),
+});
+```
+
+## Next Steps
+
+- Build a client or CLI on top of the HTTP API in the fragment.
+- Review workflow history and logs using the `/history` routes.

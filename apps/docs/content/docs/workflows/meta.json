@@ -1,0 +1,7 @@
+{
+  "title": "Workflows",
+  "description": "Durable workflows fragment",
+  "icon": "Workflow",
+  "root": true,
+  "pages": ["index", "quickstart"]
+}
