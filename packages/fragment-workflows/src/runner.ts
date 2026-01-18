@@ -71,6 +71,16 @@ type WorkflowsRunnerOptions = {
 const coerceDate = (timestamp: Date | number) =>
   timestamp instanceof Date ? timestamp : new Date(timestamp);
 
+const coerceEventTimestamp = (timestamp: unknown) => {
+  if (timestamp instanceof Date) {
+    return timestamp;
+  }
+  if (typeof timestamp === "string" || typeof timestamp === "number") {
+    return new Date(timestamp);
+  }
+  return new Date(NaN);
+};
+
 const parseDurationMs = (duration: WorkflowDuration): number => {
   if (typeof duration === "number") {
     return duration;
@@ -362,7 +372,15 @@ class RunnerStep implements WorkflowStep {
         }
         if (existing.status === "completed" && existing.result) {
           await this.#throwIfPauseRequested();
-          return existing.result as { type: string; payload: Readonly<T>; timestamp: Date };
+          const result = existing.result as {
+            type: string;
+            payload: Readonly<T>;
+            timestamp: Date | string | number;
+          };
+          return {
+            ...result,
+            timestamp: coerceEventTimestamp(result.timestamp),
+          };
         }
         if (existing.status === "errored") {
           throw new WaitForEventTimeoutError();
@@ -432,8 +450,8 @@ class RunnerStep implements WorkflowStep {
         return result;
       }
 
-      const timeoutMs = normalizeWaitTimeoutMs(options.timeout);
-      const wakeAt = new Date(Date.now() + timeoutMs);
+      const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
+      const wakeAt = existing?.wakeAt ?? new Date(Date.now() + timeoutMs);
 
       if (existing) {
         if (existing.wakeAt && existing.wakeAt <= new Date()) {
@@ -518,7 +536,7 @@ class RunnerStep implements WorkflowStep {
         await this.#db.update("workflow_step", existing.id, (b) =>
           b.set({
             status: "waiting",
-            wakeAt,
+            wakeAt: existing.wakeAt ?? wakeAt,
             updatedAt: new Date(),
           }),
         );
@@ -544,7 +562,7 @@ class RunnerStep implements WorkflowStep {
       }
 
       await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", wakeAt);
+      throw new WorkflowSuspend("wake", existing?.wakeAt ?? wakeAt);
     } finally {
       this.#endStep(name);
     }
@@ -892,9 +910,11 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       }
 
       if (err instanceof WorkflowSuspend) {
-        await setInstanceStatus(instance, "waiting", {
-          pauseRequested: false,
-        });
+        const updated = await setInstanceStatus(instance, "waiting", {});
+        if (!updated) {
+          await completeTask(task);
+          return 0;
+        }
         await scheduleTask(task, err.kind, err.runAt);
         return 1;
       }

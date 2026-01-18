@@ -41,10 +41,11 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 2. [x] Provide `withDatabase(workflowsSchema)` integration:
    - follow patterns in `packages/fragment-mailing-list/src/definition.ts`
 3. Add indexes needed for runner queries (SPEC §8).
-4. Add/validate the lease/lock columns needed for distributed runners (task lease only):
+4. [x] Add index to support sendEvent waiting-step lookup without runNumber (issue #4).
+5. Add/validate the lease/lock columns needed for distributed runners (task lease only):
    - task lease (`workflow_task.lockOwner/lockedUntil`)
    - unique active task: (`workflowName`, `instanceId`, `runNumber`) (SPEC §8.4)
-5. Set retention defaults per SPEC §14.1:
+6. Set retention defaults per SPEC §14.1:
    - `retentionUntil = null` (infinite retention) for all instances by default
 
 ## Phase 3 — Services (instance lifecycle + eventing)
@@ -133,3 +134,5 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
      `example-apps/fragno-db-usage-drizzle/src/fragno/workflows-fragment.ts`)
 6. Review remaining issues from `specs/workflows-fragment-implementation-plan-issues.md` and fix
    them.
+   - [x] Preserve wakeAt on sleep/wait replay; keep pauseRequested on suspend; normalize
+         waitForEvent replay timestamps.
