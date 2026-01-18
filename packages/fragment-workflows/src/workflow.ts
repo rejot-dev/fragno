@@ -51,6 +51,34 @@ export type InstanceStatus = {
   output?: unknown;
 };
 
+/** Summary of the latest step execution for an instance run. */
+export type WorkflowInstanceCurrentStep = {
+  stepKey: string;
+  name: string;
+  type: string;
+  status: string;
+  attempts: number;
+  maxAttempts: number;
+  timeoutMs: number | null;
+  nextRetryAt: Date | null;
+  wakeAt: Date | null;
+  waitEventType: string | null;
+  error?: { name: string; message: string };
+};
+
+/** Metadata describing a workflow instance for operators. */
+export type WorkflowInstanceMetadata = {
+  workflowName: string;
+  runNumber: number;
+  params: unknown;
+  pauseRequested: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  currentStep?: WorkflowInstanceCurrentStep;
+};
+
 /** Handle for a workflow instance returned by the management API. */
 export interface WorkflowInstance {
   id: string;

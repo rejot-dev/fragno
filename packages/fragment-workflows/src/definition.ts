@@ -6,6 +6,8 @@ import { workflowsSchema } from "./schema";
 import type {
   InstanceStatus,
   WorkflowEnqueuedHookPayload,
+  WorkflowInstanceCurrentStep,
+  WorkflowInstanceMetadata,
   WorkflowsFragmentConfig,
 } from "./workflow";
 
@@ -28,6 +30,21 @@ const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "termin
 const PAUSED_STATUSES = new Set<InstanceStatus["status"]>(["paused", "waitingForPause"]);
 
 type WorkflowInstanceRecord = {
+  workflowName: string;
+  status: string;
+  params: unknown;
+  pauseRequested: boolean;
+  runNumber: number;
+  createdAt: Date;
+  updatedAt: Date;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  output: unknown | null;
+  errorName: string | null;
+  errorMessage: string | null;
+};
+
+type WorkflowInstanceStatusRecord = {
   status: string;
   output: unknown | null;
   errorName: string | null;
@@ -119,7 +136,7 @@ function generateInstanceId(nowMs: number) {
   return `inst_${timePart}_${randomPart}`;
 }
 
-function buildInstanceStatus(instance: WorkflowInstanceRecord): InstanceStatus {
+function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): InstanceStatus {
   const status = INSTANCE_STATUSES.has(instance.status as InstanceStatus["status"])
     ? (instance.status as InstanceStatus["status"])
     : "unknown";
@@ -136,6 +153,43 @@ function buildInstanceStatus(instance: WorkflowInstanceRecord): InstanceStatus {
     status,
     error,
     output: instance.output ?? undefined,
+  };
+}
+
+function buildInstanceMetadata(instance: WorkflowInstanceRecord): WorkflowInstanceMetadata {
+  return {
+    workflowName: instance.workflowName,
+    runNumber: instance.runNumber,
+    params: instance.params ?? {},
+    pauseRequested: instance.pauseRequested,
+    createdAt: instance.createdAt,
+    updatedAt: instance.updatedAt,
+    startedAt: instance.startedAt,
+    completedAt: instance.completedAt,
+  };
+}
+
+function buildCurrentStepSummary(step: WorkflowStepRecord): WorkflowInstanceCurrentStep {
+  const error =
+    step.errorName || step.errorMessage
+      ? {
+          name: step.errorName ?? "Error",
+          message: step.errorMessage ?? "",
+        }
+      : undefined;
+
+  return {
+    stepKey: step.stepKey,
+    name: step.name,
+    type: step.type,
+    status: step.status,
+    attempts: step.attempts,
+    maxAttempts: step.maxAttempts,
+    timeoutMs: step.timeoutMs,
+    nextRetryAt: step.nextRetryAt,
+    wakeAt: step.wakeAt,
+    waitEventType: step.waitEventType,
+    error,
   };
 }
 
@@ -360,6 +414,53 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               throw new Error("INSTANCE_NOT_FOUND");
             }
             return buildInstanceStatus(instance);
+          })
+          .build();
+      },
+      getInstanceMetadata: function (workflowName: string, instanceId: string) {
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow.findFirst("workflow_instance", (b) =>
+              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              ),
+            ),
+          )
+          .transformRetrieve(([instance]) => {
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+            return buildInstanceMetadata(instance);
+          })
+          .build();
+      },
+      getInstanceCurrentStep: function ({
+        workflowName,
+        instanceId,
+        runNumber,
+      }: {
+        workflowName: string;
+        instanceId: string;
+        runNumber: number;
+      }) {
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow.findWithCursor("workflow_step", (b) => {
+              return b
+                .whereIndex("idx_workflow_step_history_createdAt", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", workflowName),
+                    eb("instanceId", "=", instanceId),
+                    eb("runNumber", "=", runNumber),
+                  ),
+                )
+                .orderByIndex("idx_workflow_step_history_createdAt", "desc")
+                .pageSize(1);
+            }),
+          )
+          .transformRetrieve(([steps]) => {
+            const latest = steps.items[0];
+            return latest ? buildCurrentStepSummary(latest) : undefined;
           })
           .build();
       },
