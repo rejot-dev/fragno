@@ -195,9 +195,17 @@ Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
 (`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint (`pnpm lint`), repository
 types check (`pnpm turbo run types:check`).
 
+Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
+(`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint (`pnpm lint`), repository
+types check (`pnpm turbo run types:check`).
+
 Revalidated (2026-01-19): Added SQLite CURRENT_TIMESTAMP UTC parsing test; Prisma adapter
 SQLite/PGLite tests (`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint
 (`pnpm lint`), repository types check (`pnpm turbo run types:check`).
+
+Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
+(`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint (`pnpm lint`), repository
+types check (`pnpm turbo run types:check`).
 
 Revalidated (2026-01-19): Added Prisma namespace/identifier generation tests; Prisma adapter
 SQLite/PGLite tests (`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint
