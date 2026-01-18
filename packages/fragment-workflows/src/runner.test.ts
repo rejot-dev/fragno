@@ -30,9 +30,19 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class SlowWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do("slow-step", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        return { ok: true };
+      });
+    }
+  }
+
   const workflows = {
     demo: { name: "demo-workflow", workflow: DemoWorkflow },
     events: { name: "event-workflow", workflow: EventWorkflow },
+    slow: { name: "slow-workflow", workflow: SlowWorkflow },
   };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
@@ -122,5 +132,56 @@ describe("Workflows Runner", async () => {
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     expect(event.deliveredAt).toBeInstanceOf(Date);
     expect(event.consumedByStepKey).toBe("wait-ready");
+  });
+
+  test("tick should renew task lease while executing", async () => {
+    const leaseMs = 100;
+    const leaseRunner = createWorkflowsRunner({
+      db,
+      workflows,
+      leaseMs,
+      runnerId: "lease-runner",
+    });
+
+    const id = await createInstance("slow-workflow", {});
+
+    const tickPromise = leaseRunner.tick({ maxInstances: 1, maxSteps: 5 });
+
+    const fetchTask = () =>
+      db.findFirst("workflow_task", (b) =>
+        b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
+          eb.and(
+            eb("workflowName", "=", "slow-workflow"),
+            eb("instanceId", "=", id),
+            eb("runNumber", "=", 0),
+          ),
+        ),
+      );
+
+    let initialTask: Awaited<ReturnType<typeof fetchTask>> = null;
+    const startWait = Date.now();
+    while (!initialTask && Date.now() - startWait < 500) {
+      const candidate = await fetchTask();
+      if (candidate?.lockOwner === "lease-runner") {
+        initialTask = candidate;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(initialTask).not.toBeNull();
+    expect(initialTask?.lockOwner).toBe("lease-runner");
+    expect(initialTask?.lockedUntil).toBeInstanceOf(Date);
+
+    await new Promise((resolve) => setTimeout(resolve, leaseMs + 60));
+
+    const renewedTask = await fetchTask();
+    expect(renewedTask).not.toBeNull();
+    expect(renewedTask?.lockOwner).toBe("lease-runner");
+    expect(renewedTask?.lockedUntil?.getTime()).toBeGreaterThan(
+      initialTask?.lockedUntil?.getTime() ?? 0,
+    );
+
+    await tickPromise;
   });
 });
