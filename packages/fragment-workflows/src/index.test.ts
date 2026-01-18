@@ -1,4 +1,4 @@
-import { assert, beforeEach, describe, expect, test, vi } from "vitest";
+import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
@@ -8,7 +8,7 @@ import { attachWorkflowsBindings } from "./bindings";
 import { NonRetryableError, WorkflowEntrypoint } from "./workflow";
 import type { WorkflowEvent, WorkflowStep } from "./workflow";
 
-describe("Workflows Fragment", async () => {
+describe("Workflows Fragment", () => {
   class DemoWorkflow extends WorkflowEntrypoint {
     run(_event: WorkflowEvent<unknown>, _step: WorkflowStep) {
       return undefined;
@@ -22,17 +22,31 @@ describe("Workflows Fragment", async () => {
     tick: vi.fn(),
   };
 
-  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
-    .withFragment(
-      "workflows",
-      instantiate(workflowsFragmentDefinition)
-        .withConfig({ workflows, enableRunnerTick: true, runner })
-        .withRoutes([workflowsRoutesFactory]),
-    )
-    .build();
+  const setup = async () => {
+    const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "workflows",
+        instantiate(workflowsFragmentDefinition)
+          .withConfig({ workflows, enableRunnerTick: true, runner })
+          .withRoutes([workflowsRoutesFactory]),
+      )
+      .build();
 
-  const { fragment, db } = fragments.workflows;
+    const { fragment, db } = fragments.workflows;
+    return { fragments, testContext, fragment, db };
+  };
+
+  type Setup = Awaited<ReturnType<typeof setup>>;
+
+  let fragments: Setup["fragments"];
+  let testContext: Setup["testContext"];
+  let fragment: Setup["fragment"];
+  let db: Setup["db"];
+
+  beforeAll(async () => {
+    ({ fragments, testContext, fragment, db } = await setup());
+  });
 
   beforeEach(async () => {
     await testContext.resetDatabase();
@@ -112,10 +126,24 @@ describe("Workflows Fragment", async () => {
       lockOwner: null,
     });
 
+    await db.create("workflow_log", {
+      workflowName,
+      instanceId,
+      runNumber: 0,
+      stepKey: "step-1",
+      attempt: 1,
+      level: "info",
+      category: "tests",
+      message: "Created log entry",
+      data: { ok: true },
+      isReplay: false,
+    });
+
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    const [log] = await db.find("workflow_log", (b) => b.whereIndex("primary"));
 
     expect(instance).toMatchObject({
       workflowName,
@@ -176,6 +204,20 @@ describe("Workflows Fragment", async () => {
     expect(task.runAt).toBeInstanceOf(Date);
     expect(task.createdAt).toBeInstanceOf(Date);
     expect(task.updatedAt).toBeInstanceOf(Date);
+
+    expect(log).toMatchObject({
+      workflowName,
+      instanceId,
+      runNumber: 0,
+      stepKey: "step-1",
+      attempt: 1,
+      level: "info",
+      category: "tests",
+      message: "Created log entry",
+      data: { ok: true },
+      isReplay: false,
+    });
+    expect(log.createdAt).toBeInstanceOf(Date);
   });
 
   test("should expose NonRetryableError defaults", () => {
@@ -307,7 +349,7 @@ describe("Workflows Fragment", async () => {
     });
   });
 
-  describe("Authorization hooks", async () => {
+  describe("Authorization hooks", () => {
     const authorizeRequest = vi.fn();
     const authorizeInstanceCreation = vi.fn();
     const authorizeManagement = vi.fn();
@@ -317,26 +359,40 @@ describe("Workflows Fragment", async () => {
       tick: vi.fn(),
     };
 
-    const { fragments: authFragments, test: authTestContext } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
-      .withFragment(
-        "workflows",
-        instantiate(workflowsFragmentDefinition)
-          .withConfig({
-            workflows,
-            enableRunnerTick: true,
-            runner: authRunner,
-            authorizeRequest,
-            authorizeInstanceCreation,
-            authorizeManagement,
-            authorizeSendEvent,
-            authorizeRunnerTick,
-          })
-          .withRoutes([workflowsRoutesFactory]),
-      )
-      .build();
+    const setupAuth = async () => {
+      const { fragments: authFragments, test: authTestContext } = await buildDatabaseFragmentsTest()
+        .withTestAdapter({ type: "drizzle-pglite" })
+        .withFragment(
+          "workflows",
+          instantiate(workflowsFragmentDefinition)
+            .withConfig({
+              workflows,
+              enableRunnerTick: true,
+              runner: authRunner,
+              authorizeRequest,
+              authorizeInstanceCreation,
+              authorizeManagement,
+              authorizeSendEvent,
+              authorizeRunnerTick,
+            })
+            .withRoutes([workflowsRoutesFactory]),
+        )
+        .build();
 
-    const { fragment: authFragment, db: authDb } = authFragments.workflows;
+      const { fragment: authFragment, db: authDb } = authFragments.workflows;
+      return { authFragments, authTestContext, authFragment, authDb };
+    };
+
+    type AuthSetup = Awaited<ReturnType<typeof setupAuth>>;
+
+    let authFragments: AuthSetup["authFragments"];
+    let authTestContext: AuthSetup["authTestContext"];
+    let authFragment: AuthSetup["authFragment"];
+    let authDb: AuthSetup["authDb"];
+
+    beforeAll(async () => {
+      ({ authFragments, authTestContext, authFragment, authDb } = await setupAuth());
+    });
 
     beforeEach(async () => {
       await authTestContext.resetDatabase();

@@ -8,6 +8,7 @@ import type {
   WorkflowEnqueuedHookPayload,
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
+  WorkflowLogLevel,
   WorkflowsFragmentConfig,
 } from "./workflow";
 
@@ -81,6 +82,19 @@ type WorkflowEventRecord = {
   consumedByStepKey: string | null;
 };
 
+type WorkflowLogRecord = {
+  id: FragnoId;
+  runNumber: number;
+  stepKey: string | null;
+  attempt: number | null;
+  level: WorkflowLogLevel;
+  category: string;
+  message: string;
+  data: unknown | null;
+  isReplay: boolean;
+  createdAt: Date;
+};
+
 type WorkflowStepHistoryEntry = {
   id: string;
   runNumber: number;
@@ -110,6 +124,19 @@ type WorkflowEventHistoryEntry = {
   consumedByStepKey: string | null;
 };
 
+type WorkflowLogHistoryEntry = {
+  id: string;
+  runNumber: number;
+  stepKey: string | null;
+  attempt: number | null;
+  level: WorkflowLogLevel;
+  category: string;
+  message: string;
+  data: unknown | null;
+  isReplay: boolean;
+  createdAt: Date;
+};
+
 type ListInstancesParams = {
   workflowName: string;
   status?: InstanceStatus["status"];
@@ -125,6 +152,10 @@ type ListHistoryParams = {
   pageSize?: number;
   stepsCursor?: Cursor;
   eventsCursor?: Cursor;
+  includeLogs?: boolean;
+  logsCursor?: Cursor;
+  logLevel?: WorkflowLogLevel;
+  logCategory?: string;
   order?: "asc" | "desc";
 };
 
@@ -231,6 +262,21 @@ function buildEventHistoryEntry(event: WorkflowEventRecord): WorkflowEventHistor
     createdAt: event.createdAt,
     deliveredAt: event.deliveredAt,
     consumedByStepKey: event.consumedByStepKey,
+  };
+}
+
+function buildLogHistoryEntry(log: WorkflowLogRecord): WorkflowLogHistoryEntry {
+  return {
+    id: log.id.toString(),
+    runNumber: log.runNumber,
+    stepKey: log.stepKey,
+    attempt: log.attempt,
+    level: log.level,
+    category: log.category,
+    message: log.message,
+    data: log.data ?? null,
+    isReplay: log.isReplay,
+    createdAt: log.createdAt,
   };
 }
 
@@ -342,13 +388,15 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ uow, retrieveResult: [existingInstances] }) => {
             const existingIds = new Set(existingInstances.map((record) => record.instanceId));
+            const processedIds = new Set<string>();
 
             const created: InstanceDetails[] = [];
 
             for (const instance of instances) {
-              if (existingIds.has(instance.id)) {
+              if (existingIds.has(instance.id) || processedIds.has(instance.id)) {
                 continue;
               }
+              processedIds.add(instance.id);
 
               uow.create("workflow_instance", {
                 workflowName,
@@ -534,16 +582,22 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         pageSize = DEFAULT_PAGE_SIZE,
         stepsCursor,
         eventsCursor,
+        includeLogs,
+        logsCursor,
+        logLevel,
+        logCategory,
         order = "desc",
       }: ListHistoryParams) {
         const stepsOrder = stepsCursor?.orderDirection ?? order;
         const eventsOrder = eventsCursor?.orderDirection ?? order;
+        const logsOrder = logsCursor?.orderDirection ?? order;
         const stepsPageSize = stepsCursor?.pageSize ?? pageSize;
         const eventsPageSize = eventsCursor?.pageSize ?? pageSize;
+        const logsPageSize = logsCursor?.pageSize ?? pageSize;
 
         return this.serviceTx(workflowsSchema)
-          .retrieve((uow) =>
-            uow
+          .retrieve((uow) => {
+            let chain = uow
               .findFirst("workflow_instance", (b) =>
                 b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
                   eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
@@ -576,12 +630,75 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                   .pageSize(eventsPageSize);
 
                 return eventsCursor ? query.after(eventsCursor) : query;
-              }),
-          )
-          .mutate(({ retrieveResult: [instance, steps, events] }) => {
+              });
+
+            const effectiveLogLevel = includeLogs ? logLevel : undefined;
+            const effectiveLogCategory = includeLogs ? logCategory : undefined;
+            const effectiveLogsCursor = includeLogs ? logsCursor : undefined;
+            const effectiveLogsPageSize = includeLogs ? logsPageSize : 1;
+
+            return chain.findWithCursor("workflow_log", (b) => {
+              if (effectiveLogLevel) {
+                const query = b
+                  .whereIndex("idx_workflow_log_level_createdAt", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                      eb("runNumber", "=", runNumber),
+                      eb("level", "=", effectiveLogLevel),
+                    ),
+                  )
+                  .orderByIndex("idx_workflow_log_level_createdAt", logsOrder)
+                  .pageSize(effectiveLogsPageSize);
+
+                return effectiveLogsCursor ? query.after(effectiveLogsCursor) : query;
+              }
+
+              if (effectiveLogCategory) {
+                const query = b
+                  .whereIndex("idx_workflow_log_category_createdAt", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                      eb("runNumber", "=", runNumber),
+                      eb("category", "=", effectiveLogCategory),
+                    ),
+                  )
+                  .orderByIndex("idx_workflow_log_category_createdAt", logsOrder)
+                  .pageSize(effectiveLogsPageSize);
+
+                return effectiveLogsCursor ? query.after(effectiveLogsCursor) : query;
+              }
+
+              const query = b
+                .whereIndex("idx_workflow_log_history_createdAt", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", workflowName),
+                    eb("instanceId", "=", instanceId),
+                    eb("runNumber", "=", runNumber),
+                  ),
+                )
+                .orderByIndex("idx_workflow_log_history_createdAt", logsOrder)
+                .pageSize(effectiveLogsPageSize);
+
+              return effectiveLogsCursor ? query.after(effectiveLogsCursor) : query;
+            });
+          })
+          .mutate(({ retrieveResult }) => {
+            const [instance, steps, events, logs] = retrieveResult as [
+              WorkflowInstanceRecord | undefined,
+              { items: WorkflowStepRecord[]; cursor?: Cursor; hasNextPage: boolean },
+              { items: WorkflowEventRecord[]; cursor?: Cursor; hasNextPage: boolean },
+              { items: WorkflowLogRecord[]; cursor?: Cursor; hasNextPage: boolean },
+            ];
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
             }
+
+            const filteredLogs =
+              includeLogs && logLevel && logCategory
+                ? logs?.items.filter((log) => log.category === logCategory)
+                : logs?.items;
 
             return {
               runNumber,
@@ -591,6 +708,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               stepsHasNextPage: steps.hasNextPage,
               eventsCursor: events.cursor,
               eventsHasNextPage: events.hasNextPage,
+              logs: includeLogs ? (filteredLogs?.map(buildLogHistoryEntry) ?? []) : undefined,
+              logsCursor: includeLogs ? logs.cursor : undefined,
+              logsHasNextPage: includeLogs ? logs.hasNextPage : undefined,
             };
           })
           .build();

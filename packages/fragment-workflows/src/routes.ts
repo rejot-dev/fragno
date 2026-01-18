@@ -44,6 +44,14 @@ const historyQuerySchema = z.object({
   pageSize: z.coerce.number().min(1).max(100).catch(25),
   stepsCursor: z.string().optional(),
   eventsCursor: z.string().optional(),
+  logsCursor: z.string().optional(),
+  includeLogs: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
+  logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),
+  logCategory: z.string().optional(),
+  order: z.enum(["asc", "desc"]).optional(),
 });
 
 const createInstanceSchema = z.object({
@@ -148,6 +156,19 @@ const historyEventSchema = z.object({
   createdAt: z.date(),
   deliveredAt: z.date().nullable(),
   consumedByStepKey: z.string().nullable(),
+});
+
+const historyLogSchema = z.object({
+  id: z.string(),
+  runNumber: z.number(),
+  stepKey: z.string().nullable(),
+  attempt: z.number().nullable(),
+  level: z.enum(["debug", "info", "warn", "error"]),
+  category: z.string(),
+  message: z.string(),
+  data: z.unknown().nullable(),
+  isReplay: z.boolean(),
+  createdAt: z.date(),
 });
 
 type RouteInstanceDetails = { id: string; details: InstanceStatus };
@@ -506,7 +527,17 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       defineRoute({
         method: "GET",
         path: "/workflows/:workflowName/instances/:instanceId/history",
-        queryParameters: ["runNumber", "pageSize", "stepsCursor", "eventsCursor"],
+        queryParameters: [
+          "runNumber",
+          "pageSize",
+          "stepsCursor",
+          "eventsCursor",
+          "logsCursor",
+          "includeLogs",
+          "logLevel",
+          "logCategory",
+          "order",
+        ],
         outputSchema: z.object({
           runNumber: z.number(),
           steps: z.array(historyStepSchema),
@@ -515,6 +546,9 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           stepsHasNextPage: z.boolean(),
           eventsCursor: z.string().optional(),
           eventsHasNextPage: z.boolean(),
+          logs: z.array(historyLogSchema).optional(),
+          logsCursor: z.string().optional(),
+          logsHasNextPage: z.boolean().optional(),
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -541,10 +575,16 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             pageSize: query.get("pageSize"),
             stepsCursor: query.get("stepsCursor") || undefined,
             eventsCursor: query.get("eventsCursor") || undefined,
+            logsCursor: query.get("logsCursor") || undefined,
+            includeLogs: query.get("includeLogs") || undefined,
+            logLevel: query.get("logLevel") || undefined,
+            logCategory: query.get("logCategory") || undefined,
+            order: query.get("order") || undefined,
           });
 
           const stepsCursor = parseCursor(params.stepsCursor);
           const eventsCursor = parseCursor(params.eventsCursor);
+          const logsCursor = parseCursor(params.logsCursor);
 
           let resolvedRunNumber = params.runNumber;
 
@@ -569,6 +609,11 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                   pageSize: params.pageSize,
                   stepsCursor,
                   eventsCursor,
+                  includeLogs: params.includeLogs,
+                  logsCursor,
+                  logLevel: params.logLevel,
+                  logCategory: params.logCategory,
+                  order: params.order,
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)
@@ -582,6 +627,9 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               stepsHasNextPage: result.stepsHasNextPage,
               eventsCursor: result.eventsCursor?.encode(),
               eventsHasNextPage: result.eventsHasNextPage,
+              logs: result.logs,
+              logsCursor: result.logsCursor?.encode(),
+              logsHasNextPage: result.logsHasNextPage,
             });
           } catch (err) {
             return handleServiceError(err, errorResponder);

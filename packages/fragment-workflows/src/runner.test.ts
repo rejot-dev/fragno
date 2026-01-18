@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
@@ -7,7 +7,7 @@ import type { WorkflowEvent, WorkflowStep } from "./workflow";
 import { WorkflowEntrypoint } from "./workflow";
 import { workflowsRoutesFactory } from "./routes";
 
-describe("Workflows Runner", async () => {
+describe("Workflows Runner", () => {
   let doCallCount = 0;
   let concurrentCallCount = 0;
   let retryCallCount = 0;
@@ -16,6 +16,7 @@ describe("Workflows Runner", async () => {
   let distinctCallCount = 0;
   let pauseBoundaryCount = 0;
   let pauseResumeCount = 0;
+  let retryLogCount = 0;
   let pauseBoundaryStarted: Promise<void>;
   let pauseBoundaryStartedResolve: (() => void) | null = null;
   let pauseBoundaryContinue: (() => void) | null = null;
@@ -78,6 +79,23 @@ describe("Workflows Runner", async () => {
           retryCallCount += 1;
           if (retryCallCount === 1) {
             throw new Error("RETRY_ME");
+          }
+          return { ok: true };
+        },
+      );
+    }
+  }
+
+  class RetryLogWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do(
+        "retry-log-step",
+        { retries: { limit: 1, delay: "25 ms", backoff: "constant" } },
+        async () => {
+          await step.log.info("attempt");
+          retryLogCount += 1;
+          if (retryLogCount === 1) {
+            throw new Error("RETRY_LOG");
           }
           return { ok: true };
         },
@@ -176,6 +194,25 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class LoggingWorkflow extends WorkflowEntrypoint<unknown, { note: string }> {
+    async run(event: WorkflowEvent<{ note: string }>, step: WorkflowStep) {
+      await step.log.info("starting", { note: event.payload.note }, { category: "workflow" });
+      return await step.do("logged-step", async () => {
+        await step.log.warn("inside", { note: event.payload.note });
+        return { ok: true };
+      });
+    }
+  }
+
+  class ReplayLogWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      await step.log.info("start");
+      await step.waitForEvent("replay-log-wait", { type: "go", timeout: "1 hour" });
+      await step.log.info("after");
+      return { ok: true };
+    }
+  }
+
   class DistinctStepWorkflow extends WorkflowEntrypoint {
     async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
       const first = await step.do("step-one", () => {
@@ -218,6 +255,7 @@ describe("Workflows Runner", async () => {
     timeoutCleanup: { name: "timeout-cleanup-workflow", workflow: TimeoutCleanupWorkflow },
     slow: { name: "slow-workflow", workflow: SlowWorkflow },
     retry: { name: "retry-workflow", workflow: RetryWorkflow },
+    retryLogs: { name: "retry-logs-workflow", workflow: RetryLogWorkflow },
     concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
     pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
     pauseBoundary: { name: "pause-boundary-workflow", workflow: PauseBoundaryWorkflow },
@@ -225,25 +263,42 @@ describe("Workflows Runner", async () => {
     restartBoundary: { name: "restart-boundary-workflow", workflow: RestartBoundaryWorkflow },
     priority: { name: "priority-workflow", workflow: PriorityWorkflow },
     replay: { name: "replay-workflow", workflow: ReplayWorkflow },
+    logging: { name: "logging-workflow", workflow: LoggingWorkflow },
+    replayLogs: { name: "replay-logs-workflow", workflow: ReplayLogWorkflow },
     distinct: { name: "distinct-step-workflow", workflow: DistinctStepWorkflow },
     child: { name: "child-workflow", workflow: ChildWorkflow },
     parent: { name: "parent-workflow", workflow: ParentWorkflow },
   };
 
-  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
-    .withFragment(
-      "workflows",
-      instantiate(workflowsFragmentDefinition)
-        .withConfig({
-          workflows,
-        })
-        .withRoutes([workflowsRoutesFactory]),
-    )
-    .build();
+  const setup = async () => {
+    const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "workflows",
+        instantiate(workflowsFragmentDefinition)
+          .withConfig({
+            workflows,
+          })
+          .withRoutes([workflowsRoutesFactory]),
+      )
+      .build();
 
-  const { fragment, db } = fragments.workflows;
-  const runner = createWorkflowsRunner({ db, workflows });
+    const { fragment, db } = fragments.workflows;
+    const runner = createWorkflowsRunner({ db, workflows });
+    return { fragments, testContext, fragment, db, runner };
+  };
+
+  type Setup = Awaited<ReturnType<typeof setup>>;
+
+  let fragments: Setup["fragments"];
+  let testContext: Setup["testContext"];
+  let fragment: Setup["fragment"];
+  let db: Setup["db"];
+  let runner: Setup["runner"];
+
+  beforeAll(async () => {
+    ({ fragments, testContext, fragment, db, runner } = await setup());
+  });
 
   const createInstance = async (workflowName: string, params: unknown) => {
     const response = await fragment.callRoute("POST", "/workflows/:workflowName/instances", {
@@ -266,6 +321,7 @@ describe("Workflows Runner", async () => {
     distinctCallCount = 0;
     pauseBoundaryCount = 0;
     pauseResumeCount = 0;
+    retryLogCount = 0;
     pauseBoundaryContinue = null;
     pauseBoundaryStartedResolve = null;
     pauseBoundaryStarted = new Promise((resolve) => {
@@ -444,35 +500,40 @@ describe("Workflows Runner", async () => {
   });
 
   test("tick should error when waitForEvent times out", async () => {
-    const id = await createInstance("timeout-workflow", {});
+    vi.useFakeTimers();
+    try {
+      const id = await createInstance("timeout-workflow", {});
 
-    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processed).toBe(1);
+      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processed).toBe(1);
 
-    const waiting = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
+      const waiting = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
 
-    expect(waiting?.status).toBe("waiting");
+      expect(waiting?.status).toBe("waiting");
 
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+      await vi.advanceTimersByTimeAsync(1100);
 
-    const processedTimeout = await runner.tick({ maxInstances: 1, maxSteps: 5 });
-    expect(processedTimeout).toBe(1);
+      const processedTimeout = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processedTimeout).toBe(1);
 
-    const errored = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
+      const errored = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
 
-    expect(errored?.status).toBe("errored");
-    expect(errored?.errorName).toBe("WaitForEventTimeoutError");
+      expect(errored?.status).toBe("errored");
+      expect(errored?.errorName).toBe("WaitForEventTimeoutError");
 
-    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(step).toMatchObject({ stepKey: "wait-timeout", status: "errored" });
+      const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+      expect(step).toMatchObject({ stepKey: "wait-timeout", status: "errored" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("do should clear timeout timers after success", async () => {
@@ -497,38 +558,150 @@ describe("Workflows Runner", async () => {
   });
 
   test("tick should schedule retries before completing a step", async () => {
-    const id = await createInstance("retry-workflow", {});
+    vi.useFakeTimers();
+    try {
+      const id = await createInstance("retry-workflow", {});
 
-    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(firstTick).toBe(1);
+      expect(retryCallCount).toBe(1);
+
+      const waiting = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+
+      expect(waiting?.status).toBe("waiting");
+
+      const [waitingStep] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+      expect(waitingStep).toMatchObject({ stepKey: "retry-step", status: "waiting" });
+      expect(waitingStep?.nextRetryAt).toBeInstanceOf(Date);
+
+      await vi.advanceTimersByTimeAsync(60);
+
+      const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(secondTick).toBe(1);
+      expect(retryCallCount).toBe(2);
+
+      const completed = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+
+      expect(completed?.status).toBe("complete");
+      expect(completed?.output).toEqual({ ok: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("tick should persist step logs with context", async () => {
+    const id = await createInstance("logging-workflow", { note: "alpha" });
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(processed).toBe(1);
+
+    const logs = await db.find("workflow_log", (b) =>
+      b.whereIndex("idx_workflow_log_history_createdAt", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "logging-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+        ),
+      ),
+    );
+
+    expect(logs).toHaveLength(2);
+
+    const startLog = logs.find((entry) => entry.message === "starting");
+    const insideLog = logs.find((entry) => entry.message === "inside");
+
+    expect(startLog).toMatchObject({
+      stepKey: null,
+      attempt: null,
+      level: "info",
+      category: "workflow",
+      isReplay: false,
+    });
+    expect(insideLog).toMatchObject({
+      stepKey: "logged-step",
+      attempt: 1,
+      level: "warn",
+      category: "workflow",
+      isReplay: false,
+    });
+  });
+
+  test("tick should persist retry logs and mark replay entries", async () => {
+    vi.useFakeTimers();
+    try {
+      const id = await createInstance("retry-logs-workflow", {});
+
+      const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(firstTick).toBe(1);
+
+      const waiting = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "retry-logs-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+      expect(waiting?.status).toBe("waiting");
+
+      await vi.advanceTimersByTimeAsync(40);
+
+      const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(secondTick).toBe(1);
+
+      const logs = await db.find("workflow_log", (b) =>
+        b.whereIndex("idx_workflow_log_history_createdAt", (eb) =>
+          eb.and(
+            eb("workflowName", "=", "retry-logs-workflow"),
+            eb("instanceId", "=", id),
+            eb("runNumber", "=", 0),
+          ),
+        ),
+      );
+
+      const attemptNumbers = logs
+        .map((entry) => entry.attempt)
+        .filter((value): value is number => value !== null)
+        .sort((a, b) => a - b);
+      expect(attemptNumbers).toEqual([1, 2]);
+      expect(logs.some((entry) => entry.isReplay)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("tick should mark replay logs after waiting for events", async () => {
+    const id = await createInstance("replay-logs-workflow", {});
+
+    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
     expect(firstTick).toBe(1);
-    expect(retryCallCount).toBe(1);
 
-    const waiting = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
-      ),
-    );
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "replay-logs-workflow", instanceId: id },
+      body: { type: "go", payload: { ok: true } },
+    });
 
-    expect(waiting?.status).toBe("waiting");
-
-    const [waitingStep] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
-    expect(waitingStep).toMatchObject({ stepKey: "retry-step", status: "waiting" });
-    expect(waitingStep?.nextRetryAt).toBeInstanceOf(Date);
-
-    await new Promise((resolve) => setTimeout(resolve, 60));
-
-    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
     expect(secondTick).toBe(1);
-    expect(retryCallCount).toBe(2);
 
-    const completed = await db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
+    const logs = await db.find("workflow_log", (b) =>
+      b.whereIndex("idx_workflow_log_history_createdAt", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "replay-logs-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+        ),
       ),
     );
 
-    expect(completed?.status).toBe("complete");
-    expect(completed?.output).toEqual({ ok: true });
+    const startLogs = logs.filter((entry) => entry.message === "start");
+    expect(startLogs).toHaveLength(2);
+    expect(startLogs.some((entry) => entry.isReplay)).toBe(true);
   });
 
   test("tick should renew task lease while executing", async () => {

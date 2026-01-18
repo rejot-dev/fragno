@@ -7,6 +7,9 @@ import type {
   WorkflowEvent,
   WorkflowStep,
   WorkflowStepConfig,
+  WorkflowLogger,
+  WorkflowLogLevel,
+  WorkflowLogOptions,
   WorkflowsRegistry,
   WorkflowsRunner,
   RunnerTickOptions,
@@ -15,6 +18,7 @@ import type {
 } from "./workflow";
 import { NonRetryableError } from "./workflow";
 import { createWorkflowsBindingsForRunner } from "./bindings-runner";
+import { parseDurationMs } from "./utils";
 
 const DEFAULT_MAX_INSTANCES = 10;
 const DEFAULT_MAX_STEPS = 1024;
@@ -89,56 +93,6 @@ const coerceEventTimestamp = (timestamp: unknown) => {
   return new Date(NaN);
 };
 
-const parseDurationMs = (duration: WorkflowDuration): number => {
-  if (typeof duration === "number") {
-    return duration;
-  }
-
-  const trimmed = duration.trim();
-  if (!trimmed) {
-    throw new Error("Invalid duration");
-  }
-
-  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(\w+)?$/i);
-  if (!match) {
-    throw new Error(`Invalid duration: ${duration}`);
-  }
-
-  const value = Number(match[1]);
-  const unit = (match[2] ?? "ms").toLowerCase();
-
-  switch (unit) {
-    case "ms":
-    case "millisecond":
-    case "milliseconds":
-      return value;
-    case "s":
-    case "sec":
-    case "secs":
-    case "second":
-    case "seconds":
-      return value * 1000;
-    case "m":
-    case "min":
-    case "mins":
-    case "minute":
-    case "minutes":
-      return value * 60 * 1000;
-    case "h":
-    case "hr":
-    case "hrs":
-    case "hour":
-    case "hours":
-      return value * 60 * 60 * 1000;
-    case "d":
-    case "day":
-    case "days":
-      return value * 24 * 60 * 60 * 1000;
-    default:
-      throw new Error(`Unsupported duration unit: ${unit}`);
-  }
-};
-
 const normalizeWaitTimeoutMs = (duration?: WorkflowDuration) => {
   const timeoutMs = duration ? parseDurationMs(duration) : DEFAULT_WAIT_TIMEOUT_MS;
   if (timeoutMs < MIN_WAIT_TIMEOUT_MS || timeoutMs > MAX_WAIT_TIMEOUT_MS) {
@@ -185,6 +139,7 @@ const isTerminalStatus = (status: string) =>
 const isPausedStatus = (status: string) => status === "paused" || status === "waitingForPause";
 
 class RunnerStep implements WorkflowStep {
+  log: WorkflowLogger;
   #db: SimpleQueryInterface<typeof workflowsSchema>;
   #workflowName: string;
   #instanceId: string;
@@ -193,6 +148,9 @@ class RunnerStep implements WorkflowStep {
   #maxSteps: number;
   #stepCount = 0;
   #clock: WorkflowsClock;
+  #isReplay: boolean;
+  #activeStepKey: string | null = null;
+  #activeAttempt: number | null = null;
 
   constructor(options: {
     db: SimpleQueryInterface<typeof workflowsSchema>;
@@ -201,6 +159,7 @@ class RunnerStep implements WorkflowStep {
     runNumber: number;
     maxSteps: number;
     clock: WorkflowsClock;
+    isReplay: boolean;
   }) {
     this.#db = options.db;
     this.#workflowName = options.workflowName;
@@ -208,6 +167,13 @@ class RunnerStep implements WorkflowStep {
     this.#runNumber = options.runNumber;
     this.#maxSteps = options.maxSteps;
     this.#clock = options.clock;
+    this.#isReplay = options.isReplay;
+    this.log = {
+      debug: (message, data, opts) => this.#writeLog("debug", message, data, opts),
+      info: (message, data, opts) => this.#writeLog("info", message, data, opts),
+      warn: (message, data, opts) => this.#writeLog("warn", message, data, opts),
+      error: (message, data, opts) => this.#writeLog("error", message, data, opts),
+    };
   }
 
   async do<T>(
@@ -299,6 +265,8 @@ class RunnerStep implements WorkflowStep {
         });
       }
 
+      this.#setStepContext(name, attempt);
+
       try {
         const result = await this.#runWithTimeout(callback, timeoutMs);
         if (stepId) {
@@ -368,6 +336,7 @@ class RunnerStep implements WorkflowStep {
     options: { type: string; timeout?: WorkflowDuration },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
     this.#beginStep(name);
+    this.#setStepContext(name, null);
 
     try {
       const existing = await this.#db.findFirst("workflow_step", (b) =>
@@ -520,6 +489,7 @@ class RunnerStep implements WorkflowStep {
 
   async #sleepUntil(name: string, wakeAt: Date): Promise<void> {
     this.#beginStep(name);
+    this.#setStepContext(name, null);
 
     try {
       const existing = await this.#db.findFirst("workflow_step", (b) =>
@@ -596,6 +566,15 @@ class RunnerStep implements WorkflowStep {
 
   #endStep(stepKey: string) {
     this.#inFlightSteps.delete(stepKey);
+    if (this.#activeStepKey === stepKey) {
+      this.#activeStepKey = null;
+      this.#activeAttempt = null;
+    }
+  }
+
+  #setStepContext(stepKey: string, attempt: number | null) {
+    this.#activeStepKey = stepKey;
+    this.#activeAttempt = attempt;
   }
 
   async #throwIfPauseRequested() {
@@ -641,6 +620,26 @@ class RunnerStep implements WorkflowStep {
         clearTimeout(timer);
       }
     }
+  }
+
+  async #writeLog(
+    level: WorkflowLogLevel,
+    message: string,
+    data?: unknown,
+    options?: WorkflowLogOptions,
+  ): Promise<void> {
+    await this.#db.create("workflow_log", {
+      workflowName: this.#workflowName,
+      instanceId: this.#instanceId,
+      runNumber: this.#runNumber,
+      stepKey: this.#activeStepKey,
+      attempt: this.#activeAttempt,
+      level,
+      category: options?.category ?? "workflow",
+      message,
+      data: data ?? null,
+      isReplay: this.#isReplay,
+    });
   }
 }
 
@@ -764,8 +763,8 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       }
       return builder;
     });
-    await uow.executeMutations();
-    return true;
+    const { success } = await uow.executeMutations();
+    return success;
   };
 
   const scheduleTask = async (
@@ -773,8 +772,22 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     kind: "wake" | "retry" | "run",
     runAt: Date,
   ) => {
-    await runnerOptions.db.update("workflow_task", task.id, (b) =>
-      b.set({
+    const current = await runnerOptions.db.findFirst("workflow_task", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
+    );
+
+    if (!current) {
+      return false;
+    }
+
+    if (current.updatedAt.getTime() !== task.updatedAt.getTime()) {
+      return false;
+    }
+
+    const uow = runnerOptions.db.createUnitOfWork("workflow-task-schedule");
+    const typed = uow.forSchema(workflowsSchema);
+    typed.update("workflow_task", current.id, (b) => {
+      const builder = b.set({
         kind,
         runAt,
         status: "pending",
@@ -783,8 +796,14 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
         lockOwner: null,
         lockedUntil: null,
         updatedAt: clock.now(),
-      }),
-    );
+      });
+      if (current.id instanceof FragnoId) {
+        builder.check();
+      }
+      return builder;
+    });
+    const { success } = await uow.executeMutations();
+    return success;
   };
 
   const completeTask = async (task: WorkflowTaskRecord) => {
@@ -924,6 +943,16 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       instanceId: instance.instanceId,
     };
 
+    const existingStep = await runnerOptions.db.findFirst("workflow_step", (b) =>
+      b.whereIndex("idx_workflow_step_history_createdAt", (eb) =>
+        eb.and(
+          eb("workflowName", "=", instance.workflowName),
+          eb("instanceId", "=", instance.instanceId),
+          eb("runNumber", "=", instance.runNumber),
+        ),
+      ),
+    );
+
     const step = new RunnerStep({
       db: runnerOptions.db,
       workflowName: instance.workflowName,
@@ -931,6 +960,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       runNumber: instance.runNumber,
       maxSteps,
       clock,
+      isReplay: Boolean(existingStep),
     });
 
     const stopHeartbeat = startTaskLeaseHeartbeat(task.id);
@@ -969,6 +999,18 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       }
 
       if (err instanceof WorkflowSuspend) {
+        if (instance.pauseRequested) {
+          const updated = await setInstanceStatus(instance, "paused", {
+            pauseRequested: false,
+          });
+          if (!updated) {
+            await completeTask(task);
+            return 0;
+          }
+          await completeTask(task);
+          return 1;
+        }
+
         const updated = await setInstanceStatus(instance, "waiting", {});
         if (!updated) {
           await completeTask(task);

@@ -159,21 +159,21 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 10 — Durable workflow log lines (workflow-authored + optional system logs)
 
-1. [ ] Add `workflow_log` table + indexes to `workflowsSchema` (SPEC §8.5).
-2. [ ] Extend the runner step API to expose a structured logger (SPEC §6.2.1):
+1. [x] Add `workflow_log` table + indexes to `workflowsSchema` (SPEC §8.5).
+2. [x] Extend the runner step API to expose a structured logger (SPEC §6.2.1):
    - add `step.log.<level>(message, data?, { category? })`
    - persist log lines with `workflowName/instanceId/runNumber/stepKey?/attempt?`
    - store `isReplay` so replay-emitted logs are obvious/filterable
    - reserve `category="system"` for engine/system logs (optional but recommended)
-3. [ ] Add services + routes:
-   - [ ] extend `GET /workflows/:workflowName/instances/:instanceId/history` to optionally include
+3. [x] Add services + routes:
+   - [x] extend `GET /workflows/:workflowName/instances/:instanceId/history` to optionally include
          logs behind `includeLogs=true`, with independent cursor pagination + filters
-4. [ ] Add tests:
-   - [ ] logs are persisted on successful steps
-   - [ ] logs are persisted on failed attempts + retries
-   - [ ] replay-emitted logs are marked with `isReplay=true`
-   - [ ] history only returns logs when `includeLogs=true`
-   - [ ] log pagination and filtering are stable
+4. [x] Add tests:
+   - [x] logs are persisted on successful steps
+   - [x] logs are persisted on failed attempts + retries
+   - [x] replay-emitted logs are marked with `isReplay=true`
+   - [x] history only returns logs when `includeLogs=true`
+   - [x] log pagination and filtering are stable
 
 ## Phase 11 — Workflow management CLI (app)
 
