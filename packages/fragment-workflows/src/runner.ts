@@ -11,6 +11,7 @@ import type {
   WorkflowsRunner,
   RunnerTickOptions,
   WorkflowEnqueuedHookPayload,
+  WorkflowsClock,
 } from "./workflow";
 import { NonRetryableError } from "./workflow";
 import { createWorkflowsBindingsForRunner } from "./bindings-runner";
@@ -53,6 +54,12 @@ class WorkflowPause extends Error {
   }
 }
 
+class WorkflowAbort extends Error {
+  constructor() {
+    super("WORKFLOW_ABORT");
+  }
+}
+
 class WaitForEventTimeoutError extends Error {
   constructor() {
     super("WAIT_FOR_EVENT_TIMEOUT");
@@ -66,6 +73,7 @@ type WorkflowsRunnerOptions = {
   runnerId?: string;
   leaseMs?: number;
   onWorkflowEnqueued?: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
+  clock?: WorkflowsClock;
 };
 
 const coerceDate = (timestamp: Date | number) =>
@@ -184,6 +192,7 @@ class RunnerStep implements WorkflowStep {
   #inFlightSteps = new Set<string>();
   #maxSteps: number;
   #stepCount = 0;
+  #clock: WorkflowsClock;
 
   constructor(options: {
     db: SimpleQueryInterface<typeof workflowsSchema>;
@@ -191,12 +200,14 @@ class RunnerStep implements WorkflowStep {
     instanceId: string;
     runNumber: number;
     maxSteps: number;
+    clock: WorkflowsClock;
   }) {
     this.#db = options.db;
     this.#workflowName = options.workflowName;
     this.#instanceId = options.instanceId;
     this.#runNumber = options.runNumber;
     this.#maxSteps = options.maxSteps;
+    this.#clock = options.clock;
   }
 
   async do<T>(
@@ -236,7 +247,7 @@ class RunnerStep implements WorkflowStep {
           return existing.result as T;
         }
         if (existing.status === "waiting" && existing.nextRetryAt) {
-          if (existing.nextRetryAt > new Date()) {
+          if (existing.nextRetryAt > this.#clock.now()) {
             await this.#throwIfPauseRequested();
             throw new WorkflowSuspend("retry", existing.nextRetryAt);
           }
@@ -264,7 +275,7 @@ class RunnerStep implements WorkflowStep {
             nextRetryAt: null,
             errorName: null,
             errorMessage: null,
-            updatedAt: new Date(),
+            updatedAt: this.#clock.now(),
           }),
         );
       } else {
@@ -295,14 +306,18 @@ class RunnerStep implements WorkflowStep {
             b.set({
               status: "completed",
               result,
-              updatedAt: new Date(),
+              updatedAt: this.#clock.now(),
             }),
           );
         }
         await this.#throwIfPauseRequested();
         return result;
       } catch (err) {
-        if (err instanceof WorkflowSuspend || err instanceof WorkflowPause) {
+        if (
+          err instanceof WorkflowSuspend ||
+          err instanceof WorkflowPause ||
+          err instanceof WorkflowAbort
+        ) {
           throw err;
         }
 
@@ -311,7 +326,7 @@ class RunnerStep implements WorkflowStep {
         const shouldRetry = !nonRetryable && attempt < maxAttempts;
 
         const nextRetryAt = shouldRetry
-          ? new Date(Date.now() + computeRetryDelayMs(attempt, delayMs, backoff))
+          ? new Date(this.#clock.now().getTime() + computeRetryDelayMs(attempt, delayMs, backoff))
           : null;
 
         if (stepId) {
@@ -321,7 +336,7 @@ class RunnerStep implements WorkflowStep {
               errorName: error.name,
               errorMessage: error.message,
               nextRetryAt,
-              updatedAt: new Date(),
+              updatedAt: this.#clock.now(),
             }),
           );
         }
@@ -339,7 +354,7 @@ class RunnerStep implements WorkflowStep {
   }
 
   async sleep(name: string, duration: WorkflowDuration): Promise<void> {
-    const wakeAt = new Date(Date.now() + parseDurationMs(duration));
+    const wakeAt = new Date(this.#clock.now().getTime() + parseDurationMs(duration));
     return this.#sleepUntil(name, wakeAt);
   }
 
@@ -412,7 +427,7 @@ class RunnerStep implements WorkflowStep {
 
         await this.#db.update("workflow_event", event.id, (b) =>
           b.set({
-            deliveredAt: new Date(),
+            deliveredAt: this.#clock.now(),
             consumedByStepKey: name,
           }),
         );
@@ -422,7 +437,7 @@ class RunnerStep implements WorkflowStep {
             b.set({
               status: "completed",
               result,
-              updatedAt: new Date(),
+              updatedAt: this.#clock.now(),
             }),
           );
         } else {
@@ -451,16 +466,16 @@ class RunnerStep implements WorkflowStep {
       }
 
       const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
-      const wakeAt = existing?.wakeAt ?? new Date(Date.now() + timeoutMs);
+      const wakeAt = existing?.wakeAt ?? new Date(this.#clock.now().getTime() + timeoutMs);
 
       if (existing) {
-        if (existing.wakeAt && existing.wakeAt <= new Date()) {
+        if (existing.wakeAt && existing.wakeAt <= this.#clock.now()) {
           await this.#db.update("workflow_step", existing.id, (b) =>
             b.set({
               status: "errored",
               errorName: "WaitForEventTimeoutError",
               errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
-              updatedAt: new Date(),
+              updatedAt: this.#clock.now(),
             }),
           );
           throw new WaitForEventTimeoutError();
@@ -472,7 +487,7 @@ class RunnerStep implements WorkflowStep {
             wakeAt,
             waitEventType: options.type,
             timeoutMs,
-            updatedAt: new Date(),
+            updatedAt: this.#clock.now(),
           }),
         );
       } else {
@@ -526,9 +541,9 @@ class RunnerStep implements WorkflowStep {
           await this.#throwIfPauseRequested();
           return;
         }
-        if (existing.wakeAt && existing.wakeAt <= new Date()) {
+        if (existing.wakeAt && existing.wakeAt <= this.#clock.now()) {
           await this.#db.update("workflow_step", existing.id, (b) =>
-            b.set({ status: "completed", updatedAt: new Date() }),
+            b.set({ status: "completed", updatedAt: this.#clock.now() }),
           );
           await this.#throwIfPauseRequested();
           return;
@@ -537,7 +552,7 @@ class RunnerStep implements WorkflowStep {
           b.set({
             status: "waiting",
             wakeAt: existing.wakeAt ?? wakeAt,
-            updatedAt: new Date(),
+            updatedAt: this.#clock.now(),
           }),
         );
       } else {
@@ -597,6 +612,10 @@ class RunnerStep implements WorkflowStep {
       return;
     }
 
+    if (instance.runNumber !== this.#runNumber || isTerminalStatus(instance.status)) {
+      throw new WorkflowAbort();
+    }
+
     if (instance.pauseRequested || instance.status === "waitingForPause") {
       throw new WorkflowPause();
     }
@@ -631,12 +650,14 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     workflowsByName.set(entry.name, entry);
   }
 
+  const clock = runnerOptions.clock ?? { now: () => new Date() };
   const runnerId = runnerOptions.runnerId ?? crypto.randomUUID();
   const leaseMs = runnerOptions.leaseMs ?? DEFAULT_LEASE_MS;
   const workflowBindings = createWorkflowsBindingsForRunner({
     db: runnerOptions.db,
     workflows: runnerOptions.workflows,
     onWorkflowEnqueued: runnerOptions.onWorkflowEnqueued,
+    clock,
   });
 
   const claimTask = async (task: WorkflowTaskRecord, now: Date) => {
@@ -651,14 +672,21 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     );
 
     if (!instance) {
+      await completeTask(task);
       return null;
     }
 
     if (instance.runNumber !== task.runNumber) {
+      await completeTask(task);
       return null;
     }
 
-    if (isTerminalStatus(instance.status) || isPausedStatus(instance.status)) {
+    if (isTerminalStatus(instance.status)) {
+      await completeTask(task);
+      return null;
+    }
+
+    if (isPausedStatus(instance.status)) {
       return null;
     }
 
@@ -679,7 +707,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
         status: "processing",
         lockOwner: runnerId,
         lockedUntil: new Date(now.getTime() + leaseMs),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       });
       if (task.id instanceof FragnoId) {
         builder.check();
@@ -699,7 +727,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     instance: WorkflowInstanceRecord,
     status: string,
     update: Partial<WorkflowInstanceUpdate>,
-  ) => {
+  ): Promise<boolean> => {
     const current = await runnerOptions.db.findFirst("workflow_instance", (b) =>
       b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
         eb.and(
@@ -710,7 +738,15 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     );
 
     if (!current) {
-      return;
+      return false;
+    }
+
+    if (current.runNumber !== instance.runNumber) {
+      return false;
+    }
+
+    if (isTerminalStatus(current.status)) {
+      return false;
     }
 
     const { id: _ignoredId, ...safeUpdate } = update as WorkflowInstanceRecord;
@@ -721,7 +757,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       const builder = b.set({
         ...safeUpdate,
         status,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       });
       if (current.id instanceof FragnoId) {
         builder.check();
@@ -729,6 +765,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       return builder;
     });
     await uow.executeMutations();
+    return true;
   };
 
   const scheduleTask = async (
@@ -745,7 +782,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
         lastError: null,
         lockOwner: null,
         lockedUntil: null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       }),
     );
   };
@@ -771,8 +808,8 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     const typed = uow.forSchema(workflowsSchema);
     typed.update("workflow_task", current.id, (b) => {
       const builder = b.set({
-        lockedUntil: new Date(Date.now() + leaseMs),
-        updatedAt: new Date(),
+        lockedUntil: new Date(clock.now().getTime() + leaseMs),
+        updatedAt: clock.now(),
       });
       if (current.id instanceof FragnoId) {
         builder.check();
@@ -855,19 +892,27 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
 
     const workflowEntry = workflowsByName.get(instance.workflowName);
     if (!workflowEntry) {
-      await setInstanceStatus(instance, "errored", {
+      const updated = await setInstanceStatus(instance, "errored", {
         errorName: "WorkflowNotFound",
         errorMessage: "WORKFLOW_NOT_FOUND",
-        completedAt: new Date(),
+        completedAt: clock.now(),
       });
+      if (!updated) {
+        await completeTask(task);
+        return 0;
+      }
       await completeTask(task);
       return 0;
     }
 
     if (instance.status !== "running") {
-      await setInstanceStatus(instance, "running", {
-        startedAt: instance.startedAt ?? new Date(),
+      const updated = await setInstanceStatus(instance, "running", {
+        startedAt: instance.startedAt ?? clock.now(),
       });
+      if (!updated) {
+        await completeTask(task);
+        return 0;
+      }
     }
 
     const workflow = new workflowEntry.workflow() as WorkflowEntrypoint<unknown, unknown>;
@@ -885,26 +930,40 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       instanceId: instance.instanceId,
       runNumber: instance.runNumber,
       maxSteps,
+      clock,
     });
 
     const stopHeartbeat = startTaskLeaseHeartbeat(task.id);
 
     try {
       const output = await workflow.run(event, step);
-      await setInstanceStatus(instance, "complete", {
+      const updated = await setInstanceStatus(instance, "complete", {
         output: output ?? null,
         errorName: null,
         errorMessage: null,
-        completedAt: new Date(),
+        completedAt: clock.now(),
         pauseRequested: false,
       });
+      if (!updated) {
+        await completeTask(task);
+        return 0;
+      }
       await completeTask(task);
       return 1;
     } catch (err) {
+      if (err instanceof WorkflowAbort) {
+        await completeTask(task);
+        return 0;
+      }
+
       if (err instanceof WorkflowPause) {
-        await setInstanceStatus(instance, "paused", {
+        const updated = await setInstanceStatus(instance, "paused", {
           pauseRequested: false,
         });
+        if (!updated) {
+          await completeTask(task);
+          return 0;
+        }
         await completeTask(task);
         return 1;
       }
@@ -920,12 +979,16 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       }
 
       const error = err as Error;
-      await setInstanceStatus(instance, "errored", {
+      const updated = await setInstanceStatus(instance, "errored", {
         errorName: error.name ?? "Error",
         errorMessage: error.message ?? "",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         pauseRequested: false,
       });
+      if (!updated) {
+        await completeTask(task);
+        return 0;
+      }
       await completeTask(task);
       return 1;
     } finally {
@@ -935,7 +998,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
 
   return {
     async tick(tickOptions: RunnerTickOptions = {}) {
-      const now = new Date();
+      const now = clock.now();
       const maxInstances = tickOptions.maxInstances ?? DEFAULT_MAX_INSTANCES;
       const maxSteps = tickOptions.maxSteps ?? DEFAULT_MAX_STEPS;
 

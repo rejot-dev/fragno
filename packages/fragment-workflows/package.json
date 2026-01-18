@@ -10,6 +10,11 @@
       "development": "./src/index.ts",
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
+    },
+    "./test": {
+      "development": "./src/test.ts",
+      "types": "./dist/node/test.d.ts",
+      "default": "./dist/node/test.js"
     }
   },
   "main": "./dist/node/index.js",
@@ -25,7 +30,8 @@
   "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/db": "workspace:*"
+    "@fragno-dev/db": "workspace:*",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@fragno-dev/test": "workspace:*",
