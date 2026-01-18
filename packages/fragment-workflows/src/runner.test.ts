@@ -10,7 +10,10 @@ import { workflowsRoutesFactory } from "./routes";
 describe("Workflows Runner", async () => {
   let doCallCount = 0;
   let concurrentCallCount = 0;
+  let retryCallCount = 0;
   let priorityOrder: string[] = [];
+  let replayCallCount = 0;
+  let distinctCallCount = 0;
 
   class DemoWorkflow extends WorkflowEntrypoint<unknown, { count: number }> {
     async run(event: WorkflowEvent<{ count: number }>, step: WorkflowStep) {
@@ -32,12 +35,34 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class TimeoutWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.waitForEvent("wait-timeout", { type: "timeout", timeout: "1 s" });
+    }
+  }
+
   class SlowWorkflow extends WorkflowEntrypoint {
     async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
       return await step.do("slow-step", async () => {
         await new Promise((resolve) => setTimeout(resolve, 250));
         return { ok: true };
       });
+    }
+  }
+
+  class RetryWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do(
+        "retry-step",
+        { retries: { limit: 1, delay: "40 ms", backoff: "constant" } },
+        () => {
+          retryCallCount += 1;
+          if (retryCallCount === 1) {
+            throw new Error("RETRY_ME");
+          }
+          return { ok: true };
+        },
+      );
     }
   }
 
@@ -67,13 +92,42 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class ReplayWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      const first = await step.do("replay-first", () => {
+        replayCallCount += 1;
+        return { ok: true };
+      });
+      const waited = await step.waitForEvent("replay-wait", { type: "go", timeout: "1 hour" });
+      return { first, waited };
+    }
+  }
+
+  class DistinctStepWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      const first = await step.do("step-one", () => {
+        distinctCallCount += 1;
+        return { id: 1 };
+      });
+      const second = await step.do("step-two", () => {
+        distinctCallCount += 1;
+        return { id: 2 };
+      });
+      return { first, second };
+    }
+  }
+
   const workflows = {
     demo: { name: "demo-workflow", workflow: DemoWorkflow },
     events: { name: "event-workflow", workflow: EventWorkflow },
+    timeout: { name: "timeout-workflow", workflow: TimeoutWorkflow },
     slow: { name: "slow-workflow", workflow: SlowWorkflow },
+    retry: { name: "retry-workflow", workflow: RetryWorkflow },
     concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
     pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
     priority: { name: "priority-workflow", workflow: PriorityWorkflow },
+    replay: { name: "replay-workflow", workflow: ReplayWorkflow },
+    distinct: { name: "distinct-step-workflow", workflow: DistinctStepWorkflow },
   };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
@@ -106,7 +160,10 @@ describe("Workflows Runner", async () => {
     await testContext.resetDatabase();
     doCallCount = 0;
     concurrentCallCount = 0;
+    retryCallCount = 0;
     priorityOrder = [];
+    replayCallCount = 0;
+    distinctCallCount = 0;
   });
 
   test("tick should execute workflow and reuse cached steps", async () => {
@@ -131,6 +188,64 @@ describe("Workflows Runner", async () => {
     const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     expect(steps).toHaveLength(1);
     expect(steps[0].status).toBe("completed");
+  });
+
+  test("tick should cache steps by name", async () => {
+    const id = await createInstance("distinct-step-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(processed).toBe(1);
+    expect(distinctCallCount).toBe(2);
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "distinct-step-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(instance?.status).toBe("complete");
+    expect(instance?.output).toEqual({
+      first: { id: 1 },
+      second: { id: 2 },
+    });
+
+    const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(steps).toHaveLength(2);
+  });
+
+  test("tick should replay cached steps across ticks", async () => {
+    const id = await createInstance("replay-workflow", {});
+
+    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(firstTick).toBe(1);
+    expect(replayCallCount).toBe(1);
+
+    const waiting = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "replay-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(waiting?.status).toBe("waiting");
+
+    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "replay-workflow", instanceId: id },
+      body: { type: "go", payload: { ok: true } },
+    });
+
+    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(secondTick).toBe(1);
+    expect(replayCallCount).toBe(1);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "replay-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(completed?.status).toBe("complete");
+    expect(completed?.output).toMatchObject({
+      first: { ok: true },
+      waited: { type: "go", payload: { ok: true } },
+    });
   });
 
   test("tick should consume buffered events for waitForEvent", async () => {
@@ -165,6 +280,73 @@ describe("Workflows Runner", async () => {
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     expect(event.deliveredAt).toBeInstanceOf(Date);
     expect(event.consumedByStepKey).toBe("wait-ready");
+  });
+
+  test("tick should error when waitForEvent times out", async () => {
+    const id = await createInstance("timeout-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const waiting = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(waiting?.status).toBe("waiting");
+
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    const processedTimeout = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processedTimeout).toBe(1);
+
+    const errored = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(errored?.status).toBe("errored");
+    expect(errored?.errorName).toBe("WaitForEventTimeoutError");
+
+    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(step).toMatchObject({ stepKey: "wait-timeout", status: "errored" });
+  });
+
+  test("tick should schedule retries before completing a step", async () => {
+    const id = await createInstance("retry-workflow", {});
+
+    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(firstTick).toBe(1);
+    expect(retryCallCount).toBe(1);
+
+    const waiting = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(waiting?.status).toBe("waiting");
+
+    const [waitingStep] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(waitingStep).toMatchObject({ stepKey: "retry-step", status: "waiting" });
+    expect(waitingStep?.nextRetryAt).toBeInstanceOf(Date);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(secondTick).toBe(1);
+    expect(retryCallCount).toBe(2);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "retry-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(completed?.status).toBe("complete");
+    expect(completed?.output).toEqual({ ok: true });
   });
 
   test("tick should renew task lease while executing", async () => {

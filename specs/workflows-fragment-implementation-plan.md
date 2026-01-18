@@ -109,8 +109,8 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 1. Ensure migrations generation works (per Fragno DB docs and existing CLI flows).
 2. Add unit tests for:
-   - step caching + replay
-   - step caching is keyed by name (SPEC §9.2)
+   - [x] step caching + replay
+   - [x] step caching is keyed by name (SPEC §9.2)
    - [x] waitForEvent buffering and timeout
    - [x] retry scheduling semantics
    - [x] pause/resume/terminate/restart
@@ -123,4 +123,4 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] lease expiry + takeover correctness
    - [x] task ordering: `wake|retry|resume` runs before `run` (SPEC §9.1.2)
    - paused instances are not claimed / no hot-looping (SPEC §9.1.3, §9.4)
-4. Add one end-to-end example workflow (approval + event + sleep), and mount in an example app.
+4. [x] Add one end-to-end example workflow (approval + event + sleep), and mount in an example app.
