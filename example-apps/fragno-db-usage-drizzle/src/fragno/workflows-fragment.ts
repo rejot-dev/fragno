@@ -60,7 +60,9 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
   const runner = createWorkflowsRunner({ db, workflows });
   const dispatcher = createInProcessDispatcher({
     wake: () => {
-      void runner.tick({ maxInstances: 5, maxSteps: 50 });
+      Promise.resolve(runner.tick({ maxInstances: 5, maxSteps: 50 })).catch((error: unknown) => {
+        console.error("Workflows runner tick failed", error);
+      });
     },
     pollIntervalMs: 2000,
   });

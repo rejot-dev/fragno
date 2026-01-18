@@ -136,3 +136,4 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    them.
    - [x] Preserve wakeAt on sleep/wait replay; keep pauseRequested on suspend; normalize
          waitForEvent replay timestamps.
+   - [x] Guard background runner ticks against unhandled rejections in example app.
