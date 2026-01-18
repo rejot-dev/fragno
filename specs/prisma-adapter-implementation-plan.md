@@ -158,3 +158,6 @@ Status: complete.
 - Repository lint (oxlint)
 - Repository types check (turbo run types:check)
 - Prisma docs updates (adapter page + overview + frameworks table)
+
+Revalidated (2026-01-18): Prisma adapter SQLite/PGLite tests, repository lint, repository types
+check.
