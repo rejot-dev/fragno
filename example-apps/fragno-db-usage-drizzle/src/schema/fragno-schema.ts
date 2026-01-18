@@ -37,63 +37,6 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 ])
 
 // ============================================================================
-// Fragment: simple-auth
-// ============================================================================
-
-export const user_simple_auth = pgTable("user_simple-auth", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-  email: text("email").notNull(),
-  passwordHash: text("passwordHash").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
-}, (table) => [
-  index("idx_user_email_simple-auth").on(table.email)
-])
-
-export const session_simple_auth = pgTable("session_simple-auth", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-  userId: bigint("userId", { mode: "number" }).notNull(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.userId],
-    foreignColumns: [user_simple_auth._internalId],
-    name: "fk_session_user_sessionOwner_simple-auth"
-  }),
-  index("idx_session_user_simple-auth").on(table.userId)
-])
-
-export const user_simple_authRelations = relations(user_simple_auth, ({ many }) => ({
-  sessionList: many(session_simple_auth, {
-    relationName: "session_user"
-  })
-}));
-
-export const session_simple_authRelations = relations(session_simple_auth, ({ one }) => ({
-  sessionOwner: one(user_simple_auth, {
-    relationName: "session_user",
-    fields: [session_simple_auth.userId],
-    references: [user_simple_auth._internalId]
-  })
-}));
-
-export const simple_auth_schema = {
-  user_simple_auth: user_simple_auth,
-  user_simple_authRelations: user_simple_authRelations,
-  user: user_simple_auth,
-  userRelations: user_simple_authRelations,
-  session_simple_auth: session_simple_auth,
-  session_simple_authRelations: session_simple_authRelations,
-  session: session_simple_auth,
-  sessionRelations: session_simple_authRelations,
-  schemaVersion: 3
-}
-
-// ============================================================================
 // Fragment: fragno-db-comment
 // ============================================================================
 
@@ -172,6 +115,63 @@ export const fragno_db_rating_schema = {
 }
 
 // ============================================================================
+// Fragment: simple-auth
+// ============================================================================
+
+export const user_simple_auth = pgTable("user_simple-auth", {
+  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  email: text("email").notNull(),
+  passwordHash: text("passwordHash").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  index("idx_user_email_simple-auth").on(table.email)
+])
+
+export const session_simple_auth = pgTable("session_simple-auth", {
+  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  userId: bigint("userId", { mode: "number" }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  foreignKey({
+    columns: [table.userId],
+    foreignColumns: [user_simple_auth._internalId],
+    name: "fk_session_user_sessionOwner_simple-auth"
+  }),
+  index("idx_session_user_simple-auth").on(table.userId)
+])
+
+export const user_simple_authRelations = relations(user_simple_auth, ({ many }) => ({
+  sessionList: many(session_simple_auth, {
+    relationName: "session_user"
+  })
+}));
+
+export const session_simple_authRelations = relations(session_simple_auth, ({ one }) => ({
+  sessionOwner: one(user_simple_auth, {
+    relationName: "session_user",
+    fields: [session_simple_auth.userId],
+    references: [user_simple_auth._internalId]
+  })
+}));
+
+export const simple_auth_schema = {
+  user_simple_auth: user_simple_auth,
+  user_simple_authRelations: user_simple_authRelations,
+  user: user_simple_auth,
+  userRelations: user_simple_authRelations,
+  session_simple_auth: session_simple_auth,
+  session_simple_authRelations: session_simple_authRelations,
+  session: session_simple_auth,
+  sessionRelations: session_simple_authRelations,
+  schemaVersion: 3
+}
+
+// ============================================================================
 // Fragment: workflows
 // ============================================================================
 
@@ -224,6 +224,7 @@ export const workflow_step_workflows = pgTable("workflow_step_workflows", {
   uniqueIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.stepKey),
   index("idx_workflow_step_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
   index("idx_workflow_step_status_wakeAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.status, table.wakeAt),
+  index("idx_workflow_step_workflowName_instanceId_status_workflows").on(table.workflowName, table.instanceId, table.status),
   index("idx_workflow_step_status_nextRetryAt_workflows").on(table.status, table.nextRetryAt)
 ])
 

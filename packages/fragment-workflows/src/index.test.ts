@@ -4,6 +4,7 @@ import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
+import { attachWorkflowsBindings } from "./bindings";
 import { NonRetryableError, WorkflowEntrypoint } from "./workflow";
 import type { WorkflowEvent, WorkflowStep } from "./workflow";
 
@@ -41,6 +42,18 @@ describe("Workflows Fragment", async () => {
   test("should expose workflows schema", () => {
     expect(fragment.$internal.deps.schema).toBe(workflowsSchema);
     expect(fragment.$internal.deps.namespace).toBe("workflows");
+  });
+
+  test("should generate migrations for workflows schema", () => {
+    const { adapter } = testContext;
+    if (!adapter.prepareMigrations) {
+      throw new Error("Test adapter does not support migrations");
+    }
+
+    const migrations = adapter.prepareMigrations(workflowsSchema, "workflows");
+    const sql = migrations.getSQL(0, workflowsSchema.version);
+
+    expect(sql.length).toBeGreaterThan(0);
   });
 
   test("should persist workflow records", async () => {
@@ -171,6 +184,26 @@ describe("Workflows Fragment", async () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toBe("no retry");
     expect(error.name).toBe("NonRetryableError");
+  });
+
+  test("should expose programmatic workflow bindings", async () => {
+    const boundFragment = attachWorkflowsBindings(fragment, workflows);
+
+    const instance = await boundFragment.workflows["DEMO"].create({
+      id: "binding-1",
+      params: { source: "bindings" },
+    });
+
+    const status = await instance.status();
+    expect(status.status).toBe("queued");
+
+    const stored = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "demo-workflow"), eb("instanceId", "=", "binding-1")),
+      ),
+    );
+
+    expect(stored?.instanceId).toBe("binding-1");
   });
 
   describe("Routes", () => {
