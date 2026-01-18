@@ -114,7 +114,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - waitForEvent buffering and timeout
    - retry scheduling semantics
    - pause/resume/terminate/restart
-   - pause does not freeze timers (SPEC §9.4)
+  - [x] pause does not freeze timers (SPEC §9.4)
 3. Add distributed runner tests (must be robust):
    - [x] N parallel runners contending for the same tasks/instances (SPEC §9.1.1)
    - [x] concurrent `POST /_runner/tick` calls against the same DB state
