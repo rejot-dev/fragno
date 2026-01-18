@@ -16,13 +16,13 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 ## Phase 1 — New package(s) + public API scaffolding
 
 1. Create the packages per SPEC §5:
-   - `packages/fragment-workflows` (`@fragno-dev/fragment-workflows`)
-   - `packages/workflows-dispatcher-node` (`@fragno-dev/workflows-dispatcher-node`)
-   - `packages/workflows-dispatcher-cloudflare-do`
-     (`@fragno-dev/workflows-dispatcher-cloudflare-do`)
+   - [x] `packages/fragment-workflows` (`@fragno-dev/fragment-workflows`)
+   - [ ] `packages/workflows-dispatcher-node` (`@fragno-dev/workflows-dispatcher-node`)
+   - [ ] `packages/workflows-dispatcher-cloudflare-do`
+         (`@fragno-dev/workflows-dispatcher-cloudflare-do`)
 2. Ensure the main package is runtime-agnostic (SPEC §5.3 note); keep Cloudflare/Node APIs in the
    dispatcher packages.
-3. Implement public types/classes per SPEC §6:
+3. [x] Implement public types/classes per SPEC §6:
    - `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `InstanceStatus`
    - `NonRetryableError`
 4. Implement the workflow registry + programmatic bindings API (SPEC §6.5, §6.6):
@@ -33,12 +33,12 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 2 — Database schema (Fragno DB)
 
-1. Define `workflowsSchema` tables per SPEC §8:
+1. [x] Define `workflowsSchema` tables per SPEC §8:
    - `workflow_instance`
    - `workflow_step`
    - `workflow_event`
    - `workflow_task` (required; distributed runners)
-2. Provide `withDatabase(workflowsSchema)` integration:
+2. [x] Provide `withDatabase(workflowsSchema)` integration:
    - follow patterns in `packages/fragment-mailing-list/src/definition.ts`
 3. Add indexes needed for runner queries (SPEC §8).
 4. Add/validate the lease/lock columns needed for distributed runners (task lease only):
