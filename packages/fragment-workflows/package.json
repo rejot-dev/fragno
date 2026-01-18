@@ -1,0 +1,40 @@
+{
+  "name": "@fragno-dev/fragment-workflows",
+  "description": "Fragno workflows fragment",
+  "version": "0.0.0",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    }
+  },
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "tsdown": "^0.15.12",
+    "vitest": "^3.2.4"
+  }
+}
