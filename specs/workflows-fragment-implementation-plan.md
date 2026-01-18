@@ -60,8 +60,8 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 4 — Durable hooks dispatcher wiring
 
-1. Add `provideHooks` to the fragment definition (SPEC §10.1).
-2. Define a dispatcher interface in the main package used by `onWorkflowEnqueued` (SPEC §5.1,
+1. [x] Add `provideHooks` to the fragment definition (SPEC §10.1).
+2. [x] Define a dispatcher interface in the main package used by `onWorkflowEnqueued` (SPEC §5.1,
    §10.3).
 3. Implement the Node dispatcher package:
    - in-process `wake()` + optional polling loop (SPEC §5.2)
@@ -92,17 +92,17 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 6 — HTTP API routes
 
-1. Define routes with `defineRoutes(fragmentDef).create(...)` like:
+1. [x] Define routes with `defineRoutes(fragmentDef).create(...)` like:
    - `example-fragments/example-fragment/src/index.ts`
 2. Implement endpoints per SPEC §11:
-   - list workflows
-   - list instances
-   - create/createBatch
-   - status
-   - pause/resume/terminate/restart
-   - send event
-   - history
-   - `/_runner/tick`
+   - [x] list workflows
+   - [x] list instances
+   - [x] create/createBatch
+   - [x] status
+   - [x] pause/resume/terminate/restart
+   - [x] send event
+   - [x] history
+   - [ ] `/_runner/tick`
 3. Add auth hooks per SPEC §12.
 
 ## Phase 7 — Migrations, tests, and examples

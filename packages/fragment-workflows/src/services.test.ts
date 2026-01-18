@@ -1,13 +1,22 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 
 describe("Workflows Fragment Services", async () => {
+  const dispatcher = {
+    wake: vi.fn(),
+  };
+
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
-    .withFragment("workflows", instantiate(workflowsFragmentDefinition))
+    .withFragment(
+      "workflows",
+      instantiate(workflowsFragmentDefinition).withConfig({
+        dispatcher,
+      }),
+    )
     .build();
 
   const { fragment, db } = fragments.workflows;
@@ -22,6 +31,7 @@ describe("Workflows Fragment Services", async () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
+    dispatcher.wake.mockReset();
   });
 
   test("createInstance should create instance and task records", async () => {
@@ -53,6 +63,21 @@ describe("Workflows Fragment Services", async () => {
       attempts: 0,
     });
     expect(task.runAt).toBeInstanceOf(Date);
+  });
+
+  test("createInstance should trigger dispatcher wake hook", async () => {
+    await runService(() =>
+      fragment.services.createInstance("demo-workflow", {
+        id: "hook-1",
+      }),
+    );
+
+    expect(dispatcher.wake).toHaveBeenCalledTimes(1);
+    expect(dispatcher.wake).toHaveBeenCalledWith({
+      workflowName: "demo-workflow",
+      instanceId: "hook-1",
+      reason: "create",
+    });
   });
 
   test("createBatch should skip existing instance IDs", async () => {
@@ -153,6 +178,12 @@ describe("Workflows Fragment Services", async () => {
       kind: "wake",
       status: "pending",
     });
+
+    expect(dispatcher.wake).toHaveBeenCalledWith({
+      workflowName: "demo-workflow",
+      instanceId: created.id,
+      reason: "event",
+    });
   });
 
   test("sendEvent should reject terminal instances", async () => {
@@ -168,5 +199,126 @@ describe("Workflows Fragment Services", async () => {
     await expect(
       runService(() => fragment.services.sendEvent("demo-workflow", created.id, { type: "noop" })),
     ).rejects.toThrow("INSTANCE_TERMINAL");
+  });
+
+  test("getInstanceRunNumber should return current run", async () => {
+    await db.create("workflow_instance", {
+      workflowName: "demo-workflow",
+      instanceId: "history-1",
+      status: "queued",
+      params: {},
+      pauseRequested: false,
+      retentionUntil: null,
+      runNumber: 3,
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    const runNumber = await runService<number>(() =>
+      fragment.services.getInstanceRunNumber("demo-workflow", "history-1"),
+    );
+
+    expect(runNumber).toBe(3);
+  });
+
+  test("listHistory should return steps and events for a run", async () => {
+    await db.create("workflow_instance", {
+      workflowName: "demo-workflow",
+      instanceId: "history-2",
+      status: "queued",
+      params: {},
+      pauseRequested: false,
+      retentionUntil: null,
+      runNumber: 1,
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await db.create("workflow_step", {
+      workflowName: "demo-workflow",
+      instanceId: "history-2",
+      runNumber: 1,
+      stepKey: "step-1",
+      name: "Step One",
+      type: "do",
+      status: "completed",
+      attempts: 1,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: null,
+      result: { ok: true },
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await db.create("workflow_step", {
+      workflowName: "demo-workflow",
+      instanceId: "history-2",
+      runNumber: 1,
+      stepKey: "step-2",
+      name: "Step Two",
+      type: "sleep",
+      status: "waiting",
+      attempts: 0,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: new Date(Date.now() + 60_000),
+      waitEventType: null,
+      result: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await db.create("workflow_event", {
+      workflowName: "demo-workflow",
+      instanceId: "history-2",
+      runNumber: 1,
+      type: "approval",
+      payload: { approved: true },
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+
+    await db.create("workflow_event", {
+      workflowName: "demo-workflow",
+      instanceId: "history-2",
+      runNumber: 1,
+      type: "note",
+      payload: { note: "extra" },
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+
+    const history = await runService<{
+      runNumber: number;
+      steps: Array<{ stepKey: string }>;
+      events: Array<{ type: string }>;
+      stepsHasNextPage: boolean;
+      eventsHasNextPage: boolean;
+    }>(() =>
+      fragment.services.listHistory({
+        workflowName: "demo-workflow",
+        instanceId: "history-2",
+        runNumber: 1,
+        pageSize: 1,
+      }),
+    );
+
+    expect(history.runNumber).toBe(1);
+    expect(history.steps).toHaveLength(1);
+    expect(history.events).toHaveLength(1);
+    expect(history.stepsHasNextPage).toBe(true);
+    expect(history.eventsHasNextPage).toBe(true);
+    expect(history.steps[0]?.stepKey).toBeTruthy();
+    expect(history.events[0]?.type).toBeTruthy();
   });
 });
