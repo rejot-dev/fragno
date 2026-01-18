@@ -1,15 +1,19 @@
+/** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
 
+/** Clock abstraction for tests or custom time sources. */
 export type WorkflowsClock = {
   now: () => Date;
 };
 
+/** Event delivered to a workflow instance run. */
 export type WorkflowEvent<T> = {
   payload: Readonly<T>;
   timestamp: Date;
   instanceId: string;
 };
 
+/** Retry/timeout behavior for a step execution. */
 export type WorkflowStepConfig = {
   retries?: {
     limit: number;
@@ -19,6 +23,7 @@ export type WorkflowStepConfig = {
   timeout?: WorkflowDuration;
 };
 
+/** Execution helpers that provide replay-safe step semantics. */
 export interface WorkflowStep {
   do<T>(name: string, callback: () => Promise<T> | T): Promise<T>;
   do<T>(name: string, config: WorkflowStepConfig, callback: () => Promise<T> | T): Promise<T>;
@@ -30,6 +35,7 @@ export interface WorkflowStep {
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }>;
 }
 
+/** Serialized instance status returned to API consumers. */
 export type InstanceStatus = {
   status:
     | "queued"
@@ -45,6 +51,7 @@ export type InstanceStatus = {
   output?: unknown;
 };
 
+/** Handle for a workflow instance returned by the management API. */
 export interface WorkflowInstance {
   id: string;
   status(): Promise<InstanceStatus>;
@@ -55,35 +62,42 @@ export interface WorkflowInstance {
   sendEvent(options: { type: string; payload?: unknown }): Promise<void>;
 }
 
+/** Options for creating a workflow instance. */
 export interface WorkflowInstanceCreateOptions<TParams = unknown> {
   id?: string;
   params?: TParams;
 }
 
+/** Create options that require a user-specified instance id. */
 export interface WorkflowInstanceCreateOptionsWithId<TParams = unknown>
   extends WorkflowInstanceCreateOptions<TParams> {
   id: string;
 }
 
+/** Management API for a named workflow. */
 export interface Workflow<TParams = unknown> {
   create(options?: WorkflowInstanceCreateOptions<TParams>): Promise<WorkflowInstance>;
   createBatch(batch: WorkflowInstanceCreateOptionsWithId<TParams>[]): Promise<WorkflowInstance[]>;
   get(id: string): Promise<WorkflowInstance>;
 }
 
+/** Map of binding keys to workflow class definitions. */
 export type WorkflowsRegistry = Record<
   string,
   { name: string; workflow: new (...args: unknown[]) => WorkflowEntrypoint<unknown, unknown> }
 >;
 
+/** Bound workflow handles exposed on fragments. */
 export type WorkflowBindings = Record<string, Workflow>;
 
+/** Base class for user-defined workflows. */
 export abstract class WorkflowEntrypoint<_Env = unknown, Params = unknown> {
   public workflows!: WorkflowBindings;
 
   abstract run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<unknown> | unknown;
 }
 
+/** Error type that bypasses automatic retries. */
 export class NonRetryableError extends Error {
   constructor(message: string, name?: string) {
     super(message);
@@ -91,25 +105,30 @@ export class NonRetryableError extends Error {
   }
 }
 
+/** Durable hook payload emitted when a workflow is ready to run. */
 export type WorkflowEnqueuedHookPayload = {
   workflowName: string;
   instanceId: string;
   reason: "create" | "event" | "resume" | "retry" | "wake";
 };
 
+/** Dispatcher interface used by durable hooks to trigger runner work. */
 export interface WorkflowsDispatcher {
   wake: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
 }
 
+/** Controls how much work a runner processes per tick. */
 export type RunnerTickOptions = {
   maxInstances?: number;
   maxSteps?: number;
 };
 
+/** Runner interface used by routes and dispatchers. */
 export interface WorkflowsRunner {
   tick: (options: RunnerTickOptions) => Promise<number> | number;
 }
 
+/** Request metadata passed into authorization hooks. */
 export type WorkflowsAuthorizeContext = {
   method: string;
   path: string;
@@ -119,23 +138,28 @@ export type WorkflowsAuthorizeContext = {
   input?: unknown;
 };
 
+/** Actions available on workflow instances. */
 export type WorkflowManagementAction = "pause" | "resume" | "terminate" | "restart";
 
+/** Authorization hook signature for workflow routes. */
 export type WorkflowsAuthorizeHook<TContext extends WorkflowsAuthorizeContext> = (
   context: TContext,
 ) => Promise<Response | void> | Response | void;
 
+/** Authorization context for instance creation requests. */
 export type WorkflowsAuthorizeInstanceCreationContext = WorkflowsAuthorizeContext & {
   workflowName: string;
   instances: { id?: string; params?: unknown }[];
 };
 
+/** Authorization context for management actions. */
 export type WorkflowsAuthorizeManagementContext = WorkflowsAuthorizeContext & {
   workflowName: string;
   instanceId: string;
   action: WorkflowManagementAction;
 };
 
+/** Authorization context for sendEvent requests. */
 export type WorkflowsAuthorizeSendEventContext = WorkflowsAuthorizeContext & {
   workflowName: string;
   instanceId: string;
@@ -143,10 +167,12 @@ export type WorkflowsAuthorizeSendEventContext = WorkflowsAuthorizeContext & {
   payload?: unknown;
 };
 
+/** Authorization context for runner tick requests. */
 export type WorkflowsAuthorizeRunnerTickContext = WorkflowsAuthorizeContext & {
   options: RunnerTickOptions;
 };
 
+/** Configuration for the workflows fragment. */
 export interface WorkflowsFragmentConfig {
   workflows?: WorkflowsRegistry;
   dispatcher?: WorkflowsDispatcher;
