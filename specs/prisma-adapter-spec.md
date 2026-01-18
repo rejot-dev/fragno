@@ -1,0 +1,449 @@
+# Fragno Prisma Support — Prisma Schema Generator Adapter (SPEC, Draft)
+
+Status: Draft (decisions confirmed; remaining work is implementation)
+
+## 1. Overview
+
+Fragno’s DB layer executes queries via **Kysely dialects** (through `@fragno-dev/db`’s
+`GenericSQLAdapter`). This remains true regardless of which ORM a host application uses.
+
+This spec adds **Prisma support** in the same spirit as the existing **Drizzle adapter**:
+
+- Fragno does **not** use Prisma for query execution.
+- Fragno **does** generate a **Prisma schema** (`.prisma`) representing:
+  - Fragno’s internal tables (`fragno_db_settings`, `fragno_hooks`)
+  - all tables defined by one or more Fragments
+- Users integrate the generated schema with their application schema to:
+  - apply migrations using Prisma tooling (`prisma migrate` / `prisma db push`)
+  - generate Prisma Client types that include Fragment tables
+
+Key difference vs Drizzle: Prisma has fewer “custom type conversion hooks”. To make the generated
+Prisma schema genuinely usable with Prisma Client, Fragno must be **Prisma-native** in how it stores
+values (especially for SQLite). This spec therefore includes a maintainable “storage profile”
+approach driven by `DriverConfig`.
+
+## 2. Goals / Non-goals
+
+### 2.1 Goals
+
+1. **Schema generation only**: Prisma is an output format; execution remains Kysely/GenericSQL.
+2. **Multi-fragment composition**: one generated schema can include multiple fragments + internal
+   schema.
+3. **Provider-aware output**: SQLite first, then PostgreSQL (incl. PGLite), then MySQL (tests
+   optional).
+4. **Prisma-native ergonomics**:
+   - use Prisma-native scalars (`DateTime`, `BigInt`, `Json`, `Bytes`) where possible
+   - generate relations in Prisma’s idioms
+5. **Collision-safe naming**: model names, relation names, and index names are stable and avoid
+   collisions when multiple fragments are merged.
+6. **Deterministic output**: stable ordering and formatting for clean diffs.
+7. **Storage contract alignment**: generated schema must create tables/columns compatible with
+   Fragno runtime behavior for the selected storage profile.
+
+### 2.2 Non-goals (v1)
+
+- Using Prisma Client as Fragno’s execution engine.
+- Introspecting an existing Prisma schema to produce Fragno schemas.
+- Replacing Fragno’s internal version tracking (`fragno_db_settings`) with Prisma’s migration table.
+
+## 3. User Experience
+
+### 3.1 Runtime adapter
+
+Prisma users still configure Fragno with a DB adapter (execution stays Kysely-based). Prisma support
+adds a runtime adapter mainly to:
+
+- opt into the Prisma-native SQLite storage profile
+- provide `createSchemaGenerator()` for `.prisma` output
+
+Example (Postgres):
+
+```ts
+import { PrismaAdapter } from "@fragno-dev/db/adapters/prisma";
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import { Pool } from "pg";
+
+const dialect = new PostgresDialect({
+  pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+});
+
+export const fragmentDbAdapter = new PrismaAdapter({
+  dialect,
+  driverConfig: new NodePostgresDriverConfig(),
+});
+```
+
+### 3.2 Schema generation
+
+Users generate a Prisma schema file from fragment entrypoints:
+
+```bash
+npx @fragno-dev/cli db generate path/to/fragment.ts -o prisma/schema/fragno.prisma
+```
+
+If `--output/-o` is omitted, the Prisma generator defaults to `fragno.prisma` in the current
+directory.
+
+### 3.3 Recommended integration workflow
+
+Recommended integration is Prisma’s **schema folder / multi-file schema** approach:
+
+- App keeps `datasource` + `generator` blocks in its own Prisma schema file(s)
+- Fragno generates **models-only** into `prisma/schema/fragno.prisma` (confirmed)
+- User runs Prisma commands against the schema folder
+
+(If a user can’t/won’t use schema folders, the generated output must still be copy-pastable into a
+single `schema.prisma`.)
+
+## 4. Architecture & Integration Points
+
+### 4.1 Where this lives
+
+Add a new adapter in `@fragno-dev/db`:
+
+- `@fragno-dev/db/adapters/prisma` → `PrismaAdapter`
+- (optional) `@fragno-dev/db/adapters/prisma/generate` → `generatePrismaSchema(...)`
+
+### 4.2 How it plugs into `fragno-cli db generate`
+
+Fragno’s generation engine supports two generation modes:
+
+- “schema generator adapters” via `adapter.createSchemaGenerator` (Drizzle-style)
+- “migration-based adapters” via `adapter.prepareMigrations` (Kysely-style)
+
+Prisma support is implemented as a **schema generator adapter**:
+
+- `PrismaAdapter extends GenericSQLAdapter`
+- implements `createSchemaGenerator(...)` returning a `.prisma` file
+- internal schema is included automatically (same behavior as Drizzle generation)
+
+## 5. Prisma Output Format
+
+### 5.1 Generated file contents
+
+Default output: **models-only** (confirmed).
+
+- No `datasource` block (app-specific)
+- No `generator` block (app-specific)
+
+Header comment includes:
+
+- provider (`sqlite` / `postgresql` / `mysql`)
+- included fragment namespaces
+- “generated by Fragno” disclaimer
+
+### 5.2 Deterministic ordering
+
+Deterministic ordering:
+
+1. internal schema models first (empty namespace)
+2. fragment namespaces sorted lexicographically
+3. models within a namespace sorted by physical table name
+
+## 6. Naming & Mapping
+
+### 6.1 Namespace sanitization (identifiers vs physical DB names)
+
+Sanitize namespace for **Prisma identifiers** by replacing `-` with `_`:
+
+- `comment-fragment` → `comment_fragment`
+
+Physical DB names keep the raw namespace suffix to match Fragno’s runtime `TableNameMapper`:
+
+- physical table name = `${logicalTableName}_${namespace}` (unsanitized namespace)
+- internal schema uses **no namespace suffix**
+
+### 6.2 Model names
+
+- Internal schema:
+  - `fragno_db_settings` → `FragnoDbSettings`
+  - `fragno_hooks` → `FragnoHooks`
+- Fragment schema:
+  - `ModelName = PascalCase(table.ormName) + "_" + sanitizeNamespace(namespace)`
+
+### 6.3 Field names
+
+Use DB column names directly (e.g. `id`, `_internalId`, `_version`, `userId`), only adding `@map`
+when required for invalid Prisma identifiers.
+
+### 6.4 Table / index / FK mapping
+
+- Map physical table names using `@@map("...")`.
+- Map index names using `@@index(..., map: "...")` / `@@unique(..., map: "...")`.
+- Map FK constraint names using `@relation(..., map: "...")`.
+
+All constraint naming must be collision-safe across namespaces (match Drizzle conventions).
+
+## 7. Storage Contract & Type Mapping
+
+### 7.0 Contract: generator output must match runtime storage
+
+The Prisma schema generator must reflect the **actual physical schema** and **value encodings** used
+by Fragno runtime for the configured database. Otherwise, Prisma Client integration becomes
+misleading or broken.
+
+For PostgreSQL and MySQL, Fragno’s current physical mapping already aligns closely with Prisma
+scalars. For SQLite, Fragno currently uses a storage strategy optimized for JS driver portability
+(epoch-ms integers for dates and BLOB int64 for bigints). Prisma cannot model these as `DateTime` /
+`BigInt` without changing how values are stored.
+
+### 7.1 SQLite “storage profiles” (Prisma-native requirement)
+
+Introduce an explicit storage profile for SQLite, selected via `DriverConfig` (or a small wrapper
+around it). v1 defines:
+
+- **`sqliteProfile: "fragno"`** (current behavior)
+  - `timestamp`/`date` stored as epoch ms integer
+  - `bigint` (non-reference) stored as 8-byte BLOB
+- **`sqliteProfile: "prisma"`** (new, Prisma-native)
+  - `timestamp`/`date` stored as TEXT-compatible datetime (Prisma `DateTime`)
+  - `bigint` stored as INTEGER (Prisma `BigInt`)
+
+The Prisma adapter defaults SQLite to `"prisma"` to ensure a Prisma-native developer experience.
+
+#### Why two profiles exist
+
+- The existing Fragno SQLite stack (and Drizzle generation) is optimized around integer timestamps
+  and BLOB-encoded int64 values; it can roundtrip these with custom serializers.
+- Prisma Client does **not** provide a per-field type conversion hook like Drizzle custom types, so
+  a Prisma-native experience requires storing values the way Prisma expects (`DateTime` / `BigInt`
+  as SQLite values Prisma can parse).
+
+#### Do users ever “switch” profiles?
+
+Yes, but only for existing SQLite databases created before Prisma support (or created using the
+default `"fragno"` profile). Typical scenarios:
+
+- An app starts with Fragno + GenericSQL/Drizzle and later adopts Prisma tooling for migrations and
+  Prisma Client types.
+- A project upgrades Fragno and wants to move from the compatibility profile to Prisma-native
+  `DateTime`/`BigInt` columns.
+
+Users do **not** need to switch if they’re happy with the compatibility profile; the Prisma schema
+generator can target `"fragno"` profile (at the cost of Prisma scalars becoming `Int`/`Bytes`).
+
+If they do switch from `"fragno"` → `"prisma"` on an existing DB, some columns may need **data
+migrations** because values are encoded differently (e.g. epoch-ms integers → datetime strings, and
+int64 BLOBs → integers).
+
+### 7.2 DriverConfig-driven implementation (maintainability)
+
+Extend `packages/fragno-db/src/adapters/generic-sql/driver-config.ts` to expose the storage profile
+in a backwards-compatible way (e.g. a getter with a default).
+
+All three layers must consult the same profile source:
+
+1. **Type mapping** (migrations): SQLite `SQLTypeMapper` must map `timestamp`/`date` and `bigint`
+   based on profile.
+2. **Default SQL generation** (migrations): SQLite `SQLGenerator.getDefaultValue()` must emit a
+   profile-compatible default for `dbSpecial: "now"`.
+3. **Value serialization/deserialization** (runtime): SQLite `SQLSerializer` must serialize `Date`
+   and `bigint` consistent with the profile.
+
+### 7.3 Prisma scalar mapping by provider
+
+#### SQLite (focus) — profile `"prisma"` (default for PrismaAdapter)
+
+| Fragno column                      | Prisma type | Notes                                                                              |
+| ---------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| `string`                           | `String`    |                                                                                    |
+| `varchar(n)`                       | `String`    | length not enforced in SQLite                                                      |
+| `integer`                          | `Int`       |                                                                                    |
+| `bool`                             | `Boolean`   | stored as 0/1                                                                      |
+| `timestamp`,`date`                 | `DateTime`  | stored as TEXT-compatible datetime (differs from Drizzle’s integer timestamp mode) |
+| `json`                             | `Json`      | stored as TEXT JSON                                                                |
+| `binary`                           | `Bytes`     | BLOB                                                                               |
+| `bigint` (regular)                 | `BigInt`    | stored as INTEGER; drivers must support safe 64-bit roundtrips (see below)         |
+| `bigint` (reference / internal-id) | `Int`       | SQLite PK/FK style; must remain within JS safe integer range                       |
+| `decimal`                          | `Float`     | REAL                                                                               |
+
+#### SQLite — profile `"fragno"` (compat / legacy)
+
+This profile can be supported as an opt-in “compatibility” mode for existing SQLite deployments:
+
+| Fragno column      | Prisma type | Notes                   |
+| ------------------ | ----------- | ----------------------- |
+| `timestamp`,`date` | `Int`       | epoch milliseconds      |
+| `bigint`           | `Bytes`     | 8-byte big-endian int64 |
+
+(All other types match the Prisma mapping above.)
+
+#### PostgreSQL (incl. PGLite)
+
+| Fragno column | Prisma type             | Notes                           |
+| ------------- | ----------------------- | ------------------------------- |
+| `string`      | `String`                | DB type is `text`               |
+| `varchar(n)`  | `String @db.VarChar(n)` |                                 |
+| `integer`     | `Int`                   |                                 |
+| `bigint`      | `BigInt`                |                                 |
+| `decimal`     | `Decimal`               |                                 |
+| `bool`        | `Boolean`               |                                 |
+| `timestamp`   | `DateTime`              | DB type is `timestamp`          |
+| `date`        | `DateTime @db.Date`     | DB type is `date`               |
+| `json`        | `Json @db.Json`         | DB type is `json` (not `jsonb`) |
+| `binary`      | `Bytes`                 | DB type is `bytea`              |
+
+#### MySQL (supported; tests optional)
+
+| Fragno column | Prisma type             | Notes                          |
+| ------------- | ----------------------- | ------------------------------ |
+| `string`      | `String`                | DB type is `text`              |
+| `varchar(n)`  | `String @db.VarChar(n)` |                                |
+| `integer`     | `Int`                   |                                |
+| `bigint`      | `BigInt`                |                                |
+| `decimal`     | `Decimal`               |                                |
+| `bool`        | `Boolean`               | DB type is `boolean` (tinyint) |
+| `timestamp`   | `DateTime`              | DB type is `datetime`          |
+| `date`        | `DateTime @db.Date`     | DB type is `date`              |
+| `json`        | `Json`                  |                                |
+| `binary`      | `Bytes`                 | DB type is `longblob`          |
+
+### 7.4 System columns
+
+Every table has:
+
+- `_internalId` (primary key, autoincrement)
+- `_version` (optimistic concurrency integer, default 0)
+- `id` (external ID; unique; default cuid at runtime)
+
+Prisma generation:
+
+- SQLite: `_internalId Int @id @default(autoincrement())`
+- Postgres/MySQL: `_internalId BigInt @id @default(autoincrement())`
+- `_version Int @default(0)`
+- `id String @unique @default(cuid())` (and `@db.VarChar(30)` where supported)
+
+## 8. Defaults
+
+### 8.1 Static defaults (`defaultTo(value)`)
+
+Emit `@default(<literal>)` when it is valid for the scalar type.
+
+### 8.2 DB “now” defaults (`defaultTo(b => b.now())`)
+
+- Postgres/MySQL: `@default(now())`
+- SQLite profile `"prisma"`: `@default(now())` (Prisma-native)
+- SQLite profile `"fragno"`: `@default(dbgenerated(...))` yielding epoch ms integer
+
+SQLite note: Prisma’s SQLite `now()`/`CURRENT_TIMESTAMP` defaults typically yield a string without a
+timezone (e.g. `YYYY-MM-DD HH:MM:SS`). Fragno must decode these as **UTC**.
+
+Fragno runtime should serialize `Date` values as an unambiguous UTC ISO string
+(`YYYY-MM-DDTHH:MM:SS.SSSZ`) for SQLite `"prisma"` profile, while still accepting and decoding
+SQLite’s `CURRENT_TIMESTAMP` format for rows inserted by DB defaults.
+
+### 8.3 Runtime defaults (`defaultTo$`)
+
+- `id`: always emit `@default(cuid())` (Prisma-native convenience; matches Fragno runtime default)
+- `defaultTo$((b) => b.now())` (runtime timestamp): v1 does not attempt to map to Prisma schema
+  defaults; leave as-is.
+
+## 9. Indexes / Uniques (match Drizzle naming)
+
+Fragno supports `createIndex(name, columns, { unique })`.
+
+Prisma generation:
+
+- unique index: `@@unique([a, b], map: "<indexName>")`
+- non-unique: `@@index([a, b], map: "<indexName>")`
+
+Index name strategy matches Drizzle schema generation:
+
+- internal schema: `map: "<idx.name>"`
+- fragment schema: `map: "<idx.name>_<namespace>"`
+
+## 10. Foreign Keys & Relations
+
+Fragno relations are defined with `addReference(name, { type: "one" | "many", ... })`.
+
+### 10.1 Source of truth
+
+- `type: "one"` implies a foreign key exists on the “from” table.
+- `type: "many"` is treated as an inverse relation hint for query ergonomics; it does not create a
+  foreign key by itself.
+
+### 10.2 Prisma relation emission (for each `type: "one"`)
+
+For a relation from `posts.userId` → `users._internalId`:
+
+- Keep scalar FK field (`userId`)
+- Add relation field using
+  `@relation("<relName>", fields: [userId], references: [_internalId], map: "<fkName>")`
+- Add inverse list field on the target model using the same `@relation("<relName>")`
+
+Relation naming requirements:
+
+- must be stable across runs
+- must include namespace to avoid collisions
+- must disambiguate multiple relations between the same models
+
+### 10.3 Inverse relation generation
+
+Generate inverse list fields for all `type: "one"` relations (even if not explicitly modeled),
+because:
+
+- it matches Drizzle generation behavior
+- it is the most ergonomic Prisma Client experience
+
+Inverse field naming strategy (Prisma-native):
+
+1. If a matching `type: "many"` relation exists (and can be matched to the `type: "one"` by table +
+   columns), use that name.
+2. Otherwise, default to the source table’s `ormName` (e.g. `posts`), since that’s the most Prisma
+   native and typically already plural.
+3. If the chosen name collides on the target model (column name or another relation field),
+   deterministically disambiguate by appending the reference name (e.g. `postsAuthor`,
+   `postsEditor`).
+
+### 10.4 Self-relations
+
+Self-relations must use explicit relation names on both sides. The generator must emit two distinct
+fields (singular + list) with stable names, and the `@relation("<relName>")` must be identical on
+both fields.
+
+## 11. Internal schema
+
+The generator must always include the internal schema tables (empty namespace):
+
+- `fragno_db_settings`
+- `fragno_hooks`
+
+These are required for Fragno’s version tracking and durable hooks.
+
+## 12. Testing
+
+Snapshot tests for generated Prisma schema:
+
+- SQLite: required (focus)
+- PostgreSQL: required (cover PGLite runtime path)
+- MySQL: generation supported; tests optional
+
+Coverage cases:
+
+- internal schema inclusion
+- system columns (`id`, `_internalId`, `_version`)
+- indexes and unique indexes
+- one relation + generated inverse
+- self-reference
+- SQLite profile differences (`fragno` vs `prisma`) where applicable
+
+## 13. Documentation updates (required for release; out of scope for this doc)
+
+- Add Prisma adapter page: `apps/docs/content/docs/fragno/for-users/database-fragments/prisma.mdx`
+- Update database fragments overview + nav
+- Update frameworks table to mark Prisma supported
+- Update CLI docs: Prisma output is a `.prisma` file and is applied with Prisma tooling
+
+## 14. Confirmed Decisions
+
+1. **SQLite default profile**: `PrismaAdapter` defaults SQLite to `sqliteProfile: "prisma"`.
+2. **SQLite BigInt safety**: SQLite `BigInt` columns require safe int64 roundtrips. If a driver
+   returns a JS `number` outside `Number.MAX_SAFE_INTEGER`, Fragno throws instead of silently losing
+   precision. For `better-sqlite3`, recommend `db.defaultSafeIntegers(true)` to preserve full range.
+3. **SQLite DateTime defaults**: generate Prisma `@default(now())` for `defaultTo(b => b.now())` and
+   treat SQLite `CURRENT_TIMESTAMP` strings as UTC during decoding to avoid timezone ambiguity.
+4. **SQLite internal IDs**: `_internalId` and FK scalar fields are `Int` in Prisma for SQLite.
+5. **Inverse naming**: prefer explicit matching `type: "many"` relation names; otherwise use the
+   source table `ormName` with deterministic disambiguation.
+6. **Postgres JSON**: use `Json @db.Json` (Fragno uses physical `json`, not `jsonb`).
