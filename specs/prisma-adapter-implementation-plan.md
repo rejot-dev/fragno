@@ -159,5 +159,5 @@ Status: complete.
 - Repository types check (turbo run types:check)
 - Prisma docs updates (adapter page + overview + frameworks table)
 
-Revalidated (2026-01-18): Prisma adapter SQLite/PGLite tests, repository lint, repository types
-check.
+Revalidated (2026-01-18): Prisma adapter SQLite/PGLite tests (including SQLite fragno-profile
+generation), repository lint, repository types check.
