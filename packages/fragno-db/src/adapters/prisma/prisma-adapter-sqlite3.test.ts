@@ -463,6 +463,94 @@ describe("PrismaAdapter SQLite", () => {
     });
   });
 
+  it("should support inserting with external id string", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUserUow = queryEngine.createUnitOfWork("create-user-for-external-id");
+    createUserUow.create("users", { name: "Prisma SQLite External ID User", age: 35 });
+    await createUserUow.executeMutations();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("get-user-for-external-id")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma SQLite External ID User")),
+      )
+      .executeRetrieve();
+
+    const createEmailUow = queryEngine.createUnitOfWork("create-email-with-external-id");
+    createEmailUow.create("emails", {
+      user_id: user.id.externalId,
+      email: "prisma-sqlite-external-id@example.com",
+      is_primary: false,
+    });
+
+    const { success } = await createEmailUow.executeMutations();
+    expect(success).toBe(true);
+
+    const [[email]] = await queryEngine
+      .createUnitOfWork("get-email-by-external-id")
+      .find("emails", (b) =>
+        b
+          .whereIndex("unique_email", (eb) =>
+            eb("email", "=", "prisma-sqlite-external-id@example.com"),
+          )
+          .join((jb) => jb.user((builder) => builder.select(["name", "id"]))),
+      )
+      .executeRetrieve();
+
+    expect(email).toMatchObject({
+      email: "prisma-sqlite-external-id@example.com",
+      is_primary: false,
+      user_id: expect.objectContaining({
+        internalId: user.id.internalId,
+      }),
+      user: {
+        id: expect.objectContaining({
+          externalId: user.id.externalId,
+        }),
+        name: "Prisma SQLite External ID User",
+      },
+    });
+  });
+
+  it("should create user and post in same transaction using returned ID", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const uow = queryEngine.createUnitOfWork("create-user-and-post");
+    const userId = uow.create("users", {
+      name: "Prisma SQLite UOW User",
+      age: 35,
+    });
+
+    const postId = uow.create("posts", {
+      user_id: userId,
+      title: "Prisma SQLite UOW Post",
+      content: "This post was created in the same transaction as the user",
+    });
+
+    const { success } = await uow.executeMutations();
+    expect(success).toBe(true);
+
+    const userIdStr = userId.toString();
+    const postIdStr = postId.toString();
+
+    const [[user]] = await queryEngine
+      .createUnitOfWork("verify-user")
+      .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userIdStr)))
+      .executeRetrieve();
+
+    const [[post]] = await queryEngine
+      .createUnitOfWork("verify-post")
+      .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
+      .executeRetrieve();
+
+    expect(user.name).toBe("Prisma SQLite UOW User");
+    expect(user.age).toBe(35);
+    expect(post.title).toBe("Prisma SQLite UOW Post");
+    expect(post.content).toBe("This post was created in the same transaction as the user");
+    expect(post.user_id.internalId).toBe(user.id.internalId);
+  });
+
   it("should support complex nested joins (comments -> post -> author)", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 

@@ -45,11 +45,10 @@ import { Callout } from "fumadocs-ui/components/callout";
 | ------- | ------- |
 | Kysely  | ✅      |
 | Drizzle | ✅      |
-| Prisma  | ❌      |
+| Prisma  | ✅      |
 
-Prisma is not currently supported. Follow
-[this issue](https://github.com/rejot-dev/fragno/issues/64) to get updates, and let us know if you'd
-like to see it supported.
+The Prisma adapter generates `.prisma` schema output so you can use Prisma migrations and client
+types. Fragno still executes queries via Kysely dialects.
 
 ### Kysely Dialects
 

@@ -52,19 +52,14 @@ npm install --save-dev @fragno-dev/cli
 <Step>
 ### Choose Your Adapter
 
-Fragno supports two popular TypeScript ORMs:
+Fragno supports three popular TypeScript ORMs:
 
 - **[Kysely](/docs/fragno/for-users/database-fragments/kysely)** - Type-safe SQL query builder
 - **[Drizzle](/docs/fragno/for-users/database-fragments/drizzle)** - Modern TypeScript ORM
+- **[Prisma](/docs/fragno/for-users/database-fragments/prisma)** - Schema + migration tooling
 
-Choose the adapter that matches your existing database setup. If you're starting fresh, either works
-great.
-
-<Callout title="Prisma Support" type="warn">
-  We might support Prisma in the future. Follow [this
-  issue](https://github.com/rejot-dev/fragno/issues/64) to get updates, and let us know if you'd
-  like to see it supported.
-</Callout>
+Choose the adapter that matches your existing database setup. If you're starting fresh, any of the
+three works well.
 
 </Step>
 
@@ -75,6 +70,7 @@ See the adapter-specific pages for detailed setup:
 
 - [Kysely Integration Guide](/docs/fragno/for-users/database-fragments/kysely)
 - [Drizzle Integration Guide](/docs/fragno/for-users/database-fragments/drizzle)
+- [Prisma Integration Guide](/docs/fragno/for-users/database-fragments/prisma)
 
 Adapters are configured with a **Kysely `Dialect`** plus a **Fragno `driverConfig`** (they must
 match).
@@ -94,6 +90,8 @@ export const fragmentDbAdapter = new DrizzleAdapter({
   driverConfig: new NodePostgresDriverConfig(),
 });
 ```
+
+Swap `DrizzleAdapter` for `PrismaAdapter` if you're using Prisma.
 
 </Step>
 
@@ -136,13 +134,15 @@ npx fragno-cli db migrate lib/comment-fragment-server.ts
 
 For details on the CLI commands, see the [CLI Reference](/docs/reference/cli).
 
+If you're using Prisma, generate a `.prisma` schema and run Prisma migrations against it.
+
 </Step>
 
 </Steps>
 
 ## Supported Databases
 
-Both Kysely and Drizzle adapters support:
+All adapters support:
 
 - **PostgreSQL**
 - **MySQL**
@@ -154,8 +154,8 @@ The adapter automatically handles database-specific SQL generation.
 
 **Q: Do I need to learn a new ORM?**
 
-A: No. You continue using your existing Kysely or Drizzle setup. The Fragment just adds its tables
-to your database.
+A: No. You continue using your existing Kysely, Drizzle, or Prisma setup. The Fragment just adds its
+tables to your database.
 
 **Q: Can I query Fragment tables directly?**
 
@@ -163,11 +163,11 @@ A: Yes, but there are some caveats. In general we recommend using the Fragment's
 instead. You can query the Fragment's tables directly, but you have to be aware of the fact that the
 Fragment author may change the schema in the future.
 
-**Q: What if I don't use Kysely or Drizzle?**
+**Q: What if I don't use Kysely, Drizzle, or Prisma?**
 
-A: Currently, only Kysely and Drizzle adapters are available. Support for other ORMs may be added in
-the future. Please let us know on [GitHub](https://github.com/rejot-dev/fragno/discussions) if you'd
-like to see support for other ORMs.
+A: Currently, only Kysely, Drizzle, and Prisma adapters are available. Support for other ORMs may be
+added in the future. Please let us know on [GitHub](https://github.com/rejot-dev/fragno/discussions)
+if you'd like to see support for other ORMs.
 
 **Q: Can I use multiple database Fragments?**
 
@@ -185,4 +185,5 @@ Choose your database adapter to continue:
 
 - [Kysely Integration Guide](/docs/fragno/for-users/database-fragments/kysely)
 - [Drizzle Integration Guide](/docs/fragno/for-users/database-fragments/drizzle)
+- [Prisma Integration Guide](/docs/fragno/for-users/database-fragments/prisma)
 - [CLI Reference](/docs/reference/cli) for migration commands
