@@ -138,3 +138,10 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
          waitForEvent replay timestamps.
    - [x] Guard background runner ticks against unhandled rejections in example app.
 7. [x] Add JSDoc coverage for public workflows APIs to meet docstring requirements.
+
+## Phase 8 — Verification
+
+1. [x] Tests:
+       `pnpm turbo run test --filter=@fragno-dev/fragment-workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
+2. [x] Lint: `pnpm lint`
+3. [x] Types: `pnpm types:check`
