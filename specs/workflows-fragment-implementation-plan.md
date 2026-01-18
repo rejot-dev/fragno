@@ -116,9 +116,9 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - pause/resume/terminate/restart
    - pause does not freeze timers (SPEC §9.4)
 3. Add distributed runner tests (must be robust):
-   - N parallel runners contending for the same tasks/instances (SPEC §9.1.1)
-   - concurrent `POST /_runner/tick` calls against the same DB state
+   - [x] N parallel runners contending for the same tasks/instances (SPEC §9.1.1)
+   - [x] concurrent `POST /_runner/tick` calls against the same DB state
    - lease expiry + takeover correctness
-   - task ordering: `wake|retry|resume` runs before `run` (SPEC §9.1.2)
+   - [x] task ordering: `wake|retry|resume` runs before `run` (SPEC §9.1.2)
    - paused instances are not claimed / no hot-looping (SPEC §9.1.3, §9.4)
 4. Add one end-to-end example workflow (approval + event + sleep), and mount in an example app.

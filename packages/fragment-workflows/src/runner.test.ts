@@ -9,6 +9,8 @@ import { workflowsRoutesFactory } from "./routes";
 
 describe("Workflows Runner", async () => {
   let doCallCount = 0;
+  let concurrentCallCount = 0;
+  let priorityOrder: string[] = [];
 
   class DemoWorkflow extends WorkflowEntrypoint<unknown, { count: number }> {
     async run(event: WorkflowEvent<{ count: number }>, step: WorkflowStep) {
@@ -39,10 +41,31 @@ describe("Workflows Runner", async () => {
     }
   }
 
+  class ConcurrentWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do("single-run", async () => {
+        concurrentCallCount += 1;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { ok: true };
+      });
+    }
+  }
+
+  class PriorityWorkflow extends WorkflowEntrypoint {
+    async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do("record-order", () => {
+        priorityOrder.push(event.instanceId);
+        return { ok: true };
+      });
+    }
+  }
+
   const workflows = {
     demo: { name: "demo-workflow", workflow: DemoWorkflow },
     events: { name: "event-workflow", workflow: EventWorkflow },
     slow: { name: "slow-workflow", workflow: SlowWorkflow },
+    concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
+    priority: { name: "priority-workflow", workflow: PriorityWorkflow },
   };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
@@ -74,6 +97,8 @@ describe("Workflows Runner", async () => {
   beforeEach(async () => {
     await testContext.resetDatabase();
     doCallCount = 0;
+    concurrentCallCount = 0;
+    priorityOrder = [];
   });
 
   test("tick should execute workflow and reuse cached steps", async () => {
@@ -183,5 +208,91 @@ describe("Workflows Runner", async () => {
     );
 
     await tickPromise;
+  });
+
+  test("concurrent ticks should only process a task once", async () => {
+    const id = await createInstance("concurrent-workflow", {});
+
+    const runnerA = createWorkflowsRunner({
+      db,
+      workflows,
+      runnerId: "runner-a",
+    });
+    const runnerB = createWorkflowsRunner({
+      db,
+      workflows,
+      runnerId: "runner-b",
+    });
+
+    const [processedA, processedB] = await Promise.all([
+      runnerA.tick({ maxInstances: 1, maxSteps: 5 }),
+      runnerB.tick({ maxInstances: 1, maxSteps: 5 }),
+    ]);
+
+    expect(processedA + processedB).toBe(1);
+    expect(concurrentCallCount).toBe(1);
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "concurrent-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(instance?.status).toBe("complete");
+  });
+
+  test("tick should prioritize wake/retry/resume before run tasks", async () => {
+    const now = new Date();
+    const createInstanceRecord = (instanceId: string) =>
+      db.create("workflow_instance", {
+        workflowName: "priority-workflow",
+        instanceId,
+        status: "queued",
+        params: {},
+        pauseRequested: false,
+        retentionUntil: null,
+        runNumber: 0,
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+
+    await Promise.all([
+      createInstanceRecord("run-1"),
+      createInstanceRecord("wake-1"),
+      createInstanceRecord("retry-1"),
+      createInstanceRecord("resume-1"),
+    ]);
+
+    const createTask = (instanceId: string, kind: "run" | "wake" | "retry" | "resume") =>
+      db.create("workflow_task", {
+        workflowName: "priority-workflow",
+        instanceId,
+        runNumber: 0,
+        kind,
+        runAt: now,
+        status: "pending",
+        attempts: 0,
+        maxAttempts: 1,
+        lastError: null,
+        lockedUntil: null,
+        lockOwner: null,
+      });
+
+    await Promise.all([
+      createTask("run-1", "run"),
+      createTask("wake-1", "wake"),
+      createTask("retry-1", "retry"),
+      createTask("resume-1", "resume"),
+    ]);
+
+    for (let i = 0; i < 4; i += 1) {
+      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processed).toBe(1);
+    }
+
+    expect(priorityOrder).toEqual(["wake-1", "retry-1", "resume-1", "run-1"]);
   });
 });
