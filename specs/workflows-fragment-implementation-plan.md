@@ -147,6 +147,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 3. [x] Types: `pnpm types:check`
 4. Last verified: 2026-01-18 (tests, lint, types; rerun via `pnpm turbo run test ...`, `pnpm lint`,
    `pnpm types:check`)
+5. [x] Re-verified: 2026-01-18
 
 ## Phase 9 — Management surface completeness (CLI-ready)
 
