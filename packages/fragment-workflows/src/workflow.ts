@@ -23,8 +23,22 @@ export type WorkflowStepConfig = {
   timeout?: WorkflowDuration;
 };
 
+export type WorkflowLogLevel = "debug" | "info" | "warn" | "error";
+
+export type WorkflowLogOptions = {
+  category?: string;
+};
+
+export type WorkflowLogger = {
+  debug: (message: string, data?: unknown, options?: WorkflowLogOptions) => Promise<void>;
+  info: (message: string, data?: unknown, options?: WorkflowLogOptions) => Promise<void>;
+  warn: (message: string, data?: unknown, options?: WorkflowLogOptions) => Promise<void>;
+  error: (message: string, data?: unknown, options?: WorkflowLogOptions) => Promise<void>;
+};
+
 /** Execution helpers that provide replay-safe step semantics. */
 export interface WorkflowStep {
+  log: WorkflowLogger;
   do<T>(name: string, callback: () => Promise<T> | T): Promise<T>;
   do<T>(name: string, config: WorkflowStepConfig, callback: () => Promise<T> | T): Promise<T>;
   sleep(name: string, duration: WorkflowDuration): Promise<void>;

@@ -48,6 +48,19 @@ export type WorkflowsHistoryEvent = {
   consumedByStepKey: string | null;
 };
 
+export type WorkflowsHistoryLog = {
+  id: string;
+  runNumber: number;
+  stepKey: string | null;
+  attempt: number | null;
+  level: "debug" | "info" | "warn" | "error";
+  category: string;
+  message: string;
+  data: unknown | null;
+  isReplay: boolean;
+  createdAt: Date;
+};
+
 export type WorkflowsHistory = {
   runNumber: number;
   steps: WorkflowsHistoryStep[];
@@ -56,6 +69,9 @@ export type WorkflowsHistory = {
   stepsHasNextPage: boolean;
   eventsCursor?: string;
   eventsHasNextPage: boolean;
+  logs?: WorkflowsHistoryLog[];
+  logsCursor?: string;
+  logsHasNextPage?: boolean;
 };
 
 export type WorkflowsTestClock = WorkflowsClock & {
@@ -110,6 +126,11 @@ export type WorkflowsTestHarness = {
       pageSize?: number;
       stepsCursor?: string;
       eventsCursor?: string;
+      logsCursor?: string;
+      includeLogs?: boolean;
+      logLevel?: "debug" | "info" | "warn" | "error";
+      logCategory?: string;
+      order?: "asc" | "desc";
     },
   ) => Promise<WorkflowsHistory>;
   tick: (options?: RunnerTickOptions) => Promise<number>;
@@ -306,6 +327,11 @@ export async function createWorkflowsTestHarness(
       pageSize?: number;
       stepsCursor?: string;
       eventsCursor?: string;
+      logsCursor?: string;
+      includeLogs?: boolean;
+      logLevel?: "debug" | "info" | "warn" | "error";
+      logCategory?: string;
+      order?: "asc" | "desc";
     },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
@@ -321,6 +347,21 @@ export async function createWorkflowsTestHarness(
     }
     if (historyOptions?.eventsCursor) {
       query["eventsCursor"] = historyOptions.eventsCursor;
+    }
+    if (historyOptions?.logsCursor) {
+      query["logsCursor"] = historyOptions.logsCursor;
+    }
+    if (historyOptions?.includeLogs !== undefined) {
+      query["includeLogs"] = historyOptions.includeLogs ? "true" : "false";
+    }
+    if (historyOptions?.logLevel) {
+      query["logLevel"] = historyOptions.logLevel;
+    }
+    if (historyOptions?.logCategory) {
+      query["logCategory"] = historyOptions.logCategory;
+    }
+    if (historyOptions?.order) {
+      query["order"] = historyOptions.order;
     }
     const response = await fragment.callRoute(
       "GET",

@@ -499,4 +499,126 @@ describe("Workflows Fragment Services", async () => {
     expect(history.steps[0]?.stepKey).toBeTruthy();
     expect(history.events[0]?.type).toBeTruthy();
   });
+
+  test("listHistory should include logs with filtering and pagination", async () => {
+    await db.create("workflow_instance", {
+      workflowName: "demo-workflow",
+      instanceId: "history-logs",
+      status: "queued",
+      params: {},
+      pauseRequested: false,
+      retentionUntil: null,
+      runNumber: 1,
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await db.create("workflow_log", {
+      workflowName: "demo-workflow",
+      instanceId: "history-logs",
+      runNumber: 1,
+      stepKey: "step-1",
+      attempt: 1,
+      level: "info",
+      category: "alpha",
+      message: "first",
+      data: { ok: true },
+      isReplay: false,
+      createdAt: new Date(1000),
+    });
+
+    await db.create("workflow_log", {
+      workflowName: "demo-workflow",
+      instanceId: "history-logs",
+      runNumber: 1,
+      stepKey: "step-2",
+      attempt: 1,
+      level: "error",
+      category: "alpha",
+      message: "second",
+      data: { ok: false },
+      isReplay: true,
+      createdAt: new Date(2000),
+    });
+
+    await db.create("workflow_log", {
+      workflowName: "demo-workflow",
+      instanceId: "history-logs",
+      runNumber: 1,
+      stepKey: null,
+      attempt: null,
+      level: "warn",
+      category: "beta",
+      message: "third",
+      data: null,
+      isReplay: false,
+      createdAt: new Date(3000),
+    });
+
+    const withoutLogs = await runService<{
+      logs?: unknown;
+      logsCursor?: string;
+    }>(() =>
+      fragment.services.listHistory({
+        workflowName: "demo-workflow",
+        instanceId: "history-logs",
+        runNumber: 1,
+      }),
+    );
+
+    expect(withoutLogs.logs).toBeUndefined();
+    expect(withoutLogs.logsCursor).toBeUndefined();
+
+    const firstPage = await runService<{
+      logs: Array<{ message: string }>;
+      logsHasNextPage?: boolean;
+    }>(() =>
+      fragment.services.listHistory({
+        workflowName: "demo-workflow",
+        instanceId: "history-logs",
+        runNumber: 1,
+        pageSize: 2,
+        includeLogs: true,
+        order: "asc",
+      }),
+    );
+
+    expect(firstPage.logs).toHaveLength(2);
+    expect(firstPage.logsHasNextPage).toBe(true);
+    expect(firstPage.logs[0]?.message).toBe("first");
+
+    const errorOnly = await runService<{
+      logs: Array<{ level: string; message: string }>;
+    }>(() =>
+      fragment.services.listHistory({
+        workflowName: "demo-workflow",
+        instanceId: "history-logs",
+        runNumber: 1,
+        includeLogs: true,
+        logLevel: "error",
+      }),
+    );
+
+    expect(errorOnly.logs).toHaveLength(1);
+    expect(errorOnly.logs[0]?.message).toBe("second");
+    expect(errorOnly.logs[0]?.level).toBe("error");
+
+    const categoryOnly = await runService<{
+      logs: Array<{ category: string }>;
+    }>(() =>
+      fragment.services.listHistory({
+        workflowName: "demo-workflow",
+        instanceId: "history-logs",
+        runNumber: 1,
+        includeLogs: true,
+        logCategory: "beta",
+      }),
+    );
+
+    expect(categoryOnly.logs).toHaveLength(1);
+    expect(categoryOnly.logs[0]?.category).toBe("beta");
+  });
 });

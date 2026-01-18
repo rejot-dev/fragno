@@ -7,6 +7,9 @@ import type {
   WorkflowEvent,
   WorkflowStep,
   WorkflowStepConfig,
+  WorkflowLogger,
+  WorkflowLogLevel,
+  WorkflowLogOptions,
   WorkflowsRegistry,
   WorkflowsRunner,
   RunnerTickOptions,
@@ -185,6 +188,7 @@ const isTerminalStatus = (status: string) =>
 const isPausedStatus = (status: string) => status === "paused" || status === "waitingForPause";
 
 class RunnerStep implements WorkflowStep {
+  log: WorkflowLogger;
   #db: SimpleQueryInterface<typeof workflowsSchema>;
   #workflowName: string;
   #instanceId: string;
@@ -193,6 +197,9 @@ class RunnerStep implements WorkflowStep {
   #maxSteps: number;
   #stepCount = 0;
   #clock: WorkflowsClock;
+  #isReplay: boolean;
+  #activeStepKey: string | null = null;
+  #activeAttempt: number | null = null;
 
   constructor(options: {
     db: SimpleQueryInterface<typeof workflowsSchema>;
@@ -201,6 +208,7 @@ class RunnerStep implements WorkflowStep {
     runNumber: number;
     maxSteps: number;
     clock: WorkflowsClock;
+    isReplay: boolean;
   }) {
     this.#db = options.db;
     this.#workflowName = options.workflowName;
@@ -208,6 +216,13 @@ class RunnerStep implements WorkflowStep {
     this.#runNumber = options.runNumber;
     this.#maxSteps = options.maxSteps;
     this.#clock = options.clock;
+    this.#isReplay = options.isReplay;
+    this.log = {
+      debug: (message, data, opts) => this.#writeLog("debug", message, data, opts),
+      info: (message, data, opts) => this.#writeLog("info", message, data, opts),
+      warn: (message, data, opts) => this.#writeLog("warn", message, data, opts),
+      error: (message, data, opts) => this.#writeLog("error", message, data, opts),
+    };
   }
 
   async do<T>(
@@ -299,6 +314,8 @@ class RunnerStep implements WorkflowStep {
         });
       }
 
+      this.#setStepContext(name, attempt);
+
       try {
         const result = await this.#runWithTimeout(callback, timeoutMs);
         if (stepId) {
@@ -368,6 +385,7 @@ class RunnerStep implements WorkflowStep {
     options: { type: string; timeout?: WorkflowDuration },
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
     this.#beginStep(name);
+    this.#setStepContext(name, null);
 
     try {
       const existing = await this.#db.findFirst("workflow_step", (b) =>
@@ -520,6 +538,7 @@ class RunnerStep implements WorkflowStep {
 
   async #sleepUntil(name: string, wakeAt: Date): Promise<void> {
     this.#beginStep(name);
+    this.#setStepContext(name, null);
 
     try {
       const existing = await this.#db.findFirst("workflow_step", (b) =>
@@ -596,6 +615,15 @@ class RunnerStep implements WorkflowStep {
 
   #endStep(stepKey: string) {
     this.#inFlightSteps.delete(stepKey);
+    if (this.#activeStepKey === stepKey) {
+      this.#activeStepKey = null;
+      this.#activeAttempt = null;
+    }
+  }
+
+  #setStepContext(stepKey: string, attempt: number | null) {
+    this.#activeStepKey = stepKey;
+    this.#activeAttempt = attempt;
   }
 
   async #throwIfPauseRequested() {
@@ -641,6 +669,26 @@ class RunnerStep implements WorkflowStep {
         clearTimeout(timer);
       }
     }
+  }
+
+  async #writeLog(
+    level: WorkflowLogLevel,
+    message: string,
+    data?: unknown,
+    options?: WorkflowLogOptions,
+  ): Promise<void> {
+    await this.#db.create("workflow_log", {
+      workflowName: this.#workflowName,
+      instanceId: this.#instanceId,
+      runNumber: this.#runNumber,
+      stepKey: this.#activeStepKey,
+      attempt: this.#activeAttempt,
+      level,
+      category: options?.category ?? "workflow",
+      message,
+      data: data ?? null,
+      isReplay: this.#isReplay,
+    });
   }
 }
 
@@ -924,6 +972,16 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       instanceId: instance.instanceId,
     };
 
+    const existingStep = await runnerOptions.db.findFirst("workflow_step", (b) =>
+      b.whereIndex("idx_workflow_step_history_createdAt", (eb) =>
+        eb.and(
+          eb("workflowName", "=", instance.workflowName),
+          eb("instanceId", "=", instance.instanceId),
+          eb("runNumber", "=", instance.runNumber),
+        ),
+      ),
+    );
+
     const step = new RunnerStep({
       db: runnerOptions.db,
       workflowName: instance.workflowName,
@@ -931,6 +989,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       runNumber: instance.runNumber,
       maxSteps,
       clock,
+      isReplay: Boolean(existingStep),
     });
 
     const stopHeartbeat = startTaskLeaseHeartbeat(task.id);

@@ -112,10 +112,24 @@ describe("Workflows Fragment", async () => {
       lockOwner: null,
     });
 
+    await db.create("workflow_log", {
+      workflowName,
+      instanceId,
+      runNumber: 0,
+      stepKey: "step-1",
+      attempt: 1,
+      level: "info",
+      category: "tests",
+      message: "Created log entry",
+      data: { ok: true },
+      isReplay: false,
+    });
+
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    const [log] = await db.find("workflow_log", (b) => b.whereIndex("primary"));
 
     expect(instance).toMatchObject({
       workflowName,
@@ -176,6 +190,20 @@ describe("Workflows Fragment", async () => {
     expect(task.runAt).toBeInstanceOf(Date);
     expect(task.createdAt).toBeInstanceOf(Date);
     expect(task.updatedAt).toBeInstanceOf(Date);
+
+    expect(log).toMatchObject({
+      workflowName,
+      instanceId,
+      runNumber: 0,
+      stepKey: "step-1",
+      attempt: 1,
+      level: "info",
+      category: "tests",
+      message: "Created log entry",
+      data: { ok: true },
+      isReplay: false,
+    });
+    expect(log.createdAt).toBeInstanceOf(Date);
   });
 
   test("should expose NonRetryableError defaults", () => {
