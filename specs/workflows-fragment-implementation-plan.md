@@ -25,11 +25,11 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 3. [x] Implement public types/classes per SPEC §6:
    - `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `InstanceStatus`
    - `NonRetryableError`
-4. Implement the workflow registry + programmatic bindings API (SPEC §6.5, §6.6):
+4. [x] Implement the workflow registry + programmatic bindings API (SPEC §6.5, §6.6):
    - fragment exposes `fragment.workflows.<bindingKey>`
    - workflows have access to `this.workflows` for child workflow creation
    - align `createBatch` typing with Cloudflare (`WorkflowInstanceCreateOptionsWithId`; SPEC §6.3)
-5. Add minimal docs/examples mirroring `example-fragments/example-fragment/src/index.ts`.
+5. [x] Add minimal docs/examples mirroring `example-fragments/example-fragment/src/index.ts`.
 
 ## Phase 2 — Database schema (Fragno DB)
 
@@ -68,7 +68,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 4. Implement the Cloudflare DO dispatcher package:
    - Durable Object entrypoint + alarm-driven scheduling (SPEC §5.3)
    - v1 shape: one dispatcher DO per DB namespace; keep option open for per-workflow scaling
-5. Document the HTTP tick integration path:
+5. [x] Document the HTTP tick integration path:
    - configure durable hook handler to `fetch("/_runner/tick")` (SPEC §11.9)
 
 ## Phase 5 — Runner (execution engine)
@@ -107,7 +107,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 7 — Migrations, tests, and examples
 
-1. Ensure migrations generation works (per Fragno DB docs and existing CLI flows).
+1. [x] Ensure migrations generation works (per Fragno DB docs and existing CLI flows).
 2. Add unit tests for:
    - [x] step caching + replay
    - [x] step caching is keyed by name (SPEC §9.2)
@@ -122,5 +122,13 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] concurrent `POST /_runner/tick` calls against the same DB state
    - [x] lease expiry + takeover correctness
    - [x] task ordering: `wake|retry|resume` runs before `run` (SPEC §9.1.2)
-   - paused instances are not claimed / no hot-looping (SPEC §9.1.3, §9.4)
+   - [x] paused instances are not claimed / no hot-looping (SPEC §9.1.3, §9.4)
 4. [x] Add one end-to-end example workflow (approval + event + sleep), and mount in an example app.
+5. Add author-facing test harness (Fragno-test integration):
+   - deterministic runner ticking + `runUntilIdle`
+   - controllable clock for `sleep` + timeouts
+   - event injection + status/history helpers
+   - documentation/example for user workflows (e.g.
+     `example-apps/fragno-db-usage-drizzle/src/fragno/workflows-fragment.ts`)
+6. Review remaining issues from `specs/workflows-fragment-implementation-plan-issues.md` and fix
+   them.
