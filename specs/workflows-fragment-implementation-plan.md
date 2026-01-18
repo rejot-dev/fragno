@@ -216,3 +216,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 1. [x] Tests: targeted packages + docs build if available
 2. [x] Lint + types
 3. [x] Re-verified: 2026-01-18 (tests, lint, types; fragno-test + db included)
+4. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+       --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+       --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm lint;
+       pnpm types:check)
