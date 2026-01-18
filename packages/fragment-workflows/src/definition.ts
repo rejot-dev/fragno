@@ -1,8 +1,13 @@
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db";
+import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "./schema";
-import type { InstanceStatus } from "./workflow";
+import type {
+  InstanceStatus,
+  WorkflowEnqueuedHookPayload,
+  WorkflowsFragmentConfig,
+} from "./workflow";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -29,11 +34,80 @@ type WorkflowInstanceRecord = {
   errorMessage: string | null;
 };
 
+type WorkflowStepRecord = {
+  id: FragnoId;
+  runNumber: number;
+  stepKey: string;
+  name: string;
+  type: string;
+  status: string;
+  attempts: number;
+  maxAttempts: number;
+  timeoutMs: number | null;
+  nextRetryAt: Date | null;
+  wakeAt: Date | null;
+  waitEventType: string | null;
+  result: unknown | null;
+  errorName: string | null;
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type WorkflowEventRecord = {
+  id: FragnoId;
+  runNumber: number;
+  type: string;
+  payload: unknown | null;
+  createdAt: Date;
+  deliveredAt: Date | null;
+  consumedByStepKey: string | null;
+};
+
+type WorkflowStepHistoryEntry = {
+  id: string;
+  runNumber: number;
+  stepKey: string;
+  name: string;
+  type: string;
+  status: string;
+  attempts: number;
+  maxAttempts: number;
+  timeoutMs: number | null;
+  nextRetryAt: Date | null;
+  wakeAt: Date | null;
+  waitEventType: string | null;
+  result: unknown | null;
+  error?: { name: string; message: string };
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type WorkflowEventHistoryEntry = {
+  id: string;
+  runNumber: number;
+  type: string;
+  payload: unknown | null;
+  createdAt: Date;
+  deliveredAt: Date | null;
+  consumedByStepKey: string | null;
+};
+
 type ListInstancesParams = {
   workflowName: string;
   status?: InstanceStatus["status"];
   pageSize?: number;
   cursor?: Cursor;
+  order?: "asc" | "desc";
+};
+
+type ListHistoryParams = {
+  workflowName: string;
+  instanceId: string;
+  runNumber: number;
+  pageSize?: number;
+  stepsCursor?: Cursor;
+  eventsCursor?: Cursor;
   order?: "asc" | "desc";
 };
 
@@ -65,6 +139,47 @@ function buildInstanceStatus(instance: WorkflowInstanceRecord): InstanceStatus {
   };
 }
 
+function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowStepHistoryEntry {
+  const error =
+    step.errorName || step.errorMessage
+      ? {
+          name: step.errorName ?? "Error",
+          message: step.errorMessage ?? "",
+        }
+      : undefined;
+
+  return {
+    id: step.id.toString(),
+    runNumber: step.runNumber,
+    stepKey: step.stepKey,
+    name: step.name,
+    type: step.type,
+    status: step.status,
+    attempts: step.attempts,
+    maxAttempts: step.maxAttempts,
+    timeoutMs: step.timeoutMs,
+    nextRetryAt: step.nextRetryAt,
+    wakeAt: step.wakeAt,
+    waitEventType: step.waitEventType,
+    result: step.result ?? null,
+    error,
+    createdAt: step.createdAt,
+    updatedAt: step.updatedAt,
+  };
+}
+
+function buildEventHistoryEntry(event: WorkflowEventRecord): WorkflowEventHistoryEntry {
+  return {
+    id: event.id.toString(),
+    runNumber: event.runNumber,
+    type: event.type,
+    payload: event.payload ?? null,
+    createdAt: event.createdAt,
+    deliveredAt: event.deliveredAt,
+    consumedByStepKey: event.consumedByStepKey,
+  };
+}
+
 function isTerminalStatus(status: InstanceStatus["status"]) {
   return TERMINAL_STATUSES.has(status);
 }
@@ -73,8 +188,13 @@ function isPausedStatus(status: InstanceStatus["status"]) {
   return PAUSED_STATUSES.has(status);
 }
 
-export const workflowsFragmentDefinition = defineFragment("workflows")
+export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
+  .provideHooks(({ defineHook, config }) => ({
+    onWorkflowEnqueued: defineHook(async function (payload: WorkflowEnqueuedHookPayload) {
+      await config.dispatcher?.wake?.(payload);
+    }),
+  }))
   .providesBaseService(({ defineService }) => {
     return defineService({
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
@@ -122,6 +242,12 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
               lastError: null,
               lockedUntil: null,
               lockOwner: null,
+            });
+
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId,
+              reason: "create",
             });
 
             return {
@@ -197,6 +323,12 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
                 lockOwner: null,
               });
 
+              uow.triggerHook("onWorkflowEnqueued", {
+                workflowName,
+                instanceId: instance.id,
+                reason: "create",
+              });
+
               created.push({
                 id: instance.id,
                 details: buildInstanceStatus({
@@ -226,6 +358,23 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
               throw new Error("INSTANCE_NOT_FOUND");
             }
             return buildInstanceStatus(instance);
+          })
+          .build();
+      },
+      getInstanceRunNumber: function (workflowName: string, instanceId: string) {
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow.findFirst("workflow_instance", (b) =>
+              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+              ),
+            ),
+          )
+          .transformRetrieve(([instance]) => {
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+            return instance.runNumber;
           })
           .build();
       },
@@ -271,6 +420,74 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
               })),
               cursor: instances.cursor,
               hasNextPage: instances.hasNextPage,
+            };
+          })
+          .build();
+      },
+      listHistory: function ({
+        workflowName,
+        instanceId,
+        runNumber,
+        pageSize = DEFAULT_PAGE_SIZE,
+        stepsCursor,
+        eventsCursor,
+        order = "desc",
+      }: ListHistoryParams) {
+        const stepsOrder = stepsCursor?.orderDirection ?? order;
+        const eventsOrder = eventsCursor?.orderDirection ?? order;
+        const stepsPageSize = stepsCursor?.pageSize ?? pageSize;
+        const eventsPageSize = eventsCursor?.pageSize ?? pageSize;
+
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+                ),
+              )
+              .findWithCursor("workflow_step", (b) => {
+                const query = b
+                  .whereIndex("idx_workflow_step_history_createdAt", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                      eb("runNumber", "=", runNumber),
+                    ),
+                  )
+                  .orderByIndex("idx_workflow_step_history_createdAt", stepsOrder)
+                  .pageSize(stepsPageSize);
+
+                return stepsCursor ? query.after(stepsCursor) : query;
+              })
+              .findWithCursor("workflow_event", (b) => {
+                const query = b
+                  .whereIndex("idx_workflow_event_history_createdAt", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                      eb("runNumber", "=", runNumber),
+                    ),
+                  )
+                  .orderByIndex("idx_workflow_event_history_createdAt", eventsOrder)
+                  .pageSize(eventsPageSize);
+
+                return eventsCursor ? query.after(eventsCursor) : query;
+              }),
+          )
+          .mutate(({ retrieveResult: [instance, steps, events] }) => {
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            return {
+              runNumber,
+              steps: steps.items.map(buildStepHistoryEntry),
+              events: events.items.map(buildEventHistoryEntry),
+              stepsCursor: steps.cursor,
+              stepsHasNextPage: steps.hasNextPage,
+              eventsCursor: events.cursor,
+              eventsHasNextPage: events.hasNextPage,
             };
           })
           .build();
@@ -406,6 +623,12 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
               });
             }
 
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId,
+              reason: "resume",
+            });
+
             return buildInstanceStatus({
               status: "queued",
               output: instance.output,
@@ -502,6 +725,12 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
               lastError: null,
               lockedUntil: null,
               lockOwner: null,
+            });
+
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId,
+              reason: "create",
             });
 
             return buildInstanceStatus({
@@ -603,6 +832,12 @@ export const workflowsFragmentDefinition = defineFragment("workflows")
                   lockOwner: null,
                 });
               }
+
+              uow.triggerHook("onWorkflowEnqueued", {
+                workflowName,
+                instanceId,
+                reason: "event",
+              });
             }
 
             return buildInstanceStatus(instance);
