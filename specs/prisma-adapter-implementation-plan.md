@@ -164,3 +164,9 @@ generation), repository lint, repository types check.
 
 Revalidated (2026-01-19): Prisma adapter SQLite/PGLite adapter tests (joins + created-id cases),
 repository lint, repository types check.
+
+Revalidated (2026-01-19): Prisma adapter SQLite/PGLite adapter tests, Prisma schema generation
+tests, repository lint, repository types check.
+
+Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
+(`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint, repository types check.
