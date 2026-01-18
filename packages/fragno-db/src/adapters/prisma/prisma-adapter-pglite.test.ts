@@ -43,6 +43,19 @@ describe("PrismaAdapter PGLite", () => {
           .createIndex("comments_post_idx", ["post_id"])
           .createIndex("comments_user_idx", ["user_id"]);
       })
+      .addTable("events", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn(
+            "created_at",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn("happened_on", column("date"))
+          .addColumn("payload", column("json").nullable())
+          .addColumn("big_score", column("bigint"))
+          .createIndex("events_name_idx", ["name"]);
+      })
       .addReference("user", {
         type: "one",
         from: { table: "emails", column: "user_id" },
@@ -109,7 +122,7 @@ describe("PrismaAdapter PGLite", () => {
       Parameters<typeof createUow.find>[0]
     >();
     expectTypeOf<keyof typeof testSchema.tables>().toEqualTypeOf<
-      "users" | "emails" | "posts" | "comments"
+      "users" | "emails" | "posts" | "comments" | "events"
     >();
 
     const { success: createSuccess } = await createUow.executeMutations();
@@ -217,5 +230,41 @@ describe("PrismaAdapter PGLite", () => {
     expect(result.items).toHaveLength(5);
     expect(typeof result.hasNextPage).toBe("boolean");
     expect(result.cursor).toBeInstanceOf(Cursor);
+  });
+
+  it("should roundtrip DateTime, Date, JSON, and BigInt", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const beforeCreate = Date.now();
+    const happenedOn = new Date("2024-06-15T00:00:00.000Z");
+    const payload = { level: "info", tags: ["launch", "pglite"] };
+    const bigScore = 9876543210123n;
+
+    const createUow = queryEngine.createUnitOfWork("create-event");
+    createUow.create("events", {
+      name: "Launch",
+      happened_on: happenedOn,
+      payload,
+      big_score: bigScore,
+    });
+    await createUow.executeMutations();
+
+    const [[event]] = await queryEngine
+      .createUnitOfWork("get-event")
+      .find("events", (b) => b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Launch")))
+      .executeRetrieve();
+
+    expect(event).toBeDefined();
+    expect(event.name).toBe("Launch");
+    expect(event.payload).toEqual(payload);
+    expect(event.big_score).toBe(bigScore);
+    expect(event.happened_on).toBeInstanceOf(Date);
+    expect(event.happened_on.toISOString()).toBe(happenedOn.toISOString());
+    expect(event.created_at).toBeInstanceOf(Date);
+
+    const createdAtMs = event.created_at.getTime();
+    const afterFetch = Date.now();
+    expect(createdAtMs).toBeGreaterThan(0);
+    expect(Math.abs(createdAtMs - beforeCreate)).toBeLessThan(24 * 60 * 60 * 1000);
+    expect(Math.abs(createdAtMs - afterFetch)).toBeLessThan(24 * 60 * 60 * 1000);
   });
 });

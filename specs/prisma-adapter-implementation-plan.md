@@ -103,8 +103,8 @@ Status: complete.
 
 ## Phase 5 — Tests
 
-Status: complete for required coverage (SQLite + PGLite adapter tests added; MySQL tests still
-optional).
+Status: complete for required coverage (SQLite + PGLite adapter tests include DateTime/JSON/BigInt
+roundtrips; MySQL tests still optional).
 
 1. Add snapshot tests similar to Drizzle:
    - `packages/fragno-db/src/adapters/prisma/generate.test.ts`
