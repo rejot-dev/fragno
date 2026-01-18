@@ -44,6 +44,8 @@ complete (sqliteProfile added; type mapping, migration generation, and runtime s
 
 ## Phase 2 — Prisma schema generator (`generate.ts`)
 
+Status: complete for SQLite + PostgreSQL; MySQL support remains untested.
+
 1. Add `packages/fragno-db/src/adapters/prisma/generate.ts`.
 2. Implement deterministic output builder:
    - stable ordering (internal → namespaces → tables)
@@ -81,6 +83,8 @@ complete (sqliteProfile added; type mapping, migration generation, and runtime s
 
 ## Phase 3 — Prisma adapter (`prisma-adapter.ts`)
 
+Status: complete.
+
 1. Add `packages/fragno-db/src/adapters/prisma/prisma-adapter.ts`.
 2. Extend `GenericSQLAdapter` and implement:
    - SQLite profile defaults (Prisma adapter forces `"prisma"` unless overridden)
@@ -90,12 +94,17 @@ complete (sqliteProfile added; type mapping, migration generation, and runtime s
 
 ## Phase 4 — Package exports & build config
 
+Status: complete.
+
 1. Add exports to `packages/fragno-db/package.json`:
    - `./adapters/prisma`
    - optionally `./adapters/prisma/generate`
 2. Update `packages/fragno-db/tsdown.config.ts` to include the new entry points.
 
 ## Phase 5 — Tests
+
+Status: complete for required coverage (SQLite + PGLite adapter tests added; MySQL tests still
+optional).
 
 1. Add snapshot tests similar to Drizzle:
    - `packages/fragno-db/src/adapters/prisma/generate.test.ts`

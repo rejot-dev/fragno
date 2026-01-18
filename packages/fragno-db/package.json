@@ -63,6 +63,16 @@
       "types": "./dist/adapters/drizzle/generate.d.ts",
       "default": "./dist/adapters/drizzle/generate.js"
     },
+    "./adapters/prisma": {
+      "development": "./src/adapters/prisma/prisma-adapter.ts",
+      "types": "./dist/adapters/prisma/prisma-adapter.d.ts",
+      "default": "./dist/adapters/prisma/prisma-adapter.js"
+    },
+    "./adapters/prisma/generate": {
+      "development": "./src/adapters/prisma/generate.ts",
+      "types": "./dist/adapters/prisma/generate.d.ts",
+      "default": "./dist/adapters/prisma/generate.js"
+    },
     "./adapters/generic-sql": {
       "development": "./src/adapters/generic-sql/generic-sql-adapter.ts",
       "types": "./dist/adapters/generic-sql/generic-sql-adapter.d.ts",
