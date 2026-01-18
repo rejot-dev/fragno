@@ -250,6 +250,262 @@ describe("PrismaAdapter PGLite", () => {
     expect(result.cursor).toBeInstanceOf(Cursor);
   });
 
+  it("should support joins", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("create-join-user");
+    createUow.create("users", { name: "Prisma PGLite Email User", age: 20 });
+    const { success } = await createUow.executeMutations();
+    expect(success).toBe(true);
+
+    const [usersResult] = await queryEngine
+      .createUnitOfWork("get-created-user")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Email User")),
+      )
+      .executeRetrieve();
+
+    expect(usersResult).toHaveLength(1);
+    const createdUser = usersResult[0];
+    expect(createdUser.name).toBe("Prisma PGLite Email User");
+
+    const createEmailUow = queryEngine.createUnitOfWork("create-test-email");
+    createEmailUow.create("emails", {
+      user_id: createdUser.id,
+      email: "prisma-pglite@example.com",
+      is_primary: true,
+    });
+    await createEmailUow.executeMutations();
+
+    const uow = queryEngine
+      .createUnitOfWork("test-joins")
+      .find("emails", (b) =>
+        b
+          .whereIndex("user_emails", (eb) => eb("user_id", "=", createdUser.id))
+          .join((jb) => jb.user((builder) => builder.select(["name", "id", "age"]))),
+      );
+
+    const [[email]] = await uow.executeRetrieve();
+
+    expect(email).toMatchObject({
+      id: expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      }),
+      user_id: expect.objectContaining({
+        internalId: expect.any(BigInt),
+      }),
+      email: "prisma-pglite@example.com",
+      is_primary: true,
+      user: {
+        id: expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+        name: "Prisma PGLite Email User",
+        age: 20,
+      },
+    });
+  });
+
+  it("should support complex nested joins (comments -> post -> author)", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createAuthorUow = queryEngine.createUnitOfWork("create-author");
+    createAuthorUow.create("users", { name: "Prisma PGLite Author", age: 30 });
+    await createAuthorUow.executeMutations();
+
+    const [[author]] = await queryEngine
+      .createUnitOfWork("get-author")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Author")),
+      )
+      .executeRetrieve();
+
+    const createPostUow = queryEngine.createUnitOfWork("create-post");
+    createPostUow.create("posts", {
+      user_id: author.id,
+      title: "Prisma PGLite Post",
+      content: "Nested join content",
+    });
+    await createPostUow.executeMutations();
+
+    const [[post]] = await queryEngine
+      .createUnitOfWork("get-post")
+      .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", author.id)))
+      .executeRetrieve();
+
+    const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
+    createCommenterUow.create("users", { name: "Prisma PGLite Commenter", age: 25 });
+    await createCommenterUow.executeMutations();
+
+    const [[commenter]] = await queryEngine
+      .createUnitOfWork("get-commenter")
+      .find("users", (b) =>
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Commenter")),
+      )
+      .executeRetrieve();
+
+    const createCommentUow = queryEngine.createUnitOfWork("create-comment");
+    createCommentUow.create("comments", {
+      post_id: post.id,
+      user_id: commenter.id,
+      text: "Great Prisma post!",
+    });
+    await createCommentUow.executeMutations();
+
+    const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
+      b.whereIndex("primary").join((jb) =>
+        jb
+          .post((postBuilder) =>
+            postBuilder
+              .select(["id", "title", "content"])
+              .orderByIndex("primary", "desc")
+              .pageSize(1)
+              .join((jb2) =>
+                jb2.author((authorBuilder) =>
+                  authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
+                ),
+              ),
+          )
+          .commenter((commenterBuilder) => commenterBuilder.select(["id", "name"])),
+      ),
+    );
+
+    const [[comment]] = await uow.executeRetrieve();
+
+    expect(comment).toMatchObject({
+      id: expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      }),
+      text: "Great Prisma post!",
+      post: {
+        id: expect.objectContaining({
+          externalId: post.id.externalId,
+        }),
+        title: "Prisma PGLite Post",
+        content: "Nested join content",
+        author: {
+          id: expect.objectContaining({
+            externalId: author.id.externalId,
+          }),
+          name: "Prisma PGLite Author",
+          age: 30,
+        },
+      },
+      commenter: {
+        id: expect.objectContaining({
+          externalId: commenter.id.externalId,
+        }),
+        name: "Prisma PGLite Commenter",
+      },
+    });
+  });
+
+  it("should return created IDs from UOW create operations", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const uow1 = queryEngine.createUnitOfWork("create-multiple-users");
+    uow1.create("users", { name: "Prisma PGLite ID User 1", age: 30 });
+    uow1.create("users", { name: "Prisma PGLite ID User 2", age: 35 });
+    uow1.create("users", { name: "Prisma PGLite ID User 3", age: 40 });
+
+    const { success: success1 } = await uow1.executeMutations();
+    expect(success1).toBe(true);
+
+    const createdIds1 = uow1.getCreatedIds();
+    expect(createdIds1).toMatchObject([
+      expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      }),
+      expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      }),
+      expect.objectContaining({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      }),
+    ]);
+
+    const externalIds = createdIds1.map((id) => id.externalId);
+    expect(new Set(externalIds).size).toBe(3);
+
+    const user1 = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
+    );
+    const user2 = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
+    );
+    const user3 = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
+    );
+
+    expect(user1).toMatchObject({
+      id: expect.objectContaining({
+        externalId: createdIds1[0].externalId,
+      }),
+      name: "Prisma PGLite ID User 1",
+      age: 30,
+    });
+
+    expect(user2).toMatchObject({
+      id: expect.objectContaining({
+        externalId: createdIds1[1].externalId,
+      }),
+      name: "Prisma PGLite ID User 2",
+      age: 35,
+    });
+
+    expect(user3).toMatchObject({
+      id: expect.objectContaining({
+        externalId: createdIds1[2].externalId,
+      }),
+      name: "Prisma PGLite ID User 3",
+      age: 40,
+    });
+
+    const uow2 = queryEngine.createUnitOfWork("mixed-operations");
+    uow2.create("users", { name: "Prisma PGLite New User", age: 50 });
+    uow2.update("users", createdIds1[0], (b) => b.set({ age: 31 }));
+    uow2.create("users", { name: "Prisma PGLite Another New User", age: 55 });
+    uow2.delete("users", createdIds1[2]);
+
+    const { success: success2 } = await uow2.executeMutations();
+    expect(success2).toBe(true);
+
+    const createdIds2 = uow2.getCreatedIds();
+    expect(createdIds2).toHaveLength(2);
+    expect(createdIds2[0].externalId).toBeDefined();
+    expect(createdIds2[1].externalId).toBeDefined();
+
+    const customId = "pglite-custom-user-id-1";
+    const uow3 = queryEngine.createUnitOfWork("create-with-custom-id");
+    uow3.create("users", { id: customId, name: "Prisma PGLite Custom ID User", age: 60 });
+
+    const { success: success3 } = await uow3.executeMutations();
+    expect(success3).toBe(true);
+
+    const createdIds3 = uow3.getCreatedIds();
+    expect(createdIds3).toHaveLength(1);
+    expect(createdIds3[0].externalId).toBe(customId);
+    expect(createdIds3[0].internalId).toBeDefined();
+
+    const customIdUser = await queryEngine.findFirst("users", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", customId)),
+    );
+
+    expect(customIdUser).toMatchObject({
+      id: expect.objectContaining({
+        externalId: customId,
+      }),
+      name: "Prisma PGLite Custom ID User",
+      age: 60,
+    });
+  });
+
   it("should fail check() when version changes", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 

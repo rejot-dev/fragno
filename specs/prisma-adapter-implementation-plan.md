@@ -161,3 +161,6 @@ Status: complete.
 
 Revalidated (2026-01-18): Prisma adapter SQLite/PGLite tests (including SQLite fragno-profile
 generation), repository lint, repository types check.
+
+Revalidated (2026-01-19): Prisma adapter SQLite/PGLite adapter tests (joins + created-id cases),
+repository lint, repository types check.
