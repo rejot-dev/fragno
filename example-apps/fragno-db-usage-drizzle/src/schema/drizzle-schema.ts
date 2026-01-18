@@ -3,6 +3,7 @@ import {
   fragno_db_rating_schema,
   fragno_db_comment_schema,
   simple_auth_schema,
+  workflows_schema,
 } from "./fragno-schema";
 
 export const user = pgTable("user", {
@@ -26,6 +27,7 @@ export const schema = {
   ...fragno_db_comment_schema,
   ...fragno_db_rating_schema,
   ...simple_auth_schema,
+  ...workflows_schema,
   user,
   blogPost,
 };

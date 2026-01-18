@@ -1,4 +1,4 @@
-import { assert, beforeEach, describe, expect, test } from "vitest";
+import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
@@ -17,13 +17,16 @@ describe("Workflows Fragment", async () => {
   const workflows = {
     DEMO: { name: "demo-workflow", workflow: DemoWorkflow },
   } as const;
+  const runner = {
+    tick: vi.fn(),
+  };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "workflows",
       instantiate(workflowsFragmentDefinition)
-        .withConfig({ workflows })
+        .withConfig({ workflows, enableRunnerTick: true, runner })
         .withRoutes([workflowsRoutesFactory]),
     )
     .build();
@@ -32,6 +35,7 @@ describe("Workflows Fragment", async () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
+    runner.tick.mockReset();
   });
 
   test("should expose workflows schema", () => {
@@ -198,6 +202,18 @@ describe("Workflows Fragment", async () => {
       });
     });
 
+    test("POST /_runner/tick should call the runner", async () => {
+      runner.tick.mockResolvedValue(2);
+
+      const response = await fragment.callRoute("POST", "/_runner/tick", {
+        body: { maxInstances: 2, maxSteps: 5 },
+      });
+      assert(response.type === "json");
+
+      expect(runner.tick).toHaveBeenCalledWith({ maxInstances: 2, maxSteps: 5 });
+      expect(response.data).toEqual({ processed: 2 });
+    });
+
     test("GET /workflows/:workflowName/instances/:instanceId/history should return history", async () => {
       await db.create("workflow_instance", {
         workflowName: "demo-workflow",
@@ -255,6 +271,121 @@ describe("Workflows Fragment", async () => {
       expect(response.data.runNumber).toBe(2);
       expect(response.data.steps).toHaveLength(1);
       expect(response.data.events).toHaveLength(1);
+    });
+  });
+
+  describe("Authorization hooks", async () => {
+    const authorizeRequest = vi.fn();
+    const authorizeInstanceCreation = vi.fn();
+    const authorizeManagement = vi.fn();
+    const authorizeSendEvent = vi.fn();
+    const authorizeRunnerTick = vi.fn();
+    const authRunner = {
+      tick: vi.fn(),
+    };
+
+    const { fragments: authFragments, test: authTestContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "workflows",
+        instantiate(workflowsFragmentDefinition)
+          .withConfig({
+            workflows,
+            enableRunnerTick: true,
+            runner: authRunner,
+            authorizeRequest,
+            authorizeInstanceCreation,
+            authorizeManagement,
+            authorizeSendEvent,
+            authorizeRunnerTick,
+          })
+          .withRoutes([workflowsRoutesFactory]),
+      )
+      .build();
+
+    const { fragment: authFragment, db: authDb } = authFragments.workflows;
+
+    beforeEach(async () => {
+      await authTestContext.resetDatabase();
+      authorizeRequest.mockReset();
+      authorizeInstanceCreation.mockReset();
+      authorizeManagement.mockReset();
+      authorizeSendEvent.mockReset();
+      authorizeRunnerTick.mockReset();
+      authRunner.tick.mockReset();
+    });
+
+    test("authorizeRequest can block requests", async () => {
+      authorizeRequest.mockReturnValue(
+        Response.json({ message: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 }),
+      );
+
+      const response = await authFragment.callRoute("GET", "/workflows");
+      assert(response.type === "error");
+      expect(response.status).toBe(401);
+      expect(response.error.code).toBe("UNAUTHORIZED");
+    });
+
+    test("authorizeInstanceCreation can block create", async () => {
+      authorizeInstanceCreation.mockReturnValue(
+        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
+      );
+
+      const response = await authFragment.callRoute("POST", "/workflows/:workflowName/instances", {
+        pathParams: { workflowName: "demo-workflow" },
+        body: { id: "blocked-create" },
+      });
+      assert(response.type === "error");
+      expect(response.status).toBe(403);
+
+      const instances = await authDb.find("workflow_instance", (b) => b.whereIndex("primary"));
+      expect(instances).toHaveLength(0);
+    });
+
+    test("authorizeManagement can block instance actions", async () => {
+      authorizeManagement.mockReturnValue(
+        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
+      );
+
+      const response = await authFragment.callRoute(
+        "POST",
+        "/workflows/:workflowName/instances/:instanceId/pause",
+        {
+          pathParams: { workflowName: "demo-workflow", instanceId: "blocked-manage" },
+        },
+      );
+      assert(response.type === "error");
+      expect(response.status).toBe(403);
+    });
+
+    test("authorizeSendEvent can block event delivery", async () => {
+      authorizeSendEvent.mockReturnValue(
+        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
+      );
+
+      const response = await authFragment.callRoute(
+        "POST",
+        "/workflows/:workflowName/instances/:instanceId/events",
+        {
+          pathParams: { workflowName: "demo-workflow", instanceId: "blocked-event" },
+          body: { type: "approval" },
+        },
+      );
+      assert(response.type === "error");
+      expect(response.status).toBe(403);
+    });
+
+    test("authorizeRunnerTick can block runner tick", async () => {
+      authorizeRunnerTick.mockReturnValue(
+        Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
+      );
+
+      const response = await authFragment.callRoute("POST", "/_runner/tick", {
+        body: { maxInstances: 1 },
+      });
+      assert(response.type === "error");
+      expect(response.status).toBe(403);
+      expect(authRunner.tick).not.toHaveBeenCalled();
     });
   });
 });

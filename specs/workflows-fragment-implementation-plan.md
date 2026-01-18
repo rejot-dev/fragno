@@ -103,7 +103,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
    - [x] send event
    - [x] history
    - [x] `/_runner/tick`
-3. Add auth hooks per SPEC §12.
+3. [x] Add auth hooks per SPEC §12.
 
 ## Phase 7 — Migrations, tests, and examples
 
