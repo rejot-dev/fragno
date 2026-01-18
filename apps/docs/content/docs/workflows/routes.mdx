@@ -1,0 +1,118 @@
+---
+title: API Routes
+description: HTTP API for managing workflows and instances.
+icon: FileBraces
+---
+
+The Workflows fragment exposes HTTP routes for workflow management. Mount the fragment under a base
+path (for example `/api/workflows`) and use that base URL in clients and the CLI.
+
+## Base URL
+
+All paths below are relative to the fragment base URL, for example:
+
+```
+https://your-app.example.com/api/workflows
+```
+
+## Workflows
+
+### List workflows
+
+`GET /workflows`
+
+Returns the registered workflow names.
+
+## Instances
+
+### List instances
+
+`GET /workflows/:workflowName/instances`
+
+Query parameters:
+
+- `status` (optional):
+  `queued | running | paused | errored | terminated | complete | waiting | waitingForPause | unknown`
+- `pageSize` (optional, default 25, max 100)
+- `cursor` (optional)
+
+### Create an instance
+
+`POST /workflows/:workflowName/instances`
+
+Body:
+
+```json
+{ "id": "optional-id", "params": { "...": "..." } }
+```
+
+### Create a batch of instances
+
+`POST /workflows/:workflowName/instances/batch`
+
+Body:
+
+```json
+{ "instances": [{ "id": "required-id", "params": { "...": "..." } }] }
+```
+
+### Get instance details
+
+`GET /workflows/:workflowName/instances/:instanceId`
+
+Returns status plus metadata including `runNumber`, `params`, and current step summary.
+
+### Get history
+
+`GET /workflows/:workflowName/instances/:instanceId/history`
+
+Query parameters:
+
+- `runNumber` (optional; defaults to latest run)
+- `pageSize` (optional, default 25, max 100)
+- `stepsCursor`, `eventsCursor`, `logsCursor` (optional)
+- `includeLogs` (optional, `true | false`)
+- `logLevel` (optional, `debug | info | warn | error`)
+- `logCategory` (optional)
+- `order` (optional, `asc | desc`)
+
+Logs are only returned when `includeLogs=true`.
+
+### Pause / resume / restart / terminate
+
+`POST /workflows/:workflowName/instances/:instanceId/pause`
+
+`POST /workflows/:workflowName/instances/:instanceId/resume`
+
+`POST /workflows/:workflowName/instances/:instanceId/restart`
+
+`POST /workflows/:workflowName/instances/:instanceId/terminate`
+
+### Send an event
+
+`POST /workflows/:workflowName/instances/:instanceId/events`
+
+Body:
+
+```json
+{ "type": "event-type", "payload": { "...": "..." } }
+```
+
+## Runner tick
+
+`POST /_runner/tick`
+
+Body:
+
+```json
+{ "maxInstances": 10, "maxSteps": 100 }
+```
+
+Returns `{ "processed": number }`. If `enableRunnerTick` is false, the route returns
+`RUNNER_TICK_DISABLED`.
+
+## Authorization hooks
+
+All routes go through `authorizeRequest`. Dedicated hooks are also available for instance creation,
+management actions, send-event, and runner tick. If you need per-route policies, use those hooks in
+the fragment config.

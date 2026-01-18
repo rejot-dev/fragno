@@ -1,0 +1,81 @@
+---
+title: CLI
+description: Manage workflows with the fragno-wf CLI.
+icon: Terminal
+---
+
+The `fragno-wf` CLI talks to the Workflows fragment HTTP API to list workflows, inspect instances,
+and send management actions.
+
+## Install
+
+```bash
+npm install -g @fragno-dev/fragno-wf
+```
+
+Or run it without installing:
+
+```bash
+npx @fragno-dev/fragno-wf --help
+```
+
+## Base URL
+
+Provide the full fragment base URL:
+
+```bash
+fragno-wf workflows list --base-url https://host.example.com/api/workflows
+```
+
+You can also set a default:
+
+```bash
+export FRAGNO_WF_BASE_URL=https://host.example.com/api/workflows
+```
+
+## Auth headers
+
+Pass headers with `-H` (repeatable) or via `FRAGNO_WF_HEADERS`:
+
+```bash
+fragno-wf workflows list \
+  --base-url https://host.example.com/api/workflows \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Env: staging"
+```
+
+```bash
+export FRAGNO_WF_HEADERS="Authorization: Bearer $TOKEN;X-Env: staging"
+```
+
+## Common commands
+
+```bash
+fragno-wf workflows list -b https://host.example.com/api/workflows
+
+fragno-wf instances list -b https://host.example.com/api/workflows -w approvals --status running
+
+fragno-wf instances get -b https://host.example.com/api/workflows -w approvals -i inst_123
+
+fragno-wf instances history -b https://host.example.com/api/workflows -w approvals -i inst_123
+
+fragno-wf instances logs -b https://host.example.com/api/workflows -w approvals -i inst_123 --follow
+
+fragno-wf instances create -b https://host.example.com/api/workflows -w approvals \
+  --params '{"requestId":"req_1","amount":125}'
+
+fragno-wf instances pause -b https://host.example.com/api/workflows -w approvals -i inst_123
+
+fragno-wf instances send-event -b https://host.example.com/api/workflows -w approvals \
+  -i inst_123 -t approval --payload '{"approved":true}'
+```
+
+## Options
+
+- `-b, --base-url`: workflow fragment base URL (or `FRAGNO_WF_BASE_URL`)
+- `-H, --header`: extra HTTP header, repeatable (or `FRAGNO_WF_HEADERS`)
+- `--timeout`: request timeout in ms (or `FRAGNO_WF_TIMEOUT_MS`, default 15000)
+- `--retries`: retry count for network/5xx/429 (or `FRAGNO_WF_RETRIES`, default 2)
+- `--retry-delay`: delay between retries in ms (or `FRAGNO_WF_RETRY_DELAY_MS`, default 500)
+
+For the full command tree, run `fragno-wf --help`.

@@ -1,0 +1,68 @@
+---
+title: Runner & Dispatcher
+description: Wire workflow execution in Node, Cloudflare, or via HTTP ticks.
+icon: Code
+---
+
+Workflows execute when the runner is ticked. The dispatcher is responsible for waking the runner
+when work is available.
+
+## In-process dispatcher (Node)
+
+Use the in-process dispatcher for local development or small deployments:
+
+```ts
+import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+
+const dispatcher = createInProcessDispatcher({
+  wake: () => void runner.tick({ maxInstances: 5, maxSteps: 50 }),
+  pollIntervalMs: 2000,
+});
+```
+
+## Cloudflare Durable Object dispatcher
+
+For Cloudflare, use the Durable Object dispatcher package so alarms drive the runner:
+
+```ts
+import { createWorkflowsDispatcherDurableObject } from "@fragno-dev/workflows-dispatcher-cloudflare-do";
+import { workflows } from "./workflows";
+
+export class WorkflowsDispatcher {
+  handler: ReturnType<ReturnType<typeof createWorkflowsDispatcherDurableObject>>;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.handler = createWorkflowsDispatcherDurableObject({
+      workflows,
+      namespace: "workflows",
+    })(state, env);
+  }
+
+  fetch(request: Request) {
+    return this.handler.fetch(request);
+  }
+
+  alarm() {
+    return this.handler.alarm?.();
+  }
+}
+```
+
+## HTTP tick integration
+
+If you want an external scheduler or queue to drive execution, keep `enableRunnerTick: true` and
+POST to the tick route:
+
+```ts
+await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ maxInstances: 10, maxSteps: 100 }),
+});
+```
+
+## Notes
+
+- Protect `/_runner/tick` with auth or disable it in production.
+- Use a durable hook handler to call the tick route when workflows are enqueued.
+- Distributed runners are supported; multiple callers can safely tick concurrently.
