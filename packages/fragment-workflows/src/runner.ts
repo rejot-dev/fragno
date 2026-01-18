@@ -685,6 +685,74 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     await runnerOptions.db.delete("workflow_task", task.id);
   };
 
+  const renewTaskLease = async (taskId: WorkflowTaskRecord["id"]) => {
+    const current = await runnerOptions.db.findFirst("workflow_task", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", taskId)),
+    );
+
+    if (!current) {
+      return false;
+    }
+
+    if (current.status !== "processing" || current.lockOwner !== runnerId) {
+      return false;
+    }
+
+    const uow = runnerOptions.db.createUnitOfWork("workflow-task-renew");
+    const typed = uow.forSchema(workflowsSchema);
+    typed.update("workflow_task", current.id, (b) => {
+      const builder = b.set({
+        lockedUntil: new Date(Date.now() + leaseMs),
+        updatedAt: new Date(),
+      });
+      if (current.id instanceof FragnoId) {
+        builder.check();
+      }
+      return builder;
+    });
+
+    const { success } = await uow.executeMutations();
+    return success;
+  };
+
+  const startTaskLeaseHeartbeat = (taskId: WorkflowTaskRecord["id"]) => {
+    const intervalMs = Math.max(Math.floor(leaseMs / 2), 10);
+    let stopped = false;
+    let inFlight = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const heartbeat = async () => {
+      if (stopped || inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        const renewed = await renewTaskLease(taskId);
+        if (!renewed) {
+          stopped = true;
+          if (timer) {
+            clearInterval(timer);
+            timer = null;
+          }
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    timer = setInterval(() => {
+      void heartbeat();
+    }, intervalMs);
+
+    return () => {
+      stopped = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+  };
+
   const processTask = async (task: WorkflowTaskRecord, maxSteps: number) => {
     if (!task) {
       return 0;
@@ -750,6 +818,8 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       maxSteps,
     });
 
+    const stopHeartbeat = startTaskLeaseHeartbeat(task.id);
+
     try {
       const output = await workflow.run(event, step);
       await setInstanceStatus(instance, "complete", {
@@ -779,6 +849,8 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       });
       await completeTask(task);
       return 1;
+    } finally {
+      stopHeartbeat();
     }
   };
 

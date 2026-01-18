@@ -75,7 +75,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 1. Implement the “runner core” that can:
    - [x] claim runnable tasks with OCC + leases (SPEC §9.1.1)
-   - [ ] renew task leases while executing (heartbeat) (SPEC §9.1.1)
+   - [x] renew task leases while executing (heartbeat) (SPEC §9.1.1)
    - [x] run the workflow with replay semantics (SPEC §9.2)
    - [x] persist step states/results, waits, retries, outputs/errors (SPEC §9.3)
    - [x] schedule/update the single per-run task row (SPEC §9.1.3)
