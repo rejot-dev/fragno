@@ -1,0 +1,51 @@
+---
+title: Debugging
+description: Troubleshoot workflows with history, logs, and common fixes.
+icon: CircleQuestionMark
+---
+
+Use workflow history and logs to understand what happened and why a workflow is waiting or failed.
+
+## History and logs
+
+The history endpoint returns step results, events, and optional log lines.
+
+```bash
+curl \"$BASE_URL/workflows/approval/instances/inst_123/history?includeLogs=true\"
+```
+
+Tips:
+
+- Use `includeLogs=true` to include workflow log lines.
+- Filter logs with `logLevel` and `logCategory`.
+- Use `order=desc` to read newest entries first.
+
+## Common issues
+
+### Instance never runs
+
+- Ensure the dispatcher is configured and running.
+- If using HTTP ticks, confirm `enableRunnerTick: true` and that `/_runner/tick` is being called.
+
+### Stuck in waiting
+
+- Verify the event `type` matches the workflow's `waitForEvent` call.
+- Use the history view to see buffered events and the wait step details.
+
+### Repeated retries or timeouts
+
+- Check `timeout` and `maxAttempts` in the step definition.
+- Look for the latest error in history; it includes the error name and message.
+
+### Pause/resume not changing status
+
+- The pause request is respected on the next tick; make sure the runner is still running.
+- If the instance is terminal (`complete`, `terminated`, `errored`), it will not resume.
+
+## When to open an issue
+
+If the instance is in a non-terminal state but no tasks are being processed, capture:
+
+- the instance status and metadata
+- history output (with logs)
+- runner/dispatcher configuration

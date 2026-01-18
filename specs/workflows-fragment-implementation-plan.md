@@ -198,9 +198,9 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 1. [x] Create `/docs/workflows` section (like `forms`/`stripe`) with a landing/quickstart page (SPEC
        §18).
-2. [ ] Move/duplicate the existing workflows doc from `/docs/fragno/for-users/workflows` into the
+2. [x] Move/duplicate the existing workflows doc from `/docs/fragno/for-users/workflows` into the
        new section and leave a pointer page behind to avoid breaking links.
-3. [ ] Add docs pages:
+3. [x] Add docs pages:
    - API routes reference (status/history/logs)
    - CLI reference (`fragno-wf`, base URL, headers, examples)
    - Runner/dispatcher integration guide
@@ -208,5 +208,5 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 
 ## Phase 13 — Verification (new additions)
 
-1. [ ] Tests: targeted packages + docs build if available
-2. [ ] Lint + types
+1. [x] Tests: targeted packages + docs build if available
+2. [x] Lint + types

@@ -1,28 +1,20 @@
 ---
-title: Quickstart
-description: Install and configure the Workflows fragment.
-icon: Album
+title: Workflow Fragment
+description: Run long-lived workflows with durable steps, events, and retries.
+icon: NotebookTabs
 ---
 
-import { Callout } from "fumadocs-ui/components/callout";
+The Workflows Fragment lets you define long-running processes with durable steps, retries, and
+waits. It stores workflow state in your database and exposes HTTP endpoints to create, control, and
+observe workflow instances.
 
-## Overview
+## Install
 
-The Workflows fragment provides durable, replayable workflow execution with steps, timers, retries,
-and external events. This quickstart walks through defining a workflow, wiring the runner, and
-exposing routes.
-
-## Installation
-
-Install the fragment, dispatcher, and database packages:
-
-```npm
-npm install @fragno-dev/fragment-workflows @fragno-dev/workflows-dispatcher-node @fragno-dev/db
+```bash
+npm install @fragno-dev/fragment-workflows @fragno-dev/workflows-dispatcher-node
 ```
 
 ## Define a Workflow
-
-Create a workflow class and a registry of workflows:
 
 ```ts title="lib/workflows.ts"
 import {
@@ -65,8 +57,6 @@ export const workflows = {
 
 ## Create the Fragment Server
 
-Wire the workflow runner, dispatcher, and fragment definition:
-
 ```ts title="lib/workflows-fragment.ts"
 import { instantiate } from "@fragno-dev/core";
 import type { DatabaseAdapter } from "@fragno-dev/db";
@@ -97,29 +87,9 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
 }
 ```
 
-<Callout type="info">
-  The in-process dispatcher is ideal for local dev. For Cloudflare deployments use
-  `@fragno-dev/workflows-dispatcher-cloudflare-do`.
-</Callout>
+## Testing Workflows
 
-## Mount the Routes
-
-Mount the fragment using your framework adapter. See
-[Integrating a Fragment](/docs/fragno/for-users/integrating-a-fragment) for framework-specific
-examples.
-
-## Run Database Migrations
-
-Generate a schema and run migrations with the Fragno CLI:
-
-```npm
-npx fragno-cli db generate lib/workflows-fragment.ts -o db/workflows.schema.ts
-npx fragno-cli db migrate lib/workflows-fragment.ts
-```
-
-## Test Workflows
-
-Use the test harness to drive the runner with a controllable clock:
+Use the test harness to drive the runner and control time:
 
 ```ts title="lib/workflows.test.ts"
 import { createWorkflowsTestHarness } from "@fragno-dev/fragment-workflows/test";
@@ -142,12 +112,14 @@ await harness.sendEvent("approval", instanceId, {
 
 harness.clock.advanceBy("2 s");
 await harness.runUntilIdle();
+
+const status = await harness.getStatus("approval", instanceId);
 ```
 
-## Drive the Runner
+## HTTP Tick Integration
 
 If you want an external scheduler to drive execution, keep `enableRunnerTick: true` and send
-`POST /_runner/tick` to your fragment:
+`POST /_runner/tick` to your fragment. A durable hook handler or cron can trigger it:
 
 ```ts
 await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
@@ -157,17 +129,7 @@ await fetch("https://your-app.example.com/api/workflows/_runner/tick", {
 });
 ```
 
-## Use the CLI
-
-The `fragno-wf` CLI uses the HTTP API to list workflows, inspect instances, and send events:
-
-```bash
-fragno-wf workflows list -b https://your-app.example.com/api/workflows
-
-fragno-wf instances get -b https://your-app.example.com/api/workflows -w approval -i inst_123
-```
-
 ## Next Steps
 
-- Build a client or CLI on top of the HTTP API in the fragment.
-- Review workflow history and logs using the `/history` routes.
+- Explore the HTTP surface in the [API routes reference](/docs/workflows/routes).
+- Manage workflows with the [CLI](/docs/workflows/cli).
