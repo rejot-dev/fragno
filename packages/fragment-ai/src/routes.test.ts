@@ -158,6 +158,42 @@ describe("AI Fragment Routes", () => {
     }
   });
 
+  test("runs stream route should return not implemented", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Stream Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Stream it" },
+        text: "Stream it",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("error");
+    if (response.type === "error") {
+      expect(response.status).toBe(501);
+      expect(response.error.code).toBe("NOT_IMPLEMENTED");
+    }
+
+    const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
+    expect(runs).toHaveLength(0);
+  });
+
   test("run events route should list persisted run events", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: { title: "Thread Four" },

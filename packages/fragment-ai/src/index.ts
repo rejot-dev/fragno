@@ -2,7 +2,8 @@ import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
-import { aiFragmentDefinition, type AiThinkingLevel } from "./definition";
+import { computed } from "nanostores";
+import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from "./definition";
 import { aiRoutesFactory } from "./routes";
 
 export type AiModelRef = {
@@ -61,6 +62,8 @@ export interface AiFragmentConfig {
   };
 }
 
+const STREAM_EVENT_BUFFER_SIZE = 200;
+
 const routes = [aiRoutesFactory] as const;
 
 export function createAiFragment(
@@ -76,6 +79,86 @@ export function createAiFragment(
 
 export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(aiFragmentDefinition, fragnoConfig, routes);
+  const runStream = builder.createMutator(
+    "POST",
+    "/threads/:threadId/runs:stream",
+    (invalidate, params) => {
+      const { threadId } = params.pathParams;
+      if (!threadId) {
+        return;
+      }
+      invalidate("GET", "/threads/:threadId/runs", { pathParams: { threadId } });
+      invalidate("GET", "/threads/:threadId/messages", { pathParams: { threadId } });
+    },
+  );
+
+  const streamEvents = computed(runStream.mutatorStore, ({ data }) => {
+    if (!Array.isArray(data)) {
+      return [] as AiRunLiveEvent[];
+    }
+
+    const items = data as AiRunLiveEvent[];
+    if (items.length <= STREAM_EVENT_BUFFER_SIZE) {
+      return items;
+    }
+
+    return items.slice(-STREAM_EVENT_BUFFER_SIZE);
+  });
+
+  const streamText = computed(streamEvents, (events) => {
+    let text = "";
+
+    for (const event of events) {
+      if (event.type === "output.text.delta") {
+        text += event.delta;
+      } else if (event.type === "output.text.done") {
+        text = event.text;
+      }
+    }
+
+    return text;
+  });
+
+  const streamStatus = computed(streamEvents, (events) => {
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const event = events[i];
+      if (!event) {
+        continue;
+      }
+
+      if (event.type === "run.final") {
+        return { runId: event.runId, status: event.status, run: event.run };
+      }
+
+      if (event.type === "run.status") {
+        return { runId: event.runId, status: event.status };
+      }
+    }
+
+    return undefined;
+  });
+
+  const streamError = computed(runStream.mutatorStore, ({ error }) => error);
+
+  const startRunStream = async ({
+    threadId,
+    input,
+  }: {
+    threadId: string;
+    input?: {
+      type?: string;
+      executionMode?: string;
+      inputMessageId?: string;
+      modelId?: string;
+      thinkingLevel?: string;
+      systemPrompt?: string | null;
+    };
+  }) => {
+    return runStream.mutatorStore.mutate({
+      body: input,
+      path: { threadId },
+    });
+  };
 
   return {
     useThreads: builder.createHook("/threads"),
@@ -128,6 +211,7 @@ export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig =
       }
       invalidate("GET", "/threads/:threadId/runs", { pathParams: { threadId } });
     }),
+    useCreateRunStream: runStream,
     useCancelRun: builder.createMutator("POST", "/runs/:runId/cancel", (invalidate, params) => {
       const { runId } = params.pathParams;
       if (!runId) {
@@ -136,6 +220,18 @@ export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig =
       invalidate("GET", "/runs/:runId", { pathParams: { runId } });
       invalidate("GET", "/runs/:runId/events", { pathParams: { runId } });
     }),
+    useRunStream: builder.createStore({
+      startRunStream,
+      text: streamText,
+      status: streamStatus,
+      events: streamEvents,
+      error: streamError,
+    }),
+    useStreamText: builder.createStore(streamText),
+    useStreamStatus: builder.createStore(streamStatus),
+    useStreamEvents: builder.createStore(streamEvents),
+    useStreamError: builder.createStore(streamError),
+    startRunStream,
   };
 }
 
@@ -150,6 +246,8 @@ export type {
   AiRunStatus,
   AiRunType,
   AiThread,
+  AiRunLiveEvent,
+  AiToolCallStatus,
   AiWebhookEvent,
 } from "./definition";
 export type { FragnoRouteConfig } from "@fragno-dev/core";

@@ -119,7 +119,7 @@ Validation:
    - [ ] Runner:
      - [ ] `POST /ai/_runner/tick`
      - [ ] only mount when `enableRunnerTick === true` (default false)
-2. [ ] Define zod schemas for each route input/output and the NDJSON stream event union.
+2. [x] Define zod schemas for each route input/output and the NDJSON stream event union.
 3. [ ] Add typed client bindings:
    - [x] `packages/fragment-ai/src/client/*` per Fragno conventions
    - [ ] helper for NDJSON consumption (mirror existing Fragno client patterns)
@@ -128,9 +128,8 @@ Validation:
      - [x] `useArtifacts`, `useArtifact`
      - [x] `useCreateThread`, `useUpdateThread`, `useDeleteThread`
      - [x] `useAppendMessage`, `useCreateRun`, `useCancelRun`
-     - [ ] `useRunStream` / `startRunStream` (custom NDJSON consumer using `buildUrl` +
-           `getFetcher`)
-     - [ ] derived stores for stream text/status + debug event buffers via `builder.createStore`
+     - [x] `useRunStream` / `startRunStream` (stream state helper via `createMutator`)
+     - [x] derived stores for stream text/status + debug event buffers via `builder.createStore`
    - [ ] implement invalidation rules per spec:
      - [x] `useCreateThread` → invalidate `GET /ai/threads`
      - [x] `useUpdateThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`

@@ -125,6 +125,98 @@ const createRunSchema = z.object({
   systemPrompt: z.string().optional().nullable(),
 });
 
+const toolCallStatusSchema = z.enum([
+  "in_progress",
+  "searching",
+  "interpreting",
+  "generating",
+  "completed",
+  "failed",
+]);
+
+const runMetaEventSchema = z.object({
+  type: z.literal("run.meta"),
+  runId: z.string(),
+  threadId: z.string(),
+});
+
+const runStatusEventSchema = z.object({
+  type: z.literal("run.status"),
+  runId: z.string(),
+  status: z.enum(["running", "cancelled", "failed", "succeeded"]),
+});
+
+const outputTextDeltaEventSchema = z.object({
+  type: z.literal("output.text.delta"),
+  runId: z.string(),
+  delta: z.string(),
+});
+
+const outputTextDoneEventSchema = z.object({
+  type: z.literal("output.text.done"),
+  runId: z.string(),
+  text: z.string(),
+});
+
+const toolCallStartedEventSchema = z.object({
+  type: z.literal("tool.call.started"),
+  runId: z.string(),
+  toolCallId: z.string(),
+  toolType: z.string(),
+  toolName: z.string().optional(),
+});
+
+const toolCallStatusEventSchema = z.object({
+  type: z.literal("tool.call.status"),
+  runId: z.string(),
+  toolCallId: z.string(),
+  toolType: z.string(),
+  status: toolCallStatusSchema,
+});
+
+const toolCallArgumentsDeltaEventSchema = z.object({
+  type: z.literal("tool.call.arguments.delta"),
+  runId: z.string(),
+  toolCallId: z.string(),
+  delta: z.string(),
+});
+
+const toolCallArgumentsDoneEventSchema = z.object({
+  type: z.literal("tool.call.arguments.done"),
+  runId: z.string(),
+  toolCallId: z.string(),
+  arguments: z.string(),
+});
+
+const toolCallOutputEventSchema = z.object({
+  type: z.literal("tool.call.output"),
+  runId: z.string(),
+  toolCallId: z.string(),
+  toolType: z.string(),
+  output: z.unknown(),
+  isError: z.boolean().optional(),
+});
+
+const runFinalEventSchema = z.object({
+  type: z.literal("run.final"),
+  runId: z.string(),
+  status: z.string(),
+  run: runSchema,
+});
+
+const runLiveEventSchema = z.discriminatedUnion("type", [
+  runMetaEventSchema,
+  runStatusEventSchema,
+  outputTextDeltaEventSchema,
+  outputTextDoneEventSchema,
+  toolCallStartedEventSchema,
+  toolCallStatusEventSchema,
+  toolCallArgumentsDeltaEventSchema,
+  toolCallArgumentsDoneEventSchema,
+  toolCallOutputEventSchema,
+  runFinalEventSchema,
+]);
+
 const listEventsQuerySchema = listQuerySchema;
 
 const webhookInputSchema = z.object({
@@ -383,6 +475,20 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
           } catch (err) {
             return handleServiceError(err, error as ErrorResponder);
           }
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/threads/:threadId/runs:stream",
+        inputSchema: createRunSchema,
+        outputSchema: z.array(runLiveEventSchema),
+        errorCodes: ["NOT_IMPLEMENTED"],
+        handler: async function ({ input }, { error }) {
+          await input.valid();
+          return error(
+            { message: "Run streaming is not implemented yet", code: "NOT_IMPLEMENTED" },
+            501,
+          );
         },
       }),
       defineRoute({

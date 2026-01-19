@@ -1351,6 +1351,9 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
+      nanostores:
+        specifier: ^1.0.1
+        version: 1.1.0
       react:
         specifier: '>=18.0.0'
         version: 19.2.0

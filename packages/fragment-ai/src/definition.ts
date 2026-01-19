@@ -26,6 +26,45 @@ export type AiRunType = "agent" | "deep_research";
 
 export type AiRunExecutionMode = "foreground_stream" | "background";
 
+export type AiToolCallStatus =
+  | "in_progress"
+  | "searching"
+  | "interpreting"
+  | "generating"
+  | "completed"
+  | "failed";
+
+export type AiRunLiveEvent =
+  | { type: "run.meta"; runId: string; threadId: string }
+  | { type: "run.status"; runId: string; status: "running" | "cancelled" | "failed" | "succeeded" }
+  | { type: "output.text.delta"; runId: string; delta: string }
+  | { type: "output.text.done"; runId: string; text: string }
+  | {
+      type: "tool.call.started";
+      runId: string;
+      toolCallId: string;
+      toolType: string;
+      toolName?: string;
+    }
+  | {
+      type: "tool.call.status";
+      runId: string;
+      toolCallId: string;
+      toolType: string;
+      status: AiToolCallStatus;
+    }
+  | { type: "tool.call.arguments.delta"; runId: string; toolCallId: string; delta: string }
+  | { type: "tool.call.arguments.done"; runId: string; toolCallId: string; arguments: string }
+  | {
+      type: "tool.call.output";
+      runId: string;
+      toolCallId: string;
+      toolType: string;
+      output: unknown;
+      isError?: boolean;
+    }
+  | { type: "run.final"; runId: string; status: AiRunStatus; run: AiRun };
+
 export interface AiThread {
   id: string;
   title: string | null;
