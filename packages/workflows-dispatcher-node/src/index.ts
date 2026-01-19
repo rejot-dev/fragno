@@ -25,7 +25,9 @@ export function createInProcessDispatcher(
       }
 
       timer = setInterval(() => {
-        void options.wake();
+        Promise.resolve(options.wake()).catch((error) => {
+          console.error("Workflows dispatcher wake failed", error);
+        });
       }, pollIntervalMs);
     },
     stopPolling: () => {

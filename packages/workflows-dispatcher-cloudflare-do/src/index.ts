@@ -187,7 +187,9 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
       if (this.#state.blockConcurrencyWhile) {
         this.#state.blockConcurrencyWhile(migrateTask);
       } else {
-        void migrateTask();
+        void migrateTask().catch((error) => {
+          console.error("Workflows migration failed", error);
+        });
       }
     }
   }

@@ -5,16 +5,14 @@ import { rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { toNodeHandler } from "@fragno-dev/node";
 import { pgFolder } from "./database";
+import { adapter } from "./fragno-adapter";
 import { userCommand, userSubCommands } from "./commands/user";
 import { postCommand, postSubCommands } from "./commands/post";
 import { commentCommand, commentSubCommands } from "./commands/comment";
 import { ratingCommand, ratingSubCommands } from "./commands/rating";
 import { relationsCommand, relationsSubCommands } from "./commands/relations";
 import { fragment } from "./fragno/auth-fragment";
-import {
-  dispatcher as workflowsDispatcher,
-  fragment as workflowsFragment,
-} from "./fragno/workflows-fragment";
+import { createWorkflowsFragmentServer } from "./fragno/workflows-fragment";
 
 // Clean command
 const cleanCommand: Command = {
@@ -32,6 +30,8 @@ const serveCommand: Command = {
   description: "Start a web server with auth + workflows fragment routes",
   run: async () => {
     const port = 3000;
+    const { fragment: workflowsFragment, dispatcher: workflowsDispatcher } =
+      createWorkflowsFragmentServer(adapter);
     const authHandler = toNodeHandler(fragment.handler);
     const workflowsHandler = toNodeHandler(workflowsFragment.handler);
 

@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   FileBraces,
   Code,
+  Workflow,
 } from "lucide-react";
 
 /**
@@ -35,5 +36,6 @@ export const iconComponents = {
   ShieldCheck,
   FileBraces,
   Code,
+  Workflow,
   CircleQuestionMark: CircleHelp, // Note: CircleQuestionMark -> CircleHelp in lucide-react
 } as const;
