@@ -58,6 +58,45 @@ const weirdNamesSchema = schema((s) => {
       .addColumn("display name", column("string").nullable())
       .createIndex("user-id-index", ["user-id"]);
   });
+
+  it("should generate stable ordering for internal models and namespaces", () => {
+    const alphaSchema = schema((s) => {
+      return s
+        .addTable("zeta", (t) => t.addColumn("id", idColumn()))
+        .addTable("alpha", (t) => t.addColumn("id", idColumn()));
+    });
+
+    const bravoSchema = schema((s) => {
+      return s.addTable("bravo", (t) => t.addColumn("id", idColumn()));
+    });
+
+    const generated = generateSchema(
+      [
+        { namespace: "bravo", schema: bravoSchema },
+        { namespace: "", schema: internalSchema },
+        { namespace: "alpha", schema: alphaSchema },
+      ],
+      "sqlite",
+      { sqliteProfile: "prisma" },
+    );
+
+    const settingsIndex = generated.indexOf("model FragnoDbSettings");
+    const hooksIndex = generated.indexOf("model FragnoHooks");
+    const alphaIndex = generated.indexOf("model Alpha_alpha");
+    const zetaIndex = generated.indexOf("model Zeta_alpha");
+    const bravoIndex = generated.indexOf("model Bravo_bravo");
+
+    expect(settingsIndex).toBeGreaterThanOrEqual(0);
+    expect(hooksIndex).toBeGreaterThanOrEqual(0);
+    expect(alphaIndex).toBeGreaterThanOrEqual(0);
+    expect(zetaIndex).toBeGreaterThanOrEqual(0);
+    expect(bravoIndex).toBeGreaterThanOrEqual(0);
+
+    expect(settingsIndex).toBeLessThan(hooksIndex);
+    expect(hooksIndex).toBeLessThan(alphaIndex);
+    expect(alphaIndex).toBeLessThan(zetaIndex);
+    expect(zetaIndex).toBeLessThan(bravoIndex);
+  });
 });
 
 describe("generateSchema (Prisma)", () => {
