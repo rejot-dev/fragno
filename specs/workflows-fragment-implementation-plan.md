@@ -171,6 +171,118 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+11. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+12. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+13. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+14. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+15. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+16. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+17. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+18. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+19. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+20. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+21. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+22. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+23. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+24. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+25. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+26. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+27. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+28. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+29. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+30. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+31. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+32. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+33. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+34. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+35. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+36. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+37. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+38. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/corpus; pnpm lint; pnpm types:check)
 
 ## Phase 9 — Management surface completeness (CLI-ready)
 
@@ -281,3 +393,417 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
         --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+14. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+15. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+16. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+17. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+18. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+19. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+20. [x] Re-verified: 2026-01-18 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+21. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+22. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+23. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+24. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+25. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+26. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+27. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+28. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+29. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+30. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+31. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+32. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+33. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+34. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+35. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+36. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+37. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+38. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+39. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+40. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+41. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+42. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+43. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+44. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+45. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+46. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+47. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+48. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+49. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+50. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+51. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+52. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+53. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+54. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+55. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+56. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+57. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+58. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+59. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+60. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+61. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+62. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+63. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+64. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+65. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
+66. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+67. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+68. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+69. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+70. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+71. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+72. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+73. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+74. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+75. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
+76. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
+77. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+78. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+79. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+80. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+81. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+82. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+83. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+84. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+85. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+86. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+87. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+88. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+89. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+90. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+91. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+92. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+93. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+94. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+95. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+96. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+97. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+98. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+99. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+100. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+101. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+102. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+103. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+104. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+         --filter=@fragno-dev/db --filter=@fragno-dev/corpus; pnpm lint; pnpm types:check)
+105. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+106. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+107. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+108. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+109. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+110. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+111. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+112. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+113. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+114. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+115. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+116. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+117. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+118. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+119. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+120. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+121. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+122. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+123. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+124. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+125. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+126. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+127. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+128. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
+129. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+         lint; pnpm types:check)
