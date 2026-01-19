@@ -1343,6 +1343,58 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.7)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/fragment-ai:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.0
+      solid-js:
+        specifier: '>=1.0.0'
+        version: 1.9.10
+      svelte:
+        specifier: '>=4.0.0'
+        version: 5.45.2
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vue:
+        specifier: '>=3.0.0'
+        version: 3.5.25(typescript@5.9.3)
+    devDependencies:
+      '@fragno-dev/cli':
+        specifier: workspace:*
+        version: link:../../apps/fragno-cli
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../fragno-test
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../unplugin-fragno
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^22
+        version: 22.19.1
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      tsdown:
+        specifier: ^0.11.9
+        version: 0.11.13(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.0.11)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/fragment-mailing-list:
     dependencies:
       '@fragno-dev/core':

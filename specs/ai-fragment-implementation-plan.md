@@ -58,38 +58,38 @@ Deliverables:
 
 ## Phase 1 — Package skeleton + DB schema (2–4 days)
 
-1. [ ] Create new workspace package:
-   - [ ] `packages/fragment-ai` (name: `@fragno-dev/fragment-ai`)
+1. [x] Create new workspace package:
+   - [x] `packages/fragment-ai` (name: `@fragno-dev/fragment-ai`)
 2. [ ] Add dependencies:
-   - [ ] `@fragno-dev/core`, `@fragno-dev/db`
+   - [x] `@fragno-dev/core`, `@fragno-dev/db`
    - [ ] `openai` (Responses API + webhook verification)
    - [ ] (optional, v0.2+): `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`
-3. [ ] Implement schema in `packages/fragment-ai/src/schema.ts`:
-   - [ ] `ai_thread`
-   - [ ] `ai_message`
-   - [ ] `ai_run` (includes `executionMode`, `attempt/maxAttempts/nextAttemptAt`,
+3. [x] Implement schema in `packages/fragment-ai/src/schema.ts`:
+   - [x] `ai_thread`
+   - [x] `ai_message`
+   - [x] `ai_run` (includes `executionMode`, `attempt/maxAttempts/nextAttemptAt`,
          `openaiResponseId`)
-   - [ ] `ai_run_event` (coarse timeline; deltas optional)
-   - [ ] `ai_artifact` (deep research structured artifacts)
-   - [ ] `ai_openai_webhook_event` (idempotency + audit)
+   - [x] `ai_run_event` (coarse timeline; deltas optional)
+   - [x] `ai_artifact` (deep research structured artifacts)
+   - [x] `ai_openai_webhook_event` (idempotency + audit)
    - [ ] (optional stub for v0.2+): `ai_tool_call`
 4. [ ] Implement services in `packages/fragment-ai/src/services/*`:
-   - [ ] `threadsService` (CRUD; includes per-thread `openaiToolConfig`)
-   - [ ] `messagesService` (append + list by `threadId`)
-   - [ ] `runsService` (create/cancel/get; selects input message; snapshots config)
-   - [ ] `artifactsService` (list/get by runId/artifactId)
-   - [ ] `webhooksService` (persist deliveries; idempotency by `openaiEventId`)
+   - [x] `threadsService` (CRUD; includes per-thread `openaiToolConfig`)
+   - [x] `messagesService` (append + list by `threadId`)
+   - [x] `runsService` (create/cancel/get; selects input message; snapshots config)
+   - [x] `artifactsService` (list/get by runId/artifactId)
+   - [x] `webhooksService` (persist deliveries; idempotency by `openaiEventId`)
    - [ ] `runnerRepo` helpers:
      - [ ] claim next runnable `ai_run` rows (queued + due retries)
      - [ ] claim next unprocessed webhook events
 5. [ ] Implement fragment definition:
-   - [ ] `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
+   - [x] `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
    - [ ] `withDatabase(aiSchema)` and `provideHooks` for `dispatcher.wake` notifications
 
 Validation:
 
-- [ ] Add basic service-level tests for create/list of threads/messages/runs
-- [ ] Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
+- [x] Add basic service-level tests for create/list of threads/messages/runs
+- [x] Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
 
 ## Phase 2 — HTTP routes + typed clients (2–5 days)
 
