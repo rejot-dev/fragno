@@ -30,12 +30,12 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/marked-terminal": "^6.1.1",
-    "@types/node": "^22",
-    "better-sqlite3": "^12.5.0",
+    "@types/node": "^22.19.7",
+    "better-sqlite3": "^12.6.2",
     "drizzle-orm": "^0.44.7",
-    "kysely": "^0.28.0",
+    "kysely": "^0.28.10",
     "kysely-pglite": "^0.6.1",
-    "zod": "^4.0.5"
+    "zod": "^4.3.5"
   },
   "repository": {
     "type": "git",

@@ -63,7 +63,7 @@
   "type": "module",
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
-    "zod": "^4.0.5"
+    "zod": "^4.3.5"
   },
   "peerDependencies": {
     "typescript": "^5.9.3",
@@ -73,9 +73,9 @@
     "solid-js": ">=1.0.0"
   },
   "devDependencies": {
-    "@fragno-private/typescript-config": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
-    "@types/node": "^22"
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22.19.7"
   },
   "repository": {
     "type": "git",

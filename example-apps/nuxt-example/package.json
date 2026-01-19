@@ -11,13 +11,13 @@
     "types:check": "nuxt typecheck"
   },
   "dependencies": {
-    "nuxt": "^4.0.3",
-    "vue": "^3.5.18",
-    "vue-router": "^4.5.1",
-    "@fragno-dev/example-fragment": "workspace:*"
+    "@fragno-dev/example-fragment": "workspace:*",
+    "nuxt": "^4.2.2",
+    "vue": "^3.5.27",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
-    "vue-tsc": "^3.0.4"
+    "vue-tsc": "^3.2.2"
   }
 }

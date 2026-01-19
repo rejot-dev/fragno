@@ -70,20 +70,20 @@
   "type": "module",
   "private": false,
   "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "@cfworker/json-schema": "^4.1.1",
     "@jsonforms/core": "^3.7.0",
-    "zod": "^4.0.5"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/node": "^22",
+    "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "tsdown": "^0.11.9",
+    "tsdown": "^0.11.13",
     "vitest": "^3.2.4"
   },
   "peerDependencies": {

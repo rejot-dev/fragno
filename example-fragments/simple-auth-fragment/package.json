@@ -74,14 +74,14 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "zod": "^4.1.12"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
-    "@types/node": "^22.18.13",
-    "kysely": "^0.28.8",
+    "@types/node": "^22.19.7",
+    "kysely": "^0.28.10",
     "tsdown": "^0.11.13",
     "vitest": "^3.2.4"
   },

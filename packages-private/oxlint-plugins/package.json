@@ -12,6 +12,6 @@
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@types/eslint": "^9.6.1",
-    "@types/node": "^22"
+    "@types/node": "^22.19.7"
   }
 }

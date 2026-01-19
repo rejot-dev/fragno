@@ -70,17 +70,17 @@
   "type": "module",
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
-    "stripe": "^19.1.0",
-    "zod": "^4.0.5"
+    "stripe": "^19.3.1",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@fragno-dev/db": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@fragno-dev/db": "workspace:*",
-    "@types/node": "^20",
+    "@types/node": "^20.19.30",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "tsdown": "^0.11.9",
+    "tsdown": "^0.11.13",
     "vitest": "^3.2.4"
   },
   "private": false,
