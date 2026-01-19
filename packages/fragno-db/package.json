@@ -102,22 +102,22 @@
     "test:watch": "vitest --watch"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.10",
+    "@electric-sql/pglite": "^0.3.15",
     "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@libsql/client": "^0.15.15",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22",
+    "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "better-sqlite3": "^12.5.0",
-    "drizzle-kit": "^0.31.5",
-    "drizzle-orm": "^0.44.6",
+    "better-sqlite3": "^12.6.2",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
-    "mysql2": "^3.11.5",
+    "mysql2": "^3.16.1",
     "sqlocal": "^0.15.2",
     "vitest": "^3.2.4",
-    "zod": "^4.1.12"
+    "zod": "^4.3.5"
   },
   "repository": {
     "type": "git",
@@ -128,7 +128,7 @@
   "license": "MIT",
   "dependencies": {
     "@paralleldrive/cuid2": "^2.3.1",
-    "kysely": "^0.28.7"
+    "kysely": "^0.28.10"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.44.6"

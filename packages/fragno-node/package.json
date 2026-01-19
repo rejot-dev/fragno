@@ -24,15 +24,15 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/node": "^22",
-    "@types/express": "^5.0.3",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "express": "^5.1.0",
+    "express": "^5.2.1",
     "vitest": "^3.2.4",
-    "zod": "^4.0.5"
+    "zod": "^4.3.5"
   },
   "dependencies": {
-    "@remix-run/node-fetch-server": "^0.8.0"
+    "@remix-run/node-fetch-server": "^0.8.1"
   },
   "main": "./dist/fragno-node.js",
   "module": "./dist/fragno-node.js",

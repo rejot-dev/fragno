@@ -20,8 +20,8 @@
     "test:watch": "vitest --watch"
   },
   "dependencies": {
-    "@standard-schema/spec": "^1.0.0",
-    "kysely": "^0.28.7",
+    "@standard-schema/spec": "^1.1.0",
+    "kysely": "^0.28.10",
     "sqlocal": "^0.15.2"
   },
   "peerDependencies": {
@@ -47,19 +47,19 @@
     }
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.11",
+    "@electric-sql/pglite": "^0.3.15",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@libsql/client": "^0.14.0",
-    "@types/node": "^22",
+    "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "drizzle-kit": "^0.31.7",
+    "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
     "vitest": "^3.2.4",
-    "zod": "^4.1.12"
+    "zod": "^4.3.5"
   },
   "repository": {
     "type": "git",
