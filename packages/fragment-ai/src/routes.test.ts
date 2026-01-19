@@ -435,4 +435,50 @@ describe("AI Fragment Routes", () => {
     const events = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
     expect(events).toHaveLength(0);
   });
+
+  test("runner tick route should be disabled by default", async () => {
+    const request = new Request("http://localhost/api/ai/_runner/tick", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    const response = await fragment.handler(request);
+    expect(response.status).toBe(404);
+  });
+
+  test("runner tick route should call runner when enabled", async () => {
+    const tick = vi.fn().mockResolvedValue({
+      processedRuns: 2,
+      processedWebhookEvents: 1,
+    });
+
+    const { fragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({
+            defaultModel: { id: "gpt-test" },
+            apiKey: "test-key",
+            enableRunnerTick: true,
+            runner: { tick },
+          })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    const response = await fragments.ai.fragment.callRoute("POST", "/_runner/tick", {
+      body: { maxRuns: 3, maxWebhookEvents: 2 },
+    });
+
+    expect(response.type).toBe("json");
+    if (response.type === "json") {
+      expect(response.data).toEqual({ processedRuns: 2, processedWebhookEvents: 1 });
+    }
+
+    expect(tick).toHaveBeenCalledWith({ maxRuns: 3, maxWebhookEvents: 2 });
+  });
 });

@@ -29,6 +29,16 @@ export type AiDispatcher = {
   wake: (payload: AiWakeEvent) => Promise<void> | void;
 };
 
+export type AiRunnerTickOptions = {
+  maxRuns?: number;
+  maxWebhookEvents?: number;
+};
+
+export type AiRunnerTickResult = {
+  processedRuns: number;
+  processedWebhookEvents: number;
+};
+
 export interface AiFragmentConfig {
   apiKey?: string;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
@@ -50,6 +60,9 @@ export interface AiFragmentConfig {
   dispatcher?: AiDispatcher;
   runner?: {
     maxWorkPerTick?: number;
+    tick?: (
+      options: AiRunnerTickOptions,
+    ) => Promise<AiRunnerTickResult | void> | AiRunnerTickResult | void;
   };
   retries?: {
     maxAttempts?: number;

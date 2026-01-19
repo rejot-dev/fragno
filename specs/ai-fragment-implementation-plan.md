@@ -116,9 +116,9 @@ Validation:
      - [x] `GET /ai/artifacts/:artifactId`
    - [x] Webhooks:
      - [x] `POST /ai/webhooks/openai`
-   - [ ] Runner:
-     - [ ] `POST /ai/_runner/tick`
-     - [ ] only mount when `enableRunnerTick === true` (default false)
+   - [x] Runner:
+     - [x] `POST /ai/_runner/tick`
+     - [x] only mount when `enableRunnerTick === true` (default false)
 2. [x] Define zod schemas for each route input/output and the NDJSON stream event union.
 3. [ ] Add typed client bindings:
    - [x] `packages/fragment-ai/src/client/*` per Fragno conventions

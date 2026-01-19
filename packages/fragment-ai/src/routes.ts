@@ -117,6 +117,13 @@ const createRunSchema = z.object({
   systemPrompt: z.string().optional().nullable(),
 });
 
+const runnerTickSchema = z
+  .object({
+    maxRuns: z.coerce.number().int().positive().optional(),
+    maxWebhookEvents: z.coerce.number().int().positive().optional(),
+  })
+  .default({});
+
 const toolCallStatusSchema = z.enum([
   "in_progress",
   "searching",
@@ -317,7 +324,7 @@ const parseWebhookEvent = (payload: unknown) => {
 
 export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
   ({ defineRoute, services, config }) => {
-    return [
+    const baseRoutes = [
       defineRoute({
         method: "POST",
         path: "/threads",
@@ -922,6 +929,42 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
           return json({ ok: true });
         },
       }),
-    ];
+    ] as const;
+
+    if (!config.enableRunnerTick) {
+      return baseRoutes;
+    }
+
+    const runnerTickRoute = defineRoute({
+      method: "POST",
+      path: "/_runner/tick",
+      inputSchema: runnerTickSchema,
+      outputSchema: z.object({
+        processedRuns: z.number(),
+        processedWebhookEvents: z.number(),
+      }),
+      errorCodes: ["RUNNER_NOT_AVAILABLE"],
+      handler: async function ({ input }, { json, error }) {
+        const payload = await input.valid();
+
+        if (!config.runner?.tick) {
+          return error({ message: "Runner not available", code: "RUNNER_NOT_AVAILABLE" }, 503);
+        }
+
+        const result = await config.runner.tick({
+          maxRuns: payload.maxRuns,
+          maxWebhookEvents: payload.maxWebhookEvents,
+        });
+
+        const processedRuns =
+          result && typeof result === "object" ? (result.processedRuns ?? 0) : 0;
+        const processedWebhookEvents =
+          result && typeof result === "object" ? (result.processedWebhookEvents ?? 0) : 0;
+
+        return json({ processedRuns, processedWebhookEvents });
+      },
+    });
+
+    return [...baseRoutes, runnerTickRoute] as const;
   },
 );
