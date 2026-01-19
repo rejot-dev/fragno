@@ -3,7 +3,7 @@ import { decodeCursor } from "@fragno-dev/db";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import OpenAI from "openai";
 import { z } from "zod";
-import { aiFragmentDefinition } from "./definition";
+import { aiFragmentDefinition, type AiRunLiveEvent } from "./definition";
 import { aiSchema } from "./schema";
 
 type ErrorResponder<Code extends string = string> = (
@@ -611,9 +611,21 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             let finalStatus: "succeeded" | "failed" = "succeeded";
             let errorMessage: string | null = null;
             let textBuffer = "";
+            let canWrite = true;
 
-            await stream.write({ type: "run.meta", runId: run.id, threadId: run.threadId });
-            await stream.write({ type: "run.status", runId: run.id, status: "running" });
+            const safeWrite = async (payload: AiRunLiveEvent) => {
+              if (!canWrite) {
+                return;
+              }
+              try {
+                await stream.write(payload);
+              } catch {
+                canWrite = false;
+              }
+            };
+
+            await safeWrite({ type: "run.meta", runId: run.id, threadId: run.threadId });
+            await safeWrite({ type: "run.status", runId: run.id, status: "running" });
 
             try {
               const responseStream = await openaiClient.responses.create({
@@ -625,14 +637,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               for await (const event of responseStream) {
                 if (event.type === "response.output_text.delta") {
                   textBuffer += event.delta;
-                  await stream.write({
+                  await safeWrite({
                     type: "output.text.delta",
                     runId: run.id,
                     delta: event.delta,
                   });
                 } else if (event.type === "response.output_text.done") {
                   textBuffer = event.text;
-                  await stream.write({
+                  await safeWrite({
                     type: "output.text.done",
                     runId: run.id,
                     text: event.text,
@@ -701,16 +713,12 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               }
             }
 
-            try {
-              await stream.write({
-                type: "run.final",
-                runId: run.id,
-                status: finalStatus,
-                run: { ...finalRun, status: finalStatus, error: errorMessage },
-              });
-            } catch {
-              // Ignore stream errors if the client disconnected.
-            }
+            await safeWrite({
+              type: "run.final",
+              runId: run.id,
+              status: finalStatus,
+              run: { ...finalRun, status: finalStatus, error: errorMessage },
+            });
           });
         },
       }),

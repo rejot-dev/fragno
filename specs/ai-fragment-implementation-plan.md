@@ -30,7 +30,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] CLI covers full non-webhook HTTP surface (threads/messages/runs/events/artifacts + stream)
 3. [x] Spike: NDJSON streaming route using OpenAI Responses (copy the `jsonStream` pattern from
        `example-fragments/chatno/src/server/chatno-api.ts`)
-   - [ ] verify disconnect behavior: client cancel should not crash the handler
+   - [x] verify disconnect behavior: client cancel should not crash the handler
 4. [x] Spike: webhook verification using `openai.webhooks.unwrap(...)` with a single configured
        secret
    - [x] confirm runtime has `globalThis.crypto` (Node >= 22)
