@@ -1,0 +1,51 @@
+---
+title: "Zod's fromJSONSchema"
+description: "Evaluating Zod's new method for JSONSchema validation"
+date: "2026-01-20"
+author: "Jan Schutte"
+image: "zod-logo.webp"
+---
+
+[Zod 4.3](https://github.com/colinhacks/zod/releases/tag/v4.3.0) introduced `fromJSONSchema()`. We
+were using `@cfworker/json-schema` in [Fragno Forms](/forms) to validate form submissions on the
+backend. Since we already use Zod for request schemas, switching to Zod for JSON Schema validation
+would let us consolidate dependencies.
+
+## Why not use Ajv?
+
+[Ajv](https://ajv.js.org/) is the go-to JSON Schema validator, but it uses `new Function()` under
+the hood to generate optimized validation code. Cloudflare Workers (the workerd runtime) doesn't
+allow dynamic code evaluation, which is a problem since this website runs on Cloudflare Workers.
+
+`@cfworker/json-schema` exists specifically for this constraint. It's a pure runtime interpreter
+that works in restricted environments. But if you're already using Zod, having it handle JSON Schema
+validation means one fewer dependency.
+
+## Benchmark
+
+I ran a quick benchmark against the
+[JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite) (draft7). In
+serverless environments, validators don't persist across requests, so caching compiled schemas isn't
+practical, we need to measure combined compile + validate time.
+
+<figure>
+| Library                 | Version | Compile  | Validate  | Total    |
+| ----------------------- | ------- | -------- | --------- | -------- |
+| `@cfworker/json-schema` | 4.1.1   | 0.0003ms | 0.0007ms  | ~0.001ms |
+| `zod`                   | 4.3.5   | 0.011ms  | 0.0006ms  | ~0.012ms |
+| `ajv`                   | 8.17.1  | 2.0ms    | 0.00009ms | ~2.0ms   |
+
+<figcaption>Time to compile/validate one schema, averaged over 88 schema files, 1000 iterations, Node.js runtime, AMD Ryzen 5 7640U.</figcaption>
+</figure>
+
+Ajv is slowest overall because code generation is expensive, but once compiled validation is
+extremely fast. Zod is slower than `@cfworker/json-schema` but still fast enough for most use cases.
+
+## Dependencies
+
+Additionally, `@jsonforms/core` has an Ajv dependency for frontend validation. Removing
+`@cfworker/json-schema` means many users go from three validation libraries to two. Ideally we'd use
+just one, but JSONForms doesn't allow swapping out its validation library.
+
+We dropped `@cfworker/json-schema` from [Fragno Forms](/forms). Zod was already there for validating
+backend route inputs, and performance is more than acceptable for this use case.
