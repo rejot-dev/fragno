@@ -279,7 +279,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
     return [
       defineRoute({
         method: "GET",
-        path: "/workflows",
+        path: "/",
         outputSchema: z.object({
           workflows: z.array(z.object({ name: z.string() })),
         }),
@@ -295,13 +295,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "GET",
-        path: "/workflows/:workflowName/instances",
+        path: "/:workflowName/instances",
         queryParameters: ["status", "pageSize", "cursor"],
         outputSchema: z.object({
           instances: z.array(
             z.object({
               id: z.string(),
               details: instanceStatusOutputSchema,
+              createdAt: z.date(),
             }),
           ),
           cursor: z.string().optional(),
@@ -349,7 +350,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances",
+        path: "/:workflowName/instances",
         inputSchema: createInstanceSchema,
         outputSchema: z.object({
           id: z.string(),
@@ -404,7 +405,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances/batch",
+        path: "/:workflowName/instances/batch",
         inputSchema: createBatchSchema,
         outputSchema: z.object({
           instances: z.array(
@@ -466,7 +467,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "GET",
-        path: "/workflows/:workflowName/instances/:instanceId",
+        path: "/:workflowName/instances/:instanceId",
         outputSchema: z.object({
           id: z.string(),
           details: instanceStatusOutputSchema,
@@ -526,7 +527,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "GET",
-        path: "/workflows/:workflowName/instances/:instanceId/history",
+        path: "/:workflowName/instances/:instanceId/history",
         queryParameters: [
           "runNumber",
           "pageSize",
@@ -638,7 +639,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances/:instanceId/pause",
+        path: "/:workflowName/instances/:instanceId/pause",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -682,7 +683,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances/:instanceId/resume",
+        path: "/:workflowName/instances/:instanceId/resume",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -726,7 +727,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances/:instanceId/terminate",
+        path: "/:workflowName/instances/:instanceId/terminate",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -770,7 +771,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances/:instanceId/restart",
+        path: "/:workflowName/instances/:instanceId/restart",
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -814,7 +815,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/workflows/:workflowName/instances/:instanceId/events",
+        path: "/:workflowName/instances/:instanceId/events",
         inputSchema: sendEventSchema,
         outputSchema: z.object({
           status: instanceStatusOutputSchema,

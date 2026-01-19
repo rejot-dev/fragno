@@ -568,6 +568,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               instances: instances.items.map((instance) => ({
                 id: instance.instanceId,
                 details: buildInstanceStatus(instance),
+                createdAt: instance.createdAt,
               })),
               cursor: instances.cursor,
               hasNextPage: instances.hasNextPage,
