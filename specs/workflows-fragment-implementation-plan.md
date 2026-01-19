@@ -5,13 +5,13 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
 ## Phase 0 — Grounding + references
 
 1. Pull Cloudflare API surface from `https://developers.cloudflare.com/workflows/llms-full.txt`:
-   - `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `Workflow`
-   - Instance management methods (`create/get/createBatch`,
-     `pause/resume/restart/terminate/sendEvent`)
+   - [x] `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `Workflow`
+   - [x] Instance management methods (`create/get/createBatch`,
+         `pause/resume/restart/terminate/sendEvent`)
 2. Reconfirm Fragno DB primitives and durable hooks patterns:
-   - `apps/docs/content/docs/fragno/for-library-authors/database-integration/overview.mdx`
-   - `apps/docs/content/docs/fragno/for-library-authors/database-integration/durable-hooks.mdx`
-   - `packages/fragno-db/src/db-fragment-definition-builder.ts` (hook wiring)
+   - [x] `apps/docs/content/docs/fragno/for-library-authors/database-integration/overview.mdx`
+   - [x] `apps/docs/content/docs/fragno/for-library-authors/database-integration/durable-hooks.mdx`
+   - [x] `packages/fragno-db/src/db-fragment-definition-builder.ts` (hook wiring)
 
 ## Phase 1 — New package(s) + public API scaffolding
 
