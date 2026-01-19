@@ -213,7 +213,7 @@ export async function createWorkflowsTestHarness(
     instanceOptions?: { id?: string; params?: unknown },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute("POST", "/workflows/:workflowName/instances", {
+    const response = await fragment.callRoute("POST", "/:workflowName/instances", {
       pathParams: { workflowName },
       body: instanceOptions ?? {},
     });
@@ -226,7 +226,7 @@ export async function createWorkflowsTestHarness(
     instances: { id: string; params?: unknown }[],
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute("POST", "/workflows/:workflowName/instances/batch", {
+    const response = await fragment.callRoute("POST", "/:workflowName/instances/batch", {
       pathParams: { workflowName },
       body: { instances },
     });
@@ -244,7 +244,7 @@ export async function createWorkflowsTestHarness(
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
     const response = await fragment.callRoute(
       "POST",
-      "/workflows/:workflowName/instances/:instanceId/events",
+      "/:workflowName/instances/:instanceId/events",
       {
         pathParams: { workflowName, instanceId },
         body: eventOptions,
@@ -259,13 +259,9 @@ export async function createWorkflowsTestHarness(
     instanceId: string,
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
-    const response = await fragment.callRoute(
-      "GET",
-      "/workflows/:workflowName/instances/:instanceId",
-      {
-        pathParams: { workflowName, instanceId },
-      },
-    );
+    const response = await fragment.callRoute("GET", "/:workflowName/instances/:instanceId", {
+      pathParams: { workflowName, instanceId },
+    });
     const data = assertJsonResponse<{ details: InstanceStatus }>(response);
     return data.details;
   };
@@ -316,7 +312,7 @@ export async function createWorkflowsTestHarness(
     }
     const response = await fragment.callRoute(
       "GET",
-      "/workflows/:workflowName/instances/:instanceId/history",
+      "/:workflowName/instances/:instanceId/history",
       {
         pathParams: { workflowName, instanceId },
         query,

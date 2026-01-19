@@ -39,13 +39,13 @@ describe("Workflows Fragment", () => {
 
   type Setup = Awaited<ReturnType<typeof setup>>;
 
-  let fragments: Setup["fragments"];
+  let _fragments: Setup["fragments"];
   let testContext: Setup["testContext"];
   let fragment: Setup["fragment"];
   let db: Setup["db"];
 
   beforeAll(async () => {
-    ({ fragments, testContext, fragment, db } = await setup());
+    ({ fragments: _fragments, testContext, fragment, db } = await setup());
   });
 
   beforeEach(async () => {
@@ -249,8 +249,8 @@ describe("Workflows Fragment", () => {
   });
 
   describe("Routes", () => {
-    test("GET /workflows should list registered workflows", async () => {
-      const response = await fragment.callRoute("GET", "/workflows");
+    test("GET / should list registered workflows", async () => {
+      const response = await fragment.callRoute("GET", "/");
       assert(response.type === "json");
 
       expect(response.data).toMatchObject({
@@ -258,8 +258,8 @@ describe("Workflows Fragment", () => {
       });
     });
 
-    test("POST /workflows/:workflowName/instances should create a workflow instance", async () => {
-      const response = await fragment.callRoute("POST", "/workflows/:workflowName/instances", {
+    test("POST /:workflowName/instances should create a workflow instance", async () => {
+      const response = await fragment.callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
         body: { id: "route-1", params: { source: "route-test" } },
       });
@@ -289,7 +289,7 @@ describe("Workflows Fragment", () => {
       expect(response.data).toEqual({ processed: 2 });
     });
 
-    test("GET /workflows/:workflowName/instances/:instanceId/history should return history", async () => {
+    test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
       await db.create("workflow_instance", {
         workflowName: "demo-workflow",
         instanceId: "history-route",
@@ -336,7 +336,7 @@ describe("Workflows Fragment", () => {
 
       const response = await fragment.callRoute(
         "GET",
-        "/workflows/:workflowName/instances/:instanceId/history",
+        "/:workflowName/instances/:instanceId/history",
         {
           pathParams: { workflowName: "demo-workflow", instanceId: "history-route" },
         },
@@ -385,13 +385,18 @@ describe("Workflows Fragment", () => {
 
     type AuthSetup = Awaited<ReturnType<typeof setupAuth>>;
 
-    let authFragments: AuthSetup["authFragments"];
+    let _authFragments: AuthSetup["authFragments"];
     let authTestContext: AuthSetup["authTestContext"];
     let authFragment: AuthSetup["authFragment"];
     let authDb: AuthSetup["authDb"];
 
     beforeAll(async () => {
-      ({ authFragments, authTestContext, authFragment, authDb } = await setupAuth());
+      ({
+        authFragments: _authFragments,
+        authTestContext,
+        authFragment,
+        authDb,
+      } = await setupAuth());
     });
 
     beforeEach(async () => {
@@ -409,7 +414,7 @@ describe("Workflows Fragment", () => {
         Response.json({ message: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 }),
       );
 
-      const response = await authFragment.callRoute("GET", "/workflows");
+      const response = await authFragment.callRoute("GET", "/");
       assert(response.type === "error");
       expect(response.status).toBe(401);
       expect(response.error.code).toBe("UNAUTHORIZED");
@@ -420,7 +425,7 @@ describe("Workflows Fragment", () => {
         Response.json({ message: "Forbidden", code: "FORBIDDEN" }, { status: 403 }),
       );
 
-      const response = await authFragment.callRoute("POST", "/workflows/:workflowName/instances", {
+      const response = await authFragment.callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
         body: { id: "blocked-create" },
       });
@@ -438,7 +443,7 @@ describe("Workflows Fragment", () => {
 
       const response = await authFragment.callRoute(
         "POST",
-        "/workflows/:workflowName/instances/:instanceId/pause",
+        "/:workflowName/instances/:instanceId/pause",
         {
           pathParams: { workflowName: "demo-workflow", instanceId: "blocked-manage" },
         },
@@ -454,7 +459,7 @@ describe("Workflows Fragment", () => {
 
       const response = await authFragment.callRoute(
         "POST",
-        "/workflows/:workflowName/instances/:instanceId/events",
+        "/:workflowName/instances/:instanceId/events",
         {
           pathParams: { workflowName: "demo-workflow", instanceId: "blocked-event" },
           body: { type: "approval" },
