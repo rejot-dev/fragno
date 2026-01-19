@@ -399,22 +399,20 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
         --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
-40. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+40. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+41. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
-41. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+42. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
         --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
-42. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
 43. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-44. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
-        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
-        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
-        lint; pnpm types:check)
+44. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
 45. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
@@ -423,12 +421,12 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
-47. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-48. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+47. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+48. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
 49. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
@@ -445,12 +443,12 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
-53. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-54. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+53. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+54. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
 55. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
@@ -469,46 +467,46 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         lint; pnpm types:check)
 59. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
-        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
-        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
 60. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
-        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
-        lint; pnpm types:check)
-61. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-62. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+61. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+62. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
 63. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
+64. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
         --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
-64. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
-        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
 65. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
+66. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
-66. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+67. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-67. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
-        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
-        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
-        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
 68. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
-        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
-        lint; pnpm types:check)
-69. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-70. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-71. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
+        --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+69. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+70. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+71. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
 72. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
@@ -518,13 +516,13 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
 74. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
-        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
-75. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
-        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
-76. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+75. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
+76. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/test; pnpm lint; pnpm types:check)
 77. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
@@ -533,11 +531,15 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
-79. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
-        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+79. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
 80. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
-81. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+81. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+82. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
