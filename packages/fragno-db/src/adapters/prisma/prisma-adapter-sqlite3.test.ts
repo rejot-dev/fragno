@@ -325,6 +325,31 @@ describe("PrismaAdapter SQLite", () => {
     expect(emptyPage.cursor).toBeUndefined();
   });
 
+  it("should support findWithCursor() in Unit of Work", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const prefix = "Prisma SQLite UOW Cursor";
+
+    for (let i = 1; i <= 6; i++) {
+      await queryEngine.create("users", {
+        name: `${prefix} ${i}`,
+        age: 40 + i,
+      });
+    }
+
+    const uow = queryEngine.createUnitOfWork("cursor-test").findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(5),
+    );
+
+    const [result] = await uow.executeRetrieve();
+
+    expect(result.items).toHaveLength(5);
+    expect(typeof result.hasNextPage).toBe("boolean");
+    expect(result.cursor).toBeInstanceOf(Cursor);
+  });
+
   it("should support forSchema for multi-schema queries", async () => {
     const queryEngine1 = adapter.createQueryEngine(testSchema, "namespace");
     const queryEngine2 = adapter.createQueryEngine(schema2, "namespace2");
