@@ -1,6 +1,6 @@
 # PR 204 Comment-Derived Issues
 
-Source: https://github.com/rejot-dev/fragno/pull/204
+Source: [PR #204](https://github.com/rejot-dev/fragno/pull/204)
 
 ## Issues
 

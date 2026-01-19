@@ -76,6 +76,4 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
   return { fragment, dispatcher };
 }
 
-const runtime = createWorkflowsFragmentServer(adapter);
-export const fragment = runtime.fragment;
-export const dispatcher = runtime.dispatcher;
+export const { fragment, dispatcher } = createWorkflowsFragmentServer(adapter);
