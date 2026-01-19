@@ -188,6 +188,10 @@ Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
 types check (`pnpm turbo run types:check`).
 
 Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
+(`pnpm -C packages/fragno-db test -- prisma-adapter`), repository lint (`pnpm lint`), repository
+types check (`pnpm turbo run types:check`).
+
+Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
 (`pnpm -C packages/fragno-db test -- prisma-adapter`).
 
 Revalidated (2026-01-19): Prisma adapter SQLite/PGLite tests
