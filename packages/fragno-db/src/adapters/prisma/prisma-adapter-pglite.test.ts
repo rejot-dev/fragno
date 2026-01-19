@@ -290,6 +290,17 @@ describe("PrismaAdapter PGLite", () => {
     expect(thirdPage.items).toHaveLength(2);
     expect(thirdPage.hasNextPage).toBe(false);
     expect(thirdPage.cursor).toBeUndefined();
+
+    const emptyPage = await queryEngine.findWithCursor("users", (b) =>
+      b
+        .whereIndex("name_idx", (eb) => eb("name", "starts with", "NoMatchPrefix"))
+        .orderByIndex("name_idx", "asc")
+        .pageSize(5),
+    );
+
+    expect(emptyPage.items).toHaveLength(0);
+    expect(emptyPage.hasNextPage).toBe(false);
+    expect(emptyPage.cursor).toBeUndefined();
   });
 
   it("should support findWithCursor() in Unit of Work", async () => {
