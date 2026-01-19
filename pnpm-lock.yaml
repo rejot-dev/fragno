@@ -1366,6 +1366,9 @@ importers:
       vue:
         specifier: '>=3.0.0'
         version: 3.5.25(typescript@5.9.3)
+      zod:
+        specifier: ^4.1.5
+        version: 4.3.5
     devDependencies:
       '@fragno-dev/cli':
         specifier: workspace:*

@@ -1,0 +1,281 @@
+import { beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core";
+import { aiFragmentDefinition } from "./definition";
+import { aiRoutesFactory } from "./routes";
+
+describe("AI Fragment Routes", () => {
+  const setup = async () => {
+    const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({ defaultModel: { id: "gpt-test" } })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    return { fragments, testContext };
+  };
+
+  type Setup = Awaited<ReturnType<typeof setup>>;
+
+  let testContext: Setup["testContext"];
+  let fragment: Setup["fragments"]["ai"]["fragment"];
+  let db: Setup["fragments"]["ai"]["db"];
+
+  beforeAll(async () => {
+    const setupResult = await setup();
+    testContext = setupResult.testContext;
+    fragment = setupResult.fragments.ai.fragment;
+    db = setupResult.fragments.ai.db;
+  });
+
+  beforeEach(async () => {
+    await testContext.resetDatabase();
+  });
+
+  test("threads routes should create and list threads", async () => {
+    const created = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Thread One" },
+    });
+
+    expect(created.type).toBe("json");
+    if (created.type !== "json") {
+      return;
+    }
+
+    const threadId = created.data.id;
+    expect(created.data.defaultModelId).toBe("gpt-test");
+
+    const listed = await fragment.callRoute("GET", "/threads");
+    expect(listed.type).toBe("json");
+    if (listed.type === "json") {
+      expect(listed.data.threads).toHaveLength(1);
+      expect(listed.data.threads[0]?.id).toBe(threadId);
+    }
+
+    const fetched = await fragment.callRoute("GET", "/threads/:threadId", {
+      pathParams: { threadId },
+    });
+    expect(fetched.type).toBe("json");
+    if (fetched.type === "json") {
+      expect(fetched.data.id).toBe(threadId);
+      expect(fetched.data.title).toBe("Thread One");
+    }
+  });
+
+  test("messages routes should append and list messages", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Thread Two" },
+    });
+
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Hello" },
+        text: "Hello",
+      },
+    });
+
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const listed = await fragment.callRoute("GET", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+    });
+    expect(listed.type).toBe("json");
+    if (listed.type === "json") {
+      expect(listed.data.messages).toHaveLength(1);
+      expect(listed.data.messages[0]?.id).toBe(message.data.id);
+    }
+  });
+
+  test("runs routes should create, list, get, and cancel runs", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Thread Three" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Run it" },
+        text: "Run it",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const run = await fragment.callRoute("POST", "/threads/:threadId/runs", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(run.type).toBe("json");
+    if (run.type !== "json") {
+      return;
+    }
+
+    const listed = await fragment.callRoute("GET", "/threads/:threadId/runs", {
+      pathParams: { threadId: thread.data.id },
+    });
+    expect(listed.type).toBe("json");
+    if (listed.type === "json") {
+      expect(listed.data.runs).toHaveLength(1);
+      expect(listed.data.runs[0]?.id).toBe(run.data.id);
+    }
+
+    const fetched = await fragment.callRoute("GET", "/runs/:runId", {
+      pathParams: { runId: run.data.id },
+    });
+    expect(fetched.type).toBe("json");
+    if (fetched.type === "json") {
+      expect(fetched.data.id).toBe(run.data.id);
+      expect(fetched.data.status).toBe(run.data.status);
+    }
+
+    const cancelled = await fragment.callRoute("POST", "/runs/:runId/cancel", {
+      pathParams: { runId: run.data.id },
+    });
+    expect(cancelled.type).toBe("json");
+    if (cancelled.type === "json") {
+      expect(cancelled.data.status).toBe("cancelled");
+    }
+  });
+
+  test("run events route should list persisted run events", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Thread Four" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Run events" },
+        text: "Run events",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const run = await fragment.callRoute("POST", "/threads/:threadId/runs", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(run.type).toBe("json");
+    if (run.type !== "json") {
+      return;
+    }
+
+    await db.create("ai_run_event", {
+      runId: run.data.id,
+      seq: 1,
+      type: "run.meta",
+      payload: { ok: true },
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+
+    await db.create("ai_run_event", {
+      runId: run.data.id,
+      seq: 2,
+      type: "run.final",
+      payload: { ok: true },
+      createdAt: new Date("2024-01-01T00:00:01Z"),
+    });
+
+    const events = await fragment.callRoute("GET", "/runs/:runId/events", {
+      pathParams: { runId: run.data.id },
+    });
+    expect(events.type).toBe("json");
+    if (events.type === "json") {
+      expect(events.data.events).toHaveLength(2);
+      expect(events.data.events[0]?.seq).toBe(1);
+      expect(events.data.events[1]?.seq).toBe(2);
+    }
+  });
+
+  test("artifact routes should list and fetch artifacts", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Thread Five" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Artifacts" },
+        text: "Artifacts",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const run = await fragment.callRoute("POST", "/threads/:threadId/runs", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(run.type).toBe("json");
+    if (run.type !== "json") {
+      return;
+    }
+
+    const now = new Date("2024-01-01T00:00:00Z");
+    const artifactId = await db.create("ai_artifact", {
+      runId: run.data.id,
+      threadId: thread.data.id,
+      type: "deep_research_report",
+      title: "Report",
+      mimeType: "text/markdown",
+      data: { markdown: "Hello" },
+      text: "Hello",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const artifacts = await fragment.callRoute("GET", "/runs/:runId/artifacts", {
+      pathParams: { runId: run.data.id },
+    });
+    expect(artifacts.type).toBe("json");
+    if (artifacts.type === "json") {
+      expect(artifacts.data.artifacts).toHaveLength(1);
+      expect(artifacts.data.artifacts[0]?.id).toBe(artifactId.toString());
+    }
+
+    const artifact = await fragment.callRoute("GET", "/artifacts/:artifactId", {
+      pathParams: { artifactId: artifactId.toString() },
+    });
+    expect(artifact.type).toBe("json");
+    if (artifact.type === "json") {
+      expect(artifact.data.id).toBe(artifactId.toString());
+      expect(artifact.data.title).toBe("Report");
+    }
+  });
+});

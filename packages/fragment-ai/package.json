@@ -73,7 +73,8 @@
   "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/db": "workspace:*"
+    "@fragno-dev/db": "workspace:*",
+    "zod": "^4.1.5"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

@@ -3,6 +3,7 @@ import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { aiFragmentDefinition, type AiThinkingLevel } from "./definition";
+import { aiRoutesFactory } from "./routes";
 
 export type AiModelRef = {
   id: string;
@@ -60,7 +61,7 @@ export interface AiFragmentConfig {
   };
 }
 
-const routes = [] as const;
+const routes = [aiRoutesFactory] as const;
 
 export function createAiFragment(
   config: AiFragmentConfig = {},
@@ -74,17 +75,78 @@ export function createAiFragment(
 }
 
 export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
-  createClientBuilder(aiFragmentDefinition, fragnoConfig, routes);
+  const builder = createClientBuilder(aiFragmentDefinition, fragnoConfig, routes);
 
-  return {};
+  return {
+    useThreads: builder.createHook("/threads"),
+    useThread: builder.createHook("/threads/:threadId"),
+    useMessages: builder.createHook("/threads/:threadId/messages"),
+    useRuns: builder.createHook("/threads/:threadId/runs"),
+    useRun: builder.createHook("/runs/:runId"),
+    useRunEvents: builder.createHook("/runs/:runId/events"),
+    useArtifacts: builder.createHook("/runs/:runId/artifacts"),
+    useArtifact: builder.createHook("/artifacts/:artifactId"),
+    useCreateThread: builder.createMutator("POST", "/threads", (invalidate) => {
+      invalidate("GET", "/threads", { pathParams: undefined });
+    }),
+    useUpdateThread: builder.createMutator("PATCH", "/threads/:threadId", (invalidate, params) => {
+      const { threadId } = params.pathParams;
+      if (!threadId) {
+        return;
+      }
+      invalidate("GET", "/threads/:threadId", { pathParams: { threadId } });
+      invalidate("GET", "/threads", { pathParams: undefined });
+    }),
+    useDeleteThread: builder.createMutator(
+      "DELETE",
+      "/admin/threads/:threadId",
+      (invalidate, params) => {
+        const { threadId } = params.pathParams;
+        if (!threadId) {
+          return;
+        }
+        invalidate("GET", "/threads/:threadId", { pathParams: { threadId } });
+        invalidate("GET", "/threads", { pathParams: undefined });
+      },
+    ),
+    useAppendMessage: builder.createMutator(
+      "POST",
+      "/threads/:threadId/messages",
+      (invalidate, params) => {
+        const { threadId } = params.pathParams;
+        if (!threadId) {
+          return;
+        }
+        invalidate("GET", "/threads/:threadId/messages", { pathParams: { threadId } });
+        invalidate("GET", "/threads", { pathParams: undefined });
+      },
+    ),
+    useCreateRun: builder.createMutator("POST", "/threads/:threadId/runs", (invalidate, params) => {
+      const { threadId } = params.pathParams;
+      if (!threadId) {
+        return;
+      }
+      invalidate("GET", "/threads/:threadId/runs", { pathParams: { threadId } });
+    }),
+    useCancelRun: builder.createMutator("POST", "/runs/:runId/cancel", (invalidate, params) => {
+      const { runId } = params.pathParams;
+      if (!runId) {
+        return;
+      }
+      invalidate("GET", "/runs/:runId", { pathParams: { runId } });
+      invalidate("GET", "/runs/:runId/events", { pathParams: { runId } });
+    }),
+  };
 }
 
 export { aiFragmentDefinition, aiFragmentDefinition as aiDefinition } from "./definition";
+export { aiRoutesFactory } from "./routes";
 export type {
   AiArtifact,
   AiMessage,
   AiRun,
   AiRunExecutionMode,
+  AiRunEvent,
   AiRunStatus,
   AiRunType,
   AiThread,

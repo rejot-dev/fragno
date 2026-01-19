@@ -95,55 +95,55 @@ Validation:
 
 **Goal:** ship a complete API surface before adding execution complexity.
 
-1. [ ] Implement routes in `packages/fragment-ai/src/server/routes.ts` (or repo convention):
-   - [ ] Threads:
-     - [ ] `POST /ai/threads`
-     - [ ] `GET /ai/threads`
-     - [ ] `GET/PATCH /ai/threads/:threadId`
-     - [ ] `DELETE /ai/admin/threads/:threadId` (admin-only; host-protect)
-   - [ ] Messages:
-     - [ ] `POST /ai/threads/:threadId/messages`
-     - [ ] `GET /ai/threads/:threadId/messages`
+1. [x] Implement routes in `packages/fragment-ai/src/server/routes.ts` (or repo convention):
+   - [x] Threads:
+     - [x] `POST /ai/threads`
+     - [x] `GET /ai/threads`
+     - [x] `GET/PATCH /ai/threads/:threadId`
+     - [x] `DELETE /ai/admin/threads/:threadId` (admin-only; host-protect)
+   - [x] Messages:
+     - [x] `POST /ai/threads/:threadId/messages`
+     - [x] `GET /ai/threads/:threadId/messages`
    - [ ] Runs:
-     - [ ] `POST /ai/threads/:threadId/runs` (background by default)
+     - [x] `POST /ai/threads/:threadId/runs` (background by default)
      - [ ] `POST /ai/threads/:threadId/runs:stream` (foreground stream)
-     - [ ] `GET /ai/threads/:threadId/runs`
-     - [ ] `GET /ai/runs/:runId`
-     - [ ] `POST /ai/runs/:runId/cancel`
-     - [ ] `GET /ai/runs/:runId/events` (persisted replay)
-   - [ ] Artifacts:
-     - [ ] `GET /ai/runs/:runId/artifacts`
-     - [ ] `GET /ai/artifacts/:artifactId`
-   - [ ] Webhooks:
-     - [ ] `POST /ai/webhooks/openai`
+     - [x] `GET /ai/threads/:threadId/runs`
+     - [x] `GET /ai/runs/:runId`
+     - [x] `POST /ai/runs/:runId/cancel`
+     - [x] `GET /ai/runs/:runId/events` (persisted replay)
+   - [x] Artifacts:
+     - [x] `GET /ai/runs/:runId/artifacts`
+     - [x] `GET /ai/artifacts/:artifactId`
+   - [x] Webhooks:
+     - [x] `POST /ai/webhooks/openai`
    - [ ] Runner:
      - [ ] `POST /ai/_runner/tick`
      - [ ] only mount when `enableRunnerTick === true` (default false)
 2. [ ] Define zod schemas for each route input/output and the NDJSON stream event union.
 3. [ ] Add typed client bindings:
-   - [ ] `packages/fragment-ai/src/client/*` per Fragno conventions
+   - [x] `packages/fragment-ai/src/client/*` per Fragno conventions
    - [ ] helper for NDJSON consumption (mirror existing Fragno client patterns)
    - [ ] use `createClientBuilder` to expose hooks:
-     - [ ] `useThreads`, `useThread`, `useMessages`, `useRuns`, `useRun`, `useRunEvents`
-     - [ ] `useArtifacts`, `useArtifact`
-     - [ ] `useCreateThread`, `useUpdateThread`, `useDeleteThread`
-     - [ ] `useAppendMessage`, `useCreateRun`, `useCancelRun`
+     - [x] `useThreads`, `useThread`, `useMessages`, `useRuns`, `useRun`, `useRunEvents`
+     - [x] `useArtifacts`, `useArtifact`
+     - [x] `useCreateThread`, `useUpdateThread`, `useDeleteThread`
+     - [x] `useAppendMessage`, `useCreateRun`, `useCancelRun`
      - [ ] `useRunStream` / `startRunStream` (custom NDJSON consumer using `buildUrl` +
            `getFetcher`)
      - [ ] derived stores for stream text/status + debug event buffers via `builder.createStore`
    - [ ] implement invalidation rules per spec:
-     - [ ] `useCreateThread` → invalidate `GET /ai/threads`
-     - [ ] `useUpdateThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
-     - [ ] `useDeleteThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
-     - [ ] `useAppendMessage` → invalidate `GET /ai/threads/:threadId/messages` + `GET /ai/threads`
-     - [ ] `useCreateRun` → invalidate `GET /ai/threads/:threadId/runs`
+     - [x] `useCreateThread` → invalidate `GET /ai/threads`
+     - [x] `useUpdateThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
+     - [x] `useDeleteThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
+     - [x] `useAppendMessage` → invalidate `GET /ai/threads/:threadId/messages` + `GET /ai/threads`
+     - [x] `useCreateRun` → invalidate `GET /ai/threads/:threadId/runs`
      - [ ] `useRunStream` → invalidate `GET /ai/threads/:threadId/runs` +
            `GET /ai/threads/:threadId/messages` on completion
-     - [ ] `useCancelRun` → invalidate `GET /ai/runs/:runId` + `GET /ai/runs/:runId/events`
+     - [x] `useCancelRun` → invalidate `GET /ai/runs/:runId` + `GET /ai/runs/:runId/events`
 
 Validation:
 
-- [ ] Minimal E2E tests (create thread → append message → create run; list artifacts)
+- [x] Minimal E2E tests (create thread → append message → create run; list artifacts)
 
 ## Phase 3 — OpenAI execution engine (agent runs) (3–7 days)
 

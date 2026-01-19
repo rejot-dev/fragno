@@ -69,6 +69,15 @@ export interface AiRun {
   completedAt: Date | null;
 }
 
+export interface AiRunEvent {
+  id: string;
+  runId: string;
+  seq: number;
+  type: string;
+  payload: unknown | null;
+  createdAt: Date;
+}
+
 export interface AiArtifact {
   id: string;
   runId: string;
@@ -134,6 +143,15 @@ type AiRunRecord = {
   updatedAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
+};
+
+type AiRunEventRecord = {
+  id: FragnoId;
+  runId: string;
+  seq: number;
+  type: string;
+  payload: unknown | null;
+  createdAt: Date;
 };
 
 type AiArtifactRecord = {
@@ -207,6 +225,13 @@ type ListRunsParams = {
   order?: "asc" | "desc";
 };
 
+type ListRunEventsParams = {
+  runId: string;
+  pageSize?: number;
+  cursor?: Cursor;
+  order?: "asc" | "desc";
+};
+
 type ClaimRunsParams = {
   maxRuns?: number;
   now?: Date;
@@ -269,6 +294,17 @@ function buildRun(run: AiRunRecord): AiRun {
     updatedAt: run.updatedAt,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
+  };
+}
+
+function buildRunEvent(event: AiRunEventRecord): AiRunEvent {
+  return {
+    id: event.id.toString(),
+    runId: event.runId,
+    seq: event.seq,
+    type: event.type,
+    payload: event.payload,
+    createdAt: event.createdAt,
   };
 }
 
@@ -732,6 +768,46 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               runs: runs.items.map(buildRun),
               cursor: runs.cursor,
               hasNextPage: runs.hasNextPage,
+            };
+          })
+          .build();
+      },
+      listRunEvents: function ({
+        runId,
+        pageSize = DEFAULT_PAGE_SIZE,
+        cursor,
+        order = "asc",
+      }: ListRunEventsParams) {
+        const effectiveOrder = cursor?.orderDirection ?? order;
+        const effectivePageSize = cursor?.pageSize ?? pageSize;
+
+        return this.serviceTx(aiSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("ai_run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId)))
+              .findWithCursor("ai_run_event", (b) => {
+                const query = b
+                  .whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", runId))
+                  .orderByIndex("idx_ai_run_event_run_seq", effectiveOrder)
+                  .pageSize(effectivePageSize);
+
+                return cursor ? query.after(cursor) : query;
+              }),
+          )
+          .mutate(({ retrieveResult }) => {
+            const [run, events] = retrieveResult as [
+              AiRunRecord | undefined,
+              { items: AiRunEventRecord[]; cursor?: Cursor; hasNextPage: boolean },
+            ];
+
+            if (!run) {
+              throw new Error("RUN_NOT_FOUND");
+            }
+
+            return {
+              events: events.items.map(buildRunEvent),
+              cursor: events.cursor,
+              hasNextPage: events.hasNextPage,
             };
           })
           .build();
