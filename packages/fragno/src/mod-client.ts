@@ -35,7 +35,7 @@ export function defineFragment(_name: string) {
     name: _name,
   };
 
-  const stub = {
+  const stubMethods = {
     withDependencies: () => stub,
     providesBaseService: () => stub,
     providesService: () => stub,
@@ -48,7 +48,21 @@ export function defineFragment(_name: string) {
     withLinkedFragment: () => stub,
     extend: () => stub,
     build: () => definitionStub,
+    // From fragno-db
+    provideHooks: () => stub,
   };
+
+  // Wrap with Proxy to handle any additional methods (e.g. from extend())
+  const stub: object = new Proxy(stubMethods, {
+    get(target, prop) {
+      if (prop in target) {
+        return target[prop as keyof typeof target];
+      }
+      // Return a function that returns the stub for method chaining
+      return () => stub;
+    },
+  });
+
   return stub;
 }
 
@@ -58,7 +72,7 @@ export { FragmentDefinitionBuilder } from "./api/fragment-definition-builder";
 // Stub implementation for instantiate
 // This is stripped by unplugin-fragno in browser builds
 export function instantiate(_definition: unknown) {
-  const fragmentStub: IFragnoInstantiatedFragment = {
+  const fragmentStubMethods = {
     [instantiatedFragmentFakeSymbol]: instantiatedFragmentFakeSymbol,
     name: "",
     routes: [],
@@ -71,10 +85,7 @@ export function instantiate(_definition: unknown) {
         linkedFragments: {},
       };
     },
-    withMiddleware: () => {
-      // throw new Error("withMiddleware is not supported in browser builds");
-      return fragmentStub;
-    },
+    withMiddleware: () => fragmentStub,
     inContext: <T>(callback: () => T) => callback(),
     handlersFor: () => ({}),
     handler: async () => new Response(),
@@ -82,7 +93,21 @@ export function instantiate(_definition: unknown) {
     callRouteRaw: async () => new Response(),
   };
 
-  const builderStub: IFragmentInstantiationBuilder = {
+  // Wrap with Proxy to handle any additional methods
+  const fragmentStub: IFragnoInstantiatedFragment = new Proxy(
+    fragmentStubMethods as IFragnoInstantiatedFragment,
+    {
+      get(target, prop) {
+        if (prop in target) {
+          return target[prop as keyof typeof target];
+        }
+        // Return a function that returns the stub for method chaining
+        return () => fragmentStub;
+      },
+    },
+  );
+
+  const builderStubMethods = {
     withConfig: () => builderStub,
     withRoutes: () => builderStub,
     withOptions: () => builderStub,
@@ -93,6 +118,20 @@ export function instantiate(_definition: unknown) {
     config: undefined,
     options: undefined,
   };
+
+  // Wrap with Proxy to handle any additional methods
+  const builderStub: IFragmentInstantiationBuilder = new Proxy(
+    builderStubMethods as IFragmentInstantiationBuilder,
+    {
+      get(target, prop) {
+        if (prop in target) {
+          return target[prop as keyof typeof target];
+        }
+        // Return a function that returns the stub for method chaining
+        return () => builderStub;
+      },
+    },
+  );
 
   return builderStub;
 }
