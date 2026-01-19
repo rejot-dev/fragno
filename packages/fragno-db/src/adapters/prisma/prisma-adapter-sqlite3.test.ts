@@ -146,6 +146,57 @@ describe("PrismaAdapter SQLite", () => {
     expect(adapter.driverConfig.sqliteProfile).toBe("prisma");
   });
 
+  it("should honor explicit sqlite profile overrides", async () => {
+    class FragnoSQLiteDriverConfig extends BetterSQLite3DriverConfig {
+      override get sqliteProfile() {
+        return "fragno" as const;
+      }
+    }
+
+    const fragnoDatabase = new SQLite(":memory:");
+    const fragnoDialect = new SqliteDialect({ database: fragnoDatabase });
+    const fragnoAdapter = new PrismaAdapter({
+      dialect: fragnoDialect,
+      driverConfig: new FragnoSQLiteDriverConfig(),
+    });
+
+    try {
+      const internalMigrations = fragnoAdapter.prepareMigrations(internalSchema, "");
+      await internalMigrations.executeWithDriver(fragnoAdapter.driver, 0);
+
+      const migrations = fragnoAdapter.prepareMigrations(testSchema, "namespace");
+      await migrations.executeWithDriver(fragnoAdapter.driver, 0);
+
+      expect(fragnoAdapter.driverConfig.sqliteProfile).toBe("fragno");
+
+      const queryEngine = fragnoAdapter.createQueryEngine(testSchema, "namespace");
+      const happenedOn = new Date("2024-06-18T12:34:56.789Z");
+      const bigScore = 1234567890123n;
+
+      const createUow = queryEngine.createUnitOfWork("create-fragno-profile-event");
+      createUow.create("events", {
+        name: "Fragno Profile Event",
+        happened_on: happenedOn,
+        payload: { level: "info", tags: ["sqlite", "fragno"] },
+        big_score: bigScore,
+      });
+      await createUow.executeMutations();
+
+      const tableName = fragnoAdapter.createTableNameMapper("namespace").toPhysical("events");
+      const row = fragnoDatabase
+        .prepare(`SELECT happened_on, big_score FROM ${tableName} WHERE name = ?`)
+        .get("Fragno Profile Event") as { happened_on?: number; big_score?: Buffer } | undefined;
+
+      expect(typeof row?.happened_on).toBe("number");
+      expect(row?.happened_on).toBe(happenedOn.getTime());
+      expect(row?.big_score).toBeInstanceOf(Buffer);
+      expect(row?.big_score?.readBigInt64BE(0)).toBe(bigScore);
+    } finally {
+      await fragnoAdapter.close();
+      fragnoDatabase.close();
+    }
+  });
+
   it("should execute Unit of Work with version checking", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
