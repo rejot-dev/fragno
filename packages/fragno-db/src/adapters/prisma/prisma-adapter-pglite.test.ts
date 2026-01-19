@@ -672,6 +672,40 @@ describe("PrismaAdapter PGLite", () => {
     });
   });
 
+  it("should handle timestamps and timezones correctly", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+
+    const createUow = queryEngine.createUnitOfWork("create-event-for-timestamp");
+    createUow.create("events", {
+      name: "Timestamp Event PGLite",
+      happened_on: new Date("2024-06-18T00:00:00.000Z"),
+      payload: { level: "info", tags: ["timestamp", "pglite"] },
+      big_score: 42n,
+    });
+    await createUow.executeMutations();
+
+    const [[event]] = await queryEngine
+      .createUnitOfWork("get-event-for-timestamp")
+      .find("events", (b) =>
+        b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Timestamp Event PGLite")),
+      )
+      .executeRetrieve();
+
+    expect(event.created_at).toBeInstanceOf(Date);
+
+    const now = Date.now();
+    const createdTime = event.created_at.getTime();
+    expect(createdTime).toBeGreaterThan(now - 24 * 60 * 60 * 1000);
+    expect(createdTime).toBeLessThan(now + 24 * 60 * 60 * 1000);
+
+    expect(typeof event.created_at.toISOString).toBe("function");
+    expect(typeof event.created_at.getTime).toBe("function");
+    expect(typeof event.created_at.getTimezoneOffset).toBe("function");
+
+    const isoString = event.created_at.toISOString();
+    expect(new Date(isoString).getTime()).toBe(event.created_at.getTime());
+  });
+
   it("should fail check() when version changes", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
