@@ -1,0 +1,245 @@
+# Fragno AI Fragment — Implementation Plan (Draft)
+
+This plan implements `specs/ai-fragment-spec.md` (Draft v0.6): durable threads, durable runs,
+OpenAI-only execution, NDJSON streaming, deep research background + webhooks, and a tick-based
+runner modeled after the Workflows fragment (no workflow integration in v0.1).
+
+## Phase 0 — Lock decisions + spikes (0.5–2 days)
+
+**Goal:** validate the risky bits early (streaming, webhook verification, persistence boundaries).
+
+1. Confirm v0.1 scope (already decided):
+   - OpenAI-only
+   - provider tools only (OpenAI-hosted tools; no server-executed custom tools)
+   - no access control (host can protect endpoints externally)
+   - message append and run creation are separate
+   - append-only messages
+   - deep research produces an artifact + an assistant message referencing it
+   - per-thread tool config is pass-through JSON
+2. Spike: NDJSON streaming route using OpenAI Responses (copy the `jsonStream` pattern from
+   `example-fragments/chatno/src/server/chatno-api.ts`)
+   - verify disconnect behavior: client cancel should not crash the handler
+3. Spike: webhook verification using `openai.webhooks.unwrap(...)` with a single configured secret
+   - confirm runtime has `globalThis.crypto` (Node >= 22)
+4. Spike: persistence boundaries:
+   - deltas transient by default
+   - confirm we can persist final assistant message even if the client disconnects mid-stream
+   - confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
+     (report-only artifacts)
+5. Spike: runner dispatch wiring (no new dispatcher packages)
+   - reuse the Workflows dispatcher packages by pointing them at `POST /ai/_runner/tick`
+   - confirm the Workflows dispatchers can be trivially generalized to accept an arbitrary tick path
+     (keep backwards compatibility for Workflows)
+
+Deliverables:
+
+- Updated spec/plan (this repo’s `specs/`)
+- A small scratch fragment or test route proving NDJSON + webhook verification (optional)
+
+## Phase 1 — Package skeleton + DB schema (2–4 days)
+
+1. Create new workspace package:
+   - `packages/fragment-ai` (name: `@fragno-dev/fragment-ai`)
+2. Add dependencies:
+   - `@fragno-dev/core`, `@fragno-dev/db`
+   - `openai` (Responses API + webhook verification)
+   - (optional, v0.2+): `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`
+3. Implement schema in `packages/fragment-ai/src/schema.ts`:
+   - `ai_thread`
+   - `ai_message`
+   - `ai_run` (includes `executionMode`, `attempt/maxAttempts/nextAttemptAt`, `openaiResponseId`)
+   - `ai_run_event` (coarse timeline; deltas optional)
+   - `ai_artifact` (deep research structured artifacts)
+   - `ai_openai_webhook_event` (idempotency + audit)
+   - (optional stub for v0.2+): `ai_tool_call`
+4. Implement services in `packages/fragment-ai/src/services/*`:
+   - `threadsService` (CRUD; includes per-thread `openaiToolConfig`)
+   - `messagesService` (append + list by `threadId`)
+   - `runsService` (create/cancel/get; selects input message; snapshots config)
+   - `artifactsService` (list/get by runId/artifactId)
+   - `webhooksService` (persist deliveries; idempotency by `openaiEventId`)
+   - `runnerRepo` helpers:
+     - claim next runnable `ai_run` rows (queued + due retries)
+     - claim next unprocessed webhook events
+5. Implement fragment definition:
+   - `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
+   - `withDatabase(aiSchema)` and `provideHooks` for `runner.onWake` notifications
+
+Validation:
+
+- Add basic service-level tests for create/list of threads/messages/runs
+- Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
+
+## Phase 2 — HTTP routes + typed clients (2–5 days)
+
+**Goal:** ship a complete API surface before adding execution complexity.
+
+1. Implement routes in `packages/fragment-ai/src/server/routes.ts` (or repo convention):
+   - Threads:
+     - `POST /ai/threads`
+     - `GET /ai/threads`
+     - `GET/PATCH /ai/threads/:threadId`
+     - `DELETE /ai/admin/threads/:threadId` (admin-only; host-protect)
+   - Messages:
+     - `POST /ai/threads/:threadId/messages`
+     - `GET /ai/threads/:threadId/messages`
+   - Runs:
+     - `POST /ai/threads/:threadId/runs` (background by default)
+     - `POST /ai/threads/:threadId/runs:stream` (foreground stream)
+     - `GET /ai/threads/:threadId/runs`
+     - `GET /ai/runs/:runId`
+     - `POST /ai/runs/:runId/cancel`
+     - `GET /ai/runs/:runId/events` (persisted replay)
+   - Artifacts:
+     - `GET /ai/runs/:runId/artifacts`
+     - `GET /ai/artifacts/:artifactId`
+   - Webhooks:
+     - `POST /ai/webhooks/openai`
+   - Runner:
+     - `POST /ai/_runner/tick`
+2. Define zod schemas for each route input/output and the NDJSON stream event union.
+3. Add typed client bindings:
+   - `packages/fragment-ai/src/client/*` per Fragno conventions
+   - helper for NDJSON consumption (mirror existing Fragno client patterns)
+
+Validation:
+
+- Minimal E2E tests (create thread → append message → create run; list artifacts)
+
+## Phase 3 — OpenAI execution engine (agent runs) (3–7 days)
+
+**Goal:** execute agent runs end-to-end in both foreground-stream and background modes.
+
+1. Implement `runExecutor` service:
+   - input: `{ runId }`
+   - loads run + thread + message history
+   - constructs OpenAI Responses input (system prompt + history)
+   - uses OpenAI idempotency keys derived from `(runId, attempt)` for `responses.create(...)`
+2. Foreground streaming (`runs:stream`):
+   - create `ai_run` with `executionMode="foreground_stream"` and mark `running`
+   - call `openai.responses.create({ stream: true, ... })`
+   - map OpenAI streaming events into a simplified NDJSON schema for the frontend (text + tool
+     lifecycle):
+     - `run.meta` first
+     - `output.text.delta` / `output.text.done`
+     - `tool.call.*` events (status + args deltas when available)
+     - `run.final` last
+   - persist:
+     - `ai_run.openaiResponseId` as soon as it is known
+     - final assistant message(s)
+     - final run status + run events
+3. Background agent runs (`executionMode="background"`):
+   - runner tick claims queued runs and calls `runExecutor`
+   - prefer `stream: false` for atomic completion (simplifies retries)
+4. Disconnect handling:
+   - client disconnect must not cancel the OpenAI request by default
+   - if the upstream OpenAI stream breaks:
+     - if `openaiResponseId` is known, schedule a retrieve/poll path via runner tick
+     - else schedule a retry via `attempt/maxAttempts/nextAttemptAt`
+5. Cancellation (best-effort, in-process):
+   - `POST /ai/runs/:runId/cancel` marks `cancelled`
+   - if the run is currently executing in-process, abort via `AbortController`
+
+Validation:
+
+- tests for:
+  - foreground stream returns NDJSON events and persists final message
+  - client disconnect does not prevent final persistence (simulate by canceling reader)
+  - provider disconnect path schedules retry or fails deterministically
+  - background run completes via runner tick
+
+## Phase 4 — Runner tick (in-process) (2–5 days)
+
+**Goal:** unify all async processing behind a safe, bounded `tick`.
+
+1. Implement runner core:
+   - `processTick({ maxRuns, maxWebhookEvents })`
+   - safe under concurrency (multiple tick callers)
+   - claims work using optimistic concurrency control (no leases/locks):
+     - load candidate work items
+     - update the row with a version check (`.check()`), and treat conflicts as “someone else got
+       it”
+2. Work types:
+   - agent run (background): execute via `runExecutor`
+   - deep research run (queued): submit background Response (Phase 5)
+   - webhook event: retrieve response + finalize (Phase 5)
+3. Wake-ups:
+   - on run creation and webhook receipt, enqueue a durable hook payload (`AiWakeEvent`) after DB
+     commit
+   - durable hook handler calls `config.runner?.onWake(...)` (or directly triggers
+     `POST /ai/_runner/tick`)
+   - wake-ups are an accelerator; polling/cron tick must still work
+4. Bounded work:
+   - ensure each tick respects limits and returns counts (`processedRuns`, `processedWebhookEvents`)
+
+Validation:
+
+- concurrency test: two ticks racing should not double-process the same run/event
+- “poison pill” test: repeated failures should back off using `nextAttemptAt`
+
+## Phase 5 — Deep research + webhooks + artifacts (3–8 days)
+
+**Goal:** deep research as a durable background job with webhook completion.
+
+1. Run submission (runner side):
+   - for `type="deep_research"` queued runs:
+     - call `openai.responses.create({ background: true, ... })`
+     - set `idempotencyKey` based on `(runId, attempt)`
+     - persist `openaiResponseId` and set status `waiting_webhook`
+2. Webhook route:
+   - verify signature with the single `config.openaiWebhookSecret`
+   - persist event idempotently (`openaiEventId` unique)
+   - store `responseId` and associate to run when possible
+   - enqueue a durable hook wake-up after commit so processing runs later with retries
+   - do not fetch from OpenAI inside the webhook route (keep it fast + reliable)
+3. Completion processing (runner side):
+   - claim unprocessed webhook events
+   - retrieve the full Response from OpenAI by `responseId`
+   - create `ai_artifact` with `type="deep_research_report"`:
+     - `data` contains the structured report payload (Markdown + sources + metadata)
+     - include `rawResponse` only when `config.storage.persistOpenAIRawResponses === true` (default:
+       false)
+   - append an assistant `ai_message` to the thread: `{ type: "artifactRef", artifactId }`
+   - mark run `succeeded`/`failed`, set `completedAt`
+   - mark webhook event `processedAt`
+4. Edge cases:
+   - webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
+     match later using `responseId`
+   - OpenAI retrieve fails transiently: keep `processedAt=null`, set `processingError`, back off
+
+Validation:
+
+- idempotency tests: duplicate webhook deliveries do not create duplicate artifacts or re-complete
+  runs
+- end-to-end: create deep research run → submit → webhook → artifact persisted
+
+## Phase 6 — Hardening + future work (ongoing)
+
+v0.1 hardening:
+
+- Limits: max message size, max artifact size, page sizes
+- Rate limits at host level for webhooks + tick endpoint
+- Observability: structured logs for run lifecycle + webhook processing
+- Admin-only debug/delete routes (host-protect)
+
+Future (v0.2+):
+
+- Custom tools registry + server execution (pi-agent-core integration)
+- Tool approvals/policy hooks
+- Multi-provider support (pi-ai)
+- Conversation compaction/summarization (borrow pi-coding-agent patterns)
+- External artifact storage (blob store) with DB references
+
+## Phase 7 — CLI tool: `fragno-ai` (0.5–2 days)
+
+**Goal:** easy debugging of AI fragment state via HTTP routes.
+
+1. Add new workspace app: `apps/fragno-ai` with binary `fragno-ai`.
+2. Implement `threads` commands:
+   - `fragno-ai threads list --base-url <url>`
+   - `fragno-ai threads get <threadId> --base-url <url>`
+3. Keep output human-friendly by default (table-ish), with `--json` for scripting.
+
+## Interview: Remaining Gaps / Decisions
+
+- None (v0.6 decisions locked).
