@@ -58,7 +58,9 @@ const weirdNamesSchema = schema((s) => {
       .addColumn("display name", column("string").nullable())
       .createIndex("user-id-index", ["user-id"]);
   });
+});
 
+describe("generateSchema (Prisma)", () => {
   it("should generate stable ordering for internal models and namespaces", () => {
     const alphaSchema = schema((s) => {
       return s
@@ -97,9 +99,6 @@ const weirdNamesSchema = schema((s) => {
     expect(alphaIndex).toBeLessThan(zetaIndex);
     expect(zetaIndex).toBeLessThan(bravoIndex);
   });
-});
-
-describe("generateSchema (Prisma)", () => {
   it("should generate SQLite Prisma schema", () => {
     const generated = generateSchema(
       [
