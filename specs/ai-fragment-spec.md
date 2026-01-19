@@ -110,21 +110,38 @@ Responsibilities:
 - OpenAI Deep Research run orchestration + webhook ingestion
 - Runner tick processing (queued runs + webhook events)
 - Public HTTP routes + typed client bindings
-- Integration hooks/callbacks for runtime-specific needs (runner wake-ups; future auth/tools)
+- Integration hooks/callbacks for runtime-specific needs (dispatcher wake-ups; future auth/tools)
 
-### 4.2 Optional runtime integrations (future)
+### 4.2 Shared dispatcher infrastructure (Fragno-wide)
 
-These are optional in v0.1 but likely useful:
+Durable hooks need a generalized dispatcher/ticker to wake fragment runners across runtimes. The
+existing Workflows dispatcher packages will be generalized into shared dispatcher infrastructure,
+with fragment-specific wrappers for Workflows and AI:
 
-- No AI-specific dispatcher packages in v0.1.
-- Host apps can either:
-  - call `POST /ai/_runner/tick` periodically (cron/interval), and/or
-  - **reuse** the existing Workflows dispatcher packages by pointing them at the AI tick endpoint
-    (may require a small generalization so the dispatcher can target arbitrary tick paths):
-    - Node: `@fragno-dev/workflows-dispatcher-node` → `/ai/_runner/tick`
-    - Cloudflare DO: `@fragno-dev/workflows-dispatcher-cloudflare-do` → `/ai/_runner/tick`
-- Future: `@fragno-dev/fragment-ai-proxy` for pi-agent proxy compatibility (`/api/stream`) for
-  browser UIs.
+- **Node**: move `createInProcessDispatcher` into a generic package (`@fragno-dev/dispatcher-node`)
+  and update Workflows + AI to import it directly (no shims; update call sites directly).
+- **Cloudflare DO**: extract a generic DO dispatcher runtime (e.g.
+  `@fragno-dev/dispatcher-cloudflare-do`) from the existing workflows DO dispatcher that:
+  - builds a DB adapter (default DurableObjectDialect + Drizzle; override via `createAdapter`),
+  - queues ticks with in-flight + queued coalescing (same behavior as workflows DO),
+  - calls `runner.tick` with `tickOptions` and schedules alarms from a fragment-specific
+    `getNextWake(db)` function,
+  - runs migrations on startup (using `blockConcurrencyWhile` when available),
+  - and exposes `fetch` + optional `alarm`. Options should mirror the workflows DO surface
+    (`namespace`, `runnerId`, `tickOptions`, `enableRunnerTick`, `fragmentConfig`, `createAdapter`,
+    `migrateOnStartup`, `onTickError`, `onMigrationError`). Then expose wrappers:
+  - Workflows: `createWorkflowsDispatcherDurableObject` (backed by the generic runtime) in
+    `@fragno-dev/workflows-dispatcher-cloudflare-do`.
+  - AI: `createAiDispatcherDurableObject` (backed by the generic runtime) in a **separate** package
+    `@fragno-dev/ai-dispatcher-cloudflare-do`.
+
+This keeps the runner/tick mechanics consistent across fragments while avoiding duplicate runtime
+code.
+
+### 4.3 Optional runtime integrations (future)
+
+- Future: `@fragno-dev/fragment-ai-proxy` for pi-agent proxy support (`/api/stream`) for browser
+  UIs.
 
 ## 5. High-level Architecture
 
@@ -163,12 +180,19 @@ Client disconnect handling:
 v0.1 does **not** integrate with the Workflows fragment, but it should follow the same _runner/tick_
 design:
 
-- A `POST /ai/_runner/tick` endpoint processes bounded batches of work.
+- If `enableRunnerTick === true`, a `POST /ai/_runner/tick` endpoint processes bounded batches of
+  work.
 - Durable hooks can “wake” the runner after commits, but correctness does not depend on hooks.
 - Tick must be safe under concurrent invocation and process work at-least-once with idempotency.
 - Concurrency control is **optimistic** (OCC via Fragno DB `_version` checks); no locks/leases.
 - The tick endpoint is intentionally shaped like the Workflows runner tick so host apps can reuse
-  the Workflows dispatcher packages (Node + Cloudflare DO) with a configurable tick path.
+  the generalized dispatcher infrastructure (see §4.2).
+- Cloudflare DO dispatchers should follow the Workflows alarm scheduling pattern: compute the
+  earliest wake based on pending work (AI: earliest `ai_run.nextAttemptAt` for queued/retryable
+  runs, or immediate wake when unprocessed webhook events exist).
+- With a correctly configured dispatcher, periodic HTTP tick posts are **not required** for
+  correctness; the tick endpoint remains as a fallback for manual/cron recovery and external
+  schedulers.
 
 The runner processes:
 
@@ -193,55 +217,112 @@ Durable hooks run **after commit** and are retried with exponential backoff if t
 especially important for webhooks: the webhook route should persist the event and trigger a durable
 hook, then return `200` without doing heavy work.
 
-Hooks are an accelerator, not a correctness dependency; periodic `POST /ai/_runner/tick` must still
-work.
+Durable hook handlers should call `config.dispatcher?.wake(...)` to nudge the runner in supported
+deployments (Node/Cloudflare dispatchers).
+
+Hooks + dispatchers are the primary correctness path; periodic `POST /ai/_runner/tick` is a fallback
+for recovery or when dispatchers are unavailable (only when `enableRunnerTick` is enabled; default
+is false).
 
 ## 6. Public Configuration
 
 This fragment is a library; it must not hardcode auth or hosting concerns. v0.1 is **OpenAI-only**
-and uses an API key configured on the fragment instance.
+and uses an API key configured on the fragment instance (static or via `getApiKey`).
 
 ### 6.1 Server config
 
 ```ts
+export type AiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export type AiThinkingBudgets = {
+  minimal?: number;
+  low?: number;
+  medium?: number;
+  high?: number;
+};
+
+export type AiModelRef = {
+  id: string;
+  provider?: string; // default "openai" in v0.1
+  api?: "openai-responses"; // v0.1 default
+  baseUrl?: string; // override (pi Model baseUrl)
+  headers?: Record<string, string>;
+};
+
 export interface AiFragmentConfig {
   /**
-   * OpenAI Platform API key (server-owned). v0.1 is OpenAI-only.
+   * API key used for provider calls (pi-aligned). v0.1 is OpenAI-only.
+   * At least one of `apiKey` or `getApiKey` must be provided.
    */
-  openaiApiKey: string;
+  apiKey?: string;
 
   /**
-   * Optional: base URL for OpenAI-compatible backends.
+   * Optional dynamic API key resolver (pi-aligned).
    */
-  openaiBaseUrl?: string;
+  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 
   /**
-   * Default model for interactive agent runs (e.g. "gpt-5-nano").
+   * Optional base URL for OpenAI-compatible backends (pi Model baseUrl).
    */
-  defaultAgentModel?: string;
+  baseUrl?: string;
+
+  /**
+   * Default model for interactive agent runs (pi Model-like shape).
+   */
+  defaultModel?: AiModelRef;
 
   /**
    * Default model for deep research runs (e.g. "o3-deep-research").
    * Should track the newest model recommended by OpenAI docs.
    */
-  defaultDeepResearchModel?: string;
+  defaultDeepResearchModel?: AiModelRef;
 
   /**
-   * OpenAI webhook secret (one per fragment configuration). Configured in the OpenAI dashboard by
-   * the user.
+   * Default thinking level (pi agent ThinkingLevel). "off" maps to undefined reasoning.
    */
-  openaiWebhookSecret?: string;
+  thinkingLevel?: AiThinkingLevel;
 
   /**
-   * Runner integration (wake-up strategy). Optional but recommended.
+   * Custom thinking budgets (pi ThinkingBudgets).
+   */
+  thinkingBudgets?: AiThinkingBudgets;
+
+  /**
+   * Shared stream options (pi SimpleStreamOptions).
+   */
+  temperature?: number;
+  maxTokens?: number;
+  sessionId?: string;
+
+  /**
+   * OpenAI Responses-specific options (pi OpenAIResponsesOptions).
+   */
+  openai?: {
+    reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
+    reasoningSummary?: "auto" | "detailed" | "concise" | null;
+    serviceTier?: string;
+  };
+
+  /**
+   * OpenAI webhook secret (v0.1).
+   */
+  webhookSecret?: string;
+
+  /**
+   * Enable `POST /ai/_runner/tick` (default: false; enable explicitly for manual/cron recovery).
+   */
+  enableRunnerTick?: boolean;
+
+  /**
+   * Dispatcher integration (wake-up strategy). Optional but recommended.
    * Modeled after the Workflows fragment runner/tick semantics.
    */
+  dispatcher?: AiDispatcher;
+
+  /**
+   * Runner configuration (tick limits, etc).
+   */
   runner?: {
-    /**
-     * Optional platform-specific wake-up mechanism. This is typically invoked from a durable hook
-     * handler (so wake-ups are retried and do not make the original HTTP request fail).
-     */
-    onWake?: (event: AiWakeEvent) => Promise<void> | void;
     maxWorkPerTick?: number;
   };
 
@@ -288,6 +369,13 @@ export interface AiFragmentConfig {
     retentionDays?: number | null;
   };
 }
+
+// Shared dispatcher interface (used by Workflows + AI).
+export type FragnoDispatcher<TPayload> = {
+  wake: (payload: TPayload) => Promise<void> | void;
+};
+
+export type AiDispatcher = FragnoDispatcher<AiWakeEvent>;
 
 export type AiWakeEvent =
   | { type: "run.queued"; runId: string }
@@ -609,12 +697,12 @@ Requirements:
 
 - Verify signature using OpenAI webhook signing headers:
   - `webhook-id`, `webhook-timestamp`, `webhook-signature`
-- Accept only the configured secret (`config.openaiWebhookSecret`)
+- Accept only the configured secret (`config.webhookSecret`)
 - Persist webhook event idempotently (`openaiEventId` unique)
 - Extract `responseId` from payload and associate to `ai_run` via `openaiResponseId`
 - Enqueue a durable hook wake-up after commit so webhook handling runs later with retries (the
   webhook route itself should stay fast and reliable). The durable hook handler can call
-  `config.runner?.onWake(...)` or directly trigger `POST /ai/_runner/tick`.
+  `config.dispatcher?.wake(...)` or directly trigger `POST /ai/_runner/tick`.
 
 ### 10.3 Webhook processing
 
@@ -720,7 +808,8 @@ Two complementary patterns:
 
 ### 11.7 Runner
 
-- `POST /ai/_runner/tick` — process queued runs + webhook events (host-protect it)
+- `POST /ai/_runner/tick` — process queued runs + webhook events (mounted when
+  `enableRunnerTick === true`; host-protect it)
   - Modeled after the Workflows fragment `POST /_runner/tick` semantics.
 
 ### 11.8 Route contracts (detailed)
@@ -758,7 +847,7 @@ export interface AiMessage {
   id: string;
   threadId: string;
   role: "user" | "assistant" | "system"; // future: "toolResult"
-  content: unknown; // stored pi-ai message shape (or compatible internal superset)
+  content: unknown; // stored pi-ai message shape (or internal superset used in pi)
   text: string | null;
   runId: string | null;
   createdAt: string; // ISO
@@ -837,7 +926,7 @@ export interface AiArtifact {
   - `openaiToolConfig?: unknown` (per-thread provider tools config; see §8)
   - `metadata?: unknown`
 - Defaults:
-  - `defaultModelId` defaults to `config.defaultAgentModel`
+  - `defaultModelId` defaults to `config.defaultModel?.id` (or an OpenAI default)
   - `defaultThinkingLevel` defaults to `"off"` (mirrors pi defaults)
   - `systemPrompt`, `openaiToolConfig`, `metadata` default to `null`
 - Returns: `{ thread: AiThread }`
@@ -984,7 +1073,7 @@ export interface AiArtifact {
 
 #### 11.8.7 Runner tick
 
-- `POST /ai/_runner/tick`
+- `POST /ai/_runner/tick` (mounted when `enableRunnerTick === true`)
   - Body: `{ maxRuns?: number; maxWebhookEvents?: number }`
   - Returns: `{ processedRuns: number; processedWebhookEvents: number }`
   - Errors: `VALIDATION_ERROR`
@@ -1060,17 +1149,117 @@ Implementation notes (non-normative; OpenAI Responses streaming):
 
 ## 12. Client Bindings
 
-The fragment should expose typed client helpers similar to other fragments:
+The fragment must expose typed client helpers using Fragno's client-side builder
+(`createClientBuilder`) plus framework bindings (`useFragno`) so hooks are available for React, Vue,
+Svelte, Solid, and vanilla JS. All user-facing HTTP routes must have a matching hook/mutator or
+stream helper. Webhook ingestion remains server-to-server and does not need a browser hook. The
+runner tick endpoint is not exposed via client hooks.
 
-- `useThreads()` / `createThread()` / `useMessages(threadId)` etc.
-- `startRunStream(threadId, ...)` that consumes NDJSON stream and updates UI state
-- `getRun(runId)` and `subscribeRunEvents(runId)` for resumability
+### 12.1 Hook surface (all routes)
+
+Query hooks (`createHook`):
+
+- `useThreads()` → `GET /ai/threads`
+- `useThread({ path: { threadId } })` → `GET /ai/threads/:threadId`
+- `useMessages({ path: { threadId } })` → `GET /ai/threads/:threadId/messages`
+- `useRuns({ path: { threadId } })` → `GET /ai/threads/:threadId/runs`
+- `useRun({ path: { runId } })` → `GET /ai/runs/:runId`
+- `useRunEvents({ path: { runId } })` → `GET /ai/runs/:runId/events`
+- `useArtifacts({ path: { runId } })` → `GET /ai/runs/:runId/artifacts`
+- `useArtifact({ path: { artifactId } })` → `GET /ai/artifacts/:artifactId`
+
+Mutators (`createMutator`):
+
+- `useCreateThread()` → `POST /ai/threads`
+- `useUpdateThread()` → `PATCH /ai/threads/:threadId`
+- `useDeleteThread()` → `DELETE /ai/admin/threads/:threadId` (admin/debug)
+- `useAppendMessage()` → `POST /ai/threads/:threadId/messages`
+- `useCreateRun()` → `POST /ai/threads/:threadId/runs`
+- `useCreateRunStream()` → `POST /ai/threads/:threadId/runs:stream` (wrapper helper; see below)
+- `useCancelRun()` → `POST /ai/runs/:runId/cancel`
+
+Stream helpers (`builder.getFetcher()` + `builder.buildUrl()`):
+
+- `startRunStream(threadId, input)` → `POST /ai/threads/:threadId/runs:stream`
+- returns a live NDJSON consumer that emits `LiveStreamEvent` updates and updates derived stores.
+
+Derived stores (`builder.createStore` + `computed`):
+
+- `useStreamText()` → aggregate text deltas into a single string
+- `useStreamStatus()` → last `run.final` status + run id
+- `useStreamEvents()` → last N live events for a debug panel
+- `useStreamError()` → last stream error
+
+Framework wrappers:
+
+- `createAiClients` (generic) + `client/react`, `client/solid`, `client/svelte`, `client/vue`,
+  `client/vanilla` packages that call `useFragno(...)` with the above hooks.
+
+### 12.2 Invalidation rules
+
+Use `createMutator(..., onInvalidate)` to invalidate relevant GET routes. Default invalidation
+(invalidate GET on the same path) is sufficient when a GET route exists at the same path; otherwise
+custom invalidation must be provided. Required invalidations:
+
+- `useCreateThread` → invalidate `GET /ai/threads`
+- `useUpdateThread` → invalidate `GET /ai/threads/:threadId` and `GET /ai/threads`
+- `useDeleteThread` → invalidate `GET /ai/threads/:threadId` and `GET /ai/threads`
+- `useAppendMessage` → invalidate `GET /ai/threads/:threadId/messages` and `GET /ai/threads`
+- `useCreateRun` → invalidate `GET /ai/threads/:threadId/runs`
+- `useCreateRunStream` → on completion invalidate `GET /ai/threads/:threadId/runs` and
+  `GET /ai/threads/:threadId/messages`
+- `useCancelRun` → invalidate `GET /ai/runs/:runId` and `GET /ai/runs/:runId/events`
+
+### 12.3 Stream stores + debug helpers
+
+The client helper must parse NDJSON stream events, update a stream store, and derive debug state for
+UIs. At minimum, store:
+
+- `runId`, `status`, `text`, `events[]`, `error`
+- Debug event buffer size: 200 most recent events (configurable in code)
+
+Non-normative sketch:
+
+```ts
+const builder = createClientBuilder(aiDefinition, fragnoConfig, routes);
+
+const runStreamState = atom<{
+  runId?: string;
+  text: string;
+  events: LiveStreamEvent[];
+  status?: AiRunStatus;
+  error?: string;
+}>({ text: "", events: [] });
+
+async function startRunStream(threadId: string, input: CreateRunInput) {
+  const { fetcher, defaultOptions } = builder.getFetcher();
+  const url = builder.buildUrl("/ai/threads/:threadId/runs:stream", { path: { threadId } });
+  const response = await fetcher(url, {
+    ...defaultOptions,
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" },
+  });
+  // parse NDJSON and update runStreamState
+}
+
+export const aiClient = useFragno({
+  useThreads: builder.createHook("/ai/threads"),
+  useCreateThread: builder.createMutator("POST", "/ai/threads"),
+  useRunStream: builder.createStore({ runStreamState, startRunStream }),
+});
+```
+
+This hook surface is intentionally "debug-friendly": clients can render the persisted state
+(threads, messages, runs, artifacts) alongside live stream events, without additional bespoke API
+calls.
 
 ## 13. Security Considerations
 
 - v0.1 has **no built-in access control**. Host apps can add auth at the edge/reverse-proxy or by
   wrapping fragment routes.
-- Host apps should protect `POST /ai/_runner/tick` from public access.
+- If `enableRunnerTick` is enabled, host apps should protect `POST /ai/_runner/tick` from public
+  access.
 - All routes enforce thread scoping (`threadId`) for correctness (not as a security boundary in
   v0.1).
 - Webhook route must:
@@ -1088,17 +1277,78 @@ Persisted data supports:
 - per-tool execution timings
 - audit trail for webhooks and runner actions
 
-## 15. Developer Tooling (future)
+## 15. Documentation
+
+The docs site must include a full AI Fragment documentation set (on par with Stripe + Forms) and a
+tile on the docs landing page (`fragno.dev/docs`):
+
+- Add a docs landing page tile in `apps/docs/app/routes/docs/docs-index.tsx` for **Fragno AI**
+  (`/docs/ai`).
+- Add `apps/docs/content/docs/ai` with `meta.json` + pages:
+  - `index` (overview)
+  - `quickstart` (install, mount routes, configure OpenAI)
+  - `configuration` (fragment config)
+  - `routes` (HTTP API surface)
+  - `hooks` (client builder hooks + invalidation)
+  - `streaming` (NDJSON, live events, disconnect handling)
+  - `runs` (agent + deep research, status machine)
+  - `webhooks` (OpenAI verification + idempotency)
+  - `runner` (tick model, wake-ups, Node + Cloudflare DO dispatchers)
+  - `artifacts` (deep research output)
+  - `cli` (fragno-ai usage)
+  - `debugging` (common failure modes, runner/tick, webhooks)
+  - `example-app` (React Router + Drizzle + PGLite)
+- Mirror the structure of `apps/docs/content/docs/workflows/runner-dispatcher.mdx` for the runner
+  page (in-process dispatcher, Cloudflare DO dispatcher, HTTP tick).
+- Mirror the structure of `apps/docs/content/docs/workflows/cli.mdx` for the CLI page (base URL,
+  repeatable auth headers, examples).
+- Document that the example app runs with open endpoints (no auth), while production apps should
+  protect admin/debug routes.
+
+## 16. Example App (React Router + Drizzle + PGLite)
+
+Define a debug-friendly example app that uses all hooks and stream helpers:
+
+- Location: `example-apps/ai-fragment-react-router-drizzle`
+- Stack: React Router, Drizzle, PGLite (no external DB required)
+- Open endpoints (no auth); use env var for OpenAI key.
+- Pages:
+  - Home: intro, create thread, start run (agent + deep research), link to threads view.
+  - Threads view: left column list of threads (simple list, no pagination); right column detail view
+    for selected thread.
+- Detail view must support:
+  - thread settings (view + update)
+  - messages list + append message
+  - run list + run detail + cancel
+  - run events (persisted) + live stream events panel
+  - artifacts list + artifact detail
+- The UI should call all hooks/mutators/stream helpers defined in §12.1. No runner tick controls.
+- Add a timer-based refresh for background runs and messages (1s polling).
+
+## 17. Developer Tooling (CLI)
 
 Add a small CLI app (`apps/fragno-ai`) for debugging the AI fragment via its HTTP routes:
 
-- List/get threads
-- Inspect a thread’s messages and runs
-- Inspect run artifacts and (optionally) persisted run events
-- Support human-readable output by default and `--json` for scripting
+- Support the full non-webhook HTTP surface (all core routes except runner tick + webhooks).
+- Support human-readable output by default and `--json` for scripting.
+- Support auth headers using the same flexibility as the Workflows fragment (no fixed auth scheme;
+  repeatable pass-through headers like `-H "Authorization: Bearer ..."`).
+- CLI takes the full fragment base URL (e.g. `https://host.example.com/api/ai`).
 
-## 16. Decisions (v0.6)
+Recommended command surface (draft):
 
+- `fragno-ai threads list|get|create|update|delete`
+- `fragno-ai messages list|append --thread <threadId>`
+- `fragno-ai runs list|get|create|cancel --thread <threadId>`
+- `fragno-ai runs stream --thread <threadId>` (prints NDJSON stream)
+- `fragno-ai runs events --run <runId>` (prints persisted run events)
+- `fragno-ai artifacts list|get`
+
+## 18. Decisions (v0.6)
+
+- `apiKey` is optional if `getApiKey` is provided; at least one must be set.
+- `enableRunnerTick` defaults to `false`; hosts must opt in to mount the tick route.
 - Default tool config: **no tools enabled** unless `ai_thread.openaiToolConfig` is set.
 - Deep research artifact payload: `rawResponse` is persisted only when
   `config.storage.persistOpenAIRawResponses === true` (default: `false`).
+- CLI supports the full non-webhook HTTP surface (no runner tick, no webhooks).
