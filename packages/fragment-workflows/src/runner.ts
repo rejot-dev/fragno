@@ -699,14 +699,16 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       return null;
     }
 
+    const claimedAt = clock.now();
+    const lockedUntil = new Date(now.getTime() + leaseMs);
     const uow = runnerOptions.db.createUnitOfWork("workflow-task-claim");
     const typed = uow.forSchema(workflowsSchema);
     typed.update("workflow_task", task.id, (b) => {
       const builder = b.set({
         status: "processing",
         lockOwner: runnerId,
-        lockedUntil: new Date(now.getTime() + leaseMs),
-        updatedAt: clock.now(),
+        lockedUntil,
+        updatedAt: claimedAt,
       });
       if (task.id instanceof FragnoId) {
         builder.check();
@@ -719,7 +721,13 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       return null;
     }
 
-    return task;
+    return {
+      ...task,
+      status: "processing",
+      lockOwner: runnerId,
+      lockedUntil,
+      updatedAt: claimedAt,
+    };
   };
 
   const setInstanceStatus = async (

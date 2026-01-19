@@ -290,18 +290,18 @@ describe("Workflows Runner", () => {
 
   type Setup = Awaited<ReturnType<typeof setup>>;
 
-  let fragments: Setup["fragments"];
+  let _fragments: Setup["fragments"];
   let testContext: Setup["testContext"];
   let fragment: Setup["fragment"];
   let db: Setup["db"];
   let runner: Setup["runner"];
 
   beforeAll(async () => {
-    ({ fragments, testContext, fragment, db, runner } = await setup());
+    ({ fragments: _fragments, testContext, fragment, db, runner } = await setup());
   });
 
   const createInstance = async (workflowName: string, params: unknown) => {
-    const response = await fragment.callRoute("POST", "/workflows/:workflowName/instances", {
+    const response = await fragment.callRoute("POST", "/:workflowName/instances", {
       pathParams: { workflowName },
       body: { params },
     });
@@ -444,7 +444,7 @@ describe("Workflows Runner", () => {
     );
     expect(waiting?.status).toBe("waiting");
 
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/events", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
       pathParams: { workflowName: "replay-workflow", instanceId: id },
       body: { type: "go", payload: { ok: true } },
     });
@@ -681,7 +681,7 @@ describe("Workflows Runner", () => {
     const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
     expect(firstTick).toBe(1);
 
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/events", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
       pathParams: { workflowName: "replay-logs-workflow", instanceId: id },
       body: { type: "go", payload: { ok: true } },
     });
@@ -930,7 +930,7 @@ describe("Workflows Runner", () => {
     const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
 
     await pauseBoundaryStarted;
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/pause", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/pause", {
       pathParams: { workflowName: "pause-boundary-workflow", instanceId: id },
     });
 
@@ -955,7 +955,7 @@ describe("Workflows Runner", () => {
     const tasks = await db.find("workflow_task", (b) => b.whereIndex("primary"));
     expect(tasks).toHaveLength(0);
 
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/resume", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/resume", {
       pathParams: { workflowName: "pause-boundary-workflow", instanceId: id },
     });
 
@@ -978,7 +978,7 @@ describe("Workflows Runner", () => {
     const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
 
     await terminateBoundaryStarted;
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/terminate", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/terminate", {
       pathParams: { workflowName: "terminate-boundary-workflow", instanceId: id },
     });
 
@@ -1009,7 +1009,7 @@ describe("Workflows Runner", () => {
     const tickPromise = runner.tick({ maxInstances: 1, maxSteps: 10 });
 
     await restartBoundaryStarted;
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/restart", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/restart", {
       pathParams: { workflowName: "restart-boundary-workflow", instanceId: id },
     });
 
@@ -1059,13 +1059,13 @@ describe("Workflows Runner", () => {
 
     expect(waiting?.status).toBe("waiting");
 
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/pause", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/pause", {
       pathParams: { workflowName: "pause-sleep-workflow", instanceId: id },
     });
 
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    await fragment.callRoute("POST", "/workflows/:workflowName/instances/:instanceId/resume", {
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/resume", {
       pathParams: { workflowName: "pause-sleep-workflow", instanceId: id },
     });
 
@@ -1083,5 +1083,27 @@ describe("Workflows Runner", () => {
 
     const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
     expect(step).toMatchObject({ stepKey: "pause-sleep", status: "completed" });
+  });
+
+  test("sleep should reschedule the task as pending", async () => {
+    const id = await createInstance("pause-sleep-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const task = await db.findFirst("workflow_task", (b) =>
+      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "pause-sleep-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+        ),
+      ),
+    );
+
+    expect(task?.kind).toBe("wake");
+    expect(task?.status).toBe("pending");
+    expect(task?.lockOwner).toBeNull();
+    expect(task?.lockedUntil).toBeNull();
   });
 });
