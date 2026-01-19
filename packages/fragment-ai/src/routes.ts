@@ -1,7 +1,10 @@
 import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
+import type { FragnoId } from "@fragno-dev/db/schema";
+import OpenAI from "openai";
 import { z } from "zod";
 import { aiFragmentDefinition } from "./definition";
+import { aiSchema } from "./schema";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -265,8 +268,47 @@ const handleServiceError = <Code extends string>(err: unknown, error: ErrorRespo
   throw err;
 };
 
+const resolveMessageText = (message: { text: string | null; content: unknown }) => {
+  if (message.text) {
+    return message.text;
+  }
+
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+
+  if (message.content && typeof message.content === "object" && "text" in message.content) {
+    const text = (message.content as { text?: unknown }).text;
+    if (typeof text === "string") {
+      return text;
+    }
+  }
+
+  return null;
+};
+
+const createOpenAIClient = async (config: {
+  apiKey?: string;
+  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
+  baseUrl?: string;
+  defaultModel?: { baseUrl?: string; headers?: Record<string, string> };
+}) => {
+  const apiKey =
+    config.apiKey ??
+    (typeof config.getApiKey === "function" ? await config.getApiKey("openai") : undefined);
+
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY_MISSING");
+  }
+
+  const baseURL = config.baseUrl ?? config.defaultModel?.baseUrl;
+  const defaultHeaders = config.defaultModel?.headers;
+
+  return new OpenAI({ apiKey, baseURL, defaultHeaders });
+};
+
 export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
-  ({ defineRoute, services }) => {
+  ({ defineRoute, services, config }) => {
     return [
       defineRoute({
         method: "POST",
@@ -482,13 +524,179 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         path: "/threads/:threadId/runs:stream",
         inputSchema: createRunSchema,
         outputSchema: z.array(runLiveEventSchema),
-        errorCodes: ["NOT_IMPLEMENTED"],
-        handler: async function ({ input }, { error }) {
-          await input.valid();
-          return error(
-            { message: "Run streaming is not implemented yet", code: "NOT_IMPLEMENTED" },
-            501,
-          );
+        errorCodes: ["THREAD_NOT_FOUND", "NO_USER_MESSAGE", "OPENAI_API_KEY_MISSING"],
+        handler: async function ({ pathParams, input }, { jsonStream, error }) {
+          const payload = await input.valid();
+
+          let run: z.infer<typeof runSchema>;
+
+          try {
+            run = await this.handlerTx()
+              .withServiceCalls(() => [
+                services.createRun({
+                  threadId: pathParams.threadId,
+                  type: payload.type,
+                  executionMode: "foreground_stream",
+                  inputMessageId: payload.inputMessageId,
+                  modelId: payload.modelId,
+                  thinkingLevel: payload.thinkingLevel,
+                  systemPrompt: payload.systemPrompt ?? null,
+                }),
+              ])
+              .transform(({ serviceResult: [value] }) => value)
+              .execute();
+          } catch (err) {
+            return handleServiceError(err, error as ErrorResponder);
+          }
+
+          const messageHistory = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.listMessages({
+                threadId: pathParams.threadId,
+                order: "asc",
+                pageSize: 100,
+              }),
+            ])
+            .transform(({ serviceResult: [value] }) => value)
+            .execute();
+
+          const openaiInput: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+
+          if (run.systemPrompt) {
+            openaiInput.push({ role: "system", content: run.systemPrompt });
+          }
+
+          for (const message of messageHistory.messages) {
+            if (message.role !== "user" && message.role !== "assistant") {
+              continue;
+            }
+
+            const text = resolveMessageText(message);
+            if (!text) {
+              continue;
+            }
+
+            openaiInput.push({ role: message.role as "user" | "assistant", content: text });
+          }
+
+          let openaiClient: OpenAI;
+          try {
+            openaiClient = await createOpenAIClient(config);
+          } catch (err) {
+            if (err instanceof Error && err.message === "OPENAI_API_KEY_MISSING") {
+              return error(
+                { message: "OpenAI API key is required", code: "OPENAI_API_KEY_MISSING" },
+                400,
+              );
+            }
+            throw err;
+          }
+
+          return jsonStream(async (stream) => {
+            let finalStatus: "succeeded" | "failed" = "succeeded";
+            let errorMessage: string | null = null;
+            let textBuffer = "";
+
+            await stream.write({ type: "run.meta", runId: run.id, threadId: run.threadId });
+            await stream.write({ type: "run.status", runId: run.id, status: "running" });
+
+            try {
+              const responseStream = await openaiClient.responses.create({
+                model: run.modelId,
+                input: openaiInput,
+                stream: true,
+              });
+
+              for await (const event of responseStream) {
+                if (event.type === "response.output_text.delta") {
+                  textBuffer += event.delta;
+                  await stream.write({
+                    type: "output.text.delta",
+                    runId: run.id,
+                    delta: event.delta,
+                  });
+                } else if (event.type === "response.output_text.done") {
+                  textBuffer = event.text;
+                  await stream.write({
+                    type: "output.text.done",
+                    runId: run.id,
+                    text: event.text,
+                  });
+                }
+              }
+            } catch (err) {
+              finalStatus = "failed";
+              errorMessage = err instanceof Error ? err.message : "OpenAI request failed";
+            }
+
+            const completedAt = new Date();
+            const assistantText = textBuffer || null;
+            const finalRun = {
+              ...run,
+              status: finalStatus,
+              error: errorMessage,
+              updatedAt: completedAt,
+              completedAt,
+            };
+
+            try {
+              await this.handlerTx()
+                .retrieve(({ forSchema }) =>
+                  forSchema(aiSchema).findFirst("ai_run", (b) =>
+                    b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+                  ),
+                )
+                .mutate(({ forSchema, retrieveResult }) => {
+                  const [runRecord] = retrieveResult as [
+                    { id: unknown; threadId: string } | undefined,
+                  ];
+
+                  if (!runRecord) {
+                    throw new Error("RUN_NOT_FOUND");
+                  }
+
+                  const schema = forSchema(aiSchema);
+                  schema.update("ai_run", runRecord.id as FragnoId, (b) =>
+                    b
+                      .set({
+                        status: finalStatus,
+                        error: errorMessage,
+                        updatedAt: completedAt,
+                        completedAt,
+                      })
+                      .check(),
+                  );
+
+                  if (assistantText) {
+                    schema.create("ai_message", {
+                      threadId: runRecord.threadId,
+                      role: "assistant",
+                      content: { type: "text", text: assistantText },
+                      text: assistantText,
+                      runId: run.id,
+                      createdAt: completedAt,
+                    });
+                  }
+                })
+                .execute();
+            } catch (err) {
+              if (!errorMessage) {
+                finalStatus = "failed";
+                errorMessage = err instanceof Error ? err.message : "Failed to finalize run";
+              }
+            }
+
+            try {
+              await stream.write({
+                type: "run.final",
+                runId: run.id,
+                status: finalStatus,
+                run: { ...finalRun, status: finalStatus, error: errorMessage },
+              });
+            } catch {
+              // Ignore stream errors if the client disconnected.
+            }
+          });
         },
       }),
       defineRoute({

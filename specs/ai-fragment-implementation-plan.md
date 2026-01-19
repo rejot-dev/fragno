@@ -28,7 +28,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] `apiKey` optional if `getApiKey` provided (at least one required)
    - [x] `enableRunnerTick` default false
    - [x] CLI covers full non-webhook HTTP surface (threads/messages/runs/events/artifacts + stream)
-3. [ ] Spike: NDJSON streaming route using OpenAI Responses (copy the `jsonStream` pattern from
+3. [x] Spike: NDJSON streaming route using OpenAI Responses (copy the `jsonStream` pattern from
        `example-fragments/chatno/src/server/chatno-api.ts`)
    - [ ] verify disconnect behavior: client cancel should not crash the handler
 4. [ ] Spike: webhook verification using `openai.webhooks.unwrap(...)` with a single configured
@@ -62,7 +62,7 @@ Deliverables:
    - [x] `packages/fragment-ai` (name: `@fragno-dev/fragment-ai`)
 2. [ ] Add dependencies:
    - [x] `@fragno-dev/core`, `@fragno-dev/db`
-   - [ ] `openai` (Responses API + webhook verification)
+   - [x] `openai` (Responses API + webhook verification)
    - [ ] (optional, v0.2+): `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`
 3. [x] Implement schema in `packages/fragment-ai/src/schema.ts`:
    - [x] `ai_thread`
@@ -106,7 +106,7 @@ Validation:
      - [x] `GET /ai/threads/:threadId/messages`
    - [ ] Runs:
      - [x] `POST /ai/threads/:threadId/runs` (background by default)
-     - [ ] `POST /ai/threads/:threadId/runs:stream` (foreground stream)
+     - [x] `POST /ai/threads/:threadId/runs:stream` (foreground stream)
      - [x] `GET /ai/threads/:threadId/runs`
      - [x] `GET /ai/runs/:runId`
      - [x] `POST /ai/runs/:runId/cancel`

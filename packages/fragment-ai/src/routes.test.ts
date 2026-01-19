@@ -1,8 +1,35 @@
-import { beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { aiFragmentDefinition } from "./definition";
 import { aiRoutesFactory } from "./routes";
+
+const mockOpenAIStreamEvents = [
+  { type: "response.output_text.delta", delta: "Hello " },
+  { type: "response.output_text.delta", delta: "world" },
+  { type: "response.output_text.done", text: "Hello world" },
+];
+
+const mockOpenAICreate = vi.fn(async () => {
+  async function* stream() {
+    for (const event of mockOpenAIStreamEvents) {
+      await Promise.resolve();
+      yield event;
+    }
+  }
+
+  return stream();
+});
+
+vi.mock("openai", () => {
+  return {
+    default: class MockOpenAI {
+      responses = {
+        create: mockOpenAICreate,
+      };
+    },
+  };
+});
 
 describe("AI Fragment Routes", () => {
   const setup = async () => {
@@ -11,7 +38,7 @@ describe("AI Fragment Routes", () => {
       .withFragment(
         "ai",
         instantiate(aiFragmentDefinition)
-          .withConfig({ defaultModel: { id: "gpt-test" } })
+          .withConfig({ defaultModel: { id: "gpt-test" }, apiKey: "test-key" })
           .withRoutes([aiRoutesFactory]),
       )
       .build();
@@ -158,7 +185,7 @@ describe("AI Fragment Routes", () => {
     }
   });
 
-  test("runs stream route should return not implemented", async () => {
+  test("runs stream route should stream events and finalize run", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: { title: "Stream Thread" },
     });
@@ -184,14 +211,34 @@ describe("AI Fragment Routes", () => {
       pathParams: { threadId: thread.data.id },
       body: { inputMessageId: message.data.id, type: "agent" },
     });
-    expect(response.type).toBe("error");
-    if (response.type === "error") {
-      expect(response.status).toBe(501);
-      expect(response.error.code).toBe("NOT_IMPLEMENTED");
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
     }
 
+    const events = [];
+    for await (const event of response.stream) {
+      events.push(event);
+    }
+
+    expect(events[0]).toMatchObject({ type: "run.meta", threadId: thread.data.id });
+    expect(events.some((event) => event.type === "output.text.delta")).toBe(true);
+    expect(events.some((event) => event.type === "output.text.done")).toBe(true);
+    expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "succeeded" });
+
     const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
-    expect(runs).toHaveLength(0);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("succeeded");
+
+    const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
+    expect(messages.some((msg) => msg.role === "assistant")).toBe(true);
+
+    expect(mockOpenAICreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-test",
+        stream: true,
+      }),
+    );
   });
 
   test("run events route should list persisted run events", async () => {
