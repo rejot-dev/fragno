@@ -491,3 +491,5 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         lint; pnpm types:check)
 69. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
         --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
+70. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/test
+        --filter=@fragno-dev/db; pnpm lint; pnpm types:check)
