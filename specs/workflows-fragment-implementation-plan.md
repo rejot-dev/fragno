@@ -179,6 +179,10 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
         lint; pnpm types:check)
+13. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
 
 ## Phase 9 — Management surface completeness (CLI-ready)
 
@@ -481,3 +485,7 @@ This plan assumes the design in `specs/workflows-fragment-spec.md`.
         --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
         --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test
         --filter=@fragno-dev/fragno-wf; pnpm lint; pnpm types:check)
+68. [x] Re-verified: 2026-01-19 (pnpm turbo run test --filter=@fragno-dev/fragment-workflows
+        --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node
+        --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test; pnpm
+        lint; pnpm types:check)
