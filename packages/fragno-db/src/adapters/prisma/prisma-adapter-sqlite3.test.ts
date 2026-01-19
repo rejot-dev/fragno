@@ -146,6 +146,31 @@ describe("PrismaAdapter SQLite", () => {
     expect(adapter.driverConfig.sqliteProfile).toBe("prisma");
   });
 
+  it("should store prisma profile values using sqlite-friendly types", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const happenedOn = new Date("2024-06-18T12:34:56.789Z");
+    const bigScore = 12345n;
+
+    const createUow = queryEngine.createUnitOfWork("create-prisma-profile-event");
+    createUow.create("events", {
+      name: "Prisma Profile Event",
+      happened_on: happenedOn,
+      payload: { level: "info", tags: ["sqlite", "prisma"] },
+      big_score: bigScore,
+    });
+    await createUow.executeMutations();
+
+    const tableName = adapter.createTableNameMapper("namespace").toPhysical("events");
+    const row = sqliteDatabase
+      .prepare(`SELECT happened_on, big_score FROM ${tableName} WHERE name = ?`)
+      .get("Prisma Profile Event") as { happened_on?: unknown; big_score?: unknown } | undefined;
+
+    expect(typeof row?.happened_on).toBe("string");
+    expect(row?.happened_on).toBe(happenedOn.toISOString());
+    expect(row?.big_score).not.toBeInstanceOf(Buffer);
+    expect(["number", "bigint"]).toContain(typeof row?.big_score);
+  });
+
   it("should honor explicit sqlite profile overrides", async () => {
     class FragnoSQLiteDriverConfig extends BetterSQLite3DriverConfig {
       override get sqliteProfile() {
