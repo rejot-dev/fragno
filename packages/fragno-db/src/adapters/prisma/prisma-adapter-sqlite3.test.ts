@@ -808,6 +808,27 @@ describe("PrismaAdapter SQLite", () => {
     expect(new Date(isoString).getTime()).toBe(event.created_at.getTime());
   });
 
+  it("should store Date values as UTC ISO strings for sqlite prisma profile", async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
+    const happenedOn = new Date("2024-06-18T12:34:56.789Z");
+
+    const createUow = queryEngine.createUnitOfWork("create-iso-event");
+    createUow.create("events", {
+      name: "ISO Stored Event",
+      happened_on: happenedOn,
+      payload: { level: "info", tags: ["sqlite", "iso"] },
+      big_score: 7n,
+    });
+    await createUow.executeMutations();
+
+    const tableName = adapter.createTableNameMapper("namespace").toPhysical("events");
+    const row = sqliteDatabase
+      .prepare(`SELECT happened_on FROM ${tableName} WHERE name = ?`)
+      .get("ISO Stored Event") as { happened_on?: string } | undefined;
+
+    expect(row?.happened_on).toBe(happenedOn.toISOString());
+  });
+
   it("should support handlerTx with retry logic", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
