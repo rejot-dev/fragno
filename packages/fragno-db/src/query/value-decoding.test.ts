@@ -4,6 +4,7 @@ import { decodeResult } from "./value-decoding";
 import {
   SQLocalDriverConfig,
   NodePostgresDriverConfig,
+  PGLiteDriverConfig,
   MySQL2DriverConfig,
 } from "../adapters/generic-sql/driver-config";
 
@@ -40,6 +41,7 @@ describe("decodeResult", () => {
 
   const sqliteConfig = new SQLocalDriverConfig();
   const postgresqlConfig = new NodePostgresDriverConfig();
+  const pgliteConfig = new PGLiteDriverConfig();
   const mysqlConfig = new MySQL2DriverConfig();
 
   describe("basic decoding", () => {
@@ -104,6 +106,15 @@ describe("decodeResult", () => {
       const result = decodeResult({ createdAt: date }, usersTable, postgresqlConfig);
 
       expect(result["createdAt"]).toBe(date);
+    });
+
+    it("should normalize Date values from pglite timestamp parsing", () => {
+      const localDate = new Date("2024-01-15T10:30:00");
+      const expected = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60_000);
+      const result = decodeResult({ createdAt: localDate }, usersTable, pgliteConfig);
+
+      assert.instanceOf(result["createdAt"], Date);
+      expect((result["createdAt"] as Date).toISOString()).toBe(expected.toISOString());
     });
   });
 
