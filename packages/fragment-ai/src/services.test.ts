@@ -1,10 +1,14 @@
-import { beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { aiFragmentDefinition } from "./definition";
 
 describe("AI Fragment Services", () => {
+  const dispatcher = {
+    wake: vi.fn(),
+  };
+
   const setup = async () => {
     const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
@@ -12,6 +16,7 @@ describe("AI Fragment Services", () => {
         "ai",
         instantiate(aiFragmentDefinition).withConfig({
           defaultModel: { id: "gpt-test" },
+          dispatcher,
         }),
       )
       .build();
@@ -40,6 +45,7 @@ describe("AI Fragment Services", () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
+    dispatcher.wake.mockReset();
   });
 
   test("createThread should persist thread defaults", async () => {
@@ -124,6 +130,31 @@ describe("AI Fragment Services", () => {
     expect(listed.runs[0]?.id).toBe(run.id);
   });
 
+  test("createRun should wake dispatcher for queued runs", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread D" }),
+    );
+
+    await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Queue me" },
+        text: "Queue me",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({ threadId: thread.id, type: "agent" }),
+    );
+
+    expect(dispatcher.wake).toHaveBeenCalledTimes(1);
+    expect(dispatcher.wake).toHaveBeenCalledWith({
+      type: "run.queued",
+      runId: run.id,
+    });
+  });
+
   test("recordOpenAIWebhookEvent should be idempotent", async () => {
     const first = await runService<{ created: boolean }>(() =>
       fragment.services.recordOpenAIWebhookEvent({
@@ -148,5 +179,23 @@ describe("AI Fragment Services", () => {
 
     const events = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
     expect(events).toHaveLength(1);
+  });
+
+  test("recordOpenAIWebhookEvent should wake dispatcher on create", async () => {
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_2",
+        type: "response.completed",
+        responseId: "resp_2",
+        payload: { ok: true },
+      }),
+    );
+
+    expect(dispatcher.wake).toHaveBeenCalledTimes(1);
+    expect(dispatcher.wake).toHaveBeenCalledWith({
+      type: "openai.webhook.received",
+      openaiEventId: "evt_2",
+      responseId: "resp_2",
+    });
   });
 });

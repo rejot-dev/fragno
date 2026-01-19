@@ -301,6 +301,21 @@ function resolveDefaultThinkingLevel(config: AiFragmentConfig) {
 
 export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
   .extend(withDatabase(aiSchema))
+  .provideHooks(({ defineHook, config }) => ({
+    onRunQueued: defineHook(async function (payload: { runId: string }) {
+      await config.dispatcher?.wake?.({ type: "run.queued", runId: payload.runId });
+    }),
+    onOpenAIWebhookReceived: defineHook(async function (payload: {
+      openaiEventId: string;
+      responseId: string;
+    }) {
+      await config.dispatcher?.wake?.({
+        type: "openai.webhook.received",
+        openaiEventId: payload.openaiEventId,
+        responseId: payload.responseId,
+      });
+    }),
+  }))
   .providesBaseService(({ defineService, config }) => {
     const getNow = () => new Date();
 
@@ -643,6 +658,10 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               updatedAt: now,
             });
 
+            if (status === "queued") {
+              uow.triggerHook("onRunQueued", { runId: id.toString() });
+            }
+
             return buildRun({
               id,
               threadId,
@@ -820,6 +839,11 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               receivedAt: now,
               processedAt: null,
               processingError: null,
+            });
+
+            uow.triggerHook("onOpenAIWebhookReceived", {
+              openaiEventId: params.openaiEventId,
+              responseId: params.responseId,
             });
 
             return {

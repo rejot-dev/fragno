@@ -84,7 +84,7 @@ Deliverables:
      - [ ] claim next unprocessed webhook events
 5. [ ] Implement fragment definition:
    - [x] `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
-   - [ ] `withDatabase(aiSchema)` and `provideHooks` for `dispatcher.wake` notifications
+   - [x] `withDatabase(aiSchema)` and `provideHooks` for `dispatcher.wake` notifications
 
 Validation:
 
