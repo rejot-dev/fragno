@@ -122,7 +122,7 @@ Validation:
 2. [x] Define zod schemas for each route input/output and the NDJSON stream event union.
 3. [ ] Add typed client bindings:
    - [x] `packages/fragment-ai/src/client/*` per Fragno conventions
-   - [ ] helper for NDJSON consumption (mirror existing Fragno client patterns)
+   - [x] helper for NDJSON consumption (mirror existing Fragno client patterns)
    - [ ] use `createClientBuilder` to expose hooks:
      - [x] `useThreads`, `useThread`, `useMessages`, `useRuns`, `useRun`, `useRunEvents`
      - [x] `useArtifacts`, `useArtifact`
@@ -136,8 +136,8 @@ Validation:
      - [x] `useDeleteThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
      - [x] `useAppendMessage` → invalidate `GET /ai/threads/:threadId/messages` + `GET /ai/threads`
      - [x] `useCreateRun` → invalidate `GET /ai/threads/:threadId/runs`
-     - [ ] `useRunStream` → invalidate `GET /ai/threads/:threadId/runs` +
-           `GET /ai/threads/:threadId/messages` on completion
+   - [x] `useRunStream` → invalidate `GET /ai/threads/:threadId/runs` +
+         `GET /ai/threads/:threadId/messages` on completion
      - [x] `useCancelRun` → invalidate `GET /ai/runs/:runId` + `GET /ai/runs/:runId/events`
 
 Validation:

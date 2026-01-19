@@ -729,6 +729,20 @@ export class ClientBuilder<
     };
   }
 
+  /**
+   * Manually invalidate cache entries to trigger re-fetch for active hooks.
+   */
+  invalidate<TPath extends string>(
+    method: HTTPMethod,
+    path: TPath,
+    params: {
+      pathParams?: MaybeExtractPathParamsOrWiden<TPath, string>;
+      queryParams?: Record<string, string>;
+    },
+  ): void {
+    this.#invalidate(method, path, params);
+  }
+
   #getFetcher(): typeof fetch {
     if (this.#fetcherConfig?.type === "function") {
       return this.#fetcherConfig.fetcher;

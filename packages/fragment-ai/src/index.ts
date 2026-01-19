@@ -1,8 +1,13 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import {
+  FragnoClientApiError,
+  FragnoClientFetchError,
+  FragnoClientUnknownApiError,
+} from "@fragno-dev/core/client";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
-import { computed } from "nanostores";
+import { atom, computed } from "nanostores";
 import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from "./definition";
 import { aiRoutesFactory } from "./routes";
 
@@ -92,31 +97,8 @@ export function createAiFragment(
 
 export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(aiFragmentDefinition, fragnoConfig, routes);
-  const runStream = builder.createMutator(
-    "POST",
-    "/threads/:threadId/runs:stream",
-    (invalidate, params) => {
-      const { threadId } = params.pathParams;
-      if (!threadId) {
-        return;
-      }
-      invalidate("GET", "/threads/:threadId/runs", { pathParams: { threadId } });
-      invalidate("GET", "/threads/:threadId/messages", { pathParams: { threadId } });
-    },
-  );
-
-  const streamEvents = computed(runStream.mutatorStore, ({ data }) => {
-    if (!Array.isArray(data)) {
-      return [] as AiRunLiveEvent[];
-    }
-
-    const items = data as AiRunLiveEvent[];
-    if (items.length <= STREAM_EVENT_BUFFER_SIZE) {
-      return items;
-    }
-
-    return items.slice(-STREAM_EVENT_BUFFER_SIZE);
-  });
+  const streamEvents = atom<AiRunLiveEvent[]>([]);
+  const streamError = atom<Error | undefined>(undefined);
 
   const streamText = computed(streamEvents, (events) => {
     let text = "";
@@ -151,8 +133,6 @@ export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig =
     return undefined;
   });
 
-  const streamError = computed(runStream.mutatorStore, ({ error }) => error);
-
   const startRunStream = async ({
     threadId,
     input,
@@ -167,10 +147,112 @@ export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig =
       systemPrompt?: string | null;
     };
   }) => {
-    return runStream.mutatorStore.mutate({
-      body: input,
-      path: { threadId },
-    });
+    streamEvents.set([]);
+    streamError.set(undefined);
+
+    const { fetcher, defaultOptions } = builder.getFetcher();
+    const url = builder.buildUrl("/threads/:threadId/runs:stream", { path: { threadId } });
+
+    let response: Response;
+    try {
+      const headers = new Headers(defaultOptions?.headers ?? {});
+      if (!headers.has("content-type")) {
+        headers.set("content-type", "application/json");
+      }
+
+      response = await fetcher(url, {
+        ...defaultOptions,
+        method: "POST",
+        headers,
+        body: JSON.stringify(input ?? {}),
+      });
+    } catch (err) {
+      const fetchError = FragnoClientFetchError.fromUnknownFetchError(err);
+      streamError.set(fetchError);
+      throw fetchError;
+    }
+
+    if (!response.ok) {
+      const apiError = await FragnoClientApiError.fromResponse(response);
+      streamError.set(apiError);
+      throw apiError;
+    }
+
+    if (!response.body) {
+      const bodyError = new FragnoClientFetchError("Response body is empty", "NO_BODY");
+      streamError.set(bodyError);
+      throw bodyError;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const collectedEvents: AiRunLiveEvent[] = [];
+
+    const appendEvent = (event: AiRunLiveEvent) => {
+      collectedEvents.push(event);
+      const nextEvents = [...streamEvents.get(), event];
+      if (nextEvents.length > STREAM_EVENT_BUFFER_SIZE) {
+        nextEvents.splice(0, nextEvents.length - STREAM_EVENT_BUFFER_SIZE);
+      }
+      streamEvents.set(nextEvents);
+    };
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex = buffer.indexOf("\n");
+        while (newlineIndex >= 0) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+
+          if (line) {
+            try {
+              const event = JSON.parse(line) as AiRunLiveEvent;
+              appendEvent(event);
+            } catch (err) {
+              throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 500, {
+                cause: err instanceof Error ? err : undefined,
+              });
+            }
+          }
+
+          newlineIndex = buffer.indexOf("\n");
+        }
+      }
+
+      const trailing = buffer.trim();
+      if (trailing) {
+        try {
+          const event = JSON.parse(trailing) as AiRunLiveEvent;
+          appendEvent(event);
+        } catch (err) {
+          throw new FragnoClientUnknownApiError("Failed to parse NDJSON line", 500, {
+            cause: err instanceof Error ? err : undefined,
+          });
+        }
+      }
+    } catch (err) {
+      const streamErr =
+        err instanceof Error
+          ? err
+          : new FragnoClientUnknownApiError("Unknown streaming error", 500, {
+              cause: err,
+            });
+      streamError.set(streamErr);
+      throw streamErr;
+    }
+
+    builder.invalidate("GET", "/threads/:threadId/runs", { pathParams: { threadId } });
+    builder.invalidate("GET", "/threads/:threadId/messages", { pathParams: { threadId } });
+
+    return collectedEvents;
   };
 
   return {
@@ -224,7 +306,7 @@ export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig =
       }
       invalidate("GET", "/threads/:threadId/runs", { pathParams: { threadId } });
     }),
-    useCreateRunStream: runStream,
+    useCreateRunStream: builder.createStore({ startRunStream }),
     useCancelRun: builder.createMutator("POST", "/runs/:runId/cancel", (invalidate, params) => {
       const { runId } = params.pathParams;
       if (!runId) {
