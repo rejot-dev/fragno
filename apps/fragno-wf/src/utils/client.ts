@@ -156,13 +156,13 @@ const safeJsonParse = (text: string) => {
 
 export function createClient(config: ClientConfig) {
   return {
-    listWorkflows: () => requestJson<{ workflows: Array<{ name: string }> }>(config, "/workflows"),
+    listWorkflows: () => requestJson<{ workflows: Array<{ name: string }> }>(config, "/"),
     listInstances: (params: ListInstancesParams) =>
       requestJson<{
         instances: Array<{ id: string; details: Record<string, unknown> }>;
         cursor?: string;
         hasNextPage: boolean;
-      }>(config, `/workflows/${params.workflowName}/instances`, {
+      }>(config, `/${params.workflowName}/instances`, {
         query: {
           status: params.status,
           pageSize: params.pageSize,
@@ -174,11 +174,11 @@ export function createClient(config: ClientConfig) {
         id: string;
         details: Record<string, unknown>;
         meta: Record<string, unknown>;
-      }>(config, `/workflows/${params.workflowName}/instances/${params.instanceId}`),
+      }>(config, `/${params.workflowName}/instances/${params.instanceId}`),
     createInstance: (params: { workflowName: string; id?: string; params?: unknown }) =>
       requestJson<{ id: string; details: Record<string, unknown> }>(
         config,
-        `/workflows/${params.workflowName}/instances`,
+        `/${params.workflowName}/instances`,
         {
           method: "POST",
           body: {
@@ -195,7 +195,7 @@ export function createClient(config: ClientConfig) {
     }) =>
       requestJson<{ status: Record<string, unknown> }>(
         config,
-        `/workflows/${params.workflowName}/instances/${params.instanceId}/events`,
+        `/${params.workflowName}/instances/${params.instanceId}/events`,
         {
           method: "POST",
           body: {
@@ -211,7 +211,7 @@ export function createClient(config: ClientConfig) {
     }) =>
       requestJson<{ ok: boolean }>(
         config,
-        `/workflows/${params.workflowName}/instances/${params.instanceId}/${params.action}`,
+        `/${params.workflowName}/instances/${params.instanceId}/${params.action}`,
         { method: "POST" },
       ),
     history: (params: HistoryParams) =>
@@ -226,7 +226,7 @@ export function createClient(config: ClientConfig) {
         logs?: Array<Record<string, unknown>>;
         logsCursor?: string;
         logsHasNextPage?: boolean;
-      }>(config, `/workflows/${params.workflowName}/instances/${params.instanceId}/history`, {
+      }>(config, `/${params.workflowName}/instances/${params.instanceId}/history`, {
         query: {
           runNumber: params.runNumber,
           pageSize: params.pageSize,
