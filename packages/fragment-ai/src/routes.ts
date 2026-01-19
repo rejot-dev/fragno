@@ -83,17 +83,6 @@ const artifactSchema = z.object({
   updatedAt: z.date(),
 });
 
-const webhookEventSchema = z.object({
-  id: z.string(),
-  openaiEventId: z.string(),
-  type: z.string(),
-  responseId: z.string(),
-  payload: z.unknown(),
-  receivedAt: z.date(),
-  processedAt: z.date().nullable(),
-  processingError: z.string().nullable(),
-});
-
 const createThreadSchema = z.object({
   title: z.string().optional().nullable(),
   systemPrompt: z.string().optional().nullable(),
@@ -222,13 +211,6 @@ const runLiveEventSchema = z.discriminatedUnion("type", [
 
 const listEventsQuerySchema = listQuerySchema;
 
-const webhookInputSchema = z.object({
-  openaiEventId: z.string(),
-  type: z.string(),
-  responseId: z.string(),
-  payload: z.unknown(),
-});
-
 const parseCursor = (cursorParam: string | undefined) => {
   if (!cursorParam) {
     return undefined;
@@ -287,15 +269,23 @@ const resolveMessageText = (message: { text: string | null; content: unknown }) 
   return null;
 };
 
+const resolveOpenAIApiKey = async (config: {
+  apiKey?: string;
+  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
+}) => {
+  return (
+    config.apiKey ??
+    (typeof config.getApiKey === "function" ? await config.getApiKey("openai") : undefined)
+  );
+};
+
 const createOpenAIClient = async (config: {
   apiKey?: string;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
   baseUrl?: string;
   defaultModel?: { baseUrl?: string; headers?: Record<string, string> };
 }) => {
-  const apiKey =
-    config.apiKey ??
-    (typeof config.getApiKey === "function" ? await config.getApiKey("openai") : undefined);
+  const apiKey = await resolveOpenAIApiKey(config);
 
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY_MISSING");
@@ -305,6 +295,24 @@ const createOpenAIClient = async (config: {
   const defaultHeaders = config.defaultModel?.headers;
 
   return new OpenAI({ apiKey, baseURL, defaultHeaders });
+};
+
+const parseWebhookEvent = (payload: unknown) => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as { id?: unknown; type?: unknown; data?: { id?: unknown } };
+  if (typeof record.id !== "string" || typeof record.type !== "string") {
+    return null;
+  }
+
+  const responseId = typeof record.data?.id === "string" ? record.data.id : null;
+  if (!responseId) {
+    return null;
+  }
+
+  return { openaiEventId: record.id, type: record.type, responseId };
 };
 
 export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
@@ -858,20 +866,60 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
       defineRoute({
         method: "POST",
         path: "/webhooks/openai",
-        inputSchema: webhookInputSchema,
-        outputSchema: z.object({
-          event: webhookEventSchema,
-          created: z.boolean(),
-        }),
-        handler: async function ({ input }, { json }) {
-          const payload = await input.valid();
+        outputSchema: z.object({ ok: z.boolean() }),
+        errorCodes: ["WEBHOOK_NOT_CONFIGURED", "INVALID_SIGNATURE", "VALIDATION_ERROR"],
+        handler: async function ({ headers, rawBody }, { json, error }) {
+          if (!config.webhookSecret) {
+            return error(
+              { message: "OpenAI webhook secret not configured", code: "WEBHOOK_NOT_CONFIGURED" },
+              400,
+            );
+          }
 
-          const result = await this.handlerTx()
-            .withServiceCalls(() => [services.recordOpenAIWebhookEvent(payload)])
-            .transform(({ serviceResult: [value] }) => value)
+          if (!rawBody) {
+            return error({ message: "Missing webhook payload", code: "VALIDATION_ERROR" }, 400);
+          }
+
+          const apiKey = (await resolveOpenAIApiKey(config)) ?? "webhook-only";
+          const openaiClient = new OpenAI({
+            apiKey,
+            webhookSecret: config.webhookSecret,
+          });
+
+          let event: unknown;
+          try {
+            event = await openaiClient.webhooks.unwrap(rawBody, headers, config.webhookSecret);
+          } catch (err) {
+            if (err instanceof OpenAI.InvalidWebhookSignatureError) {
+              return error(
+                { message: "Invalid webhook signature", code: "INVALID_SIGNATURE" },
+                401,
+              );
+            }
+
+            return error({ message: "Invalid webhook payload", code: "VALIDATION_ERROR" }, 400);
+          }
+
+          const parsed = parseWebhookEvent(event);
+          if (!parsed) {
+            return error(
+              { message: "Webhook payload missing response id", code: "VALIDATION_ERROR" },
+              400,
+            );
+          }
+
+          await this.handlerTx()
+            .withServiceCalls(() => [
+              services.recordOpenAIWebhookEvent({
+                openaiEventId: parsed.openaiEventId,
+                type: parsed.type,
+                responseId: parsed.responseId,
+                payload: event,
+              }),
+            ])
             .execute();
 
-          return json(result);
+          return json({ ok: true });
         },
       }),
     ];

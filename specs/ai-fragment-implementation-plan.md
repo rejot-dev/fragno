@@ -31,9 +31,9 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 3. [x] Spike: NDJSON streaming route using OpenAI Responses (copy the `jsonStream` pattern from
        `example-fragments/chatno/src/server/chatno-api.ts`)
    - [ ] verify disconnect behavior: client cancel should not crash the handler
-4. [ ] Spike: webhook verification using `openai.webhooks.unwrap(...)` with a single configured
+4. [x] Spike: webhook verification using `openai.webhooks.unwrap(...)` with a single configured
        secret
-   - [ ] confirm runtime has `globalThis.crypto` (Node >= 22)
+   - [x] confirm runtime has `globalThis.crypto` (Node >= 22)
 5. [ ] Spike: persistence boundaries:
    - [ ] deltas transient by default
    - [ ] confirm we can persist final assistant message even if the client disconnects mid-stream

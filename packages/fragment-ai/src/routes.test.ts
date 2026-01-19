@@ -3,6 +3,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { aiFragmentDefinition } from "./definition";
 import { aiRoutesFactory } from "./routes";
+import OpenAI from "openai";
 
 const mockOpenAIStreamEvents = [
   { type: "response.output_text.delta", delta: "Hello " },
@@ -21,11 +22,27 @@ const mockOpenAICreate = vi.fn(async () => {
   return stream();
 });
 
+const mockOpenAIWebhookUnwrap = vi.fn(async () => {
+  return {
+    id: "evt_test",
+    type: "response.completed",
+    data: { id: "resp_test" },
+  };
+});
+
 vi.mock("openai", () => {
+  class InvalidWebhookSignatureError extends Error {}
+
   return {
     default: class MockOpenAI {
+      static InvalidWebhookSignatureError = InvalidWebhookSignatureError;
+
       responses = {
         create: mockOpenAICreate,
+      };
+
+      webhooks = {
+        unwrap: mockOpenAIWebhookUnwrap,
       };
     },
   };
@@ -38,7 +55,11 @@ describe("AI Fragment Routes", () => {
       .withFragment(
         "ai",
         instantiate(aiFragmentDefinition)
-          .withConfig({ defaultModel: { id: "gpt-test" }, apiKey: "test-key" })
+          .withConfig({
+            defaultModel: { id: "gpt-test" },
+            apiKey: "test-key",
+            webhookSecret: "whsec_test",
+          })
           .withRoutes([aiRoutesFactory]),
       )
       .build();
@@ -360,5 +381,58 @@ describe("AI Fragment Routes", () => {
       expect(artifact.data.id).toBe(artifactId.toString());
       expect(artifact.data.title).toBe("Report");
     }
+  });
+
+  test("webhooks route should verify and store OpenAI events", async () => {
+    mockOpenAIWebhookUnwrap.mockResolvedValueOnce({
+      id: "evt_123",
+      type: "response.completed",
+      data: { id: "resp_123" },
+    });
+
+    const request = new Request("http://localhost/api/ai/webhooks/openai", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": "wh_123",
+        "webhook-timestamp": "123",
+        "webhook-signature": "sig",
+      },
+      body: JSON.stringify({ test: true }),
+    });
+
+    const response = await fragment.handler(request);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+
+    const events = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
+    expect(events).toHaveLength(1);
+    expect(events[0]?.openaiEventId).toBe("evt_123");
+    expect(events[0]?.responseId).toBe("resp_123");
+    expect(events[0]?.type).toBe("response.completed");
+  });
+
+  test("webhooks route should reject invalid signatures", async () => {
+    mockOpenAIWebhookUnwrap.mockRejectedValueOnce(
+      new OpenAI.InvalidWebhookSignatureError("bad signature"),
+    );
+
+    const request = new Request("http://localhost/api/ai/webhooks/openai", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": "wh_456",
+        "webhook-timestamp": "456",
+        "webhook-signature": "bad",
+      },
+      body: JSON.stringify({ test: false }),
+    });
+
+    const response = await fragment.handler(request);
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ code: "INVALID_SIGNATURE" });
+
+    const events = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
+    expect(events).toHaveLength(0);
   });
 });
