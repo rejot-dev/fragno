@@ -1,0 +1,49 @@
+{
+  "name": "@fragno-example/wf-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "start": "react-router-serve ./build/server/index.js",
+    "types:check": "react-router typegen && tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
+    "db:push": "drizzle-kit push --config ./drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config ./drizzle.config.ts",
+    "db:fragno:generate": "fragno-cli db generate ./app/workflows/workflows-fragment.server.ts -o ./app/db/workflows.schema.ts",
+    "db:fragno:migrate": "fragno-cli db migrate ./app/workflows/workflows-fragment.server.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.11",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/fragment-workflows": "workspace:*",
+    "@fragno-dev/workflows-dispatcher-node": "workspace:*",
+    "@react-router/node": "^7.5.3",
+    "@react-router/serve": "^7.5.3",
+    "drizzle-orm": "^0.44.6",
+    "isbot": "^5",
+    "kysely-pglite": "^0.6.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.5.3"
+  },
+  "devDependencies": {
+    "@fragno-dev/cli": "workspace:*",
+    "@react-router/dev": "^7.5.3",
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/node": "^22",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "drizzle-kit": "^0.31.5",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.3",
+    "vite-env-only": "^3.0.3",
+    "vite-plugin-devtools-json": "^1.0.0",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4"
+  }
+}
