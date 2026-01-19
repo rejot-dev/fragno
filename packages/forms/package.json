@@ -70,7 +70,6 @@
   "type": "module",
   "private": false,
   "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@jsonforms/core": "^3.7.0",

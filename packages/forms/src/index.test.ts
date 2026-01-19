@@ -626,5 +626,26 @@ describe("Forms Fragment", () => {
       const form = await formsFragment.services.getForm(createdId);
       expect(form).toBeNull();
     });
+
+    test("should validate data against JSON schema", () => {
+      // Valid data
+      const validResult = formsFragment.services.validateData(personDataSchema, {
+        name: "John",
+        email: "john@example.com",
+      });
+      expect(validResult.success).toBe(true);
+
+      // Invalid data - missing required field
+      const invalidResult = formsFragment.services.validateData(personDataSchema, {
+        name: "John",
+      });
+      expect(invalidResult.success).toBe(false);
+      if (invalidResult.success === false) {
+        expect(invalidResult.error.errors[0]).toStrictEqual({
+          instancePath: "/email",
+          message: "Invalid input: expected string, received undefined",
+        });
+      }
+    });
   });
 });
