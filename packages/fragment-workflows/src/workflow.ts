@@ -227,3 +227,36 @@ export interface WorkflowsFragmentConfig {
   authorizeSendEvent?: WorkflowsAuthorizeHook<WorkflowsAuthorizeSendEventContext>;
   authorizeRunnerTick?: WorkflowsAuthorizeHook<WorkflowsAuthorizeRunnerTickContext>;
 }
+
+const TERMINAL_STATUSES: InstanceStatus["status"][] = ["complete", "terminated", "errored"];
+const WAITING_STATUSES: InstanceStatus["status"][] = ["waiting", "waitingForPause"];
+
+export const isTerminalStatus = (status: InstanceStatus["status"]) =>
+  TERMINAL_STATUSES.includes(status);
+
+export const isWaitingStatus = (status: InstanceStatus["status"]) =>
+  WAITING_STATUSES.includes(status);
+
+export const statusLabel = (status: InstanceStatus["status"]) => {
+  const labels: Record<InstanceStatus["status"], string> = {
+    queued: "Queued",
+    running: "Running",
+    paused: "Paused",
+    errored: "Errored",
+    terminated: "Terminated",
+    complete: "Complete",
+    waiting: "Waiting",
+    waitingForPause: "Waiting For Pause",
+    unknown: "Unknown",
+  };
+
+  return labels[status] ?? "Unknown";
+};
+
+export const currentStepLabel = (step?: WorkflowInstanceCurrentStep | null) => {
+  if (!step) {
+    return undefined;
+  }
+
+  return step.name ? `${step.name} (${step.type})` : step.type;
+};
