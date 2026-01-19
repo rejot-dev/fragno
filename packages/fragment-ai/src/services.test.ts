@@ -155,6 +155,64 @@ describe("AI Fragment Services", () => {
     });
   });
 
+  test("claimNextRuns should claim due queued runs", async () => {
+    const now = new Date("2024-01-01T00:00:00Z");
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread E" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Please run" },
+        text: "Please run",
+      }),
+    );
+
+    const runOne = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        type: "agent",
+      }),
+    );
+
+    const runTwo = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        type: "agent",
+      }),
+    );
+
+    const storedRunTwo = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", runTwo.id)),
+    );
+    expect(storedRunTwo).toBeTruthy();
+
+    await db.update("ai_run", storedRunTwo!.id, (b) =>
+      b.set({ nextAttemptAt: new Date("2024-01-02T00:00:00Z") }),
+    );
+
+    const claimed = await runService<{
+      runs: Array<{ id: string; status: string; startedAt: Date }>;
+    }>(() => fragment.services.claimNextRuns({ maxRuns: 2, now }));
+
+    expect(claimed.runs).toHaveLength(1);
+    expect(claimed.runs[0]?.id).toBe(runOne.id);
+    expect(claimed.runs[0]?.status).toBe("running");
+    expect(claimed.runs[0]?.startedAt).toEqual(now);
+
+    const storedRunOne = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", runOne.id)),
+    );
+
+    expect(storedRunOne?.status).toBe("running");
+    expect(storedRunOne?.startedAt).toEqual(now);
+  });
+
   test("recordOpenAIWebhookEvent should be idempotent", async () => {
     const first = await runService<{ created: boolean }>(() =>
       fragment.services.recordOpenAIWebhookEvent({
@@ -197,5 +255,43 @@ describe("AI Fragment Services", () => {
       openaiEventId: "evt_2",
       responseId: "resp_2",
     });
+  });
+
+  test("claimNextWebhookEvents should return unprocessed events", async () => {
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_3",
+        type: "response.completed",
+        responseId: "resp_3",
+        payload: { ok: true },
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_4",
+        type: "response.completed",
+        responseId: "resp_4",
+        payload: { ok: true },
+      }),
+    );
+
+    const processedEvent = await db.findFirst("ai_openai_webhook_event", (b) =>
+      b.whereIndex("idx_ai_openai_webhook_event_openaiEventId", (eb) =>
+        eb("openaiEventId", "=", "evt_4"),
+      ),
+    );
+    expect(processedEvent).toBeTruthy();
+
+    await db.update("ai_openai_webhook_event", processedEvent!.id, (b) =>
+      b.set({ processedAt: new Date("2024-01-01T00:00:00Z") }),
+    );
+
+    const claimed = await runService<{ events: Array<{ openaiEventId: string }> }>(() =>
+      fragment.services.claimNextWebhookEvents({ maxEvents: 5 }),
+    );
+
+    expect(claimed.events).toHaveLength(1);
+    expect(claimed.events[0]?.openaiEventId).toBe("evt_3");
   });
 });

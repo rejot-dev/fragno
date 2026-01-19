@@ -79,9 +79,9 @@ Deliverables:
    - [x] `runsService` (create/cancel/get; selects input message; snapshots config)
    - [x] `artifactsService` (list/get by runId/artifactId)
    - [x] `webhooksService` (persist deliveries; idempotency by `openaiEventId`)
-   - [ ] `runnerRepo` helpers:
-     - [ ] claim next runnable `ai_run` rows (queued + due retries)
-     - [ ] claim next unprocessed webhook events
+   - [x] `runnerRepo` helpers:
+     - [x] claim next runnable `ai_run` rows (queued + due retries)
+     - [x] claim next unprocessed webhook events
 5. [ ] Implement fragment definition:
    - [x] `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
    - [x] `withDatabase(aiSchema)` and `provideHooks` for `dispatcher.wake` notifications

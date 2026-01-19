@@ -207,11 +207,20 @@ type ListRunsParams = {
   order?: "asc" | "desc";
 };
 
+type ClaimRunsParams = {
+  maxRuns?: number;
+  now?: Date;
+};
+
 type RecordWebhookEventParams = {
   openaiEventId: string;
   type: string;
   responseId: string;
   payload: unknown;
+};
+
+type ClaimWebhookEventsParams = {
+  maxEvents?: number;
 };
 
 function buildThread(thread: AiThreadRecord): AiThread {
@@ -727,6 +736,57 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           })
           .build();
       },
+      claimNextRuns: function ({ maxRuns = 1, now }: ClaimRunsParams = {}) {
+        const effectiveNow = now ?? getNow();
+
+        return this.serviceTx(aiSchema)
+          .retrieve((uow) =>
+            uow.find("ai_run", (b) => {
+              const query = b
+                .whereIndex("idx_ai_run_status_nextAttemptAt_updatedAt", (eb) =>
+                  eb.and(
+                    eb("status", "=", "queued"),
+                    eb.or(eb.isNull("nextAttemptAt"), eb("nextAttemptAt", "<=", effectiveNow)),
+                  ),
+                )
+                .orderByIndex("idx_ai_run_status_nextAttemptAt_updatedAt", "asc")
+                .pageSize(maxRuns);
+
+              return query;
+            }),
+          )
+          .mutate(({ uow, retrieveResult: [runs] }) => {
+            const claimed: AiRun[] = [];
+
+            for (const run of runs as AiRunRecord[]) {
+              const startedAt = run.startedAt ?? effectiveNow;
+
+              uow.update("ai_run", run.id, (b) =>
+                b
+                  .set({
+                    status: "running",
+                    startedAt,
+                    updatedAt: effectiveNow,
+                    nextAttemptAt: null,
+                  })
+                  .check(),
+              );
+
+              claimed.push(
+                buildRun({
+                  ...run,
+                  status: "running",
+                  startedAt,
+                  updatedAt: effectiveNow,
+                  nextAttemptAt: null,
+                }),
+              );
+            }
+
+            return { runs: claimed };
+          })
+          .build();
+      },
       getRun: function (runId: string) {
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
@@ -812,6 +872,25 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               throw new Error("ARTIFACT_NOT_FOUND");
             }
             return buildArtifact(artifact);
+          })
+          .build();
+      },
+      claimNextWebhookEvents: function ({ maxEvents = 1 }: ClaimWebhookEventsParams = {}) {
+        return this.serviceTx(aiSchema)
+          .retrieve((uow) =>
+            uow.find("ai_openai_webhook_event", (b) =>
+              b
+                .whereIndex("idx_ai_openai_webhook_event_processedAt", (eb) =>
+                  eb.isNull("processedAt"),
+                )
+                .orderByIndex("idx_ai_openai_webhook_event_processedAt", "asc")
+                .pageSize(maxEvents),
+            ),
+          )
+          .transformRetrieve(([events]) => {
+            return {
+              events: (events as AiWebhookEventRecord[]).map(buildWebhookEvent),
+            };
           })
           .build();
       },
