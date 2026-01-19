@@ -1,16 +1,16 @@
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
+import { z } from "zod";
 import { formsSchema } from "./schema";
 import type { FormsConfig } from ".";
 import type { JSONSchema, NewForm, UpdateForm, FormStatus, UIElementSchema } from "./models";
-import { Validator, type Schema } from "@cfworker/json-schema";
 
 export type ValidatedData<T = Record<string, unknown>> = T;
 export type ValidationResult =
   | { success: true; data: ValidatedData }
   | {
       success: false;
-      error: { message: string; errors: Array<{ path: string; message: string }> };
+      error: { message: string; errors: Array<{ instancePath: string; message: string }> };
     };
 
 // External to this fragment
@@ -102,23 +102,21 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
         await deps.db.delete("form", id);
       },
 
-      validateData: (schema: Schema, data: Record<string, unknown>): ValidationResult => {
-        const validator = new Validator(schema);
-        const result = validator.validate(data);
+      validateData: (schema: JSONSchema, data: Record<string, unknown>): ValidationResult => {
+        const zodSchema = z.fromJSONSchema(schema);
+        const result = zodSchema.safeParse(data);
 
-        if (result.valid) {
-          return { success: true, data: data as ValidatedData };
+        if (result.success) {
+          return { success: true, data: result.data as ValidatedData };
         }
-        console.error("ERROR", JSON.stringify(result.errors));
         return {
           success: false,
-          // TODO: better error type for validation errors?
-          // see: https://jsonforms.io/docs/validation/#external-validation-errors
+
           error: {
             message: "Validation failed",
-            errors: result.errors.map((e) => ({
-              path: e.instanceLocation || "",
-              message: e.error ?? "Invalid value",
+            errors: result.error.issues.map((e) => ({
+              instancePath: "/" + e.path.join("/"),
+              message: e.message,
             })),
           },
         };

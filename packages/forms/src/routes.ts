@@ -1,5 +1,4 @@
 import { defineRoutes } from "@fragno-dev/core";
-import type { Schema } from "@cfworker/json-schema";
 import { z } from "zod";
 import { formsFragmentDef } from "./definition";
 import {
@@ -10,7 +9,7 @@ import {
   FormResponseSchema,
   UpdateFormSchema,
 } from "./models";
-import type { Form } from "./models";
+import type { Form, JSONSchema } from "./models";
 import type { StaticForm } from ".";
 
 /** Extract and validate request metadata from headers (untrusted input) */
@@ -96,7 +95,7 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
           }
 
           // Form validation
-          const result = services.validateData(form.dataSchema as Schema, data);
+          const result = services.validateData(form.dataSchema as JSONSchema, data);
 
           if (!result.success) {
             const message = result.error.errors.map((e) => e.message).join(" ");
