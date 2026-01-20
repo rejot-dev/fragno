@@ -364,15 +364,15 @@ Validation:
 1. [x] Create `example-apps/ai-fragment-react-router-drizzle` (copy react-router example skeleton).
 2. [x] Use Drizzle + PGLite for local persistence.
 3. [ ] Implement pages:
-   - [ ] Home page (intro, quick actions)
-   - [ ] Threads view with left list (simple list, no pagination) + right detail view (thread +
+   - [x] Home page (intro, quick actions)
+   - [x] Threads view with left list (simple list, no pagination) + right detail view (thread +
          messages + runs)
 4. [ ] Wire all hooks/mutators/stream helpers from §12:
    - [ ] thread CRUD + messages + runs + run events + artifacts
-   - [ ] live stream panel + persisted run events panel (event buffer: 200)
-   - [ ] deep research flow (background) + artifact display
+   - [x] live stream panel + persisted run events panel (event buffer: 200)
+   - [x] deep research flow (background) + artifact display
 5. [ ] Keep endpoints open (no auth) and do not add runner tick controls.
-6. [ ] Add timer-based refresh for background runs/messages (1s polling).
+6. [x] Add timer-based refresh for background runs/messages (1s polling).
 
 Validation:
 
