@@ -40,8 +40,8 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
          (report-only artifacts)
 6. [ ] Align fragment config with pi (see `/Users/wilco/dev/pi-mono`):
-   - [ ] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`
-   - [ ] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
+   - [x] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`
+   - [x] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
    - [ ] update docs examples accordingly
 7. [ ] Spike: shared dispatcher generalization
    - [ ] extract `createInProcessDispatcher` into a generic package (node) and update all

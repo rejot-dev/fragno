@@ -3,9 +3,9 @@ import type { AiFragmentConfig, AiRunnerTickOptions, AiRunnerTickResult } from "
 import { aiSchema } from "./schema";
 import {
   buildOpenAIIdempotencyKey,
+  buildOpenAIResponseOptions,
   createOpenAIClient,
   resolveMessageText,
-  resolveOpenAIToolConfig,
   resolveOpenAIResponseText,
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
@@ -21,6 +21,7 @@ type AiRunRecord = {
   type: string;
   systemPrompt: string | null;
   modelId: string;
+  thinkingLevel: string;
   executionMode: string;
   status: string;
   openaiResponseId: string | null;
@@ -348,17 +349,14 @@ const submitDeepResearchRun = async ({
 
   try {
     const client = await createOpenAIClient(config);
-    const openaiToolConfig = resolveOpenAIToolConfig(
-      run.openaiToolConfig ?? thread.openaiToolConfig,
-    );
-    const responseOptions = openaiToolConfig
-      ? {
-          ...openaiToolConfig,
-          model: run.modelId,
-          input: buildOpenAIInput(run, messages),
-          background: true,
-        }
-      : { model: run.modelId, input: buildOpenAIInput(run, messages), background: true };
+    const responseOptions = buildOpenAIResponseOptions({
+      config,
+      modelId: run.modelId,
+      input: buildOpenAIInput(run, messages),
+      thinkingLevel: run.thinkingLevel,
+      openaiToolConfig: run.openaiToolConfig ?? thread.openaiToolConfig,
+      background: true,
+    });
     const response = await client.responses.create(responseOptions, {
       idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
     });
@@ -629,12 +627,13 @@ export const runExecutor = async ({
 
   try {
     const client = await createOpenAIClient(config);
-    const openaiToolConfig = resolveOpenAIToolConfig(
-      run.openaiToolConfig ?? thread.openaiToolConfig,
-    );
-    const responseOptions = openaiToolConfig
-      ? { ...openaiToolConfig, model: run.modelId, input: buildOpenAIInput(run, messages) }
-      : { model: run.modelId, input: buildOpenAIInput(run, messages) };
+    const responseOptions = buildOpenAIResponseOptions({
+      config,
+      modelId: run.modelId,
+      input: buildOpenAIInput(run, messages),
+      thinkingLevel: run.thinkingLevel,
+      openaiToolConfig: run.openaiToolConfig ?? thread.openaiToolConfig,
+    });
     const response = await client.responses.create(responseOptions, {
       idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
       signal: abortController.signal,

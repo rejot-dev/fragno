@@ -550,4 +550,70 @@ describe("AI Fragment Runner", () => {
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0]?.text).toBe("Race complete");
   });
+
+  test("runner tick should apply config options and thinking level to OpenAI calls", async () => {
+    const customConfig = {
+      ...config,
+      temperature: 0.2,
+      maxTokens: 128,
+      sessionId: "session_test",
+      openai: { reasoningSummary: "detailed" as const, serviceTier: "scale" },
+    };
+
+    const { fragments, test: customTestContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment("ai", instantiate(aiFragmentDefinition).withConfig(customConfig))
+      .build();
+
+    await customTestContext.resetDatabase();
+    mockOpenAICreate.mockClear();
+
+    const customFragment = fragments.ai.fragment;
+    const customDb = fragments.ai.db;
+
+    const runService = <T>(call: () => unknown) =>
+      customFragment.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [call() as TxResult<unknown, unknown>] as const)
+          .transform(({ serviceResult: [result] }) => result as T)
+          .execute();
+      });
+
+    const thread = await runService<{ id: string }>(() =>
+      customFragment.services.createThread({ title: "Config Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      customFragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Apply options" },
+        text: "Apply options",
+      }),
+    );
+
+    await runService<{ id: string }>(() =>
+      customFragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "agent",
+        thinkingLevel: "high",
+      }),
+    );
+
+    const runner = createAiRunner({ db: customDb, config: customConfig });
+    await runner.tick({ maxRuns: 1 });
+
+    const [options] = mockOpenAICreate.mock.calls.at(-1) ?? [];
+    expect(options).toEqual(
+      expect.objectContaining({
+        temperature: 0.2,
+        max_output_tokens: 128,
+        prompt_cache_key: "session_test",
+        service_tier: "scale",
+        reasoning: { effort: "high", summary: "detailed" },
+      }),
+    );
+  });
 });

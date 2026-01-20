@@ -7,10 +7,10 @@ import { aiFragmentDefinition, type AiRunLiveEvent } from "./definition";
 import { aiSchema } from "./schema";
 import {
   buildOpenAIIdempotencyKey,
+  buildOpenAIResponseOptions,
   createOpenAIClient,
   resolveMessageText,
   resolveOpenAIApiKey,
-  resolveOpenAIToolConfig,
   resolveOpenAIResponseId,
   resolveOpenAIResponseText,
 } from "./openai";
@@ -744,18 +744,20 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             recordRunEvent("run.status", { status: "running" });
 
             try {
-              const openaiToolConfig = resolveOpenAIToolConfig(
-                run.openaiToolConfig ?? thread.openaiToolConfig,
-              );
-              const responseOptions = openaiToolConfig
-                ? { ...openaiToolConfig, model: run.modelId, input: openaiInput, stream: true }
-                : { model: run.modelId, input: openaiInput, stream: true };
-              const responseStream = await openaiClient.responses.create(responseOptions, {
+              const responseOptions = buildOpenAIResponseOptions({
+                config,
+                modelId: run.modelId,
+                input: openaiInput,
+                thinkingLevel: run.thinkingLevel,
+                openaiToolConfig: run.openaiToolConfig ?? thread.openaiToolConfig,
+                stream: true,
+              });
+              const responseStream = (await openaiClient.responses.create(responseOptions, {
                 idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
                 signal: abortController.signal,
-              });
+              })) as unknown as AsyncIterable<Record<string, unknown>>;
 
-              for await (const event of responseStream as AsyncIterable<Record<string, unknown>>) {
+              for await (const event of responseStream) {
                 const responseId = resolveOpenAIResponseId(event);
                 if (responseId) {
                   await persistOpenAIResponseId(responseId);
