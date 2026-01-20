@@ -9,7 +9,7 @@ import {
   FormResponseSchema,
   UpdateFormSchema,
 } from "./models";
-import type { Form, JSONSchema } from "./models";
+import type { Form } from "./models";
 import type { StaticForm } from ".";
 
 /** Extract and validate request metadata from headers (untrusted input) */
@@ -95,7 +95,7 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
           }
 
           // Form validation
-          const result = services.validateData(form.dataSchema as JSONSchema, data);
+          const result = services.validateData(form.dataSchema, data);
 
           if (!result.success) {
             const message = result.error.errors.map((e) => e.message).join(" ");
@@ -172,9 +172,18 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
         path: "/admin/forms",
         inputSchema: NewFormSchema,
         outputSchema: z.string(),
-        errorCodes: ["CREATE_FAILED"] as const,
-        handler: async ({ input }, { json }) => {
+        errorCodes: ["CREATE_FAILED", "INVALID_JSON_SCHEMA"] as const,
+        handler: async ({ input }, { json, error }) => {
           const data = await input.valid();
+
+          // Validate that dataSchema is valid JSON Schema
+          try {
+            z.fromJSONSchema(data.dataSchema);
+          } catch (e) {
+            const message = e instanceof Error ? e.message : "Invalid JSON Schema";
+            return error({ message, code: "INVALID_JSON_SCHEMA" }, 400);
+          }
+
           const formId = await services.createForm(data);
           if (config.onFormCreated) {
             await config.onFormCreated({ ...data, id: formId });
@@ -187,7 +196,7 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
         method: "PUT",
         path: "/admin/forms/:id",
         inputSchema: UpdateFormSchema,
-        errorCodes: ["NOT_FOUND", "STATIC_FORM_READ_ONLY"] as const,
+        errorCodes: ["NOT_FOUND", "STATIC_FORM_READ_ONLY", "INVALID_JSON_SCHEMA"] as const,
         handler: async ({ input, pathParams }, { json, error }) => {
           const isStatic = config.staticForms?.some((f) => f.id === pathParams.id);
           if (isStatic) {
@@ -197,6 +206,17 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
             );
           }
           const data = await input.valid();
+
+          // Validate that dataSchema is valid JSON Schema (if provided)
+          if (data.dataSchema) {
+            try {
+              z.fromJSONSchema(data.dataSchema);
+            } catch (e) {
+              const message = e instanceof Error ? e.message : "Invalid JSON Schema";
+              return error({ message, code: "INVALID_JSON_SCHEMA" }, 400);
+            }
+          }
+
           const { success } = await services.updateForm(pathParams.id, data);
           if (!success) {
             return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
