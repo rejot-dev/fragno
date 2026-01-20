@@ -407,6 +407,284 @@ const scheduleWebhookRetry = async ({
   return nextAttemptAt;
 };
 
+const submitPiAiDeepResearchRun = async ({
+  db,
+  config,
+  run,
+  messages,
+  thread,
+  clock,
+  modelRef,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  config: AiFragmentConfig;
+  run: AiRunRecord;
+  messages: AiMessageRecord[];
+  thread: AiThreadRecord;
+  clock: Clock;
+  modelRef: ReturnType<typeof resolveOpenAIModelRef>;
+}) => {
+  const now = clock.now();
+  const modelProvider = modelRef?.provider ?? "openai";
+
+  logWithLogger(config.logger, "info", {
+    event: "ai.run.deep_research.submission.started",
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    attempt: run.attempt,
+  });
+
+  let status: "succeeded" | "failed" | "cancelled" = "succeeded";
+  let error: string | null = null;
+  let reportMarkdown: string | null = null;
+  let usage: unknown | undefined;
+  let toolCalls: ReturnType<typeof resolvePiAiToolCalls> | null = null;
+  let retryable = true;
+
+  const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
+  const toolPolicyResult = await applyToolPolicy({
+    policy: config.toolPolicy,
+    context: {
+      threadId: run.threadId,
+      runId: run.id.toString(),
+      runType: run.type as "agent" | "deep_research",
+      executionMode: run.executionMode as "foreground_stream" | "background",
+      modelId: run.modelId,
+      openaiToolConfig: baseToolConfig ?? null,
+    },
+  });
+
+  if (toolPolicyResult.deniedReason) {
+    status = "failed";
+    error = toolPolicyResult.deniedReason;
+    retryable = false;
+    logWithLogger(config.logger, "warn", {
+      event: "ai.run.tool_policy.denied",
+      runId: run.id.toString(),
+      threadId: run.threadId,
+      type: run.type,
+      executionMode: run.executionMode,
+      reason: toolPolicyResult.deniedReason,
+    });
+  } else {
+    try {
+      if (!modelRef) {
+        throw new Error("MODEL_PROVIDER_MISSING");
+      }
+
+      const model = await resolvePiAiModel({ modelId: run.modelId, modelRef });
+      const openaiInput = await buildOpenAIInput({
+        run,
+        messages,
+        maxMessages: resolveMaxHistoryMessages(config),
+        compactor: config.history?.compactor,
+        logger: config.logger,
+      });
+      const context = buildPiAiContext({ input: openaiInput, model });
+      const { apiKey, options } = await buildPiAiStreamOptions({
+        config,
+        provider: model.provider,
+        thinkingLevel: run.thinkingLevel,
+      });
+
+      if (!apiKey) {
+        throw new Error("AI_API_KEY_MISSING");
+      }
+
+      const response = await completeWithPiAi(model, context, options);
+      usage = response.usage;
+
+      if (response.stopReason === "toolUse") {
+        status = "failed";
+        error = "TOOL_CALL_UNSUPPORTED";
+        retryable = false;
+        toolCalls = resolvePiAiToolCalls(response);
+      } else if (response.stopReason === "error") {
+        status = "failed";
+        error = response.errorMessage ?? "AI request failed";
+      } else if (response.stopReason === "aborted") {
+        status = "cancelled";
+        error = null;
+        retryable = false;
+      } else {
+        reportMarkdown = resolvePiAiResponseText(response) ?? "";
+      }
+    } catch (err) {
+      status = "failed";
+      error = err instanceof Error ? err.message : "AI request failed";
+    }
+  }
+
+  if (status === "succeeded") {
+    const artifactData: Record<string, unknown> = {
+      type: DEEP_RESEARCH_ARTIFACT_TYPE,
+      formatVersion: 1,
+      modelId: run.modelId,
+      reportMarkdown: reportMarkdown ?? "",
+      provider: modelProvider,
+      ...(usage ? { usage } : {}),
+    };
+
+    const maxArtifactBytes = resolveMaxArtifactBytes(config);
+    const artifactBytes = estimateArtifactSizeBytes(artifactData, reportMarkdown ?? "");
+    if (artifactBytes > maxArtifactBytes) {
+      status = "failed";
+      error = "ARTIFACT_TOO_LARGE";
+      retryable = false;
+    } else {
+      let storageKey: string | null = null;
+      let storageMeta: unknown | null = null;
+      const artifactStore = config.storage?.artifactStore;
+      if (artifactStore) {
+        try {
+          const stored = await artifactStore.put({
+            runId: run.id.toString(),
+            threadId: run.threadId,
+            type: DEEP_RESEARCH_ARTIFACT_TYPE,
+            title: "Deep research report",
+            mimeType: "text/markdown",
+            data: artifactData,
+            text: reportMarkdown || null,
+          });
+
+          if (!stored || typeof stored.key !== "string" || !stored.key) {
+            throw new Error("ARTIFACT_STORE_FAILED");
+          }
+
+          storageKey = stored.key;
+          storageMeta = stored.metadata ?? null;
+        } catch (err) {
+          status = "failed";
+          error = err instanceof Error ? err.message : "ARTIFACT_STORE_FAILED";
+        }
+      }
+
+      if (status === "succeeded") {
+        const uow = db.createUnitOfWork("ai-run-deep-research-pi-ai");
+        const schema = uow.forSchema(aiSchema);
+
+        const artifactId = schema.create("ai_artifact", {
+          runId: run.id.toString(),
+          threadId: run.threadId,
+          type: DEEP_RESEARCH_ARTIFACT_TYPE,
+          title: "Deep research report",
+          mimeType: "text/markdown",
+          storageKey,
+          storageMeta,
+          data: artifactData,
+          text: reportMarkdown ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        schema.create("ai_message", {
+          threadId: run.threadId,
+          role: "assistant",
+          content: { type: "artifactRef", artifactId: artifactId.toString() },
+          text: null,
+          runId: run.id.toString(),
+          createdAt: now,
+        });
+
+        schema.update("ai_run", run.id, (b) => {
+          const builder = b.set({
+            status,
+            error,
+            startedAt: run.startedAt ?? now,
+            completedAt: now,
+            updatedAt: now,
+          });
+          if (run.id instanceof FragnoId) {
+            builder.check();
+          }
+          return builder;
+        });
+
+        if (toolCalls && toolCalls.length > 0) {
+          const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
+          for (const toolCall of toolCalls) {
+            schema.create("ai_tool_call", {
+              runId: run.id.toString(),
+              threadId: run.threadId,
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              args: toolCall.arguments,
+              status: "failed",
+              result: { error: toolError },
+              isError: 1,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+        }
+
+        await uow.executeMutations();
+      }
+    }
+  }
+
+  if (status !== "succeeded") {
+    const uow = db.createUnitOfWork("ai-run-deep-research-pi-ai-failed");
+    const schema = uow.forSchema(aiSchema);
+    schema.update("ai_run", run.id, (b) => {
+      const builder = b.set({
+        status,
+        error,
+        startedAt: run.startedAt ?? now,
+        completedAt: status === "failed" || status === "cancelled" ? now : null,
+        updatedAt: now,
+      });
+      if (run.id instanceof FragnoId) {
+        builder.check();
+      }
+      return builder;
+    });
+
+    if (toolCalls && toolCalls.length > 0) {
+      const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
+      for (const toolCall of toolCalls) {
+        schema.create("ai_tool_call", {
+          runId: run.id.toString(),
+          threadId: run.threadId,
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          args: toolCall.arguments,
+          status: "failed",
+          result: { error: toolError },
+          isError: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    await uow.executeMutations();
+  }
+
+  let retryScheduledAt: Date | null = null;
+  if (status === "failed" && retryable) {
+    retryScheduledAt = await scheduleRetry({ db, run, error, clock, config });
+  }
+
+  const finalStatus = retryScheduledAt ? "queued" : status;
+  logWithLogger(config.logger, status === "failed" ? "error" : "info", {
+    event: "ai.run.deep_research.submission.completed",
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    status: finalStatus,
+    error,
+    ...(retryScheduledAt ? { retryScheduledAt: retryScheduledAt.toISOString() } : {}),
+  });
+
+  return {
+    runId: run.id.toString(),
+    status: finalStatus,
+    openaiResponseId: run.openaiResponseId,
+    error,
+    retryScheduledAt,
+  };
+};
+
 const submitDeepResearchRun = async ({
   db,
   config,
@@ -427,6 +705,29 @@ const submitDeepResearchRun = async ({
       status: run.status,
       openaiResponseId: run.openaiResponseId,
     };
+  }
+
+  const modelRef = resolveOpenAIModelRef({
+    config,
+    modelId: run.modelId,
+    runType: run.type,
+  });
+  const modelProvider = modelRef?.provider ?? "openai";
+  const preferOpenAIForDeepResearch =
+    modelProvider === "openai" ||
+    modelRef?.api === "openai-responses" ||
+    Boolean(modelRef?.baseUrl || modelRef?.headers);
+
+  if (!preferOpenAIForDeepResearch) {
+    return submitPiAiDeepResearchRun({
+      db,
+      config,
+      run,
+      messages,
+      thread,
+      clock,
+      modelRef,
+    });
   }
 
   logWithLogger(config.logger, "info", {
@@ -470,11 +771,6 @@ const submitDeepResearchRun = async ({
 
   if (!toolPolicyResult.deniedReason) {
     try {
-      const modelRef = resolveOpenAIModelRef({
-        config,
-        modelId: run.modelId,
-        runType: run.type,
-      });
       const client = await createOpenAIClient({ ...config, modelRef });
       const openaiInput = await buildOpenAIInput({
         run,

@@ -14,6 +14,7 @@ type OpenAIResponseOptionsConfig = {
 type OpenAIModelRef = {
   id: string;
   provider?: string;
+  api?: "openai-responses";
   baseUrl?: string;
   headers?: Record<string, string>;
 };

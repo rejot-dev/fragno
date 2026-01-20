@@ -302,7 +302,8 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [ ] Multi-provider support (pi-ai)
     - [x] Lazy-load pi-ai for non-OpenAI agent runs (background + stream)
     - [x] Surface non-OpenAI tool call attempts in stream/events and persist tool calls
-    - [ ] Tool call execution + deep research parity
+    - [ ] Tool call execution
+    - [x] Deep research parity for non-OpenAI providers
   - [x] Conversation compaction/summarization (borrow pi-coding-agent patterns)
     - [x] Add optional history window limit for run inputs (`config.history.maxMessages`)
   - [x] External artifact storage (blob store) with DB references
@@ -388,7 +389,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
         (automated in `packages/fragment-ai/src/flows.test.ts`)
   - [x] View persisted messages, runs, run events, artifacts
 
-## Interview: Remaining Gaps / Decisions
+## [x] Interview: Remaining Gaps / Decisions
 
 - [x] Interview: Remaining Gaps / Decisions
   - [x] `apiKey` optional if `getApiKey` is provided (at least one required).
