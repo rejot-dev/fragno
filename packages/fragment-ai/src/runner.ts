@@ -19,6 +19,13 @@ import {
 } from "./limits";
 import { logWithLogger } from "./logging";
 import { buildOpenAIInput } from "./history";
+import {
+  buildPiAiContext,
+  buildPiAiStreamOptions,
+  completeWithPiAi,
+  resolvePiAiModel,
+  resolvePiAiResponseText,
+} from "./pi-ai";
 
 type Clock = {
   now: () => Date;
@@ -825,47 +832,97 @@ export const runExecutor = async ({
       reason: toolPolicyResult.deniedReason,
     });
   } else {
-    try {
-      const modelRef = resolveOpenAIModelRef({
-        config,
-        modelId: run.modelId,
-        runType: run.type,
-      });
-      const client = await createOpenAIClient({ ...config, modelRef });
-      const openaiInput = await buildOpenAIInput({
-        run,
-        messages,
-        maxMessages: resolveMaxHistoryMessages(config),
-        compactor: config.history?.compactor,
-        logger: config.logger,
-      });
-      const responseOptions = buildOpenAIResponseOptions({
-        config,
-        modelId: run.modelId,
-        input: openaiInput,
-        thinkingLevel: run.thinkingLevel,
-        openaiToolConfig: toolPolicyResult.openaiToolConfig,
-        stream: false,
-      });
-      const response = await client.responses.create(responseOptions, {
-        idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
-        signal: abortController.signal,
-      });
-      if (response && typeof response === "object" && "id" in response) {
-        const responseId = (response as { id?: unknown }).id;
-        if (typeof responseId === "string") {
-          openaiResponseId = responseId;
+    const modelRef = resolveOpenAIModelRef({
+      config,
+      modelId: run.modelId,
+      runType: run.type,
+    });
+    const modelProvider = modelRef?.provider ?? "openai";
+
+    if (modelProvider !== "openai" && run.type === "deep_research") {
+      status = "failed";
+      error = "PROVIDER_UNSUPPORTED_FOR_DEEP_RESEARCH";
+      retryable = false;
+    } else {
+      try {
+        if (modelProvider === "openai") {
+          const client = await createOpenAIClient({ ...config, modelRef });
+          const openaiInput = await buildOpenAIInput({
+            run,
+            messages,
+            maxMessages: resolveMaxHistoryMessages(config),
+            compactor: config.history?.compactor,
+            logger: config.logger,
+          });
+          const responseOptions = buildOpenAIResponseOptions({
+            config,
+            modelId: run.modelId,
+            input: openaiInput,
+            thinkingLevel: run.thinkingLevel,
+            openaiToolConfig: toolPolicyResult.openaiToolConfig,
+            stream: false,
+          });
+          const response = await client.responses.create(responseOptions, {
+            idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+            signal: abortController.signal,
+          });
+          if (response && typeof response === "object" && "id" in response) {
+            const responseId = (response as { id?: unknown }).id;
+            if (typeof responseId === "string") {
+              openaiResponseId = responseId;
+            }
+          }
+          assistantText = resolveOpenAIResponseText(response);
+        } else {
+          if (!modelRef) {
+            throw new Error("MODEL_PROVIDER_MISSING");
+          }
+
+          const model = await resolvePiAiModel({ modelId: run.modelId, modelRef });
+          const openaiInput = await buildOpenAIInput({
+            run,
+            messages,
+            maxMessages: resolveMaxHistoryMessages(config),
+            compactor: config.history?.compactor,
+            logger: config.logger,
+          });
+          const context = buildPiAiContext({ input: openaiInput, model });
+          const { apiKey, options } = await buildPiAiStreamOptions({
+            config,
+            provider: model.provider,
+            thinkingLevel: run.thinkingLevel,
+            signal: abortController.signal,
+          });
+
+          if (!apiKey) {
+            throw new Error("AI_API_KEY_MISSING");
+          }
+
+          const response = await completeWithPiAi(model, context, options);
+          if (response.stopReason === "aborted") {
+            status = "cancelled";
+            error = null;
+            assistantText = null;
+          } else if (response.stopReason === "error") {
+            status = "failed";
+            error = response.errorMessage ?? "AI request failed";
+          } else if (response.stopReason === "toolUse") {
+            status = "failed";
+            error = "TOOL_CALL_UNSUPPORTED";
+            retryable = false;
+          } else {
+            assistantText = resolvePiAiResponseText(response);
+          }
         }
-      }
-      assistantText = resolveOpenAIResponseText(response);
-    } catch (err) {
-      if (abortController.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
-        status = "cancelled";
-        error = null;
-        assistantText = null;
-      } else {
-        status = "failed";
-        error = err instanceof Error ? err.message : "OpenAI request failed";
+      } catch (err) {
+        if (abortController.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+          status = "cancelled";
+          error = null;
+          assistantText = null;
+        } else {
+          status = "failed";
+          error = err instanceof Error ? err.message : "AI request failed";
+        }
       }
     }
   }

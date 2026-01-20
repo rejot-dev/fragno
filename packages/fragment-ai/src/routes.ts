@@ -20,6 +20,14 @@ import { registerRunAbortController } from "./run-abort";
 import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
 import { logWithLogger } from "./logging";
 import { applyToolPolicy } from "./tool-policy";
+import {
+  buildPiAiContext,
+  resolvePiAiApiKey,
+  resolvePiAiModel,
+  resolvePiAiResponseText,
+  resolvePiAiThinkingLevel,
+  streamWithPiAi,
+} from "./pi-ai";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -756,17 +764,36 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             modelId: run.modelId,
             runType: run.type,
           });
-          let openaiClient: OpenAI;
-          try {
-            openaiClient = await createOpenAIClient({ ...config, modelRef });
-          } catch (err) {
-            if (err instanceof Error && err.message === "OPENAI_API_KEY_MISSING") {
-              return error(
-                { message: "OpenAI API key is required", code: "OPENAI_API_KEY_MISSING" },
-                400,
-              );
+          const modelProvider = modelRef?.provider ?? "openai";
+          let openaiClient: OpenAI | null = null;
+          let piAiModel: Awaited<ReturnType<typeof resolvePiAiModel>> | null = null;
+          let piAiContext: ReturnType<typeof buildPiAiContext> | null = null;
+          let piAiApiKey: string | undefined;
+
+          if (modelProvider === "openai") {
+            try {
+              openaiClient = await createOpenAIClient({ ...config, modelRef });
+            } catch (err) {
+              if (err instanceof Error && err.message === "OPENAI_API_KEY_MISSING") {
+                return error(
+                  { message: "OpenAI API key is required", code: "OPENAI_API_KEY_MISSING" },
+                  400,
+                );
+              }
+              throw err;
             }
-            throw err;
+          } else {
+            if (!modelRef) {
+              throw new Error("MODEL_PROVIDER_MISSING");
+            }
+
+            const resolvedModel = await resolvePiAiModel({ modelId: run.modelId, modelRef });
+            piAiModel = resolvedModel;
+            piAiContext = buildPiAiContext({ input: openaiInput, model: resolvedModel });
+            piAiApiKey = await resolvePiAiApiKey({ config, provider: resolvedModel.provider });
+            if (!piAiApiKey) {
+              return error({ message: "API key is required", code: "OPENAI_API_KEY_MISSING" }, 400);
+            }
           }
 
           return jsonStream(async (stream) => {
@@ -873,235 +900,315 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 attempt: run.attempt,
               });
 
-              try {
-                const responseOptions = buildOpenAIResponseOptions({
-                  config,
-                  modelId: run.modelId,
-                  input: openaiInput,
-                  thinkingLevel: run.thinkingLevel,
-                  openaiToolConfig: toolPolicyResult.openaiToolConfig,
-                  stream: true,
-                });
-                const responseStream = (await openaiClient.responses.create(responseOptions, {
-                  idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
-                  signal: abortController.signal,
-                })) as unknown as AsyncIterable<Record<string, unknown>>;
+              if (openaiClient) {
+                try {
+                  const responseOptions = buildOpenAIResponseOptions({
+                    config,
+                    modelId: run.modelId,
+                    input: openaiInput,
+                    thinkingLevel: run.thinkingLevel,
+                    openaiToolConfig: toolPolicyResult.openaiToolConfig,
+                    stream: true,
+                  });
+                  const responseStream = (await openaiClient.responses.create(responseOptions, {
+                    idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+                    signal: abortController.signal,
+                  })) as unknown as AsyncIterable<Record<string, unknown>>;
 
-                for await (const event of responseStream) {
-                  const responseId = resolveOpenAIResponseId(event);
-                  if (responseId) {
-                    await persistOpenAIResponseId(responseId);
-                  }
+                  for await (const event of responseStream) {
+                    const responseId = resolveOpenAIResponseId(event);
+                    if (responseId) {
+                      await persistOpenAIResponseId(responseId);
+                    }
 
-                  const eventType = event["type"];
-                  if (typeof eventType !== "string") {
-                    continue;
-                  }
-
-                  if (eventType === "response.output_text.delta") {
-                    const delta = typeof event["delta"] === "string" ? event["delta"] : null;
-                    if (!delta) {
+                    const eventType = event["type"];
+                    if (typeof eventType !== "string") {
                       continue;
                     }
-                    textBuffer += delta;
-                    await safeWrite({
-                      type: "output.text.delta",
-                      runId: run.id,
-                      delta,
-                    });
-                    recordRunEventIfEnabled("output.text.delta", { delta });
-                  } else if (eventType === "response.output_text.done") {
-                    const text = typeof event["text"] === "string" ? event["text"] : null;
-                    if (!text) {
-                      continue;
-                    }
-                    textBuffer = text;
-                    sawOutputTextDone = true;
-                    await safeWrite({
-                      type: "output.text.done",
-                      runId: run.id,
-                      text,
-                    });
-                    recordRunEvent("output.text.done", { text });
-                  } else if (eventType === "response.output_item.added") {
-                    const item = ((event as { item?: unknown })["item"] ??
-                      (event as { output_item?: unknown })["output_item"]) as
-                      | Record<string, unknown>
-                      | undefined;
 
-                    if (item && isToolCallType(item["type"])) {
-                      const toolCallId = resolveToolCallIdFromItem(item, event, toolCallIdByCallId);
-                      if (toolCallId) {
-                        const toolType = item["type"] as string;
-                        const toolName = resolveToolName(item);
-
-                        await safeWrite({
-                          type: "tool.call.started",
-                          runId: run.id,
-                          toolCallId,
-                          toolType,
-                          ...(toolName ? { toolName } : {}),
-                        });
-                        recordRunEventIfEnabled("tool.call.started", {
-                          toolCallId,
-                          toolType,
-                          ...(toolName ? { toolName } : {}),
-                        });
-
-                        await safeWrite({
-                          type: "tool.call.status",
-                          runId: run.id,
-                          toolCallId,
-                          toolType,
-                          status: "in_progress",
-                        });
-                        recordRunEventIfEnabled("tool.call.status", {
-                          toolCallId,
-                          toolType,
-                          status: "in_progress",
-                        });
+                    if (eventType === "response.output_text.delta") {
+                      const delta = typeof event["delta"] === "string" ? event["delta"] : null;
+                      if (!delta) {
+                        continue;
                       }
-                    }
-                  } else if (eventType === "response.function_call_arguments.delta") {
-                    const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
-                    const delta = typeof event["delta"] === "string" ? event["delta"] : null;
-                    if (toolCallId && delta) {
+                      textBuffer += delta;
                       await safeWrite({
-                        type: "tool.call.arguments.delta",
+                        type: "output.text.delta",
                         runId: run.id,
-                        toolCallId,
                         delta,
                       });
-                      recordRunEventIfEnabled("tool.call.arguments.delta", {
-                        toolCallId,
-                        delta,
-                      });
-                    }
-                  } else if (eventType === "response.function_call_arguments.done") {
-                    const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
-                    const args =
-                      typeof event["arguments"] === "string"
-                        ? event["arguments"]
-                        : typeof event["args"] === "string"
-                          ? event["args"]
-                          : null;
-
-                    if (toolCallId && args) {
+                      recordRunEventIfEnabled("output.text.delta", { delta });
+                    } else if (eventType === "response.output_text.done") {
+                      const text = typeof event["text"] === "string" ? event["text"] : null;
+                      if (!text) {
+                        continue;
+                      }
+                      textBuffer = text;
+                      sawOutputTextDone = true;
                       await safeWrite({
-                        type: "tool.call.arguments.done",
+                        type: "output.text.done",
                         runId: run.id,
-                        toolCallId,
-                        arguments: args,
+                        text,
                       });
-                      recordRunEventIfEnabled("tool.call.arguments.done", {
-                        toolCallId,
-                        arguments: args,
-                      });
-                    }
-                  } else if (eventType === "response.function_call_arguments.completed") {
-                    const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
-                    const args =
-                      typeof event["arguments"] === "string"
-                        ? event["arguments"]
-                        : typeof event["args"] === "string"
-                          ? event["args"]
-                          : null;
+                      recordRunEvent("output.text.done", { text });
+                    } else if (eventType === "response.output_item.added") {
+                      const item = ((event as { item?: unknown })["item"] ??
+                        (event as { output_item?: unknown })["output_item"]) as
+                        | Record<string, unknown>
+                        | undefined;
 
-                    if (toolCallId && args) {
-                      await safeWrite({
-                        type: "tool.call.arguments.done",
-                        runId: run.id,
-                        toolCallId,
-                        arguments: args,
-                      });
-                      recordRunEventIfEnabled("tool.call.arguments.done", {
-                        toolCallId,
-                        arguments: args,
-                      });
-                    }
-                  } else if (eventType === "response.output_item.done") {
-                    const item = ((event as { item?: unknown })["item"] ??
-                      (event as { output_item?: unknown })["output_item"]) as
-                      | Record<string, unknown>
-                      | undefined;
+                      if (item && isToolCallType(item["type"])) {
+                        const toolCallId = resolveToolCallIdFromItem(
+                          item,
+                          event,
+                          toolCallIdByCallId,
+                        );
+                        if (toolCallId) {
+                          const toolType = item["type"] as string;
+                          const toolName = resolveToolName(item);
 
-                    if (item && isToolCallType(item["type"])) {
-                      const toolCallId = resolveToolCallIdFromItem(item, event, toolCallIdByCallId);
-                      if (toolCallId) {
-                        const toolType = item["type"] as string;
-                        const status = resolveToolCallStatus(item["status"], "completed");
-                        await safeWrite({
-                          type: "tool.call.status",
-                          runId: run.id,
-                          toolCallId,
-                          toolType,
-                          status,
-                        });
-                        recordRunEventIfEnabled("tool.call.status", {
-                          toolCallId,
-                          toolType,
-                          status,
-                        });
-
-                        const output = resolveToolOutput(item);
-                        if (output !== undefined) {
                           await safeWrite({
-                            type: "tool.call.output",
+                            type: "tool.call.started",
                             runId: run.id,
                             toolCallId,
                             toolType,
-                            output,
+                            ...(toolName ? { toolName } : {}),
                           });
-                          recordRunEventIfEnabled("tool.call.output", {
+                          recordRunEventIfEnabled("tool.call.started", {
                             toolCallId,
                             toolType,
-                            output,
+                            ...(toolName ? { toolName } : {}),
                           });
+
+                          await safeWrite({
+                            type: "tool.call.status",
+                            runId: run.id,
+                            toolCallId,
+                            toolType,
+                            status: "in_progress",
+                          });
+                          recordRunEventIfEnabled("tool.call.status", {
+                            toolCallId,
+                            toolType,
+                            status: "in_progress",
+                          });
+                        }
+                      }
+                    } else if (eventType === "response.function_call_arguments.delta") {
+                      const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
+                      const delta = typeof event["delta"] === "string" ? event["delta"] : null;
+                      if (toolCallId && delta) {
+                        await safeWrite({
+                          type: "tool.call.arguments.delta",
+                          runId: run.id,
+                          toolCallId,
+                          delta,
+                        });
+                        recordRunEventIfEnabled("tool.call.arguments.delta", {
+                          toolCallId,
+                          delta,
+                        });
+                      }
+                    } else if (eventType === "response.function_call_arguments.done") {
+                      const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
+                      const args =
+                        typeof event["arguments"] === "string"
+                          ? event["arguments"]
+                          : typeof event["args"] === "string"
+                            ? event["args"]
+                            : null;
+
+                      if (toolCallId && args) {
+                        await safeWrite({
+                          type: "tool.call.arguments.done",
+                          runId: run.id,
+                          toolCallId,
+                          arguments: args,
+                        });
+                        recordRunEventIfEnabled("tool.call.arguments.done", {
+                          toolCallId,
+                          arguments: args,
+                        });
+                      }
+                    } else if (eventType === "response.function_call_arguments.completed") {
+                      const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
+                      const args =
+                        typeof event["arguments"] === "string"
+                          ? event["arguments"]
+                          : typeof event["args"] === "string"
+                            ? event["args"]
+                            : null;
+
+                      if (toolCallId && args) {
+                        await safeWrite({
+                          type: "tool.call.arguments.done",
+                          runId: run.id,
+                          toolCallId,
+                          arguments: args,
+                        });
+                        recordRunEventIfEnabled("tool.call.arguments.done", {
+                          toolCallId,
+                          arguments: args,
+                        });
+                      }
+                    } else if (eventType === "response.output_item.done") {
+                      const item = ((event as { item?: unknown })["item"] ??
+                        (event as { output_item?: unknown })["output_item"]) as
+                        | Record<string, unknown>
+                        | undefined;
+
+                      if (item && isToolCallType(item["type"])) {
+                        const toolCallId = resolveToolCallIdFromItem(
+                          item,
+                          event,
+                          toolCallIdByCallId,
+                        );
+                        if (toolCallId) {
+                          const toolType = item["type"] as string;
+                          const status = resolveToolCallStatus(item["status"], "completed");
+                          await safeWrite({
+                            type: "tool.call.status",
+                            runId: run.id,
+                            toolCallId,
+                            toolType,
+                            status,
+                          });
+                          recordRunEventIfEnabled("tool.call.status", {
+                            toolCallId,
+                            toolType,
+                            status,
+                          });
+
+                          const output = resolveToolOutput(item);
+                          if (output !== undefined) {
+                            await safeWrite({
+                              type: "tool.call.output",
+                              runId: run.id,
+                              toolCallId,
+                              toolType,
+                              output,
+                            });
+                            recordRunEventIfEnabled("tool.call.output", {
+                              toolCallId,
+                              toolType,
+                              output,
+                            });
+                          }
                         }
                       }
                     }
                   }
-                }
-              } catch (err) {
-                if (
-                  abortController.signal.aborted ||
-                  (err instanceof Error && err.name === "AbortError")
-                ) {
-                  finalStatus = "cancelled";
-                  errorMessage = null;
-                } else if (openaiResponseId) {
-                  try {
-                    const recovered = await openaiClient.responses.retrieve(openaiResponseId);
-                    const recoveredText = resolveOpenAIResponseText(recovered);
-                    if (recoveredText) {
-                      textBuffer = recoveredText;
-                      if (!sawOutputTextDone) {
-                        await safeWrite({
-                          type: "output.text.done",
-                          runId: run.id,
-                          text: recoveredText,
-                        });
-                        recordRunEvent("output.text.done", { text: recoveredText });
+                } catch (err) {
+                  if (
+                    abortController.signal.aborted ||
+                    (err instanceof Error && err.name === "AbortError")
+                  ) {
+                    finalStatus = "cancelled";
+                    errorMessage = null;
+                  } else if (openaiResponseId) {
+                    try {
+                      const recovered = await openaiClient.responses.retrieve(openaiResponseId);
+                      const recoveredText = resolveOpenAIResponseText(recovered);
+                      if (recoveredText) {
+                        textBuffer = recoveredText;
+                        if (!sawOutputTextDone) {
+                          await safeWrite({
+                            type: "output.text.done",
+                            runId: run.id,
+                            text: recoveredText,
+                          });
+                          recordRunEvent("output.text.done", { text: recoveredText });
+                        }
+                        finalStatus = "succeeded";
+                        errorMessage = null;
+                      } else {
+                        finalStatus = "failed";
+                        errorMessage = "OpenAI response missing output text";
                       }
-                      finalStatus = "succeeded";
-                      errorMessage = null;
-                    } else {
+                    } catch (retrieveError) {
                       finalStatus = "failed";
-                      errorMessage = "OpenAI response missing output text";
+                      errorMessage =
+                        retrieveError instanceof Error
+                          ? retrieveError.message
+                          : "OpenAI request failed";
                     }
-                  } catch (retrieveError) {
+                  } else {
                     finalStatus = "failed";
-                    errorMessage =
-                      retrieveError instanceof Error
-                        ? retrieveError.message
-                        : "OpenAI request failed";
+                    errorMessage = err instanceof Error ? err.message : "OpenAI request failed";
                   }
-                } else {
-                  finalStatus = "failed";
-                  errorMessage = err instanceof Error ? err.message : "OpenAI request failed";
+                } finally {
+                  unregisterAbort();
                 }
-              } finally {
-                unregisterAbort();
+              } else if (piAiModel && piAiContext) {
+                try {
+                  const reasoning = resolvePiAiThinkingLevel(run.thinkingLevel);
+                  const responseStream = await streamWithPiAi(piAiModel, piAiContext, {
+                    apiKey: piAiApiKey,
+                    sessionId: config.sessionId,
+                    temperature: config.temperature,
+                    maxTokens: config.maxTokens,
+                    thinkingBudgets: config.thinkingBudgets,
+                    ...(reasoning ? { reasoning } : {}),
+                    signal: abortController.signal,
+                  });
+
+                  for await (const event of responseStream) {
+                    if (event.type === "text_delta") {
+                      textBuffer += event.delta;
+                      await safeWrite({
+                        type: "output.text.delta",
+                        runId: run.id,
+                        delta: event.delta,
+                      });
+                      recordRunEventIfEnabled("output.text.delta", { delta: event.delta });
+                    }
+
+                    if (event.type === "error") {
+                      finalStatus = event.reason === "aborted" ? "cancelled" : "failed";
+                      errorMessage = event.error.errorMessage ?? "AI request failed";
+                      if (event.reason === "aborted") {
+                        errorMessage = null;
+                      }
+                    }
+                  }
+
+                  const finalMessage = await responseStream.result();
+                  if (finalMessage.stopReason === "toolUse") {
+                    finalStatus = "failed";
+                    errorMessage = "TOOL_CALL_UNSUPPORTED";
+                    allowRetry = false;
+                  } else if (finalMessage.stopReason === "error") {
+                    finalStatus = "failed";
+                    errorMessage = finalMessage.errorMessage ?? "AI request failed";
+                  } else if (finalMessage.stopReason === "aborted") {
+                    finalStatus = "cancelled";
+                    errorMessage = null;
+                  } else {
+                    const finalText = resolvePiAiResponseText(finalMessage);
+                    if (finalText) {
+                      textBuffer = finalText;
+                      await safeWrite({
+                        type: "output.text.done",
+                        runId: run.id,
+                        text: finalText,
+                      });
+                      recordRunEvent("output.text.done", { text: finalText });
+                    }
+                  }
+                } catch (err) {
+                  if (
+                    abortController.signal.aborted ||
+                    (err instanceof Error && err.name === "AbortError")
+                  ) {
+                    finalStatus = "cancelled";
+                    errorMessage = null;
+                  } else {
+                    finalStatus = "failed";
+                    errorMessage = err instanceof Error ? err.message : "AI request failed";
+                  }
+                } finally {
+                  unregisterAbort();
+                }
               }
             } else {
               await safeWrite({ type: "run.status", runId: run.id, status: "failed" });

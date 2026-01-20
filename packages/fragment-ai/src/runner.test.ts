@@ -24,6 +24,10 @@ const mockOpenAIRetrieve = vi.fn(async (_responseId?: string) => {
   } as { id: string; status: string; output_text?: string; usage?: unknown };
 });
 
+const mockPiAiGetModel = vi.fn();
+const mockPiAiCompleteSimple = vi.fn();
+const mockPiAiGetEnvApiKey = vi.fn();
+
 vi.mock("openai", () => {
   return {
     default: class MockOpenAI {
@@ -36,6 +40,15 @@ vi.mock("openai", () => {
         retrieve: mockOpenAIRetrieve,
       };
     },
+  };
+});
+
+vi.mock("@mariozechner/pi-ai", () => {
+  return {
+    getModel: (...args: unknown[]) => mockPiAiGetModel(...args),
+    completeSimple: (...args: unknown[]) => mockPiAiCompleteSimple(...args),
+    streamSimple: vi.fn(),
+    getEnvApiKey: (...args: unknown[]) => mockPiAiGetEnvApiKey(...args),
   };
 });
 
@@ -226,6 +239,106 @@ describe("AI Fragment Runner", () => {
         defaultHeaders: { "x-alt": "1" },
       }),
     );
+  });
+
+  test("runner tick should use pi-ai for non-openai providers", async () => {
+    const customConfig = {
+      defaultModel: { id: "claude-test", provider: "anthropic" },
+      apiKey: "test-key",
+      retries: { baseDelayMs: 1000 },
+    };
+
+    const { fragments, test: customTestContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment("ai", instantiate(aiFragmentDefinition).withConfig(customConfig))
+      .build();
+
+    const customFragment = fragments.ai.fragment;
+    const customDb = fragments.ai.db;
+
+    const customRunService = <T>(call: () => unknown) =>
+      customFragment.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [call() as TxResult<unknown, unknown>] as const)
+          .transform(({ serviceResult: [result] }) => result as T)
+          .execute();
+      });
+
+    await customTestContext.resetDatabase();
+    mockPiAiGetModel.mockReset();
+    mockPiAiCompleteSimple.mockReset();
+    mockPiAiGetEnvApiKey.mockReset();
+
+    const model = {
+      id: "claude-test",
+      name: "Claude Test",
+      api: "anthropic-messages",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.test",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1000,
+      maxTokens: 1000,
+    };
+
+    mockPiAiGetModel.mockReturnValue(model);
+    mockPiAiCompleteSimple.mockResolvedValue({
+      role: "assistant",
+      content: [{ type: "text", text: "Pi-AI response" }],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+
+    const thread = await customRunService<{ id: string }>(() =>
+      customFragment.services.createThread({ title: "Pi-AI Thread" }),
+    );
+
+    await customRunService<{ id: string }>(() =>
+      customFragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Hello" },
+        text: "Hello",
+      }),
+    );
+
+    const run = await customRunService<{ id: string }>(() =>
+      customFragment.services.createRun({
+        threadId: thread.id,
+        type: "agent",
+        executionMode: "background",
+        modelId: "claude-test",
+      }),
+    );
+
+    const runner = createAiRunner({ db: customDb, config: customConfig });
+    const result = await runner.tick({ maxRuns: 1 });
+
+    expect(result.processedRuns).toBe(1);
+    expect(mockPiAiCompleteSimple).toHaveBeenCalledTimes(1);
+
+    const storedRun = await customDb.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun?.status).toBe("succeeded");
+
+    const messages = await customDb.find("ai_message", (b) =>
+      b.whereIndex("idx_ai_message_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
+    );
+    const assistantMessage = messages.find((entry) => entry.role === "assistant");
+    expect(assistantMessage?.text).toBe("Pi-AI response");
   });
 
   test("runner tick should clean up retained run events and webhook events", async () => {
