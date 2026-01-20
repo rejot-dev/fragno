@@ -11,6 +11,13 @@ type OpenAIResponseOptionsConfig = {
   };
 };
 
+type OpenAIModelRef = {
+  id: string;
+  provider?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+};
+
 type OpenAIResponseOptionsParams = {
   config: OpenAIResponseOptionsConfig;
   modelId: string;
@@ -166,13 +173,16 @@ export const buildOpenAIResponseOptions = ({
   return options;
 };
 
-export const resolveOpenAIApiKey = async (config: {
-  apiKey?: string;
-  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
-}) => {
+export const resolveOpenAIApiKey = async (
+  config: {
+    apiKey?: string;
+    getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
+  },
+  provider = "openai",
+) => {
   return (
     config.apiKey ??
-    (typeof config.getApiKey === "function" ? await config.getApiKey("openai") : undefined)
+    (typeof config.getApiKey === "function" ? await config.getApiKey(provider) : undefined)
   );
 };
 
@@ -180,16 +190,16 @@ export const createOpenAIClient = async (config: {
   apiKey?: string;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
   baseUrl?: string;
-  defaultModel?: { baseUrl?: string; headers?: Record<string, string> };
+  modelRef?: OpenAIModelRef | null;
 }) => {
-  const apiKey = await resolveOpenAIApiKey(config);
+  const apiKey = await resolveOpenAIApiKey(config, config.modelRef?.provider ?? "openai");
 
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY_MISSING");
   }
 
-  const baseURL = config.baseUrl ?? config.defaultModel?.baseUrl;
-  const defaultHeaders = config.defaultModel?.headers;
+  const baseURL = config.baseUrl ?? config.modelRef?.baseUrl;
+  const defaultHeaders = config.modelRef?.headers;
 
   return new OpenAI({ apiKey, baseURL, defaultHeaders });
 };
@@ -203,4 +213,37 @@ export const resolveOpenAIToolConfig = (toolConfig: unknown) => {
   }
 
   return toolConfig as Record<string, unknown>;
+};
+
+export const resolveOpenAIModelRef = ({
+  config,
+  modelId,
+  runType,
+}: {
+  config: {
+    defaultModel?: OpenAIModelRef;
+    defaultDeepResearchModel?: OpenAIModelRef;
+  };
+  modelId?: string | null;
+  runType?: string | null;
+}) => {
+  if (!modelId) {
+    return null;
+  }
+
+  if (runType === "deep_research") {
+    if (config.defaultDeepResearchModel?.id === modelId) {
+      return config.defaultDeepResearchModel;
+    }
+  }
+
+  if (config.defaultModel?.id === modelId) {
+    return config.defaultModel;
+  }
+
+  if (config.defaultDeepResearchModel?.id === modelId) {
+    return config.defaultDeepResearchModel;
+  }
+
+  return null;
 };

@@ -5,6 +5,7 @@ import {
   buildOpenAIIdempotencyKey,
   buildOpenAIResponseOptions,
   createOpenAIClient,
+  resolveOpenAIModelRef,
   resolveOpenAIResponseText,
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
@@ -393,7 +394,12 @@ const submitDeepResearchRun = async ({
 
   if (!toolPolicyResult.deniedReason) {
     try {
-      const client = await createOpenAIClient(config);
+      const modelRef = resolveOpenAIModelRef({
+        config,
+        modelId: run.modelId,
+        runType: run.type,
+      });
+      const client = await createOpenAIClient({ ...config, modelRef });
       const openaiInput = await buildOpenAIInput({
         run,
         messages,
@@ -563,7 +569,12 @@ const processWebhookEvent = async ({
   }
 
   try {
-    const client = await createOpenAIClient(config);
+    const modelRef = resolveOpenAIModelRef({
+      config,
+      modelId: run.modelId,
+      runType: run.type,
+    });
+    const client = await createOpenAIClient({ ...config, modelRef });
     response = await client.responses.retrieve(event.responseId);
   } catch (err) {
     const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
@@ -815,7 +826,12 @@ export const runExecutor = async ({
     });
   } else {
     try {
-      const client = await createOpenAIClient(config);
+      const modelRef = resolveOpenAIModelRef({
+        config,
+        modelId: run.modelId,
+        runType: run.type,
+      });
+      const client = await createOpenAIClient({ ...config, modelRef });
       const openaiInput = await buildOpenAIInput({
         run,
         messages,

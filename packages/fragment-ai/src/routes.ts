@@ -11,6 +11,7 @@ import {
   buildOpenAIResponseOptions,
   createOpenAIClient,
   resolveOpenAIApiKey,
+  resolveOpenAIModelRef,
   resolveOpenAIResponseId,
   resolveOpenAIResponseText,
 } from "./openai";
@@ -750,9 +751,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             logger: config.logger,
           });
 
+          const modelRef = resolveOpenAIModelRef({
+            config,
+            modelId: run.modelId,
+            runType: run.type,
+          });
           let openaiClient: OpenAI;
           try {
-            openaiClient = await createOpenAIClient(config);
+            openaiClient = await createOpenAIClient({ ...config, modelRef });
           } catch (err) {
             if (err instanceof Error && err.message === "OPENAI_API_KEY_MISSING") {
               return error(

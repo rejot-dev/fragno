@@ -14,6 +14,8 @@ const mockOpenAICreate = vi.fn(
   },
 );
 
+const mockOpenAIConstructor = vi.fn();
+
 const mockOpenAIRetrieve = vi.fn(async (_responseId?: string) => {
   return {
     id: "resp_retrieved",
@@ -25,6 +27,10 @@ const mockOpenAIRetrieve = vi.fn(async (_responseId?: string) => {
 vi.mock("openai", () => {
   return {
     default: class MockOpenAI {
+      constructor(options?: { apiKey?: string; baseURL?: string; defaultHeaders?: unknown }) {
+        mockOpenAIConstructor(options);
+      }
+
       responses = {
         create: mockOpenAICreate,
         retrieve: mockOpenAIRetrieve,
@@ -75,6 +81,7 @@ describe("AI Fragment Runner", () => {
     await testContext.resetDatabase();
     mockOpenAICreate.mockClear();
     mockOpenAIRetrieve.mockClear();
+    mockOpenAIConstructor.mockClear();
   });
 
   test("runner tick should execute queued background run", async () => {
@@ -143,6 +150,82 @@ describe("AI Fragment Runner", () => {
       b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
     );
     expect(events.some((event) => event.type === "run.final")).toBe(true);
+  });
+
+  test("runner tick should honor model provider overrides for deep research", async () => {
+    const getApiKey = vi.fn(async (provider?: string) => {
+      if (provider === "alt-provider") {
+        return "alt-key";
+      }
+      return undefined;
+    });
+
+    const customConfig = {
+      defaultModel: { id: "gpt-test" },
+      defaultDeepResearchModel: {
+        id: "o3-deep",
+        provider: "alt-provider",
+        baseUrl: "https://alt.example",
+        headers: { "x-alt": "1" },
+      },
+      getApiKey,
+      retries: { baseDelayMs: 1000 },
+    };
+
+    const { fragments, test: customTestContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment("ai", instantiate(aiFragmentDefinition).withConfig(customConfig))
+      .build();
+
+    const customFragment = fragments.ai.fragment;
+    const customDb = fragments.ai.db;
+
+    const customRunService = <T>(call: () => unknown) =>
+      customFragment.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [call() as TxResult<unknown, unknown>] as const)
+          .transform(({ serviceResult: [result] }) => result as T)
+          .execute();
+      });
+
+    await customTestContext.resetDatabase();
+    mockOpenAICreate.mockClear();
+    mockOpenAIRetrieve.mockClear();
+    mockOpenAIConstructor.mockClear();
+
+    const thread = await customRunService<{ id: string }>(() =>
+      customFragment.services.createThread({ title: "Deep Thread" }),
+    );
+
+    const message = await customRunService<{ id: string }>(() =>
+      customFragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Deep run" },
+        text: "Deep run",
+      }),
+    );
+
+    await customRunService<{ id: string }>(() =>
+      customFragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    const runner = createAiRunner({ db: customDb, config: customConfig });
+    await runner.tick({ maxRuns: 1 });
+
+    expect(getApiKey).toHaveBeenCalledWith("alt-provider");
+    expect(mockOpenAIConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "alt-key",
+        baseURL: "https://alt.example",
+        defaultHeaders: { "x-alt": "1" },
+      }),
+    );
   });
 
   test("runner tick should clean up retained run events and webhook events", async () => {
