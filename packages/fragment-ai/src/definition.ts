@@ -718,7 +718,10 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
             }
 
             const resolvedModelId =
-              modelId ?? thread.defaultModelId ?? resolveDefaultModelId(config);
+              modelId ??
+              (type === "deep_research" ? config.defaultDeepResearchModel?.id : undefined) ??
+              thread.defaultModelId ??
+              resolveDefaultModelId(config);
             const resolvedThinkingLevel =
               thinkingLevel ?? thread.defaultThinkingLevel ?? resolveDefaultThinkingLevel(config);
             const resolvedSystemPrompt = systemPrompt ?? thread.systemPrompt ?? null;

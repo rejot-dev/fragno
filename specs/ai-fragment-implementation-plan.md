@@ -192,16 +192,16 @@ Validation:
 **Goal:** unify all async processing behind a safe, bounded `tick`.
 
 1. [ ] Implement runner core:
-   - [ ] `processTick({ maxRuns, maxWebhookEvents })`
+   - [x] `processTick({ maxRuns, maxWebhookEvents })`
    - [ ] safe under concurrency (multiple tick callers)
    - [ ] claims work using optimistic concurrency control (no leases/locks):
      - [ ] load candidate work items
      - [ ] update the row with a version check (`.check()`), and treat conflicts as “someone else
            got it”
 2. [ ] Work types:
-   - [ ] agent run (background): execute via `runExecutor`
-   - [ ] deep research run (queued): submit background Response (Phase 5)
-   - [ ] webhook event: retrieve response + finalize (Phase 5)
+   - [x] agent run (background): execute via `runExecutor`
+   - [x] deep research run (queued): submit background Response (Phase 5)
+   - [x] webhook event: retrieve response + finalize (Phase 5)
 3. [ ] Wake-ups:
    - [ ] on run creation and webhook receipt, enqueue a durable hook payload (`AiWakeEvent`) after
          DB commit
@@ -210,7 +210,7 @@ Validation:
    - [ ] wake-ups are an accelerator; HTTP tick is fallback for manual/cron recovery only (when
          enabled)
 4. [ ] Bounded work:
-   - [ ] ensure each tick respects limits and returns counts (`processedRuns`,
+   - [x] ensure each tick respects limits and returns counts (`processedRuns`,
          `processedWebhookEvents`)
 5. [ ] Dispatcher integrations:
    - [ ] Node: use the shared dispatcher (`@fragno-dev/dispatcher-node`) and wire wake to
@@ -239,27 +239,27 @@ Validation:
 
 **Goal:** deep research as a durable background job with webhook completion.
 
-1. [ ] Run submission (runner side):
-   - [ ] for `type="deep_research"` queued runs:
-     - [ ] call `openai.responses.create({ background: true, ... })`
-     - [ ] set `idempotencyKey` based on `(runId, attempt)`
-     - [ ] persist `openaiResponseId` and set status `waiting_webhook`
+1. [x] Run submission (runner side):
+   - [x] for `type="deep_research"` queued runs:
+     - [x] call `openai.responses.create({ background: true, ... })`
+     - [x] set `idempotencyKey` based on `(runId, attempt)`
+     - [x] persist `openaiResponseId` and set status `waiting_webhook`
 2. [ ] Webhook route:
    - [ ] verify signature with the single `config.openaiWebhookSecret`
    - [ ] persist event idempotently (`openaiEventId` unique)
    - [ ] store `responseId` and associate to run when possible
    - [ ] enqueue a durable hook wake-up after commit so processing runs later with retries
    - [ ] do not fetch from OpenAI inside the webhook route (keep it fast + reliable)
-3. [ ] Completion processing (runner side):
-   - [ ] claim unprocessed webhook events
-   - [ ] retrieve the full Response from OpenAI by `responseId`
-   - [ ] create `ai_artifact` with `type="deep_research_report"`:
-     - [ ] `data` contains the structured report payload (Markdown + sources + metadata)
-     - [ ] include `rawResponse` only when `config.storage.persistOpenAIRawResponses === true`
+3. [x] Completion processing (runner side):
+   - [x] claim unprocessed webhook events
+   - [x] retrieve the full Response from OpenAI by `responseId`
+   - [x] create `ai_artifact` with `type="deep_research_report"`:
+     - [x] `data` contains the structured report payload (Markdown + sources + metadata)
+     - [x] include `rawResponse` only when `config.storage.persistOpenAIRawResponses === true`
            (default: false)
-   - [ ] append an assistant `ai_message` to the thread: `{ type: "artifactRef", artifactId }`
-   - [ ] mark run `succeeded`/`failed`, set `completedAt`
-   - [ ] mark webhook event `processedAt`
+   - [x] append an assistant `ai_message` to the thread: `{ type: "artifactRef", artifactId }`
+   - [x] mark run `succeeded`/`failed`, set `completedAt`
+   - [x] mark webhook event `processedAt`
 4. [ ] Edge cases:
    - [ ] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
          match later using `responseId`

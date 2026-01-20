@@ -10,15 +10,24 @@ const mockOpenAICreate = vi.fn(
     return {
       id: "resp_test",
       output_text: "Background response",
-    };
+    } as { id: string; output_text?: string };
   },
 );
+
+const mockOpenAIRetrieve = vi.fn(async (_responseId?: string) => {
+  return {
+    id: "resp_retrieved",
+    status: "completed",
+    output_text: "Retrieved response",
+  } as { id: string; status: string; output_text?: string; usage?: unknown };
+});
 
 vi.mock("openai", () => {
   return {
     default: class MockOpenAI {
       responses = {
         create: mockOpenAICreate,
+        retrieve: mockOpenAIRetrieve,
       };
     },
   };
@@ -27,6 +36,7 @@ vi.mock("openai", () => {
 describe("AI Fragment Runner", () => {
   const config = {
     defaultModel: { id: "gpt-test" },
+    defaultDeepResearchModel: { id: "gpt-deep-research" },
     apiKey: "test-key",
     retries: { baseDelayMs: 1000 },
   };
@@ -64,6 +74,7 @@ describe("AI Fragment Runner", () => {
   beforeEach(async () => {
     await testContext.resetDatabase();
     mockOpenAICreate.mockClear();
+    mockOpenAIRetrieve.mockClear();
   });
 
   test("runner tick should execute queued background run", async () => {
@@ -225,5 +236,106 @@ describe("AI Fragment Runner", () => {
 
     expect(input?.some((entry) => entry.content === "First message")).toBe(true);
     expect(input?.some((entry) => entry.content === "Second message")).toBe(false);
+  });
+
+  test("runner tick should submit deep research run and process webhook event", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Deep Research Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Investigate this" },
+        text: "Investigate this",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    mockOpenAICreate.mockResolvedValueOnce({ id: "resp_deep" });
+
+    const runner = createAiRunner({ db, config });
+    const submitResult = await runner.tick({ maxRuns: 1 });
+
+    expect(submitResult.processedRuns).toBe(1);
+    expect(mockOpenAICreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-deep-research",
+        background: true,
+      }),
+      expect.objectContaining({
+        idempotencyKey: `ai-run:${run.id}:attempt:1`,
+      }),
+    );
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun?.status).toBe("waiting_webhook");
+    expect(storedRun?.openaiResponseId).toBe("resp_deep");
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_deep",
+      type: "response.completed",
+      responseId: "resp_deep",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processedAt: null,
+      processingError: null,
+    });
+
+    mockOpenAIRetrieve.mockResolvedValueOnce({
+      id: "resp_deep",
+      status: "completed",
+      output_text: "Deep research report",
+      usage: { total_tokens: 42 },
+    });
+
+    const processResult = await runner.tick({ maxWebhookEvents: 1 });
+    expect(processResult.processedWebhookEvents).toBe(1);
+
+    const updatedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(updatedRun?.status).toBe("succeeded");
+    expect(updatedRun?.completedAt).toBeTruthy();
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.type).toBe("deep_research_report");
+    expect(artifacts[0]?.text).toBe("Deep research report");
+
+    const artifactData = artifacts[0]?.data as {
+      reportMarkdown?: string;
+      openaiResponseId?: string;
+      usage?: unknown;
+    };
+    expect(artifactData?.reportMarkdown).toBe("Deep research report");
+    expect(artifactData?.openaiResponseId).toBe("resp_deep");
+    expect(artifactData?.usage).toEqual({ total_tokens: 42 });
+
+    const messages = await db.find("ai_message", (b) =>
+      b.whereIndex("idx_ai_message_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
+    );
+    const artifactMessage = messages.find(
+      (entry) => entry.role === "assistant" && entry.runId === run.id,
+    );
+    expect(artifactMessage?.content).toMatchObject({
+      type: "artifactRef",
+      artifactId: artifacts[0]?.id.toString(),
+    });
+
+    const webhookEvents = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
+    expect(webhookEvents[0]?.processedAt).toBeTruthy();
+    expect(webhookEvents[0]?.processingError).toBeNull();
   });
 });

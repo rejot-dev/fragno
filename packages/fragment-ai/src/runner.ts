@@ -18,6 +18,7 @@ type Clock = {
 type AiRunRecord = {
   id: FragnoId;
   threadId: string;
+  type: string;
   systemPrompt: string | null;
   modelId: string;
   executionMode: string;
@@ -62,6 +63,7 @@ type AiRunnerOptions = {
 
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
 const DEFAULT_RETRY_BASE_DELAY_MS = 2000;
+const DEEP_RESEARCH_ARTIFACT_TYPE = "deep_research_report";
 
 const resolveRetryDelayMs = (attempt: number, baseDelayMs: number) =>
   baseDelayMs * Math.pow(2, Math.max(0, attempt - 1));
@@ -290,6 +292,255 @@ const scheduleRetry = async ({
   return nextAttemptAt;
 };
 
+const submitDeepResearchRun = async ({
+  db,
+  config,
+  runId,
+  clock,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  config: AiFragmentConfig;
+  runId: string;
+  clock: Clock;
+}) => {
+  const { run, messages, thread } = await fetchRunData(db, runId);
+  const now = clock.now();
+
+  if (TERMINAL_STATUSES.has(run.status)) {
+    return {
+      runId: run.id.toString(),
+      status: run.status,
+      openaiResponseId: run.openaiResponseId,
+    };
+  }
+
+  let status: "waiting_webhook" | "failed" = "waiting_webhook";
+  let error: string | null = null;
+  let openaiResponseId: string | null = run.openaiResponseId;
+
+  try {
+    const client = await createOpenAIClient(config);
+    const openaiToolConfig = resolveOpenAIToolConfig(
+      run.openaiToolConfig ?? thread.openaiToolConfig,
+    );
+    const responseOptions = openaiToolConfig
+      ? {
+          ...openaiToolConfig,
+          model: run.modelId,
+          input: buildOpenAIInput(run, messages),
+          background: true,
+        }
+      : { model: run.modelId, input: buildOpenAIInput(run, messages), background: true };
+    const response = await client.responses.create(responseOptions, {
+      idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+    });
+    if (response && typeof response === "object" && "id" in response) {
+      const responseId = (response as { id?: unknown }).id;
+      if (typeof responseId === "string") {
+        openaiResponseId = responseId;
+      }
+    }
+
+    if (!openaiResponseId) {
+      throw new Error("OpenAI response id missing");
+    }
+  } catch (err) {
+    status = "failed";
+    error = err instanceof Error ? err.message : "OpenAI request failed";
+  }
+
+  const uow = db.createUnitOfWork("ai-run-deep-research-submit");
+  const schema = uow.forSchema(aiSchema);
+  schema.update("ai_run", run.id, (b) => {
+    const builder = b.set({
+      status,
+      error,
+      openaiResponseId,
+      startedAt: run.startedAt ?? now,
+      completedAt: status === "failed" ? now : null,
+      updatedAt: now,
+    });
+    if (run.id instanceof FragnoId) {
+      builder.check();
+    }
+    return builder;
+  });
+
+  await uow.executeMutations();
+
+  let retryScheduledAt: Date | null = null;
+  if (status === "failed") {
+    retryScheduledAt = await scheduleRetry({ db, run, error, clock, config });
+  }
+
+  return {
+    runId: run.id.toString(),
+    status: retryScheduledAt ? "queued" : status,
+    openaiResponseId,
+    error,
+    retryScheduledAt,
+  };
+};
+
+const extractOpenAIUsage = (response: unknown) => {
+  if (!response || typeof response !== "object") {
+    return undefined;
+  }
+  const usage = (response as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== "object") {
+    return undefined;
+  }
+  return usage;
+};
+
+const processWebhookEvent = async ({
+  db,
+  config,
+  event,
+  clock,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  config: AiFragmentConfig;
+  event: { id: FragnoId; responseId: string };
+  clock: Clock;
+}) => {
+  const now = clock.now();
+  let response: unknown;
+
+  try {
+    const client = await createOpenAIClient(config);
+    response = await client.responses.retrieve(event.responseId);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
+    await db.update("ai_openai_webhook_event", event.id, (b) => b.set({ processingError: error }));
+    return false;
+  }
+
+  const responseStatus =
+    response && typeof response === "object"
+      ? (response as { status?: unknown }).status
+      : undefined;
+  const normalizedStatus = typeof responseStatus === "string" ? responseStatus : null;
+  if (
+    normalizedStatus &&
+    normalizedStatus !== "completed" &&
+    normalizedStatus !== "failed" &&
+    normalizedStatus !== "cancelled"
+  ) {
+    await db.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({ processingError: "Response not completed" }),
+    );
+    return false;
+  }
+
+  const run = (await db.findFirst("ai_run", (b) =>
+    b.whereIndex("idx_ai_run_openaiResponseId", (eb) =>
+      eb("openaiResponseId", "=", event.responseId),
+    ),
+  )) as AiRunRecord | null;
+
+  if (!run) {
+    await db.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({ processingError: "RUN_NOT_FOUND" }),
+    );
+    return false;
+  }
+
+  if (TERMINAL_STATUSES.has(run.status)) {
+    await db.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({ processedAt: now, processingError: null }),
+    );
+    return true;
+  }
+
+  if (run.type !== "deep_research") {
+    await db.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({ processedAt: now, processingError: "UNSUPPORTED_RUN_TYPE" }),
+    );
+    return true;
+  }
+
+  const uow = db.createUnitOfWork("ai-webhook-process");
+  const schema = uow.forSchema(aiSchema);
+  const responseId = event.responseId;
+
+  if (normalizedStatus === "failed" || normalizedStatus === "cancelled") {
+    schema.update("ai_run", run.id, (b) => {
+      const builder = b.set({
+        status: normalizedStatus === "cancelled" ? "cancelled" : "failed",
+        error: "OpenAI response failed",
+        completedAt: now,
+        updatedAt: now,
+      });
+      if (run.id instanceof FragnoId) {
+        builder.check();
+      }
+      return builder;
+    });
+
+    schema.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({ processedAt: now, processingError: null }),
+    );
+
+    const { success } = await uow.executeMutations();
+    return success;
+  }
+
+  const reportMarkdown = resolveOpenAIResponseText(response) ?? "";
+  const usage = extractOpenAIUsage(response);
+  const artifactData = {
+    type: DEEP_RESEARCH_ARTIFACT_TYPE,
+    formatVersion: 1,
+    modelId: run.modelId,
+    openaiResponseId: responseId,
+    reportMarkdown,
+    ...(usage ? { usage } : {}),
+    ...(config.storage?.persistOpenAIRawResponses ? { rawResponse: response } : {}),
+  };
+
+  const artifactId = schema.create("ai_artifact", {
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    type: DEEP_RESEARCH_ARTIFACT_TYPE,
+    title: "Deep research report",
+    mimeType: "text/markdown",
+    data: artifactData,
+    text: reportMarkdown || null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  schema.create("ai_message", {
+    threadId: run.threadId,
+    role: "assistant",
+    content: { type: "artifactRef", artifactId: artifactId.toString() },
+    text: null,
+    runId: run.id.toString(),
+    createdAt: now,
+  });
+
+  schema.update("ai_run", run.id, (b) => {
+    const builder = b.set({
+      status: "succeeded",
+      error: null,
+      completedAt: now,
+      updatedAt: now,
+      openaiResponseId: responseId,
+    });
+    if (run.id instanceof FragnoId) {
+      builder.check();
+    }
+    return builder;
+  });
+
+  schema.update("ai_openai_webhook_event", event.id, (b) =>
+    b.set({ processedAt: now, processingError: null }),
+  );
+
+  const { success } = await uow.executeMutations();
+  return success;
+};
+
 export const runExecutor = async ({
   db,
   config,
@@ -434,6 +685,23 @@ const claimNextRuns = async ({
   return claimed;
 };
 
+const claimNextWebhookEvents = async ({
+  db,
+  maxEvents,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  maxEvents: number;
+}) => {
+  const events = (await db.find("ai_openai_webhook_event", (b) =>
+    b
+      .whereIndex("idx_ai_openai_webhook_event_processedAt", (eb) => eb.isNull("processedAt"))
+      .orderByIndex("idx_ai_openai_webhook_event_processedAt", "asc")
+      .pageSize(maxEvents),
+  )) as Array<{ id: FragnoId; responseId: string }>;
+
+  return events;
+};
+
 export const createAiRunner = ({ db, config, clock }: AiRunnerOptions) => {
   const effectiveClock = clock ?? { now: () => new Date() };
 
@@ -443,11 +711,36 @@ export const createAiRunner = ({ db, config, clock }: AiRunnerOptions) => {
 
     let processedRuns = 0;
     for (const run of runs) {
-      await runExecutor({ db, config, runId: run.id.toString(), clock: effectiveClock });
+      if (run.type === "deep_research") {
+        await submitDeepResearchRun({
+          db,
+          config,
+          runId: run.id.toString(),
+          clock: effectiveClock,
+        });
+      } else {
+        await runExecutor({ db, config, runId: run.id.toString(), clock: effectiveClock });
+      }
       processedRuns += 1;
     }
 
-    return { processedRuns, processedWebhookEvents: 0 };
+    const maxWebhookEvents = options.maxWebhookEvents ?? config.runner?.maxWorkPerTick ?? 1;
+    const webhookEvents = await claimNextWebhookEvents({ db, maxEvents: maxWebhookEvents });
+
+    let processedWebhookEvents = 0;
+    for (const event of webhookEvents) {
+      const processed = await processWebhookEvent({
+        db,
+        config,
+        event: { id: event.id, responseId: event.responseId },
+        clock: effectiveClock,
+      });
+      if (processed) {
+        processedWebhookEvents += 1;
+      }
+    }
+
+    return { processedRuns, processedWebhookEvents };
   };
 
   return { tick };
