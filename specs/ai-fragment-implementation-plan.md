@@ -283,6 +283,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
     - [x] page size caps in services
   - [x] Rate limits at host level for webhooks + tick endpoint
   - [x] Observability: structured logs for run lifecycle + webhook processing
+  - [x] Stream tool policy denials emit failed status events (skip running)
   - [x] Admin-only debug/delete routes (host-protect)
 
 - [ ] Future (v0.2+):

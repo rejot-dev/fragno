@@ -760,15 +760,6 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               });
             }
 
-            logWithLogger(config.logger, "info", {
-              event: "ai.run.started",
-              runId: run.id,
-              threadId: run.threadId,
-              type: run.type,
-              executionMode: run.executionMode,
-              attempt: run.attempt,
-            });
-
             const safeWrite = async (payload: AiRunLiveEvent) => {
               if (!canWrite) {
                 return;
@@ -818,10 +809,20 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
 
             await safeWrite({ type: "run.meta", runId: run.id, threadId: run.threadId });
             recordRunEvent("run.meta", { runId: run.id, threadId: run.threadId });
-            await safeWrite({ type: "run.status", runId: run.id, status: "running" });
-            recordRunEvent("run.status", { status: "running" });
 
             if (!toolPolicyResult.deniedReason) {
+              await safeWrite({ type: "run.status", runId: run.id, status: "running" });
+              recordRunEvent("run.status", { status: "running" });
+
+              logWithLogger(config.logger, "info", {
+                event: "ai.run.started",
+                runId: run.id,
+                threadId: run.threadId,
+                type: run.type,
+                executionMode: run.executionMode,
+                attempt: run.attempt,
+              });
+
               try {
                 const responseOptions = buildOpenAIResponseOptions({
                   config,
@@ -1053,6 +1054,8 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 unregisterAbort();
               }
             } else {
+              await safeWrite({ type: "run.status", runId: run.id, status: "failed" });
+              recordRunEvent("run.status", { status: "failed" });
               unregisterAbort();
             }
 
