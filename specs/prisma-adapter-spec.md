@@ -19,8 +19,8 @@ This spec adds **Prisma support** in the same spirit as the existing **Drizzle a
 
 Key difference vs Drizzle: Prisma has fewer “custom type conversion hooks”. To make the generated
 Prisma schema genuinely usable with Prisma Client, Fragno must be **Prisma-native** in how it stores
-values (especially for SQLite). This spec therefore includes a maintainable “storage profile”
-approach driven by `DriverConfig`.
+values (especially for SQLite). This spec therefore includes a maintainable “storage mode” approach
+driven by `DriverConfig`.
 
 ## 2. Goals / Non-goals
 
@@ -38,7 +38,7 @@ approach driven by `DriverConfig`.
    collisions when multiple fragments are merged.
 6. **Deterministic output**: stable ordering and formatting for clean diffs.
 7. **Storage contract alignment**: generated schema must create tables/columns compatible with
-   Fragno runtime behavior for the selected storage profile.
+   Fragno runtime behavior for the selected storage mode.
 
 ### 2.2 Non-goals (v1)
 
@@ -53,7 +53,7 @@ approach driven by `DriverConfig`.
 Prisma users still configure Fragno with a DB adapter (execution stays Kysely-based). Prisma support
 adds a runtime adapter mainly to:
 
-- opt into the Prisma-native SQLite storage profile
+- opt into the Prisma-native SQLite storage mode
 - provide `createSchemaGenerator()` for `.prisma` output
 
 Example (Postgres):
@@ -188,21 +188,21 @@ scalars. For SQLite, Fragno currently uses a storage strategy optimized for JS d
 (epoch-ms integers for dates and BLOB int64 for bigints). Prisma cannot model these as `DateTime` /
 `BigInt` without changing how values are stored.
 
-### 7.1 SQLite “storage profiles” (Prisma-native requirement)
+### 7.1 SQLite storage modes (Prisma-native requirement)
 
-Introduce an explicit storage profile for SQLite, selected via `DriverConfig` (or a small wrapper
-around it). v1 defines:
+Introduce an explicit SQLite storage mode, selected by the adapter (not the driver config). v1
+defines two built-in modes:
 
-- **`sqliteProfile: "fragno"`** (current behavior)
+- **`sqliteStorageDefault`** (current behavior)
   - `timestamp`/`date` stored as epoch ms integer
   - `bigint` (non-reference) stored as 8-byte BLOB
-- **`sqliteProfile: "prisma"`** (new, Prisma-native)
+- **`sqliteStoragePrisma`** (Prisma-native)
   - `timestamp`/`date` stored as TEXT-compatible datetime (Prisma `DateTime`)
   - `bigint` stored as INTEGER (Prisma `BigInt`)
 
-The Prisma adapter defaults SQLite to `"prisma"` to ensure a Prisma-native developer experience.
+The Prisma adapter defaults SQLite to the Prisma-native storage mode.
 
-#### Why two profiles exist
+#### Why two modes exist
 
 - The existing Fragno SQLite stack (and Drizzle generation) is optimized around integer timestamps
   and BLOB-encoded int64 values; it can roundtrip these with custom serializers.
@@ -210,40 +210,41 @@ The Prisma adapter defaults SQLite to `"prisma"` to ensure a Prisma-native devel
   a Prisma-native experience requires storing values the way Prisma expects (`DateTime` / `BigInt`
   as SQLite values Prisma can parse).
 
-#### Do users ever “switch” profiles?
+#### Do users ever “switch” modes?
 
 Yes, but only for existing SQLite databases created before Prisma support (or created using the
-default `"fragno"` profile). Typical scenarios:
+default storage mode). Typical scenarios:
 
 - An app starts with Fragno + GenericSQL/Drizzle and later adopts Prisma tooling for migrations and
   Prisma Client types.
-- A project upgrades Fragno and wants to move from the compatibility profile to Prisma-native
+- A project upgrades Fragno and wants to move from the default storage mode to Prisma-native
   `DateTime`/`BigInt` columns.
 
-Users do **not** need to switch if they’re happy with the compatibility profile; the Prisma schema
-generator can target `"fragno"` profile (at the cost of Prisma scalars becoming `Int`/`Bytes`).
+Users do **not** need to switch if they’re happy with the default storage mode; the Prisma schema
+generator can target the default storage mode (at the cost of Prisma scalars becoming
+`Int`/`Bytes`).
 
-If they do switch from `"fragno"` → `"prisma"` on an existing DB, some columns may need **data
-migrations** because values are encoded differently (e.g. epoch-ms integers → datetime strings, and
-int64 BLOBs → integers).
+If they do switch from the default mode → Prisma-native on an existing DB, some columns may need
+**data migrations** because values are encoded differently (e.g. epoch-ms integers → datetime
+strings, and int64 BLOBs → integers).
 
-### 7.2 DriverConfig-driven implementation (maintainability)
+### 7.2 Adapter-driven implementation (maintainability)
 
-Extend `packages/fragno-db/src/adapters/generic-sql/driver-config.ts` to expose the storage profile
-in a backwards-compatible way (e.g. a getter with a default).
+Expose the SQLite storage mode as adapter configuration (defaulting in `GenericSQLAdapter`, and
+overridden by `PrismaAdapter`).
 
-All three layers must consult the same profile source:
+All three layers must consult the same storage mode source:
 
 1. **Type mapping** (migrations): SQLite `SQLTypeMapper` must map `timestamp`/`date` and `bigint`
-   based on profile.
+   based on storage mode.
 2. **Default SQL generation** (migrations): SQLite `SQLGenerator.getDefaultValue()` must emit a
-   profile-compatible default for `dbSpecial: "now"`.
+   storage-mode-compatible default for `dbSpecial: "now"`.
 3. **Value serialization/deserialization** (runtime): SQLite `SQLSerializer` must serialize `Date`
-   and `bigint` consistent with the profile.
+   and `bigint` consistent with the storage mode.
 
 ### 7.3 Prisma scalar mapping by provider
 
-#### SQLite (focus) — profile `"prisma"` (default for PrismaAdapter)
+#### SQLite (focus) — Prisma-native storage mode (default for PrismaAdapter)
 
 | Fragno column                      | Prisma type | Notes                                                                              |
 | ---------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
@@ -258,9 +259,9 @@ All three layers must consult the same profile source:
 | `bigint` (reference / internal-id) | `Int`       | SQLite PK/FK style; must remain within JS safe integer range                       |
 | `decimal`                          | `Float`     | REAL                                                                               |
 
-#### SQLite — profile `"fragno"` (compat / legacy)
+#### SQLite — default storage mode (compat)
 
-This profile can be supported as an opt-in “compatibility” mode for existing SQLite deployments:
+This mode can be supported as an opt-in compatibility mode for existing SQLite deployments:
 
 | Fragno column      | Prisma type | Notes                   |
 | ------------------ | ----------- | ----------------------- |
@@ -323,14 +324,14 @@ Emit `@default(<literal>)` when it is valid for the scalar type.
 ### 8.2 DB “now” defaults (`defaultTo(b => b.now())`)
 
 - Postgres/MySQL: `@default(now())`
-- SQLite profile `"prisma"`: `@default(now())` (Prisma-native)
-- SQLite profile `"fragno"`: `@default(dbgenerated(...))` yielding epoch ms integer
+- SQLite Prisma-native mode: `@default(now())`
+- SQLite default mode: `@default(dbgenerated(...))` yielding epoch ms integer
 
 SQLite note: Prisma’s SQLite `now()`/`CURRENT_TIMESTAMP` defaults typically yield a string without a
 timezone (e.g. `YYYY-MM-DD HH:MM:SS`). Fragno must decode these as **UTC**.
 
 Fragno runtime should serialize `Date` values as an unambiguous UTC ISO string
-(`YYYY-MM-DDTHH:MM:SS.SSSZ`) for SQLite `"prisma"` profile, while still accepting and decoding
+(`YYYY-MM-DDTHH:MM:SS.SSSZ`) for SQLite Prisma-native mode, while still accepting and decoding
 SQLite’s `CURRENT_TIMESTAMP` format for rows inserted by DB defaults.
 
 ### 8.3 Runtime defaults (`defaultTo$`)
@@ -426,7 +427,7 @@ Coverage cases:
 - indexes and unique indexes
 - one relation + generated inverse
 - self-reference
-- SQLite profile differences (`fragno` vs `prisma`) where applicable
+- SQLite storage mode differences (default vs Prisma-native) where applicable
 
 ## 13. Documentation updates (required for release; out of scope for this doc)
 
@@ -437,7 +438,7 @@ Coverage cases:
 
 ## 14. Confirmed Decisions
 
-1. **SQLite default profile**: `PrismaAdapter` defaults SQLite to `sqliteProfile: "prisma"`.
+1. **SQLite default storage mode**: `PrismaAdapter` defaults SQLite to `sqliteStoragePrisma`.
 2. **SQLite BigInt safety**: SQLite `BigInt` columns require safe int64 roundtrips. If a driver
    returns a JS `number` outside `Number.MAX_SAFE_INTEGER`, Fragno throws instead of silently losing
    precision. For `better-sqlite3`, recommend `db.defaultSafeIntegers(true)` to preserve full range.
