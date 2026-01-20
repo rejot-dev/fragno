@@ -1,23 +1,59 @@
 import type { AnyColumn } from "../../../schema/create";
 import { SQLSerializer } from "../sql-serializer";
 import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
+import type { SQLiteStorageMode } from "../../../adapters/generic-sql/sqlite-storage";
+import { sqliteStorageDefault } from "../../../adapters/generic-sql/sqlite-storage";
+
+const SQLITE_UTC_TIMESTAMP_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/;
+
+function parseSQLiteUtcTimestamp(value: string): Date | null {
+  const match = SQLITE_UTC_TIMESTAMP_REGEX.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day, hour, minute, second, millis] = match;
+  const milliseconds = millis ? Number(millis.padEnd(3, "0")) : 0;
+  return new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      milliseconds,
+    ),
+  );
+}
 
 /**
  * SQLite-specific serializer.
  *
  * SQLite has limited native type support and requires conversions:
  * - JSON → strings (no native JSON support)
- * - Dates → numbers (timestamps)
+ * - Dates → numbers or ISO strings (storage-mode dependent)
  * - Booleans → 0/1
- * - BigInts → Buffer (except for internal-id and reference columns → number)
+ * - BigInts → Buffer or integer (storage-mode dependent; internal-id/reference stay integer)
  * - Numbers/strings → Date for timestamps/dates
  */
 export class SQLiteSerializer extends SQLSerializer {
-  constructor(driverConfig: DriverConfig) {
+  private readonly sqliteStorageMode: SQLiteStorageMode;
+
+  constructor(driverConfig: DriverConfig, sqliteStorageMode?: SQLiteStorageMode) {
     super(driverConfig);
+    this.sqliteStorageMode = sqliteStorageMode ?? sqliteStorageDefault;
   }
 
-  protected serializeDate(value: Date): number {
+  protected serializeDate(value: Date, col: AnyColumn): number | string {
+    const storage =
+      col.type === "date"
+        ? this.sqliteStorageMode.dateStorage
+        : this.sqliteStorageMode.timestampStorage;
+    if (storage === "iso-text") {
+      return value.toISOString();
+    }
     return value.getTime();
   }
 
@@ -25,7 +61,7 @@ export class SQLiteSerializer extends SQLSerializer {
     return value ? 1 : 0;
   }
 
-  protected serializeBigInt(value: bigint, col: AnyColumn): number | Buffer {
+  protected serializeBigInt(value: bigint, col: AnyColumn): bigint | number | Buffer {
     // SQLite special case: internal-id and reference columns use integer, not blob
     // These should be converted to numbers for SQLite
     if (col.role === "reference" || col.role === "internal-id") {
@@ -40,17 +76,51 @@ export class SQLiteSerializer extends SQLSerializer {
       }
       return Number(value);
     }
+    if (this.sqliteStorageMode.bigintStorage === "integer") {
+      return value;
+    }
     const buf = Buffer.alloc(8);
     buf.writeBigInt64BE(value);
     return buf;
   }
 
-  protected deserializeDate(value: unknown): Date {
+  protected deserializeDate(value: unknown, col: AnyColumn): Date {
     if (value instanceof Date) {
       return value;
     }
-    if (typeof value === "number" || typeof value === "string") {
+    if (typeof value === "string") {
+      if (/^\d+$/.test(value)) {
+        const numericDate = new Date(Number(value));
+        if (Number.isNaN(numericDate.getTime())) {
+          throw new Error(`Cannot deserialize date from value: ${value}`);
+        }
+        return numericDate;
+      }
+      const parsed = parseSQLiteUtcTimestamp(value);
+      const date = parsed ?? new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        throw new Error(`Cannot deserialize date from value: ${value}`);
+      }
+      return date;
+    }
+    if (typeof value === "number") {
+      if (Number.isNaN(value)) {
+        throw new Error(`Cannot deserialize date from value: ${value}`);
+      }
       return new Date(value);
+    }
+    if (typeof value === "bigint") {
+      const storage =
+        col.type === "date"
+          ? this.sqliteStorageMode.dateStorage
+          : this.sqliteStorageMode.timestampStorage;
+      if (storage === "epoch-ms") {
+        const date = new Date(Number(value));
+        if (Number.isNaN(date.getTime())) {
+          throw new Error(`Cannot deserialize date from value: ${value}`);
+        }
+        return date;
+      }
     }
     throw new Error(`Cannot deserialize date from value: ${value}`);
   }
@@ -76,6 +146,13 @@ export class SQLiteSerializer extends SQLSerializer {
       return BigInt(value);
     }
     if (typeof value === "number") {
+      if (this.sqliteStorageMode.bigintStorage === "integer") {
+        if (Math.abs(value) > Number.MAX_SAFE_INTEGER) {
+          throw new RangeError(
+            `Cannot deserialize bigint value ${value}: exceeds Number.MAX_SAFE_INTEGER`,
+          );
+        }
+      }
       return BigInt(value);
     }
     throw new Error(`Cannot deserialize bigint from value: ${value}`);

@@ -18,7 +18,8 @@ export class PostgreSQLSerializer extends SQLSerializer {
     super(driverConfig);
   }
 
-  protected serializeDate(value: Date): Date {
+  protected serializeDate(value: Date, _col: AnyColumn): Date {
+    void _col;
     // PostgreSQL handles Date objects natively
     return value;
   }
@@ -33,7 +34,8 @@ export class PostgreSQLSerializer extends SQLSerializer {
     return value;
   }
 
-  protected deserializeDate(value: unknown): Date {
+  protected deserializeDate(value: unknown, _col: AnyColumn): Date {
+    void _col;
     if (value instanceof Date) {
       if (this.driverConfig.driverType === "pglite") {
         return new Date(value.getTime() - value.getTimezoneOffset() * 60_000);

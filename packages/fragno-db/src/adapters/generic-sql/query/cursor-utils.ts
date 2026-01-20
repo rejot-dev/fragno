@@ -2,6 +2,7 @@ import type { AnyColumn } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import { decodeCursor, serializeCursorValues, type Cursor } from "../../../query/cursor";
 import type { DriverConfig } from "../driver-config";
+import type { SQLiteStorageMode } from "../sqlite-storage";
 
 /**
  * Build a cursor condition for pagination.
@@ -15,6 +16,7 @@ import type { DriverConfig } from "../driver-config";
  * @param orderDirection - Direction of ordering (asc/desc)
  * @param isAfter - True for "after" cursor (forward pagination), false for "before" (backward)
  * @param driverConfig - The driver configuration for value serialization
+ * @param sqliteStorageMode - Optional SQLite storage mode for date/bigint serialization
  * @returns A Condition object for the cursor, or undefined if no cursor
  * @throws Error if multi-column cursors are not supported by the implementation
  */
@@ -24,6 +26,7 @@ export function buildCursorCondition(
   orderDirection: "asc" | "desc",
   isAfter: boolean,
   driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
 ): Condition | undefined {
   if (!cursor || indexColumns.length === 0) {
     return undefined;
@@ -31,7 +34,12 @@ export function buildCursorCondition(
 
   // Decode cursor if it's a string, otherwise use it as-is
   const cursorObj = typeof cursor === "string" ? decodeCursor(cursor) : cursor;
-  const serializedValues = serializeCursorValues(cursorObj, indexColumns, driverConfig);
+  const serializedValues = serializeCursorValues(
+    cursorObj,
+    indexColumns,
+    driverConfig,
+    sqliteStorageMode,
+  );
 
   // Determine comparison operator based on direction and after/before
   const useGreaterThan =

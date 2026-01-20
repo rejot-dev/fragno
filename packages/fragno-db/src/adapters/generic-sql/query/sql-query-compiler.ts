@@ -11,6 +11,7 @@ import type { SqlBool } from "kysely";
 import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
+import type { SQLiteStorageMode } from "../sqlite-storage";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import { buildWhere, fullSQLName } from "./where-builder";
 import { mapSelect, extendSelect } from "./select-builder";
@@ -99,13 +100,20 @@ export abstract class SQLQueryCompiler {
   protected readonly database: SupportedDatabase;
   protected readonly mapper?: TableNameMapper;
   protected readonly encoder: UnitOfWorkEncoder;
+  protected readonly sqliteStorageMode?: SQLiteStorageMode;
 
-  constructor(db: AnyKysely, driverConfig: DriverConfig, mapper?: TableNameMapper) {
+  constructor(
+    db: AnyKysely,
+    driverConfig: DriverConfig,
+    sqliteStorageMode?: SQLiteStorageMode,
+    mapper?: TableNameMapper,
+  ) {
     this.db = db;
     this.driverConfig = driverConfig;
     this.database = driverConfig.databaseType;
     this.mapper = mapper;
-    this.encoder = new UnitOfWorkEncoder(driverConfig, db, mapper);
+    this.sqliteStorageMode = sqliteStorageMode;
+    this.encoder = new UnitOfWorkEncoder(driverConfig, db, sqliteStorageMode, mapper);
   }
 
   /**
@@ -140,7 +148,7 @@ export abstract class SQLQueryCompiler {
    * Build WHERE clause from a condition tree.
    */
   protected buildWhereClause(condition: Condition, eb: AnyExpressionBuilder, table: AnyTable) {
-    return buildWhere(condition, eb, this.driverConfig, this.mapper, table);
+    return buildWhere(condition, eb, this.driverConfig, this.sqliteStorageMode, this.mapper, table);
   }
 
   /**
