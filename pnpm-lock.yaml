@@ -1221,6 +1221,34 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/ai-dispatcher-node:
+    dependencies:
+      '@fragno-dev/dispatcher-node':
+        specifier: workspace:*
+        version: link:../dispatcher-node
+      '@fragno-dev/fragment-ai':
+        specifier: workspace:*
+        version: link:../fragment-ai
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^22
+        version: 22.19.1
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      tsdown:
+        specifier: ^0.15.12
+        version: 0.15.12(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.0.11)(jiti@2.6.1)(jsdom@27.2.0)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/corpus:
     devDependencies:
       '@fragno-dev/core':

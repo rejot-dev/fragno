@@ -215,7 +215,7 @@ Validation:
    - [x] ensure each tick respects limits and returns counts (`processedRuns`,
          `processedWebhookEvents`)
 5. [ ] Dispatcher integrations:
-   - [ ] Node: use the shared dispatcher (`@fragno-dev/dispatcher-node`) and wire wake to
+   - [x] Node: use the shared dispatcher (`@fragno-dev/dispatcher-node`) and wire wake to
          `POST /ai/_runner/tick` or `runner.tick(...)`
    - [ ] Cloudflare DO: create a shared dispatcher runtime package (e.g.
          `@fragno-dev/dispatcher-cloudflare-do`) by extracting core logic from the workflows DO
