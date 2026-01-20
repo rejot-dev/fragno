@@ -80,6 +80,7 @@ export class DispatcherDurableObjectRuntime<TTickOptions, TTickResult> {
   #queuedResult: TTickResult;
   #tickInFlight = false;
   #tickQueued = false;
+  #queuedTickOptions?: TTickOptions;
   #getNextWakeAt?: () => Promise<Date | null>;
   #onTickError?: (error: unknown) => void;
 
@@ -103,6 +104,7 @@ export class DispatcherDurableObjectRuntime<TTickOptions, TTickResult> {
   async #queueTick(tickOptions?: TTickOptions): Promise<TTickResult> {
     if (this.#tickInFlight) {
       this.#tickQueued = true;
+      this.#queuedTickOptions = tickOptions;
       return this.#queuedResult;
     }
 
@@ -116,13 +118,19 @@ export class DispatcherDurableObjectRuntime<TTickOptions, TTickResult> {
       this.#onTickError?.(error);
       result = this.#queuedResult;
     } finally {
-      await this.#scheduleNextAlarm();
+      try {
+        await this.#scheduleNextAlarm();
+      } catch (error) {
+        this.#onTickError?.(error);
+      }
       this.#tickInFlight = false;
     }
 
     if (this.#tickQueued) {
       this.#tickQueued = false;
-      void this.#queueTick(tickOptions);
+      const queuedOptions = this.#queuedTickOptions;
+      this.#queuedTickOptions = undefined;
+      void this.#queueTick(queuedOptions);
     }
 
     return result;

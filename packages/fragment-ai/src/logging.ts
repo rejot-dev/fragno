@@ -29,6 +29,6 @@ export const logWithLogger = (
             : logger.log;
 
   if (handler) {
-    handler(payload);
+    handler.call(logger, payload);
   }
 };

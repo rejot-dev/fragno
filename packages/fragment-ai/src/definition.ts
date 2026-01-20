@@ -1202,9 +1202,11 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           .mutate(({ uow, retrieveResult: [events] }) => {
             const claimedEvents = (events as AiWebhookEventRecord[]).map((event) => {
               uow.update("ai_openai_webhook_event", event.id, (b) =>
-                b.set({
-                  processingAt: now,
-                }),
+                b
+                  .set({
+                    processingAt: now,
+                  })
+                  .check(),
               );
 
               return {

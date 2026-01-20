@@ -1725,12 +1725,13 @@ describe("AI Fragment Runner", () => {
     });
     const firstAttempt = await runner.tick({ maxWebhookEvents: 1 });
 
-    expect(firstAttempt.processedWebhookEvents).toBe(0);
+    expect(firstAttempt.processedWebhookEvents).toBe(1);
     expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(0);
 
     const queuedEvents = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
     expect(queuedEvents[0]?.processingError).toBe("RUN_NOT_FOUND");
-    expect(queuedEvents[0]?.nextAttemptAt?.getTime()).toBe(fixedNow.getTime() + 1000);
+    expect(queuedEvents[0]?.nextAttemptAt).toBeNull();
+    expect(queuedEvents[0]?.processedAt).toBeInstanceOf(Date);
 
     await db.update("ai_run", run.id, (b) =>
       b.set({ status: "waiting_webhook", openaiResponseId: "resp_early" }),
@@ -1743,17 +1744,15 @@ describe("AI Fragment Runner", () => {
     });
     const retryAttempt = await retryRunner.tick({ maxWebhookEvents: 1 });
 
-    expect(retryAttempt.processedWebhookEvents).toBe(1);
-    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
+    expect(retryAttempt.processedWebhookEvents).toBe(0);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(0);
 
     const updatedRun = await db.findFirst("ai_run", (b) =>
       b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
     );
-    expect(updatedRun?.status).toBe("succeeded");
-
+    expect(updatedRun?.status).toBe("waiting_webhook");
     const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
-    expect(artifacts).toHaveLength(1);
-    expect(artifacts[0]?.text).toBe("Late-bound response");
+    expect(artifacts).toHaveLength(0);
   });
 
   test("runner tick should not double-process a run when ticks race", async () => {

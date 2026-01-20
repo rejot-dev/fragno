@@ -932,7 +932,21 @@ const processWebhookEvent = async ({
   )) as AiRunRecord | null;
 
   if (!run) {
-    return scheduleAndLogRetry("RUN_NOT_FOUND");
+    await db.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({
+        processedAt: now,
+        processingError: "RUN_NOT_FOUND",
+        processingAt: null,
+        nextAttemptAt: null,
+      }),
+    );
+    logWithLogger(config.logger, "warn", {
+      event: "ai.webhook.processed",
+      responseId: event.responseId,
+      status: "skipped",
+      error: "RUN_NOT_FOUND",
+    });
+    return true;
   }
 
   if (TERMINAL_STATUSES.has(run.status)) {

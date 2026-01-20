@@ -78,8 +78,10 @@ const getNextAiWakeAt = async (
 
   const webhookEvents = (await db.find("ai_openai_webhook_event", (b) =>
     b
-      .whereIndex("idx_ai_openai_webhook_event_processedAt", (eb) => eb.isNull("processedAt"))
-      .orderByIndex("idx_ai_openai_webhook_event_processedAt", "asc")
+      .whereIndex("idx_ai_openai_webhook_event_processedAt_processingAt_nextAttemptAt", (eb) =>
+        eb.isNull("processedAt"),
+      )
+      .orderByIndex("idx_ai_openai_webhook_event_processedAt_processingAt_nextAttemptAt", "asc")
       .pageSize(50),
   )) as AiWebhookEventAttempt[];
 

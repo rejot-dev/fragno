@@ -29,7 +29,10 @@ export const createAiDispatcherNode = ({
 }: AiDispatcherNodeOptions): AiDispatcherNode => {
   const dispatcher = createInProcessDispatcher({
     pollIntervalMs,
-    wake: () => Promise.resolve(runner.tick(tickOptions ?? {})).then(() => undefined),
+    wake: () =>
+      Promise.resolve()
+        .then(() => runner.tick(tickOptions ?? {}))
+        .then(() => undefined),
   });
 
   return {

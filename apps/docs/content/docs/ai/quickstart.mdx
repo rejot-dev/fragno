@@ -112,5 +112,6 @@ curl -N -X POST http://localhost:3000/api/ai/threads/{threadId}/runs:stream \
 ## Background Runs and Webhooks
 
 For deep research runs, set `webhookSecret` in your fragment config and register
-`/ai/webhooks/openai` in the OpenAI dashboard. Background runs complete via webhook delivery and
-persist a structured artifact.
+`/api/ai/webhooks/openai` in the OpenAI dashboard (fragment routes mount under
+`/api/<fragment-name>/...`). Background runs complete via webhook delivery and persist a structured
+artifact.

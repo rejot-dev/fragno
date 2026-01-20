@@ -387,7 +387,7 @@ Example config (showing pi-aligned thinking + stream options):
 ```ts
 import { createAiFragment } from "@fragno-dev/fragment-ai";
 
-const ai = createAiFragment({
+const ai = createAiFragment(fragnoConfig, {
   apiKey: process.env.OPENAI_API_KEY,
   defaultModel: { id: "gpt-4.1-mini" },
   defaultDeepResearchModel: { id: "o3-deep-research" },

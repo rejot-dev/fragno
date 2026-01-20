@@ -117,8 +117,8 @@ export interface AiFragmentConfig {
 const routes = [aiRoutesFactory] as const;
 
 export function createAiFragment(
-  config: AiFragmentConfig = {},
   fragnoConfig: FragnoPublicConfigWithDatabase,
+  config: AiFragmentConfig = {},
 ) {
   return instantiate(aiFragmentDefinition)
     .withConfig(config)

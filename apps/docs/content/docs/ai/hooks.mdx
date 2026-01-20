@@ -43,7 +43,8 @@ export const aiClient = createAiClient({
 
 ## Streaming helpers
 
-Use `useRunStream` or `startRunStream` to call `/runs:stream` and track stream state.
+Use `useRunStream` or `startRunStream` to call `/threads/:threadId/runs:stream` and track stream
+state.
 
 - `useRunStream` returns `{ startRunStream, text, status, events, error }`.
 - `useStreamText`, `useStreamStatus`, `useStreamEvents`, `useStreamError` expose stores directly.

@@ -34,7 +34,7 @@ export const threadsDeleteCommand = define({
     if (result.ok) {
       console.log(`Deleted thread ${threadId}`);
     } else {
-      console.log(`Failed to delete thread ${threadId}`);
+      throw new Error(`Failed to delete thread ${threadId}`);
     }
   },
 });

@@ -767,14 +767,6 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             cursor = page.cursor;
           }
 
-          const openaiInput = await buildOpenAIInput({
-            run,
-            messages: collectedMessages,
-            maxMessages: resolveMaxHistoryMessages(config),
-            compactor: config.history?.compactor,
-            logger: config.logger,
-          });
-
           const modelRef = resolveOpenAIModelRef({
             config,
             modelId: run.modelId,
@@ -787,11 +779,28 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
           let piAiContext: ReturnType<PiAiHelpers["buildPiAiContext"]> | null = null;
           let piAiApiKey: string | undefined;
 
+          const markRunFailed = async (runError: string) => {
+            const now = new Date();
+            await this.handlerTx()
+              .mutate(({ forSchema }) => {
+                forSchema(aiSchema).update("ai_run", run.id, (b) =>
+                  b.set({
+                    status: "failed",
+                    error: runError,
+                    completedAt: now,
+                    updatedAt: now,
+                  }),
+                );
+              })
+              .execute();
+          };
+
           if (modelProvider === "openai") {
             try {
               openaiClient = await createOpenAIClient({ ...config, modelRef });
             } catch (err) {
               if (err instanceof Error && err.message === "OPENAI_API_KEY_MISSING") {
+                await markRunFailed("OPENAI_API_KEY_MISSING");
                 return error(
                   { message: "OpenAI API key is required", code: "OPENAI_API_KEY_MISSING" },
                   400,
@@ -810,17 +819,29 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               modelRef,
             });
             piAiModel = resolvedModel;
-            piAiContext = piAiHelpers.buildPiAiContext({
-              input: openaiInput,
-              model: resolvedModel,
-            });
             piAiApiKey = await piAiHelpers.resolvePiAiApiKey({
               config,
               provider: resolvedModel.provider,
             });
             if (!piAiApiKey) {
+              await markRunFailed("OPENAI_API_KEY_MISSING");
               return error({ message: "API key is required", code: "OPENAI_API_KEY_MISSING" }, 400);
             }
+          }
+
+          const openaiInput = await buildOpenAIInput({
+            run,
+            messages: collectedMessages,
+            maxMessages: resolveMaxHistoryMessages(config),
+            compactor: config.history?.compactor,
+            logger: config.logger,
+          });
+
+          if (piAiModel && piAiHelpers) {
+            piAiContext = piAiHelpers.buildPiAiContext({
+              input: openaiInput,
+              model: piAiModel,
+            });
           }
 
           return jsonStream(async (stream) => {

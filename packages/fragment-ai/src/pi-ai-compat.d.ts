@@ -7,6 +7,7 @@ declare module "@mariozechner/pi-ai" {
     low?: number;
     medium?: number;
     high?: number;
+    xhigh?: number;
   }
 
   export interface SimpleStreamOptions {
@@ -93,8 +94,8 @@ declare module "@mariozechner/pi-ai" {
     name: string;
     api: TApi;
     provider: string;
-    baseUrl: string;
-    reasoning: boolean;
+    baseUrl?: string;
+    reasoning?: boolean;
     input: Array<"text" | "image">;
     cost: {
       input: number;
@@ -102,8 +103,8 @@ declare module "@mariozechner/pi-ai" {
       cacheRead: number;
       cacheWrite: number;
     };
-    contextWindow: number;
-    maxTokens: number;
+    contextWindow?: number;
+    maxTokens?: number;
     headers?: Record<string, string>;
   }
 
