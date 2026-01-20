@@ -388,6 +388,82 @@ describe("AI Fragment Runner", () => {
     expect(webhookEvents[0]?.processingError).toBeNull();
   });
 
+  test("runner tick should not duplicate artifacts for duplicate webhook events", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Deep Research Dedupe" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Duplicate this" },
+        text: "Duplicate this",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    await db.update("ai_run", run.id, (b) =>
+      b.set({ status: "waiting_webhook", openaiResponseId: "resp_dupe" }),
+    );
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_dupe_1",
+      type: "response.completed",
+      responseId: "resp_dupe",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_dupe_2",
+      type: "response.completed",
+      responseId: "resp_dupe",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    mockOpenAIRetrieve.mockResolvedValue({
+      id: "resp_dupe",
+      status: "completed",
+      output_text: "Duplicate report",
+    });
+
+    const runner = createAiRunner({ db, config });
+    const result = await runner.tick({ maxWebhookEvents: 2 });
+
+    expect(result.processedWebhookEvents).toBe(2);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(2);
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.text).toBe("Duplicate report");
+
+    const messages = await db.find("ai_message", (b) =>
+      b.whereIndex("idx_ai_message_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
+    );
+    const assistantMessages = messages.filter(
+      (entry) => entry.role === "assistant" && entry.runId === run.id,
+    );
+    expect(assistantMessages).toHaveLength(1);
+  });
+
   test("runner tick should back off webhook processing on retrieve failure", async () => {
     const fixedNow = new Date("2024-01-02T00:00:00Z");
     mockOpenAIRetrieve.mockRejectedValueOnce(new Error("OpenAI down"));

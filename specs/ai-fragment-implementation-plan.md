@@ -269,7 +269,7 @@ Validation:
 
 Validation:
 
-- [ ] idempotency tests: duplicate webhook deliveries do not create duplicate artifacts or
+- [x] idempotency tests: duplicate webhook deliveries do not create duplicate artifacts or
       re-complete runs
 - [ ] end-to-end: create deep research run → submit → webhook → artifact persisted
 
