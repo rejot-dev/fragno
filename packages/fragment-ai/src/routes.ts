@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { aiFragmentDefinition, type AiRunLiveEvent } from "./definition";
 import { aiSchema } from "./schema";
+import type { AiRateLimitScope } from "./index";
 import {
   buildOpenAIIdempotencyKey,
   buildOpenAIResponseOptions,
@@ -33,6 +34,29 @@ const listQuerySchema = z.object({
 const DEFAULT_RETRY_BASE_DELAY_MS = 2000;
 const resolveRetryDelayMs = (attempt: number, baseDelayMs: number) =>
   baseDelayMs * Math.pow(2, Math.max(0, attempt - 1));
+
+const enforceRateLimit = async (
+  config: {
+    rateLimiter?: (context: {
+      scope: AiRateLimitScope;
+      headers: Headers;
+    }) => boolean | Promise<boolean>;
+  },
+  scope: AiRateLimitScope,
+  headers: Headers,
+  error: ErrorResponder<"RATE_LIMITED">,
+) => {
+  if (!config.rateLimiter) {
+    return null;
+  }
+
+  const allowed = await config.rateLimiter({ scope, headers });
+  if (!allowed) {
+    return error({ message: "Rate limit exceeded", code: "RATE_LIMITED" }, 429);
+  }
+
+  return null;
+};
 
 const threadSchema = z.object({
   id: z.string(),
@@ -1307,13 +1331,28 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         method: "POST",
         path: "/webhooks/openai",
         outputSchema: z.object({ ok: z.boolean() }),
-        errorCodes: ["WEBHOOK_NOT_CONFIGURED", "INVALID_SIGNATURE", "VALIDATION_ERROR"],
+        errorCodes: [
+          "WEBHOOK_NOT_CONFIGURED",
+          "INVALID_SIGNATURE",
+          "VALIDATION_ERROR",
+          "RATE_LIMITED",
+        ],
         handler: async function ({ headers, rawBody }, { json, error }) {
           if (!config.webhookSecret) {
             return error(
               { message: "OpenAI webhook secret not configured", code: "WEBHOOK_NOT_CONFIGURED" },
               400,
             );
+          }
+
+          const rateLimited = await enforceRateLimit(
+            config,
+            "webhook_openai",
+            headers,
+            error as ErrorResponder<"RATE_LIMITED">,
+          );
+          if (rateLimited) {
+            return rateLimited;
           }
 
           if (!rawBody) {
@@ -1386,9 +1425,19 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         processedRuns: z.number(),
         processedWebhookEvents: z.number(),
       }),
-      errorCodes: ["RUNNER_NOT_AVAILABLE"],
-      handler: async function ({ input }, { json, error }) {
+      errorCodes: ["RUNNER_NOT_AVAILABLE", "RATE_LIMITED"],
+      handler: async function ({ input, headers }, { json, error }) {
         const payload = await input.valid();
+
+        const rateLimited = await enforceRateLimit(
+          config,
+          "runner_tick",
+          headers,
+          error as ErrorResponder<"RATE_LIMITED">,
+        );
+        if (rateLimited) {
+          return rateLimited;
+        }
 
         if (!config.runner?.tick) {
           return error({ message: "Runner not available", code: "RUNNER_NOT_AVAILABLE" }, 503);

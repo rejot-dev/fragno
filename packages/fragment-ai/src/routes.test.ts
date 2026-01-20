@@ -759,6 +759,41 @@ describe("AI Fragment Routes", () => {
     expect(events[0]?.payload).toEqual({ redacted: true });
   });
 
+  test("webhooks route should honor rate limiting", async () => {
+    const rateLimiter = vi.fn().mockReturnValue(false);
+    const { fragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({ ...config, rateLimiter })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    const request = new Request("http://localhost/api/ai/webhooks/openai", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": "wh_rate",
+        "webhook-timestamp": "123",
+        "webhook-signature": "sig",
+      },
+      body: JSON.stringify({}),
+    });
+
+    const response = await fragments.ai.fragment.handler(request);
+    expect(response.status).toBe(429);
+    expect(rateLimiter).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "webhook_openai", headers: expect.any(Headers) }),
+    );
+
+    const events = await fragments.ai.db.find("ai_openai_webhook_event", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(events).toHaveLength(0);
+  });
+
   test("webhooks route should persist raw payload when enabled", async () => {
     mockOpenAIWebhookUnwrap.mockResolvedValueOnce({
       id: "evt_raw",
@@ -923,6 +958,41 @@ describe("AI Fragment Routes", () => {
 
     const response = await fragment.handler(request);
     expect(response.status).toBe(404);
+  });
+
+  test("runner tick route should honor rate limiting", async () => {
+    const rateLimiter = vi.fn().mockReturnValue(false);
+    const tick = vi.fn();
+
+    const { fragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({
+            ...config,
+            enableRunnerTick: true,
+            runner: { tick },
+            rateLimiter,
+          })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    const request = new Request("http://localhost/api/ai/_runner/tick", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    const response = await fragments.ai.fragment.handler(request);
+    expect(response.status).toBe(429);
+    expect(rateLimiter).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "runner_tick", headers: expect.any(Headers) }),
+    );
+    expect(tick).not.toHaveBeenCalled();
   });
 
   test("runner tick route should call runner when enabled", async () => {

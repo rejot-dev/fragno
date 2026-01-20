@@ -37,6 +37,13 @@ export type AiDispatcher = {
   wake: (payload: AiWakeEvent) => Promise<void> | void;
 };
 
+export type AiRateLimitScope = "webhook_openai" | "runner_tick";
+
+export type AiRateLimiter = (context: {
+  scope: AiRateLimitScope;
+  headers: Headers;
+}) => boolean | Promise<boolean>;
+
 export type AiRunnerTickOptions = {
   maxRuns?: number;
   maxWebhookEvents?: number;
@@ -67,6 +74,7 @@ export interface AiFragmentConfig {
   // Expose POST /ai/_runner/tick for manual/cron recovery; prefer dispatcher wake-ups for normal flow.
   enableRunnerTick?: boolean;
   dispatcher?: AiDispatcher;
+  rateLimiter?: AiRateLimiter;
   runner?: {
     maxWorkPerTick?: number;
     tick?: (
