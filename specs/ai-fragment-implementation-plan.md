@@ -245,12 +245,12 @@ Validation:
      - [x] call `openai.responses.create({ background: true, ... })`
      - [x] set `idempotencyKey` based on `(runId, attempt)`
      - [x] persist `openaiResponseId` and set status `waiting_webhook`
-2. [ ] Webhook route:
-   - [ ] verify signature with the single `config.openaiWebhookSecret`
-   - [ ] persist event idempotently (`openaiEventId` unique)
-   - [ ] store `responseId` and associate to run when possible
-   - [ ] enqueue a durable hook wake-up after commit so processing runs later with retries
-   - [ ] do not fetch from OpenAI inside the webhook route (keep it fast + reliable)
+2. [x] Webhook route:
+   - [x] verify signature with the single `config.openaiWebhookSecret`
+   - [x] persist event idempotently (`openaiEventId` unique)
+   - [x] store `responseId` and associate to run when possible
+   - [x] enqueue a durable hook wake-up after commit so processing runs later with retries
+   - [x] do not fetch from OpenAI inside the webhook route (keep it fast + reliable)
 3. [x] Completion processing (runner side):
    - [x] claim unprocessed webhook events
    - [x] retrieve the full Response from OpenAI by `responseId`

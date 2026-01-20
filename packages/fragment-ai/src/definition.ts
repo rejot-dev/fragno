@@ -1035,13 +1035,19 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
 
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
-            uow.findFirst("ai_openai_webhook_event", (b) =>
-              b.whereIndex("idx_ai_openai_webhook_event_openaiEventId", (eb) =>
-                eb("openaiEventId", "=", params.openaiEventId),
+            uow
+              .findFirst("ai_openai_webhook_event", (b) =>
+                b.whereIndex("idx_ai_openai_webhook_event_openaiEventId", (eb) =>
+                  eb("openaiEventId", "=", params.openaiEventId),
+                ),
+              )
+              .findFirst("ai_run", (b) =>
+                b.whereIndex("idx_ai_run_openaiResponseId", (eb) =>
+                  eb("openaiResponseId", "=", params.responseId),
+                ),
               ),
-            ),
           )
-          .mutate(({ uow, retrieveResult: [existing] }) => {
+          .mutate(({ uow, retrieveResult: [existing, run] }) => {
             if (existing) {
               return { event: buildWebhookEvent(existing), created: false };
             }
@@ -1057,6 +1063,17 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               processedAt: null,
               processingError: null,
             });
+
+            if (run) {
+              uow.update("ai_run", run.id, (b) =>
+                b
+                  .set({
+                    openaiLastWebhookEventId: id.toString(),
+                    updatedAt: now,
+                  })
+                  .check(),
+              );
+            }
 
             uow.triggerHook("onOpenAIWebhookReceived", {
               openaiEventId: params.openaiEventId,
