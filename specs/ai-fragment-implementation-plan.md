@@ -55,7 +55,8 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 - [ ] Deliverables:
   - [x] Updated spec/plan (this repo’s `specs/`)
-  - [ ] A small scratch fragment or test route proving NDJSON + webhook verification (optional)
+- [x] A small scratch fragment or test route proving NDJSON + webhook verification (optional;
+      covered by `packages/fragment-ai/src/routes.test.ts`)
 
 ## Phase 1 — Package skeleton + DB schema (2–4 days)
 
