@@ -34,7 +34,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 4. [x] Spike: webhook verification using `openai.webhooks.unwrap(...)` with a single configured
        secret
    - [x] confirm runtime has `globalThis.crypto` (Node >= 22)
-5. [ ] Spike: persistence boundaries:
+5. [x] Spike: persistence boundaries:
    - [x] deltas transient by default
    - [x] confirm we can persist final assistant message even if the client disconnects mid-stream
    - [x] confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
@@ -73,7 +73,7 @@ Deliverables:
    - [x] `ai_artifact` (deep research structured artifacts)
    - [x] `ai_openai_webhook_event` (idempotency + audit)
    - [x] (optional stub for v0.2+): `ai_tool_call`
-4. [ ] Implement services in `packages/fragment-ai/src/services/*`:
+4. [x] Implement services in `packages/fragment-ai/src/services/*`:
    - [x] `threadsService` (CRUD; includes per-thread `openaiToolConfig`)
    - [x] `messagesService` (append + list by `threadId`)
    - [x] `runsService` (create/cancel/get; selects input message; snapshots config)
@@ -83,7 +83,7 @@ Deliverables:
    - [x] `runnerRepo` helpers:
      - [x] claim next runnable `ai_run` rows (queued + due retries)
      - [x] claim next unprocessed webhook events
-5. [ ] Implement fragment definition:
+5. [x] Implement fragment definition:
    - [x] `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
    - [x] `withDatabase(aiSchema)` and `provideHooks` for `dispatcher.wake` notifications
 
@@ -105,7 +105,7 @@ Validation:
    - [x] Messages:
      - [x] `POST /ai/threads/:threadId/messages`
      - [x] `GET /ai/threads/:threadId/messages`
-   - [ ] Runs:
+   - [x] Runs:
      - [x] `POST /ai/threads/:threadId/runs` (background by default)
      - [x] `POST /ai/threads/:threadId/runs:stream` (foreground stream)
      - [x] `GET /ai/threads/:threadId/runs`
@@ -121,17 +121,17 @@ Validation:
      - [x] `POST /ai/_runner/tick`
      - [x] only mount when `enableRunnerTick === true` (default false)
 2. [x] Define zod schemas for each route input/output and the NDJSON stream event union.
-3. [ ] Add typed client bindings:
+3. [x] Add typed client bindings:
    - [x] `packages/fragment-ai/src/client/*` per Fragno conventions
    - [x] helper for NDJSON consumption (mirror existing Fragno client patterns)
-   - [ ] use `createClientBuilder` to expose hooks:
+   - [x] use `createClientBuilder` to expose hooks:
      - [x] `useThreads`, `useThread`, `useMessages`, `useRuns`, `useRun`, `useRunEvents`
      - [x] `useArtifacts`, `useArtifact`
      - [x] `useCreateThread`, `useUpdateThread`, `useDeleteThread`
      - [x] `useAppendMessage`, `useCreateRun`, `useCancelRun`
      - [x] `useRunStream` / `startRunStream` (stream state helper via `createMutator`)
      - [x] derived stores for stream text/status + debug event buffers via `builder.createStore`
-   - [ ] implement invalidation rules per spec:
+   - [x] implement invalidation rules per spec:
      - [x] `useCreateThread` → invalidate `GET /ai/threads`
      - [x] `useUpdateThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
      - [x] `useDeleteThread` → invalidate `GET /ai/threads/:threadId` + `GET /ai/threads`
@@ -168,7 +168,7 @@ Validation:
      - [x] final assistant message(s)
      - [x] final run status + run events
 3. [x] Background agent runs (`executionMode="background"`):
-   - [ ] runner tick claims queued runs and calls `runExecutor`
+   - [x] runner tick claims queued runs and calls `runExecutor`
    - [x] prefer `stream: false` for atomic completion (simplifies retries)
 4. [ ] Disconnect handling:
    - [x] client disconnect must not cancel the OpenAI request by default
@@ -181,7 +181,7 @@ Validation:
 
 Validation:
 
-- [ ] tests for:
+- [x] tests for:
   - [x] foreground stream returns NDJSON events and persists final message
   - [x] client disconnect does not prevent final persistence (simulate by canceling reader)
   - [x] stream failure after response id recovers via retrieve
@@ -204,9 +204,9 @@ Validation:
    - [x] deep research run (queued): submit background Response (Phase 5)
    - [x] webhook event: retrieve response + finalize (Phase 5)
 3. [ ] Wake-ups:
-   - [ ] on run creation and webhook receipt, enqueue a durable hook payload (`AiWakeEvent`) after
+   - [x] on run creation and webhook receipt, enqueue a durable hook payload (`AiWakeEvent`) after
          DB commit
-   - [ ] durable hook handler calls `config.dispatcher?.wake(...)` (or directly triggers
+   - [x] durable hook handler calls `config.dispatcher?.wake(...)` (or directly triggers
          `POST /ai/_runner/tick`)
    - [ ] wake-ups are an accelerator; HTTP tick is fallback for manual/cron recovery only (when
          enabled)
@@ -262,7 +262,7 @@ Validation:
    - [x] append an assistant `ai_message` to the thread: `{ type: "artifactRef", artifactId }`
    - [x] mark run `succeeded`/`failed`, set `completedAt`
    - [x] mark webhook event `processedAt`
-4. [ ] Edge cases:
+4. [x] Edge cases:
 
 - [x] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
       match later using `responseId`
