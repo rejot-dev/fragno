@@ -299,29 +299,29 @@ Future (v0.2+):
 
 **Goal:** easy debugging of AI fragment state via HTTP routes.
 
-1. [ ] Add new workspace app: `apps/fragno-ai` with binary `fragno-ai`.
-2. [ ] Implement `threads` commands:
-   - [ ] `fragno-ai threads list --base-url <url>`
-   - [ ] `fragno-ai threads get <threadId> --base-url <url>`
-   - [ ] `fragno-ai threads create --base-url <url> [--title ...] [--system-prompt ...]`
-   - [ ] `fragno-ai threads update <threadId> --base-url <url> [--title ...] [--system-prompt ...]`
-   - [ ] `fragno-ai threads delete <threadId> --base-url <url>` (admin route)
-3. [ ] Implement `messages` commands:
-   - [ ] `fragno-ai messages list --thread <threadId> --base-url <url>`
-   - [ ] `fragno-ai messages append --thread <threadId> --content <text|json>`
-4. [ ] Implement `runs` commands:
-   - [ ] `fragno-ai runs list --thread <threadId> --base-url <url>`
-   - [ ] `fragno-ai runs get <runId> --base-url <url>`
-   - [ ] `fragno-ai runs create --thread <threadId> [--type agent|deep_research] [--mode background|stream]`
-   - [ ] `fragno-ai runs stream --thread <threadId>` (prints NDJSON)
-   - [ ] `fragno-ai runs cancel <runId> --base-url <url>`
-   - [ ] `fragno-ai runs events <runId> --base-url <url>`
-5. [ ] Implement `artifacts` commands:
-   - [ ] `fragno-ai artifacts list --run <runId> --base-url <url>`
-   - [ ] `fragno-ai artifacts get <artifactId> --base-url <url>`
-6. [ ] Keep output human-friendly by default (table-ish), with `--json` for scripting.
-7. [ ] Auth support (same flexibility as Workflows spec):
-   - [ ] repeatable `-H/--header "Header: Value"` passthrough headers
+1. [x] Add new workspace app: `apps/fragno-ai` with binary `fragno-ai`.
+2. [x] Implement `threads` commands:
+   - [x] `fragno-ai threads list --base-url <url>`
+   - [x] `fragno-ai threads get <threadId> --base-url <url>`
+   - [x] `fragno-ai threads create --base-url <url> [--title ...] [--system-prompt ...]`
+   - [x] `fragno-ai threads update <threadId> --base-url <url> [--title ...] [--system-prompt ...]`
+   - [x] `fragno-ai threads delete <threadId> --base-url <url>` (admin route)
+3. [x] Implement `messages` commands:
+   - [x] `fragno-ai messages list --thread <threadId> --base-url <url>`
+   - [x] `fragno-ai messages append --thread <threadId> --content <text|json>`
+4. [x] Implement `runs` commands:
+   - [x] `fragno-ai runs list --thread <threadId> --base-url <url>`
+   - [x] `fragno-ai runs get <runId> --base-url <url>`
+   - [x] `fragno-ai runs create --thread <threadId> [--type agent|deep_research] [--mode background|stream]`
+   - [x] `fragno-ai runs stream --thread <threadId>` (prints NDJSON)
+   - [x] `fragno-ai runs cancel <runId> --base-url <url>`
+   - [x] `fragno-ai runs events <runId> --base-url <url>`
+5. [x] Implement `artifacts` commands:
+   - [x] `fragno-ai artifacts list --run <runId> --base-url <url>`
+   - [x] `fragno-ai artifacts get <artifactId> --base-url <url>`
+6. [x] Keep output human-friendly by default (table-ish), with `--json` for scripting.
+7. [x] Auth support (same flexibility as Workflows spec):
+   - [x] repeatable `-H/--header "Header: Value"` passthrough headers
 
 ## Phase 8 — Documentation (1–3 days)
 
