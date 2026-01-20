@@ -6,7 +6,8 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 0 — Lock decisions + spikes (0.5–2 days)
 
-**Goal:** validate the risky bits early (streaming, webhook verification, persistence boundaries).
+- [x] **Goal:** validate the risky bits early (streaming, webhook verification, persistence
+      boundaries).
 
 1. [x] Confirm v0.1 scope (already decided):
    - [x] OpenAI-only
@@ -97,7 +98,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 2 — HTTP routes + typed clients (2–5 days)
 
-**Goal:** ship a complete API surface before adding execution complexity.
+- [x] **Goal:** ship a complete API surface before adding execution complexity.
 
 1. [x] Implement routes in `packages/fragment-ai/src/server/routes.ts` (or repo convention):
    - [x] Threads:
@@ -150,7 +151,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 3 — OpenAI execution engine (agent runs) (3–7 days)
 
-**Goal:** execute agent runs end-to-end in both foreground-stream and background modes.
+- [x] **Goal:** execute agent runs end-to-end in both foreground-stream and background modes.
 
 1. [x] Implement `runExecutor` service:
    - [x] input: `{ runId }`
@@ -196,7 +197,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 4 — Runner tick (in-process) (2–5 days)
 
-**Goal:** unify all async processing behind a safe, bounded `tick`.
+- [x] **Goal:** unify all async processing behind a safe, bounded `tick`.
 
 1. [x] Implement runner core:
    - [x] `processTick({ maxRuns, maxWebhookEvents })`
@@ -244,7 +245,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 5 — Deep research + webhooks + artifacts (3–8 days)
 
-**Goal:** deep research as a durable background job with webhook completion.
+- [x] **Goal:** deep research as a durable background job with webhook completion.
 
 1. [x] Run submission (runner side):
    - [x] for `type="deep_research"` queued runs:
@@ -311,7 +312,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 7 — CLI tool: `fragno-ai` (0.5–2 days)
 
-**Goal:** easy debugging of AI fragment state via HTTP routes.
+- [x] **Goal:** easy debugging of AI fragment state via HTTP routes.
 
 1. [x] Add new workspace app: `apps/fragno-ai` with binary `fragno-ai`.
 2. [x] Implement `threads` commands:
@@ -339,7 +340,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 8 — Documentation (1–3 days)
 
-**Goal:** ship full docs + landing page tile for the AI fragment.
+- [x] **Goal:** ship full docs + landing page tile for the AI fragment.
 
 1. [x] Add **Fragno AI** tile to docs landing page:
    - [x] `apps/docs/app/routes/docs/docs-index.tsx` (route `/docs/ai`)
@@ -370,7 +371,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 ## [x] Phase 9 — Example app (React Router + Drizzle + PGLite) (2–5 days)
 
-**Goal:** provide a clean, debug-friendly UI that exercises all hooks.
+- [x] **Goal:** provide a clean, debug-friendly UI that exercises all hooks.
 
 1. [x] Create `example-apps/ai-fragment-react-router-drizzle` (copy react-router example skeleton).
 2. [x] Use Drizzle + PGLite for local persistence.
