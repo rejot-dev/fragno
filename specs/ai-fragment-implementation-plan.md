@@ -263,7 +263,7 @@ Validation:
    - [x] mark webhook event `processedAt`
 4. [ ] Edge cases:
 
-- [ ] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
+- [x] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
       match later using `responseId`
 - [x] OpenAI retrieve fails transiently: keep `processedAt=null`, set `processingError`, back off
 

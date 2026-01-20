@@ -527,6 +527,89 @@ describe("AI Fragment Runner", () => {
     expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
   });
 
+  test("runner tick should retry webhook events until the run has a response id", async () => {
+    const fixedNow = new Date("2024-01-03T00:00:00Z");
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Early Webhook Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Wait for response id" },
+        text: "Wait for response id",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    await db.update("ai_run", run.id, (b) => b.set({ status: "waiting_webhook" }));
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_early",
+      type: "response.completed",
+      responseId: "resp_early",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    mockOpenAIRetrieve.mockResolvedValue({
+      id: "resp_early",
+      status: "completed",
+      output_text: "Late-bound response",
+    });
+
+    const runner = createAiRunner({
+      db,
+      config,
+      clock: { now: () => new Date(fixedNow.getTime()) },
+    });
+    const firstAttempt = await runner.tick({ maxWebhookEvents: 1 });
+
+    expect(firstAttempt.processedWebhookEvents).toBe(0);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
+
+    const queuedEvents = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
+    expect(queuedEvents[0]?.processingError).toBe("RUN_NOT_FOUND");
+    expect(queuedEvents[0]?.nextAttemptAt?.getTime()).toBe(fixedNow.getTime() + 1000);
+
+    await db.update("ai_run", run.id, (b) =>
+      b.set({ status: "waiting_webhook", openaiResponseId: "resp_early" }),
+    );
+
+    const retryRunner = createAiRunner({
+      db,
+      config,
+      clock: { now: () => new Date(fixedNow.getTime() + 2000) },
+    });
+    const retryAttempt = await retryRunner.tick({ maxWebhookEvents: 1 });
+
+    expect(retryAttempt.processedWebhookEvents).toBe(1);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(2);
+
+    const updatedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(updatedRun?.status).toBe("succeeded");
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.text).toBe("Late-bound response");
+  });
+
   test("runner tick should not double-process a run when ticks race", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Concurrent Run Thread" }),
