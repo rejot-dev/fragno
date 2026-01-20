@@ -271,7 +271,7 @@ Validation:
 
 - [x] idempotency tests: duplicate webhook deliveries do not create duplicate artifacts or
       re-complete runs
-- [ ] end-to-end: create deep research run → submit → webhook → artifact persisted
+- [x] end-to-end: create deep research run → submit → webhook → artifact persisted
 
 ## Phase 6 — Hardening + future work (ongoing)
 

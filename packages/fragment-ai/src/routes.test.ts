@@ -3,6 +3,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { aiFragmentDefinition } from "./definition";
 import { aiRoutesFactory } from "./routes";
+import { createAiRunner } from "./runner";
 import OpenAI from "openai";
 
 const mockOpenAIStreamEvents = [
@@ -47,7 +48,10 @@ let nextOpenAIStreamFactory:
   | null = null;
 
 const mockOpenAICreate = vi.fn(
-  async (_options?: unknown, requestOptions?: { signal?: AbortSignal }) => {
+  async (
+    _options?: unknown,
+    requestOptions?: { signal?: AbortSignal },
+  ): Promise<Record<string, unknown> | AsyncIterable<Record<string, unknown>>> => {
     if (nextOpenAIStreamFactory) {
       const factory = nextOpenAIStreamFactory;
       nextOpenAIStreamFactory = null;
@@ -65,7 +69,7 @@ const mockOpenAICreate = vi.fn(
   },
 );
 
-const mockOpenAIRetrieve = vi.fn(async (id: string) => {
+const mockOpenAIRetrieve = vi.fn(async (id: string): Promise<Record<string, unknown>> => {
   return {
     id,
     output_text: "Recovered response",
@@ -102,21 +106,21 @@ vi.mock("openai", () => {
 
 describe("AI Fragment Routes", () => {
   const setup = async () => {
+    const config = {
+      defaultModel: { id: "gpt-test" },
+      apiKey: "test-key",
+      webhookSecret: "whsec_test",
+      defaultDeepResearchModel: { id: "gpt-deep-research" },
+    };
     const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
       .withFragment(
         "ai",
-        instantiate(aiFragmentDefinition)
-          .withConfig({
-            defaultModel: { id: "gpt-test" },
-            apiKey: "test-key",
-            webhookSecret: "whsec_test",
-          })
-          .withRoutes([aiRoutesFactory]),
+        instantiate(aiFragmentDefinition).withConfig(config).withRoutes([aiRoutesFactory]),
       )
       .build();
 
-    return { fragments, testContext };
+    return { fragments, testContext, config };
   };
 
   type Setup = Awaited<ReturnType<typeof setup>>;
@@ -124,12 +128,14 @@ describe("AI Fragment Routes", () => {
   let testContext: Setup["testContext"];
   let fragment: Setup["fragments"]["ai"]["fragment"];
   let db: Setup["fragments"]["ai"]["db"];
+  let config: Setup["config"];
 
   beforeAll(async () => {
     const setupResult = await setup();
     testContext = setupResult.testContext;
     fragment = setupResult.fragments.ai.fragment;
     db = setupResult.fragments.ai.db;
+    config = setupResult.config;
   });
 
   beforeEach(async () => {
@@ -814,6 +820,86 @@ describe("AI Fragment Routes", () => {
 
     const events = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
     expect(events).toHaveLength(0);
+  });
+
+  test("deep research webhook should persist artifact after runner tick", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Deep Research Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const threadId = thread.data.id;
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Investigate this" },
+        text: "Investigate this",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const run = await fragment.callRoute("POST", "/threads/:threadId/runs", {
+      pathParams: { threadId },
+      body: {
+        type: "deep_research",
+        executionMode: "background",
+        inputMessageId: message.data.id,
+      },
+    });
+    expect(run.type).toBe("json");
+    if (run.type !== "json") {
+      return;
+    }
+
+    mockOpenAICreate.mockResolvedValueOnce({ id: "resp_deep_e2e" });
+    const runner = createAiRunner({ db, config });
+    await runner.tick({ maxRuns: 1 });
+
+    mockOpenAIWebhookUnwrap.mockResolvedValueOnce({
+      id: "evt_deep_e2e",
+      type: "response.completed",
+      data: { id: "resp_deep_e2e" },
+    });
+
+    const webhookRequest = new Request("http://localhost/api/ai/webhooks/openai", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": "wh_e2e",
+        "webhook-timestamp": "123",
+        "webhook-signature": "sig",
+      },
+      body: JSON.stringify({ test: true }),
+    });
+
+    const webhookResponse = await fragment.handler(webhookRequest);
+    expect(webhookResponse.status).toBe(200);
+
+    mockOpenAIRetrieve.mockResolvedValueOnce({
+      id: "resp_deep_e2e",
+      status: "completed",
+      output_text: "Deep research report",
+      usage: { total_tokens: 42 },
+    });
+
+    await runner.tick({ maxWebhookEvents: 1 });
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.type).toBe("deep_research_report");
+    expect(artifacts[0]?.text).toBe("Deep research report");
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.data.id)),
+    );
+    expect(storedRun?.status).toBe("succeeded");
   });
 
   test("runner tick route should be disabled by default", async () => {
