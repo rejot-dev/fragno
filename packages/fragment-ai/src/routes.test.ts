@@ -272,6 +272,63 @@ describe("AI Fragment Routes", () => {
     );
   });
 
+  test("runs stream route should persist final message after client disconnect", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Disconnect Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Disconnect test" },
+        text: "Disconnect test",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.callRouteRaw("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.headers.get("content-type") || "").toContain("application/x-ndjson");
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Missing response body reader");
+    }
+
+    await reader.read();
+    await reader.cancel();
+    reader.releaseLock();
+
+    const waitFor = async (check: () => Promise<boolean>) => {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < 1000) {
+        if (await check()) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("Run did not finalize in time");
+    };
+
+    await waitFor(async () => {
+      const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
+      return runs.length > 0 && runs[0]?.status === "succeeded";
+    });
+
+    const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
+    expect(messages.some((msg) => msg.role === "assistant")).toBe(true);
+  });
+
   test("run events route should list persisted run events", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: { title: "Thread Four" },
