@@ -163,7 +163,7 @@ Validation:
      - [ ] `tool.call.*` events (status + args deltas when available)
      - [ ] `run.final` last
    - [ ] persist:
-     - [ ] `ai_run.openaiResponseId` as soon as it is known
+     - [x] `ai_run.openaiResponseId` as soon as it is known
      - [ ] final assistant message(s)
      - [x] final run status + run events
 3. [ ] Background agent runs (`executionMode="background"`):

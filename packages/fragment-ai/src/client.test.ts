@@ -6,6 +6,7 @@ import { aiRoutesFactory } from "./routes";
 import { createAiFragmentClients } from "./index";
 
 const mockOpenAIStreamEvents = [
+  { type: "response.created", response: { id: "resp_test" } },
   { type: "response.output_text.delta", delta: "Hello " },
   { type: "response.output_text.delta", delta: "world" },
   { type: "response.output_text.done", text: "Hello world" },

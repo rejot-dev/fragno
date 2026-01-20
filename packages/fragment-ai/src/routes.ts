@@ -276,6 +276,35 @@ const resolveMessageText = (message: { text: string | null; content: unknown }) 
   return null;
 };
 
+const resolveOpenAIResponseId = (event: unknown) => {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const record = event as {
+    type?: unknown;
+    id?: unknown;
+    response?: { id?: unknown };
+    response_id?: unknown;
+  };
+
+  if (record.response && typeof record.response.id === "string") {
+    return record.response.id;
+  }
+
+  if (typeof record.response_id === "string") {
+    return record.response_id;
+  }
+
+  if (typeof record.type === "string" && record.type.startsWith("response.")) {
+    if (typeof record.id === "string") {
+      return record.id;
+    }
+  }
+
+  return null;
+};
+
 const resolveOpenAIApiKey = async (config: {
   apiKey?: string;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
@@ -612,6 +641,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             let errorMessage: string | null = null;
             let textBuffer = "";
             let canWrite = true;
+            let openaiResponseId = run.openaiResponseId;
             const runEvents: Array<{ type: string; payload: unknown | null; createdAt: Date }> = [];
 
             const safeWrite = async (payload: AiRunLiveEvent) => {
@@ -633,6 +663,28 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               runEvents.push({ type, payload, createdAt });
             };
 
+            const persistOpenAIResponseId = async (responseId: string) => {
+              if (openaiResponseId) {
+                return;
+              }
+
+              openaiResponseId = responseId;
+              run = { ...run, openaiResponseId: responseId };
+
+              try {
+                const runId = run.id as unknown as FragnoId;
+                await this.handlerTx()
+                  .mutate(({ forSchema }) => {
+                    forSchema(aiSchema).update("ai_run", runId, (b) =>
+                      b.set({ openaiResponseId: responseId, updatedAt: new Date() }),
+                    );
+                  })
+                  .execute();
+              } catch {
+                // Best-effort update; finalization will still persist run status.
+              }
+            };
+
             await safeWrite({ type: "run.meta", runId: run.id, threadId: run.threadId });
             recordRunEvent("run.meta", { runId: run.id, threadId: run.threadId });
             await safeWrite({ type: "run.status", runId: run.id, status: "running" });
@@ -645,6 +697,11 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               });
 
               for await (const event of responseStream) {
+                const responseId = resolveOpenAIResponseId(event);
+                if (responseId) {
+                  await persistOpenAIResponseId(responseId);
+                }
+
                 if (event.type === "response.output_text.delta") {
                   textBuffer += event.delta;
                   await safeWrite({

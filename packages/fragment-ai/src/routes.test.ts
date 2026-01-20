@@ -6,6 +6,7 @@ import { aiRoutesFactory } from "./routes";
 import OpenAI from "openai";
 
 const mockOpenAIStreamEvents = [
+  { type: "response.created", response: { id: "resp_test" } },
   { type: "response.output_text.delta", delta: "Hello " },
   { type: "response.output_text.delta", delta: "world" },
   { type: "response.output_text.done", text: "Hello world" },
@@ -250,6 +251,7 @@ describe("AI Fragment Routes", () => {
     const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
     expect(runs).toHaveLength(1);
     expect(runs[0]?.status).toBe("succeeded");
+    expect(runs[0]?.openaiResponseId).toBe("resp_test");
 
     const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
     expect(messages.some((msg) => msg.role === "assistant")).toBe(true);
