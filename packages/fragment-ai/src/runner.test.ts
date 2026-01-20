@@ -289,6 +289,7 @@ describe("AI Fragment Runner", () => {
       responseId: "resp_deep",
       payload: { redacted: true },
       receivedAt: new Date(),
+      processingAt: null,
       processedAt: null,
       processingError: null,
     });

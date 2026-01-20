@@ -216,6 +216,7 @@ type AiWebhookEventRecord = {
   responseId: string;
   payload: unknown;
   receivedAt: Date;
+  processingAt: Date | null;
   processedAt: Date | null;
   processingError: string | null;
 };
@@ -1016,7 +1017,9 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           )
           .transformRetrieve(([events]) => {
             return {
-              events: (events as AiWebhookEventRecord[]).map(buildWebhookEvent),
+              events: (events as AiWebhookEventRecord[])
+                .filter((event) => event.processingAt == null)
+                .map(buildWebhookEvent),
             };
           })
           .build();
@@ -1043,6 +1046,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               responseId: params.responseId,
               payload: params.payload,
               receivedAt: now,
+              processingAt: null,
               processedAt: null,
               processingError: null,
             });
@@ -1060,6 +1064,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
                 responseId: params.responseId,
                 payload: params.payload,
                 receivedAt: now,
+                processingAt: null,
                 processedAt: null,
                 processingError: null,
               }),

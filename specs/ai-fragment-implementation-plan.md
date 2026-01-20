@@ -191,12 +191,12 @@ Validation:
 
 **Goal:** unify all async processing behind a safe, bounded `tick`.
 
-1. [ ] Implement runner core:
+1. [x] Implement runner core:
    - [x] `processTick({ maxRuns, maxWebhookEvents })`
-   - [ ] safe under concurrency (multiple tick callers)
-   - [ ] claims work using optimistic concurrency control (no leases/locks):
-     - [ ] load candidate work items
-     - [ ] update the row with a version check (`.check()`), and treat conflicts as “someone else
+   - [x] safe under concurrency (multiple tick callers)
+   - [x] claims work using optimistic concurrency control (no leases/locks):
+     - [x] load candidate work items
+     - [x] update the row with a version check (`.check()`), and treat conflicts as “someone else
            got it”
 2. [ ] Work types:
    - [x] agent run (background): execute via `runExecutor`

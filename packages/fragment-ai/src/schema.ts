@@ -124,6 +124,7 @@ export const aiSchema = schema((s) => {
           "receivedAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
+        .addColumn("processingAt", column("timestamp").nullable())
         .addColumn("processedAt", column("timestamp").nullable())
         .addColumn("processingError", column("string").nullable())
         .createIndex("idx_ai_openai_webhook_event_openaiEventId", ["openaiEventId"], {
