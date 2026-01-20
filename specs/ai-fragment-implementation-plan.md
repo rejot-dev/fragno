@@ -297,7 +297,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [ ] Custom tools registry + server execution (pi-agent-core integration)
   - [x] Tool approvals/policy hooks
   - [ ] Multi-provider support (pi-ai)
-  - [ ] Conversation compaction/summarization (borrow pi-coding-agent patterns)
+  - [x] Conversation compaction/summarization (borrow pi-coding-agent patterns)
     - [x] Add optional history window limit for run inputs (`config.history.maxMessages`)
   - [x] External artifact storage (blob store) with DB references
 

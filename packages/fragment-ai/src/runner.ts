@@ -5,7 +5,6 @@ import {
   buildOpenAIIdempotencyKey,
   buildOpenAIResponseOptions,
   createOpenAIClient,
-  resolveMessageText,
   resolveOpenAIResponseText,
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
@@ -18,6 +17,7 @@ import {
   resolveMaxMessageBytes,
 } from "./limits";
 import { logWithLogger } from "./logging";
+import { buildOpenAIInput } from "./history";
 
 type Clock = {
   now: () => Date;
@@ -98,40 +98,6 @@ const resolveRetentionCutoff = (config: AiFragmentConfig, clock: Clock) => {
   }
 
   return new Date(clock.now().getTime() - normalized * 24 * 60 * 60 * 1000);
-};
-
-const buildOpenAIInput = (
-  run: AiRunRecord,
-  messages: AiMessageRecord[],
-  options?: { maxMessages?: number | null },
-) => {
-  const input: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
-  const conversation: Array<{ role: "user" | "assistant"; content: string }> = [];
-
-  if (run?.systemPrompt) {
-    input.push({ role: "system", content: run.systemPrompt });
-  }
-
-  for (const message of messages) {
-    if (!message || (message.role !== "user" && message.role !== "assistant")) {
-      continue;
-    }
-
-    const text = resolveMessageText(message);
-    if (!text) {
-      continue;
-    }
-
-    conversation.push({ role: message.role as "user" | "assistant", content: text });
-  }
-
-  const maxMessages = options?.maxMessages ?? null;
-  if (maxMessages && conversation.length > maxMessages) {
-    conversation.splice(0, conversation.length - maxMessages);
-  }
-
-  input.push(...conversation);
-  return input;
 };
 
 const fetchRunData = async (
@@ -428,12 +394,17 @@ const submitDeepResearchRun = async ({
   if (!toolPolicyResult.deniedReason) {
     try {
       const client = await createOpenAIClient(config);
+      const openaiInput = await buildOpenAIInput({
+        run,
+        messages,
+        maxMessages: resolveMaxHistoryMessages(config),
+        compactor: config.history?.compactor,
+        logger: config.logger,
+      });
       const responseOptions = buildOpenAIResponseOptions({
         config,
         modelId: run.modelId,
-        input: buildOpenAIInput(run, messages, {
-          maxMessages: resolveMaxHistoryMessages(config),
-        }),
+        input: openaiInput,
         thinkingLevel: run.thinkingLevel,
         openaiToolConfig: toolPolicyResult.openaiToolConfig,
         background: true,
@@ -845,12 +816,17 @@ export const runExecutor = async ({
   } else {
     try {
       const client = await createOpenAIClient(config);
+      const openaiInput = await buildOpenAIInput({
+        run,
+        messages,
+        maxMessages: resolveMaxHistoryMessages(config),
+        compactor: config.history?.compactor,
+        logger: config.logger,
+      });
       const responseOptions = buildOpenAIResponseOptions({
         config,
         modelId: run.modelId,
-        input: buildOpenAIInput(run, messages, {
-          maxMessages: resolveMaxHistoryMessages(config),
-        }),
+        input: openaiInput,
         thinkingLevel: run.thinkingLevel,
         openaiToolConfig: toolPolicyResult.openaiToolConfig,
         stream: false,

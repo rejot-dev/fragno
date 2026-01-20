@@ -11,6 +11,7 @@ import type { FragnoDispatcher } from "@fragno-dev/core";
 import { atom, computed } from "nanostores";
 import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from "./definition";
 import type { AiLogger } from "./logging";
+import type { AiHistoryCompactor } from "./history";
 import { aiRoutesFactory } from "./routes";
 import type { AiToolPolicy, AiToolPolicyContext, AiToolPolicyDecision } from "./tool-policy";
 
@@ -30,6 +31,7 @@ export type AiThinkingBudgets = {
 };
 
 export type { AiLogger };
+export type { AiHistoryCompactor };
 export type { AiToolPolicy, AiToolPolicyContext, AiToolPolicyDecision };
 
 export type AiWakeEvent =
@@ -105,6 +107,7 @@ export interface AiFragmentConfig {
   };
   history?: {
     maxMessages?: number;
+    compactor?: AiHistoryCompactor;
   };
   storage?: {
     persistDeltas?: boolean;

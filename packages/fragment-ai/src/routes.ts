@@ -10,11 +10,11 @@ import {
   buildOpenAIIdempotencyKey,
   buildOpenAIResponseOptions,
   createOpenAIClient,
-  resolveMessageText,
   resolveOpenAIApiKey,
   resolveOpenAIResponseId,
   resolveOpenAIResponseText,
 } from "./openai";
+import { buildOpenAIInput } from "./history";
 import { registerRunAbortController } from "./run-abort";
 import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
 import { logWithLogger } from "./logging";
@@ -742,32 +742,13 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             cursor = page.cursor;
           }
 
-          const openaiInput: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
-          const conversation: Array<{ role: "user" | "assistant"; content: string }> = [];
-          const maxMessages = resolveMaxHistoryMessages(config);
-
-          if (run.systemPrompt) {
-            openaiInput.push({ role: "system", content: run.systemPrompt });
-          }
-
-          for (const message of collectedMessages) {
-            if (message.role !== "user" && message.role !== "assistant") {
-              continue;
-            }
-
-            const text = resolveMessageText(message);
-            if (!text) {
-              continue;
-            }
-
-            conversation.push({ role: message.role as "user" | "assistant", content: text });
-          }
-
-          if (maxMessages && conversation.length > maxMessages) {
-            conversation.splice(0, conversation.length - maxMessages);
-          }
-
-          openaiInput.push(...conversation);
+          const openaiInput = await buildOpenAIInput({
+            run,
+            messages: collectedMessages,
+            maxMessages: resolveMaxHistoryMessages(config),
+            compactor: config.history?.compactor,
+            logger: config.logger,
+          });
 
           let openaiClient: OpenAI;
           try {

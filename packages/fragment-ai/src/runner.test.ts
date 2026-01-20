@@ -485,6 +485,75 @@ describe("AI Fragment Runner", () => {
     expect(input?.some((entry) => entry.content === "Third message")).toBe(true);
   });
 
+  test("runner tick should compact history when compactor is provided", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Compact Thread" }),
+    );
+
+    await runService(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "First message" },
+        text: "First message",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Second message" },
+        text: "Second message",
+      }),
+    );
+
+    const thirdMessage = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Third message" },
+        text: "Third message",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: thirdMessage.id,
+        executionMode: "background",
+        type: "agent",
+      }),
+    );
+
+    const compactor = vi.fn(
+      (_context: { truncatedMessages: Array<{ role: string; content: string }> }) => ({
+        summary: "Summary: first message",
+      }),
+    );
+    const runner = createAiRunner({
+      db,
+      config: { ...config, history: { maxMessages: 2, compactor } },
+    });
+    await runner.tick({ maxRuns: 1 });
+
+    expect(compactor).toHaveBeenCalledTimes(1);
+    const context = compactor.mock.calls[0]?.[0] as
+      | { truncatedMessages?: Array<{ role: string; content: string }> }
+      | undefined;
+    expect(context?.truncatedMessages).toEqual([{ role: "user", content: "First message" }]);
+
+    const input = mockOpenAICreate.mock.calls.at(-1)?.[0]?.input as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(input).toEqual([
+      { role: "system", content: "Summary: first message" },
+      { role: "user", content: "Second message" },
+      { role: "user", content: "Third message" },
+    ]);
+  });
+
   test("runner tick should submit deep research run and process webhook event", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Deep Research Thread" }),
