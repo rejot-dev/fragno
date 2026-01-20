@@ -139,6 +139,7 @@ export interface AiWebhookEvent {
   responseId: string;
   payload: unknown;
   receivedAt: Date;
+  nextAttemptAt: Date | null;
   processedAt: Date | null;
   processingError: string | null;
 }
@@ -217,6 +218,7 @@ type AiWebhookEventRecord = {
   payload: unknown;
   receivedAt: Date;
   processingAt: Date | null;
+  nextAttemptAt: Date | null;
   processedAt: Date | null;
   processingError: string | null;
 };
@@ -375,6 +377,7 @@ function buildWebhookEvent(event: AiWebhookEventRecord): AiWebhookEvent {
     responseId: event.responseId,
     payload: event.payload,
     receivedAt: event.receivedAt,
+    nextAttemptAt: event.nextAttemptAt,
     processedAt: event.processedAt,
     processingError: event.processingError,
   };
@@ -1004,6 +1007,8 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           .build();
       },
       claimNextWebhookEvents: function ({ maxEvents = 1 }: ClaimWebhookEventsParams = {}) {
+        const now = getNow();
+
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
             uow.find("ai_openai_webhook_event", (b) =>
@@ -1019,6 +1024,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
             return {
               events: (events as AiWebhookEventRecord[])
                 .filter((event) => event.processingAt == null)
+                .filter((event) => event.nextAttemptAt == null || event.nextAttemptAt <= now)
                 .map(buildWebhookEvent),
             };
           })
@@ -1047,6 +1053,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               payload: params.payload,
               receivedAt: now,
               processingAt: null,
+              nextAttemptAt: null,
               processedAt: null,
               processingError: null,
             });
@@ -1065,6 +1072,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
                 payload: params.payload,
                 receivedAt: now,
                 processingAt: null,
+                nextAttemptAt: null,
                 processedAt: null,
                 processingError: null,
               }),

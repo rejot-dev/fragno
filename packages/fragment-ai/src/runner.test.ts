@@ -335,6 +335,7 @@ describe("AI Fragment Runner", () => {
       payload: { redacted: true },
       receivedAt: new Date(),
       processingAt: null,
+      nextAttemptAt: null,
       processedAt: null,
       processingError: null,
     });
@@ -383,6 +384,69 @@ describe("AI Fragment Runner", () => {
     const webhookEvents = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
     expect(webhookEvents[0]?.processedAt).toBeTruthy();
     expect(webhookEvents[0]?.processingError).toBeNull();
+  });
+
+  test("runner tick should back off webhook processing on retrieve failure", async () => {
+    const fixedNow = new Date("2024-01-02T00:00:00Z");
+    mockOpenAIRetrieve.mockRejectedValueOnce(new Error("OpenAI down"));
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Webhook Retry Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Back off" },
+        text: "Back off",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    await db.update("ai_run", run.id, (b) =>
+      b.set({ status: "waiting_webhook", openaiResponseId: "resp_backoff" }),
+    );
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_backoff",
+      type: "response.completed",
+      responseId: "resp_backoff",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    const runner = createAiRunner({
+      db,
+      config,
+      clock: { now: () => new Date(fixedNow.getTime()) },
+    });
+    const result = await runner.tick({ maxWebhookEvents: 1 });
+
+    expect(result.processedWebhookEvents).toBe(0);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
+
+    const events = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
+    expect(events[0]?.processingError).toBe("OpenAI down");
+    expect(events[0]?.processedAt).toBeNull();
+    expect(events[0]?.processingAt).toBeNull();
+    expect(events[0]?.nextAttemptAt?.getTime()).toBe(fixedNow.getTime() + 1000);
+
+    const retryResult = await runner.tick({ maxWebhookEvents: 1 });
+    expect(retryResult.processedWebhookEvents).toBe(0);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
   });
 
   test("runner tick should not double-process a run when ticks race", async () => {
@@ -462,6 +526,7 @@ describe("AI Fragment Runner", () => {
       payload: { redacted: true },
       receivedAt: new Date(),
       processingAt: null,
+      nextAttemptAt: null,
       processedAt: null,
       processingError: null,
     });

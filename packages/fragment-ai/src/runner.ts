@@ -292,6 +292,34 @@ const scheduleRetry = async ({
   return nextAttemptAt;
 };
 
+const scheduleWebhookRetry = async ({
+  db,
+  eventId,
+  error,
+  clock,
+  config,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  eventId: FragnoId;
+  error: string;
+  clock: Clock;
+  config: AiFragmentConfig;
+}) => {
+  const now = clock.now();
+  const baseDelayMs = config.retries?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+  const nextAttemptAt = new Date(now.getTime() + baseDelayMs);
+
+  await db.update("ai_openai_webhook_event", eventId, (b) =>
+    b.set({
+      processingError: error,
+      processingAt: null,
+      nextAttemptAt,
+    }),
+  );
+
+  return nextAttemptAt;
+};
+
 const submitDeepResearchRun = async ({
   db,
   config,
@@ -412,9 +440,13 @@ const processWebhookEvent = async ({
     response = await client.responses.retrieve(event.responseId);
   } catch (err) {
     const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
-    await db.update("ai_openai_webhook_event", event.id, (b) =>
-      b.set({ processingError: error, processingAt: null }),
-    );
+    await scheduleWebhookRetry({
+      db,
+      eventId: event.id,
+      error,
+      clock,
+      config,
+    });
     return false;
   }
 
@@ -429,9 +461,13 @@ const processWebhookEvent = async ({
     normalizedStatus !== "failed" &&
     normalizedStatus !== "cancelled"
   ) {
-    await db.update("ai_openai_webhook_event", event.id, (b) =>
-      b.set({ processingError: "Response not completed", processingAt: null }),
-    );
+    await scheduleWebhookRetry({
+      db,
+      eventId: event.id,
+      error: "Response not completed",
+      clock,
+      config,
+    });
     return false;
   }
 
@@ -442,22 +478,36 @@ const processWebhookEvent = async ({
   )) as AiRunRecord | null;
 
   if (!run) {
-    await db.update("ai_openai_webhook_event", event.id, (b) =>
-      b.set({ processingError: "RUN_NOT_FOUND", processingAt: null }),
-    );
+    await scheduleWebhookRetry({
+      db,
+      eventId: event.id,
+      error: "RUN_NOT_FOUND",
+      clock,
+      config,
+    });
     return false;
   }
 
   if (TERMINAL_STATUSES.has(run.status)) {
     await db.update("ai_openai_webhook_event", event.id, (b) =>
-      b.set({ processedAt: now, processingError: null, processingAt: null }),
+      b.set({
+        processedAt: now,
+        processingError: null,
+        processingAt: null,
+        nextAttemptAt: null,
+      }),
     );
     return true;
   }
 
   if (run.type !== "deep_research") {
     await db.update("ai_openai_webhook_event", event.id, (b) =>
-      b.set({ processedAt: now, processingError: "UNSUPPORTED_RUN_TYPE", processingAt: null }),
+      b.set({
+        processedAt: now,
+        processingError: "UNSUPPORTED_RUN_TYPE",
+        processingAt: null,
+        nextAttemptAt: null,
+      }),
     );
     return true;
   }
@@ -481,7 +531,12 @@ const processWebhookEvent = async ({
     });
 
     schema.update("ai_openai_webhook_event", event.id, (b) =>
-      b.set({ processedAt: now, processingError: null, processingAt: null }),
+      b.set({
+        processedAt: now,
+        processingError: null,
+        processingAt: null,
+        nextAttemptAt: null,
+      }),
     );
 
     const { success } = await uow.executeMutations();
@@ -536,7 +591,7 @@ const processWebhookEvent = async ({
   });
 
   schema.update("ai_openai_webhook_event", event.id, (b) =>
-    b.set({ processedAt: now, processingError: null, processingAt: null }),
+    b.set({ processedAt: now, processingError: null, processingAt: null, nextAttemptAt: null }),
   );
 
   const { success } = await uow.executeMutations();
@@ -702,7 +757,12 @@ const claimNextWebhookEvents = async ({
       .whereIndex("idx_ai_openai_webhook_event_processedAt", (eb) => eb.isNull("processedAt"))
       .orderByIndex("idx_ai_openai_webhook_event_processedAt", "asc")
       .pageSize(maxEvents),
-  )) as Array<{ id: FragnoId; responseId: string; processingAt: Date | null }>;
+  )) as Array<{
+    id: FragnoId;
+    responseId: string;
+    processingAt: Date | null;
+    nextAttemptAt: Date | null;
+  }>;
 
   const claimed: Array<{ id: FragnoId; responseId: string }> = [];
   const now = clock.now();
@@ -710,11 +770,14 @@ const claimNextWebhookEvents = async ({
     if (event.processingAt) {
       continue;
     }
+    if (event.nextAttemptAt && event.nextAttemptAt > now) {
+      continue;
+    }
 
     const uow = db.createUnitOfWork("ai-webhook-claim");
     const schema = uow.forSchema(aiSchema);
     schema.update("ai_openai_webhook_event", event.id, (b) => {
-      const builder = b.set({ processingAt: now });
+      const builder = b.set({ processingAt: now, nextAttemptAt: null });
       if (event.id instanceof FragnoId) {
         builder.check();
       }
