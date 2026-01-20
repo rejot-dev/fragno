@@ -65,6 +65,14 @@ const mockOpenAICreate = vi.fn(
   },
 );
 
+const mockOpenAIRetrieve = vi.fn(async (id: string) => {
+  return {
+    id,
+    output_text: "Recovered response",
+    status: "completed",
+  };
+});
+
 const mockOpenAIWebhookUnwrap = vi.fn(async (): Promise<Record<string, unknown>> => {
   return {
     id: "evt_test",
@@ -82,6 +90,7 @@ vi.mock("openai", () => {
 
       responses = {
         create: mockOpenAICreate,
+        retrieve: mockOpenAIRetrieve,
       };
 
       webhooks = {
@@ -392,6 +401,57 @@ describe("AI Fragment Routes", () => {
 
     const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
     expect(messages.some((msg) => msg.role === "assistant")).toBe(true);
+  });
+
+  test("runs stream route should recover when stream fails after response id", async () => {
+    nextOpenAIStreamFactory = async function* () {
+      yield { type: "response.created", response: { id: "resp_recover" } };
+      await Promise.resolve();
+      throw new Error("Stream failed");
+    };
+
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Recover Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Recover test" },
+        text: "Recover test",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    for await (const _event of response.stream) {
+      // Drain stream; recovery happens server-side.
+    }
+
+    expect(mockOpenAIRetrieve).toHaveBeenCalledWith("resp_recover");
+
+    const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("succeeded");
+
+    const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
+    expect(messages.some((msg) => msg.text === "Recovered response")).toBe(true);
   });
 
   test("runs stream route should cancel in-process run", async () => {

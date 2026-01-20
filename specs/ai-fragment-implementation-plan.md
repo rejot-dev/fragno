@@ -171,9 +171,9 @@ Validation:
    - [ ] runner tick claims queued runs and calls `runExecutor`
    - [ ] prefer `stream: false` for atomic completion (simplifies retries)
 4. [ ] Disconnect handling:
-   - [ ] client disconnect must not cancel the OpenAI request by default
+   - [x] client disconnect must not cancel the OpenAI request by default
    - [ ] if the upstream OpenAI stream breaks:
-     - [ ] if `openaiResponseId` is known, schedule a retrieve/poll path via runner tick
+     - [x] if `openaiResponseId` is known, retrieve + finalize in the stream handler
      - [ ] else schedule a retry via `attempt/maxAttempts/nextAttemptAt`
 5. [x] Cancellation (best-effort, in-process):
    - [x] `POST /ai/runs/:runId/cancel` marks `cancelled`
@@ -182,9 +182,10 @@ Validation:
 Validation:
 
 - [ ] tests for:
-  - [ ] foreground stream returns NDJSON events and persists final message
-  - [ ] client disconnect does not prevent final persistence (simulate by canceling reader)
-  - [ ] provider disconnect path schedules retry or fails deterministically
+  - [x] foreground stream returns NDJSON events and persists final message
+  - [x] client disconnect does not prevent final persistence (simulate by canceling reader)
+  - [x] stream failure after response id recovers via retrieve
+  - [ ] provider disconnect without response id schedules retry or fails deterministically
   - [x] background run completes via runner tick
 
 ## Phase 4 — Runner tick (in-process) (2–5 days)

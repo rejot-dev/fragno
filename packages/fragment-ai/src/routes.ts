@@ -12,6 +12,7 @@ import {
   resolveOpenAIApiKey,
   resolveOpenAIToolConfig,
   resolveOpenAIResponseId,
+  resolveOpenAIResponseText,
 } from "./openai";
 import { registerRunAbortController } from "./run-abort";
 
@@ -684,6 +685,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             const toolCallIdByCallId = new Map<string, string>();
             const abortController = new AbortController();
             const unregisterAbort = registerRunAbortController(run.id, abortController);
+            let sawOutputTextDone = false;
 
             const safeWrite = async (payload: AiRunLiveEvent) => {
               if (!canWrite) {
@@ -778,6 +780,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                     continue;
                   }
                   textBuffer = text;
+                  sawOutputTextDone = true;
                   await safeWrite({
                     type: "output.text.done",
                     runId: run.id,
@@ -930,6 +933,33 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               ) {
                 finalStatus = "cancelled";
                 errorMessage = null;
+              } else if (openaiResponseId) {
+                try {
+                  const recovered = await openaiClient.responses.retrieve(openaiResponseId);
+                  const recoveredText = resolveOpenAIResponseText(recovered);
+                  if (recoveredText) {
+                    textBuffer = recoveredText;
+                    if (!sawOutputTextDone) {
+                      await safeWrite({
+                        type: "output.text.done",
+                        runId: run.id,
+                        text: recoveredText,
+                      });
+                      recordRunEvent("output.text.done", { text: recoveredText });
+                    }
+                    finalStatus = "succeeded";
+                    errorMessage = null;
+                  } else {
+                    finalStatus = "failed";
+                    errorMessage = "OpenAI response missing output text";
+                  }
+                } catch (retrieveError) {
+                  finalStatus = "failed";
+                  errorMessage =
+                    retrieveError instanceof Error
+                      ? retrieveError.message
+                      : "OpenAI request failed";
+                }
               } else {
                 finalStatus = "failed";
                 errorMessage = err instanceof Error ? err.message : "OpenAI request failed";
