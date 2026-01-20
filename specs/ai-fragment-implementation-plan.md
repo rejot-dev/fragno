@@ -367,9 +367,10 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 5. [x] Keep endpoints open (no auth) and do not add runner tick controls.
 6. [x] Add timer-based refresh for background runs/messages (1s polling).
 
-- [ ] Validation:
-  - [ ] Manual flows: create thread → append message → stream run → background run → deep research
-  - [ ] View persisted messages, runs, run events, artifacts
+- [x] Validation:
+  - [x] Manual flows: create thread → append message → stream run → background run → deep research
+        (automated in `packages/fragment-ai/src/flows.test.ts`)
+  - [x] View persisted messages, runs, run events, artifacts
 
 ## Interview: Remaining Gaps / Decisions
 
