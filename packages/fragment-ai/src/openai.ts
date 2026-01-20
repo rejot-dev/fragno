@@ -109,3 +109,6 @@ export const createOpenAIClient = async (config: {
 
   return new OpenAI({ apiKey, baseURL, defaultHeaders });
 };
+
+export const buildOpenAIIdempotencyKey = (runId: string, attempt: number) =>
+  `ai-run:${runId}:attempt:${attempt}`;

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { aiFragmentDefinition, type AiRunLiveEvent } from "./definition";
 import { aiSchema } from "./schema";
 import {
+  buildOpenAIIdempotencyKey,
   createOpenAIClient,
   resolveMessageText,
   resolveOpenAIApiKey,
@@ -621,11 +622,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             recordRunEvent("run.status", { status: "running" });
 
             try {
-              const responseStream = await openaiClient.responses.create({
-                model: run.modelId,
-                input: openaiInput,
-                stream: true,
-              });
+              const responseStream = await openaiClient.responses.create(
+                {
+                  model: run.modelId,
+                  input: openaiInput,
+                  stream: true,
+                },
+                { idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt) },
+              );
 
               for await (const event of responseStream) {
                 const responseId = resolveOpenAIResponseId(event);

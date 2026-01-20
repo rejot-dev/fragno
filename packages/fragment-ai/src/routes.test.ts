@@ -269,6 +269,7 @@ describe("AI Fragment Routes", () => {
         model: "gpt-test",
         stream: true,
       }),
+      { idempotencyKey: `ai-run:${runId}:attempt:1` },
     );
   });
 

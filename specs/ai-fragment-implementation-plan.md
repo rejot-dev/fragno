@@ -152,7 +152,7 @@ Validation:
    - [x] input: `{ runId }`
    - [x] loads run + thread + message history
    - [x] constructs OpenAI Responses input (system prompt + history)
-   - [ ] uses OpenAI idempotency keys derived from `(runId, attempt)` for `responses.create(...)`
+   - [x] uses OpenAI idempotency keys derived from `(runId, attempt)` for `responses.create(...)`
 2. [ ] Foreground streaming (`runs:stream`):
    - [ ] create `ai_run` with `executionMode="foreground_stream"` and mark `running`
    - [ ] call `openai.responses.create({ stream: true, ... })`

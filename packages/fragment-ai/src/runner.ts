@@ -1,7 +1,12 @@
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { AiFragmentConfig, AiRunnerTickOptions, AiRunnerTickResult } from "./index";
 import { aiSchema } from "./schema";
-import { createOpenAIClient, resolveMessageText, resolveOpenAIResponseText } from "./openai";
+import {
+  buildOpenAIIdempotencyKey,
+  createOpenAIClient,
+  resolveMessageText,
+  resolveOpenAIResponseText,
+} from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
 
 type Clock = {
@@ -18,6 +23,7 @@ type AiRunRecord = {
   openaiResponseId: string | null;
   startedAt: Date | null;
   inputMessageId: string | null;
+  attempt: number;
 };
 
 type AiMessageRecord = {
@@ -241,10 +247,13 @@ export const runExecutor = async ({
 
   try {
     const client = await createOpenAIClient(config);
-    const response = await client.responses.create({
-      model: run.modelId,
-      input: buildOpenAIInput(run, messages),
-    });
+    const response = await client.responses.create(
+      {
+        model: run.modelId,
+        input: buildOpenAIInput(run, messages),
+      },
+      { idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt) },
+    );
     if (response && typeof response === "object" && "id" in response) {
       const responseId = (response as { id?: unknown }).id;
       if (typeof responseId === "string") {
