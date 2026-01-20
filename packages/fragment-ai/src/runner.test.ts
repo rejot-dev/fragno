@@ -589,6 +589,13 @@ describe("AI Fragment Runner", () => {
     expect(storedRun?.status).toBe("failed");
     expect(storedRun?.error).toBe("POLICY_DENIED");
     expect(storedRun?.nextAttemptAt).toBeNull();
+
+    const events = await db.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
+    );
+    const statusEvents = events.filter((event) => event.type === "run.status");
+    expect(statusEvents).toHaveLength(1);
+    expect(statusEvents[0]?.payload).toEqual({ status: "failed" });
   });
 
   test("runner tick should execute queued foreground stream run", async () => {

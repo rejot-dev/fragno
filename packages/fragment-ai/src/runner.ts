@@ -169,6 +169,7 @@ const finalizeRun = async ({
   openaiResponseId,
   assistantText,
   toolCalls,
+  statusEvent,
   clock,
 }: {
   db: SimpleQueryInterface<typeof aiSchema>;
@@ -178,6 +179,7 @@ const finalizeRun = async ({
   openaiResponseId: string | null;
   assistantText: string | null;
   toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+  statusEvent?: "running" | "failed" | "cancelled" | "succeeded" | null;
   clock: Clock;
 }) => {
   const completedAt = clock.now();
@@ -189,8 +191,15 @@ const finalizeRun = async ({
       payload: { runId: run.id.toString(), threadId: run.threadId },
       createdAt: completedAt,
     },
-    { type: "run.status", payload: { status: "running" }, createdAt: completedAt },
   ];
+
+  if (statusEvent) {
+    runEvents.push({
+      type: "run.status",
+      payload: { status: statusEvent },
+      createdAt: completedAt,
+    });
+  }
 
   if (assistantText) {
     runEvents.push({
@@ -825,6 +834,7 @@ export const runExecutor = async ({
   let assistantText: string | null = null;
   let toolCalls: ReturnType<typeof resolvePiAiToolCalls> | null = null;
   let retryable = true;
+  let didStart = false;
   const abortController = new AbortController();
   const unregisterAbort = registerRunAbortController(run.id.toString(), abortController);
 
@@ -884,6 +894,7 @@ export const runExecutor = async ({
             openaiToolConfig: toolPolicyResult.openaiToolConfig,
             stream: false,
           });
+          didStart = true;
           const response = await client.responses.create(responseOptions, {
             idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
             signal: abortController.signal,
@@ -920,6 +931,7 @@ export const runExecutor = async ({
             throw new Error("AI_API_KEY_MISSING");
           }
 
+          didStart = true;
           const response = await completeWithPiAi(model, context, options);
           if (response.stopReason === "aborted") {
             status = "cancelled";
@@ -973,6 +985,7 @@ export const runExecutor = async ({
     error,
     openaiResponseId,
     assistantText,
+    statusEvent: didStart ? "running" : status,
     toolCalls: toolCalls
       ? toolCalls.map((toolCall) => ({
           toolCallId: toolCall.id,
