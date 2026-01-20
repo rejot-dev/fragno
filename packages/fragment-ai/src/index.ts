@@ -332,6 +332,7 @@ export function createAiFragmentClients(fragnoConfig: FragnoPublicClientConfig =
 
 export { aiFragmentDefinition, aiFragmentDefinition as aiDefinition } from "./definition";
 export { aiRoutesFactory } from "./routes";
+export { createAiRunner, runExecutor } from "./runner";
 export type {
   AiArtifact,
   AiMessage,

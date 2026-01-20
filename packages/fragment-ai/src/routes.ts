@@ -5,6 +5,12 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { aiFragmentDefinition, type AiRunLiveEvent } from "./definition";
 import { aiSchema } from "./schema";
+import {
+  createOpenAIClient,
+  resolveMessageText,
+  resolveOpenAIApiKey,
+  resolveOpenAIResponseId,
+} from "./openai";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -255,82 +261,6 @@ const handleServiceError = <Code extends string>(err: unknown, error: ErrorRespo
   }
 
   throw err;
-};
-
-const resolveMessageText = (message: { text: string | null; content: unknown }) => {
-  if (message.text) {
-    return message.text;
-  }
-
-  if (typeof message.content === "string") {
-    return message.content;
-  }
-
-  if (message.content && typeof message.content === "object" && "text" in message.content) {
-    const text = (message.content as { text?: unknown }).text;
-    if (typeof text === "string") {
-      return text;
-    }
-  }
-
-  return null;
-};
-
-const resolveOpenAIResponseId = (event: unknown) => {
-  if (!event || typeof event !== "object") {
-    return null;
-  }
-
-  const record = event as {
-    type?: unknown;
-    id?: unknown;
-    response?: { id?: unknown };
-    response_id?: unknown;
-  };
-
-  if (record.response && typeof record.response.id === "string") {
-    return record.response.id;
-  }
-
-  if (typeof record.response_id === "string") {
-    return record.response_id;
-  }
-
-  if (typeof record.type === "string" && record.type.startsWith("response.")) {
-    if (typeof record.id === "string") {
-      return record.id;
-    }
-  }
-
-  return null;
-};
-
-const resolveOpenAIApiKey = async (config: {
-  apiKey?: string;
-  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
-}) => {
-  return (
-    config.apiKey ??
-    (typeof config.getApiKey === "function" ? await config.getApiKey("openai") : undefined)
-  );
-};
-
-const createOpenAIClient = async (config: {
-  apiKey?: string;
-  getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
-  baseUrl?: string;
-  defaultModel?: { baseUrl?: string; headers?: Record<string, string> };
-}) => {
-  const apiKey = await resolveOpenAIApiKey(config);
-
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY_MISSING");
-  }
-
-  const baseURL = config.baseUrl ?? config.defaultModel?.baseUrl;
-  const defaultHeaders = config.defaultModel?.headers;
-
-  return new OpenAI({ apiKey, baseURL, defaultHeaders });
 };
 
 const parseWebhookEvent = (payload: unknown) => {

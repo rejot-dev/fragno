@@ -148,7 +148,7 @@ Validation:
 
 **Goal:** execute agent runs end-to-end in both foreground-stream and background modes.
 
-1. [ ] Implement `runExecutor` service:
+1. [x] Implement `runExecutor` service:
    - [ ] input: `{ runId }`
    - [ ] loads run + thread + message history
    - [ ] constructs OpenAI Responses input (system prompt + history)
@@ -166,7 +166,7 @@ Validation:
      - [x] `ai_run.openaiResponseId` as soon as it is known
      - [ ] final assistant message(s)
      - [x] final run status + run events
-3. [ ] Background agent runs (`executionMode="background"`):
+3. [x] Background agent runs (`executionMode="background"`):
    - [ ] runner tick claims queued runs and calls `runExecutor`
    - [ ] prefer `stream: false` for atomic completion (simplifies retries)
 4. [ ] Disconnect handling:
@@ -184,7 +184,7 @@ Validation:
   - [ ] foreground stream returns NDJSON events and persists final message
   - [ ] client disconnect does not prevent final persistence (simulate by canceling reader)
   - [ ] provider disconnect path schedules retry or fails deterministically
-  - [ ] background run completes via runner tick
+  - [x] background run completes via runner tick
 
 ## Phase 4 — Runner tick (in-process) (2–5 days)
 
