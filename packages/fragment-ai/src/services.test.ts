@@ -4,6 +4,8 @@ import type { TxResult } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { aiFragmentDefinition } from "./definition";
 
+const MAX_PAGE_SIZE = 100;
+
 describe("AI Fragment Services", () => {
   const dispatcher = {
     wake: vi.fn(),
@@ -75,6 +77,19 @@ describe("AI Fragment Services", () => {
     expect(listed.threads[0]?.title).toBe("Thread A");
   });
 
+  test("listThreads should cap page size", async () => {
+    const totalThreads = MAX_PAGE_SIZE + 5;
+    for (let i = 0; i < totalThreads; i += 1) {
+      await runService(() => fragment.services.createThread({ title: `Thread ${i}` }));
+    }
+
+    const listed = await runService<{ threads: Array<{ id: string }> }>(() =>
+      fragment.services.listThreads({ pageSize: MAX_PAGE_SIZE + 50 }),
+    );
+
+    expect(listed.threads).toHaveLength(MAX_PAGE_SIZE);
+  });
+
   test("appendMessage and listMessages should persist messages", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Thread B" }),
@@ -96,6 +111,30 @@ describe("AI Fragment Services", () => {
     expect(listed.messages).toHaveLength(1);
     expect(listed.messages[0]?.id).toBe(message.id);
     expect(listed.messages[0]?.text).toBe("Hello");
+  });
+
+  test("listMessages should cap page size", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread B2" }),
+    );
+
+    const totalMessages = MAX_PAGE_SIZE + 5;
+    for (let i = 0; i < totalMessages; i += 1) {
+      await runService(() =>
+        fragment.services.appendMessage({
+          threadId: thread.id,
+          role: "user",
+          content: { type: "text", text: `Message ${i}` },
+          text: `Message ${i}`,
+        }),
+      );
+    }
+
+    const listed = await runService<{ messages: Array<{ id: string }> }>(() =>
+      fragment.services.listMessages({ threadId: thread.id, pageSize: MAX_PAGE_SIZE + 25 }),
+    );
+
+    expect(listed.messages).toHaveLength(MAX_PAGE_SIZE);
   });
 
   test("createRun and listRuns should persist runs", async () => {

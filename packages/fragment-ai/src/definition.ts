@@ -6,11 +6,18 @@ import type { AiFragmentConfig } from "./index";
 import { abortRunInProcess } from "./run-abort";
 
 const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
 const DEFAULT_MODEL_ID = "gpt-4o-mini";
 const DEFAULT_THINKING_LEVEL = "off";
 const DEFAULT_MAX_ATTEMPTS = 4;
 
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
+
+const resolvePageSize = (pageSize: number | undefined, cursor?: Cursor) => {
+  const raw = cursor?.pageSize ?? pageSize ?? DEFAULT_PAGE_SIZE;
+  const normalized = Number.isFinite(raw) ? raw : DEFAULT_PAGE_SIZE;
+  return Math.min(MAX_PAGE_SIZE, Math.max(1, normalized));
+};
 
 export type AiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -458,7 +465,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
         order = "desc",
       }: ListThreadsParams = {}) {
         const effectiveOrder = cursor?.orderDirection ?? order;
-        const effectivePageSize = cursor?.pageSize ?? pageSize;
+        const effectivePageSize = resolvePageSize(pageSize, cursor);
 
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
@@ -624,7 +631,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
         order = "asc",
       }: ListMessagesParams) {
         const effectiveOrder = cursor?.orderDirection ?? order;
-        const effectivePageSize = cursor?.pageSize ?? pageSize;
+        const effectivePageSize = resolvePageSize(pageSize, cursor);
 
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
@@ -790,7 +797,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
         order = "desc",
       }: ListRunsParams) {
         const effectiveOrder = cursor?.orderDirection ?? order;
-        const effectivePageSize = cursor?.pageSize ?? pageSize;
+        const effectivePageSize = resolvePageSize(pageSize, cursor);
 
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
@@ -832,7 +839,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
         order = "asc",
       }: ListRunEventsParams) {
         const effectiveOrder = cursor?.orderDirection ?? order;
-        const effectivePageSize = cursor?.pageSize ?? pageSize;
+        const effectivePageSize = resolvePageSize(pageSize, cursor);
 
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
