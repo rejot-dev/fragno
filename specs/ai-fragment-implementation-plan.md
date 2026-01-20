@@ -4,7 +4,7 @@ This plan implements `specs/ai-fragment-spec.md` (Draft v0.6): durable threads, 
 OpenAI-only execution, NDJSON streaming, deep research background + webhooks, and a tick-based
 runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
-## Phase 0 — Lock decisions + spikes (0.5–2 days)
+## [x] Phase 0 — Lock decisions + spikes (0.5–2 days)
 
 **Goal:** validate the risky bits early (streaming, webhook verification, persistence boundaries).
 
@@ -58,7 +58,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 - [x] A small scratch fragment or test route proving NDJSON + webhook verification (optional;
       covered by `packages/fragment-ai/src/routes.test.ts`)
 
-## Phase 1 — Package skeleton + DB schema (2–4 days)
+## [x] Phase 1 — Package skeleton + DB schema (2–4 days)
 
 1. [x] Create new workspace package:
    - [x] `packages/fragment-ai` (name: `@fragno-dev/fragment-ai`)
@@ -95,7 +95,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Add service test to ensure run tool config is snapshotted
   - [x] Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
 
-## Phase 2 — HTTP routes + typed clients (2–5 days)
+## [x] Phase 2 — HTTP routes + typed clients (2–5 days)
 
 **Goal:** ship a complete API surface before adding execution complexity.
 
@@ -148,7 +148,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 - [x] Validation:
   - [x] Minimal E2E tests (create thread → append message → create run; list artifacts)
 
-## Phase 3 — OpenAI execution engine (agent runs) (3–7 days)
+## [x] Phase 3 — OpenAI execution engine (agent runs) (3–7 days)
 
 **Goal:** execute agent runs end-to-end in both foreground-stream and background modes.
 
@@ -194,7 +194,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
     - [x] provider disconnect without response id schedules retry or fails deterministically
     - [x] background run completes via runner tick
 
-## Phase 4 — Runner tick (in-process) (2–5 days)
+## [x] Phase 4 — Runner tick (in-process) (2–5 days)
 
 **Goal:** unify all async processing behind a safe, bounded `tick`.
 
@@ -242,7 +242,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] concurrency test: two ticks racing should not double-process the same run/event
   - [x] “poison pill” test: repeated failures should back off using `nextAttemptAt`
 
-## Phase 5 — Deep research + webhooks + artifacts (3–8 days)
+## [x] Phase 5 — Deep research + webhooks + artifacts (3–8 days)
 
 **Goal:** deep research as a durable background job with webhook completion.
 
@@ -278,7 +278,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
         re-complete runs
   - [x] end-to-end: create deep research run → submit → webhook → artifact persisted
 
-## Phase 6 — Hardening + future work (ongoing)
+## [ ] Phase 6 — Hardening + future work (ongoing)
 
 - [x] v0.1 hardening:
   - [x] Limits:
@@ -300,7 +300,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
     - [x] Add optional history window limit for run inputs (`config.history.maxMessages`)
   - [x] External artifact storage (blob store) with DB references
 
-## Phase 7 — CLI tool: `fragno-ai` (0.5–2 days)
+## [x] Phase 7 — CLI tool: `fragno-ai` (0.5–2 days)
 
 **Goal:** easy debugging of AI fragment state via HTTP routes.
 
@@ -328,7 +328,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 7. [x] Auth support (same flexibility as Workflows spec):
    - [x] repeatable `-H/--header "Header: Value"` passthrough headers
 
-## Phase 8 — Documentation (1–3 days)
+## [x] Phase 8 — Documentation (1–3 days)
 
 **Goal:** ship full docs + landing page tile for the AI fragment.
 
@@ -359,7 +359,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 - [x] Validation:
   - [x] Docs build passes (local or CI)
 
-## Phase 9 — Example app (React Router + Drizzle + PGLite) (2–5 days)
+## [x] Phase 9 — Example app (React Router + Drizzle + PGLite) (2–5 days)
 
 **Goal:** provide a clean, debug-friendly UI that exercises all hooks.
 
