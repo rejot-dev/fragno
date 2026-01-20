@@ -145,6 +145,53 @@ describe("AI Fragment Runner", () => {
     expect(events.some((event) => event.type === "run.final")).toBe(true);
   });
 
+  test("runner tick should fail when tool policy denies tools", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({
+        title: "Policy Thread",
+        openaiToolConfig: {
+          tools: [{ type: "web_search" }],
+          tool_choice: "auto",
+        },
+      }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Should be denied" },
+        text: "Should be denied",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "agent",
+      }),
+    );
+
+    const toolPolicy = vi.fn().mockResolvedValue({ action: "deny", reason: "POLICY_DENIED" });
+    const runner = createAiRunner({ db, config: { ...config, toolPolicy } });
+    const result = await runner.tick({ maxRuns: 1 });
+
+    expect(result.processedRuns).toBe(1);
+    expect(mockOpenAICreate).not.toHaveBeenCalled();
+    expect(toolPolicy).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: run.id, threadId: thread.id }),
+    );
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun?.status).toBe("failed");
+    expect(storedRun?.error).toBe("POLICY_DENIED");
+    expect(storedRun?.nextAttemptAt).toBeNull();
+  });
+
   test("runner tick should execute queued foreground stream run", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Foreground Retry Thread" }),

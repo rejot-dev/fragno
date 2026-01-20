@@ -10,6 +10,7 @@ import {
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
 import { registerRunAbortController } from "./run-abort";
+import { applyToolPolicy } from "./tool-policy";
 import {
   estimateArtifactSizeBytes,
   estimateMessageSizeBytes,
@@ -360,33 +361,63 @@ const submitDeepResearchRun = async ({
   let status: "waiting_webhook" | "failed" = "waiting_webhook";
   let error: string | null = null;
   let openaiResponseId: string | null = run.openaiResponseId;
+  let retryable = true;
 
-  try {
-    const client = await createOpenAIClient(config);
-    const responseOptions = buildOpenAIResponseOptions({
-      config,
+  const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
+  const toolPolicyResult = await applyToolPolicy({
+    policy: config.toolPolicy,
+    context: {
+      threadId: run.threadId,
+      runId: run.id.toString(),
+      runType: run.type as "agent" | "deep_research",
+      executionMode: run.executionMode as "foreground_stream" | "background",
       modelId: run.modelId,
-      input: buildOpenAIInput(run, messages),
-      thinkingLevel: run.thinkingLevel,
-      openaiToolConfig: run.openaiToolConfig ?? thread.openaiToolConfig,
-      background: true,
-    });
-    const response = await client.responses.create(responseOptions, {
-      idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
-    });
-    if (response && typeof response === "object" && "id" in response) {
-      const responseId = (response as { id?: unknown }).id;
-      if (typeof responseId === "string") {
-        openaiResponseId = responseId;
-      }
-    }
+      openaiToolConfig: baseToolConfig ?? null,
+    },
+  });
 
-    if (!openaiResponseId) {
-      throw new Error("OpenAI response id missing");
-    }
-  } catch (err) {
+  if (toolPolicyResult.deniedReason) {
     status = "failed";
-    error = err instanceof Error ? err.message : "OpenAI request failed";
+    error = toolPolicyResult.deniedReason;
+    retryable = false;
+    logWithLogger(config.logger, "warn", {
+      event: "ai.run.tool_policy.denied",
+      runId: run.id.toString(),
+      threadId: run.threadId,
+      type: run.type,
+      executionMode: run.executionMode,
+      reason: toolPolicyResult.deniedReason,
+    });
+  }
+
+  if (!toolPolicyResult.deniedReason) {
+    try {
+      const client = await createOpenAIClient(config);
+      const responseOptions = buildOpenAIResponseOptions({
+        config,
+        modelId: run.modelId,
+        input: buildOpenAIInput(run, messages),
+        thinkingLevel: run.thinkingLevel,
+        openaiToolConfig: toolPolicyResult.openaiToolConfig,
+        background: true,
+      });
+      const response = await client.responses.create(responseOptions, {
+        idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+      });
+      if (response && typeof response === "object" && "id" in response) {
+        const responseId = (response as { id?: unknown }).id;
+        if (typeof responseId === "string") {
+          openaiResponseId = responseId;
+        }
+      }
+
+      if (!openaiResponseId) {
+        throw new Error("OpenAI response id missing");
+      }
+    } catch (err) {
+      status = "failed";
+      error = err instanceof Error ? err.message : "OpenAI request failed";
+    }
   }
 
   const uow = db.createUnitOfWork("ai-run-deep-research-submit");
@@ -409,7 +440,7 @@ const submitDeepResearchRun = async ({
   await uow.executeMutations();
 
   let retryScheduledAt: Date | null = null;
-  if (status === "failed") {
+  if (status === "failed" && retryable) {
     retryScheduledAt = await scheduleRetry({ db, run, error, clock, config });
   }
 
@@ -720,39 +751,66 @@ export const runExecutor = async ({
   const abortController = new AbortController();
   const unregisterAbort = registerRunAbortController(run.id.toString(), abortController);
 
-  try {
-    const client = await createOpenAIClient(config);
-    const responseOptions = buildOpenAIResponseOptions({
-      config,
+  const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
+  const toolPolicyResult = await applyToolPolicy({
+    policy: config.toolPolicy,
+    context: {
+      threadId: run.threadId,
+      runId: run.id.toString(),
+      runType: run.type as "agent" | "deep_research",
+      executionMode: run.executionMode as "foreground_stream" | "background",
       modelId: run.modelId,
-      input: buildOpenAIInput(run, messages),
-      thinkingLevel: run.thinkingLevel,
-      openaiToolConfig: run.openaiToolConfig ?? thread.openaiToolConfig,
-      stream: false,
+      openaiToolConfig: baseToolConfig ?? null,
+    },
+  });
+
+  if (toolPolicyResult.deniedReason) {
+    status = "failed";
+    error = toolPolicyResult.deniedReason;
+    retryable = false;
+    logWithLogger(config.logger, "warn", {
+      event: "ai.run.tool_policy.denied",
+      runId: run.id.toString(),
+      threadId: run.threadId,
+      type: run.type,
+      executionMode: run.executionMode,
+      reason: toolPolicyResult.deniedReason,
     });
-    const response = await client.responses.create(responseOptions, {
-      idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
-      signal: abortController.signal,
-    });
-    if (response && typeof response === "object" && "id" in response) {
-      const responseId = (response as { id?: unknown }).id;
-      if (typeof responseId === "string") {
-        openaiResponseId = responseId;
+  } else {
+    try {
+      const client = await createOpenAIClient(config);
+      const responseOptions = buildOpenAIResponseOptions({
+        config,
+        modelId: run.modelId,
+        input: buildOpenAIInput(run, messages),
+        thinkingLevel: run.thinkingLevel,
+        openaiToolConfig: toolPolicyResult.openaiToolConfig,
+        stream: false,
+      });
+      const response = await client.responses.create(responseOptions, {
+        idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+        signal: abortController.signal,
+      });
+      if (response && typeof response === "object" && "id" in response) {
+        const responseId = (response as { id?: unknown }).id;
+        if (typeof responseId === "string") {
+          openaiResponseId = responseId;
+        }
+      }
+      assistantText = resolveOpenAIResponseText(response);
+    } catch (err) {
+      if (abortController.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+        status = "cancelled";
+        error = null;
+        assistantText = null;
+      } else {
+        status = "failed";
+        error = err instanceof Error ? err.message : "OpenAI request failed";
       }
     }
-    assistantText = resolveOpenAIResponseText(response);
-  } catch (err) {
-    if (abortController.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
-      status = "cancelled";
-      error = null;
-      assistantText = null;
-    } else {
-      status = "failed";
-      error = err instanceof Error ? err.message : "OpenAI request failed";
-    }
-  } finally {
-    unregisterAbort();
   }
+
+  unregisterAbort();
 
   if (assistantText) {
     const maxMessageBytes = resolveMaxMessageBytes(config);

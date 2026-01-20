@@ -287,7 +287,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 - [ ] Future (v0.2+):
   - [ ] Custom tools registry + server execution (pi-agent-core integration)
-  - [ ] Tool approvals/policy hooks
+  - [x] Tool approvals/policy hooks
   - [ ] Multi-provider support (pi-ai)
   - [ ] Conversation compaction/summarization (borrow pi-coding-agent patterns)
   - [ ] External artifact storage (blob store) with DB references

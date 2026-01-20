@@ -526,6 +526,71 @@ describe("AI Fragment Routes", () => {
     );
   });
 
+  test("runs stream route should honor tool policy denials", async () => {
+    mockOpenAICreate.mockClear();
+    const toolPolicy = vi.fn().mockResolvedValue({ action: "deny", reason: "POLICY_DENIED" });
+    const { fragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({ ...config, toolPolicy })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    const localFragment = fragments.ai.fragment;
+    const localDb = fragments.ai.db;
+
+    const thread = await localFragment.callRoute("POST", "/threads", {
+      body: {
+        title: "Policy Stream Thread",
+        openaiToolConfig: { tools: [{ type: "web_search" }], tool_choice: "auto" },
+      },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await localFragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Policy check" },
+        text: "Policy check",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await localFragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    const events = [];
+    for await (const event of response.stream) {
+      events.push(event);
+    }
+
+    expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "failed" });
+    expect(mockOpenAICreate).not.toHaveBeenCalled();
+    expect(toolPolicy).toHaveBeenCalledWith(expect.objectContaining({ threadId: thread.data.id }));
+
+    const storedRun = await localDb.findFirst("ai_run", (b) =>
+      b.whereIndex("idx_ai_run_thread_createdAt", (eb) => eb("threadId", "=", thread.data.id)),
+    );
+    expect(storedRun?.status).toBe("failed");
+    expect(storedRun?.error).toBe("POLICY_DENIED");
+  });
+
   test("runs stream route should preserve reasoning tool config", async () => {
     mockOpenAICreate.mockClear();
 

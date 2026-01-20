@@ -12,6 +12,7 @@ import { atom, computed } from "nanostores";
 import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from "./definition";
 import type { AiLogger } from "./logging";
 import { aiRoutesFactory } from "./routes";
+import type { AiToolPolicy, AiToolPolicyContext, AiToolPolicyDecision } from "./tool-policy";
 
 export type AiModelRef = {
   id: string;
@@ -29,6 +30,7 @@ export type AiThinkingBudgets = {
 };
 
 export type { AiLogger };
+export type { AiToolPolicy, AiToolPolicyContext, AiToolPolicyDecision };
 
 export type AiWakeEvent =
   | { type: "run.queued"; runId: string }
@@ -93,6 +95,7 @@ export interface AiFragmentConfig {
     persistOpenAIRawResponses?: boolean;
     retentionDays?: number | null;
   };
+  toolPolicy?: AiToolPolicy;
   logger?: AiLogger;
 }
 
