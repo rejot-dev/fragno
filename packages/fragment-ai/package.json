@@ -94,6 +94,16 @@
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
     "typescript": "^5",
-    "vue": ">=3.0.0"
+    "vue": ">=3.0.0",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-agent-core": "*"
+  },
+  "peerDependenciesMeta": {
+    "@mariozechner/pi-ai": {
+      "optional": true
+    },
+    "@mariozechner/pi-agent-core": {
+      "optional": true
+    }
   }
 }
