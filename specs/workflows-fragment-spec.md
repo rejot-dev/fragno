@@ -89,7 +89,7 @@ Responsibilities:
 - Runner core (runtime-agnostic): deterministic replay + scheduling decisions
 - Dispatcher interface: a small abstraction used by durable hooks to “wake” the runner.
 
-### 5.2 Dispatcher Package (Node): `@fragno-dev/workflows-dispatcher-node`
+### 5.2 Dispatcher Package (Node): `@fragno-dev/dispatcher-node`
 
 Responsibilities:
 
@@ -439,7 +439,7 @@ export class ParentWorkflow extends WorkflowEntrypoint {
   or `@fragno-dev/db` `migrate()` where relevant).
 - Any authentication/authorization policy for management endpoints (configurable).
 - A way to run/wake the runner (all supported):
-  - in-process (Node) via `@fragno-dev/workflows-dispatcher-node`
+  - in-process (Node) via `@fragno-dev/dispatcher-node`
   - HTTP “tick” endpoint invoked by cron/scheduler
   - Cloudflare Durable Object runtime via `@fragno-dev/workflows-dispatcher-cloudflare-do`
 
@@ -1038,7 +1038,7 @@ Cloudflare-style expectations:
 
 1. Single domain package: `@fragno-dev/fragment-workflows` (SPEC §5.1)
 2. Dispatcher packages:
-   - Node: `@fragno-dev/workflows-dispatcher-node` (SPEC §5.2)
+   - Node: `@fragno-dev/dispatcher-node` (SPEC §5.2)
    - Cloudflare DO: `@fragno-dev/workflows-dispatcher-cloudflare-do` (SPEC §5.3)
 3. Runner models supported: in-process, HTTP tick, and Cloudflare DO scheduling (SPEC §7.3, §10.3)
 4. Distributed runners required and must be well tested (SPEC §9.1.1)

@@ -11,7 +11,7 @@ observe workflow instances.
 ## Install
 
 ```bash
-npm install @fragno-dev/fragment-workflows @fragno-dev/workflows-dispatcher-node
+npm install @fragno-dev/fragment-workflows @fragno-dev/dispatcher-node
 ```
 
 ## Define a Workflow
@@ -66,7 +66,7 @@ import {
   workflowsRoutesFactory,
   workflowsSchema,
 } from "@fragno-dev/fragment-workflows";
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+import { createInProcessDispatcher } from "@fragno-dev/dispatcher-node";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {

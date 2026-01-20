@@ -44,7 +44,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
    - [x] update docs examples accordingly
 7. [ ] Spike: shared dispatcher generalization
-   - [ ] extract `createInProcessDispatcher` into a generic package (node) and update all
+   - [x] extract `createInProcessDispatcher` into a generic package (node) and update all
          Workflows/AI call sites to use it directly (no shims; update call sites directly)
    - [ ] prototype a generic Cloudflare DO dispatcher runtime by extracting the core loop from
          `@fragno-dev/workflows-dispatcher-cloudflare-do`
