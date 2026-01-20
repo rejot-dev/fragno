@@ -53,10 +53,9 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
    - [x] update Workflows dispatcher wrappers to use the shared runtime and fix any breakages
 
-Deliverables:
-
-- [x] Updated spec/plan (this repo’s `specs/`)
-- [ ] A small scratch fragment or test route proving NDJSON + webhook verification (optional)
+- [ ] Deliverables:
+  - [x] Updated spec/plan (this repo’s `specs/`)
+  - [ ] A small scratch fragment or test route proving NDJSON + webhook verification (optional)
 
 ## Phase 1 — Package skeleton + DB schema (2–4 days)
 
@@ -89,10 +88,9 @@ Deliverables:
    - [x] `packages/fragment-ai/src/index.ts` exporting `aiDefinition`
    - [x] `withDatabase(aiSchema)` and `provideHooks` for `dispatcher.wake` notifications
 
-Validation:
-
-- [x] Add basic service-level tests for create/list of threads/messages/runs
-- [x] Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
+- [x] Validation:
+  - [x] Add basic service-level tests for create/list of threads/messages/runs
+  - [x] Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
 
 ## Phase 2 — HTTP routes + typed clients (2–5 days)
 
@@ -144,9 +142,8 @@ Validation:
          `GET /ai/threads/:threadId/messages` on completion
      - [x] `useCancelRun` → invalidate `GET /ai/runs/:runId` + `GET /ai/runs/:runId/events`
 
-Validation:
-
-- [x] Minimal E2E tests (create thread → append message → create run; list artifacts)
+- [x] Validation:
+  - [x] Minimal E2E tests (create thread → append message → create run; list artifacts)
 
 ## Phase 3 — OpenAI execution engine (agent runs) (3–7 days)
 
@@ -184,14 +181,13 @@ Validation:
    - [x] `POST /ai/runs/:runId/cancel` marks `cancelled`
    - [x] if the run is currently executing in-process, abort via `AbortController`
 
-Validation:
-
-- [x] tests for:
-  - [x] foreground stream returns NDJSON events and persists final message
-  - [x] client disconnect does not prevent final persistence (simulate by canceling reader)
-  - [x] stream failure after response id recovers via retrieve
-  - [x] provider disconnect without response id schedules retry or fails deterministically
-  - [x] background run completes via runner tick
+- [x] Validation:
+  - [x] tests for:
+    - [x] foreground stream returns NDJSON events and persists final message
+    - [x] client disconnect does not prevent final persistence (simulate by canceling reader)
+    - [x] stream failure after response id recovers via retrieve
+    - [x] provider disconnect without response id schedules retry or fails deterministically
+    - [x] background run completes via runner tick
 
 ## Phase 4 — Runner tick (in-process) (2–5 days)
 
@@ -237,10 +233,9 @@ Validation:
    - [x] Update workflows docs/examples to use `@fragno-dev/dispatcher-node` and the refactored DO
          dispatcher packages (e.g. runner-dispatcher docs + quickstart snippets)
 
-Validation:
-
-- [x] concurrency test: two ticks racing should not double-process the same run/event
-- [x] “poison pill” test: repeated failures should back off using `nextAttemptAt`
+- [x] Validation:
+  - [x] concurrency test: two ticks racing should not double-process the same run/event
+  - [x] “poison pill” test: repeated failures should back off using `nextAttemptAt`
 
 ## Phase 5 — Deep research + webhooks + artifacts (3–8 days)
 
@@ -268,37 +263,33 @@ Validation:
    - [x] mark run `succeeded`/`failed`, set `completedAt`
    - [x] mark webhook event `processedAt`
 4. [x] Edge cases:
+   - [x] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
+         match later using `responseId`
+   - [x] runner skips OpenAI retrieval until a webhook event can be matched to a run
+   - [x] OpenAI retrieve fails transiently: keep `processedAt=null`, set `processingError`, back off
 
-- [x] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
-      match later using `responseId`
-- [x] runner skips OpenAI retrieval until a webhook event can be matched to a run
-- [x] OpenAI retrieve fails transiently: keep `processedAt=null`, set `processingError`, back off
-
-Validation:
-
-- [x] idempotency tests: duplicate webhook deliveries do not create duplicate artifacts or
-      re-complete runs
-- [x] end-to-end: create deep research run → submit → webhook → artifact persisted
+- [x] Validation:
+  - [x] idempotency tests: duplicate webhook deliveries do not create duplicate artifacts or
+        re-complete runs
+  - [x] end-to-end: create deep research run → submit → webhook → artifact persisted
 
 ## Phase 6 — Hardening + future work (ongoing)
 
-v0.1 hardening:
+- [x] v0.1 hardening:
+  - [x] Limits:
+    - [x] max message size
+    - [x] max artifact size
+    - [x] page size caps in services
+  - [x] Rate limits at host level for webhooks + tick endpoint
+  - [x] Observability: structured logs for run lifecycle + webhook processing
+  - [x] Admin-only debug/delete routes (host-protect)
 
-- [x] Limits:
-  - [x] max message size
-  - [x] max artifact size
-  - [x] page size caps in services
-- [x] Rate limits at host level for webhooks + tick endpoint
-- [x] Observability: structured logs for run lifecycle + webhook processing
-- [x] Admin-only debug/delete routes (host-protect)
-
-Future (v0.2+):
-
-- [ ] Custom tools registry + server execution (pi-agent-core integration)
-- [ ] Tool approvals/policy hooks
-- [ ] Multi-provider support (pi-ai)
-- [ ] Conversation compaction/summarization (borrow pi-coding-agent patterns)
-- [ ] External artifact storage (blob store) with DB references
+- [ ] Future (v0.2+):
+  - [ ] Custom tools registry + server execution (pi-agent-core integration)
+  - [ ] Tool approvals/policy hooks
+  - [ ] Multi-provider support (pi-ai)
+  - [ ] Conversation compaction/summarization (borrow pi-coding-agent patterns)
+  - [ ] External artifact storage (blob store) with DB references
 
 ## Phase 7 — CLI tool: `fragno-ai` (0.5–2 days)
 
@@ -356,9 +347,8 @@ Future (v0.2+):
 5. [x] Document CLI usage in the CLI page, mirroring `apps/docs/content/docs/workflows/cli.mdx`.
 6. [x] Document that the example app uses open endpoints and is for debugging only.
 
-Validation:
-
-- [x] Docs build passes (local or CI)
+- [x] Validation:
+  - [x] Docs build passes (local or CI)
 
 ## Phase 9 — Example app (React Router + Drizzle + PGLite) (2–5 days)
 
@@ -377,13 +367,13 @@ Validation:
 5. [x] Keep endpoints open (no auth) and do not add runner tick controls.
 6. [x] Add timer-based refresh for background runs/messages (1s polling).
 
-Validation:
-
-- [ ] Manual flows: create thread → append message → stream run → background run → deep research
-- [ ] View persisted messages, runs, run events, artifacts
+- [ ] Validation:
+  - [ ] Manual flows: create thread → append message → stream run → background run → deep research
+  - [ ] View persisted messages, runs, run events, artifacts
 
 ## Interview: Remaining Gaps / Decisions
 
-- [x] `apiKey` optional if `getApiKey` is provided (at least one required).
-- [x] `enableRunnerTick` defaults to false.
-- [x] CLI commands cover threads, messages, runs, run events, artifacts, and streaming.
+- [x] Interview: Remaining Gaps / Decisions
+  - [x] `apiKey` optional if `getApiKey` is provided (at least one required).
+  - [x] `enableRunnerTick` defaults to false.
+  - [x] CLI commands cover threads, messages, runs, run events, artifacts, and streaming.
