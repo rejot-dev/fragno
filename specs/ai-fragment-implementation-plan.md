@@ -62,7 +62,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 1. [x] Create new workspace package:
    - [x] `packages/fragment-ai` (name: `@fragno-dev/fragment-ai`)
-2. [ ] Add dependencies:
+2. [x] Add dependencies:
    - [x] `@fragno-dev/core`, `@fragno-dev/db`
    - [x] `openai` (Responses API + webhook verification)
    - [ ] (optional, v0.2+): `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`
