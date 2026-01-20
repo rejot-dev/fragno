@@ -153,18 +153,18 @@ Validation:
    - [x] loads run + thread + message history
    - [x] constructs OpenAI Responses input (system prompt + history)
    - [x] uses OpenAI idempotency keys derived from `(runId, attempt)` for `responses.create(...)`
-2. [ ] Foreground streaming (`runs:stream`):
-   - [ ] create `ai_run` with `executionMode="foreground_stream"` and mark `running`
-   - [ ] call `openai.responses.create({ stream: true, ... })`
-   - [ ] map OpenAI streaming events into a simplified NDJSON schema for the frontend (text + tool
+2. [x] Foreground streaming (`runs:stream`):
+   - [x] create `ai_run` with `executionMode="foreground_stream"` and mark `running`
+   - [x] call `openai.responses.create({ stream: true, ... })`
+   - [x] map OpenAI streaming events into a simplified NDJSON schema for the frontend (text + tool
          lifecycle):
-     - [ ] `run.meta` first
-     - [ ] `output.text.delta` / `output.text.done`
-     - [ ] `tool.call.*` events (status + args deltas when available)
-     - [ ] `run.final` last
-   - [ ] persist:
+     - [x] `run.meta` first
+     - [x] `output.text.delta` / `output.text.done`
+     - [x] `tool.call.*` events (status + args deltas when available)
+     - [x] `run.final` last
+   - [x] persist:
      - [x] `ai_run.openaiResponseId` as soon as it is known
-     - [ ] final assistant message(s)
+     - [x] final assistant message(s)
      - [x] final run status + run events
 3. [x] Background agent runs (`executionMode="background"`):
    - [ ] runner tick claims queued runs and calls `runExecutor`

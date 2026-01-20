@@ -67,7 +67,13 @@ describe("AI Fragment Runner", () => {
 
   test("runner tick should execute queued background run", async () => {
     const thread = await runService<{ id: string }>(() =>
-      fragment.services.createThread({ title: "Runner Thread" }),
+      fragment.services.createThread({
+        title: "Runner Thread",
+        openaiToolConfig: {
+          tools: [{ type: "web_search" }],
+          tool_choice: "auto",
+        },
+      }),
     );
 
     const message = await runService<{ id: string }>(() =>
@@ -94,9 +100,14 @@ describe("AI Fragment Runner", () => {
     expect(result.processedRuns).toBe(1);
     expect(result.processedWebhookEvents).toBe(0);
     expect(mockOpenAICreate).toHaveBeenCalled();
-    expect(mockOpenAICreate).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-test" }), {
-      idempotencyKey: `ai-run:${run.id}:attempt:1`,
-    });
+    expect(mockOpenAICreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-test",
+        tools: [{ type: "web_search" }],
+        tool_choice: "auto",
+      }),
+      { idempotencyKey: `ai-run:${run.id}:attempt:1` },
+    );
 
     const storedRun = await db.findFirst("ai_run", (b) =>
       b.whereIndex("primary", (eb) => eb("id", "=", run.id)),

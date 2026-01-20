@@ -10,6 +10,7 @@ import {
   createOpenAIClient,
   resolveMessageText,
   resolveOpenAIApiKey,
+  resolveOpenAIToolConfig,
   resolveOpenAIResponseId,
 } from "./openai";
 
@@ -222,6 +223,104 @@ const runLiveEventSchema = z.discriminatedUnion("type", [
   toolCallOutputEventSchema,
   runFinalEventSchema,
 ]);
+
+type ToolCallStatus = z.infer<typeof toolCallStatusSchema>;
+
+const toolCallStatuses = new Set([
+  "in_progress",
+  "searching",
+  "interpreting",
+  "generating",
+  "completed",
+  "failed",
+]);
+
+const isToolCallType = (value: unknown): value is string => {
+  return typeof value === "string" && (value === "function_call" || value.endsWith("_call"));
+};
+
+const resolveToolName = (item: Record<string, unknown>) => {
+  if (typeof item["name"] === "string") {
+    return item["name"];
+  }
+
+  const fn = item["function"] as { name?: unknown } | undefined;
+  if (fn && typeof fn.name === "string") {
+    return fn.name;
+  }
+
+  return undefined;
+};
+
+const resolveToolCallIdFromEvent = (
+  event: Record<string, unknown>,
+  toolCallIdByCallId: Map<string, string>,
+) => {
+  const itemId = typeof event["item_id"] === "string" ? event["item_id"] : null;
+  const callId = typeof event["call_id"] === "string" ? event["call_id"] : null;
+
+  if (callId && toolCallIdByCallId.has(callId)) {
+    return toolCallIdByCallId.get(callId) ?? callId;
+  }
+
+  return itemId ?? callId ?? null;
+};
+
+const resolveToolCallIdFromItem = (
+  item: Record<string, unknown>,
+  event: Record<string, unknown>,
+  toolCallIdByCallId: Map<string, string>,
+) => {
+  const itemId = typeof item["id"] === "string" ? item["id"] : null;
+  const callId =
+    typeof item["call_id"] === "string"
+      ? item["call_id"]
+      : typeof event["call_id"] === "string"
+        ? event["call_id"]
+        : null;
+
+  if (callId) {
+    const existing = toolCallIdByCallId.get(callId);
+    if (existing) {
+      return existing;
+    }
+
+    if (itemId && callId !== itemId && item["type"] === "function_call") {
+      const combined = `${callId}|${itemId}`;
+      toolCallIdByCallId.set(callId, combined);
+      return combined;
+    }
+
+    toolCallIdByCallId.set(callId, itemId ?? callId);
+  }
+
+  return itemId ?? callId ?? null;
+};
+
+const resolveToolCallStatus = (status: unknown, fallback: ToolCallStatus): ToolCallStatus => {
+  if (typeof status === "string" && toolCallStatuses.has(status)) {
+    return status as ToolCallStatus;
+  }
+
+  return fallback;
+};
+
+const resolveToolOutput = (item: Record<string, unknown>) => {
+  if ("output" in item) {
+    return item["output"];
+  }
+  if ("result" in item) {
+    return item["result"];
+  }
+  if ("results" in item) {
+    return item["results"];
+  }
+  if ("content" in item) {
+    return item["content"];
+  }
+
+  return undefined;
+};
 
 const listEventsQuerySchema = listQuerySchema;
 
@@ -524,6 +623,11 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             return handleServiceError(err, error as ErrorResponder);
           }
 
+          const thread = await this.handlerTx()
+            .withServiceCalls(() => [services.getThread(pathParams.threadId)])
+            .transform(({ serviceResult: [value] }) => value)
+            .execute();
+
           const messageHistory = await this.handlerTx()
             .withServiceCalls(() => [
               services.listMessages({
@@ -574,6 +678,8 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             let canWrite = true;
             let openaiResponseId = run.openaiResponseId;
             const runEvents: Array<{ type: string; payload: unknown | null; createdAt: Date }> = [];
+            const persistDeltas = Boolean(config.storage?.persistDeltas);
+            const toolCallIdByCallId = new Map<string, string>();
 
             const safeWrite = async (payload: AiRunLiveEvent) => {
               if (!canWrite) {
@@ -592,6 +698,12 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               createdAt: Date = new Date(),
             ) => {
               runEvents.push({ type, payload, createdAt });
+            };
+
+            const recordRunEventIfEnabled = (type: string, payload: unknown | null) => {
+              if (persistDeltas) {
+                recordRunEvent(type, payload);
+              }
             };
 
             const persistOpenAIResponseId = async (responseId: string) => {
@@ -622,39 +734,186 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             recordRunEvent("run.status", { status: "running" });
 
             try {
-              const responseStream = await openaiClient.responses.create(
-                {
-                  model: run.modelId,
-                  input: openaiInput,
-                  stream: true,
-                },
-                { idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt) },
-              );
+              const openaiToolConfig = resolveOpenAIToolConfig(thread.openaiToolConfig);
+              const responseOptions = openaiToolConfig
+                ? { ...openaiToolConfig, model: run.modelId, input: openaiInput, stream: true }
+                : { model: run.modelId, input: openaiInput, stream: true };
+              const responseStream = await openaiClient.responses.create(responseOptions, {
+                idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+              });
 
-              for await (const event of responseStream) {
+              for await (const event of responseStream as AsyncIterable<Record<string, unknown>>) {
                 const responseId = resolveOpenAIResponseId(event);
                 if (responseId) {
                   await persistOpenAIResponseId(responseId);
                 }
 
-                if (event.type === "response.output_text.delta") {
-                  textBuffer += event.delta;
+                const eventType = event["type"];
+                if (typeof eventType !== "string") {
+                  continue;
+                }
+
+                if (eventType === "response.output_text.delta") {
+                  const delta = typeof event["delta"] === "string" ? event["delta"] : null;
+                  if (!delta) {
+                    continue;
+                  }
+                  textBuffer += delta;
                   await safeWrite({
                     type: "output.text.delta",
                     runId: run.id,
-                    delta: event.delta,
+                    delta,
                   });
-                  if (config.storage?.persistDeltas) {
-                    recordRunEvent("output.text.delta", { delta: event.delta });
+                  recordRunEventIfEnabled("output.text.delta", { delta });
+                } else if (eventType === "response.output_text.done") {
+                  const text = typeof event["text"] === "string" ? event["text"] : null;
+                  if (!text) {
+                    continue;
                   }
-                } else if (event.type === "response.output_text.done") {
-                  textBuffer = event.text;
+                  textBuffer = text;
                   await safeWrite({
                     type: "output.text.done",
                     runId: run.id,
-                    text: event.text,
+                    text,
                   });
-                  recordRunEvent("output.text.done", { text: event.text });
+                  recordRunEvent("output.text.done", { text });
+                } else if (eventType === "response.output_item.added") {
+                  const item = ((event as { item?: unknown })["item"] ??
+                    (event as { output_item?: unknown })["output_item"]) as
+                    | Record<string, unknown>
+                    | undefined;
+
+                  if (item && isToolCallType(item["type"])) {
+                    const toolCallId = resolveToolCallIdFromItem(item, event, toolCallIdByCallId);
+                    if (toolCallId) {
+                      const toolType = item["type"] as string;
+                      const toolName = resolveToolName(item);
+
+                      await safeWrite({
+                        type: "tool.call.started",
+                        runId: run.id,
+                        toolCallId,
+                        toolType,
+                        ...(toolName ? { toolName } : {}),
+                      });
+                      recordRunEventIfEnabled("tool.call.started", {
+                        toolCallId,
+                        toolType,
+                        ...(toolName ? { toolName } : {}),
+                      });
+
+                      await safeWrite({
+                        type: "tool.call.status",
+                        runId: run.id,
+                        toolCallId,
+                        toolType,
+                        status: "in_progress",
+                      });
+                      recordRunEventIfEnabled("tool.call.status", {
+                        toolCallId,
+                        toolType,
+                        status: "in_progress",
+                      });
+                    }
+                  }
+                } else if (eventType === "response.function_call_arguments.delta") {
+                  const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
+                  const delta = typeof event["delta"] === "string" ? event["delta"] : null;
+                  if (toolCallId && delta) {
+                    await safeWrite({
+                      type: "tool.call.arguments.delta",
+                      runId: run.id,
+                      toolCallId,
+                      delta,
+                    });
+                    recordRunEventIfEnabled("tool.call.arguments.delta", {
+                      toolCallId,
+                      delta,
+                    });
+                  }
+                } else if (eventType === "response.function_call_arguments.done") {
+                  const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
+                  const args =
+                    typeof event["arguments"] === "string"
+                      ? event["arguments"]
+                      : typeof event["args"] === "string"
+                        ? event["args"]
+                        : null;
+
+                  if (toolCallId && args) {
+                    await safeWrite({
+                      type: "tool.call.arguments.done",
+                      runId: run.id,
+                      toolCallId,
+                      arguments: args,
+                    });
+                    recordRunEventIfEnabled("tool.call.arguments.done", {
+                      toolCallId,
+                      arguments: args,
+                    });
+                  }
+                } else if (eventType === "response.function_call_arguments.completed") {
+                  const toolCallId = resolveToolCallIdFromEvent(event, toolCallIdByCallId);
+                  const args =
+                    typeof event["arguments"] === "string"
+                      ? event["arguments"]
+                      : typeof event["args"] === "string"
+                        ? event["args"]
+                        : null;
+
+                  if (toolCallId && args) {
+                    await safeWrite({
+                      type: "tool.call.arguments.done",
+                      runId: run.id,
+                      toolCallId,
+                      arguments: args,
+                    });
+                    recordRunEventIfEnabled("tool.call.arguments.done", {
+                      toolCallId,
+                      arguments: args,
+                    });
+                  }
+                } else if (eventType === "response.output_item.done") {
+                  const item = ((event as { item?: unknown })["item"] ??
+                    (event as { output_item?: unknown })["output_item"]) as
+                    | Record<string, unknown>
+                    | undefined;
+
+                  if (item && isToolCallType(item["type"])) {
+                    const toolCallId = resolveToolCallIdFromItem(item, event, toolCallIdByCallId);
+                    if (toolCallId) {
+                      const toolType = item["type"] as string;
+                      const status = resolveToolCallStatus(item["status"], "completed");
+                      await safeWrite({
+                        type: "tool.call.status",
+                        runId: run.id,
+                        toolCallId,
+                        toolType,
+                        status,
+                      });
+                      recordRunEventIfEnabled("tool.call.status", {
+                        toolCallId,
+                        toolType,
+                        status,
+                      });
+
+                      const output = resolveToolOutput(item);
+                      if (output !== undefined) {
+                        await safeWrite({
+                          type: "tool.call.output",
+                          runId: run.id,
+                          toolCallId,
+                          toolType,
+                          output,
+                        });
+                        recordRunEventIfEnabled("tool.call.output", {
+                          toolCallId,
+                          toolType,
+                          output,
+                        });
+                      }
+                    }
+                  }
                 }
               }
             } catch (err) {

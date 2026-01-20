@@ -112,3 +112,11 @@ export const createOpenAIClient = async (config: {
 
 export const buildOpenAIIdempotencyKey = (runId: string, attempt: number) =>
   `ai-run:${runId}:attempt:${attempt}`;
+
+export const resolveOpenAIToolConfig = (toolConfig: unknown) => {
+  if (!toolConfig || typeof toolConfig !== "object" || Array.isArray(toolConfig)) {
+    return null;
+  }
+
+  return toolConfig as Record<string, unknown>;
+};

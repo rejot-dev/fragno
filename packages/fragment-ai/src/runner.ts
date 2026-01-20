@@ -5,6 +5,7 @@ import {
   buildOpenAIIdempotencyKey,
   createOpenAIClient,
   resolveMessageText,
+  resolveOpenAIToolConfig,
   resolveOpenAIResponseText,
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
@@ -24,6 +25,11 @@ type AiRunRecord = {
   startedAt: Date | null;
   inputMessageId: string | null;
   attempt: number;
+};
+
+type AiThreadRecord = {
+  id: FragnoId;
+  openaiToolConfig: unknown | null;
 };
 
 type AiMessageRecord = {
@@ -79,7 +85,7 @@ const buildOpenAIInput = (run: AiRunRecord, messages: AiMessageRecord[]) => {
 const fetchRunData = async (
   db: SimpleQueryInterface<typeof aiSchema>,
   runId: string,
-): Promise<{ run: AiRunRecord; messages: AiMessageRecord[] }> => {
+): Promise<{ run: AiRunRecord; messages: AiMessageRecord[]; thread: AiThreadRecord }> => {
   const run = (await db.findFirst("ai_run", (b) =>
     b.whereIndex("primary", (eb) => eb("id", "=", runId)),
   )) as AiRunRecord | null;
@@ -88,9 +94,9 @@ const fetchRunData = async (
     throw new Error("RUN_NOT_FOUND");
   }
 
-  const thread = await db.findFirst("ai_thread", (b) =>
+  const thread = (await db.findFirst("ai_thread", (b) =>
     b.whereIndex("primary", (eb) => eb("id", "=", run.threadId)),
-  );
+  )) as AiThreadRecord | null;
 
   if (!thread) {
     throw new Error("THREAD_NOT_FOUND");
@@ -107,11 +113,11 @@ const fetchRunData = async (
       (message) => message.id.toString() === run.inputMessageId,
     );
     if (cutoffIndex >= 0) {
-      return { run, messages: messages.slice(0, cutoffIndex + 1) };
+      return { run, messages: messages.slice(0, cutoffIndex + 1), thread };
     }
   }
 
-  return { run, messages };
+  return { run, messages, thread };
 };
 
 const resolveNextRunEventSeq = async (db: SimpleQueryInterface<typeof aiSchema>, runId: string) => {
@@ -230,7 +236,7 @@ export const runExecutor = async ({
   clock?: Clock;
 }) => {
   const effectiveClock = clock ?? { now: () => new Date() };
-  const { run, messages } = await fetchRunData(db, runId);
+  const { run, messages, thread } = await fetchRunData(db, runId);
 
   if (TERMINAL_STATUSES.has(run.status)) {
     return {
@@ -247,13 +253,13 @@ export const runExecutor = async ({
 
   try {
     const client = await createOpenAIClient(config);
-    const response = await client.responses.create(
-      {
-        model: run.modelId,
-        input: buildOpenAIInput(run, messages),
-      },
-      { idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt) },
-    );
+    const openaiToolConfig = resolveOpenAIToolConfig(thread.openaiToolConfig);
+    const responseOptions = openaiToolConfig
+      ? { ...openaiToolConfig, model: run.modelId, input: buildOpenAIInput(run, messages) }
+      : { model: run.modelId, input: buildOpenAIInput(run, messages) };
+    const response = await client.responses.create(responseOptions, {
+      idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+    });
     if (response && typeof response === "object" && "id" in response) {
       const responseId = (response as { id?: unknown }).id;
       if (typeof responseId === "string") {

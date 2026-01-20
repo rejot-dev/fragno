@@ -7,6 +7,36 @@ import OpenAI from "openai";
 
 const mockOpenAIStreamEvents = [
   { type: "response.created", response: { id: "resp_test" } },
+  {
+    type: "response.output_item.added",
+    item: {
+      id: "item_call_1",
+      type: "function_call",
+      name: "lookupWeather",
+      call_id: "call_1",
+    },
+  },
+  {
+    type: "response.function_call_arguments.delta",
+    call_id: "call_1",
+    delta: '{"location":"SF"',
+  },
+  {
+    type: "response.function_call_arguments.done",
+    call_id: "call_1",
+    arguments: '{"location":"SF"}',
+  },
+  {
+    type: "response.output_item.done",
+    item: {
+      id: "item_call_1",
+      type: "function_call",
+      name: "lookupWeather",
+      call_id: "call_1",
+      status: "completed",
+      output: { ok: true },
+    },
+  },
   { type: "response.output_text.delta", delta: "Hello " },
   { type: "response.output_text.delta", delta: "world" },
   { type: "response.output_text.done", text: "Hello world" },
@@ -209,7 +239,13 @@ describe("AI Fragment Routes", () => {
 
   test("runs stream route should stream events and finalize run", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
-      body: { title: "Stream Thread" },
+      body: {
+        title: "Stream Thread",
+        openaiToolConfig: {
+          tools: [{ type: "web_search" }],
+          tool_choice: "auto",
+        },
+      },
     });
     expect(thread.type).toBe("json");
     if (thread.type !== "json") {
@@ -244,6 +280,16 @@ describe("AI Fragment Routes", () => {
     }
 
     expect(events[0]).toMatchObject({ type: "run.meta", threadId: thread.data.id });
+    expect(events.some((event) => event.type === "tool.call.started")).toBe(true);
+    expect(events.some((event) => event.type === "tool.call.arguments.delta")).toBe(true);
+    expect(events.some((event) => event.type === "tool.call.arguments.done")).toBe(true);
+    expect(events.some((event) => event.type === "tool.call.output")).toBe(true);
+    expect(
+      events.some((event) => event.type === "tool.call.status" && event.status === "in_progress"),
+    ).toBe(true);
+    expect(
+      events.some((event) => event.type === "tool.call.status" && event.status === "completed"),
+    ).toBe(true);
     expect(events.some((event) => event.type === "output.text.delta")).toBe(true);
     expect(events.some((event) => event.type === "output.text.done")).toBe(true);
     expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "succeeded" });
@@ -268,6 +314,8 @@ describe("AI Fragment Routes", () => {
       expect.objectContaining({
         model: "gpt-test",
         stream: true,
+        tools: [{ type: "web_search" }],
+        tool_choice: "auto",
       }),
       { idempotencyKey: `ai-run:${runId}:attempt:1` },
     );
