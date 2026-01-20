@@ -108,9 +108,10 @@ Validation:
      - [x] `POST /ai/threads/:threadId/messages`
      - [x] `GET /ai/threads/:threadId/messages`
    - [x] Runs:
-     - [x] `POST /ai/threads/:threadId/runs` (background by default)
-     - [x] `POST /ai/threads/:threadId/runs:stream` (foreground stream)
-     - [x] `GET /ai/threads/:threadId/runs`
+   - [x] `POST /ai/threads/:threadId/runs` (background by default)
+   - [x] `POST /ai/threads/:threadId/runs:stream` (foreground stream)
+   - [x] validate `type`/`executionMode` combinations by route (background vs stream)
+   - [x] `GET /ai/threads/:threadId/runs`
      - [x] `GET /ai/runs/:runId`
      - [x] `POST /ai/runs/:runId/cancel`
      - [x] `GET /ai/runs/:runId/events` (persisted replay)

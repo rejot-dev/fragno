@@ -149,9 +149,19 @@ const appendMessageSchema = z.object({
   runId: z.string().optional().nullable(),
 });
 
+const runTypeSchema = z.enum(["agent", "deep_research"]);
 const createRunSchema = z.object({
-  type: z.string().optional(),
-  executionMode: z.string().optional(),
+  type: runTypeSchema.optional(),
+  executionMode: z.literal("background").optional(),
+  inputMessageId: z.string().optional(),
+  modelId: z.string().optional(),
+  thinkingLevel: z.string().optional(),
+  systemPrompt: z.string().optional().nullable(),
+});
+
+const createRunStreamSchema = z.object({
+  type: z.literal("agent").optional(),
+  executionMode: z.literal("foreground_stream").optional(),
   inputMessageId: z.string().optional(),
   modelId: z.string().optional(),
   thinkingLevel: z.string().optional(),
@@ -614,7 +624,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 services.createRun({
                   threadId: pathParams.threadId,
                   type: payload.type,
-                  executionMode: payload.executionMode,
+                  executionMode: "background",
                   inputMessageId: payload.inputMessageId,
                   modelId: payload.modelId,
                   thinkingLevel: payload.thinkingLevel,
@@ -633,7 +643,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
       defineRoute({
         method: "POST",
         path: "/threads/:threadId/runs:stream",
-        inputSchema: createRunSchema,
+        inputSchema: createRunStreamSchema,
         outputSchema: z.array(runLiveEventSchema),
         errorCodes: ["THREAD_NOT_FOUND", "NO_USER_MESSAGE", "OPENAI_API_KEY_MISSING"],
         handler: async function ({ pathParams, input }, { jsonStream, error }) {
@@ -646,7 +656,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               .withServiceCalls(() => [
                 services.createRun({
                   threadId: pathParams.threadId,
-                  type: payload.type,
+                  type: payload.type ?? "agent",
                   executionMode: "foreground_stream",
                   inputMessageId: payload.inputMessageId,
                   modelId: payload.modelId,

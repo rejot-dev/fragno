@@ -271,6 +271,79 @@ describe("AI Fragment Routes", () => {
     }
   });
 
+  test("runs route should reject foreground stream executionMode", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Invalid Run Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Bad run" },
+        text: "Bad run",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.handler(
+      new Request(`http://localhost/api/ai/threads/${thread.data.id}/runs`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          inputMessageId: message.data.id,
+          type: "agent",
+          executionMode: "foreground_stream",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("runs stream route should reject deep research runs", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Invalid Stream Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Stream deep research" },
+        text: "Stream deep research",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.handler(
+      new Request(`http://localhost/api/ai/threads/${thread.data.id}/runs:stream`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          inputMessageId: message.data.id,
+          type: "deep_research",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   test("admin delete run should remove run data", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: { title: "Thread Run Delete" },
