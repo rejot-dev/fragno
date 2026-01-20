@@ -254,6 +254,14 @@ describe("AI Fragment Routes", () => {
     const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
     expect(messages.some((msg) => msg.role === "assistant")).toBe(true);
 
+    const runId = runs[0] ? String(runs[0].id) : "";
+    const runEvents = await db.find("ai_run_event", (b) => b.whereIndex("primary"));
+    const runEventTypes = runEvents
+      .filter((event) => event.runId === runId)
+      .sort((a, b) => a.seq - b.seq)
+      .map((event) => event.type);
+    expect(runEventTypes).toEqual(["run.meta", "output.text.done", "run.final"]);
+
     expect(mockOpenAICreate).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gpt-test",

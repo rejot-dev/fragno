@@ -612,6 +612,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             let errorMessage: string | null = null;
             let textBuffer = "";
             let canWrite = true;
+            const runEvents: Array<{ type: string; payload: unknown | null; createdAt: Date }> = [];
 
             const safeWrite = async (payload: AiRunLiveEvent) => {
               if (!canWrite) {
@@ -624,7 +625,16 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               }
             };
 
+            const recordRunEvent = (
+              type: string,
+              payload: unknown | null,
+              createdAt: Date = new Date(),
+            ) => {
+              runEvents.push({ type, payload, createdAt });
+            };
+
             await safeWrite({ type: "run.meta", runId: run.id, threadId: run.threadId });
+            recordRunEvent("run.meta", { runId: run.id, threadId: run.threadId });
             await safeWrite({ type: "run.status", runId: run.id, status: "running" });
 
             try {
@@ -649,6 +659,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                     runId: run.id,
                     text: event.text,
                   });
+                  recordRunEvent("output.text.done", { text: event.text });
                 }
               }
             } catch (err) {
@@ -665,6 +676,12 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               updatedAt: completedAt,
               completedAt,
             };
+
+            recordRunEvent("run.final", {
+              status: finalStatus,
+              error: errorMessage,
+              completedAt: completedAt.toISOString(),
+            });
 
             try {
               await this.handlerTx()
@@ -703,6 +720,18 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                       runId: run.id,
                       createdAt: completedAt,
                     });
+                  }
+
+                  let seq = 1;
+                  for (const event of runEvents) {
+                    schema.create("ai_run_event", {
+                      runId: run.id,
+                      seq,
+                      type: event.type,
+                      payload: event.payload,
+                      createdAt: event.createdAt,
+                    });
+                    seq += 1;
                   }
                 })
                 .execute();

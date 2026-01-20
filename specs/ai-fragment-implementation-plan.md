@@ -165,7 +165,7 @@ Validation:
    - [ ] persist:
      - [ ] `ai_run.openaiResponseId` as soon as it is known
      - [ ] final assistant message(s)
-     - [ ] final run status + run events
+     - [x] final run status + run events
 3. [ ] Background agent runs (`executionMode="background"`):
    - [ ] runner tick claims queued runs and calls `runExecutor`
    - [ ] prefer `stream: false` for atomic completion (simplifies retries)
