@@ -82,6 +82,7 @@ describe("AI Fragment Runner", () => {
       fragment.services.createThread({
         title: "Runner Thread",
         openaiToolConfig: {
+          stream: true,
           tools: [{ type: "web_search" }],
           tool_choice: "auto",
         },
@@ -115,6 +116,7 @@ describe("AI Fragment Runner", () => {
     expect(mockOpenAICreate).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gpt-test",
+        stream: false,
         tools: [{ type: "web_search" }],
         tool_choice: "auto",
       }),

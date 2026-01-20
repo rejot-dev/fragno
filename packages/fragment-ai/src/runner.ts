@@ -633,6 +633,7 @@ export const runExecutor = async ({
       input: buildOpenAIInput(run, messages),
       thinkingLevel: run.thinkingLevel,
       openaiToolConfig: run.openaiToolConfig ?? thread.openaiToolConfig,
+      stream: false,
     });
     const response = await client.responses.create(responseOptions, {
       idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
