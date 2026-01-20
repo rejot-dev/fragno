@@ -283,7 +283,7 @@ v0.1 hardening:
   - [x] max artifact size
   - [x] page size caps in services
 - [ ] Rate limits at host level for webhooks + tick endpoint
-- [ ] Observability: structured logs for run lifecycle + webhook processing
+- [x] Observability: structured logs for run lifecycle + webhook processing
 - [ ] Admin-only debug/delete routes (host-protect)
 
 Future (v0.2+):

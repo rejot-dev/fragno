@@ -9,6 +9,7 @@ import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
 import { atom, computed } from "nanostores";
 import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from "./definition";
+import type { AiLogger } from "./logging";
 import { aiRoutesFactory } from "./routes";
 
 export type AiModelRef = {
@@ -25,6 +26,8 @@ export type AiThinkingBudgets = {
   medium?: number;
   high?: number;
 };
+
+export type { AiLogger };
 
 export type AiWakeEvent =
   | { type: "run.queued"; runId: string }
@@ -82,6 +85,7 @@ export interface AiFragmentConfig {
     persistOpenAIRawResponses?: boolean;
     retentionDays?: number | null;
   };
+  logger?: AiLogger;
 }
 
 const STREAM_EVENT_BUFFER_SIZE = 200;

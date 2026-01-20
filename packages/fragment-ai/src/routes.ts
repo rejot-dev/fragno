@@ -16,6 +16,7 @@ import {
 } from "./openai";
 import { registerRunAbortController } from "./run-abort";
 import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
+import { logWithLogger } from "./logging";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -696,6 +697,15 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             const unregisterAbort = registerRunAbortController(run.id, abortController);
             let sawOutputTextDone = false;
 
+            logWithLogger(config.logger, "info", {
+              event: "ai.run.started",
+              runId: run.id,
+              threadId: run.threadId,
+              type: run.type,
+              executionMode: run.executionMode,
+              attempt: run.attempt,
+            });
+
             const safeWrite = async (payload: AiRunLiveEvent) => {
               if (!canWrite) {
                 return;
@@ -1103,6 +1113,31 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               }
             }
 
+            if (finalStatus === "queued" && nextAttemptAt) {
+              logWithLogger(config.logger, "warn", {
+                event: "ai.run.retry_scheduled",
+                runId: run.id,
+                threadId: run.threadId,
+                attempt: run.attempt + 1,
+                error: errorMessage,
+                retryScheduledAt: nextAttemptAt.toISOString(),
+              });
+            }
+
+            logWithLogger(
+              config.logger,
+              finalStatus === "failed" ? "error" : finalStatus === "queued" ? "warn" : "info",
+              {
+                event: "ai.run.completed",
+                runId: run.id,
+                threadId: run.threadId,
+                status: finalStatus,
+                error: errorMessage,
+                openaiResponseId,
+                ...(nextAttemptAt ? { retryScheduledAt: nextAttemptAt.toISOString() } : {}),
+              },
+            );
+
             await safeWrite({
               type: "run.final",
               runId: run.id,
@@ -1326,6 +1361,13 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               }),
             ])
             .execute();
+
+          logWithLogger(config.logger, "info", {
+            event: "ai.webhook.received",
+            openaiEventId: parsed.openaiEventId,
+            responseId: parsed.responseId,
+            type: parsed.type,
+          });
 
           return json({ ok: true });
         },

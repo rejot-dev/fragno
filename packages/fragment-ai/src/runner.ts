@@ -16,6 +16,7 @@ import {
   resolveMaxArtifactBytes,
   resolveMaxMessageBytes,
 } from "./limits";
+import { logWithLogger } from "./logging";
 
 type Clock = {
   now: () => Date;
@@ -349,6 +350,13 @@ const submitDeepResearchRun = async ({
     };
   }
 
+  logWithLogger(config.logger, "info", {
+    event: "ai.run.deep_research.submission.started",
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    attempt: run.attempt,
+  });
+
   let status: "waiting_webhook" | "failed" = "waiting_webhook";
   let error: string | null = null;
   let openaiResponseId: string | null = run.openaiResponseId;
@@ -405,9 +413,20 @@ const submitDeepResearchRun = async ({
     retryScheduledAt = await scheduleRetry({ db, run, error, clock, config });
   }
 
+  const finalStatus = retryScheduledAt ? "queued" : status;
+  logWithLogger(config.logger, status === "failed" ? "error" : "info", {
+    event: "ai.run.deep_research.submission.completed",
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    status: finalStatus,
+    error,
+    openaiResponseId,
+    ...(retryScheduledAt ? { retryScheduledAt: retryScheduledAt.toISOString() } : {}),
+  });
+
   return {
     runId: run.id.toString(),
-    status: retryScheduledAt ? "queued" : status,
+    status: finalStatus,
     openaiResponseId,
     error,
     retryScheduledAt,
@@ -439,19 +458,29 @@ const processWebhookEvent = async ({
   const now = clock.now();
   let response: unknown;
 
-  try {
-    const client = await createOpenAIClient(config);
-    response = await client.responses.retrieve(event.responseId);
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
-    await scheduleWebhookRetry({
+  const scheduleAndLogRetry = async (error: string) => {
+    const nextAttemptAt = await scheduleWebhookRetry({
       db,
       eventId: event.id,
       error,
       clock,
       config,
     });
+    logWithLogger(config.logger, "warn", {
+      event: "ai.webhook.retry_scheduled",
+      responseId: event.responseId,
+      error,
+      nextAttemptAt: nextAttemptAt.toISOString(),
+    });
     return false;
+  };
+
+  try {
+    const client = await createOpenAIClient(config);
+    response = await client.responses.retrieve(event.responseId);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
+    return scheduleAndLogRetry(error);
   }
 
   const responseStatus =
@@ -465,14 +494,7 @@ const processWebhookEvent = async ({
     normalizedStatus !== "failed" &&
     normalizedStatus !== "cancelled"
   ) {
-    await scheduleWebhookRetry({
-      db,
-      eventId: event.id,
-      error: "Response not completed",
-      clock,
-      config,
-    });
-    return false;
+    return scheduleAndLogRetry("Response not completed");
   }
 
   const run = (await db.findFirst("ai_run", (b) =>
@@ -482,14 +504,7 @@ const processWebhookEvent = async ({
   )) as AiRunRecord | null;
 
   if (!run) {
-    await scheduleWebhookRetry({
-      db,
-      eventId: event.id,
-      error: "RUN_NOT_FOUND",
-      clock,
-      config,
-    });
-    return false;
+    return scheduleAndLogRetry("RUN_NOT_FOUND");
   }
 
   if (TERMINAL_STATUSES.has(run.status)) {
@@ -501,6 +516,13 @@ const processWebhookEvent = async ({
         nextAttemptAt: null,
       }),
     );
+    logWithLogger(config.logger, "info", {
+      event: "ai.webhook.processed",
+      responseId: event.responseId,
+      runId: run.id.toString(),
+      status: run.status,
+      note: "run already terminal",
+    });
     return true;
   }
 
@@ -513,6 +535,13 @@ const processWebhookEvent = async ({
         nextAttemptAt: null,
       }),
     );
+    logWithLogger(config.logger, "warn", {
+      event: "ai.webhook.processed",
+      responseId: event.responseId,
+      runId: run.id.toString(),
+      status: "skipped",
+      error: "UNSUPPORTED_RUN_TYPE",
+    });
     return true;
   }
 
@@ -544,6 +573,14 @@ const processWebhookEvent = async ({
     );
 
     const { success } = await uow.executeMutations();
+    if (success) {
+      logWithLogger(config.logger, "info", {
+        event: "ai.webhook.processed",
+        responseId: responseId,
+        runId: run.id.toString(),
+        status: normalizedStatus === "cancelled" ? "cancelled" : "failed",
+      });
+    }
     return success;
   }
 
@@ -580,6 +617,15 @@ const processWebhookEvent = async ({
     );
 
     const { success } = await uow.executeMutations();
+    if (success) {
+      logWithLogger(config.logger, "warn", {
+        event: "ai.webhook.processed",
+        responseId,
+        runId: run.id.toString(),
+        status: "failed",
+        error: "ARTIFACT_TOO_LARGE",
+      });
+    }
     return success;
   }
 
@@ -623,6 +669,15 @@ const processWebhookEvent = async ({
   );
 
   const { success } = await uow.executeMutations();
+  if (success) {
+    logWithLogger(config.logger, "info", {
+      event: "ai.webhook.processed",
+      responseId,
+      runId: run.id.toString(),
+      status: "succeeded",
+      artifactId: artifactId.toString(),
+    });
+  }
   return success;
 };
 
@@ -647,6 +702,15 @@ export const runExecutor = async ({
       openaiResponseId: run.openaiResponseId,
     };
   }
+
+  logWithLogger(config.logger, "info", {
+    event: "ai.run.started",
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    type: run.type,
+    executionMode: run.executionMode,
+    attempt: run.attempt,
+  });
 
   let status: "succeeded" | "failed" | "cancelled" = "succeeded";
   let error: string | null = null;
@@ -725,9 +789,31 @@ export const runExecutor = async ({
     });
   }
 
+  const finalStatus = retryScheduledAt ? "queued" : status;
+  if (retryScheduledAt) {
+    logWithLogger(config.logger, "warn", {
+      event: "ai.run.retry_scheduled",
+      runId: run.id.toString(),
+      threadId: run.threadId,
+      attempt: run.attempt + 1,
+      error,
+      retryScheduledAt: retryScheduledAt.toISOString(),
+    });
+  }
+
+  logWithLogger(config.logger, status === "failed" && !retryScheduledAt ? "error" : "info", {
+    event: "ai.run.completed",
+    runId: run.id.toString(),
+    threadId: run.threadId,
+    status: finalStatus,
+    error,
+    openaiResponseId,
+    ...(retryScheduledAt ? { retryScheduledAt: retryScheduledAt.toISOString() } : {}),
+  });
+
   return {
     runId: run.id.toString(),
-    status: retryScheduledAt ? "queued" : status,
+    status: finalStatus,
     openaiResponseId,
     error,
     retryScheduledAt,
