@@ -9,6 +9,7 @@ import {
   resolveOpenAIResponseText,
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
+import { registerRunAbortController } from "./run-abort";
 
 type Clock = {
   now: () => Date;
@@ -145,7 +146,7 @@ const finalizeRun = async ({
 }: {
   db: SimpleQueryInterface<typeof aiSchema>;
   run: AiRunRecord;
-  status: "succeeded" | "failed";
+  status: "succeeded" | "failed" | "cancelled";
   error: string | null;
   openaiResponseId: string | null;
   assistantText: string | null;
@@ -246,10 +247,12 @@ export const runExecutor = async ({
     };
   }
 
-  let status: "succeeded" | "failed" = "succeeded";
+  let status: "succeeded" | "failed" | "cancelled" = "succeeded";
   let error: string | null = null;
   let openaiResponseId: string | null = run.openaiResponseId;
   let assistantText: string | null = null;
+  const abortController = new AbortController();
+  const unregisterAbort = registerRunAbortController(run.id.toString(), abortController);
 
   try {
     const client = await createOpenAIClient(config);
@@ -259,6 +262,7 @@ export const runExecutor = async ({
       : { model: run.modelId, input: buildOpenAIInput(run, messages) };
     const response = await client.responses.create(responseOptions, {
       idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+      signal: abortController.signal,
     });
     if (response && typeof response === "object" && "id" in response) {
       const responseId = (response as { id?: unknown }).id;
@@ -268,8 +272,16 @@ export const runExecutor = async ({
     }
     assistantText = resolveOpenAIResponseText(response);
   } catch (err) {
-    status = "failed";
-    error = err instanceof Error ? err.message : "OpenAI request failed";
+    if (abortController.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+      status = "cancelled";
+      error = null;
+      assistantText = null;
+    } else {
+      status = "failed";
+      error = err instanceof Error ? err.message : "OpenAI request failed";
+    }
+  } finally {
+    unregisterAbort();
   }
 
   await finalizeRun({

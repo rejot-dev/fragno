@@ -174,9 +174,9 @@ Validation:
    - [ ] if the upstream OpenAI stream breaks:
      - [ ] if `openaiResponseId` is known, schedule a retrieve/poll path via runner tick
      - [ ] else schedule a retry via `attempt/maxAttempts/nextAttemptAt`
-5. [ ] Cancellation (best-effort, in-process):
-   - [ ] `POST /ai/runs/:runId/cancel` marks `cancelled`
-   - [ ] if the run is currently executing in-process, abort via `AbortController`
+5. [x] Cancellation (best-effort, in-process):
+   - [x] `POST /ai/runs/:runId/cancel` marks `cancelled`
+   - [x] if the run is currently executing in-process, abort via `AbortController`
 
 Validation:
 

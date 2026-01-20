@@ -106,7 +106,10 @@ describe("AI Fragment Runner", () => {
         tools: [{ type: "web_search" }],
         tool_choice: "auto",
       }),
-      { idempotencyKey: `ai-run:${run.id}:attempt:1` },
+      expect.objectContaining({
+        idempotencyKey: `ai-run:${run.id}:attempt:1`,
+        signal: expect.any(AbortSignal),
+      }),
     );
 
     const storedRun = await db.findFirst("ai_run", (b) =>

@@ -13,6 +13,7 @@ import {
   resolveOpenAIToolConfig,
   resolveOpenAIResponseId,
 } from "./openai";
+import { registerRunAbortController } from "./run-abort";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -672,7 +673,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
           }
 
           return jsonStream(async (stream) => {
-            let finalStatus: "succeeded" | "failed" = "succeeded";
+            let finalStatus: "succeeded" | "failed" | "cancelled" = "succeeded";
             let errorMessage: string | null = null;
             let textBuffer = "";
             let canWrite = true;
@@ -680,6 +681,8 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             const runEvents: Array<{ type: string; payload: unknown | null; createdAt: Date }> = [];
             const persistDeltas = Boolean(config.storage?.persistDeltas);
             const toolCallIdByCallId = new Map<string, string>();
+            const abortController = new AbortController();
+            const unregisterAbort = registerRunAbortController(run.id, abortController);
 
             const safeWrite = async (payload: AiRunLiveEvent) => {
               if (!canWrite) {
@@ -740,6 +743,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 : { model: run.modelId, input: openaiInput, stream: true };
               const responseStream = await openaiClient.responses.create(responseOptions, {
                 idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+                signal: abortController.signal,
               });
 
               for await (const event of responseStream as AsyncIterable<Record<string, unknown>>) {
@@ -917,12 +921,22 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 }
               }
             } catch (err) {
-              finalStatus = "failed";
-              errorMessage = err instanceof Error ? err.message : "OpenAI request failed";
+              if (
+                abortController.signal.aborted ||
+                (err instanceof Error && err.name === "AbortError")
+              ) {
+                finalStatus = "cancelled";
+                errorMessage = null;
+              } else {
+                finalStatus = "failed";
+                errorMessage = err instanceof Error ? err.message : "OpenAI request failed";
+              }
+            } finally {
+              unregisterAbort();
             }
 
             const completedAt = new Date();
-            const assistantText = textBuffer || null;
+            const assistantText = finalStatus === "succeeded" ? textBuffer || null : null;
             const finalRun = {
               ...run,
               status: finalStatus,

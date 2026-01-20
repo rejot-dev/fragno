@@ -42,16 +42,28 @@ const mockOpenAIStreamEvents = [
   { type: "response.output_text.done", text: "Hello world" },
 ];
 
-const mockOpenAICreate = vi.fn(async () => {
-  async function* stream() {
-    for (const event of mockOpenAIStreamEvents) {
-      await Promise.resolve();
-      yield event;
-    }
-  }
+let nextOpenAIStreamFactory:
+  | ((requestOptions?: { signal?: AbortSignal }) => AsyncIterable<Record<string, unknown>>)
+  | null = null;
 
-  return stream();
-});
+const mockOpenAICreate = vi.fn(
+  async (_options?: unknown, requestOptions?: { signal?: AbortSignal }) => {
+    if (nextOpenAIStreamFactory) {
+      const factory = nextOpenAIStreamFactory;
+      nextOpenAIStreamFactory = null;
+      return factory(requestOptions);
+    }
+
+    async function* stream() {
+      for (const event of mockOpenAIStreamEvents) {
+        await Promise.resolve();
+        yield event;
+      }
+    }
+
+    return stream();
+  },
+);
 
 const mockOpenAIWebhookUnwrap = vi.fn(async () => {
   return {
@@ -113,6 +125,7 @@ describe("AI Fragment Routes", () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
+    nextOpenAIStreamFactory = null;
   });
 
   test("threads routes should create and list threads", async () => {
@@ -317,7 +330,10 @@ describe("AI Fragment Routes", () => {
         tools: [{ type: "web_search" }],
         tool_choice: "auto",
       }),
-      { idempotencyKey: `ai-run:${runId}:attempt:1` },
+      expect.objectContaining({
+        idempotencyKey: `ai-run:${runId}:attempt:1`,
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -376,6 +392,90 @@ describe("AI Fragment Routes", () => {
 
     const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
     expect(messages.some((msg) => msg.role === "assistant")).toBe(true);
+  });
+
+  test("runs stream route should cancel in-process run", async () => {
+    nextOpenAIStreamFactory = (requestOptions) => {
+      async function* stream() {
+        yield { type: "response.created", response: { id: "resp_cancel" } };
+
+        const signal = requestOptions?.signal;
+        if (!signal) {
+          throw new Error("Abort signal missing");
+        }
+
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+
+        const abortError = new Error("Aborted");
+        abortError.name = "AbortError";
+        throw abortError;
+      }
+
+      return stream();
+    };
+
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Cancel Stream Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Cancel stream" },
+        text: "Cancel stream",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    const iterator = response.stream[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    const runMeta = first.value;
+    expect(runMeta).toMatchObject({ type: "run.meta" });
+
+    if (runMeta && runMeta.type === "run.meta") {
+      await fragment.callRoute("POST", "/runs/:runId/cancel", {
+        pathParams: { runId: runMeta.runId },
+      });
+    }
+
+    const remainingEvents = [];
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) {
+        break;
+      }
+      remainingEvents.push(next.value);
+    }
+
+    const finalEvent = remainingEvents[remainingEvents.length - 1];
+    expect(finalEvent).toMatchObject({ type: "run.final", status: "cancelled" });
+
+    const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("cancelled");
   });
 
   test("run events route should list persisted run events", async () => {

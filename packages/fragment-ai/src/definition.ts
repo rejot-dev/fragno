@@ -3,6 +3,7 @@ import { withDatabase, type Cursor } from "@fragno-dev/db";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import { aiSchema } from "./schema";
 import type { AiFragmentConfig } from "./index";
+import { abortRunInProcess } from "./run-abort";
 
 const DEFAULT_PAGE_SIZE = 25;
 const DEFAULT_MODEL_ID = "gpt-4o-mini";
@@ -940,6 +941,8 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
                 })
                 .check(),
             );
+
+            abortRunInProcess(run.id.toString());
 
             return buildRun({
               ...run,
