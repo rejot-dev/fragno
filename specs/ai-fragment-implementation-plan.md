@@ -37,7 +37,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 5. [ ] Spike: persistence boundaries:
    - [x] deltas transient by default
    - [x] confirm we can persist final assistant message even if the client disconnects mid-stream
-   - [ ] confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
+   - [x] confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
          (report-only artifacts)
 6. [ ] Align fragment config with pi (see `/Users/wilco/dev/pi-mono`):
    - [ ] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`

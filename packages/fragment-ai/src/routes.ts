@@ -1223,13 +1223,16 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             );
           }
 
+          const shouldPersistRawPayload = Boolean(config.storage?.persistOpenAIRawResponses);
+          const storedPayload = shouldPersistRawPayload ? event : { redacted: true };
+
           await this.handlerTx()
             .withServiceCalls(() => [
               services.recordOpenAIWebhookEvent({
                 openaiEventId: parsed.openaiEventId,
                 type: parsed.type,
                 responseId: parsed.responseId,
-                payload: event,
+                payload: storedPayload,
               }),
             ])
             .execute();

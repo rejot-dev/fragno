@@ -65,7 +65,7 @@ const mockOpenAICreate = vi.fn(
   },
 );
 
-const mockOpenAIWebhookUnwrap = vi.fn(async () => {
+const mockOpenAIWebhookUnwrap = vi.fn(async (): Promise<Record<string, unknown>> => {
   return {
     id: "evt_test",
     type: "response.completed",
@@ -626,6 +626,56 @@ describe("AI Fragment Routes", () => {
     expect(events[0]?.openaiEventId).toBe("evt_123");
     expect(events[0]?.responseId).toBe("resp_123");
     expect(events[0]?.type).toBe("response.completed");
+    expect(events[0]?.payload).toEqual({ redacted: true });
+  });
+
+  test("webhooks route should persist raw payload when enabled", async () => {
+    mockOpenAIWebhookUnwrap.mockResolvedValueOnce({
+      id: "evt_raw",
+      type: "response.completed",
+      data: { id: "resp_raw" },
+      extra: { detail: "payload" },
+    });
+
+    const { fragments: rawFragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({
+            defaultModel: { id: "gpt-test" },
+            apiKey: "test-key",
+            webhookSecret: "whsec_test",
+            storage: { persistOpenAIRawResponses: true },
+          })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    const request = new Request("http://localhost/api/ai/webhooks/openai", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": "wh_raw",
+        "webhook-timestamp": "123",
+        "webhook-signature": "sig",
+      },
+      body: JSON.stringify({ test: true }),
+    });
+
+    const response = await rawFragments.ai.fragment.handler(request);
+    expect(response.status).toBe(200);
+
+    const events = await rawFragments.ai.db.find("ai_openai_webhook_event", (b) =>
+      b.whereIndex("primary"),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toMatchObject({
+      id: "evt_raw",
+      type: "response.completed",
+      data: { id: "resp_raw" },
+      extra: { detail: "payload" },
+    });
   });
 
   test("webhooks route should reject invalid signatures", async () => {
