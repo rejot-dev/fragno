@@ -1,0 +1,45 @@
+{
+  "name": "@fragno-dev/fragno-db-usage-prisma",
+  "private": true,
+  "exports": {
+    ".": {
+      "development": "./src/mod.ts",
+      "types": "./dist/mod.d.ts",
+      "default": "./dist/mod.js"
+    }
+  },
+  "main": "./dist/mod.js",
+  "module": "./dist/mod.js",
+  "types": "./dist/mod.d.ts",
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "prisma generate --schema ./prisma/schema.prisma && tsc --noEmit",
+    "db:push": "prisma db push --schema ./prisma/schema.prisma",
+    "db:generate:prisma-client": "prisma generate --schema ./prisma/schema.prisma",
+    "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:migrate:fragno": "fragno-cli db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
+    "db:generate": "pnpm run db:generate:fragno && pnpm run db:generate:prisma-client",
+    "test": "vitest run"
+  },
+  "type": "module",
+  "dependencies": {
+    "@prisma/client": "^6.16.1",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/fragno-db-library": "workspace:*",
+    "better-sqlite3": "^12.5.0",
+    "gunshi": "^0.26.3",
+    "kysely": "^0.28.8",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@fragno-dev/cli": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22",
+    "@vitest/coverage-istanbul": "^3.2.4",
+    "prisma": "^6.16.1",
+    "vitest": "^3.2.4"
+  }
+}

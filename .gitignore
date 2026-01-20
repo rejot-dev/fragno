@@ -68,6 +68,7 @@ CLAUDE.local.md
 **/*.pglite
 **/*.pglite/**
 *.db
+**/*.sqlite
 
 # Test artifacts
 **/_generated
