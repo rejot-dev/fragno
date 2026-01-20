@@ -262,7 +262,7 @@ describe("AI Fragment Routes", () => {
       .filter((event) => event.runId === runId)
       .sort((a, b) => a.seq - b.seq)
       .map((event) => event.type);
-    expect(runEventTypes).toEqual(["run.meta", "output.text.done", "run.final"]);
+    expect(runEventTypes).toEqual(["run.meta", "run.status", "output.text.done", "run.final"]);
 
     expect(mockOpenAICreate).toHaveBeenCalledWith(
       expect.objectContaining({

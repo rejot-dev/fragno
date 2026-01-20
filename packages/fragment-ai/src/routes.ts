@@ -688,6 +688,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             await safeWrite({ type: "run.meta", runId: run.id, threadId: run.threadId });
             recordRunEvent("run.meta", { runId: run.id, threadId: run.threadId });
             await safeWrite({ type: "run.status", runId: run.id, status: "running" });
+            recordRunEvent("run.status", { status: "running" });
 
             try {
               const responseStream = await openaiClient.responses.create({
@@ -709,6 +710,9 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                     runId: run.id,
                     delta: event.delta,
                   });
+                  if (config.storage?.persistDeltas) {
+                    recordRunEvent("output.text.delta", { delta: event.delta });
+                  }
                 } else if (event.type === "response.output_text.done") {
                   textBuffer = event.text;
                   await safeWrite({

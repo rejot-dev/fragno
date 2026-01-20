@@ -35,7 +35,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
        secret
    - [x] confirm runtime has `globalThis.crypto` (Node >= 22)
 5. [ ] Spike: persistence boundaries:
-   - [ ] deltas transient by default
+   - [x] deltas transient by default
    - [ ] confirm we can persist final assistant message even if the client disconnects mid-stream
    - [ ] confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
          (report-only artifacts)
