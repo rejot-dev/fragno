@@ -2172,6 +2172,10 @@ importers:
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/workflows-dispatcher-node:
+    dependencies:
+      '@fragno-dev/dispatcher-node':
+        specifier: workspace:*
+        version: link:../dispatcher-node
     devDependencies:
       '@fragno-private/typescript-config':
         specifier: workspace:*

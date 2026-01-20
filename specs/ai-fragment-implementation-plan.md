@@ -46,6 +46,8 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 7. [ ] Spike: shared dispatcher generalization
    - [x] extract `createInProcessDispatcher` into a generic package (node) and update all
          Workflows/AI call sites to use it directly (no shims; update call sites directly)
+   - [x] re-export `createInProcessDispatcher` from `@fragno-dev/workflows-dispatcher-node` to avoid
+         duplicate implementations in the workspace
    - [ ] prototype a generic Cloudflare DO dispatcher runtime by extracting the core loop from
          `@fragno-dev/workflows-dispatcher-cloudflare-do`
    - [ ] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
