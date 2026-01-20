@@ -271,6 +271,44 @@ describe("AI Fragment Services", () => {
     ).rejects.toThrow("INVALID_EXECUTION_MODE");
   });
 
+  test("createRun should snapshot thread tool config", async () => {
+    const initialToolConfig = { webSearch: { enabled: true } };
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({
+        title: "Thread Tool Config",
+        openaiToolConfig: initialToolConfig,
+      }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Snapshot tool config" },
+        text: "Snapshot tool config",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        type: "agent",
+      }),
+    );
+
+    const storedThread = await db.findFirst("ai_thread", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", thread.id)),
+    );
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+
+    expect(storedThread?.openaiToolConfig).toEqual(initialToolConfig);
+    expect(storedRun?.openaiToolConfig).toEqual(initialToolConfig);
+  });
+
   test("deleteRun should remove related records", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Thread D1" }),

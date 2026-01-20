@@ -92,6 +92,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 
 - [x] Validation:
   - [x] Add basic service-level tests for create/list of threads/messages/runs
+  - [x] Add service test to ensure run tool config is snapshotted
   - [x] Add an idempotency test for `ai_openai_webhook_event` unique constraint behavior
 
 ## Phase 2 — HTTP routes + typed clients (2–5 days)
