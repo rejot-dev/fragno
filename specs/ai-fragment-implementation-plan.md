@@ -175,7 +175,7 @@ Validation:
 3. [x] Background agent runs (`executionMode="background"`):
    - [x] runner tick claims queued runs and calls `runExecutor`
    - [x] prefer `stream: false` for atomic completion (simplifies retries)
-4. [ ] Disconnect handling:
+4. [x] Disconnect handling:
    - [x] client disconnect must not cancel the OpenAI request by default
    - [x] if the upstream OpenAI stream breaks:
      - [x] if `openaiResponseId` is known, retrieve + finalize in the stream handler
