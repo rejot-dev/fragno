@@ -657,8 +657,9 @@ const claimNextRuns = async ({
   );
 
   const claimed: AiRunRecord[] = [];
+  const allowedExecutionModes = new Set(["background", "foreground_stream"]);
   for (const run of candidates) {
-    if (!run || run.executionMode !== "background") {
+    if (!run || !allowedExecutionModes.has(run.executionMode)) {
       continue;
     }
 

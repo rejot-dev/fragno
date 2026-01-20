@@ -28,6 +28,10 @@ const listQuerySchema = z.object({
   order: z.enum(["asc", "desc"]).optional(),
 });
 
+const DEFAULT_RETRY_BASE_DELAY_MS = 2000;
+const resolveRetryDelayMs = (attempt: number, baseDelayMs: number) =>
+  baseDelayMs * Math.pow(2, Math.max(0, attempt - 1));
+
 const threadSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -675,7 +679,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
           }
 
           return jsonStream(async (stream) => {
-            let finalStatus: "succeeded" | "failed" | "cancelled" = "succeeded";
+            let finalStatus: "succeeded" | "failed" | "cancelled" | "queued" = "succeeded";
             let errorMessage: string | null = null;
             let textBuffer = "";
             let canWrite = true;
@@ -968,20 +972,36 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               unregisterAbort();
             }
 
-            const completedAt = new Date();
+            const updatedAt = new Date();
+            let completedAt: Date | null = updatedAt;
+            let nextAttemptAt: Date | null = null;
+            let updatedAttempt = run.attempt;
+
+            if (finalStatus === "failed" && !openaiResponseId && run.attempt < run.maxAttempts) {
+              const baseDelayMs = config.retries?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+              const delayMs = resolveRetryDelayMs(run.attempt, baseDelayMs);
+              nextAttemptAt = new Date(updatedAt.getTime() + delayMs);
+              updatedAttempt = run.attempt + 1;
+              finalStatus = "queued";
+              completedAt = null;
+            }
+
             const assistantText = finalStatus === "succeeded" ? textBuffer || null : null;
             const finalRun = {
               ...run,
               status: finalStatus,
               error: errorMessage,
-              updatedAt: completedAt,
+              attempt: updatedAttempt,
+              nextAttemptAt,
+              updatedAt,
               completedAt,
             };
 
             recordRunEvent("run.final", {
               status: finalStatus,
               error: errorMessage,
-              completedAt: completedAt.toISOString(),
+              completedAt: completedAt ? completedAt.toISOString() : null,
+              nextAttemptAt: nextAttemptAt ? nextAttemptAt.toISOString() : null,
             });
 
             try {
@@ -1006,7 +1026,9 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                       .set({
                         status: finalStatus,
                         error: errorMessage,
-                        updatedAt: completedAt,
+                        attempt: updatedAttempt,
+                        nextAttemptAt,
+                        updatedAt,
                         completedAt,
                       })
                       .check(),
@@ -1019,7 +1041,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                       content: { type: "text", text: assistantText },
                       text: assistantText,
                       runId: run.id,
-                      createdAt: completedAt,
+                      createdAt: updatedAt,
                     });
                   }
 

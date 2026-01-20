@@ -143,6 +143,51 @@ describe("AI Fragment Runner", () => {
     expect(events.some((event) => event.type === "run.final")).toBe(true);
   });
 
+  test("runner tick should execute queued foreground stream run", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Foreground Retry Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Retry this" },
+        text: "Retry this",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "foreground_stream",
+        type: "agent",
+      }),
+    );
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun).toBeTruthy();
+
+    await db.update("ai_run", storedRun!.id, (b) =>
+      b.set({ status: "queued", updatedAt: new Date() }),
+    );
+
+    const runner = createAiRunner({ db, config });
+    const result = await runner.tick({ maxRuns: 1 });
+
+    expect(result.processedRuns).toBe(1);
+    expect(mockOpenAICreate).toHaveBeenCalled();
+
+    const updatedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(updatedRun?.status).toBe("succeeded");
+    expect(updatedRun?.openaiResponseId).toBe("resp_test");
+  });
+
   test("runner tick should schedule retry with backoff on failure", async () => {
     const fixedNow = new Date("2024-01-01T00:00:00Z");
     mockOpenAICreate.mockImplementationOnce(async () => {

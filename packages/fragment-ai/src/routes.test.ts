@@ -454,7 +454,7 @@ describe("AI Fragment Routes", () => {
     expect(messages.some((msg) => msg.text === "Recovered response")).toBe(true);
   });
 
-  test("runs stream route should fail when stream breaks before response id", async () => {
+  test("runs stream route should queue retry when stream breaks before response id", async () => {
     nextOpenAIStreamFactory = async function* () {
       yield { type: "response.output_text.delta", delta: "Partial " };
       throw new Error("Stream failed early");
@@ -495,12 +495,14 @@ describe("AI Fragment Routes", () => {
       events.push(event as { type: string; status?: string });
     }
 
-    expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "failed" });
+    expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "queued" });
 
     const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.status).toBe("failed");
+    expect(runs[0]?.status).toBe("queued");
     expect(runs[0]?.openaiResponseId).toBeNull();
+    expect(runs[0]?.attempt).toBe(2);
+    expect(runs[0]?.nextAttemptAt).toBeTruthy();
 
     const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
     expect(messages.some((msg) => msg.role === "assistant")).toBe(false);
