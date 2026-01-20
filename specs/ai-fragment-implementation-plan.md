@@ -337,21 +337,21 @@ Future (v0.2+):
    - [x] add page: `index`
    - [x] add page: `quickstart`
    - [x] add page: `configuration`
-   - [ ] add page: `routes`
-   - [ ] add page: `hooks`
-   - [ ] add page: `streaming`
-   - [ ] add page: `runs`
-   - [ ] add page: `webhooks`
-   - [ ] add page: `runner`
-   - [ ] add page: `artifacts`
-   - [ ] add page: `cli`
-   - [ ] add page: `debugging`
-   - [ ] add page: `example-app`
-3. [ ] Ensure hooks + invalidation are documented in the hooks page.
-4. [ ] Document Node + Cloudflare DO dispatchers in the runner page, mirroring
+   - [x] add page: `routes`
+   - [x] add page: `hooks`
+   - [x] add page: `streaming`
+   - [x] add page: `runs`
+   - [x] add page: `webhooks`
+   - [x] add page: `runner`
+   - [x] add page: `artifacts`
+   - [x] add page: `cli`
+   - [x] add page: `debugging`
+   - [x] add page: `example-app`
+3. [x] Ensure hooks + invalidation are documented in the hooks page.
+4. [x] Document Node + Cloudflare DO dispatchers in the runner page, mirroring
        `apps/docs/content/docs/workflows/runner-dispatcher.mdx` structure and examples.
-5. [ ] Document CLI usage in the CLI page, mirroring `apps/docs/content/docs/workflows/cli.mdx`.
-6. [ ] Document that the example app uses open endpoints and is for debugging only.
+5. [x] Document CLI usage in the CLI page, mirroring `apps/docs/content/docs/workflows/cli.mdx`.
+6. [x] Document that the example app uses open endpoints and is for debugging only.
 
 Validation:
 

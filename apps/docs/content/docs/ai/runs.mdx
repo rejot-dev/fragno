@@ -1,0 +1,37 @@
+---
+title: Runs
+description: Run types, statuses, and execution modes.
+icon: Play
+---
+
+Runs execute model work against a thread. They can be foreground streams or background jobs.
+
+## Run types
+
+- `agent`: standard assistant execution (stream or background).
+- `deep_research`: background-only, completes via webhook and produces an artifact.
+
+## Execution modes
+
+- `foreground_stream`: uses `/runs:stream` and emits NDJSON events.
+- `background`: queued and processed by the runner.
+
+## Statuses
+
+- `queued`: waiting for the runner.
+- `running`: actively executing.
+- `waiting_webhook`: deep research submitted, waiting for OpenAI webhook.
+- `processing_webhook`: webhook claimed and retrieving the response.
+- `succeeded`: completed successfully.
+- `failed`: terminal with error.
+- `cancelled`: cancelled by request.
+
+## Creating runs
+
+Use `POST /threads/:threadId/runs` for background runs and `POST /threads/:threadId/runs:stream` for
+streaming runs. Provide overrides such as `modelId`, `thinkingLevel`, or `systemPrompt`.
+
+## Retries
+
+Background runs use exponential backoff based on `retries.maxAttempts` and `retries.baseDelayMs`.
+Runs track `attempt`, `maxAttempts`, and `nextAttemptAt` for scheduling.

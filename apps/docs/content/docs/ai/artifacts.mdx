@@ -1,0 +1,28 @@
+---
+title: Artifacts
+description: Deep research report storage and retrieval.
+icon: FileText
+---
+
+Artifacts store structured outputs from deep research runs. They are persisted alongside run and
+message data and can be retrieved via the artifact routes.
+
+## Artifact shape
+
+Deep research artifacts use `type: "deep_research_report"` and include:
+
+- `data.reportMarkdown`: the final report markdown.
+- `data.modelId`: the model used.
+- `data.openaiResponseId`: the OpenAI response ID.
+- `data.usage`: token usage (if provided by OpenAI).
+- `data.rawResponse`: full response payload when `persistOpenAIRawResponses` is enabled.
+
+## Routes
+
+- `GET /runs/:runId/artifacts`
+- `GET /artifacts/:artifactId`
+
+## Notes
+
+Artifacts are capped by `limits.maxArtifactBytes`. Oversized reports fail the run with
+`ARTIFACT_TOO_LARGE`.

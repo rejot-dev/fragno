@@ -1,0 +1,61 @@
+---
+title: Hooks
+description: Client hooks and stream helpers for Fragno AI.
+icon: Code
+---
+
+Fragno AI ships typed client hooks that wrap the HTTP routes. Use the framework adapter package to
+create hooks for React, Vue, Svelte, or Solid.
+
+## Create a client
+
+```ts title="lib/ai-client.ts"
+import { createAiClient } from "@fragno-dev/fragment-ai/react";
+
+export const aiClient = createAiClient({
+  baseUrl: "https://your-app.example.com/api/ai",
+});
+```
+
+## Query hooks
+
+| Hook           | Route                             | Description       |
+| -------------- | --------------------------------- | ----------------- |
+| `useThreads`   | `GET /threads`                    | List threads      |
+| `useThread`    | `GET /threads/:threadId`          | Fetch a thread    |
+| `useMessages`  | `GET /threads/:threadId/messages` | List messages     |
+| `useRuns`      | `GET /threads/:threadId/runs`     | List runs         |
+| `useRun`       | `GET /runs/:runId`                | Fetch a run       |
+| `useRunEvents` | `GET /runs/:runId/events`         | Replay run events |
+| `useArtifacts` | `GET /runs/:runId/artifacts`      | List artifacts    |
+| `useArtifact`  | `GET /artifacts/:artifactId`      | Fetch an artifact |
+
+## Mutation hooks
+
+| Hook               | Route                              | Description             |
+| ------------------ | ---------------------------------- | ----------------------- |
+| `useCreateThread`  | `POST /threads`                    | Create a thread         |
+| `useUpdateThread`  | `PATCH /threads/:threadId`         | Update a thread         |
+| `useDeleteThread`  | `DELETE /admin/threads/:threadId`  | Delete a thread         |
+| `useAppendMessage` | `POST /threads/:threadId/messages` | Append a message        |
+| `useCreateRun`     | `POST /threads/:threadId/runs`     | Create a background run |
+| `useCancelRun`     | `POST /runs/:runId/cancel`         | Cancel a run            |
+
+## Streaming helpers
+
+Use `useRunStream` or `startRunStream` to call `/runs:stream` and track stream state.
+
+- `useRunStream` returns `{ startRunStream, text, status, events, error }`.
+- `useStreamText`, `useStreamStatus`, `useStreamEvents`, `useStreamError` expose stores directly.
+
+## Invalidation rules
+
+These are handled by the client builder automatically:
+
+- `useCreateThread` invalidates `GET /threads`.
+- `useUpdateThread` invalidates `GET /threads/:threadId` and `GET /threads`.
+- `useDeleteThread` invalidates `GET /threads/:threadId` and `GET /threads`.
+- `useAppendMessage` invalidates `GET /threads/:threadId/messages` and `GET /threads`.
+- `useCreateRun` invalidates `GET /threads/:threadId/runs`.
+- Stream completion invalidates `GET /threads/:threadId/runs` and `GET /threads/:threadId/messages`.
+- `useCancelRun` invalidates `GET /runs/:runId` and `GET /runs/:runId/events`.

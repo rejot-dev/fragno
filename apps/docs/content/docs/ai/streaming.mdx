@@ -1,0 +1,52 @@
+---
+title: Streaming
+description: NDJSON streaming events for foreground runs.
+icon: Activity
+---
+
+The `POST /threads/:threadId/runs:stream` route streams NDJSON events as the run executes. Each line
+is a JSON object matching the `AiRunLiveEvent` union.
+
+## Event flow
+
+A typical stream looks like:
+
+1. `run.meta`
+2. `run.status` (running)
+3. zero or more `output.text.delta` / tool call events
+4. `output.text.done` (optional)
+5. `run.final`
+
+The `run.final` event includes the final run snapshot.
+
+## Event types
+
+- `run.meta`: run and thread IDs.
+- `run.status`: `running | cancelled | failed | succeeded`.
+- `output.text.delta`: incremental text.
+- `output.text.done`: final assistant text.
+- `tool.call.*`: tool lifecycle and arguments/output.
+- `run.final`: terminal status and the full `AiRun` object.
+
+## Reading the stream
+
+Use a streaming client and parse one JSON object per line:
+
+```ts
+const response = await fetch(`${baseUrl}/threads/${threadId}/runs:stream`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ type: "agent" }),
+});
+
+const reader = response.body?.getReader();
+```
+
+The provided client helpers (`useRunStream` / `startRunStream`) handle parsing, buffering, and store
+updates.
+
+## Disconnect behavior
+
+If the client disconnects mid-stream, the server continues processing and persists the final
+assistant message when possible. Use `GET /runs/:runId/events` or `GET /threads/:threadId/messages`
+to rehydrate the final state.

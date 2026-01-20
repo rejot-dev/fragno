@@ -1,0 +1,40 @@
+---
+title: Debugging
+description: Troubleshoot runs, streams, and webhook processing.
+icon: CircleQuestionMark
+---
+
+Use run events, webhook records, and artifact views to understand what happened.
+
+## Run events
+
+Replay persisted events to debug a run lifecycle:
+
+```bash
+curl "$BASE_URL/runs/run_123/events"
+```
+
+Tip: `run.final` includes the final status and error details.
+
+## Streaming issues
+
+- If a stream disconnects, check the run events to confirm completion.
+- `run.status` and `run.final` explain why a run failed or cancelled.
+
+## Webhook issues
+
+- Confirm the webhook secret matches OpenAI.
+- Verify your environment exposes `globalThis.crypto` (Node 22+).
+- Check `ai_openai_webhook_event.processingError` for the last failure.
+
+## Common fixes
+
+### Runs never start
+
+- Ensure a dispatcher is configured and running.
+- If using HTTP ticks, enable `enableRunnerTick` and call `/_runner/tick`.
+
+### Deep research never completes
+
+- Verify that OpenAI is sending webhooks to `/ai/webhooks/openai`.
+- Ensure the run is `waiting_webhook` and the response ID is stored.

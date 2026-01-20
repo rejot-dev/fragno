@@ -1,0 +1,26 @@
+---
+title: Webhooks
+description: OpenAI webhook integration for background runs.
+icon: Webhook
+---
+
+Deep research runs complete via OpenAI webhooks. The fragment exposes a single webhook endpoint for
+OpenAI Responses events.
+
+## Configure OpenAI
+
+- Set `webhookSecret` in your fragment config.
+- Register `POST /ai/webhooks/openai` in the OpenAI dashboard.
+
+## Delivery flow
+
+1. OpenAI calls the webhook route.
+2. The fragment verifies the signature and stores the event idempotently.
+3. A durable wake-up notifies the runner to process the event.
+4. The runner retrieves the Response and persists the artifact and final message.
+
+## Notes
+
+- The webhook route is server-only and should be protected at the host level.
+- Use `rateLimiter` with scope `webhook_openai` to apply rate limits.
+- Webhooks are fast: no OpenAI fetch happens during the HTTP request.

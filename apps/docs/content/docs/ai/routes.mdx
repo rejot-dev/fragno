@@ -1,0 +1,149 @@
+---
+title: API Routes
+description: HTTP API for threads, messages, runs, and artifacts.
+icon: FileBraces
+---
+
+Fragno AI exposes HTTP routes for managing threads, messages, runs, and artifacts. Mount the
+fragment under a base path (for example `/api/ai`) and use that base URL in clients and the CLI.
+
+## Base URL
+
+All paths below are relative to the fragment base URL, for example:
+
+```
+https://your-app.example.com/api/ai
+```
+
+## Threads
+
+### Create a thread
+
+`POST /threads`
+
+Body:
+
+```json
+{ "title": "Support" }
+```
+
+Optional fields: `systemPrompt`, `defaultModelId`, `defaultThinkingLevel`, `openaiToolConfig`,
+`metadata`.
+
+### List threads
+
+`GET /threads`
+
+Query parameters:
+
+- `pageSize` (optional, default 25, max 100)
+- `cursor` (optional)
+- `order` (optional, `asc | desc`)
+
+### Get or update a thread
+
+`GET /threads/:threadId`
+
+`PATCH /threads/:threadId`
+
+### Delete a thread (admin)
+
+`DELETE /admin/threads/:threadId`
+
+This route is intended for host-protected admin usage.
+
+## Messages
+
+### Append a message
+
+`POST /threads/:threadId/messages`
+
+Body:
+
+```json
+{
+  "role": "user",
+  "content": { "type": "text", "text": "Summarize this." },
+  "text": "Summarize this."
+}
+```
+
+### List messages
+
+`GET /threads/:threadId/messages`
+
+Query parameters: `pageSize`, `cursor`, `order` (same as threads).
+
+## Runs
+
+### Create a run (background)
+
+`POST /threads/:threadId/runs`
+
+Body:
+
+```json
+{
+  "type": "agent",
+  "executionMode": "background",
+  "inputMessageId": "msg_123",
+  "modelId": "gpt-4.1-mini",
+  "thinkingLevel": "medium",
+  "systemPrompt": "Be concise."
+}
+```
+
+`executionMode` defaults to `background` for this route.
+
+### Create a streamed run
+
+`POST /threads/:threadId/runs:stream`
+
+Body uses the same shape as `/runs`. The response is NDJSON streaming events.
+
+### List runs
+
+`GET /threads/:threadId/runs`
+
+### Get a run
+
+`GET /runs/:runId`
+
+### Cancel a run
+
+`POST /runs/:runId/cancel`
+
+Marks a run as cancelled and aborts in-process execution if possible.
+
+### Replay run events
+
+`GET /runs/:runId/events`
+
+Returns persisted events for UI replay and debugging.
+
+## Artifacts
+
+`GET /runs/:runId/artifacts`
+
+`GET /artifacts/:artifactId`
+
+Artifacts are created for deep research runs and store the report payload.
+
+## Webhooks
+
+`POST /webhooks/openai`
+
+Receives OpenAI webhook events for background deep research runs.
+
+## Runner tick
+
+`POST /_runner/tick`
+
+Body:
+
+```json
+{ "maxRuns": 10, "maxWebhookEvents": 10 }
+```
+
+Returns `{ "processedRuns": number, "processedWebhookEvents": number }`. If `enableRunnerTick`
+false, the route responds with `RUNNER_TICK_DISABLED`.
