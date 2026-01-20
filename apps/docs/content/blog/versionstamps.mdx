@@ -1,0 +1,169 @@
+---
+title: "FoundationDB's versionstamps should be everywhere"
+description:
+  "Versionstamps are a great primitive that enable advanced use cases in distributed systems, but
+  are not supported outside of FoundationDB."
+date: "2026-01-20"
+author: "Wilco Kruijer"
+image: "blog-versionstamps-v3.jpg"
+---
+
+# FoundationDB's versionstamps should be everywhere
+
+In this post I'll argue that versionstamps are a great primitive, and database systems other than
+FoundationDB should support them.
+
+Versionstamps enable advanced use cases in distributed systems (including anything with a frontend
+that needs data from a server), such as optimistic concurrency control and change data capture
+(CDC).
+
+## What is a versionstamp?
+
+A versionstamp[^ref-apple-foundationdb-versionstamps] is a value composed of the database's globally
+ordered commit version and a user-controlled part. It's assigned at commit time, thus it reflects
+the exact order of successful commits across the system.
+
+<figure>
+
+```text
+  ┌─────────────────────────────────────────────────────┬──────────────┐
+  │              Database commit version                │  User bytes  │
+  │                    (10 bytes)                       │   (2 bytes)  │
+  ├─────────────────────────────────────────────────────┼──────────────┤
+  │  Assigned by DB at commit time. Monotonically       │  Set by the  │
+  │  increasing across all transactions.                │  application │
+  └─────────────────────────────────────────────────────┴──────────────┘
+                          12 bytes total
+```
+
+<figcaption className="text-sm text-gray-500 dark:text-gray-400 text-center">Anatomy of a versionstamp.</figcaption>
+</figure>
+
+The database portion guarantees global ordering across transactions. The user bytes allow ordering
+multiple writes within the same transaction. This enables batch inserts with defined order.
+
+Versionstamps act as both a replacement for auto-incrementing primary keys, and a global ordering
+primitive.
+
+## How this differs from Postgres
+
+In Postgres, SERIALs or auto-incrementing primary keys are locally ordered. The number only
+indicates the order within the table. Additionally, the `nextval()` function is called per-insert,
+not at commit time. If two transactions are active concurrently, rows inserted in a transaction that
+commits later may have a lower value than rows inserted in a transaction that commits earlier.
+Rolled-back transactions also cause gaps in the sequence [^ref-postgres-sequences-out-of-order].
+
+The global ordering primitive in Postgres is the Log Sequence Number (LSN). It represents a position
+in the write-ahead log (WAL). The catch is that this value is internal to the WAL. There's no way to
+"use" the value on the application side, at least not without integrating with logical replication.
+
+## What does "using" the global order mean?
+
+FoundationDB allows the user to do two things with versionstamps:
+
+1. **Embed the versionstamp in the value of a record** (roughly equivalent to setting a column in
+   Postgres).
+
+   This allows for a number of interesting use cases on the application side, such as implementing
+   optimistic concurrency control. Imagine two clients in a web app editing the same record
+   concurrently. With versionstamps, it's trivial to detect a conflict and let the user know a
+   conflict occurred. Because the ordering is global, you can also reason about ordering across
+   different records.
+
+2. **Embed the versionstamp in the key of a record** (roughly equivalent to setting a primary key in
+   Postgres).
+
+   This can be used for ordering. Since FoundationDB is a key-value store, in our mental model, we
+   can think of the entire database as a huge ordered map. When reading from the database, you
+   always query a range in the map. As a result, simply by deciding to make a "table" append-only we
+   can immediately use it for change data capture.
+
+<figure>
+
+```ts
+{
+  // Versionstamp as key
+  ("events", 0x0000000abc120000 0000): { type: "user_created", id: 1 },
+  ("events", 0x0000000abc120000 0001): { type: "user_created", id: 2 },
+  ("events", 0x0000000abc150000 0000): { type: "order_placed", id: 1 },
+  ("events", 0x0000000abc170000 0000): { type: "user_updated", id: 1 },
+
+  // Versionstamp as value
+  ("users", 1): { name: "Alice", version: 0x0000000abc170000 0000 },
+  ("users", 2): { name: "Bob",   version: 0x0000000abc120000 0001 },
+}                                      /* └─── 10 bytes ───┘ └ 2 ┘ */
+```
+
+<figcaption className="text-sm text-gray-500 dark:text-gray-400 text-center">A mapping between key-tuples and records in FoundationDB.</figcaption>
+</figure>
+
+## Who benefits from versionstamps?
+
+Anyone building something with change feeds:
+
+- Event sourcing (or anything to do with audit logs)
+- Distributed queues
+- Replication
+- Local-first frameworks
+
+I've already discussed the optimistic concurrency control use case above. This could also be
+extended for frontend clients to get incremental updates efficiently. Just retrieve all records with
+`versionstamp > last_versionstamp`. These two pieces form the basis of many local-first frameworks
+that have emerged in the last few years.
+
+## Why aren't versionstamps everywhere?
+
+FoundationDB operates on a different abstraction level than most database systems. Conceptually,
+it's on a lower level than SQL databases. In fact, the Record Layer[^ref-record-layer] is a
+relational layer built on top of FoundationDB. For this reason, it makes sense that the versionstamp
+primitive is exposed to the user. In a database like Postgres, MVCC is an internal mechanism hidden
+from the user.
+
+It's not that other databases lack commit timestamps. As we saw, Postgres has LSNs, CockroachDB has
+hybrid logical clocks, TiDB has the TimeStamp Oracle. But none of these have the exact properties
+that versionstamps do.
+
+- LSNs are internal to the WAL and not exposed to the user.
+- CockroachDB's HLC do not guarantee global ordering for disjoint transactions.
+- TiDB's TimeStamps are assigned before the transaction is committed, not after.
+
+I imagine changing the semantics of properties that are fundamental to the functionality of the
+database would be next to impossible.
+
+## Outbox pattern is unnecessary with versionstamps
+
+Without versionstamps, features built on change feeds are more complex since they require the use of
+the outbox pattern. Having an additional write within the same transaction is not necessarily a
+problem, but actually processing the outbox adds moving parts to the system. A separate worker is
+needed to poll the outbox, publish events, mark them as processed, and periodically clean up old
+entries. And even then, there are some caveats to consider[^ref-outbox-ordering].
+
+Contrast that to a system with versionstamps. The only polling needed is the same
+`versionstamp > last_versionstamp` we saw before. Any consumer just needs to store its high-water
+mark, and read from there.
+
+As a matter of fact, FoundationDB doesn't even have a concept of CDC or replication. You can
+implement it all in the application layer, because versionstamps are a good abstraction.
+
+## Postscript
+
+Fragno's data layer is in part inspired by FoundationDB. We only support non-interactive
+transactions and detect conflicts using optimistic concurrency control. We do _not_ require global
+ordering, so we can get away with a hidden `_version` column per row. We have a built-in outbox
+pattern, [Durable Hooks](2025-12-18-changelog#durable-hooks), that does the heavy lifting.
+
+<div className="not-prose my-16 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+
+[^ref-apple-foundationdb-versionstamps]:
+    Official documentation on versionstamps:
+    [FoundationDB Versionstamps](https://apple.github.io/foundationdb/data-modeling.html#versionstamps)
+
+[^ref-postgres-sequences-out-of-order]:
+    There are some workarounds to get around the issue of Postgres sequences committing
+    out-of-order, such as
+    [Postgres sequences can commit out-of-order](https://blog.sequinstream.com/postgres-sequences-can-commit-out-of-order/)
+
+[^ref-record-layer]: FoundationDB, [Record Layer](https://foundationdb.github.io/fdb-record-layer/)
+
+[^ref-outbox-ordering]:
+    [How Postgres sequences issues can impact your messaging guarantees](https://event-driven.io/en/ordering_in_postgres_outbox/)
