@@ -9,6 +9,13 @@ export interface FragnoPublicConfig {
 }
 
 /**
+ * Shared dispatcher interface for fragments that need wake-ups.
+ */
+export type FragnoDispatcher<Payload> = {
+  wake: (payload: Payload) => Promise<void> | void;
+};
+
+/**
  * Configuration for custom fetch behavior in client-side fragments.
  */
 export type FetcherConfig =

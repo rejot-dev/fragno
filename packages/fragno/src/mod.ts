@@ -23,7 +23,7 @@ export {
 // ============================================================================
 // Core Configuration
 // ============================================================================
-export type { FragnoPublicConfig } from "./api/shared-types";
+export type { FragnoDispatcher, FragnoPublicConfig } from "./api/shared-types";
 
 // ============================================================================
 // Route Definition

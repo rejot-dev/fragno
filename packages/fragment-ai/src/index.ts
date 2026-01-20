@@ -7,6 +7,7 @@ import {
 } from "@fragno-dev/core/client";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { instantiate } from "@fragno-dev/core";
+import type { FragnoDispatcher } from "@fragno-dev/core";
 import { atom, computed } from "nanostores";
 import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from "./definition";
 import type { AiLogger } from "./logging";
@@ -33,9 +34,7 @@ export type AiWakeEvent =
   | { type: "run.queued"; runId: string }
   | { type: "openai.webhook.received"; openaiEventId: string; responseId: string };
 
-export type AiDispatcher = {
-  wake: (payload: AiWakeEvent) => Promise<void> | void;
-};
+export type AiDispatcher = FragnoDispatcher<AiWakeEvent>;
 
 export type AiRateLimitScope = "webhook_openai" | "runner_tick";
 

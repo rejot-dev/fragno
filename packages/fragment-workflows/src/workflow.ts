@@ -1,3 +1,5 @@
+import type { FragnoDispatcher } from "@fragno-dev/core";
+
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
 
@@ -155,9 +157,7 @@ export type WorkflowEnqueuedHookPayload = {
 };
 
 /** Dispatcher interface used by durable hooks to trigger runner work. */
-export interface WorkflowsDispatcher {
-  wake: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
-}
+export type WorkflowsDispatcher = FragnoDispatcher<WorkflowEnqueuedHookPayload>;
 
 /** Controls how much work a runner processes per tick. */
 export type RunnerTickOptions = {

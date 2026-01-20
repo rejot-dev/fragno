@@ -220,7 +220,7 @@ Validation:
    - [ ] Cloudflare DO: create a shared dispatcher runtime package (e.g.
          `@fragno-dev/dispatcher-cloudflare-do`) by extracting core logic from the workflows DO
          package (keep tick coalescing + alarm scheduling behavior)
-   - [ ] Introduce a shared `FragnoDispatcher` interface (core/shared package) and alias it in
+   - [x] Introduce a shared `FragnoDispatcher` interface (core/shared package) and alias it in
          Workflows + AI configs
    - [ ] Add an AI wrapper (e.g. `createAiDispatcherDurableObject`) in
          `@fragno-dev/ai-dispatcher-cloudflare-do` that uses AI schema + runner and schedules alarms
