@@ -298,7 +298,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Duplicate webhook deliveries re-wake processing and attach existing events to runs
   - [x] Honor model provider/baseUrl/header overrides when creating OpenAI clients
 
-- [ ] Future (v0.2+):
+- [x] Future (v0.2+):
   - [x] Custom tools registry + server execution (pi-agent-core integration)
   - [x] Tool approvals/policy hooks
   - [x] Multi-provider support (pi-ai)
