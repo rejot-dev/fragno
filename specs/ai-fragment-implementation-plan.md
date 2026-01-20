@@ -53,7 +53,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
    - [x] update Workflows dispatcher wrappers to use the shared runtime and fix any breakages
 
-- [ ] Deliverables:
+- [x] Deliverables:
   - [x] Updated spec/plan (this repo’s `specs/`)
 - [x] A small scratch fragment or test route proving NDJSON + webhook verification (optional;
       covered by `packages/fragment-ai/src/routes.test.ts`)
