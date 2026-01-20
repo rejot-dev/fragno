@@ -312,6 +312,55 @@ describe("Forms Fragment", () => {
       expect(response.status).toBe(404);
       expect(response.error.code).toBe("NOT_FOUND");
     });
+
+    test("should reject form creation with invalid JSON Schema", async () => {
+      const response = await formsFragment.callRoute("POST", "/admin/forms", {
+        body: {
+          title: "Invalid Schema Form",
+          slug: "invalid-schema-form",
+          description: null,
+          status: "draft",
+          dataSchema: {
+            type: "invalid-type-that-does-not-exist",
+          },
+          uiSchema: { type: "VerticalLayout", elements: [] },
+        },
+      });
+
+      assert(response.type === "error");
+      expect(response.status).toBe(400);
+      expect(response.error.code).toBe("INVALID_JSON_SCHEMA");
+    });
+
+    test("should reject form update with invalid JSON Schema", async () => {
+      // First create a valid form
+      const createResponse = await formsFragment.callRoute("POST", "/admin/forms", {
+        body: {
+          title: "Valid Form",
+          slug: "valid-form-for-update",
+          description: null,
+          status: "draft",
+          dataSchema: { type: "object", properties: {} },
+          uiSchema: { type: "VerticalLayout", elements: [] },
+        },
+      });
+      assert(createResponse.type === "json");
+      const formId = createResponse.data;
+
+      // Try to update with invalid schema
+      const updateResponse = await formsFragment.callRoute("PUT", "/admin/forms/:id", {
+        pathParams: { id: formId },
+        body: {
+          dataSchema: {
+            type: "not-a-valid-json-schema-type",
+          },
+        },
+      });
+
+      assert(updateResponse.type === "error");
+      expect(updateResponse.status).toBe(400);
+      expect(updateResponse.error.code).toBe("INVALID_JSON_SCHEMA");
+    });
   });
 
   describe("Form Submission", async () => {
