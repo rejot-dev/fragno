@@ -185,7 +185,7 @@ Validation:
   - [x] foreground stream returns NDJSON events and persists final message
   - [x] client disconnect does not prevent final persistence (simulate by canceling reader)
   - [x] stream failure after response id recovers via retrieve
-  - [ ] provider disconnect without response id schedules retry or fails deterministically
+  - [x] provider disconnect without response id schedules retry or fails deterministically
   - [x] background run completes via runner tick
 
 ## Phase 4 — Runner tick (in-process) (2–5 days)

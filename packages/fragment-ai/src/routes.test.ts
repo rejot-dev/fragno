@@ -454,6 +454,58 @@ describe("AI Fragment Routes", () => {
     expect(messages.some((msg) => msg.text === "Recovered response")).toBe(true);
   });
 
+  test("runs stream route should fail when stream breaks before response id", async () => {
+    nextOpenAIStreamFactory = async function* () {
+      yield { type: "response.output_text.delta", delta: "Partial " };
+      throw new Error("Stream failed early");
+    };
+
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Early Failure Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Early failure test" },
+        text: "Early failure test",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    const events: Array<{ type: string; status?: string }> = [];
+    for await (const event of response.stream) {
+      events.push(event as { type: string; status?: string });
+    }
+
+    expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "failed" });
+
+    const runs = await db.find("ai_run", (b) => b.whereIndex("primary"));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("failed");
+    expect(runs[0]?.openaiResponseId).toBeNull();
+
+    const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
+    expect(messages.some((msg) => msg.role === "assistant")).toBe(false);
+  });
+
   test("runs stream route should cancel in-process run", async () => {
     nextOpenAIStreamFactory = (requestOptions) => {
       async function* stream() {
