@@ -384,4 +384,105 @@ describe("AI Fragment Runner", () => {
     expect(webhookEvents[0]?.processedAt).toBeTruthy();
     expect(webhookEvents[0]?.processingError).toBeNull();
   });
+
+  test("runner tick should not double-process a run when ticks race", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Concurrent Run Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Race this" },
+        text: "Race this",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "agent",
+      }),
+    );
+
+    const runner = createAiRunner({ db, config });
+    const [first, second] = await Promise.all([
+      runner.tick({ maxRuns: 1 }),
+      runner.tick({ maxRuns: 1 }),
+    ]);
+
+    expect(first.processedRuns + second.processedRuns).toBe(1);
+    expect(mockOpenAICreate).toHaveBeenCalledTimes(1);
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun?.status).toBe("succeeded");
+
+    const events = await db.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(events.filter((event) => event.type === "run.final")).toHaveLength(1);
+  });
+
+  test("runner tick should not double-process a webhook event when ticks race", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Concurrent Webhook Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Webhook race" },
+        text: "Webhook race",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    await db.update("ai_run", run.id, (b) =>
+      b.set({ status: "waiting_webhook", openaiResponseId: "resp_race" }),
+    );
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_race",
+      type: "response.completed",
+      responseId: "resp_race",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    mockOpenAIRetrieve.mockResolvedValueOnce({
+      id: "resp_race",
+      status: "completed",
+      output_text: "Race complete",
+    });
+
+    const runner = createAiRunner({ db, config });
+    const [first, second] = await Promise.all([
+      runner.tick({ maxWebhookEvents: 1 }),
+      runner.tick({ maxWebhookEvents: 1 }),
+    ]);
+
+    expect(first.processedWebhookEvents + second.processedWebhookEvents).toBe(1);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.text).toBe("Race complete");
+  });
 });
