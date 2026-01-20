@@ -27,6 +27,7 @@ type AiRunRecord = {
   inputMessageId: string | null;
   openaiToolConfig: unknown | null;
   attempt: number;
+  maxAttempts: number;
 };
 
 type AiThreadRecord = {
@@ -60,6 +61,10 @@ type AiRunnerOptions = {
 };
 
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
+const DEFAULT_RETRY_BASE_DELAY_MS = 2000;
+
+const resolveRetryDelayMs = (attempt: number, baseDelayMs: number) =>
+  baseDelayMs * Math.pow(2, Math.max(0, attempt - 1));
 
 const buildOpenAIInput = (run: AiRunRecord, messages: AiMessageRecord[]) => {
   const input: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
@@ -226,6 +231,65 @@ const finalizeRun = async ({
   await uow.executeMutations();
 };
 
+const scheduleRetry = async ({
+  db,
+  run,
+  error,
+  clock,
+  config,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  run: AiRunRecord;
+  error: string | null;
+  clock: Clock;
+  config: AiFragmentConfig;
+}) => {
+  if (run.attempt >= run.maxAttempts) {
+    return null;
+  }
+
+  const storedRun = (await db.findFirst("ai_run", (b) =>
+    b.whereIndex("primary", (eb) => eb("id", "=", run.id.toString())),
+  )) as AiRunRecord | null;
+
+  if (!storedRun || storedRun.status !== "failed") {
+    return null;
+  }
+
+  if (storedRun.attempt >= storedRun.maxAttempts) {
+    return null;
+  }
+
+  const now = clock.now();
+  const baseDelayMs = config.retries?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+  const delayMs = resolveRetryDelayMs(storedRun.attempt, baseDelayMs);
+  const nextAttemptAt = new Date(now.getTime() + delayMs);
+
+  const uow = db.createUnitOfWork("ai-run-retry");
+  const schema = uow.forSchema(aiSchema);
+  schema.update("ai_run", storedRun.id, (b) => {
+    const builder = b.set({
+      status: "queued",
+      error,
+      nextAttemptAt,
+      attempt: storedRun.attempt + 1,
+      completedAt: null,
+      updatedAt: now,
+    });
+    if (storedRun.id instanceof FragnoId) {
+      builder.check();
+    }
+    return builder;
+  });
+
+  const { success } = await uow.executeMutations();
+  if (!success) {
+    return null;
+  }
+
+  return nextAttemptAt;
+};
+
 export const runExecutor = async ({
   db,
   config,
@@ -297,7 +361,24 @@ export const runExecutor = async ({
     clock: effectiveClock,
   });
 
-  return { runId: run.id.toString(), status, openaiResponseId, error };
+  let retryScheduledAt: Date | null = null;
+  if (status === "failed" && run.executionMode === "background") {
+    retryScheduledAt = await scheduleRetry({
+      db,
+      run,
+      error,
+      clock: effectiveClock,
+      config,
+    });
+  }
+
+  return {
+    runId: run.id.toString(),
+    status: retryScheduledAt ? "queued" : status,
+    openaiResponseId,
+    error,
+    retryScheduledAt,
+  };
 };
 
 const claimNextRuns = async ({

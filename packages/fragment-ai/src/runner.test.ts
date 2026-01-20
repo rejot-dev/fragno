@@ -28,6 +28,7 @@ describe("AI Fragment Runner", () => {
   const config = {
     defaultModel: { id: "gpt-test" },
     apiKey: "test-key",
+    retries: { baseDelayMs: 1000 },
   };
 
   const setup = async () => {
@@ -129,6 +130,57 @@ describe("AI Fragment Runner", () => {
       b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
     );
     expect(events.some((event) => event.type === "run.final")).toBe(true);
+  });
+
+  test("runner tick should schedule retry with backoff on failure", async () => {
+    const fixedNow = new Date("2024-01-01T00:00:00Z");
+    mockOpenAICreate.mockImplementationOnce(async () => {
+      throw new Error("OpenAI down");
+    });
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Retry Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Retry this" },
+        text: "Retry this",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "agent",
+      }),
+    );
+
+    const storedRunBefore = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRunBefore).toBeTruthy();
+    await db.update("ai_run", storedRunBefore!.id, (b) => b.set({ attempt: 2 }));
+
+    const runner = createAiRunner({
+      db,
+      config,
+      clock: { now: () => new Date(fixedNow.getTime()) },
+    });
+    await runner.tick({ maxRuns: 1 });
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun?.status).toBe("queued");
+    expect(storedRun?.attempt).toBe(3);
+    expect(storedRun?.completedAt).toBeNull();
+    expect(storedRun?.error).toBe("OpenAI down");
+    expect(storedRun?.nextAttemptAt?.getTime()).toBe(fixedNow.getTime() + 2000);
   });
 
   test("runner tick should use inputMessageId snapshot", async () => {

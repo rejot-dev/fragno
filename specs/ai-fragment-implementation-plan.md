@@ -233,7 +233,7 @@ Validation:
 Validation:
 
 - [ ] concurrency test: two ticks racing should not double-process the same run/event
-- [ ] “poison pill” test: repeated failures should back off using `nextAttemptAt`
+- [x] “poison pill” test: repeated failures should back off using `nextAttemptAt`
 
 ## Phase 5 — Deep research + webhooks + artifacts (3–8 days)
 
