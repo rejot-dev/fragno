@@ -5,7 +5,7 @@ This plan implements `specs/prisma-adapter-spec.md`.
 ## Phase 0 — Decisions locked
 
 1. Default output filename: `fragno.prisma`.
-2. SQLite profile: `PrismaAdapter` defaults to `sqliteProfile: "prisma"`.
+2. SQLite storage mode: `PrismaAdapter` defaults to `sqliteStoragePrisma`.
 3. SQLite IDs: Prisma schema uses `_internalId Int` on SQLite; `_internalId BigInt` on
    Postgres/MySQL.
 4. SQLite BigInt safety: require safe int64 roundtrips; throw on unsafe JS `number` values. Document
@@ -16,32 +16,35 @@ This plan implements `specs/prisma-adapter-spec.md`.
    deterministic disambiguation.
 7. Postgres JSON: emit `Json @db.Json` (match Fragno physical `json`).
 
-## Phase 1 — Storage profile plumbing (SQLite)
+## Phase 1 — Storage mode plumbing (SQLite)
 
-Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverConfig`.
+Goal: make SQLite storage Prisma-native in a maintainable way driven by adapter config. Status:
+complete (SQLite storage mode added; type mapping, migration generation, and runtime serializer
+updated).
 
-1. Extend `packages/fragno-db/src/adapters/generic-sql/driver-config.ts` with a backwards-compatible
-   storage profile surface:
-   - `get sqliteProfile(): "fragno" | "prisma"` (default `"fragno"`) or equivalent.
+1. Add `packages/fragno-db/src/adapters/generic-sql/sqlite-storage.ts` and expose a storage mode
+   interface plus built-in defaults.
 2. Type mapping:
    - update `packages/fragno-db/src/schema/type-conversion/create-sql-type-mapper.ts` (or add a new
-     factory) to construct the SQLite type mapper using `driverConfig` so `timestamp`/`date` and
-     `bigint` can vary by profile.
+     factory) to construct the SQLite type mapper using storage mode so `timestamp`/`date` and
+     `bigint` can vary by mode.
 3. Migration SQL generation:
-   - thread `driverConfig` (or a derived `storageProfile`) into
+   - thread the storage mode into
      `packages/fragno-db/src/adapters/generic-sql/migration/sql-generator.ts` and
      `packages/fragno-db/src/adapters/generic-sql/migration/dialect/sqlite.ts`
    - keep using `CURRENT_TIMESTAMP` for `dbSpecial: "now"` (matches current codebase and Prisma
      migrations); ensure runtime decoding treats it as UTC.
 4. Runtime serialization:
    - update `packages/fragno-db/src/query/serialize/dialect/sqlite-serializer.ts` to serialize and
-     deserialize `Date` and `bigint` per profile.
+     deserialize `Date` and `bigint` per storage mode.
    - add strict safety checks to avoid silent precision loss when the driver returns large integers
      as JS `number` (throw if outside safe range).
    - add robust SQLite DateTime string parsing for `CURRENT_TIMESTAMP` format
      (`YYYY-MM-DD HH:MM:SS`) as UTC.
 
 ## Phase 2 — Prisma schema generator (`generate.ts`)
+
+Status: complete for SQLite + PostgreSQL; MySQL support remains untested.
 
 1. Add `packages/fragno-db/src/adapters/prisma/generate.ts`.
 2. Implement deterministic output builder:
@@ -53,8 +56,8 @@ Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverC
    - relation name generator (namespace + fromTable + referenceName + toTable)
 4. Implement provider-specific Prisma scalar mapping:
    - SQLite first:
-     - default to the `"prisma"` SQLite profile mapping (`DateTime`, `BigInt`)
-     - support opt-in `"fragno"` legacy mapping (`Int` epoch ms, `Bytes` bigint blob) if kept
+     - default to the Prisma-native storage mode mapping (`DateTime`, `BigInt`)
+     - support opt-in default-mode mapping (`Int` epoch ms, `Bytes` bigint blob) if needed
    - PostgreSQL (incl. PGLite) next:
      - ensure `date` uses `@db.Date`
      - ensure `json` uses `@db.Json` to match Fragno’s physical `json` type
@@ -69,8 +72,7 @@ Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverC
    - static defaults via `@default(<literal>)`
    - `dbSpecial: now`:
      - DateTime: `@default(now())`
-     - legacy SQLite `"fragno"` profile `Int` timestamps (if supported):
-       `@default(dbgenerated(...))`
+     - default SQLite mode `Int` timestamps (if supported): `@default(dbgenerated(...))`
 7. Implement indexes and unique constraints:
    - `@@index` / `@@unique` with `map` naming matching Drizzle generation
 8. Implement relations:
@@ -80,14 +82,18 @@ Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverC
 
 ## Phase 3 — Prisma adapter (`prisma-adapter.ts`)
 
+Status: complete.
+
 1. Add `packages/fragno-db/src/adapters/prisma/prisma-adapter.ts`.
 2. Extend `GenericSQLAdapter` and implement:
-   - SQLite profile defaults (Prisma adapter forces `"prisma"` unless overridden)
+   - SQLite storage defaults (Prisma adapter forces Prisma-native unless overridden)
    - `createTableNameMapper(namespace)` (match Drizzle behavior)
    - `createSchemaGenerator(fragments, options)` returning `{ schema, path }`
 3. Ensure internal schema inclusion is handled by the generation engine (same as Drizzle).
 
 ## Phase 4 — Package exports & build config
+
+Status: complete.
 
 1. Add exports to `packages/fragno-db/package.json`:
    - `./adapters/prisma`
@@ -95,6 +101,10 @@ Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverC
 2. Update `packages/fragno-db/tsdown.config.ts` to include the new entry points.
 
 ## Phase 5 — Tests
+
+Status: complete for required coverage (SQLite + PGLite adapter tests include DateTime/JSON/BigInt
+roundtrips, SQLite unsafe-number BigInt safety checks, and safe-integers BigInt roundtrips; MySQL
+tests still optional).
 
 1. Add snapshot tests similar to Drizzle:
    - `packages/fragno-db/src/adapters/prisma/generate.test.ts`
@@ -120,14 +130,30 @@ Goal: make SQLite storage Prisma-native in a maintainable way driven by `DriverC
      - fallback inverse name uses source table `ormName`
      - multiple relations between same models are disambiguated deterministically
      - self-reference
-   - SQLite runtime profile `"prisma"`:
+   - SQLite runtime Prisma-native mode:
      - decoding `CURRENT_TIMESTAMP` strings as UTC (`YYYY-MM-DD HH:MM:SS`)
      - BigInt safety: throw if driver returns an unsafe JS `number` for a BigInt column
      - BigInt success path when driver returns `bigint` (e.g. `sqlocal`; `better-sqlite3` with safe
        integers enabled)
+   - Prisma adapter runtime checks: count operations and cursor `hasNextPage` for SQLite/PGLite
+   - Prisma adapter parity checks: SQLite `forSchema` multi-schema queries, `handlerTx` retry flow,
+     and version conflict checks; PGLite version conflict checks
 
 ## Phase 6 — Documentation (recommended before release)
+
+Status: complete.
 
 1. Add Prisma adapter docs page (mirrors Drizzle/Kysely pages).
 2. Update frameworks table and database fragments overview to include Prisma.
 3. Add “Prisma schema folder” integration snippet and a single-file fallback.
+
+## Validation (2026-01-18)
+
+Status: complete.
+
+- Prisma adapter SQLite + PGLite tests (vitest run)
+- Prisma adapter SQLite parity tests (forSchema, handlerTx retry, version conflict)
+- Prisma adapter PGLite version conflict test
+- Repository lint (oxlint)
+- Repository types check (turbo run types:check)
+- Prisma docs updates (adapter page + overview + frameworks table)
