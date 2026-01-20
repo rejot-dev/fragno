@@ -418,6 +418,17 @@ const handleServiceError = <Code extends string>(err: unknown, error: ErrorRespo
     return error({ message: "Message exceeds size limit", code: "MESSAGE_TOO_LARGE" as Code }, 413);
   }
 
+  if (err.message === "INVALID_RUN_TYPE") {
+    return error({ message: "Invalid run type", code: "INVALID_RUN_TYPE" as Code }, 400);
+  }
+
+  if (err.message === "INVALID_EXECUTION_MODE") {
+    return error(
+      { message: "Invalid run execution mode", code: "INVALID_EXECUTION_MODE" as Code },
+      400,
+    );
+  }
+
   throw err;
 };
 
@@ -625,7 +636,12 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         path: "/threads/:threadId/runs",
         inputSchema: createRunSchema,
         outputSchema: runSchema,
-        errorCodes: ["THREAD_NOT_FOUND", "NO_USER_MESSAGE"],
+        errorCodes: [
+          "THREAD_NOT_FOUND",
+          "NO_USER_MESSAGE",
+          "INVALID_RUN_TYPE",
+          "INVALID_EXECUTION_MODE",
+        ],
         handler: async function ({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
 
@@ -656,7 +672,13 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         path: "/threads/:threadId/runs:stream",
         inputSchema: createRunStreamSchema,
         outputSchema: z.array(runLiveEventSchema),
-        errorCodes: ["THREAD_NOT_FOUND", "NO_USER_MESSAGE", "OPENAI_API_KEY_MISSING"],
+        errorCodes: [
+          "THREAD_NOT_FOUND",
+          "NO_USER_MESSAGE",
+          "OPENAI_API_KEY_MISSING",
+          "INVALID_RUN_TYPE",
+          "INVALID_EXECUTION_MODE",
+        ],
         handler: async function ({ pathParams, input }, { jsonStream, error }) {
           const payload = await input.valid();
 

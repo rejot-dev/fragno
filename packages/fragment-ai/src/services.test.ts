@@ -220,6 +220,57 @@ describe("AI Fragment Services", () => {
     });
   });
 
+  test("createRun should reject unsupported run types", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread Unsupported" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Invalid type" },
+        text: "Invalid type",
+      }),
+    );
+
+    await expect(
+      runService(() =>
+        fragment.services.createRun({
+          threadId: thread.id,
+          inputMessageId: message.id,
+          type: "unknown",
+        }),
+      ),
+    ).rejects.toThrow("INVALID_RUN_TYPE");
+  });
+
+  test("createRun should reject deep research streaming", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread Stream Guard" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "No stream" },
+        text: "No stream",
+      }),
+    );
+
+    await expect(
+      runService(() =>
+        fragment.services.createRun({
+          threadId: thread.id,
+          inputMessageId: message.id,
+          type: "deep_research",
+          executionMode: "foreground_stream",
+        }),
+      ),
+    ).rejects.toThrow("INVALID_EXECUTION_MODE");
+  });
+
   test("deleteRun should remove related records", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Thread D1" }),

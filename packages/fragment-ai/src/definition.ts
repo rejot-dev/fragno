@@ -803,6 +803,22 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
         systemPrompt,
       }: CreateRunParams) {
         const now = getNow();
+        const resolvedType = type ?? "agent";
+        const resolvedExecutionMode = executionMode ?? "background";
+        const allowedTypes = new Set(["agent", "deep_research"]);
+        const allowedExecutionModes = new Set(["background", "foreground_stream"]);
+
+        if (!allowedTypes.has(resolvedType)) {
+          throw new Error("INVALID_RUN_TYPE");
+        }
+
+        if (!allowedExecutionModes.has(resolvedExecutionMode)) {
+          throw new Error("INVALID_EXECUTION_MODE");
+        }
+
+        if (resolvedType === "deep_research" && resolvedExecutionMode !== "background") {
+          throw new Error("INVALID_EXECUTION_MODE");
+        }
 
         return this.serviceTx(aiSchema)
           .retrieve((uow) => {
@@ -855,20 +871,22 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
 
             const resolvedModelId =
               modelId ??
-              (type === "deep_research" ? config.defaultDeepResearchModel?.id : undefined) ??
+              (resolvedType === "deep_research"
+                ? config.defaultDeepResearchModel?.id
+                : undefined) ??
               thread.defaultModelId ??
               resolveDefaultModelId(config);
             const resolvedThinkingLevel =
               thinkingLevel ?? thread.defaultThinkingLevel ?? resolveDefaultThinkingLevel(config);
             const resolvedSystemPrompt = systemPrompt ?? thread.systemPrompt ?? null;
-            const status = executionMode === "foreground_stream" ? "running" : "queued";
+            const status = resolvedExecutionMode === "foreground_stream" ? "running" : "queued";
             const startedAt = status === "running" ? now : null;
             const openaiToolConfig = thread.openaiToolConfig ?? null;
 
             const id = uow.create("ai_run", {
               threadId,
-              type,
-              executionMode,
+              type: resolvedType,
+              executionMode: resolvedExecutionMode,
               status,
               modelId: resolvedModelId,
               thinkingLevel: resolvedThinkingLevel,
@@ -894,8 +912,8 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
             return buildRun({
               id,
               threadId,
-              type,
-              executionMode,
+              type: resolvedType,
+              executionMode: resolvedExecutionMode,
               status,
               modelId: resolvedModelId,
               thinkingLevel: resolvedThinkingLevel,

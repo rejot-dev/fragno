@@ -80,6 +80,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] `messagesService` (append + list by `threadId`)
    - [x] `runsService` (create/cancel/get; selects input message; snapshots config)
      - [x] snapshot thread `openaiToolConfig` into `ai_run` at creation time
+     - [x] enforce run type/execution mode invariants in the service layer
    - [x] `artifactsService` (list/get by runId/artifactId)
    - [x] `webhooksService` (persist deliveries; idempotency by `openaiEventId`)
    - [x] `runnerRepo` helpers:
