@@ -1,6 +1,7 @@
 {
   "name": "@fragno-dev/fragno-wf",
   "version": "0.1.0",
+  "private": true,
   "exports": {
     ".": {
       "development": "./src/cli.ts",
