@@ -39,7 +39,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] confirm we can persist final assistant message even if the client disconnects mid-stream
    - [x] confirm `config.storage.persistOpenAIRawResponses` default `false` behaves as expected
          (report-only artifacts)
-6. [ ] Align fragment config with pi (see `/Users/wilco/dev/pi-mono`):
+6. [x] Align fragment config with pi (see `/Users/wilco/dev/pi-mono`):
    - [x] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`
    - [x] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
    - [x] update docs examples accordingly
@@ -201,11 +201,11 @@ Validation:
      - [x] load candidate work items
      - [x] update the row with a version check (`.check()`), and treat conflicts as “someone else
            got it”
-2. [ ] Work types:
+2. [x] Work types:
    - [x] agent run (background): execute via `runExecutor`
    - [x] deep research run (queued): submit background Response (Phase 5)
    - [x] webhook event: retrieve response + finalize (Phase 5)
-3. [ ] Wake-ups:
+3. [x] Wake-ups:
    - [x] on run creation and webhook receipt, enqueue a durable hook payload (`AiWakeEvent`) after
          DB commit
    - [x] durable hook handler calls `config.dispatcher?.wake(...)` (or directly triggers
@@ -213,7 +213,7 @@ Validation:
    - [x] wake-ups are an accelerator; HTTP tick is fallback for manual/cron recovery only (when
          enabled)
    - [x] wake dispatcher when a foreground stream retry queues a run
-4. [ ] Bounded work:
+4. [x] Bounded work:
    - [x] ensure each tick respects limits and returns counts (`processedRuns`,
          `processedWebhookEvents`)
 5. [x] Dispatcher integrations:
@@ -281,7 +281,7 @@ Validation:
 
 v0.1 hardening:
 
-- [ ] Limits:
+- [x] Limits:
   - [x] max message size
   - [x] max artifact size
   - [x] page size caps in services
@@ -331,7 +331,7 @@ Future (v0.2+):
 
 1. [x] Add **Fragno AI** tile to docs landing page:
    - [x] `apps/docs/app/routes/docs/docs-index.tsx` (route `/docs/ai`)
-2. [ ] Add AI fragment docs:
+2. [x] Add AI fragment docs:
    - [x] create `apps/docs/content/docs/ai`
    - [x] add `meta.json` sidebar config
    - [x] add page: `index`
