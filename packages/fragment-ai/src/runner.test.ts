@@ -332,6 +332,65 @@ describe("AI Fragment Runner", () => {
     expect(input?.some((entry) => entry.content === "Second message")).toBe(false);
   });
 
+  test("runner tick should cap history messages when configured", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Trim Thread" }),
+    );
+
+    await runService(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "First message" },
+        text: "First message",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Second message" },
+        text: "Second message",
+      }),
+    );
+
+    const thirdMessage = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Third message" },
+        text: "Third message",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: thirdMessage.id,
+        executionMode: "background",
+        type: "agent",
+        systemPrompt: "System prompt",
+      }),
+    );
+
+    const runner = createAiRunner({
+      db,
+      config: { ...config, history: { maxMessages: 2 } },
+    });
+    await runner.tick({ maxRuns: 1 });
+
+    const input = mockOpenAICreate.mock.calls.at(-1)?.[0]?.input as Array<{
+      role: string;
+      content: string;
+    }>;
+
+    expect(input?.[0]?.content).toBe("System prompt");
+    expect(input?.some((entry) => entry.content === "First message")).toBe(false);
+    expect(input?.some((entry) => entry.content === "Second message")).toBe(true);
+    expect(input?.some((entry) => entry.content === "Third message")).toBe(true);
+  });
+
   test("runner tick should submit deep research run and process webhook event", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Deep Research Thread" }),

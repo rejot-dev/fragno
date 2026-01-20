@@ -90,6 +90,9 @@ export interface AiFragmentConfig {
     maxMessageBytes?: number;
     maxArtifactBytes?: number;
   };
+  history?: {
+    maxMessages?: number;
+  };
   storage?: {
     persistDeltas?: boolean;
     persistOpenAIRawResponses?: boolean;

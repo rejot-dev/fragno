@@ -78,8 +78,21 @@ const DEEP_RESEARCH_ARTIFACT_TYPE = "deep_research_report";
 const resolveRetryDelayMs = (attempt: number, baseDelayMs: number) =>
   baseDelayMs * Math.pow(2, Math.max(0, attempt - 1));
 
-const buildOpenAIInput = (run: AiRunRecord, messages: AiMessageRecord[]) => {
+const resolveMaxHistoryMessages = (config: AiFragmentConfig) => {
+  const maxMessages = config.history?.maxMessages;
+  if (typeof maxMessages !== "number" || !Number.isFinite(maxMessages) || maxMessages <= 0) {
+    return null;
+  }
+  return Math.floor(maxMessages);
+};
+
+const buildOpenAIInput = (
+  run: AiRunRecord,
+  messages: AiMessageRecord[],
+  options?: { maxMessages?: number | null },
+) => {
   const input: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+  const conversation: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   if (run?.systemPrompt) {
     input.push({ role: "system", content: run.systemPrompt });
@@ -95,9 +108,15 @@ const buildOpenAIInput = (run: AiRunRecord, messages: AiMessageRecord[]) => {
       continue;
     }
 
-    input.push({ role: message.role as "user" | "assistant", content: text });
+    conversation.push({ role: message.role as "user" | "assistant", content: text });
   }
 
+  const maxMessages = options?.maxMessages ?? null;
+  if (maxMessages && conversation.length > maxMessages) {
+    conversation.splice(0, conversation.length - maxMessages);
+  }
+
+  input.push(...conversation);
   return input;
 };
 
@@ -398,7 +417,9 @@ const submitDeepResearchRun = async ({
       const responseOptions = buildOpenAIResponseOptions({
         config,
         modelId: run.modelId,
-        input: buildOpenAIInput(run, messages),
+        input: buildOpenAIInput(run, messages, {
+          maxMessages: resolveMaxHistoryMessages(config),
+        }),
         thinkingLevel: run.thinkingLevel,
         openaiToolConfig: toolPolicyResult.openaiToolConfig,
         background: true,
@@ -784,7 +805,9 @@ export const runExecutor = async ({
       const responseOptions = buildOpenAIResponseOptions({
         config,
         modelId: run.modelId,
-        input: buildOpenAIInput(run, messages),
+        input: buildOpenAIInput(run, messages, {
+          maxMessages: resolveMaxHistoryMessages(config),
+        }),
         thinkingLevel: run.thinkingLevel,
         openaiToolConfig: toolPolicyResult.openaiToolConfig,
         stream: false,
