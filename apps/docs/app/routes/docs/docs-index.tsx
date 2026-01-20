@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Lightbulb, ClipboardList, Workflow } from "lucide-react";
+import { Lightbulb, ClipboardList, Workflow, Sparkles } from "lucide-react";
 import { Stripe } from "@/components/logos/stripe";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 import type { ReactNode } from "react";
@@ -81,6 +81,12 @@ export default function DocsIndexPage() {
             icon={<Workflow className="size-6 text-gray-700 dark:text-gray-300" />}
             title="Workflows Fragment"
             description="Durable workflows, runners, and dispatchers"
+          />
+          <DocCard
+            href="/docs/ai"
+            icon={<Sparkles className="size-6 text-gray-700 dark:text-gray-300" />}
+            title="AI Fragment"
+            description="Durable AI threads, runs, streaming, and artifacts"
           />
           <DocCard
             href="/docs/forms"

@@ -329,12 +329,13 @@ Future (v0.2+):
 
 **Goal:** ship full docs + landing page tile for the AI fragment.
 
-1. [ ] Add **Fragno AI** tile to docs landing page:
-   - [ ] `apps/docs/app/routes/docs/docs-index.tsx` (route `/docs/ai`)
+1. [x] Add **Fragno AI** tile to docs landing page:
+   - [x] `apps/docs/app/routes/docs/docs-index.tsx` (route `/docs/ai`)
 2. [ ] Add AI fragment docs:
-   - [ ] create `apps/docs/content/docs/ai`
-   - [ ] add `meta.json` sidebar config
-   - [ ] add pages: `index`, `quickstart`, `configuration`, `routes`, `hooks`, `streaming`, `runs`,
+   - [x] create `apps/docs/content/docs/ai`
+   - [x] add `meta.json` sidebar config
+   - [x] add page: `index`
+   - [ ] add pages: `quickstart`, `configuration`, `routes`, `hooks`, `streaming`, `runs`,
          `webhooks`, `runner`, `artifacts`, `cli`, `debugging`, `example-app`
 3. [ ] Ensure hooks + invalidation are documented in the hooks page.
 4. [ ] Document Node + Cloudflare DO dispatchers in the runner page, mirroring
