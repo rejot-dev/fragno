@@ -10,6 +10,7 @@ import type { Condition } from "../../../query/condition-builder";
 import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { DriverConfig } from "../driver-config";
+import type { SQLiteStorageMode } from "../sqlite-storage";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
@@ -45,10 +46,11 @@ export function buildWhere(
   condition: Condition,
   eb: AnyExpressionBuilder,
   driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
   mapper?: TableNameMapper,
   table?: AnyTable,
 ): AnyExpressionWrapper {
-  const serializer = createSQLSerializer(driverConfig);
+  const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
 
   if (condition.type === "compare") {
     const left = condition.a;
@@ -162,14 +164,18 @@ export function buildWhere(
 
   // Nested conditions
   if (condition.type === "and") {
-    return eb.and(condition.items.map((v) => buildWhere(v, eb, driverConfig, mapper, table)));
+    return eb.and(
+      condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, mapper, table)),
+    );
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, driverConfig, mapper, table));
+    return eb.not(buildWhere(condition.item, eb, driverConfig, sqliteStorageMode, mapper, table));
   }
 
-  return eb.or(condition.items.map((v) => buildWhere(v, eb, driverConfig, mapper, table)));
+  return eb.or(
+    condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, mapper, table)),
+  );
 }
 
 /**

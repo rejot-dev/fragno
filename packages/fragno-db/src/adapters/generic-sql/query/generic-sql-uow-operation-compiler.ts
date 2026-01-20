@@ -2,6 +2,7 @@ import { UOWOperationCompiler } from "../../shared/uow-operation-compiler";
 import type { CompiledQuery } from "kysely";
 import type { DriverConfig } from "../driver-config";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { SQLiteStorageMode } from "../sqlite-storage";
 import type {
   RetrievalOperation,
   MutationOperation,
@@ -24,11 +25,15 @@ import { createColdKysely } from "../migration/cold-kysely";
  * high-level business logic like cursor pagination, version checking, and index resolution.
  */
 export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<CompiledQuery> {
+  private readonly sqliteStorageMode?: SQLiteStorageMode;
+
   constructor(
     driverConfig: DriverConfig,
+    sqliteStorageMode?: SQLiteStorageMode,
     mapperFactory?: (namespace: string | undefined) => TableNameMapper | undefined,
   ) {
     super(driverConfig, mapperFactory);
+    this.sqliteStorageMode = sqliteStorageMode;
   }
 
   /**
@@ -37,7 +42,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   private getSQLCompiler(namespace: string | undefined): SQLQueryCompiler {
     const mapper = this.getMapperForOperation(namespace);
     const kysely = createColdKysely(this.driverConfig.databaseType);
-    return createSQLQueryCompiler(kysely, this.driverConfig, mapper);
+    return createSQLQueryCompiler(kysely, this.driverConfig, this.sqliteStorageMode, mapper);
   }
 
   override compileCount(
@@ -116,6 +121,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       orderDirection,
       !!after,
       this.driverConfig,
+      this.sqliteStorageMode,
     );
 
     // Combine user where clause with cursor condition

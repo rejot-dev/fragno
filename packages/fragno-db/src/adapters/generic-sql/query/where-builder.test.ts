@@ -532,6 +532,7 @@ describe("where-builder", () => {
           eb,
           new NodePostgresDriverConfig(),
           undefined,
+          undefined,
           postsTable,
         );
 
@@ -560,6 +561,7 @@ describe("where-builder", () => {
           condition,
           createMockEB(),
           new NodePostgresDriverConfig(),
+          undefined,
           undefined,
           postsTable,
         );
@@ -591,6 +593,7 @@ describe("where-builder", () => {
           condition,
           eb,
           new NodePostgresDriverConfig(),
+          undefined,
           mapper,
           postsTable,
         );

@@ -2,6 +2,7 @@ import type { AnyColumn } from "../schema/create";
 import { createSQLSerializer } from "./serialize/create-sql-serializer";
 import { resolveFragnoIdValue } from "./value-encoding";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
+import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 
 /**
  * Cursor object containing all information needed for pagination
@@ -218,6 +219,7 @@ export function createCursorFromRecord(
  * @param cursor - The cursor object
  * @param indexColumns - The columns that make up the index
  * @param driverConfig - The driver configuration
+ * @param sqliteStorageMode - Optional SQLite storage mode override
  * @returns Serialized values ready for database queries
  *
  * @example
@@ -233,8 +235,9 @@ export function serializeCursorValues(
   cursor: Cursor,
   indexColumns: AnyColumn[],
   driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
 ): Record<string, unknown> {
-  const serializer = createSQLSerializer(driverConfig);
+  const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
   const serialized: Record<string, unknown> = {};
 
   for (const col of indexColumns) {

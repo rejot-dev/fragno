@@ -40,7 +40,7 @@ export abstract class SQLSerializer {
 
     // Handle date/timestamp deserialization
     if (col.type === "timestamp" || col.type === "date") {
-      return this.deserializeDate(value);
+      return this.deserializeDate(value, col);
     }
 
     // Handle boolean deserialization
@@ -103,7 +103,7 @@ export abstract class SQLSerializer {
     if (!skipDriverConversions) {
       // Handle date/timestamp serialization
       if (value instanceof Date) {
-        return this.serializeDate(value);
+        return this.serializeDate(value, col);
       }
 
       // Handle boolean serialization
@@ -126,13 +126,13 @@ export abstract class SQLSerializer {
   }
 
   // Abstract methods for dialect-specific serialization
-  protected abstract serializeDate(value: Date): Date | number;
+  protected abstract serializeDate(value: Date, col: AnyColumn): Date | number | string;
   protected abstract serializeBoolean(value: boolean): boolean | number;
   protected abstract serializeBigInt(value: bigint, col: AnyColumn): bigint | number | Buffer;
   protected abstract serializeJson(value: unknown): unknown;
 
   // Abstract methods for dialect-specific deserialization
-  protected abstract deserializeDate(value: unknown): Date;
+  protected abstract deserializeDate(value: unknown, col: AnyColumn): Date;
   protected abstract deserializeBoolean(value: unknown): boolean;
   protected abstract deserializeBigInt(value: unknown): bigint;
   protected abstract deserializeJson(value: unknown): unknown;

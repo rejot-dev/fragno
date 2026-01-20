@@ -22,6 +22,8 @@ import {
   fromUnitOfWorkCompiler,
   type UnitOfWorkFactory,
 } from "../shared/from-unit-of-work-compiler";
+import type { SQLiteStorageMode } from "./sqlite-storage";
+import { sqliteStorageDefault } from "./sqlite-storage";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -32,22 +34,28 @@ export interface GenericSQLOptions {
   dialect: Dialect;
   driverConfig: DriverConfig;
   uowConfig?: UnitOfWorkConfig;
+  sqliteStorageMode?: SQLiteStorageMode;
 }
 
 export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly dialect: Dialect;
   readonly driverConfig: DriverConfig;
   readonly uowConfig?: UnitOfWorkConfig;
+  readonly sqliteStorageMode?: SQLiteStorageMode;
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   #driver: SqlDriverAdapter;
 
-  constructor({ dialect, driverConfig, uowConfig }: GenericSQLOptions) {
+  constructor({ dialect, driverConfig, uowConfig, sqliteStorageMode }: GenericSQLOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
     this.uowConfig = uowConfig;
+    this.sqliteStorageMode =
+      driverConfig.databaseType === "sqlite"
+        ? (sqliteStorageMode ?? sqliteStorageDefault)
+        : undefined;
 
     this.#schemaNamespaceMap = new WeakMap<AnySchema, string>();
     this.#contextStorage = new RequestContextStorage();
@@ -77,7 +85,8 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
 
   async isConnectionHealthy(): Promise<boolean> {
     const result = await this.#driver.executeQuery(sql`SELECT 1 as healthy`.compile(this.dialect));
-    return result.rows[0]["healthy"] === 1;
+    const healthyValue = result.rows[0]?.["healthy"];
+    return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
   prepareMigrations<T extends AnySchema>(schema: T, namespace: string): PreparedMigrations {
@@ -85,6 +94,8 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       schema,
       namespace,
       database: this.driverConfig.databaseType,
+      driverConfig: this.driverConfig,
+      sqliteStorageMode: this.sqliteStorageMode,
       mapper: namespace ? this.createTableNameMapper(namespace) : undefined,
       driver: this.#driver,
     });
@@ -129,14 +140,16 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   ): SimpleQueryInterface<T, UnitOfWorkConfig> {
     this.#schemaNamespaceMap.set(schema, namespace);
 
-    const operationCompiler = new GenericSQLUOWOperationCompiler(this.driverConfig, (ns) =>
-      ns ? this.createTableNameMapper(ns) : undefined,
+    const operationCompiler = new GenericSQLUOWOperationCompiler(
+      this.driverConfig,
+      this.sqliteStorageMode,
+      (ns) => (ns ? this.createTableNameMapper(ns) : undefined),
     );
 
     const factory: UnitOfWorkFactory = {
       compiler: createUOWCompilerFromOperationCompiler(operationCompiler),
       executor: createExecutor(this.#driver, this.driverConfig, false),
-      decoder: new UnitOfWorkDecoder(this.driverConfig),
+      decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode),
       uowConfig: this.uowConfig,
       schemaNamespaceMap: this.#schemaNamespaceMap,
     };
@@ -144,3 +157,6 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return fromUnitOfWorkCompiler(schema, factory);
   }
 }
+
+export type { SQLiteStorageMode } from "./sqlite-storage";
+export { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";

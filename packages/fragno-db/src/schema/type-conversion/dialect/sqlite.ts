@@ -1,5 +1,7 @@
 import type { AnyColumn } from "../../create";
 import { SQLTypeMapper, type SQLiteDatabaseType } from "../type-mapping";
+import type { SQLiteStorageMode } from "../../../adapters/generic-sql/sqlite-storage";
+import { sqliteStorageDefault } from "../../../adapters/generic-sql/sqlite-storage";
 
 /**
  * SQLite-specific type mapper.
@@ -11,6 +13,13 @@ import { SQLTypeMapper, type SQLiteDatabaseType } from "../type-mapping";
  * - REAL for decimals
  */
 export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
+  private readonly sqliteStorageMode: SQLiteStorageMode;
+
+  constructor(database: "sqlite", sqliteStorageMode?: SQLiteStorageMode) {
+    super(database);
+    this.sqliteStorageMode = sqliteStorageMode ?? sqliteStorageDefault;
+  }
+
   protected getInternalIdType(): SQLiteDatabaseType {
     // SQLite uses INTEGER for auto-increment (INTEGER PRIMARY KEY)
     return "integer";
@@ -23,6 +32,9 @@ export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
   protected mapBigint(column: AnyColumn | Pick<AnyColumn, "type">): SQLiteDatabaseType {
     // SQLite special case: reference columns should use integer even if type is bigint
     if ("role" in column && column.role === "reference") {
+      return "integer";
+    }
+    if (this.sqliteStorageMode.bigintStorage === "integer") {
       return "integer";
     }
     return "blob";
@@ -50,10 +62,16 @@ export class SQLiteTypeMapper extends SQLTypeMapper<SQLiteDatabaseType> {
   }
 
   protected mapTimestamp(): SQLiteDatabaseType {
+    if (this.sqliteStorageMode.timestampStorage === "iso-text") {
+      return "text";
+    }
     return "integer";
   }
 
   protected mapDate(): SQLiteDatabaseType {
+    if (this.sqliteStorageMode.dateStorage === "iso-text") {
+      return "text";
+    }
     return "integer";
   }
 

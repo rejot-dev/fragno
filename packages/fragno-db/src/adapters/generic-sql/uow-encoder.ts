@@ -1,5 +1,6 @@
 import type { AnyTable, AnyColumn } from "../../schema/create";
 import type { DriverConfig } from "./driver-config";
+import type { SQLiteStorageMode } from "./sqlite-storage";
 import {
   createSQLSerializer,
   type SQLSerializer,
@@ -28,9 +29,10 @@ export class UnitOfWorkEncoder {
   constructor(
     driverConfig: DriverConfig,
     db: Kysely<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+    sqliteStorageMode?: SQLiteStorageMode,
     mapper?: TableNameMapper,
   ) {
-    this.#serializer = createSQLSerializer(driverConfig);
+    this.#serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
     this.#db = db;
     this.#mapper = mapper;
   }

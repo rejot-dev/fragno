@@ -25,6 +25,9 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
    */
   abstract readonly internalIdColumn: string | undefined;
 
+  /**
+   * SQLite storage selection is handled by adapters, not driver config.
+   */
   get supportsRowsAffected(): boolean {
     return !!this.extractAffectedRows;
   }

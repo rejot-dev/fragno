@@ -2,6 +2,7 @@ import type { AnyTable } from "../schema/create";
 import { createSQLSerializer } from "./serialize/create-sql-serializer";
 import { FragnoId, FragnoReference } from "../schema/create";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
+import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 
 /**
  * Decodes a database result record to application format.
@@ -15,6 +16,7 @@ import type { DriverConfig } from "../adapters/generic-sql/driver-config";
  * @param result - The raw database result record
  * @param table - The table schema definition containing column and relation information
  * @param driverConfig - The driver configuration containing database type information
+ * @param sqliteStorageMode - Optional SQLite storage mode override
  * @returns A record in application format with deserialized values
  *
  * @example
@@ -31,8 +33,9 @@ export function decodeResult(
   result: Record<string, unknown>,
   table: AnyTable,
   driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
 ): Record<string, unknown> {
-  const serializer = createSQLSerializer(driverConfig);
+  const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
   const output: Record<string, unknown> = {};
   // First pass: collect all column values
   const columnValues: Record<string, unknown> = {};
@@ -78,7 +81,12 @@ export function decodeResult(
     }
 
     // Recursively decode the relation data
-    output[relationName] = decodeResult(relationData[relationName], relation.table, driverConfig);
+    output[relationName] = decodeResult(
+      relationData[relationName],
+      relation.table,
+      driverConfig,
+      sqliteStorageMode,
+    );
   }
 
   // Second pass: create output with FragnoId objects where appropriate
