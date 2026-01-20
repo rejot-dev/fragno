@@ -43,7 +43,7 @@ while true; do
     echo ""
 
     # Check if the implementation plan is complete
-    check_result=$(codex exec --model gpt-5.1-codex-mini - <<EOF
+    check_result=$(codex exec --model gpt-5.1-codex-mini --config model_reasoning_effort="medium" - <<EOF
 Review the implementation plan at $IMPLEMENTATION_PLAN.
 
 Tasks are marked complete with [x] (e.g., "- [x] Task done").
@@ -75,5 +75,5 @@ EOF
     prompt=$(sed "s|{{IMPLEMENTATION_PLAN}}|$IMPLEMENTATION_PLAN|g" "$PROMPT_TEMPLATE")
 
     # Run the main implementation step
-    echo "$prompt" | codex exec --model gpt-5.2-codex --yolo -
+    echo "$prompt" | codex exec --model gpt-5.2-codex --config model_reasoning_effort="medium" --yolo -
 done
