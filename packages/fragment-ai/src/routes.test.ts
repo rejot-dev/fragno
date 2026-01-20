@@ -105,12 +105,17 @@ vi.mock("openai", () => {
 });
 
 describe("AI Fragment Routes", () => {
+  const dispatcher = {
+    wake: vi.fn(),
+  };
+
   const setup = async () => {
     const config = {
       defaultModel: { id: "gpt-test" },
       apiKey: "test-key",
       webhookSecret: "whsec_test",
       defaultDeepResearchModel: { id: "gpt-deep-research" },
+      dispatcher,
     };
     const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
@@ -141,6 +146,7 @@ describe("AI Fragment Routes", () => {
   beforeEach(async () => {
     await testContext.resetDatabase();
     nextOpenAIStreamFactory = null;
+    dispatcher.wake.mockReset();
   });
 
   test("threads routes should create and list threads", async () => {
@@ -509,6 +515,10 @@ describe("AI Fragment Routes", () => {
     expect(runs[0]?.openaiResponseId).toBeNull();
     expect(runs[0]?.attempt).toBe(2);
     expect(runs[0]?.nextAttemptAt).toBeTruthy();
+    expect(dispatcher.wake).toHaveBeenCalledWith({
+      type: "run.queued",
+      runId: runs[0]?.id.toString(),
+    });
 
     const messages = await db.find("ai_message", (b) => b.whereIndex("primary"));
     expect(messages.some((msg) => msg.role === "assistant")).toBe(false);

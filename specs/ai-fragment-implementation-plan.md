@@ -210,6 +210,7 @@ Validation:
          `POST /ai/_runner/tick`)
    - [ ] wake-ups are an accelerator; HTTP tick is fallback for manual/cron recovery only (when
          enabled)
+   - [x] wake dispatcher when a foreground stream retry queues a run
 4. [ ] Bounded work:
    - [x] ensure each tick respects limits and returns counts (`processedRuns`,
          `processedWebhookEvents`)

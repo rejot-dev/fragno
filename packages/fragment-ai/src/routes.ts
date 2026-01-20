@@ -1067,6 +1067,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               }
             }
 
+            if (finalStatus === "queued") {
+              try {
+                await config.dispatcher?.wake?.({ type: "run.queued", runId: run.id });
+              } catch {
+                // Best-effort wake; stream response should still complete.
+              }
+            }
+
             await safeWrite({
               type: "run.final",
               runId: run.id,
