@@ -298,7 +298,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Honor model provider/baseUrl/header overrides when creating OpenAI clients
 
 - [ ] Future (v0.2+):
-  - [ ] Custom tools registry + server execution (pi-agent-core integration)
+  - [x] Custom tools registry + server execution (pi-agent-core integration)
   - [x] Tool approvals/policy hooks
   - [x] Multi-provider support (pi-ai)
   - [x] Lazy-load pi-ai for non-OpenAI agent runs (background + stream)

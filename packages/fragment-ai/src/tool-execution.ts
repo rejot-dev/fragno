@@ -1,4 +1,5 @@
 import type { ToolResultMessage } from "@mariozechner/pi-ai";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { AiToolCallStatus } from "./definition";
 
 export type AiToolExecutionContext = {
@@ -23,7 +24,7 @@ export type AiToolDefinition = {
 };
 
 export type AiToolRegistry = {
-  tools: AiToolDefinition[];
+  tools: Array<AiToolDefinition | AgentTool<unknown, unknown>>;
   maxIterations?: number;
 };
 
@@ -42,18 +43,57 @@ type ToolCallInput = {
   arguments: Record<string, unknown>;
 };
 
-const normalizeToolResult = (value: unknown) => {
+type NormalizedToolResult = {
+  output: unknown;
+  isError: boolean;
+  details: unknown;
+  content?: ToolResultMessage["content"];
+};
+
+type ToolTextContent = ToolResultMessage["content"][number];
+
+const isTextContent = (value: unknown): value is ToolTextContent =>
+  !!value &&
+  typeof value === "object" &&
+  "type" in value &&
+  (value as { type?: unknown }).type === "text" &&
+  "text" in value &&
+  typeof (value as { text?: unknown }).text === "string";
+
+const isAgentToolDefinition = (
+  tool: AiToolDefinition | AgentTool<unknown, unknown>,
+): tool is AgentTool<unknown, unknown> => {
+  if ("parameters" in tool) {
+    return true;
+  }
+  return typeof tool.execute === "function" && tool.execute.length >= 2;
+};
+
+const normalizeToolResult = (value: unknown): NormalizedToolResult => {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const maybeResult = value as {
       output?: unknown;
       isError?: unknown;
       details?: unknown;
+      content?: unknown;
     };
-    if ("output" in maybeResult || "isError" in maybeResult || "details" in maybeResult) {
+    const content = Array.isArray(maybeResult.content)
+      ? maybeResult.content.filter(isTextContent)
+      : undefined;
+    const hasResultFields =
+      "output" in maybeResult || "isError" in maybeResult || "details" in maybeResult;
+
+    if (hasResultFields || (content && content.length > 0)) {
       return {
-        output: "output" in maybeResult ? maybeResult.output : value,
+        output:
+          "output" in maybeResult
+            ? maybeResult.output
+            : "details" in maybeResult
+              ? maybeResult.details
+              : value,
         isError: Boolean(maybeResult.isError),
         details: "details" in maybeResult ? maybeResult.details : undefined,
+        ...(content && content.length > 0 ? { content } : {}),
       };
     }
   }
@@ -79,19 +119,27 @@ const buildToolResultMessage = ({
   toolName,
   output,
   isError,
+  content,
+  details,
 }: {
   toolCallId: string;
   toolName: string;
   output: unknown;
   isError: boolean;
+  content?: ToolResultMessage["content"];
+  details?: unknown;
 }): ToolResultMessage => {
-  const text = formatToolResultText(output, isError);
+  const fallbackContent: ToolResultMessage["content"] = [
+    { type: "text", text: formatToolResultText(output, isError) },
+  ];
+  const resolvedContent = content && content.length > 0 ? content : fallbackContent;
+  const resolvedDetails = details ?? output;
   return {
     role: "toolResult",
     toolCallId,
     toolName,
-    content: [{ type: "text", text }],
-    ...(output !== undefined ? { details: output } : {}),
+    content: resolvedContent,
+    ...(resolvedDetails !== undefined ? { details: resolvedDetails } : {}),
     isError,
     timestamp: Date.now(),
   };
@@ -129,19 +177,25 @@ export const executeToolCalls = async ({
     const tool = toolByName.get(toolCall.name);
     let output: unknown = { error: "TOOL_NOT_FOUND" };
     let isError = true;
+    let details: unknown = undefined;
+    let content: ToolResultMessage["content"] | undefined = undefined;
 
     if (tool) {
       try {
-        const rawResult = await tool.execute({
-          threadId,
-          runId,
-          toolCallId: toolCall.id,
-          toolName: toolCall.name,
-          args: toolCall.arguments ?? {},
-        });
+        const rawResult = isAgentToolDefinition(tool)
+          ? await tool.execute(toolCall.id, toolCall.arguments ?? {})
+          : await tool.execute({
+              threadId,
+              runId,
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              args: toolCall.arguments ?? {},
+            });
         const normalized = normalizeToolResult(rawResult);
         output = normalized.output;
         isError = normalized.isError;
+        details = normalized.details;
+        content = normalized.content;
       } catch (err) {
         const message = err instanceof Error ? err.message : "TOOL_EXECUTION_FAILED";
         output = { error: message };
@@ -158,7 +212,14 @@ export const executeToolCalls = async ({
       isError,
     });
     toolResultMessages.push(
-      buildToolResultMessage({ toolCallId: toolCall.id, toolName: toolCall.name, output, isError }),
+      buildToolResultMessage({
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        output,
+        isError,
+        content,
+        details,
+      }),
     );
   }
 
