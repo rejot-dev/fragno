@@ -217,7 +217,7 @@ Validation:
 5. [ ] Dispatcher integrations:
    - [x] Node: use the shared dispatcher (`@fragno-dev/dispatcher-node`) and wire wake to
          `POST /ai/_runner/tick` or `runner.tick(...)`
-   - [ ] Cloudflare DO: create a shared dispatcher runtime package (e.g.
+   - [x] Cloudflare DO: create a shared dispatcher runtime package (e.g.
          `@fragno-dev/dispatcher-cloudflare-do`) by extracting core logic from the workflows DO
          package (keep tick coalescing + alarm scheduling behavior)
    - [x] Introduce a shared `FragnoDispatcher` interface (core/shared package) and alias it in
@@ -227,7 +227,7 @@ Validation:
          based on `ai_run.nextAttemptAt` + unprocessed webhook events (same pattern as workflows DO)
    - [ ] Match Workflows DO options where applicable (`namespace`, `runnerId`, `tickOptions`,
          `enableRunnerTick`, `migrateOnStartup`, `createAdapter`, `onTickError`, `onMigrationError`)
-   - [ ] Update `@fragno-dev/workflows-dispatcher-cloudflare-do` to wrap the shared runtime directly
+   - [x] Update `@fragno-dev/workflows-dispatcher-cloudflare-do` to wrap the shared runtime directly
          (no shim layer)
    - [ ] Update workflows docs/examples to use `@fragno-dev/dispatcher-node` and the refactored DO
          dispatcher packages (e.g. runner-dispatcher docs + quickstart snippets)

@@ -1,6 +1,6 @@
 {
-  "name": "@fragno-dev/workflows-dispatcher-cloudflare-do",
-  "description": "Fragno workflows dispatcher (Cloudflare Durable Objects)",
+  "name": "@fragno-dev/dispatcher-cloudflare-do",
+  "description": "Fragno dispatcher runtime (Cloudflare Durable Objects)",
   "version": "0.0.0",
   "files": [
     "dist"
@@ -23,14 +23,7 @@
   },
   "type": "module",
   "private": true,
-  "dependencies": {
-    "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/dispatcher-cloudflare-do": "workspace:*",
-    "@fragno-dev/db": "workspace:*",
-    "@fragno-dev/fragment-workflows": "workspace:*"
-  },
   "devDependencies": {
-    "@fragno-dev/test": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22",
