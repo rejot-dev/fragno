@@ -46,6 +46,7 @@ export const aiSchema = schema((s) => {
         .addColumn("thinkingLevel", column("string"))
         .addColumn("systemPrompt", column("string").nullable())
         .addColumn("inputMessageId", column("string").nullable())
+        .addColumn("openaiToolConfig", column("json").nullable())
         .addColumn("error", column("string").nullable())
         .addColumn(
           "attempt",

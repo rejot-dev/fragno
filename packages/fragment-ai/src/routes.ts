@@ -59,6 +59,7 @@ const runSchema = z.object({
   thinkingLevel: z.string(),
   systemPrompt: z.string().nullable(),
   inputMessageId: z.string().nullable(),
+  openaiToolConfig: z.unknown().nullable(),
   openaiResponseId: z.string().nullable(),
   error: z.string().nullable(),
   attempt: z.number(),
@@ -737,7 +738,9 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             recordRunEvent("run.status", { status: "running" });
 
             try {
-              const openaiToolConfig = resolveOpenAIToolConfig(thread.openaiToolConfig);
+              const openaiToolConfig = resolveOpenAIToolConfig(
+                run.openaiToolConfig ?? thread.openaiToolConfig,
+              );
               const responseOptions = openaiToolConfig
                 ? { ...openaiToolConfig, model: run.modelId, input: openaiInput, stream: true }
                 : { model: run.modelId, input: openaiInput, stream: true };

@@ -25,6 +25,7 @@ type AiRunRecord = {
   openaiResponseId: string | null;
   startedAt: Date | null;
   inputMessageId: string | null;
+  openaiToolConfig: unknown | null;
   attempt: number;
 };
 
@@ -256,7 +257,9 @@ export const runExecutor = async ({
 
   try {
     const client = await createOpenAIClient(config);
-    const openaiToolConfig = resolveOpenAIToolConfig(thread.openaiToolConfig);
+    const openaiToolConfig = resolveOpenAIToolConfig(
+      run.openaiToolConfig ?? thread.openaiToolConfig,
+    );
     const responseOptions = openaiToolConfig
       ? { ...openaiToolConfig, model: run.modelId, input: buildOpenAIInput(run, messages) }
       : { model: run.modelId, input: buildOpenAIInput(run, messages) };

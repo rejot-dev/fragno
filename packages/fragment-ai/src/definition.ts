@@ -98,6 +98,7 @@ export interface AiRun {
   thinkingLevel: AiThinkingLevel | string;
   systemPrompt: string | null;
   inputMessageId: string | null;
+  openaiToolConfig: unknown | null;
   openaiResponseId: string | null;
   error: string | null;
   attempt: number;
@@ -174,6 +175,7 @@ type AiRunRecord = {
   thinkingLevel: string;
   systemPrompt: string | null;
   inputMessageId: string | null;
+  openaiToolConfig: unknown | null;
   openaiResponseId: string | null;
   error: string | null;
   attempt: number;
@@ -325,6 +327,7 @@ function buildRun(run: AiRunRecord): AiRun {
     thinkingLevel: run.thinkingLevel,
     systemPrompt: run.systemPrompt,
     inputMessageId: run.inputMessageId,
+    openaiToolConfig: run.openaiToolConfig ?? null,
     openaiResponseId: run.openaiResponseId,
     error: run.error,
     attempt: run.attempt,
@@ -721,6 +724,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
             const resolvedSystemPrompt = systemPrompt ?? thread.systemPrompt ?? null;
             const status = executionMode === "foreground_stream" ? "running" : "queued";
             const startedAt = status === "running" ? now : null;
+            const openaiToolConfig = thread.openaiToolConfig ?? null;
 
             const id = uow.create("ai_run", {
               threadId,
@@ -731,6 +735,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               thinkingLevel: resolvedThinkingLevel,
               systemPrompt: resolvedSystemPrompt,
               inputMessageId: selectedMessage.id.toString(),
+              openaiToolConfig,
               error: null,
               attempt: 1,
               maxAttempts: config.retries?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
@@ -757,6 +762,7 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               thinkingLevel: resolvedThinkingLevel,
               systemPrompt: resolvedSystemPrompt,
               inputMessageId: selectedMessage.id.toString(),
+              openaiToolConfig,
               openaiResponseId: null,
               error: null,
               attempt: 1,
