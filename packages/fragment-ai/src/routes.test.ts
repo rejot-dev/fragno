@@ -644,6 +644,90 @@ describe("AI Fragment Routes", () => {
     });
   });
 
+  test("runs stream route should cap history and honor inputMessageId", async () => {
+    mockOpenAICreate.mockClear();
+    const { fragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition)
+          .withConfig({ ...config, history: { maxMessages: 2 } })
+          .withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    const localFragment = fragments.ai.fragment;
+
+    const thread = await localFragment.callRoute("POST", "/threads", {
+      body: { title: "History Stream Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    await localFragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "one" },
+        text: "one",
+      },
+    });
+
+    await localFragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "assistant",
+        content: { type: "text", text: "two" },
+        text: "two",
+      },
+    });
+
+    const messageThree = await localFragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "three" },
+        text: "three",
+      },
+    });
+    expect(messageThree.type).toBe("json");
+    if (messageThree.type !== "json") {
+      return;
+    }
+
+    await localFragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "four" },
+        text: "four",
+      },
+    });
+
+    const response = await localFragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: messageThree.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    for await (const _event of response.stream) {
+      // Drain stream for completion.
+    }
+
+    expect(mockOpenAICreate).toHaveBeenCalled();
+    const [options] = mockOpenAICreate.mock.calls.at(-1) ?? [];
+    const input = (options as { input?: unknown } | undefined)?.input;
+    expect(input).toEqual([
+      { role: "assistant", content: "two" },
+      { role: "user", content: "three" },
+    ]);
+  });
+
   test("runs stream route should persist final message after client disconnect", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: { title: "Disconnect Thread" },

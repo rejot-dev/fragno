@@ -170,6 +170,8 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
      - [x] final run status + run events
    - [x] preserve `openaiToolConfig` options (including `reasoning`) when building Responses
          requests
+   - [x] cap foreground stream input history with `history.maxMessages` and the run's
+         `inputMessageId`
 3. [x] Background agent runs (`executionMode="background"`):
    - [x] runner tick claims queued runs and calls `runExecutor`
    - [x] prefer `stream: false` for atomic completion (simplifies retries)

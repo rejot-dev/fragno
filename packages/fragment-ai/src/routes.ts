@@ -36,6 +36,14 @@ const DEFAULT_RETRY_BASE_DELAY_MS = 2000;
 const resolveRetryDelayMs = (attempt: number, baseDelayMs: number) =>
   baseDelayMs * Math.pow(2, Math.max(0, attempt - 1));
 
+const resolveMaxHistoryMessages = (config: { history?: { maxMessages?: number } }) => {
+  const maxMessages = config.history?.maxMessages;
+  if (typeof maxMessages !== "number" || !Number.isFinite(maxMessages) || maxMessages <= 0) {
+    return null;
+  }
+  return Math.floor(maxMessages);
+};
+
 const enforceRateLimit = async (
   config: {
     rateLimiter?: (context: {
@@ -678,24 +686,49 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             .transform(({ serviceResult: [value] }) => value)
             .execute();
 
-          const messageHistory = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.listMessages({
-                threadId: pathParams.threadId,
-                order: "asc",
-                pageSize: 100,
-              }),
-            ])
-            .transform(({ serviceResult: [value] }) => value)
-            .execute();
+          const pageSize = Math.max(100, resolveMaxHistoryMessages(config) ?? 0);
+          const collectedMessages: Array<z.infer<typeof messageSchema>> = [];
+          let cursor: ReturnType<typeof decodeCursor> | undefined;
+          let hasNextPage = true;
+
+          while (hasNextPage) {
+            const page = await this.handlerTx()
+              .withServiceCalls(() => [
+                services.listMessages({
+                  threadId: pathParams.threadId,
+                  order: "asc",
+                  pageSize,
+                  cursor,
+                }),
+              ])
+              .transform(({ serviceResult: [value] }) => value)
+              .execute();
+
+            collectedMessages.push(...page.messages);
+
+            if (run.inputMessageId) {
+              const cutoffIndex = collectedMessages.findIndex(
+                (message) => message.id === run.inputMessageId,
+              );
+              if (cutoffIndex >= 0) {
+                collectedMessages.splice(cutoffIndex + 1);
+                break;
+              }
+            }
+
+            hasNextPage = page.hasNextPage;
+            cursor = page.cursor;
+          }
 
           const openaiInput: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+          const conversation: Array<{ role: "user" | "assistant"; content: string }> = [];
+          const maxMessages = resolveMaxHistoryMessages(config);
 
           if (run.systemPrompt) {
             openaiInput.push({ role: "system", content: run.systemPrompt });
           }
 
-          for (const message of messageHistory.messages) {
+          for (const message of collectedMessages) {
             if (message.role !== "user" && message.role !== "assistant") {
               continue;
             }
@@ -705,8 +738,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               continue;
             }
 
-            openaiInput.push({ role: message.role as "user" | "assistant", content: text });
+            conversation.push({ role: message.role as "user" | "assistant", content: text });
           }
+
+          if (maxMessages && conversation.length > maxMessages) {
+            conversation.splice(0, conversation.length - maxMessages);
+          }
+
+          openaiInput.push(...conversation);
 
           let openaiClient: OpenAI;
           try {
