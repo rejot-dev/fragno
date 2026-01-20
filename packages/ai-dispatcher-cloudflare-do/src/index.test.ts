@@ -208,4 +208,30 @@ describe("ai durable object dispatcher", async () => {
     expect(alarmCalls.length).toBeGreaterThan(0);
     expect(alarmCalls[alarmCalls.length - 1]).toBeGreaterThanOrEqual(start);
   });
+
+  test("schedules alarms for webhook retries", async () => {
+    const alarmCalls: number[] = [];
+    const handler = createHandler(alarmCalls);
+
+    const nextAttemptAt = new Date(Date.now() + 80);
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_alarm",
+      type: "response.completed",
+      responseId: "resp_alarm",
+      payload: { id: "evt_alarm" },
+      nextAttemptAt,
+    });
+
+    const tickResponse = await handler.fetch(
+      new Request("https://example.com/api/ai/_runner/tick", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maxRuns: 1, maxWebhookEvents: 1 }),
+      }),
+    );
+
+    expect(tickResponse.ok).toBe(true);
+    expect(alarmCalls.length).toBeGreaterThan(0);
+    expect(alarmCalls[alarmCalls.length - 1]).toBeGreaterThanOrEqual(nextAttemptAt.getTime());
+  });
 });

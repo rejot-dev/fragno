@@ -50,7 +50,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
          duplicate implementations in the workspace
    - [ ] prototype a generic Cloudflare DO dispatcher runtime by extracting the core loop from
          `@fragno-dev/workflows-dispatcher-cloudflare-do`
-   - [ ] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
+   - [x] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
    - [ ] update Workflows dispatcher wrappers to use the shared runtime and fix any breakages
 
 Deliverables:
