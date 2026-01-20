@@ -205,6 +205,19 @@ type AiRunEventRecord = {
   createdAt: Date;
 };
 
+type AiToolCallRecord = {
+  id: FragnoId;
+  runId: string;
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+  status: string;
+  result: unknown | null;
+  isError: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type AiArtifactRecord = {
   id: FragnoId;
   runId: string;
@@ -576,16 +589,93 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
       deleteThread: function (threadId: string) {
         return this.serviceTx(aiSchema)
           .retrieve((uow) =>
-            uow.findFirst("ai_thread", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", threadId)),
-            ),
+            uow
+              .findFirst("ai_thread", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", threadId)),
+              )
+              .find("ai_message", (b) =>
+                b.whereIndex("idx_ai_message_thread_createdAt", (eb) =>
+                  eb("threadId", "=", threadId),
+                ),
+              )
+              .find("ai_run", (b) =>
+                b.whereIndex("idx_ai_run_thread_createdAt", (eb) => eb("threadId", "=", threadId)),
+              )
+              .find("ai_artifact", (b) =>
+                b.whereIndex("idx_ai_artifact_thread_createdAt", (eb) =>
+                  eb("threadId", "=", threadId),
+                ),
+              ),
           )
-          .mutate(({ uow, retrieveResult: [thread] }) => {
+          .mutate(({ uow, retrieveResult }) => {
+            const [thread, messages, runs, artifacts] = retrieveResult as [
+              AiThreadRecord | null,
+              AiMessageRecord[],
+              AiRunRecord[],
+              AiArtifactRecord[],
+            ];
+
             if (!thread) {
               throw new Error("THREAD_NOT_FOUND");
             }
 
+            for (const message of messages) {
+              uow.delete("ai_message", message.id);
+            }
+
+            for (const run of runs) {
+              uow.delete("ai_run", run.id);
+            }
+
+            for (const artifact of artifacts) {
+              uow.delete("ai_artifact", artifact.id);
+            }
+
             uow.delete("ai_thread", thread.id);
+            return { ok: true };
+          })
+          .build();
+      },
+      deleteRun: function (runId: string) {
+        return this.serviceTx(aiSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("ai_run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId)))
+              .find("ai_run_event", (b) =>
+                b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", runId)),
+              )
+              .find("ai_tool_call", (b) =>
+                b.whereIndex("idx_ai_tool_call_run_toolCallId", (eb) => eb("runId", "=", runId)),
+              )
+              .find("ai_artifact", (b) =>
+                b.whereIndex("idx_ai_artifact_run_createdAt", (eb) => eb("runId", "=", runId)),
+              ),
+          )
+          .mutate(({ uow, retrieveResult }) => {
+            const [run, events, toolCalls, artifacts] = retrieveResult as [
+              AiRunRecord | null,
+              AiRunEventRecord[],
+              AiToolCallRecord[],
+              AiArtifactRecord[],
+            ];
+
+            if (!run) {
+              throw new Error("RUN_NOT_FOUND");
+            }
+
+            for (const event of events) {
+              uow.delete("ai_run_event", event.id);
+            }
+
+            for (const toolCall of toolCalls) {
+              uow.delete("ai_tool_call", toolCall.id);
+            }
+
+            for (const artifact of artifacts) {
+              uow.delete("ai_artifact", artifact.id);
+            }
+
+            uow.delete("ai_run", run.id);
             return { ok: true };
           })
           .build();

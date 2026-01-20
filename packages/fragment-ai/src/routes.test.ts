@@ -271,6 +271,101 @@ describe("AI Fragment Routes", () => {
     }
   });
 
+  test("admin delete run should remove run data", async () => {
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: { title: "Thread Run Delete" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Delete run" },
+        text: "Delete run",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const run = await fragment.callRoute("POST", "/threads/:threadId/runs", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        inputMessageId: message.data.id,
+        type: "agent",
+      },
+    });
+    expect(run.type).toBe("json");
+    if (run.type !== "json") {
+      return;
+    }
+
+    const now = new Date();
+    await db.create("ai_run_event", {
+      runId: run.data.id,
+      seq: 1,
+      type: "run.meta",
+      payload: { runId: run.data.id },
+      createdAt: now,
+    });
+    await db.create("ai_tool_call", {
+      runId: run.data.id,
+      toolCallId: "call-1",
+      toolName: "demo",
+      args: { input: "ok" },
+      status: "completed",
+      result: { ok: true },
+      isError: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.create("ai_artifact", {
+      runId: run.data.id,
+      threadId: thread.data.id,
+      type: "deep_research_report",
+      title: "Report",
+      mimeType: "text/markdown",
+      data: { content: "Hello" },
+      text: "Hello",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const deleted = await fragment.callRoute("DELETE", "/admin/runs/:runId", {
+      pathParams: { runId: run.data.id },
+    });
+    expect(deleted.type).toBe("json");
+    if (deleted.type !== "json") {
+      return;
+    }
+    expect(deleted.data.ok).toBe(true);
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.data.id)),
+    );
+    expect(storedRun).toBeNull();
+
+    const runEvents = await db.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.data.id)),
+    );
+    expect(runEvents).toHaveLength(0);
+
+    const toolCalls = await db.find("ai_tool_call", (b) =>
+      b.whereIndex("idx_ai_tool_call_run_toolCallId", (eb) => eb("runId", "=", run.data.id)),
+    );
+    expect(toolCalls).toHaveLength(0);
+
+    const artifacts = await db.find("ai_artifact", (b) =>
+      b.whereIndex("idx_ai_artifact_run_createdAt", (eb) => eb("runId", "=", run.data.id)),
+    );
+    expect(artifacts).toHaveLength(0);
+  });
+
   test("runs stream route should stream events and finalize run", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: {

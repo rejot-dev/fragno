@@ -220,6 +220,140 @@ describe("AI Fragment Services", () => {
     });
   });
 
+  test("deleteRun should remove related records", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread D1" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Delete run" },
+        text: "Delete run",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        type: "agent",
+      }),
+    );
+
+    const now = new Date();
+    await db.create("ai_run_event", {
+      runId: run.id,
+      seq: 1,
+      type: "run.meta",
+      payload: { runId: run.id },
+      createdAt: now,
+    });
+    await db.create("ai_tool_call", {
+      runId: run.id,
+      toolCallId: "call-1",
+      toolName: "demo",
+      args: { input: "ok" },
+      status: "completed",
+      result: { ok: true },
+      isError: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.create("ai_artifact", {
+      runId: run.id,
+      threadId: thread.id,
+      type: "deep_research_report",
+      title: "Report",
+      mimeType: "text/markdown",
+      data: { content: "Hello" },
+      text: "Hello",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const deleted = await runService<{ ok: boolean }>(() => fragment.services.deleteRun(run.id));
+    expect(deleted.ok).toBe(true);
+
+    const storedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun).toBeNull();
+
+    const runEvents = await db.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(runEvents).toHaveLength(0);
+
+    const toolCalls = await db.find("ai_tool_call", (b) =>
+      b.whereIndex("idx_ai_tool_call_run_toolCallId", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(toolCalls).toHaveLength(0);
+
+    const artifacts = await db.find("ai_artifact", (b) =>
+      b.whereIndex("idx_ai_artifact_run_createdAt", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(artifacts).toHaveLength(0);
+  });
+
+  test("deleteThread should remove thread data", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread D2" }),
+    );
+
+    await runService(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Delete thread" },
+        text: "Delete thread",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({ threadId: thread.id, type: "agent" }),
+    );
+
+    const now = new Date();
+    await db.create("ai_artifact", {
+      runId: run.id,
+      threadId: thread.id,
+      type: "deep_research_report",
+      title: "Report",
+      mimeType: "text/markdown",
+      data: { content: "Hello" },
+      text: "Hello",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const deleted = await runService<{ ok: boolean }>(() =>
+      fragment.services.deleteThread(thread.id),
+    );
+    expect(deleted.ok).toBe(true);
+
+    const storedThread = await db.findFirst("ai_thread", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", thread.id)),
+    );
+    expect(storedThread).toBeNull();
+
+    const messages = await db.find("ai_message", (b) =>
+      b.whereIndex("idx_ai_message_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
+    );
+    expect(messages).toHaveLength(0);
+
+    const runs = await db.find("ai_run", (b) =>
+      b.whereIndex("idx_ai_run_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
+    );
+    expect(runs).toHaveLength(0);
+
+    const artifacts = await db.find("ai_artifact", (b) =>
+      b.whereIndex("idx_ai_artifact_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
+    );
+    expect(artifacts).toHaveLength(0);
+  });
+
   test("claimNextRuns should claim due queued runs", async () => {
     const now = new Date("2024-01-01T00:00:00Z");
 

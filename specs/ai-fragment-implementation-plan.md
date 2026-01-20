@@ -285,7 +285,7 @@ v0.1 hardening:
   - [x] page size caps in services
 - [x] Rate limits at host level for webhooks + tick endpoint
 - [x] Observability: structured logs for run lifecycle + webhook processing
-- [ ] Admin-only debug/delete routes (host-protect)
+- [x] Admin-only debug/delete routes (host-protect)
 
 Future (v0.2+):
 

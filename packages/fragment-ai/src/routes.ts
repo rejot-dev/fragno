@@ -1249,6 +1249,24 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         },
       }),
       defineRoute({
+        method: "DELETE",
+        path: "/admin/runs/:runId",
+        outputSchema: z.object({ ok: z.boolean() }),
+        errorCodes: ["RUN_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          try {
+            const result = await this.handlerTx()
+              .withServiceCalls(() => [services.deleteRun(pathParams.runId)])
+              .transform(({ serviceResult: [value] }) => value)
+              .execute();
+
+            return json(result);
+          } catch (err) {
+            return handleServiceError(err, error as ErrorResponder);
+          }
+        },
+      }),
+      defineRoute({
         method: "GET",
         path: "/runs/:runId/events",
         queryParameters: ["pageSize", "cursor", "order"],
