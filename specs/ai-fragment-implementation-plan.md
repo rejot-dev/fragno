@@ -361,8 +361,8 @@ Validation:
 
 **Goal:** provide a clean, debug-friendly UI that exercises all hooks.
 
-1. [ ] Create `example-apps/ai-fragment-react-router-drizzle` (copy react-router example skeleton).
-2. [ ] Use Drizzle + PGLite for local persistence.
+1. [x] Create `example-apps/ai-fragment-react-router-drizzle` (copy react-router example skeleton).
+2. [x] Use Drizzle + PGLite for local persistence.
 3. [ ] Implement pages:
    - [ ] Home page (intro, quick actions)
    - [ ] Threads view with left list (simple list, no pagination) + right detail view (thread +
