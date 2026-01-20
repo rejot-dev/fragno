@@ -87,6 +87,7 @@ const mockOpenAIWebhookUnwrap = vi.fn(async (): Promise<Record<string, unknown>>
 
 const mockPiAiGetModel = vi.fn();
 const mockPiAiStreamSimple = vi.fn();
+const mockPiAiCompleteSimple = vi.fn();
 const mockPiAiGetEnvApiKey = vi.fn();
 
 vi.mock("openai", () => {
@@ -112,7 +113,7 @@ vi.mock("@mariozechner/pi-ai", () => {
   return {
     getModel: (...args: unknown[]) => mockPiAiGetModel(...args),
     streamSimple: (...args: unknown[]) => mockPiAiStreamSimple(...args),
-    completeSimple: vi.fn(),
+    completeSimple: (...args: unknown[]) => mockPiAiCompleteSimple(...args),
     getEnvApiKey: (...args: unknown[]) => mockPiAiGetEnvApiKey(...args),
   };
 });
@@ -162,6 +163,7 @@ describe("AI Fragment Routes", () => {
     dispatcher.wake.mockReset();
     mockPiAiGetModel.mockReset();
     mockPiAiStreamSimple.mockReset();
+    mockPiAiCompleteSimple.mockReset();
     mockPiAiGetEnvApiKey.mockReset();
   });
 
@@ -673,6 +675,173 @@ describe("AI Fragment Routes", () => {
     expect(toolCalls[0]?.toolName).toBe("search");
     expect(toolCalls[0]?.status).toBe("failed");
     expect(toolCalls[0]?.isError).toBe(1);
+  });
+
+  test("runs stream route should execute pi-ai tool calls with registry", async () => {
+    const toolExecute = vi.fn(async ({ args }: { args: Record<string, unknown> }) => {
+      return { output: { ok: true, query: args["query"] } };
+    });
+    const piAiConfig = {
+      defaultModel: { id: "claude-test", provider: "anthropic" },
+      apiKey: "pi-key",
+      toolRegistry: {
+        tools: [{ name: "search", execute: toolExecute }],
+      },
+    };
+
+    const { fragments: piFragments, test: piTestContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "ai",
+        instantiate(aiFragmentDefinition).withConfig(piAiConfig).withRoutes([aiRoutesFactory]),
+      )
+      .build();
+
+    await piTestContext.resetDatabase();
+
+    const piFragment = piFragments.ai.fragment;
+    const piDb = piFragments.ai.db;
+
+    const model = {
+      id: "claude-test",
+      name: "Claude Test",
+      api: "anthropic-messages",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.test",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1000,
+      maxTokens: 1000,
+    };
+
+    mockPiAiGetModel.mockReturnValue(model);
+    const toolUseMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "call_tool_1",
+          name: "search",
+          arguments: { query: "hello" },
+        },
+      ],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: Date.now(),
+    };
+
+    const finalMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "Tool result response" }],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    };
+
+    const stream = {
+      async *[Symbol.asyncIterator]() {
+        await Promise.resolve();
+        yield { type: "start" };
+      },
+      result: async () => toolUseMessage,
+    };
+
+    mockPiAiStreamSimple.mockResolvedValue(stream);
+    mockPiAiCompleteSimple.mockResolvedValue(finalMessage);
+
+    const thread = await piFragment.callRoute("POST", "/threads", {
+      body: { title: "Pi-AI Tool Thread" },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await piFragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Use a tool" },
+        text: "Use a tool",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await piFragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    const events = [];
+    for await (const event of response.stream) {
+      events.push(event);
+    }
+
+    expect(events.some((event) => event.type === "tool.call.started")).toBe(true);
+    expect(events.some((event) => event.type === "tool.call.arguments.done")).toBe(true);
+    expect(
+      events.some((event) => event.type === "tool.call.status" && event.status === "completed"),
+    ).toBe(true);
+    expect(
+      events.some((event) => {
+        if (event.type !== "tool.call.output") {
+          return false;
+        }
+        const output = event.output as { ok?: boolean } | undefined;
+        return output?.ok === true && !event.isError;
+      }),
+    ).toBe(true);
+    expect(events[events.length - 1]).toMatchObject({ type: "run.final", status: "succeeded" });
+
+    const runs = await piDb.find("ai_run", (b) => b.whereIndex("primary"));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("succeeded");
+
+    const runId = runs[0] ? String(runs[0].id) : "";
+    const toolCalls = await piDb.find("ai_tool_call", (b) =>
+      b.whereIndex("idx_ai_tool_call_run_toolCallId", (eb) => eb("runId", "=", runId)),
+    );
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]?.toolCallId).toBe("call_tool_1");
+    expect(toolCalls[0]?.toolName).toBe("search");
+    expect(toolCalls[0]?.status).toBe("completed");
+    expect(toolCalls[0]?.isError).toBe(0);
+    expect(toolCalls[0]?.result).toMatchObject({ ok: true, query: "hello" });
+    expect(toolExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCallId: "call_tool_1",
+        toolName: "search",
+        args: { query: "hello" },
+      }),
+    );
   });
 
   test("runs stream route should honor tool policy denials", async () => {

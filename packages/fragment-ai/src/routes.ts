@@ -20,13 +20,14 @@ import { registerRunAbortController } from "./run-abort";
 import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
 import { logWithLogger } from "./logging";
 import { applyToolPolicy } from "./tool-policy";
+import { runPiAiToolLoop } from "./pi-ai-tools";
+import type { ExecutedToolCall } from "./tool-execution";
 import {
   buildPiAiContext,
   resolvePiAiApiKey,
   resolvePiAiModel,
   resolvePiAiResponseText,
   resolvePiAiThinkingLevel,
-  resolvePiAiToolCalls,
   streamWithPiAi,
 } from "./pi-ai";
 
@@ -810,7 +811,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             const unregisterAbort = registerRunAbortController(run.id, abortController);
             let sawOutputTextDone = false;
             let allowRetry = true;
-            let piAiToolCalls: ReturnType<typeof resolvePiAiToolCalls> | null = null;
+            let piAiToolCalls: ExecutedToolCall[] | null = null;
 
             const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
             const toolPolicyResult = await applyToolPolicy({
@@ -872,14 +873,12 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               }
             };
 
-            const emitPiAiToolCalls = async (
-              toolCalls: ReturnType<typeof resolvePiAiToolCalls>,
-            ) => {
+            const emitPiAiToolCalls = async (toolCalls: ExecutedToolCall[]) => {
               for (const toolCall of toolCalls) {
-                const toolCallId = toolCall.id;
+                const toolCallId = toolCall.toolCallId;
                 const toolType = "tool_call";
-                const toolName = toolCall.name;
-                const args = stringifyToolArgs(toolCall.arguments);
+                const toolName = toolCall.toolName;
+                const args = stringifyToolArgs(toolCall.args);
 
                 await safeWrite({
                   type: "tool.call.started",
@@ -910,12 +909,12 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                   runId: run.id,
                   toolCallId,
                   toolType,
-                  status: "failed",
+                  status: toolCall.status,
                 });
                 recordRunEventIfEnabled("tool.call.status", {
                   toolCallId,
                   toolType,
-                  status: "failed",
+                  status: toolCall.status,
                 });
 
                 await safeWrite({
@@ -923,14 +922,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                   runId: run.id,
                   toolCallId,
                   toolType,
-                  output: { error: "TOOL_CALL_UNSUPPORTED" },
-                  isError: true,
+                  output: toolCall.output,
+                  ...(toolCall.isError ? { isError: true } : {}),
                 });
                 recordRunEventIfEnabled("tool.call.output", {
                   toolCallId,
                   toolType,
-                  output: { error: "TOOL_CALL_UNSUPPORTED" },
-                  isError: true,
+                  output: toolCall.output,
+                  ...(toolCall.isError ? { isError: true } : {}),
                 });
               }
             };
@@ -1215,7 +1214,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               } else if (piAiModel && piAiContext) {
                 try {
                   const reasoning = resolvePiAiThinkingLevel(run.thinkingLevel);
-                  const responseStream = await streamWithPiAi(piAiModel, piAiContext, {
+                  const piAiOptions = {
                     apiKey: piAiApiKey,
                     sessionId: config.sessionId,
                     temperature: config.temperature,
@@ -1223,7 +1222,8 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                     thinkingBudgets: config.thinkingBudgets,
                     ...(reasoning ? { reasoning } : {}),
                     signal: abortController.signal,
-                  });
+                  };
+                  const responseStream = await streamWithPiAi(piAiModel, piAiContext, piAiOptions);
 
                   for await (const event of responseStream) {
                     if (event.type === "text_delta") {
@@ -1247,14 +1247,42 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
 
                   const finalMessage = await responseStream.result();
                   if (finalMessage.stopReason === "toolUse") {
-                    const toolCalls = resolvePiAiToolCalls(finalMessage);
-                    if (toolCalls.length > 0) {
-                      piAiToolCalls = toolCalls;
-                      await emitPiAiToolCalls(toolCalls);
+                    const toolLoop = await runPiAiToolLoop({
+                      model: piAiModel,
+                      context: piAiContext,
+                      options: piAiOptions,
+                      toolRegistry: config.toolRegistry,
+                      threadId: run.threadId,
+                      runId: run.id,
+                      initialMessage: finalMessage,
+                    });
+                    piAiToolCalls = toolLoop.toolCalls;
+                    if (piAiToolCalls.length > 0) {
+                      await emitPiAiToolCalls(piAiToolCalls);
                     }
-                    finalStatus = "failed";
-                    errorMessage = "TOOL_CALL_UNSUPPORTED";
-                    allowRetry = false;
+
+                    if (toolLoop.error) {
+                      finalStatus = "failed";
+                      errorMessage = toolLoop.error;
+                      allowRetry = false;
+                    } else if (toolLoop.message.stopReason === "error") {
+                      finalStatus = "failed";
+                      errorMessage = toolLoop.message.errorMessage ?? "AI request failed";
+                    } else if (toolLoop.message.stopReason === "aborted") {
+                      finalStatus = "cancelled";
+                      errorMessage = null;
+                    } else {
+                      const finalText = resolvePiAiResponseText(toolLoop.message);
+                      if (finalText) {
+                        textBuffer = finalText;
+                        await safeWrite({
+                          type: "output.text.done",
+                          runId: run.id,
+                          text: finalText,
+                        });
+                        recordRunEvent("output.text.done", { text: finalText });
+                      }
+                    }
                   } else if (finalMessage.stopReason === "error") {
                     finalStatus = "failed";
                     errorMessage = finalMessage.errorMessage ?? "AI request failed";
@@ -1390,17 +1418,16 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                   }
 
                   if (piAiToolCalls && piAiToolCalls.length > 0) {
-                    const toolError = errorMessage ?? "TOOL_CALL_UNSUPPORTED";
                     for (const toolCall of piAiToolCalls) {
                       schema.create("ai_tool_call", {
                         runId: run.id,
                         threadId: runRecord.threadId,
-                        toolCallId: toolCall.id,
-                        toolName: toolCall.name,
-                        args: toolCall.arguments,
-                        status: "failed",
-                        result: { error: toolError },
-                        isError: 1,
+                        toolCallId: toolCall.toolCallId,
+                        toolName: toolCall.toolName,
+                        args: toolCall.args,
+                        status: toolCall.status,
+                        result: toolCall.output,
+                        isError: toolCall.isError ? 1 : 0,
                         createdAt: updatedAt,
                         updatedAt,
                       });

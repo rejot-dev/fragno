@@ -22,11 +22,11 @@ import { buildOpenAIInput } from "./history";
 import {
   buildPiAiContext,
   buildPiAiStreamOptions,
-  completeWithPiAi,
   resolvePiAiModel,
   resolvePiAiResponseText,
-  resolvePiAiToolCalls,
 } from "./pi-ai";
+import { runPiAiToolLoop } from "./pi-ai-tools";
+import type { ExecutedToolCall } from "./tool-execution";
 
 type Clock = {
   now: () => Date;
@@ -178,7 +178,7 @@ const finalizeRun = async ({
   error: string | null;
   openaiResponseId: string | null;
   assistantText: string | null;
-  toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+  toolCalls?: ExecutedToolCall[];
   statusEvent?: "running" | "failed" | "cancelled" | "succeeded" | null;
   clock: Clock;
 }) => {
@@ -210,7 +210,6 @@ const finalizeRun = async ({
   }
 
   if (toolCalls && toolCalls.length > 0) {
-    const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
     for (const toolCall of toolCalls) {
       const toolType = "tool_call";
       let args = "{}";
@@ -232,7 +231,7 @@ const finalizeRun = async ({
       });
       runEvents.push({
         type: "tool.call.status",
-        payload: { toolCallId: toolCall.toolCallId, toolType, status: "failed" },
+        payload: { toolCallId: toolCall.toolCallId, toolType, status: toolCall.status },
         createdAt: completedAt,
       });
       runEvents.push({
@@ -240,8 +239,8 @@ const finalizeRun = async ({
         payload: {
           toolCallId: toolCall.toolCallId,
           toolType,
-          output: { error: toolError },
-          isError: true,
+          output: toolCall.output,
+          ...(toolCall.isError ? { isError: true } : {}),
         },
         createdAt: completedAt,
       });
@@ -287,7 +286,6 @@ const finalizeRun = async ({
   }
 
   if (toolCalls && toolCalls.length > 0) {
-    const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
     for (const toolCall of toolCalls) {
       schema.create("ai_tool_call", {
         runId: run.id.toString(),
@@ -295,9 +293,9 @@ const finalizeRun = async ({
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
         args: toolCall.args,
-        status: "failed",
-        result: { error: toolError },
-        isError: 1,
+        status: toolCall.status,
+        result: toolCall.output,
+        isError: toolCall.isError ? 1 : 0,
         createdAt: completedAt,
         updatedAt: completedAt,
       });
@@ -438,23 +436,38 @@ const submitPiAiDeepResearchRun = async ({
   let error: string | null = null;
   let reportMarkdown: string | null = null;
   let usage: unknown | undefined;
-  let toolCalls: ReturnType<typeof resolvePiAiToolCalls> | null = null;
+  let toolCalls: ExecutedToolCall[] | null = null;
   let retryable = true;
 
   const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
-  const toolPolicyResult = await applyToolPolicy({
-    policy: config.toolPolicy,
-    context: {
-      threadId: run.threadId,
+  let toolPolicyResult: Awaited<ReturnType<typeof applyToolPolicy>> | null = null;
+  try {
+    toolPolicyResult = await applyToolPolicy({
+      policy: config.toolPolicy,
+      context: {
+        threadId: run.threadId,
+        runId: run.id.toString(),
+        runType: run.type as "agent" | "deep_research",
+        executionMode: run.executionMode as "foreground_stream" | "background",
+        modelId: run.modelId,
+        openaiToolConfig: baseToolConfig ?? null,
+      },
+    });
+  } catch (err) {
+    status = "failed";
+    error = err instanceof Error ? err.message : "Tool policy failed";
+    retryable = false;
+    logWithLogger(config.logger, "error", {
+      event: "ai.run.tool_policy.error",
       runId: run.id.toString(),
-      runType: run.type as "agent" | "deep_research",
-      executionMode: run.executionMode as "foreground_stream" | "background",
-      modelId: run.modelId,
-      openaiToolConfig: baseToolConfig ?? null,
-    },
-  });
+      threadId: run.threadId,
+      type: run.type,
+      executionMode: run.executionMode,
+      error,
+    });
+  }
 
-  if (toolPolicyResult.deniedReason) {
+  if (toolPolicyResult?.deniedReason) {
     status = "failed";
     error = toolPolicyResult.deniedReason;
     retryable = false;
@@ -466,7 +479,7 @@ const submitPiAiDeepResearchRun = async ({
       executionMode: run.executionMode,
       reason: toolPolicyResult.deniedReason,
     });
-  } else {
+  } else if (toolPolicyResult) {
     try {
       if (!modelRef) {
         throw new Error("MODEL_PROVIDER_MISSING");
@@ -491,23 +504,30 @@ const submitPiAiDeepResearchRun = async ({
         throw new Error("AI_API_KEY_MISSING");
       }
 
-      const response = await completeWithPiAi(model, context, options);
-      usage = response.usage;
+      const toolLoop = await runPiAiToolLoop({
+        model,
+        context,
+        options,
+        toolRegistry: config.toolRegistry,
+        threadId: run.threadId,
+        runId: run.id.toString(),
+      });
+      usage = toolLoop.message.usage;
+      toolCalls = toolLoop.toolCalls;
 
-      if (response.stopReason === "toolUse") {
+      if (toolLoop.error) {
         status = "failed";
-        error = "TOOL_CALL_UNSUPPORTED";
+        error = toolLoop.error;
         retryable = false;
-        toolCalls = resolvePiAiToolCalls(response);
-      } else if (response.stopReason === "error") {
+      } else if (toolLoop.message.stopReason === "error") {
         status = "failed";
-        error = response.errorMessage ?? "AI request failed";
-      } else if (response.stopReason === "aborted") {
+        error = toolLoop.message.errorMessage ?? "AI request failed";
+      } else if (toolLoop.message.stopReason === "aborted") {
         status = "cancelled";
         error = null;
         retryable = false;
       } else {
-        reportMarkdown = resolvePiAiResponseText(response) ?? "";
+        reportMarkdown = resolvePiAiResponseText(toolLoop.message) ?? "";
       }
     } catch (err) {
       status = "failed";
@@ -601,17 +621,16 @@ const submitPiAiDeepResearchRun = async ({
         });
 
         if (toolCalls && toolCalls.length > 0) {
-          const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
           for (const toolCall of toolCalls) {
             schema.create("ai_tool_call", {
               runId: run.id.toString(),
               threadId: run.threadId,
-              toolCallId: toolCall.id,
-              toolName: toolCall.name,
-              args: toolCall.arguments,
-              status: "failed",
-              result: { error: toolError },
-              isError: 1,
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              args: toolCall.args,
+              status: toolCall.status,
+              result: toolCall.output,
+              isError: toolCall.isError ? 1 : 0,
               createdAt: now,
               updatedAt: now,
             });
@@ -641,17 +660,16 @@ const submitPiAiDeepResearchRun = async ({
     });
 
     if (toolCalls && toolCalls.length > 0) {
-      const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
       for (const toolCall of toolCalls) {
         schema.create("ai_tool_call", {
           runId: run.id.toString(),
           threadId: run.threadId,
-          toolCallId: toolCall.id,
-          toolName: toolCall.name,
-          args: toolCall.arguments,
-          status: "failed",
-          result: { error: toolError },
-          isError: 1,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          args: toolCall.args,
+          status: toolCall.status,
+          result: toolCall.output,
+          isError: toolCall.isError ? 1 : 0,
           createdAt: now,
           updatedAt: now,
         });
@@ -743,19 +761,34 @@ const submitDeepResearchRun = async ({
   let retryable = true;
 
   const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
-  const toolPolicyResult = await applyToolPolicy({
-    policy: config.toolPolicy,
-    context: {
-      threadId: run.threadId,
+  let toolPolicyResult: Awaited<ReturnType<typeof applyToolPolicy>> | null = null;
+  try {
+    toolPolicyResult = await applyToolPolicy({
+      policy: config.toolPolicy,
+      context: {
+        threadId: run.threadId,
+        runId: run.id.toString(),
+        runType: run.type as "agent" | "deep_research",
+        executionMode: run.executionMode as "foreground_stream" | "background",
+        modelId: run.modelId,
+        openaiToolConfig: baseToolConfig ?? null,
+      },
+    });
+  } catch (err) {
+    status = "failed";
+    error = err instanceof Error ? err.message : "Tool policy failed";
+    retryable = false;
+    logWithLogger(config.logger, "error", {
+      event: "ai.run.tool_policy.error",
       runId: run.id.toString(),
-      runType: run.type as "agent" | "deep_research",
-      executionMode: run.executionMode as "foreground_stream" | "background",
-      modelId: run.modelId,
-      openaiToolConfig: baseToolConfig ?? null,
-    },
-  });
+      threadId: run.threadId,
+      type: run.type,
+      executionMode: run.executionMode,
+      error,
+    });
+  }
 
-  if (toolPolicyResult.deniedReason) {
+  if (toolPolicyResult?.deniedReason) {
     status = "failed";
     error = toolPolicyResult.deniedReason;
     retryable = false;
@@ -769,7 +802,7 @@ const submitDeepResearchRun = async ({
     });
   }
 
-  if (!toolPolicyResult.deniedReason) {
+  if (toolPolicyResult && !toolPolicyResult.deniedReason) {
     try {
       const client = await createOpenAIClient({ ...config, modelRef });
       const openaiInput = await buildOpenAIInput({
@@ -1167,137 +1200,166 @@ export const runExecutor = async ({
   let error: string | null = null;
   let openaiResponseId: string | null = run.openaiResponseId;
   let assistantText: string | null = null;
-  let toolCalls: ReturnType<typeof resolvePiAiToolCalls> | null = null;
+  let toolCalls: ExecutedToolCall[] | null = null;
   let retryable = true;
   let didStart = false;
   const abortController = new AbortController();
   const unregisterAbort = registerRunAbortController(run.id.toString(), abortController);
 
   const baseToolConfig = run.openaiToolConfig ?? thread.openaiToolConfig;
-  const toolPolicyResult = await applyToolPolicy({
-    policy: config.toolPolicy,
-    context: {
-      threadId: run.threadId,
-      runId: run.id.toString(),
-      runType: run.type as "agent" | "deep_research",
-      executionMode: run.executionMode as "foreground_stream" | "background",
-      modelId: run.modelId,
-      openaiToolConfig: baseToolConfig ?? null,
-    },
-  });
+  let toolPolicyResult: Awaited<ReturnType<typeof applyToolPolicy>> | null = null;
 
-  if (toolPolicyResult.deniedReason) {
-    status = "failed";
-    error = toolPolicyResult.deniedReason;
-    retryable = false;
-    logWithLogger(config.logger, "warn", {
-      event: "ai.run.tool_policy.denied",
-      runId: run.id.toString(),
-      threadId: run.threadId,
-      type: run.type,
-      executionMode: run.executionMode,
-      reason: toolPolicyResult.deniedReason,
-    });
-  } else {
-    const modelRef = resolveOpenAIModelRef({
-      config,
-      modelId: run.modelId,
-      runType: run.type,
-    });
-    const modelProvider = modelRef?.provider ?? "openai";
-
-    if (modelProvider !== "openai" && run.type === "deep_research") {
+  try {
+    try {
+      toolPolicyResult = await applyToolPolicy({
+        policy: config.toolPolicy,
+        context: {
+          threadId: run.threadId,
+          runId: run.id.toString(),
+          runType: run.type as "agent" | "deep_research",
+          executionMode: run.executionMode as "foreground_stream" | "background",
+          modelId: run.modelId,
+          openaiToolConfig: baseToolConfig ?? null,
+        },
+      });
+    } catch (err) {
       status = "failed";
-      error = "PROVIDER_UNSUPPORTED_FOR_DEEP_RESEARCH";
+      error = err instanceof Error ? err.message : "Tool policy failed";
       retryable = false;
-    } else {
-      try {
-        if (modelProvider === "openai") {
-          const client = await createOpenAIClient({ ...config, modelRef });
-          const openaiInput = await buildOpenAIInput({
-            run,
-            messages,
-            maxMessages: resolveMaxHistoryMessages(config),
-            compactor: config.history?.compactor,
-            logger: config.logger,
-          });
-          const responseOptions = buildOpenAIResponseOptions({
-            config,
-            modelId: run.modelId,
-            input: openaiInput,
-            thinkingLevel: run.thinkingLevel,
-            openaiToolConfig: toolPolicyResult.openaiToolConfig,
-            stream: false,
-          });
-          didStart = true;
-          const response = await client.responses.create(responseOptions, {
-            idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
-            signal: abortController.signal,
-          });
-          if (response && typeof response === "object" && "id" in response) {
-            const responseId = (response as { id?: unknown }).id;
-            if (typeof responseId === "string") {
-              openaiResponseId = responseId;
+      logWithLogger(config.logger, "error", {
+        event: "ai.run.tool_policy.error",
+        runId: run.id.toString(),
+        threadId: run.threadId,
+        type: run.type,
+        executionMode: run.executionMode,
+        error,
+      });
+    }
+
+    if (toolPolicyResult?.deniedReason) {
+      status = "failed";
+      error = toolPolicyResult.deniedReason;
+      retryable = false;
+      logWithLogger(config.logger, "warn", {
+        event: "ai.run.tool_policy.denied",
+        runId: run.id.toString(),
+        threadId: run.threadId,
+        type: run.type,
+        executionMode: run.executionMode,
+        reason: toolPolicyResult.deniedReason,
+      });
+    } else if (toolPolicyResult) {
+      const modelRef = resolveOpenAIModelRef({
+        config,
+        modelId: run.modelId,
+        runType: run.type,
+      });
+      const modelProvider = modelRef?.provider ?? "openai";
+
+      if (modelProvider !== "openai" && run.type === "deep_research") {
+        status = "failed";
+        error = "PROVIDER_UNSUPPORTED_FOR_DEEP_RESEARCH";
+        retryable = false;
+      } else {
+        try {
+          if (modelProvider === "openai") {
+            const client = await createOpenAIClient({ ...config, modelRef });
+            const openaiInput = await buildOpenAIInput({
+              run,
+              messages,
+              maxMessages: resolveMaxHistoryMessages(config),
+              compactor: config.history?.compactor,
+              logger: config.logger,
+            });
+            const responseOptions = buildOpenAIResponseOptions({
+              config,
+              modelId: run.modelId,
+              input: openaiInput,
+              thinkingLevel: run.thinkingLevel,
+              openaiToolConfig: toolPolicyResult.openaiToolConfig,
+              stream: false,
+            });
+            didStart = true;
+            const response = await client.responses.create(responseOptions, {
+              idempotencyKey: buildOpenAIIdempotencyKey(String(run.id), run.attempt),
+              signal: abortController.signal,
+            });
+            if (response && typeof response === "object" && "id" in response) {
+              const responseId = (response as { id?: unknown }).id;
+              if (typeof responseId === "string") {
+                openaiResponseId = responseId;
+              }
+            }
+            assistantText = resolveOpenAIResponseText(response);
+          } else {
+            if (!modelRef) {
+              throw new Error("MODEL_PROVIDER_MISSING");
+            }
+
+            const model = await resolvePiAiModel({ modelId: run.modelId, modelRef });
+            const openaiInput = await buildOpenAIInput({
+              run,
+              messages,
+              maxMessages: resolveMaxHistoryMessages(config),
+              compactor: config.history?.compactor,
+              logger: config.logger,
+            });
+            const context = buildPiAiContext({ input: openaiInput, model });
+            const { apiKey, options } = await buildPiAiStreamOptions({
+              config,
+              provider: model.provider,
+              thinkingLevel: run.thinkingLevel,
+              signal: abortController.signal,
+            });
+
+            if (!apiKey) {
+              throw new Error("AI_API_KEY_MISSING");
+            }
+
+            didStart = true;
+            const toolLoop = await runPiAiToolLoop({
+              model,
+              context,
+              options,
+              toolRegistry: config.toolRegistry,
+              threadId: run.threadId,
+              runId: run.id.toString(),
+            });
+            toolCalls = toolLoop.toolCalls;
+
+            if (toolLoop.error) {
+              status = "failed";
+              error = toolLoop.error;
+              retryable = false;
+            } else if (toolLoop.message.stopReason === "aborted") {
+              status = "cancelled";
+              error = null;
+              assistantText = null;
+            } else if (toolLoop.message.stopReason === "error") {
+              status = "failed";
+              error = toolLoop.message.errorMessage ?? "AI request failed";
+            } else {
+              assistantText = resolvePiAiResponseText(toolLoop.message);
             }
           }
-          assistantText = resolveOpenAIResponseText(response);
-        } else {
-          if (!modelRef) {
-            throw new Error("MODEL_PROVIDER_MISSING");
-          }
-
-          const model = await resolvePiAiModel({ modelId: run.modelId, modelRef });
-          const openaiInput = await buildOpenAIInput({
-            run,
-            messages,
-            maxMessages: resolveMaxHistoryMessages(config),
-            compactor: config.history?.compactor,
-            logger: config.logger,
-          });
-          const context = buildPiAiContext({ input: openaiInput, model });
-          const { apiKey, options } = await buildPiAiStreamOptions({
-            config,
-            provider: model.provider,
-            thinkingLevel: run.thinkingLevel,
-            signal: abortController.signal,
-          });
-
-          if (!apiKey) {
-            throw new Error("AI_API_KEY_MISSING");
-          }
-
-          didStart = true;
-          const response = await completeWithPiAi(model, context, options);
-          if (response.stopReason === "aborted") {
+        } catch (err) {
+          if (
+            abortController.signal.aborted ||
+            (err instanceof Error && err.name === "AbortError")
+          ) {
             status = "cancelled";
             error = null;
             assistantText = null;
-          } else if (response.stopReason === "error") {
-            status = "failed";
-            error = response.errorMessage ?? "AI request failed";
-          } else if (response.stopReason === "toolUse") {
-            status = "failed";
-            error = "TOOL_CALL_UNSUPPORTED";
-            retryable = false;
-            toolCalls = resolvePiAiToolCalls(response);
           } else {
-            assistantText = resolvePiAiResponseText(response);
+            status = "failed";
+            error = err instanceof Error ? err.message : "AI request failed";
           }
-        }
-      } catch (err) {
-        if (abortController.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
-          status = "cancelled";
-          error = null;
-          assistantText = null;
-        } else {
-          status = "failed";
-          error = err instanceof Error ? err.message : "AI request failed";
         }
       }
     }
+  } finally {
+    unregisterAbort();
   }
-
-  unregisterAbort();
 
   if (assistantText) {
     const maxMessageBytes = resolveMaxMessageBytes(config);
@@ -1321,13 +1383,7 @@ export const runExecutor = async ({
     openaiResponseId,
     assistantText,
     statusEvent: didStart ? "running" : status,
-    toolCalls: toolCalls
-      ? toolCalls.map((toolCall) => ({
-          toolCallId: toolCall.id,
-          toolName: toolCall.name,
-          args: toolCall.arguments,
-        }))
-      : undefined,
+    toolCalls: toolCalls ?? undefined,
     clock: effectiveClock,
   });
 
@@ -1436,10 +1492,17 @@ const claimNextWebhookEvents = async ({
   maxEvents: number;
   clock: Clock;
 }) => {
+  const now = clock.now();
   const events = (await db.find("ai_openai_webhook_event", (b) =>
     b
-      .whereIndex("idx_ai_openai_webhook_event_processedAt", (eb) => eb.isNull("processedAt"))
-      .orderByIndex("idx_ai_openai_webhook_event_processedAt", "asc")
+      .whereIndex("idx_ai_openai_webhook_event_processedAt_processingAt_nextAttemptAt", (eb) =>
+        eb.and(
+          eb.isNull("processedAt"),
+          eb.isNull("processingAt"),
+          eb.or(eb.isNull("nextAttemptAt"), eb("nextAttemptAt", "<=", now)),
+        ),
+      )
+      .orderByIndex("idx_ai_openai_webhook_event_processedAt_processingAt_nextAttemptAt", "asc")
       .pageSize(maxEvents),
   )) as Array<{
     id: FragnoId;
@@ -1449,7 +1512,6 @@ const claimNextWebhookEvents = async ({
   }>;
 
   const claimed: Array<{ id: FragnoId; responseId: string }> = [];
-  const now = clock.now();
   for (const event of events) {
     if (event.processingAt) {
       continue;

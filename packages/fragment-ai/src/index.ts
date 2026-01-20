@@ -13,6 +13,7 @@ import { aiFragmentDefinition, type AiRunLiveEvent, type AiThinkingLevel } from 
 import type { AiLogger } from "./logging";
 import type { AiHistoryCompactor } from "./history";
 import { aiRoutesFactory } from "./routes";
+import type { AiToolRegistry } from "./tool-execution";
 import type { AiToolPolicy, AiToolPolicyContext, AiToolPolicyDecision } from "./tool-policy";
 
 export type AiModelRef = {
@@ -32,6 +33,7 @@ export type AiThinkingBudgets = {
 
 export type { AiLogger };
 export type { AiHistoryCompactor };
+export type { AiToolRegistry };
 export type { AiToolPolicy, AiToolPolicyContext, AiToolPolicyDecision };
 
 export type AiWakeEvent =
@@ -115,6 +117,7 @@ export interface AiFragmentConfig {
     retentionDays?: number | null;
     artifactStore?: AiArtifactStore;
   };
+  toolRegistry?: AiToolRegistry;
   toolPolicy?: AiToolPolicy;
   logger?: AiLogger;
 }

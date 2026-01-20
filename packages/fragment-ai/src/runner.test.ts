@@ -590,6 +590,152 @@ describe("AI Fragment Runner", () => {
     });
   });
 
+  test("runner tick should execute pi-ai tool calls when registry provided", async () => {
+    const toolExecute = vi.fn(async ({ args }: { args: Record<string, unknown> }) => {
+      return { output: { ok: true, query: args["query"] } };
+    });
+    const customConfig = {
+      defaultModel: { id: "claude-test", provider: "anthropic" },
+      apiKey: "test-key",
+      retries: { baseDelayMs: 1000 },
+      toolRegistry: {
+        tools: [{ name: "search", execute: toolExecute }],
+      },
+    };
+
+    const { fragments, test: customTestContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment("ai", instantiate(aiFragmentDefinition).withConfig(customConfig))
+      .build();
+
+    const customFragment = fragments.ai.fragment;
+    const customDb = fragments.ai.db;
+
+    const customRunService = <T>(call: () => unknown) =>
+      customFragment.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [call() as TxResult<unknown, unknown>] as const)
+          .transform(({ serviceResult: [result] }) => result as T)
+          .execute();
+      });
+
+    await customTestContext.resetDatabase();
+    mockPiAiGetModel.mockReset();
+    mockPiAiCompleteSimple.mockReset();
+    mockPiAiGetEnvApiKey.mockReset();
+
+    const model = {
+      id: "claude-test",
+      name: "Claude Test",
+      api: "anthropic-messages",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.test",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1000,
+      maxTokens: 1000,
+    };
+
+    mockPiAiGetModel.mockReturnValue(model);
+    mockPiAiCompleteSimple
+      .mockResolvedValueOnce({
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call_tool_1",
+            name: "search",
+            arguments: { query: "hello" },
+          },
+        ],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "toolUse",
+        timestamp: Date.now(),
+      })
+      .mockResolvedValueOnce({
+        role: "assistant",
+        content: [{ type: "text", text: "Tool result response" }],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      });
+
+    const thread = await customRunService<{ id: string }>(() =>
+      customFragment.services.createThread({ title: "Pi-AI Tool Thread" }),
+    );
+
+    await customRunService<{ id: string }>(() =>
+      customFragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Use a tool" },
+        text: "Use a tool",
+      }),
+    );
+
+    const run = await customRunService<{ id: string }>(() =>
+      customFragment.services.createRun({
+        threadId: thread.id,
+        type: "agent",
+        executionMode: "background",
+        modelId: "claude-test",
+      }),
+    );
+
+    const runner = createAiRunner({ db: customDb, config: customConfig });
+    await runner.tick({ maxRuns: 1 });
+
+    const storedRun = await customDb.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(storedRun?.status).toBe("succeeded");
+    expect(storedRun?.error).toBeNull();
+
+    const toolCalls = await customDb.find("ai_tool_call", (b) =>
+      b.whereIndex("idx_ai_tool_call_run_toolCallId", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]?.toolCallId).toBe("call_tool_1");
+    expect(toolCalls[0]?.toolName).toBe("search");
+    expect(toolCalls[0]?.status).toBe("completed");
+    expect(toolCalls[0]?.isError).toBe(0);
+    expect(toolCalls[0]?.result).toMatchObject({ ok: true, query: "hello" });
+    expect(toolExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCallId: "call_tool_1",
+        toolName: "search",
+        args: { query: "hello" },
+      }),
+    );
+
+    const runEvents = await customDb.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(runEvents.some((event) => event.type === "tool.call.status")).toBe(true);
+    expect(runEvents.some((event) => event.type === "tool.call.output")).toBe(true);
+  });
+
   test("runner tick should clean up retained run events and webhook events", async () => {
     const now = new Date("2024-01-03T00:00:00Z");
     const recentEventAt = new Date("2024-01-02T12:00:00Z");
