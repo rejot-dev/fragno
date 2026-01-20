@@ -72,7 +72,7 @@ Deliverables:
    - [x] `ai_run_event` (coarse timeline; deltas optional)
    - [x] `ai_artifact` (deep research structured artifacts)
    - [x] `ai_openai_webhook_event` (idempotency + audit)
-   - [ ] (optional stub for v0.2+): `ai_tool_call`
+   - [x] (optional stub for v0.2+): `ai_tool_call`
 4. [ ] Implement services in `packages/fragment-ai/src/services/*`:
    - [x] `threadsService` (CRUD; includes per-thread `openaiToolConfig`)
    - [x] `messagesService` (append + list by `threadId`)

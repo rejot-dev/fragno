@@ -92,6 +92,28 @@ export const aiSchema = schema((s) => {
         )
         .createIndex("idx_ai_run_event_run_seq", ["runId", "seq"], { unique: true });
     })
+    .addTable("ai_tool_call", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("runId", column("string"))
+        .addColumn("toolCallId", column("string"))
+        .addColumn("toolName", column("string"))
+        .addColumn("args", column("json"))
+        .addColumn("status", column("string"))
+        .addColumn("result", column("json").nullable())
+        .addColumn("isError", column("integer").defaultTo(0))
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_ai_tool_call_run_toolCallId", ["runId", "toolCallId"], {
+          unique: true,
+        });
+    })
     .addTable("ai_artifact", (t) => {
       return t
         .addColumn("id", idColumn())

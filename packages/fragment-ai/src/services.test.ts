@@ -411,4 +411,57 @@ describe("AI Fragment Services", () => {
     expect(claimed.events).toHaveLength(1);
     expect(claimed.events[0]?.openaiEventId).toBe("evt_3");
   });
+
+  test("ai_tool_call should enforce unique toolCallId per run", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Tool Call Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Call a tool" },
+        text: "Call a tool",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        type: "agent",
+      }),
+    );
+
+    const now = new Date("2024-01-01T00:00:00Z");
+    await db.create("ai_tool_call", {
+      runId: run.id,
+      toolCallId: "call_1",
+      toolName: "web_search",
+      args: { query: "test" },
+      status: "pending",
+      result: null,
+      isError: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      db.create("ai_tool_call", {
+        runId: run.id,
+        toolCallId: "call_1",
+        toolName: "web_search",
+        args: { query: "test" },
+        status: "pending",
+        result: null,
+        isError: 0,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toThrow();
+
+    const calls = await db.find("ai_tool_call", (b) => b.whereIndex("primary"));
+    expect(calls).toHaveLength(1);
+  });
 });
