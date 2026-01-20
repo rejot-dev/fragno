@@ -335,8 +335,18 @@ Future (v0.2+):
    - [x] create `apps/docs/content/docs/ai`
    - [x] add `meta.json` sidebar config
    - [x] add page: `index`
-   - [ ] add pages: `quickstart`, `configuration`, `routes`, `hooks`, `streaming`, `runs`,
-         `webhooks`, `runner`, `artifacts`, `cli`, `debugging`, `example-app`
+   - [x] add page: `quickstart`
+   - [ ] add page: `configuration`
+   - [ ] add page: `routes`
+   - [ ] add page: `hooks`
+   - [ ] add page: `streaming`
+   - [ ] add page: `runs`
+   - [ ] add page: `webhooks`
+   - [ ] add page: `runner`
+   - [ ] add page: `artifacts`
+   - [ ] add page: `cli`
+   - [ ] add page: `debugging`
+   - [ ] add page: `example-app`
 3. [ ] Ensure hooks + invalidation are documented in the hooks page.
 4. [ ] Document Node + Cloudflare DO dispatchers in the runner page, mirroring
        `apps/docs/content/docs/workflows/runner-dispatcher.mdx` structure and examples.

@@ -1,0 +1,116 @@
+---
+title: Quickstart
+description: Set up Fragno AI threads, runs, and streaming.
+icon: Rocket
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+Fragno AI provides durable threads, runs, and NDJSON streaming backed by OpenAI Responses. This
+quickstart wires the fragment, runner, and dispatcher for local development.
+
+## Installation
+
+Install the fragment, dispatcher, and database packages:
+
+```npm
+npm install @fragno-dev/fragment-ai @fragno-dev/ai-dispatcher-node @fragno-dev/db
+```
+
+## Create the Fragment Server
+
+Wire the runner, dispatcher, and fragment definition:
+
+```ts title="lib/ai-fragment.ts"
+import { instantiate } from "@fragno-dev/core";
+import type { DatabaseAdapter } from "@fragno-dev/db";
+import {
+  aiFragmentDefinition,
+  aiRoutesFactory,
+  aiSchema,
+  createAiRunner,
+  type AiFragmentConfig,
+} from "@fragno-dev/fragment-ai";
+import { createAiDispatcherNode } from "@fragno-dev/ai-dispatcher-node";
+
+const aiConfig: AiFragmentConfig = {
+  apiKey: process.env.OPENAI_API_KEY,
+  defaultModel: { id: "gpt-4.1-mini" },
+  defaultDeepResearchModel: { id: "o3-deep-research" },
+};
+
+export function createAiFragmentServer(adapter: DatabaseAdapter<unknown>) {
+  const db = adapter.createQueryEngine(aiSchema, "ai");
+  const runner = createAiRunner({ db, config: aiConfig });
+  const dispatcher = createAiDispatcherNode({
+    runner,
+    pollIntervalMs: 1000,
+    tickOptions: { maxRuns: 2, maxWebhookEvents: 2 },
+  });
+
+  const fragment = instantiate(aiFragmentDefinition)
+    .withConfig({
+      ...aiConfig,
+      runner: { tick: (options) => runner.tick(options) },
+      dispatcher,
+      enableRunnerTick: true,
+    })
+    .withRoutes([aiRoutesFactory])
+    .withOptions({ databaseAdapter: adapter })
+    .build();
+
+  dispatcher.startPolling();
+
+  return { fragment, dispatcher };
+}
+```
+
+<Callout type="info">
+  The in-process dispatcher is ideal for local dev. For Cloudflare deployments, use
+  `@fragno-dev/ai-dispatcher-cloudflare-do`.
+</Callout>
+
+## Mount the Routes
+
+Mount the fragment using your framework adapter. See
+[Integrating a Fragment](/docs/fragno/for-users/integrating-a-fragment) for framework-specific
+examples.
+
+## Run Database Migrations
+
+Generate a schema and run migrations with the Fragno CLI:
+
+```npm
+npx fragno-cli db generate lib/ai-fragment.ts -o db/ai.schema.ts
+npx fragno-cli db migrate lib/ai-fragment.ts
+```
+
+## Try a Streamed Run
+
+Create a thread, append a message, and start a streamed run:
+
+```bash
+curl -X POST http://localhost:3000/api/ai/threads \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Demo"}'
+```
+
+```bash
+curl -X POST http://localhost:3000/api/ai/threads/{threadId}/messages \
+  -H "Content-Type: application/json" \
+  -d '{"role":"user","content":{"type":"text","text":"Summarize Fragno AI in one sentence."}}'
+```
+
+```bash
+curl -N -X POST http://localhost:3000/api/ai/threads/{threadId}/runs:stream \
+  -H "Content-Type: application/json" \
+  -d '{"type":"agent"}'
+```
+
+## Background Runs and Webhooks
+
+For deep research runs, set `webhookSecret` in your fragment config and register
+`/ai/webhooks/openai` in the OpenAI dashboard. Background runs complete via webhook delivery and
+persist a structured artifact.
