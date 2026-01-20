@@ -278,7 +278,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
         re-complete runs
   - [x] end-to-end: create deep research run → submit → webhook → artifact persisted
 
-## [ ] Phase 6 — Hardening + future work (ongoing)
+## [x] Phase 6 — Hardening + future work (ongoing)
 
 - [x] v0.1 hardening:
   - [x] Limits:
