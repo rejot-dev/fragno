@@ -208,7 +208,7 @@ Validation:
          DB commit
    - [x] durable hook handler calls `config.dispatcher?.wake(...)` (or directly triggers
          `POST /ai/_runner/tick`)
-   - [ ] wake-ups are an accelerator; HTTP tick is fallback for manual/cron recovery only (when
+   - [x] wake-ups are an accelerator; HTTP tick is fallback for manual/cron recovery only (when
          enabled)
    - [x] wake dispatcher when a foreground stream retry queues a run
 4. [ ] Bounded work:

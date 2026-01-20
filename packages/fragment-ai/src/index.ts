@@ -64,6 +64,7 @@ export interface AiFragmentConfig {
     serviceTier?: string;
   };
   webhookSecret?: string;
+  // Expose POST /ai/_runner/tick for manual/cron recovery; prefer dispatcher wake-ups for normal flow.
   enableRunnerTick?: boolean;
   dispatcher?: AiDispatcher;
   runner?: {
