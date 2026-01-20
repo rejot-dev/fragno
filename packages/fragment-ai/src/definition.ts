@@ -669,6 +669,9 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           .retrieve((uow) =>
             uow
               .findFirst("ai_run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId)))
+              .find("ai_message", (b) =>
+                b.whereIndex("idx_ai_message_run_createdAt", (eb) => eb("runId", "=", runId)),
+              )
               .find("ai_run_event", (b) =>
                 b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", runId)),
               )
@@ -680,8 +683,9 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               ),
           )
           .mutate(({ uow, retrieveResult }) => {
-            const [run, events, toolCalls, artifacts] = retrieveResult as [
+            const [run, messages, events, toolCalls, artifacts] = retrieveResult as [
               AiRunRecord | null,
+              AiMessageRecord[],
               AiRunEventRecord[],
               AiToolCallRecord[],
               AiArtifactRecord[],
@@ -689,6 +693,10 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
 
             if (!run) {
               throw new Error("RUN_NOT_FOUND");
+            }
+
+            for (const message of messages) {
+              uow.delete("ai_message", message.id);
             }
 
             for (const event of events) {

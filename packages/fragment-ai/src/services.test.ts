@@ -331,6 +331,16 @@ describe("AI Fragment Services", () => {
       }),
     );
 
+    const runMessage = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "assistant",
+        content: { type: "text", text: "Run output" },
+        text: "Run output",
+        runId: run.id,
+      }),
+    );
+
     const now = new Date();
     await db.create("ai_run_event", {
       runId: run.id,
@@ -388,6 +398,16 @@ describe("AI Fragment Services", () => {
       b.whereIndex("idx_ai_artifact_run_createdAt", (eb) => eb("runId", "=", run.id)),
     );
     expect(artifacts).toHaveLength(0);
+
+    const preservedMessage = await db.findFirst("ai_message", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", message.id)),
+    );
+    expect(preservedMessage).toBeTruthy();
+
+    const deletedMessage = await db.findFirst("ai_message", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", runMessage.id)),
+    );
+    expect(deletedMessage).toBeNull();
   });
 
   test("deleteThread should remove thread data", async () => {

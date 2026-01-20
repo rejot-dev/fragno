@@ -289,6 +289,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Rate limits at host level for webhooks + tick endpoint
   - [x] Observability: structured logs for run lifecycle + webhook processing
   - [x] Thread deletion cleans up run events + tool calls
+  - [x] Run deletion removes run-scoped messages to avoid orphaned history
   - [x] Stream tool policy denials emit failed status events (skip running)
   - [x] Background run events emit failed status when tool policy denies (skip running)
   - [x] Background pi-ai tool call attempts emit run events (tool lifecycle + error output)
