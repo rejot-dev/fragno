@@ -355,7 +355,7 @@ Future (v0.2+):
 
 Validation:
 
-- [ ] Docs build passes (local or CI)
+- [x] Docs build passes (local or CI)
 
 ## Phase 9 — Example app (React Router + Drizzle + PGLite) (2–5 days)
 
