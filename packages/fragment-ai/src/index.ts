@@ -45,6 +45,19 @@ export type AiRateLimiter = (context: {
   headers: Headers;
 }) => boolean | Promise<boolean>;
 
+export type AiArtifactStore = {
+  put: (params: {
+    runId: string;
+    threadId: string;
+    type: string;
+    title: string | null;
+    mimeType: string;
+    data: unknown;
+    text: string | null;
+  }) => { key: string; metadata?: unknown } | Promise<{ key: string; metadata?: unknown }>;
+  delete?: (params: { key: string; metadata?: unknown }) => void | Promise<void>;
+};
+
 export type AiRunnerTickOptions = {
   maxRuns?: number;
   maxWebhookEvents?: number;
@@ -97,6 +110,7 @@ export interface AiFragmentConfig {
     persistDeltas?: boolean;
     persistOpenAIRawResponses?: boolean;
     retentionDays?: number | null;
+    artifactStore?: AiArtifactStore;
   };
   toolPolicy?: AiToolPolicy;
   logger?: AiLogger;

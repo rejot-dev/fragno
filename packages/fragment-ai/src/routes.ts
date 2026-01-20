@@ -119,6 +119,8 @@ const artifactSchema = z.object({
   type: z.string(),
   title: z.string().nullable(),
   mimeType: z.string(),
+  storageKey: z.string().nullable(),
+  storageMeta: z.unknown().nullable(),
   data: z.unknown(),
   text: z.string().nullable(),
   createdAt: z.date(),

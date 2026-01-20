@@ -134,6 +134,8 @@ export interface AiArtifact {
   type: string;
   title: string | null;
   mimeType: string;
+  storageKey: string | null;
+  storageMeta: unknown | null;
   data: unknown;
   text: string | null;
   createdAt: Date;
@@ -227,6 +229,8 @@ type AiArtifactRecord = {
   type: string;
   title: string | null;
   mimeType: string;
+  storageKey: string | null;
+  storageMeta: unknown | null;
   data: unknown;
   text: string | null;
   createdAt: Date;
@@ -385,6 +389,8 @@ function buildArtifact(artifact: AiArtifactRecord): AiArtifact {
     type: artifact.type,
     title: artifact.title,
     mimeType: artifact.mimeType,
+    storageKey: artifact.storageKey ?? null,
+    storageMeta: artifact.storageMeta ?? null,
     data: artifact.data,
     text: artifact.text,
     createdAt: artifact.createdAt,

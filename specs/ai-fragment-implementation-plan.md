@@ -293,7 +293,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [ ] Multi-provider support (pi-ai)
   - [ ] Conversation compaction/summarization (borrow pi-coding-agent patterns)
     - [x] Add optional history window limit for run inputs (`config.history.maxMessages`)
-  - [ ] External artifact storage (blob store) with DB references
+  - [x] External artifact storage (blob store) with DB references
 
 ## Phase 7 — CLI tool: `fragno-ai` (0.5–2 days)
 

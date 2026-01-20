@@ -126,6 +126,8 @@ export const aiSchema = schema((s) => {
         .addColumn("type", column("string"))
         .addColumn("title", column("string").nullable())
         .addColumn("mimeType", column("string"))
+        .addColumn("storageKey", column("string").nullable())
+        .addColumn("storageMeta", column("json").nullable())
         .addColumn("data", column("json"))
         .addColumn("text", column("string").nullable())
         .addColumn(

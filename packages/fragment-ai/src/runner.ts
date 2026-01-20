@@ -683,12 +683,41 @@ const processWebhookEvent = async ({
     return success;
   }
 
+  let storageKey: string | null = null;
+  let storageMeta: unknown | null = null;
+  const artifactStore = config.storage?.artifactStore;
+  if (artifactStore) {
+    try {
+      const stored = await artifactStore.put({
+        runId: run.id.toString(),
+        threadId: run.threadId,
+        type: DEEP_RESEARCH_ARTIFACT_TYPE,
+        title: "Deep research report",
+        mimeType: "text/markdown",
+        data: artifactData,
+        text: reportMarkdown || null,
+      });
+
+      if (!stored || typeof stored.key !== "string" || !stored.key) {
+        return scheduleAndLogRetry("ARTIFACT_STORE_FAILED");
+      }
+
+      storageKey = stored.key;
+      storageMeta = stored.metadata ?? null;
+    } catch (err) {
+      const error = err instanceof Error ? err.message : "ARTIFACT_STORE_FAILED";
+      return scheduleAndLogRetry(error);
+    }
+  }
+
   const artifactId = schema.create("ai_artifact", {
     runId: run.id.toString(),
     threadId: run.threadId,
     type: DEEP_RESEARCH_ARTIFACT_TYPE,
     title: "Deep research report",
     mimeType: "text/markdown",
+    storageKey,
+    storageMeta,
     data: artifactData,
     text: reportMarkdown || null,
     createdAt: now,

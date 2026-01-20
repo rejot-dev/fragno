@@ -494,6 +494,75 @@ describe("AI Fragment Runner", () => {
     expect(webhookEvents[0]?.processingError).toBeNull();
   });
 
+  test("runner tick should store deep research artifact in external storage", async () => {
+    const artifactStore = {
+      put: vi.fn(async () => ({ key: "artifact-key", metadata: { bucket: "reports" } })),
+    };
+    const runnerConfig = { ...config, storage: { artifactStore } };
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Deep Research Stored Artifact" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Store this" },
+        text: "Store this",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    mockOpenAICreate.mockResolvedValueOnce({ id: "resp_store" });
+
+    const runner = createAiRunner({ db, config: runnerConfig });
+    await runner.tick({ maxRuns: 1 });
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_store",
+      type: "response.completed",
+      responseId: "resp_store",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    mockOpenAIRetrieve.mockResolvedValueOnce({
+      id: "resp_store",
+      status: "completed",
+      output_text: "Deep research report",
+    });
+
+    await runner.tick({ maxWebhookEvents: 1 });
+
+    expect(artifactStore.put).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: run.id,
+        threadId: thread.id,
+        type: "deep_research_report",
+        mimeType: "text/markdown",
+        text: "Deep research report",
+      }),
+    );
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.storageKey).toBe("artifact-key");
+    expect(artifacts[0]?.storageMeta).toEqual({ bucket: "reports" });
+  });
+
   test("runner tick should fail when deep research artifact exceeds limit", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Deep Research Large Artifact" }),
