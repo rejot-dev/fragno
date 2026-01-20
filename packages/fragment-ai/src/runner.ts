@@ -86,6 +86,20 @@ const resolveMaxHistoryMessages = (config: AiFragmentConfig) => {
   return Math.floor(maxMessages);
 };
 
+const resolveRetentionCutoff = (config: AiFragmentConfig, clock: Clock) => {
+  const retentionDays = config.storage?.retentionDays;
+  if (retentionDays == null) {
+    return null;
+  }
+
+  const normalized = Number(retentionDays);
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    return null;
+  }
+
+  return new Date(clock.now().getTime() - normalized * 24 * 60 * 60 * 1000);
+};
+
 const buildOpenAIInput = (
   run: AiRunRecord,
   messages: AiMessageRecord[],
@@ -1036,6 +1050,68 @@ const claimNextWebhookEvents = async ({
   return claimed;
 };
 
+const cleanupRetentionData = async ({
+  db,
+  config,
+  clock,
+}: {
+  db: SimpleQueryInterface<typeof aiSchema>;
+  config: AiFragmentConfig;
+  clock: Clock;
+}) => {
+  const cutoff = resolveRetentionCutoff(config, clock);
+  if (!cutoff) {
+    return;
+  }
+
+  const batchSize = 200;
+
+  while (true) {
+    const events = (await db.find("ai_run_event", (b) =>
+      b
+        .whereIndex("idx_ai_run_event_createdAt", (eb) => eb("createdAt", "<", cutoff))
+        .orderByIndex("idx_ai_run_event_createdAt", "asc")
+        .pageSize(batchSize),
+    )) as Array<{ id: FragnoId }>;
+
+    if (events.length === 0) {
+      break;
+    }
+
+    const uow = db.createUnitOfWork("ai-retention-run-events");
+    const schema = uow.forSchema(aiSchema);
+    for (const event of events) {
+      schema.delete("ai_run_event", event.id);
+    }
+    await uow.executeMutations();
+  }
+
+  while (true) {
+    const events = (await db.find("ai_openai_webhook_event", (b) =>
+      b
+        .whereIndex("idx_ai_openai_webhook_event_receivedAt", (eb) => eb("receivedAt", "<", cutoff))
+        .orderByIndex("idx_ai_openai_webhook_event_receivedAt", "asc")
+        .pageSize(batchSize),
+    )) as Array<{ id: FragnoId; processedAt: Date | null; processingAt: Date | null }>;
+
+    if (events.length === 0) {
+      break;
+    }
+
+    const deletable = events.filter((event) => !event.processingAt && event.processedAt);
+    if (deletable.length === 0) {
+      break;
+    }
+
+    const uow = db.createUnitOfWork("ai-retention-webhook-events");
+    const schema = uow.forSchema(aiSchema);
+    for (const event of deletable) {
+      schema.delete("ai_openai_webhook_event", event.id);
+    }
+    await uow.executeMutations();
+  }
+};
+
 export const createAiRunner = ({ db, config, clock }: AiRunnerOptions) => {
   const effectiveClock = clock ?? { now: () => new Date() };
 
@@ -1077,6 +1153,8 @@ export const createAiRunner = ({ db, config, clock }: AiRunnerOptions) => {
         processedWebhookEvents += 1;
       }
     }
+
+    await cleanupRetentionData({ db, config, clock: effectiveClock });
 
     return { processedRuns, processedWebhookEvents };
   };

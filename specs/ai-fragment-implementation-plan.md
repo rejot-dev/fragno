@@ -285,6 +285,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
     - [x] max message size
     - [x] max artifact size
     - [x] page size caps in services
+  - [x] Retention cleanup for run events + webhook events (`storage.retentionDays`)
   - [x] Rate limits at host level for webhooks + tick endpoint
   - [x] Observability: structured logs for run lifecycle + webhook processing
   - [x] Thread deletion cleans up run events + tool calls

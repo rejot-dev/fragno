@@ -92,7 +92,8 @@ export const aiSchema = schema((s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_ai_run_event_run_seq", ["runId", "seq"], { unique: true })
-        .createIndex("idx_ai_run_event_thread_createdAt", ["threadId", "createdAt"]);
+        .createIndex("idx_ai_run_event_thread_createdAt", ["threadId", "createdAt"])
+        .createIndex("idx_ai_run_event_createdAt", ["createdAt"]);
     })
     .addTable("ai_tool_call", (t) => {
       return t
@@ -159,6 +160,7 @@ export const aiSchema = schema((s) => {
         .createIndex("idx_ai_openai_webhook_event_openaiEventId", ["openaiEventId"], {
           unique: true,
         })
-        .createIndex("idx_ai_openai_webhook_event_processedAt", ["processedAt"]);
+        .createIndex("idx_ai_openai_webhook_event_processedAt", ["processedAt"])
+        .createIndex("idx_ai_openai_webhook_event_receivedAt", ["receivedAt"]);
     });
 });

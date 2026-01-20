@@ -145,6 +145,100 @@ describe("AI Fragment Runner", () => {
     expect(events.some((event) => event.type === "run.final")).toBe(true);
   });
 
+  test("runner tick should clean up retained run events and webhook events", async () => {
+    const now = new Date("2024-01-03T00:00:00Z");
+    const recentEventAt = new Date("2024-01-02T12:00:00Z");
+    const retentionConfig = { ...config, storage: { retentionDays: 1 } };
+
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Retention Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Retention check" },
+        text: "Retention check",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "agent",
+      }),
+    );
+
+    await db.update("ai_run", run.id, (b) =>
+      b.set({
+        status: "succeeded",
+        updatedAt: now,
+        completedAt: now,
+      }),
+    );
+
+    await db.create("ai_run_event", {
+      runId: run.id,
+      threadId: thread.id,
+      seq: 1,
+      type: "run.meta",
+      payload: null,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+
+    await db.create("ai_run_event", {
+      runId: run.id,
+      threadId: thread.id,
+      seq: 2,
+      type: "run.meta",
+      payload: null,
+      createdAt: recentEventAt,
+    });
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_old",
+      type: "response.completed",
+      responseId: "resp_old",
+      payload: { ok: true },
+      receivedAt: new Date("2024-01-01T00:00:00Z"),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: now,
+      processingError: null,
+    });
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_new",
+      type: "response.completed",
+      responseId: "resp_new",
+      payload: { ok: true },
+      receivedAt: recentEventAt,
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: now,
+      processingError: null,
+    });
+
+    const runner = createAiRunner({
+      db,
+      config: retentionConfig,
+      clock: { now: () => now },
+    });
+
+    await runner.tick({ maxRuns: 1, maxWebhookEvents: 1 });
+
+    const runEvents = await db.find("ai_run_event", (b) => b.whereIndex("primary"));
+    expect(runEvents).toHaveLength(1);
+    expect(runEvents[0]?.createdAt.getTime()).toBe(recentEventAt.getTime());
+
+    const webhookEvents = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
+    expect(webhookEvents).toHaveLength(1);
+    expect(webhookEvents[0]?.openaiEventId).toBe("evt_new");
+  });
+
   test("runner tick should fail when tool policy denies tools", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({
