@@ -300,11 +300,11 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 - [ ] Future (v0.2+):
   - [ ] Custom tools registry + server execution (pi-agent-core integration)
   - [x] Tool approvals/policy hooks
-  - [ ] Multi-provider support (pi-ai)
-    - [x] Lazy-load pi-ai for non-OpenAI agent runs (background + stream)
-    - [x] Surface non-OpenAI tool call attempts in stream/events and persist tool calls
-    - [x] Tool call execution
-    - [x] Deep research parity for non-OpenAI providers
+  - [x] Multi-provider support (pi-ai)
+  - [x] Lazy-load pi-ai for non-OpenAI agent runs (background + stream)
+  - [x] Surface non-OpenAI tool call attempts in stream/events and persist tool calls
+  - [x] Tool call execution
+  - [x] Deep research parity for non-OpenAI providers
   - [x] Conversation compaction/summarization (borrow pi-coding-agent patterns)
     - [x] Add optional history window limit for run inputs (`config.history.maxMessages`)
   - [x] External artifact storage (blob store) with DB references
