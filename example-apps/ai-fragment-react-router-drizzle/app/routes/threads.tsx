@@ -1,14 +1,8 @@
 import type { Route } from "./+types/threads";
 
 import { useFragno, useStore } from "@fragno-dev/core/react";
-import {
-  createAiFragmentClients,
-  type AiArtifact,
-  type AiMessage,
-  type AiRun,
-  type AiRunEvent,
-  type AiThread,
-} from "@fragno-dev/fragment-ai";
+import { createAiFragmentClients } from "@fragno-dev/fragment-ai/react";
+import type { AiArtifact, AiMessage, AiRun, AiRunEvent, AiThread } from "@fragno-dev/fragment-ai";
 import { useEffect, useMemo, useState } from "react";
 
 export function meta(_: Route.MetaArgs) {

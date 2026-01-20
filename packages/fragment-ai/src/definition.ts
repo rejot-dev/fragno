@@ -1,5 +1,6 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type Cursor } from "@fragno-dev/db";
+import { withDatabase } from "@fragno-dev/db";
+import type { Cursor } from "@fragno-dev/db/cursor";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import { aiSchema } from "./schema";
 import type { AiFragmentConfig } from "./index";
@@ -837,6 +838,13 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               .findFirst("ai_message", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "=", inputMessageId ?? "__missing__")),
               )
+              .findFirst("ai_message", (b) =>
+                b
+                  .whereIndex("idx_ai_message_thread_role_createdAt", (eb) =>
+                    eb.and(eb("threadId", "=", threadId), eb("role", "=", "user")),
+                  )
+                  .orderByIndex("idx_ai_message_thread_role_createdAt", "desc"),
+              )
               .findWithCursor("ai_message", (b) => {
                 const query = b
                   .whereIndex("idx_ai_message_thread_createdAt", (eb) =>
@@ -849,8 +857,9 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               });
           })
           .mutate(({ uow, retrieveResult }) => {
-            const [thread, messageById, messagePage] = retrieveResult as [
+            const [thread, messageById, latestUserMessage, messagePage] = retrieveResult as [
               AiThreadRecord | undefined,
+              AiMessageRecord | undefined,
               AiMessageRecord | undefined,
               { items: AiMessageRecord[] },
             ];
@@ -864,9 +873,12 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
             if (inputMessageId) {
               selectedMessage =
                 messageById ??
-                messagePage.items.find((message) => message.id.toString() === inputMessageId);
+                latestUserMessage ??
+                messagePage.items.find((message) => message.id.toString() === inputMessageId) ??
+                messagePage.items.find((message) => message.role === "user");
             } else {
-              selectedMessage = messagePage.items.find((message) => message.role === "user");
+              selectedMessage =
+                latestUserMessage ?? messagePage.items.find((message) => message.role === "user");
             }
 
             if (
@@ -1171,19 +1183,38 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           .retrieve((uow) =>
             uow.find("ai_openai_webhook_event", (b) =>
               b
-                .whereIndex("idx_ai_openai_webhook_event_processedAt", (eb) =>
-                  eb.isNull("processedAt"),
+                .whereIndex(
+                  "idx_ai_openai_webhook_event_processedAt_processingAt_nextAttemptAt",
+                  (eb) =>
+                    eb.and(
+                      eb.isNull("processedAt"),
+                      eb.isNull("processingAt"),
+                      eb.or(eb.isNull("nextAttemptAt"), eb("nextAttemptAt", "<=", now)),
+                    ),
                 )
-                .orderByIndex("idx_ai_openai_webhook_event_processedAt", "asc")
+                .orderByIndex(
+                  "idx_ai_openai_webhook_event_processedAt_processingAt_nextAttemptAt",
+                  "asc",
+                )
                 .pageSize(maxEvents),
             ),
           )
-          .transformRetrieve(([events]) => {
+          .mutate(({ uow, retrieveResult: [events] }) => {
+            const claimedEvents = (events as AiWebhookEventRecord[]).map((event) => {
+              uow.update("ai_openai_webhook_event", event.id, (b) =>
+                b.set({
+                  processingAt: now,
+                }),
+              );
+
+              return {
+                ...event,
+                processingAt: now,
+              };
+            });
+
             return {
-              events: (events as AiWebhookEventRecord[])
-                .filter((event) => event.processingAt == null)
-                .filter((event) => event.nextAttemptAt == null || event.nextAttemptAt <= now)
-                .map(buildWebhookEvent),
+              events: claimedEvents.map(buildWebhookEvent),
             };
           })
           .build();

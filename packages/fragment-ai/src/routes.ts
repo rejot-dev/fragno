@@ -1,5 +1,5 @@
 import { defineRoutes } from "@fragno-dev/core";
-import { decodeCursor } from "@fragno-dev/db";
+import { decodeCursor } from "@fragno-dev/db/cursor";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import OpenAI from "openai";
 import { z } from "zod";
@@ -20,16 +20,7 @@ import { registerRunAbortController } from "./run-abort";
 import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
 import { logWithLogger } from "./logging";
 import { applyToolPolicy } from "./tool-policy";
-import { runPiAiToolLoop } from "./pi-ai-tools";
 import type { ExecutedToolCall } from "./tool-execution";
-import {
-  buildPiAiContext,
-  resolvePiAiApiKey,
-  resolvePiAiModel,
-  resolvePiAiResponseText,
-  resolvePiAiThinkingLevel,
-  streamWithPiAi,
-} from "./pi-ai";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -53,6 +44,29 @@ const resolveMaxHistoryMessages = (config: { history?: { maxMessages?: number } 
     return null;
   }
   return Math.floor(maxMessages);
+};
+
+type PiAiHelpers = {
+  buildPiAiContext: typeof import("./pi-ai").buildPiAiContext;
+  resolvePiAiApiKey: typeof import("./pi-ai").resolvePiAiApiKey;
+  resolvePiAiModel: typeof import("./pi-ai").resolvePiAiModel;
+  resolvePiAiResponseText: typeof import("./pi-ai").resolvePiAiResponseText;
+  resolvePiAiThinkingLevel: typeof import("./pi-ai").resolvePiAiThinkingLevel;
+  streamWithPiAi: typeof import("./pi-ai").streamWithPiAi;
+  runPiAiToolLoop: typeof import("./pi-ai-tools").runPiAiToolLoop;
+};
+
+const loadPiAiHelpers = async (): Promise<PiAiHelpers> => {
+  const [piAi, piAiTools] = await Promise.all([import("./pi-ai"), import("./pi-ai-tools")]);
+  return {
+    buildPiAiContext: piAi.buildPiAiContext,
+    resolvePiAiApiKey: piAi.resolvePiAiApiKey,
+    resolvePiAiModel: piAi.resolvePiAiModel,
+    resolvePiAiResponseText: piAi.resolvePiAiResponseText,
+    resolvePiAiThinkingLevel: piAi.resolvePiAiThinkingLevel,
+    streamWithPiAi: piAi.streamWithPiAi,
+    runPiAiToolLoop: piAiTools.runPiAiToolLoop,
+  };
 };
 
 const enforceRateLimit = async (
@@ -768,8 +782,9 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
           });
           const modelProvider = modelRef?.provider ?? "openai";
           let openaiClient: OpenAI | null = null;
-          let piAiModel: Awaited<ReturnType<typeof resolvePiAiModel>> | null = null;
-          let piAiContext: ReturnType<typeof buildPiAiContext> | null = null;
+          let piAiHelpers: PiAiHelpers | null = null;
+          let piAiModel: Awaited<ReturnType<PiAiHelpers["resolvePiAiModel"]>> | null = null;
+          let piAiContext: ReturnType<PiAiHelpers["buildPiAiContext"]> | null = null;
           let piAiApiKey: string | undefined;
 
           if (modelProvider === "openai") {
@@ -789,10 +804,20 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               throw new Error("MODEL_PROVIDER_MISSING");
             }
 
-            const resolvedModel = await resolvePiAiModel({ modelId: run.modelId, modelRef });
+            piAiHelpers = await loadPiAiHelpers();
+            const resolvedModel = await piAiHelpers.resolvePiAiModel({
+              modelId: run.modelId,
+              modelRef,
+            });
             piAiModel = resolvedModel;
-            piAiContext = buildPiAiContext({ input: openaiInput, model: resolvedModel });
-            piAiApiKey = await resolvePiAiApiKey({ config, provider: resolvedModel.provider });
+            piAiContext = piAiHelpers.buildPiAiContext({
+              input: openaiInput,
+              model: resolvedModel,
+            });
+            piAiApiKey = await piAiHelpers.resolvePiAiApiKey({
+              config,
+              provider: resolvedModel.provider,
+            });
             if (!piAiApiKey) {
               return error({ message: "API key is required", code: "OPENAI_API_KEY_MISSING" }, 400);
             }
@@ -1213,7 +1238,11 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 }
               } else if (piAiModel && piAiContext) {
                 try {
-                  const reasoning = resolvePiAiThinkingLevel(run.thinkingLevel);
+                  if (!piAiHelpers) {
+                    throw new Error("PI_AI_MISSING");
+                  }
+
+                  const reasoning = piAiHelpers.resolvePiAiThinkingLevel(run.thinkingLevel);
                   const piAiOptions = {
                     apiKey: piAiApiKey,
                     sessionId: config.sessionId,
@@ -1223,7 +1252,11 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                     ...(reasoning ? { reasoning } : {}),
                     signal: abortController.signal,
                   };
-                  const responseStream = await streamWithPiAi(piAiModel, piAiContext, piAiOptions);
+                  const responseStream = await piAiHelpers.streamWithPiAi(
+                    piAiModel,
+                    piAiContext,
+                    piAiOptions,
+                  );
 
                   for await (const event of responseStream) {
                     if (event.type === "text_delta") {
@@ -1247,7 +1280,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
 
                   const finalMessage = await responseStream.result();
                   if (finalMessage.stopReason === "toolUse") {
-                    const toolLoop = await runPiAiToolLoop({
+                    const toolLoop = await piAiHelpers.runPiAiToolLoop({
                       model: piAiModel,
                       context: piAiContext,
                       options: piAiOptions,
@@ -1272,7 +1305,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                       finalStatus = "cancelled";
                       errorMessage = null;
                     } else {
-                      const finalText = resolvePiAiResponseText(toolLoop.message);
+                      const finalText = piAiHelpers.resolvePiAiResponseText(toolLoop.message);
                       if (finalText) {
                         textBuffer = finalText;
                         await safeWrite({
@@ -1290,7 +1323,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                     finalStatus = "cancelled";
                     errorMessage = null;
                   } else {
-                    const finalText = resolvePiAiResponseText(finalMessage);
+                    const finalText = piAiHelpers.resolvePiAiResponseText(finalMessage);
                     if (finalText) {
                       textBuffer = finalText;
                       await safeWrite({
@@ -1339,6 +1372,14 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                 errorMessage = "MESSAGE_TOO_LARGE";
                 assistantText = null;
                 allowRetry = false;
+              }
+            }
+
+            if (errorMessage === "MESSAGE_TOO_LARGE") {
+              for (let i = runEvents.length - 1; i >= 0; i -= 1) {
+                if (runEvents[i]?.type.startsWith("output.text")) {
+                  runEvents.splice(i, 1);
+                }
               }
             }
 
