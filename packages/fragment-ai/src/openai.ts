@@ -150,8 +150,6 @@ export const buildOpenAIResponseOptions = ({
       effort: reasoningEffort ?? "medium",
       summary: reasoningSummary ?? "auto",
     };
-  } else if ("reasoning" in options) {
-    delete options["reasoning"];
   }
 
   options["model"] = modelId;

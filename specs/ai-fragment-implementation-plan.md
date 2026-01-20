@@ -167,6 +167,8 @@ Validation:
      - [x] `ai_run.openaiResponseId` as soon as it is known
      - [x] final assistant message(s)
      - [x] final run status + run events
+   - [x] preserve `openaiToolConfig` options (including `reasoning`) when building Responses
+         requests
 3. [x] Background agent runs (`executionMode="background"`):
    - [x] runner tick claims queued runs and calls `runExecutor`
    - [x] prefer `stream: false` for atomic completion (simplifies retries)

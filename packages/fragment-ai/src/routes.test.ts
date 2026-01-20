@@ -453,6 +453,55 @@ describe("AI Fragment Routes", () => {
     );
   });
 
+  test("runs stream route should preserve reasoning tool config", async () => {
+    mockOpenAICreate.mockClear();
+
+    const thread = await fragment.callRoute("POST", "/threads", {
+      body: {
+        title: "Reasoning Thread",
+        openaiToolConfig: {
+          reasoning: { effort: "high", summary: "concise" },
+        },
+      },
+    });
+    expect(thread.type).toBe("json");
+    if (thread.type !== "json") {
+      return;
+    }
+
+    const message = await fragment.callRoute("POST", "/threads/:threadId/messages", {
+      pathParams: { threadId: thread.data.id },
+      body: {
+        role: "user",
+        content: { type: "text", text: "Keep reasoning config" },
+        text: "Keep reasoning config",
+      },
+    });
+    expect(message.type).toBe("json");
+    if (message.type !== "json") {
+      return;
+    }
+
+    const response = await fragment.callRoute("POST", "/threads/:threadId/runs:stream", {
+      pathParams: { threadId: thread.data.id },
+      body: { inputMessageId: message.data.id, type: "agent" },
+    });
+    expect(response.type).toBe("jsonStream");
+    if (response.type !== "jsonStream") {
+      return;
+    }
+
+    for await (const _event of response.stream) {
+      // Drain stream for completion.
+    }
+
+    expect(mockOpenAICreate).toHaveBeenCalled();
+    const [options] = mockOpenAICreate.mock.calls[0] ?? [];
+    expect(options).toMatchObject({
+      reasoning: { effort: "high", summary: "concise" },
+    });
+  });
+
   test("runs stream route should persist final message after client disconnect", async () => {
     const thread = await fragment.callRoute("POST", "/threads", {
       body: { title: "Disconnect Thread" },
