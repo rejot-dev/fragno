@@ -222,10 +222,10 @@ Validation:
          package (keep tick coalescing + alarm scheduling behavior)
    - [x] Introduce a shared `FragnoDispatcher` interface (core/shared package) and alias it in
          Workflows + AI configs
-   - [ ] Add an AI wrapper (e.g. `createAiDispatcherDurableObject`) in
+   - [x] Add an AI wrapper (e.g. `createAiDispatcherDurableObject`) in
          `@fragno-dev/ai-dispatcher-cloudflare-do` that uses AI schema + runner and schedules alarms
          based on `ai_run.nextAttemptAt` + unprocessed webhook events (same pattern as workflows DO)
-   - [ ] Match Workflows DO options where applicable (`namespace`, `runnerId`, `tickOptions`,
+   - [x] Match Workflows DO options where applicable (`namespace`, `runnerId`, `tickOptions`,
          `enableRunnerTick`, `migrateOnStartup`, `createAdapter`, `onTickError`, `onMigrationError`)
    - [x] Update `@fragno-dev/workflows-dispatcher-cloudflare-do` to wrap the shared runtime directly
          (no shim layer)
