@@ -216,7 +216,7 @@ Validation:
 4. [ ] Bounded work:
    - [x] ensure each tick respects limits and returns counts (`processedRuns`,
          `processedWebhookEvents`)
-5. [ ] Dispatcher integrations:
+5. [x] Dispatcher integrations:
    - [x] Node: use the shared dispatcher (`@fragno-dev/dispatcher-node`) and wire wake to
          `POST /ai/_runner/tick` or `runner.tick(...)`
    - [x] Cloudflare DO: create a shared dispatcher runtime package (e.g.
@@ -231,7 +231,7 @@ Validation:
          `enableRunnerTick`, `migrateOnStartup`, `createAdapter`, `onTickError`, `onMigrationError`)
    - [x] Update `@fragno-dev/workflows-dispatcher-cloudflare-do` to wrap the shared runtime directly
          (no shim layer)
-   - [ ] Update workflows docs/examples to use `@fragno-dev/dispatcher-node` and the refactored DO
+   - [x] Update workflows docs/examples to use `@fragno-dev/dispatcher-node` and the refactored DO
          dispatcher packages (e.g. runner-dispatcher docs + quickstart snippets)
 
 Validation:
