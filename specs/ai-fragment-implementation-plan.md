@@ -299,6 +299,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Tool approvals/policy hooks
   - [ ] Multi-provider support (pi-ai)
     - [x] Lazy-load pi-ai for non-OpenAI agent runs (background + stream)
+    - [x] Surface non-OpenAI tool call attempts in stream/events and persist tool calls
     - [ ] Tool call execution + deep research parity
   - [x] Conversation compaction/summarization (borrow pi-coding-agent patterns)
     - [x] Add optional history window limit for run inputs (`config.history.maxMessages`)

@@ -116,6 +116,34 @@ export const resolvePiAiResponseText = (message: AssistantMessage) => {
   return text || null;
 };
 
+export type PiAiToolCall = {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
+
+export const resolvePiAiToolCalls = (message: AssistantMessage): PiAiToolCall[] => {
+  const toolCalls: PiAiToolCall[] = [];
+  for (const block of message.content) {
+    if (block.type !== "toolCall") {
+      continue;
+    }
+
+    if (typeof block.id !== "string" || typeof block.name !== "string") {
+      continue;
+    }
+
+    const args =
+      block.arguments && typeof block.arguments === "object" && !Array.isArray(block.arguments)
+        ? (block.arguments as Record<string, unknown>)
+        : {};
+
+    toolCalls.push({ id: block.id, name: block.name, arguments: args });
+  }
+
+  return toolCalls;
+};
+
 export const resolvePiAiThinkingLevel = (
   thinkingLevel: string | null | undefined,
 ): ThinkingLevel | undefined => {

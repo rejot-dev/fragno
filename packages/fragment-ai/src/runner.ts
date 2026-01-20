@@ -25,6 +25,7 @@ import {
   completeWithPiAi,
   resolvePiAiModel,
   resolvePiAiResponseText,
+  resolvePiAiToolCalls,
 } from "./pi-ai";
 
 type Clock = {
@@ -167,6 +168,7 @@ const finalizeRun = async ({
   error,
   openaiResponseId,
   assistantText,
+  toolCalls,
   clock,
 }: {
   db: SimpleQueryInterface<typeof aiSchema>;
@@ -175,6 +177,7 @@ const finalizeRun = async ({
   error: string | null;
   openaiResponseId: string | null;
   assistantText: string | null;
+  toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
   clock: Clock;
 }) => {
   const completedAt = clock.now();
@@ -233,6 +236,24 @@ const finalizeRun = async ({
       runId: run.id.toString(),
       createdAt: completedAt,
     });
+  }
+
+  if (toolCalls && toolCalls.length > 0) {
+    const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
+    for (const toolCall of toolCalls) {
+      schema.create("ai_tool_call", {
+        runId: run.id.toString(),
+        threadId: run.threadId,
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName,
+        args: toolCall.args,
+        status: "failed",
+        result: { error: toolError },
+        isError: 1,
+        createdAt: completedAt,
+        updatedAt: completedAt,
+      });
+    }
   }
 
   let seq = nextSeq;
@@ -802,6 +823,7 @@ export const runExecutor = async ({
   let error: string | null = null;
   let openaiResponseId: string | null = run.openaiResponseId;
   let assistantText: string | null = null;
+  let toolCalls: ReturnType<typeof resolvePiAiToolCalls> | null = null;
   let retryable = true;
   const abortController = new AbortController();
   const unregisterAbort = registerRunAbortController(run.id.toString(), abortController);
@@ -910,6 +932,7 @@ export const runExecutor = async ({
             status = "failed";
             error = "TOOL_CALL_UNSUPPORTED";
             retryable = false;
+            toolCalls = resolvePiAiToolCalls(response);
           } else {
             assistantText = resolvePiAiResponseText(response);
           }
@@ -950,6 +973,13 @@ export const runExecutor = async ({
     error,
     openaiResponseId,
     assistantText,
+    toolCalls: toolCalls
+      ? toolCalls.map((toolCall) => ({
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          args: toolCall.arguments,
+        }))
+      : undefined,
     clock: effectiveClock,
   });
 
