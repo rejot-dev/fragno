@@ -177,7 +177,7 @@ Validation:
    - [x] prefer `stream: false` for atomic completion (simplifies retries)
 4. [ ] Disconnect handling:
    - [x] client disconnect must not cancel the OpenAI request by default
-   - [ ] if the upstream OpenAI stream breaks:
+   - [x] if the upstream OpenAI stream breaks:
      - [x] if `openaiResponseId` is known, retrieve + finalize in the stream handler
      - [x] else schedule a retry via `attempt/maxAttempts/nextAttemptAt`
 5. [x] Cancellation (best-effort, in-process):
