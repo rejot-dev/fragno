@@ -336,7 +336,7 @@ Future (v0.2+):
    - [x] add `meta.json` sidebar config
    - [x] add page: `index`
    - [x] add page: `quickstart`
-   - [ ] add page: `configuration`
+   - [x] add page: `configuration`
    - [ ] add page: `routes`
    - [ ] add page: `hooks`
    - [ ] add page: `streaming`

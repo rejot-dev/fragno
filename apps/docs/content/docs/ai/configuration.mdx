@@ -1,0 +1,75 @@
+---
+title: Configuration
+description: Configure models, runner behavior, and OpenAI settings.
+icon: SlidersHorizontal
+---
+
+Fragno AI uses a single config object when you build the fragment. It covers provider credentials,
+model defaults, runner behavior, and persistence policies.
+
+## Base Configuration
+
+```ts title="lib/ai-fragment.ts"
+import type { AiFragmentConfig } from "@fragno-dev/fragment-ai";
+
+export const aiConfig: AiFragmentConfig = {
+  apiKey: process.env.OPENAI_API_KEY,
+  defaultModel: { id: "gpt-4.1-mini" },
+  defaultDeepResearchModel: { id: "o3-deep-research" },
+  thinkingLevel: "medium",
+  thinkingBudgets: { medium: 4000, high: 8000 },
+  temperature: 0.2,
+  maxTokens: 1200,
+  sessionId: "debug-session",
+  openai: { reasoningEffort: "medium", reasoningSummary: "auto" },
+};
+```
+
+## Credentials and Provider Overrides
+
+- `apiKey` or `getApiKey` is required; v0.1 is OpenAI-only.
+- `baseUrl` overrides the OpenAI base URL for compatible gateways.
+- `defaultModel.baseUrl` and `defaultModel.headers` override per-model.
+
+## Model Defaults
+
+- `defaultModel` defaults to `gpt-4o-mini` if omitted.
+- Deep research runs prefer `defaultDeepResearchModel`; otherwise they fall back to the thread
+  model.
+- `thinkingLevel` and `thinkingBudgets` align with pi-agent (per-run overrides exist in requests).
+
+## Runner and Dispatcher
+
+- `enableRunnerTick` defaults to `false`; enable to expose `POST /ai/_runner/tick`.
+- `dispatcher` receives wake events (`run.queued`, `openai.webhook.received`) after commits.
+- `runner.maxWorkPerTick` caps work when `runner.tick` is invoked (default: 1).
+- `runner.tick` can override the built-in tick function for custom schedulers.
+
+## Webhooks
+
+- `webhookSecret` enables verification for `POST /ai/webhooks/openai`.
+- Store the secret in OpenAI and ensure your runtime provides `globalThis.crypto` (Node 22+).
+
+## Retries and Limits
+
+- `retries.maxAttempts` defaults to 4 (1 initial + 3 retries).
+- `retries.baseDelayMs` defaults to 2000ms and uses exponential backoff.
+- `limits.maxMessageBytes` defaults to 256KB.
+- `limits.maxArtifactBytes` defaults to 2MB.
+
+## Storage and Observability
+
+- `storage.persistDeltas` controls whether streaming deltas become `ai_run_event` rows.
+- `storage.persistOpenAIRawResponses` controls whether raw Responses payloads are stored.
+- `storage.retentionDays` is `null` by default (no automatic deletion).
+- `logger` lets you inject structured logging for lifecycle and webhook events.
+
+## Rate Limiting
+
+Provide `rateLimiter` to gate webhook and runner tick endpoints:
+
+```ts
+const aiConfig: AiFragmentConfig = {
+  rateLimiter: ({ scope }) => scope !== "webhook_openai",
+};
+```

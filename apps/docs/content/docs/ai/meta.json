@@ -3,5 +3,5 @@
   "description": "AI Fragment",
   "icon": "Sparkles",
   "root": true,
-  "pages": ["index", "quickstart"]
+  "pages": ["index", "quickstart", "configuration"]
 }
