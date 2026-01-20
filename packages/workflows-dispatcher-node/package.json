@@ -23,7 +23,9 @@
   },
   "type": "module",
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "@fragno-dev/dispatcher-node": "workspace:*"
+  },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",

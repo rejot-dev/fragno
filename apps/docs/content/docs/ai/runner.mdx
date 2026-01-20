@@ -1,0 +1,66 @@
+---
+title: Runner & Dispatcher
+description: Wire AI execution in Node, Cloudflare, or via HTTP ticks.
+icon: Server
+---
+
+Runs execute when the runner is ticked. The dispatcher is responsible for waking the runner when
+work is available.
+
+## In-process dispatcher (Node)
+
+```ts
+import { createAiRunner } from "@fragno-dev/fragment-ai";
+import { createAiDispatcherNode } from "@fragno-dev/ai-dispatcher-node";
+
+const runner = createAiRunner({ db, config: aiConfig });
+const dispatcher = createAiDispatcherNode({
+  runner,
+  pollIntervalMs: 1000,
+  tickOptions: { maxRuns: 2, maxWebhookEvents: 2 },
+});
+
+dispatcher.startPolling();
+```
+
+## Cloudflare Durable Object dispatcher
+
+```ts
+import { createAiDispatcherDurableObject } from "@fragno-dev/ai-dispatcher-cloudflare-do";
+
+export class AiDispatcher {
+  handler: ReturnType<ReturnType<typeof createAiDispatcherDurableObject>>;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.handler = createAiDispatcherDurableObject({
+      namespace: "ai",
+    })(state, env);
+  }
+
+  fetch(request: Request) {
+    return this.handler.fetch(request);
+  }
+
+  alarm() {
+    return this.handler.alarm?.();
+  }
+}
+```
+
+## HTTP tick integration
+
+If you want to drive execution externally, keep `enableRunnerTick: true` and POST to the tick route:
+
+```ts
+await fetch("https://your-app.example.com/api/ai/_runner/tick", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ maxRuns: 10, maxWebhookEvents: 10 }),
+});
+```
+
+## Notes
+
+- Protect `/_runner/tick` with auth or disable it in production.
+- Multiple tick callers can safely run concurrently.
+- Wake-ups are triggered after commits for queued runs and webhook delivery.

@@ -27,7 +27,7 @@
     "@fragno-dev/fragment-workflows": "workspace:*",
     "@fragno-dev/node": "workspace:*",
     "@fragno-dev/simple-auth-fragment": "workspace:*",
-    "@fragno-dev/workflows-dispatcher-node": "workspace:*",
+    "@fragno-dev/dispatcher-node": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "gunshi": "^0.26.3",
     "kysely-pglite": "^0.6.1",

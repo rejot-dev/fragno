@@ -1,0 +1,74 @@
+---
+title: CLI
+description: Manage AI threads and runs with the fragno-ai CLI.
+icon: Terminal
+---
+
+The `fragno-ai` CLI talks to the AI fragment HTTP API for threads, messages, runs, artifacts, and
+streaming.
+
+## Install
+
+```bash
+npm install -g @fragno-dev/fragno-ai
+```
+
+Or run it without installing:
+
+```bash
+npx @fragno-dev/fragno-ai --help
+```
+
+## Base URL
+
+Provide the full fragment base URL:
+
+```bash
+fragno-ai threads list --base-url https://host.example.com/api/ai
+```
+
+You can also set a default:
+
+```bash
+export FRAGNO_AI_BASE_URL=https://host.example.com/api/ai
+```
+
+## Auth headers
+
+Pass headers with `-H` (repeatable) or via `FRAGNO_AI_HEADERS`:
+
+```bash
+fragno-ai threads list \
+  --base-url https://host.example.com/api/ai \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Env: staging"
+```
+
+```bash
+export FRAGNO_AI_HEADERS="Authorization: Bearer $TOKEN;X-Env: staging"
+```
+
+## Common commands
+
+```bash
+fragno-ai threads list -b https://host.example.com/api/ai
+
+fragno-ai threads create -b https://host.example.com/api/ai --title "Demo"
+
+fragno-ai messages append -b https://host.example.com/api/ai --thread thread_123 \
+  --content '{"type":"text","text":"Summarize this"}'
+
+fragno-ai runs stream -b https://host.example.com/api/ai --thread thread_123
+
+fragno-ai runs events -b https://host.example.com/api/ai --run run_123
+```
+
+## Options
+
+- `-b, --base-url`: fragment base URL (or `FRAGNO_AI_BASE_URL`)
+- `-H, --header`: extra HTTP header, repeatable (or `FRAGNO_AI_HEADERS`)
+- `--timeout`: request timeout in ms (or `FRAGNO_AI_TIMEOUT_MS`, default 15000)
+- `--retries`: retry count for network/5xx/429 (or `FRAGNO_AI_RETRIES`, default 2)
+- `--retry-delay`: delay between retries in ms (or `FRAGNO_AI_RETRY_DELAY_MS`, default 500)
+
+For the full command tree, run `fragno-ai --help`.

@@ -7,7 +7,7 @@ import {
   workflowsRoutesFactory,
   workflowsSchema,
 } from "@fragno-dev/fragment-workflows";
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+import { createInProcessDispatcher } from "@fragno-dev/dispatcher-node";
 
 import { createWorkflowsAdapter } from "./adapter.server";
 import { workflows } from "./workflows";

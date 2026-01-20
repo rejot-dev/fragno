@@ -12,7 +12,7 @@ when work is available.
 Use the in-process dispatcher for local development or small deployments:
 
 ```ts
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+import { createInProcessDispatcher } from "@fragno-dev/dispatcher-node";
 
 const dispatcher = createInProcessDispatcher({
   wake: () => void runner.tick({ maxInstances: 5, maxSteps: 50 }),

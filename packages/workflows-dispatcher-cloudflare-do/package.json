@@ -25,6 +25,7 @@
   "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/dispatcher-cloudflare-do": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragment-workflows": "workspace:*"
   },

@@ -9,7 +9,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "@fragno-dev/fragment-workflows";
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+import { createInProcessDispatcher } from "@fragno-dev/dispatcher-node";
 import { adapter } from "../fragno-adapter";
 
 export type ApprovalParams = {

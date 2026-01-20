@@ -1,0 +1,21 @@
+{
+  "title": "AI",
+  "description": "AI Fragment",
+  "icon": "Sparkles",
+  "root": true,
+  "pages": [
+    "index",
+    "quickstart",
+    "configuration",
+    "routes",
+    "hooks",
+    "streaming",
+    "runs",
+    "webhooks",
+    "runner",
+    "artifacts",
+    "cli",
+    "debugging",
+    "example-app"
+  ]
+}
