@@ -511,7 +511,7 @@ describe("AI Fragment Runner", () => {
     const result = await runner.tick({ maxWebhookEvents: 2 });
 
     expect(result.processedWebhookEvents).toBe(2);
-    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(2);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
 
     const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
     expect(artifacts).toHaveLength(1);
@@ -642,7 +642,7 @@ describe("AI Fragment Runner", () => {
     const firstAttempt = await runner.tick({ maxWebhookEvents: 1 });
 
     expect(firstAttempt.processedWebhookEvents).toBe(0);
-    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(0);
 
     const queuedEvents = await db.find("ai_openai_webhook_event", (b) => b.whereIndex("primary"));
     expect(queuedEvents[0]?.processingError).toBe("RUN_NOT_FOUND");
@@ -660,7 +660,7 @@ describe("AI Fragment Runner", () => {
     const retryAttempt = await retryRunner.tick({ maxWebhookEvents: 1 });
 
     expect(retryAttempt.processedWebhookEvents).toBe(1);
-    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(2);
+    expect(mockOpenAIRetrieve).toHaveBeenCalledTimes(1);
 
     const updatedRun = await db.findFirst("ai_run", (b) =>
       b.whereIndex("primary", (eb) => eb("id", "=", run.id)),

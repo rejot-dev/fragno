@@ -266,6 +266,7 @@ Validation:
 
 - [x] webhook arrives before run persists `openaiResponseId`: event persists anyway; runner will
       match later using `responseId`
+- [x] runner skips OpenAI retrieval until a webhook event can be matched to a run
 - [x] OpenAI retrieve fails transiently: keep `processedAt=null`, set `processingError`, back off
 
 Validation:

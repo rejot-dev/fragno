@@ -475,28 +475,6 @@ const processWebhookEvent = async ({
     return false;
   };
 
-  try {
-    const client = await createOpenAIClient(config);
-    response = await client.responses.retrieve(event.responseId);
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
-    return scheduleAndLogRetry(error);
-  }
-
-  const responseStatus =
-    response && typeof response === "object"
-      ? (response as { status?: unknown }).status
-      : undefined;
-  const normalizedStatus = typeof responseStatus === "string" ? responseStatus : null;
-  if (
-    normalizedStatus &&
-    normalizedStatus !== "completed" &&
-    normalizedStatus !== "failed" &&
-    normalizedStatus !== "cancelled"
-  ) {
-    return scheduleAndLogRetry("Response not completed");
-  }
-
   const run = (await db.findFirst("ai_run", (b) =>
     b.whereIndex("idx_ai_run_openaiResponseId", (eb) =>
       eb("openaiResponseId", "=", event.responseId),
@@ -543,6 +521,28 @@ const processWebhookEvent = async ({
       error: "UNSUPPORTED_RUN_TYPE",
     });
     return true;
+  }
+
+  try {
+    const client = await createOpenAIClient(config);
+    response = await client.responses.retrieve(event.responseId);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "OpenAI retrieve failed";
+    return scheduleAndLogRetry(error);
+  }
+
+  const responseStatus =
+    response && typeof response === "object"
+      ? (response as { status?: unknown }).status
+      : undefined;
+  const normalizedStatus = typeof responseStatus === "string" ? responseStatus : null;
+  if (
+    normalizedStatus &&
+    normalizedStatus !== "completed" &&
+    normalizedStatus !== "failed" &&
+    normalizedStatus !== "cancelled"
+  ) {
+    return scheduleAndLogRetry("Response not completed");
   }
 
   const uow = db.createUnitOfWork("ai-webhook-process");
