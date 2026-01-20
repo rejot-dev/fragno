@@ -382,6 +382,24 @@ export type AiWakeEvent =
   | { type: "openai.webhook.received"; openaiEventId: string; responseId: string };
 ```
 
+Example config (showing pi-aligned thinking + stream options):
+
+```ts
+import { createAiFragment } from "@fragno-dev/fragment-ai";
+
+const ai = createAiFragment({
+  apiKey: process.env.OPENAI_API_KEY,
+  defaultModel: { id: "gpt-4.1-mini" },
+  defaultDeepResearchModel: { id: "o3-deep-research" },
+  thinkingLevel: "medium",
+  thinkingBudgets: { medium: 4000, high: 8000 },
+  temperature: 0.2,
+  maxTokens: 1200,
+  sessionId: "debug-session",
+  openai: { reasoningEffort: "medium", reasoningSummary: "auto" },
+});
+```
+
 ## 7. Database Schema
 
 All tables are namespaced under the fragment namespace (Fragno DB default).

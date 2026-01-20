@@ -42,7 +42,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
 6. [ ] Align fragment config with pi (see `/Users/wilco/dev/pi-mono`):
    - [x] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`
    - [x] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
-   - [ ] update docs examples accordingly
+   - [x] update docs examples accordingly
 7. [ ] Spike: shared dispatcher generalization
    - [ ] extract `createInProcessDispatcher` into a generic package (node) and update all
          Workflows/AI call sites to use it directly (no shims; update call sites directly)
