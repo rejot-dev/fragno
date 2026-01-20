@@ -5,12 +5,14 @@ import type { TxResult } from "@fragno-dev/db";
 import { aiFragmentDefinition } from "./definition";
 import { createAiRunner } from "./runner";
 
-const mockOpenAICreate = vi.fn(async () => {
-  return {
-    id: "resp_test",
-    output_text: "Background response",
-  };
-});
+const mockOpenAICreate = vi.fn(
+  async (_options?: { input?: Array<{ role: string; content: string }> }) => {
+    return {
+      id: "resp_test",
+      output_text: "Background response",
+    };
+  },
+);
 
 vi.mock("openai", () => {
   return {
@@ -110,5 +112,49 @@ describe("AI Fragment Runner", () => {
       b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
     );
     expect(events.some((event) => event.type === "run.final")).toBe(true);
+  });
+
+  test("runner tick should use inputMessageId snapshot", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Snapshot Thread" }),
+    );
+
+    const firstMessage = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "First message" },
+        text: "First message",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: firstMessage.id,
+        executionMode: "background",
+        type: "agent",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Second message" },
+        text: "Second message",
+      }),
+    );
+
+    const runner = createAiRunner({ db, config });
+    await runner.tick({ maxRuns: 1 });
+
+    const input = mockOpenAICreate.mock.calls.at(-1)?.[0]?.input as Array<{
+      role: string;
+      content: string;
+    }>;
+
+    expect(input?.some((entry) => entry.content === "First message")).toBe(true);
+    expect(input?.some((entry) => entry.content === "Second message")).toBe(false);
   });
 });

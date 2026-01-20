@@ -149,9 +149,9 @@ Validation:
 **Goal:** execute agent runs end-to-end in both foreground-stream and background modes.
 
 1. [x] Implement `runExecutor` service:
-   - [ ] input: `{ runId }`
-   - [ ] loads run + thread + message history
-   - [ ] constructs OpenAI Responses input (system prompt + history)
+   - [x] input: `{ runId }`
+   - [x] loads run + thread + message history
+   - [x] constructs OpenAI Responses input (system prompt + history)
    - [ ] uses OpenAI idempotency keys derived from `(runId, attempt)` for `responses.create(...)`
 2. [ ] Foreground streaming (`runs:stream`):
    - [ ] create `ai_run` with `executionMode="foreground_stream"` and mark `running`

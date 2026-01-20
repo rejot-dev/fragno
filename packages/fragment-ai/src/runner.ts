@@ -17,6 +17,7 @@ type AiRunRecord = {
   status: string;
   openaiResponseId: string | null;
   startedAt: Date | null;
+  inputMessageId: string | null;
 };
 
 type AiMessageRecord = {
@@ -94,6 +95,15 @@ const fetchRunData = async (
       .whereIndex("idx_ai_message_thread_createdAt", (eb) => eb("threadId", "=", run.threadId))
       .orderByIndex("idx_ai_message_thread_createdAt", "asc"),
   )) as AiMessageRecord[];
+
+  if (run.inputMessageId) {
+    const cutoffIndex = messages.findIndex(
+      (message) => message.id.toString() === run.inputMessageId,
+    );
+    if (cutoffIndex >= 0) {
+      return { run, messages: messages.slice(0, cutoffIndex + 1) };
+    }
+  }
 
   return { run, messages };
 };
