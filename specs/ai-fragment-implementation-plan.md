@@ -367,8 +367,8 @@ Validation:
    - [x] Home page (intro, quick actions)
    - [x] Threads view with left list (simple list, no pagination) + right detail view (thread +
          messages + runs)
-4. [ ] Wire all hooks/mutators/stream helpers from §12:
-   - [ ] thread CRUD + messages + runs + run events + artifacts
+4. [x] Wire all hooks/mutators/stream helpers from §12:
+   - [x] thread CRUD + messages + runs + run events + artifacts
    - [x] live stream panel + persisted run events panel (event buffer: 200)
    - [x] deep research flow (background) + artifact display
 5. [ ] Keep endpoints open (no auth) and do not add runner tick controls.

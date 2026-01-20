@@ -17,7 +17,14 @@ export function meta(_: Route.MetaArgs) {
 
 const aiClient = createAiFragmentClients({ mountRoute: "/api/ai" });
 const aiHooks = useFragno(aiClient);
-const { useCreateThread, useAppendMessage, useCreateRun, useRunStream } = aiHooks;
+const {
+  useCreateThread,
+  useUpdateThread,
+  useDeleteThread,
+  useAppendMessage,
+  useCreateRun,
+  useRunStream,
+} = aiHooks;
 
 type FetcherState<TData> = {
   data?: TData;
@@ -143,6 +150,7 @@ export default function Threads() {
             key={selectedThread.id}
             threadId={selectedThread.id}
             thread={selectedThread}
+            onDeleted={() => setSelectedThreadId(null)}
           />
         )}
         {!selectedThread && (
@@ -209,6 +217,7 @@ function CreateThreadPanel({ onCreated }: { onCreated: (threadId: string) => voi
 function ThreadDetail({
   threadId,
   thread,
+  onDeleted,
 }: {
   threadId: string;
   thread: {
@@ -220,6 +229,7 @@ function ThreadDetail({
     createdAt: Date | string;
     updatedAt: Date | string;
   };
+  onDeleted: () => void;
 }) {
   const messagesStore = useMemo(
     () =>
@@ -242,11 +252,15 @@ function ThreadDetail({
   const { mutate: appendMessage, loading: appendLoading, error: appendError } = useAppendMessage();
   const { mutate: createRun, loading: runLoading, error: runError } = useCreateRun();
   const { text, status, error: streamError, startRunStream } = useRunStream();
+  const { mutate: updateThread, loading: updateLoading, error: updateError } = useUpdateThread();
+  const { mutate: deleteThread, loading: deleteLoading, error: deleteError } = useDeleteThread();
 
   const [messageText, setMessageText] = useState("");
   const [runType, setRunType] = useState<"agent" | "deep_research">("agent");
   const [runMode, setRunMode] = useState<"background" | "stream">("background");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftSystemPrompt, setDraftSystemPrompt] = useState("");
 
   const runs = runsState.data?.runs ?? [];
   const selectedRun = useMemo(
@@ -273,6 +287,11 @@ function ThreadDetail({
       setSelectedRunId(runs[0]?.id ?? null);
     }
   }, [runs, selectedRunId]);
+
+  useEffect(() => {
+    setDraftTitle(thread.title ?? "");
+    setDraftSystemPrompt(thread.systemPrompt ?? "");
+  }, [thread.id, thread.systemPrompt, thread.title]);
 
   const handleAppend = async () => {
     const trimmed = messageText.trim();
@@ -310,6 +329,24 @@ function ThreadDetail({
     });
   };
 
+  const handleUpdateThread = async () => {
+    await updateThread({
+      path: { threadId },
+      body: {
+        title: draftTitle.trim() ? draftTitle.trim() : null,
+        systemPrompt: draftSystemPrompt.trim() ? draftSystemPrompt.trim() : null,
+      },
+    });
+  };
+
+  const handleDeleteThread = async () => {
+    if (!window.confirm("Delete this thread? This cannot be undone.")) {
+      return;
+    }
+    await deleteThread({ path: { threadId } });
+    onDeleted();
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -345,6 +382,55 @@ function ThreadDetail({
             <p className="mt-1">Updated: {formatTimestamp(thread.updatedAt)}</p>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-slate-900">Thread settings</h3>
+          <button
+            type="button"
+            onClick={handleDeleteThread}
+            disabled={deleteLoading}
+            className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleteLoading ? "Deleting…" : "Delete thread"}
+          </button>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <label className="flex flex-col gap-2 text-sm text-slate-600">
+            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+              Title
+            </span>
+            <input
+              value={draftTitle}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+              placeholder="Thread title"
+            />
+          </label>
+          <label className="flex flex-col gap-2 text-sm text-slate-600">
+            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+              System prompt
+            </span>
+            <textarea
+              value={draftSystemPrompt}
+              onChange={(event) => setDraftSystemPrompt(event.target.value)}
+              rows={3}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+              placeholder="System prompt"
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={handleUpdateThread}
+          disabled={updateLoading}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {updateLoading ? "Saving…" : "Save changes"}
+        </button>
+        {updateError && <p className="mt-2 text-xs text-rose-600">{updateError.message}</p>}
+        {deleteError && <p className="mt-2 text-xs text-rose-600">{deleteError.message}</p>}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
