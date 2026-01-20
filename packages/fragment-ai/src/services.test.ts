@@ -245,6 +245,7 @@ describe("AI Fragment Services", () => {
     const now = new Date();
     await db.create("ai_run_event", {
       runId: run.id,
+      threadId: thread.id,
       seq: 1,
       type: "run.meta",
       payload: { runId: run.id },
@@ -252,6 +253,7 @@ describe("AI Fragment Services", () => {
     });
     await db.create("ai_tool_call", {
       runId: run.id,
+      threadId: thread.id,
       toolCallId: "call-1",
       toolName: "demo",
       args: { input: "ok" },
@@ -316,6 +318,26 @@ describe("AI Fragment Services", () => {
     );
 
     const now = new Date();
+    await db.create("ai_run_event", {
+      runId: run.id,
+      threadId: thread.id,
+      seq: 1,
+      type: "run.meta",
+      payload: { runId: run.id },
+      createdAt: now,
+    });
+    await db.create("ai_tool_call", {
+      runId: run.id,
+      threadId: thread.id,
+      toolCallId: "call-2",
+      toolName: "cleanup",
+      args: { input: "delete thread" },
+      status: "completed",
+      result: { ok: true },
+      isError: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
     await db.create("ai_artifact", {
       runId: run.id,
       threadId: thread.id,
@@ -347,6 +369,16 @@ describe("AI Fragment Services", () => {
       b.whereIndex("idx_ai_run_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
     );
     expect(runs).toHaveLength(0);
+
+    const runEvents = await db.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(runEvents).toHaveLength(0);
+
+    const toolCalls = await db.find("ai_tool_call", (b) =>
+      b.whereIndex("idx_ai_tool_call_run_toolCallId", (eb) => eb("runId", "=", run.id)),
+    );
+    expect(toolCalls).toHaveLength(0);
 
     const artifacts = await db.find("ai_artifact", (b) =>
       b.whereIndex("idx_ai_artifact_thread_createdAt", (eb) => eb("threadId", "=", thread.id)),
@@ -571,6 +603,7 @@ describe("AI Fragment Services", () => {
     const now = new Date("2024-01-01T00:00:00Z");
     await db.create("ai_tool_call", {
       runId: run.id,
+      threadId: thread.id,
       toolCallId: "call_1",
       toolName: "web_search",
       args: { query: "test" },
@@ -584,6 +617,7 @@ describe("AI Fragment Services", () => {
     await expect(
       db.create("ai_tool_call", {
         runId: run.id,
+        threadId: thread.id,
         toolCallId: "call_1",
         toolName: "web_search",
         args: { query: "test" },

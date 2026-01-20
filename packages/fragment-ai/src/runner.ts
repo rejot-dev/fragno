@@ -58,6 +58,7 @@ type AiMessageRecord = {
 type AiRunEventRecord = {
   id: FragnoId;
   runId: string;
+  threadId: string;
   seq: number;
   type: string;
   payload: unknown | null;
@@ -231,6 +232,7 @@ const finalizeRun = async ({
   for (const event of runEvents) {
     schema.create("ai_run_event", {
       runId: run.id.toString(),
+      threadId: run.threadId,
       seq,
       type: event.type,
       payload: event.payload,

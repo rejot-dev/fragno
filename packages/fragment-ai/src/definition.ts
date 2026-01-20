@@ -199,6 +199,7 @@ type AiRunRecord = {
 type AiRunEventRecord = {
   id: FragnoId;
   runId: string;
+  threadId: string;
   seq: number;
   type: string;
   payload: unknown | null;
@@ -208,6 +209,7 @@ type AiRunEventRecord = {
 type AiToolCallRecord = {
   id: FragnoId;
   runId: string;
+  threadId: string;
   toolCallId: string;
   toolName: string;
   args: unknown;
@@ -601,6 +603,16 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               .find("ai_run", (b) =>
                 b.whereIndex("idx_ai_run_thread_createdAt", (eb) => eb("threadId", "=", threadId)),
               )
+              .find("ai_run_event", (b) =>
+                b.whereIndex("idx_ai_run_event_thread_createdAt", (eb) =>
+                  eb("threadId", "=", threadId),
+                ),
+              )
+              .find("ai_tool_call", (b) =>
+                b.whereIndex("idx_ai_tool_call_thread_createdAt", (eb) =>
+                  eb("threadId", "=", threadId),
+                ),
+              )
               .find("ai_artifact", (b) =>
                 b.whereIndex("idx_ai_artifact_thread_createdAt", (eb) =>
                   eb("threadId", "=", threadId),
@@ -608,10 +620,12 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
               ),
           )
           .mutate(({ uow, retrieveResult }) => {
-            const [thread, messages, runs, artifacts] = retrieveResult as [
+            const [thread, messages, runs, runEvents, toolCalls, artifacts] = retrieveResult as [
               AiThreadRecord | null,
               AiMessageRecord[],
               AiRunRecord[],
+              AiRunEventRecord[],
+              AiToolCallRecord[],
               AiArtifactRecord[],
             ];
 
@@ -621,6 +635,14 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
 
             for (const message of messages) {
               uow.delete("ai_message", message.id);
+            }
+
+            for (const runEvent of runEvents) {
+              uow.delete("ai_run_event", runEvent.id);
+            }
+
+            for (const toolCall of toolCalls) {
+              uow.delete("ai_tool_call", toolCall.id);
             }
 
             for (const run of runs) {

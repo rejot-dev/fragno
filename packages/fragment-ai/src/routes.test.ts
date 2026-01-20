@@ -381,6 +381,7 @@ describe("AI Fragment Routes", () => {
     const now = new Date();
     await db.create("ai_run_event", {
       runId: run.data.id,
+      threadId: thread.data.id,
       seq: 1,
       type: "run.meta",
       payload: { runId: run.data.id },
@@ -388,6 +389,7 @@ describe("AI Fragment Routes", () => {
     });
     await db.create("ai_tool_call", {
       runId: run.data.id,
+      threadId: thread.data.id,
       toolCallId: "call-1",
       toolName: "demo",
       args: { input: "ok" },
@@ -923,6 +925,7 @@ describe("AI Fragment Routes", () => {
 
     await db.create("ai_run_event", {
       runId: run.data.id,
+      threadId: thread.data.id,
       seq: 1,
       type: "run.meta",
       payload: { ok: true },
@@ -931,6 +934,7 @@ describe("AI Fragment Routes", () => {
 
     await db.create("ai_run_event", {
       runId: run.data.id,
+      threadId: thread.data.id,
       seq: 2,
       type: "run.final",
       payload: { ok: true },

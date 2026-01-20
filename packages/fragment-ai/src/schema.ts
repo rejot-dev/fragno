@@ -83,6 +83,7 @@ export const aiSchema = schema((s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("runId", column("string"))
+        .addColumn("threadId", column("string"))
         .addColumn("seq", column("integer"))
         .addColumn("type", column("string"))
         .addColumn("payload", column("json").nullable())
@@ -90,12 +91,14 @@ export const aiSchema = schema((s) => {
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
-        .createIndex("idx_ai_run_event_run_seq", ["runId", "seq"], { unique: true });
+        .createIndex("idx_ai_run_event_run_seq", ["runId", "seq"], { unique: true })
+        .createIndex("idx_ai_run_event_thread_createdAt", ["threadId", "createdAt"]);
     })
     .addTable("ai_tool_call", (t) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("runId", column("string"))
+        .addColumn("threadId", column("string"))
         .addColumn("toolCallId", column("string"))
         .addColumn("toolName", column("string"))
         .addColumn("args", column("json"))
@@ -112,7 +115,8 @@ export const aiSchema = schema((s) => {
         )
         .createIndex("idx_ai_tool_call_run_toolCallId", ["runId", "toolCallId"], {
           unique: true,
-        });
+        })
+        .createIndex("idx_ai_tool_call_thread_createdAt", ["threadId", "createdAt"]);
     })
     .addTable("ai_artifact", (t) => {
       return t

@@ -1158,6 +1158,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
                   for (const event of runEvents) {
                     schema.create("ai_run_event", {
                       runId: run.id,
+                      threadId: runRecord.threadId,
                       seq,
                       type: event.type,
                       payload: event.payload,
