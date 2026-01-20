@@ -15,6 +15,7 @@ import {
   resolveOpenAIResponseText,
 } from "./openai";
 import { registerRunAbortController } from "./run-abort";
+import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
 
 type ErrorResponder<Code extends string = string> = (
   details: { message: string; code: Code },
@@ -367,6 +368,10 @@ const handleServiceError = <Code extends string>(err: unknown, error: ErrorRespo
     return error({ message: "No user message found", code: "NO_USER_MESSAGE" as Code }, 400);
   }
 
+  if (err.message === "MESSAGE_TOO_LARGE") {
+    return error({ message: "Message exceeds size limit", code: "MESSAGE_TOO_LARGE" as Code }, 413);
+  }
+
   throw err;
 };
 
@@ -504,7 +509,7 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
         path: "/threads/:threadId/messages",
         inputSchema: appendMessageSchema,
         outputSchema: messageSchema,
-        errorCodes: ["THREAD_NOT_FOUND"],
+        errorCodes: ["THREAD_NOT_FOUND", "MESSAGE_TOO_LARGE"],
         handler: async function ({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
 
@@ -978,8 +983,29 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
             let completedAt: Date | null = updatedAt;
             let nextAttemptAt: Date | null = null;
             let updatedAttempt = run.attempt;
+            let allowRetry = true;
 
-            if (finalStatus === "failed" && !openaiResponseId && run.attempt < run.maxAttempts) {
+            let assistantText = finalStatus === "succeeded" ? textBuffer || null : null;
+            if (assistantText) {
+              const maxMessageBytes = resolveMaxMessageBytes(config);
+              const messageBytes = estimateMessageSizeBytes(
+                { type: "text", text: assistantText },
+                assistantText,
+              );
+              if (messageBytes > maxMessageBytes) {
+                finalStatus = "failed";
+                errorMessage = "MESSAGE_TOO_LARGE";
+                assistantText = null;
+                allowRetry = false;
+              }
+            }
+
+            if (
+              finalStatus === "failed" &&
+              allowRetry &&
+              !openaiResponseId &&
+              run.attempt < run.maxAttempts
+            ) {
               const baseDelayMs = config.retries?.baseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
               const delayMs = resolveRetryDelayMs(run.attempt, baseDelayMs);
               nextAttemptAt = new Date(updatedAt.getTime() + delayMs);
@@ -988,7 +1014,9 @@ export const aiRoutesFactory = defineRoutes(aiFragmentDefinition).create(
               completedAt = null;
             }
 
-            const assistantText = finalStatus === "succeeded" ? textBuffer || null : null;
+            if (finalStatus !== "succeeded") {
+              assistantText = null;
+            }
             const finalRun = {
               ...run,
               status: finalStatus,

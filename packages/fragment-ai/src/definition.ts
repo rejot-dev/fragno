@@ -4,6 +4,7 @@ import type { FragnoId } from "@fragno-dev/db/schema";
 import { aiSchema } from "./schema";
 import type { AiFragmentConfig } from "./index";
 import { abortRunInProcess } from "./run-abort";
+import { estimateMessageSizeBytes, resolveMaxMessageBytes } from "./limits";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
@@ -601,6 +602,12 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           .mutate(({ uow, retrieveResult: [thread] }) => {
             if (!thread) {
               throw new Error("THREAD_NOT_FOUND");
+            }
+
+            const messageBytes = estimateMessageSizeBytes(params.content, params.text ?? null);
+            const maxMessageBytes = resolveMaxMessageBytes(config);
+            if (messageBytes > maxMessageBytes) {
+              throw new Error("MESSAGE_TOO_LARGE");
             }
 
             const id = uow.create("ai_message", {

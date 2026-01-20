@@ -73,6 +73,10 @@ export interface AiFragmentConfig {
     maxAttempts?: number;
     baseDelayMs?: number;
   };
+  limits?: {
+    maxMessageBytes?: number;
+    maxArtifactBytes?: number;
+  };
   storage?: {
     persistDeltas?: boolean;
     persistOpenAIRawResponses?: boolean;

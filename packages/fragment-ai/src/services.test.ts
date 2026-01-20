@@ -19,6 +19,7 @@ describe("AI Fragment Services", () => {
         instantiate(aiFragmentDefinition).withConfig({
           defaultModel: { id: "gpt-test" },
           dispatcher,
+          limits: { maxMessageBytes: 1024 },
         }),
       )
       .build();
@@ -111,6 +112,31 @@ describe("AI Fragment Services", () => {
     expect(listed.messages).toHaveLength(1);
     expect(listed.messages[0]?.id).toBe(message.id);
     expect(listed.messages[0]?.text).toBe("Hello");
+  });
+
+  test("appendMessage should reject oversized messages", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Thread Oversize" }),
+    );
+
+    const largeText = "a".repeat(2048);
+
+    await expect(
+      runService(() =>
+        fragment.services.appendMessage({
+          threadId: thread.id,
+          role: "user",
+          content: { type: "text", text: largeText },
+          text: largeText,
+        }),
+      ),
+    ).rejects.toThrow("MESSAGE_TOO_LARGE");
+
+    const listed = await runService<{ messages: Array<{ id: string }> }>(() =>
+      fragment.services.listMessages({ threadId: thread.id }),
+    );
+
+    expect(listed.messages).toHaveLength(0);
   });
 
   test("listMessages should cap page size", async () => {

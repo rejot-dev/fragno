@@ -388,6 +388,68 @@ describe("AI Fragment Runner", () => {
     expect(webhookEvents[0]?.processingError).toBeNull();
   });
 
+  test("runner tick should fail when deep research artifact exceeds limit", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Deep Research Large Artifact" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Oversize artifact" },
+        text: "Oversize artifact",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        executionMode: "background",
+        type: "deep_research",
+      }),
+    );
+
+    await db.update("ai_run", run.id, (b) =>
+      b.set({ status: "waiting_webhook", openaiResponseId: "resp_large" }),
+    );
+
+    await db.create("ai_openai_webhook_event", {
+      openaiEventId: "evt_large",
+      type: "response.completed",
+      responseId: "resp_large",
+      payload: { redacted: true },
+      receivedAt: new Date(),
+      processingAt: null,
+      nextAttemptAt: null,
+      processedAt: null,
+      processingError: null,
+    });
+
+    const largeText = "x".repeat(4096);
+    mockOpenAIRetrieve.mockResolvedValueOnce({
+      id: "resp_large",
+      status: "completed",
+      output_text: largeText,
+    });
+
+    const limitedConfig = { ...config, limits: { maxArtifactBytes: 512 } };
+    const runner = createAiRunner({ db, config: limitedConfig });
+    const processResult = await runner.tick({ maxWebhookEvents: 1 });
+
+    expect(processResult.processedWebhookEvents).toBe(1);
+
+    const updatedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+    expect(updatedRun?.status).toBe("failed");
+    expect(updatedRun?.error).toBe("ARTIFACT_TOO_LARGE");
+
+    const artifacts = await db.find("ai_artifact", (b) => b.whereIndex("primary"));
+    expect(artifacts).toHaveLength(0);
+  });
+
   test("runner tick should not duplicate artifacts for duplicate webhook events", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Deep Research Dedupe" }),

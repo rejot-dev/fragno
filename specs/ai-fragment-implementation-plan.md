@@ -279,8 +279,8 @@ Validation:
 v0.1 hardening:
 
 - [ ] Limits:
-  - [ ] max message size
-  - [ ] max artifact size
+  - [x] max message size
+  - [x] max artifact size
   - [x] page size caps in services
 - [ ] Rate limits at host level for webhooks + tick endpoint
 - [ ] Observability: structured logs for run lifecycle + webhook processing

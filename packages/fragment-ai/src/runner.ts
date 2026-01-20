@@ -10,6 +10,12 @@ import {
 } from "./openai";
 import { FragnoId } from "@fragno-dev/db/schema";
 import { registerRunAbortController } from "./run-abort";
+import {
+  estimateArtifactSizeBytes,
+  estimateMessageSizeBytes,
+  resolveMaxArtifactBytes,
+  resolveMaxMessageBytes,
+} from "./limits";
 
 type Clock = {
   now: () => Date;
@@ -552,6 +558,30 @@ const processWebhookEvent = async ({
     ...(usage ? { usage } : {}),
     ...(config.storage?.persistOpenAIRawResponses ? { rawResponse: response } : {}),
   };
+  const maxArtifactBytes = resolveMaxArtifactBytes(config);
+  const artifactBytes = estimateArtifactSizeBytes(artifactData, reportMarkdown);
+  if (artifactBytes > maxArtifactBytes) {
+    schema.update("ai_run", run.id, (b) => {
+      const builder = b.set({
+        status: "failed",
+        error: "ARTIFACT_TOO_LARGE",
+        completedAt: now,
+        updatedAt: now,
+        openaiResponseId: responseId,
+      });
+      if (run.id instanceof FragnoId) {
+        builder.check();
+      }
+      return builder;
+    });
+
+    schema.update("ai_openai_webhook_event", event.id, (b) =>
+      b.set({ processedAt: now, processingError: null, processingAt: null, nextAttemptAt: null }),
+    );
+
+    const { success } = await uow.executeMutations();
+    return success;
+  }
 
   const artifactId = schema.create("ai_artifact", {
     runId: run.id.toString(),
@@ -622,6 +652,7 @@ export const runExecutor = async ({
   let error: string | null = null;
   let openaiResponseId: string | null = run.openaiResponseId;
   let assistantText: string | null = null;
+  let retryable = true;
   const abortController = new AbortController();
   const unregisterAbort = registerRunAbortController(run.id.toString(), abortController);
 
@@ -659,6 +690,20 @@ export const runExecutor = async ({
     unregisterAbort();
   }
 
+  if (assistantText) {
+    const maxMessageBytes = resolveMaxMessageBytes(config);
+    const messageBytes = estimateMessageSizeBytes(
+      { type: "text", text: assistantText },
+      assistantText,
+    );
+    if (messageBytes > maxMessageBytes) {
+      status = "failed";
+      error = "MESSAGE_TOO_LARGE";
+      assistantText = null;
+      retryable = false;
+    }
+  }
+
   await finalizeRun({
     db,
     run,
@@ -670,7 +715,7 @@ export const runExecutor = async ({
   });
 
   let retryScheduledAt: Date | null = null;
-  if (status === "failed" && run.executionMode === "background") {
+  if (status === "failed" && retryable && run.executionMode === "background") {
     retryScheduledAt = await scheduleRetry({
       db,
       run,
