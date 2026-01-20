@@ -43,15 +43,15 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
    - [x] mirror pi-ai `SimpleStreamOptions` + OpenAI Responses options in `AiFragmentConfig`
    - [x] mirror pi-agent `thinkingLevel` + `thinkingBudgets`
    - [x] update docs examples accordingly
-7. [ ] Spike: shared dispatcher generalization
+7. [x] Spike: shared dispatcher generalization
    - [x] extract `createInProcessDispatcher` into a generic package (node) and update all
          Workflows/AI call sites to use it directly (no shims; update call sites directly)
    - [x] re-export `createInProcessDispatcher` from `@fragno-dev/workflows-dispatcher-node` to avoid
          duplicate implementations in the workspace
-   - [ ] prototype a generic Cloudflare DO dispatcher runtime by extracting the core loop from
+   - [x] prototype a generic Cloudflare DO dispatcher runtime by extracting the core loop from
          `@fragno-dev/workflows-dispatcher-cloudflare-do`
    - [x] validate AI scheduling inputs (earliest `ai_run.nextAttemptAt` + unprocessed webhooks)
-   - [ ] update Workflows dispatcher wrappers to use the shared runtime and fix any breakages
+   - [x] update Workflows dispatcher wrappers to use the shared runtime and fix any breakages
 
 Deliverables:
 
@@ -366,7 +366,7 @@ Validation:
 
 1. [x] Create `example-apps/ai-fragment-react-router-drizzle` (copy react-router example skeleton).
 2. [x] Use Drizzle + PGLite for local persistence.
-3. [ ] Implement pages:
+3. [x] Implement pages:
    - [x] Home page (intro, quick actions)
    - [x] Threads view with left list (simple list, no pagination) + right detail view (thread +
          messages + runs)
@@ -374,7 +374,7 @@ Validation:
    - [x] thread CRUD + messages + runs + run events + artifacts
    - [x] live stream panel + persisted run events panel (event buffer: 200)
    - [x] deep research flow (background) + artifact display
-5. [ ] Keep endpoints open (no auth) and do not add runner tick controls.
+5. [x] Keep endpoints open (no auth) and do not add runner tick controls.
 6. [x] Add timer-based refresh for background runs/messages (1s polling).
 
 Validation:
