@@ -1199,6 +1199,28 @@ export const aiFragmentDefinition = defineFragment<AiFragmentConfig>("ai")
           )
           .mutate(({ uow, retrieveResult: [existing, run] }) => {
             if (existing) {
+              if (run && run.openaiLastWebhookEventId !== existing.id.toString()) {
+                uow.update("ai_run", run.id, (b) =>
+                  b
+                    .set({
+                      openaiLastWebhookEventId: existing.id.toString(),
+                      updatedAt: now,
+                    })
+                    .check(),
+                );
+              }
+
+              const shouldWake =
+                existing.processedAt == null &&
+                existing.processingAt == null &&
+                (existing.nextAttemptAt == null || existing.nextAttemptAt <= now);
+              if (shouldWake) {
+                uow.triggerHook("onOpenAIWebhookReceived", {
+                  openaiEventId: existing.openaiEventId,
+                  responseId: existing.responseId,
+                });
+              }
+
               return { event: buildWebhookEvent(existing), created: false };
             }
 

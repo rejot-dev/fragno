@@ -581,6 +581,28 @@ describe("AI Fragment Services", () => {
     });
   });
 
+  test("recordOpenAIWebhookEvent should re-wake when duplicate event is unprocessed", async () => {
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_2b",
+        type: "response.completed",
+        responseId: "resp_2b",
+        payload: { ok: true },
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_2b",
+        type: "response.completed",
+        responseId: "resp_2b",
+        payload: { ok: true },
+      }),
+    );
+
+    expect(dispatcher.wake).toHaveBeenCalledTimes(2);
+  });
+
   test("recordOpenAIWebhookEvent should update run with last webhook event id", async () => {
     const thread = await runService<{ id: string }>(() =>
       fragment.services.createThread({ title: "Webhook Run Thread" }),
@@ -625,6 +647,62 @@ describe("AI Fragment Services", () => {
       ),
     );
     expect(storedEvent).toBeTruthy();
+
+    const updatedRun = await db.findFirst("ai_run", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", run.id)),
+    );
+
+    expect(updatedRun?.openaiLastWebhookEventId).toBe(storedEvent!.id.toString());
+  });
+
+  test("recordOpenAIWebhookEvent should attach existing event once run is linked", async () => {
+    const thread = await runService<{ id: string }>(() =>
+      fragment.services.createThread({ title: "Webhook Existing Thread" }),
+    );
+
+    const message = await runService<{ id: string }>(() =>
+      fragment.services.appendMessage({
+        threadId: thread.id,
+        role: "user",
+        content: { type: "text", text: "Attach existing webhook" },
+        text: "Attach existing webhook",
+      }),
+    );
+
+    const run = await runService<{ id: string }>(() =>
+      fragment.services.createRun({
+        threadId: thread.id,
+        inputMessageId: message.id,
+        type: "agent",
+      }),
+    );
+
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_existing",
+        type: "response.completed",
+        responseId: "resp_existing",
+        payload: { ok: true },
+      }),
+    );
+
+    const storedEvent = await db.findFirst("ai_openai_webhook_event", (b) =>
+      b.whereIndex("idx_ai_openai_webhook_event_openaiEventId", (eb) =>
+        eb("openaiEventId", "=", "evt_existing"),
+      ),
+    );
+    expect(storedEvent).toBeTruthy();
+
+    await db.update("ai_run", run.id, (b) => b.set({ openaiResponseId: "resp_existing" }));
+
+    await runService(() =>
+      fragment.services.recordOpenAIWebhookEvent({
+        openaiEventId: "evt_existing",
+        type: "response.completed",
+        responseId: "resp_existing",
+        payload: { ok: true },
+      }),
+    );
 
     const updatedRun = await db.findFirst("ai_run", (b) =>
       b.whereIndex("primary", (eb) => eb("id", "=", run.id)),

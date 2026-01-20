@@ -290,6 +290,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Thread deletion cleans up run events + tool calls
   - [x] Stream tool policy denials emit failed status events (skip running)
   - [x] Admin-only debug/delete routes (host-protect)
+  - [x] Duplicate webhook deliveries re-wake processing and attach existing events to runs
 
 - [ ] Future (v0.2+):
   - [ ] Custom tools registry + server execution (pi-agent-core integration)
