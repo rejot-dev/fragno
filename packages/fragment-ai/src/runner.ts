@@ -209,6 +209,45 @@ const finalizeRun = async ({
     });
   }
 
+  if (toolCalls && toolCalls.length > 0) {
+    const toolError = error ?? "TOOL_CALL_UNSUPPORTED";
+    for (const toolCall of toolCalls) {
+      const toolType = "tool_call";
+      let args = "{}";
+      try {
+        args = JSON.stringify(toolCall.args ?? {});
+      } catch {
+        args = "{}";
+      }
+
+      runEvents.push({
+        type: "tool.call.started",
+        payload: { toolCallId: toolCall.toolCallId, toolType, toolName: toolCall.toolName },
+        createdAt: completedAt,
+      });
+      runEvents.push({
+        type: "tool.call.arguments.done",
+        payload: { toolCallId: toolCall.toolCallId, arguments: args },
+        createdAt: completedAt,
+      });
+      runEvents.push({
+        type: "tool.call.status",
+        payload: { toolCallId: toolCall.toolCallId, toolType, status: "failed" },
+        createdAt: completedAt,
+      });
+      runEvents.push({
+        type: "tool.call.output",
+        payload: {
+          toolCallId: toolCall.toolCallId,
+          toolType,
+          output: { error: toolError },
+          isError: true,
+        },
+        createdAt: completedAt,
+      });
+    }
+  }
+
   runEvents.push({
     type: "run.final",
     payload: {

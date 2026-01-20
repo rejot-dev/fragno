@@ -448,6 +448,27 @@ describe("AI Fragment Runner", () => {
     expect(toolCalls[0]?.toolName).toBe("search");
     expect(toolCalls[0]?.status).toBe("failed");
     expect(toolCalls[0]?.isError).toBe(1);
+
+    const runEvents = await customDb.find("ai_run_event", (b) =>
+      b.whereIndex("idx_ai_run_event_run_seq", (eb) => eb("runId", "=", run.id)),
+    );
+    const eventTypes = runEvents.map((event) => event.type);
+    expect(eventTypes).toEqual(
+      expect.arrayContaining([
+        "tool.call.started",
+        "tool.call.arguments.done",
+        "tool.call.status",
+        "tool.call.output",
+      ]),
+    );
+
+    const outputEvent = runEvents.find((event) => event.type === "tool.call.output");
+    expect(outputEvent?.payload).toMatchObject({
+      toolCallId: "call_tool_1",
+      toolType: "tool_call",
+      output: { error: "TOOL_CALL_UNSUPPORTED" },
+      isError: true,
+    });
   });
 
   test("runner tick should clean up retained run events and webhook events", async () => {

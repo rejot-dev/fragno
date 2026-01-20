@@ -291,6 +291,7 @@ runner modeled after the Workflows fragment (no workflow integration in v0.1).
   - [x] Thread deletion cleans up run events + tool calls
   - [x] Stream tool policy denials emit failed status events (skip running)
   - [x] Background run events emit failed status when tool policy denies (skip running)
+  - [x] Background pi-ai tool call attempts emit run events (tool lifecycle + error output)
   - [x] Admin-only debug/delete routes (host-protect)
   - [x] Duplicate webhook deliveries re-wake processing and attach existing events to runs
   - [x] Honor model provider/baseUrl/header overrides when creating OpenAI clients
