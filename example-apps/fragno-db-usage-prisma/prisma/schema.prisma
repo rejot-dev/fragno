@@ -1,0 +1,31 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:../fragno-db-usage.sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  name      String
+  createdAt DateTime   @default(now()) @map("created_at")
+  posts     BlogPost[]
+
+  @@map("user")
+}
+
+model BlogPost {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  authorId  Int      @map("author_id")
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([authorId], name: "blog_post_author_id_index")
+  @@map("blog_post")
+}
