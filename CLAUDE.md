@@ -64,22 +64,43 @@ as a monorepo manager.
   - Schema definition with versioning and migrations
   - Kysely and Drizzle adapters
   - Goal is to let Fragment authors define a (simple) data model to store data in the user's db
+- `packages/fragno-test/` - Testing utilities for fragment authors
+
+### First-Party Fragments & Integrations
+
+- `packages/fragment-workflows/` - Workflows fragment
+- `packages/fragment-mailing-list/` - Mailing list fragment
+- `packages/forms/` - Forms fragment
+- `packages/stripe/` - Stripe integration fragment
+- `packages/corpus/` - Content corpus utilities used by fragments
+- `packages/jsonforms-shadcn-renderers/` - JSONForms renderers (shadcn/ui)
+- `packages/workflows-dispatcher-node/` - Node workflow dispatcher
+- `packages/workflows-dispatcher-cloudflare-do/` - Cloudflare Durable Objects dispatcher
+
+### Tooling & CLIs
+
 - `packages/create/` - Library to create Fragno fragments
-
-### Tooling
-
-- `packages/create-cli/` - CLI to create Fragno fragments (`npm create fragno`), uses
-  `packages/create`
+- `apps/create-cli/` - CLI to create Fragno fragments (`npm create fragno`), uses `packages/create`
+- `apps/fragno-cli/` - Dev CLI for running and inspecting fragments
+- `apps/fragno-wf/` - Workflows CLI
+- `apps/fragno-ai/` - AI helper app for Fragno workflows
 
 ### Example Fragments
 
 - `example-fragments/chatno/` - OpenAI integration fragment example
 - `example-fragments/example-fragment/` - Minimal fragment template
+- `example-fragments/fragno-db-library/` - Fragment using @fragno-dev/db
+- `example-fragments/otp-fragment/` - OTP fragment example
+- `example-fragments/simple-auth-fragment/` - Simple auth fragment example
 
-### Documentation & Examples
+### Documentation & Example Apps
 
-- `apps/docs/` - Documentation site (Next.js + Fumadocs)
+- `apps/docs/` - Documentation site (React Router + Fumadocs)
   - `content/docs/fragno/for-library-authors/` - Building fragments
   - `content/docs/fragno/for-users/` - Integrating fragments
-- `examples-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
-  Vue SPA)
+  - `content/docs/stripe/` - Stripe fragment docs
+  - `content/docs/forms/` - Forms fragment docs
+  - `content/docs/workflows/` - Workflows docs
+- `apps/logo-viewer/` - Logo preview playground
+- `example-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
+  Vue SPA, SolidStart) plus DB usage demos and workflow samples
