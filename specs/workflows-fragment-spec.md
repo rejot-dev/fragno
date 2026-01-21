@@ -1,6 +1,4 @@
-# Fragno Workflows Fragment — SPEC (Draft)
-
-Status: Draft (v0.7 — CLI/logs decisions locked)
+# Fragno Workflows Fragment — Spec
 
 ## 1. Overview
 

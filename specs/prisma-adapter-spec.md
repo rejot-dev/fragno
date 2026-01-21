@@ -1,6 +1,4 @@
-# Fragno Prisma Support — Prisma Schema Generator Adapter (SPEC, Draft)
-
-Status: Draft (decisions confirmed; remaining work is implementation)
+# Fragno Prisma Support — Prisma Schema Generator Adapter — Spec
 
 ## 1. Overview
 

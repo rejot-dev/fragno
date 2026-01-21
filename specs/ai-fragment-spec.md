@@ -1,6 +1,4 @@
-# Fragno AI Fragment — SPEC (Draft)
-
-Status: Draft (v0.6)
+# Fragno AI Fragment — Spec
 
 ## 1. Overview
 
@@ -1344,7 +1342,7 @@ Recommended command surface (draft):
 - `fragno-ai runs events --run <runId>` (prints persisted run events)
 - `fragno-ai artifacts list|get`
 
-## 18. Decisions (v0.6)
+## 18. Decisions
 
 - `apiKey` is optional if `getApiKey` is provided; at least one must be set.
 - `enableRunnerTick` defaults to `false`; hosts must opt in to mount the tick route.
