@@ -172,6 +172,8 @@ function mapDBTypeToDrizzleFunction(
         return { name: "text" };
       case "bigint":
         return { name: "bigint", params: [`{ mode: "number" }`] };
+      case "timestamptz":
+        return { name: "timestamp", params: [`{ withTimezone: true }`] };
       default:
         if (dbType.startsWith("varchar(")) {
           const length = parseVarchar(dbType);
