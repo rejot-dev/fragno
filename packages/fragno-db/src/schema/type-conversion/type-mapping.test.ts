@@ -129,7 +129,7 @@ describe("SQLTypeMapper", () => {
     });
 
     it("should preserve other types", () => {
-      expect(mapper.getDatabaseType(column("timestamp"))).toBe("timestamp");
+      expect(mapper.getDatabaseType(column("timestamp"))).toBe("timestamptz");
       expect(mapper.getDatabaseType(column("integer"))).toBe("integer");
     });
   });

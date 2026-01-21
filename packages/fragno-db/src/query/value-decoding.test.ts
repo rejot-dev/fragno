@@ -108,13 +108,12 @@ describe("decodeResult", () => {
       expect(result["createdAt"]).toBe(date);
     });
 
-    it("should normalize Date values from pglite timestamp parsing", () => {
-      const localDate = new Date("2024-01-15T10:30:00");
-      const expected = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60_000);
-      const result = decodeResult({ createdAt: localDate }, usersTable, pgliteConfig);
+    it("should preserve Date values from pglite timestamp parsing", () => {
+      const date = new Date("2024-01-15T10:30:00Z");
+      const result = decodeResult({ createdAt: date }, usersTable, pgliteConfig);
 
       assert.instanceOf(result["createdAt"], Date);
-      expect((result["createdAt"] as Date).toISOString()).toBe(expected.toISOString());
+      expect((result["createdAt"] as Date).toISOString()).toBe(date.toISOString());
     });
   });
 

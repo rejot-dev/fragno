@@ -99,7 +99,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "test_types" ("col_int" integer not null unique, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamp not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
+        `"create table "test_types" ("col_int" integer not null unique, "col_bigint" bigint not null, "col_decimal" decimal not null, "col_bool" boolean not null, "col_date" date not null, "col_timestamp" timestamptz not null, "col_json" json not null, "col_binary" bytea not null, "col_varchar" varchar(255) not null)"`,
       );
     });
 
@@ -174,7 +174,7 @@ describe("PostgresSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "timestamps_test" ("id" integer not null unique, "created_at" timestamp default CURRENT_TIMESTAMP not null)"`,
+        `"create table "timestamps_test" ("id" integer not null unique, "created_at" timestamptz default CURRENT_TIMESTAMP not null)"`,
       );
     });
 
