@@ -1,6 +1,6 @@
 # Fragno AI Fragment — Implementation Plan (Draft)
 
-This plan implements `specs/ai-fragment-spec.md` (Draft v0.6): durable threads, durable runs,
+This plan implements `specs/spec-ai-fragment.md` (Draft v0.6): durable threads, durable runs,
 OpenAI-only execution, NDJSON streaming, deep research background + webhooks, and a tick-based
 runner modeled after the Workflows fragment (no workflow integration in v0.1).
 

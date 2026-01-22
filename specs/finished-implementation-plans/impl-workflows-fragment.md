@@ -1,6 +1,6 @@
 # Fragno Workflows Fragment — Implementation Plan (Draft)
 
-This plan assumes the design in `specs/workflows-fragment-spec.md`.
+This plan assumes the design in `specs/spec-workflows-fragment.md`.
 
 ## Phase 0 — Grounding + references
 

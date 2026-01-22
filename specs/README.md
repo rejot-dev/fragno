@@ -16,7 +16,7 @@ very detailed, living documents that guide implementation without constraining t
 ## Process Overview
 
 1. Read repo `README.md` and `CLAUDE.md` first to understand the project and its conventions.
-2. Review existing specs for patterns and language; use `specs/workflows-fragment-spec.md` as the
+2. Review existing specs for patterns and language; use `specs/spec-workflows-fragment.md` as the
    quality bar.
 3. Review other specs to understand adjacent domains and prior decisions.
 4. Review current project code and documentation for context.
@@ -56,31 +56,36 @@ very detailed, living documents that guide implementation without constraining t
 
 ## Reference Handling
 
-- If the user references code or documentation during spec writing, obtain the source and store it
-  in `specs/references/` (even when the source lives in this repo or another local repo).
-- References can be from external URLs, this repo, or other local repos on this system. Capture a
-  snapshot and cite the original source path or URL.
+- Specs should reference **live code paths** or external URLs directly.
+- Do not copy code into `specs/references/`; avoid frozen snapshots.
 - Keep references scoped to what the spec needs; do not bulk-copy unrelated material.
 
 ## Specifications
 
-- [Fragno Workflows Fragment — Spec](./workflows-fragment-spec.md) — End-to-end workflows fragment
+- [Fragno Workflows Fragment — Spec](./spec-workflows-fragment.md) — End-to-end workflows fragment
   design: public API shape, database schema and indexes, lifecycle semantics
   (run/replay/wait/sleep), runner/tick behavior, durable hooks wiring, HTTP routes, and
   CLI/management surface.
-- [Fragno Prisma Support — Prisma Schema Generator Adapter — Spec](./prisma-adapter-spec.md) —
+- [Fragno Prisma Support — Prisma Schema Generator Adapter — Spec](./spec-prisma-adapter.md) —
   Prisma integration spec covering schema generation rules, adapter responsibilities, naming
   conventions, provider-specific type mappings, migration expectations, and runtime serialization
   constraints.
-- [Fragno AI Fragment — Spec](./ai-fragment-spec.md) — AI fragment architecture and contract:
+- [Fragno AI Fragment — Spec](./spec-ai-fragment.md) — AI fragment architecture and contract:
   thread/message/run models, NDJSON streaming semantics, persistence guarantees, webhook handling,
   runner execution behavior, config surface, and client hooks.
+- [In-Memory Adapter + OCC Model Checker — Spec](./spec-in-memory-adapter.md) — In-memory adapter
+  design with optimistic concurrency control, SQLite-aligned semantics, storage/indexing, and model
+  checker behavior.
 
 ## Implementation Plans
 
-- [AI Fragment — Implementation Plan](./ai-fragment-implementation-plan.md)
+- [AI Fragment — Implementation Plan](./impl-ai-fragment.md) — Execution tasks for the AI fragment
+  spec: data model, streaming, hooks, webhook handling, and tests.
+- [In-Memory Adapter + OCC Model Checker — Implementation Plan](./impl-in-memory-adapter.md) —
+  Execution tasks for the in-memory adapter and model checker, including indexes, OCC behavior,
+  hooks, and conformance tests.
 
 ## Implementation Plans (Finished)
 
-- [Workflows Fragment — Implementation Plan (Complete)](./implementation-plans/finished/workflows-fragment-implementation-plan.md)
-- [Prisma Adapter — Implementation Plan (Complete)](./implementation-plans/finished/prisma-adapter-implementation-plan.md)
+- [Workflows Fragment — Implementation Plan (Complete)](./finished-implementation-plans/impl-workflows-fragment.md)
+- [Prisma Adapter — Implementation Plan (Complete)](./finished-implementation-plans/impl-prisma-adapter.md)
