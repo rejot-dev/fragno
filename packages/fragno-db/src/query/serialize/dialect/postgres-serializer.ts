@@ -97,6 +97,9 @@ export class PostgreSQLSerializer extends SQLSerializer {
 
   protected deserializeInteger(value: unknown): number {
     if (typeof value === "number") {
+      if (Number.isNaN(value) || !Number.isFinite(value)) {
+        throw new Error(`Cannot deserialize integer from invalid number: ${value}`);
+      }
       return value;
     }
     // PostgreSQL may return bigint for large integers
@@ -114,11 +117,14 @@ export class PostgreSQLSerializer extends SQLSerializer {
   protected deserializeDecimal(value: unknown): number {
     // PostgreSQL can return decimals as numbers or strings depending on precision
     if (typeof value === "number") {
+      if (Number.isNaN(value) || !Number.isFinite(value)) {
+        throw new Error(`Cannot deserialize decimal from invalid number: ${value}`);
+      }
       return value;
     }
     if (typeof value === "string") {
       const num = parseFloat(value);
-      if (isNaN(num)) {
+      if (Number.isNaN(num) || !Number.isFinite(num)) {
         throw new Error(`Cannot deserialize decimal from invalid string: ${value}`);
       }
       return num;

@@ -14,6 +14,7 @@ import {
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
+export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 
 export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
 export const fragnoDatabaseLibraryVersion = "0.1" as const;

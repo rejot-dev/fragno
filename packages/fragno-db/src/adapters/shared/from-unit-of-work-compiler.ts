@@ -5,6 +5,7 @@ import type {
   UOWCompiler,
   UOWDecoder,
   UOWExecutor,
+  UOWInstrumentation,
   ValidIndexName,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
@@ -25,6 +26,7 @@ export interface UnitOfWorkConfig {
    * since those have to be manually executed.
    */
   dryRun?: boolean;
+  instrumentation?: UOWInstrumentation;
 }
 
 /**

@@ -7,7 +7,12 @@ import {
   schema,
   referenceColumn,
 } from "../schema/create";
-import { resolveFragnoIdValue, encodeValues, ReferenceSubquery } from "./value-encoding";
+import {
+  resolveFragnoIdValue,
+  encodeValues,
+  encodeValuesWithDbDefaults,
+  ReferenceSubquery,
+} from "./value-encoding";
 
 describe("encodeValues", () => {
   const testSchema = schema((s) => {
@@ -127,6 +132,84 @@ describe("encodeValues", () => {
       );
 
       expect(result["viewCount"]).toBe(100);
+    });
+
+    it("should use injected runtime defaults when provided", () => {
+      const testDate = new Date("2024-02-01T00:00:00Z");
+      const testSchemaWithDefaults = schema((s) =>
+        s.addTable("entries", (t) =>
+          t.addColumn("id", idColumn()).addColumn(
+            "createdAt",
+            column("timestamp").defaultTo$((b) => b.now()),
+          ),
+        ),
+      );
+      const entriesTable = testSchemaWithDefaults.tables.entries;
+
+      const result = encodeValues({}, entriesTable, true, {
+        createId: () => "entry_1",
+        now: () => testDate,
+      });
+
+      expect(result["id"]).toBe("entry_1");
+      expect(result["createdAt"]).toBe(testDate);
+    });
+  });
+
+  describe("database defaults in memory", () => {
+    it("should apply static and dbSpecial defaults when requested", () => {
+      const testDate = new Date("2024-03-01T00:00:00Z");
+      const testSchemaWithDbDefaults = schema((s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("title", column("string"))
+            .addColumn("status", column("string").defaultTo("draft"))
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo((b) => b.now()),
+            ),
+        ),
+      );
+      const postsTable = testSchemaWithDbDefaults.tables.posts;
+
+      const result = encodeValuesWithDbDefaults({ title: "Hello" }, postsTable, {
+        createId: () => "post_1",
+        now: () => testDate,
+      });
+
+      expect(result).toEqual({
+        id: "post_1",
+        title: "Hello",
+        _version: 0,
+        status: "draft",
+        createdAt: testDate,
+      });
+    });
+
+    it("should not override explicit values when applying db defaults", () => {
+      const testSchemaWithDbDefaults = schema((s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("title", column("string"))
+            .addColumn("status", column("string").defaultTo("draft")),
+        ),
+      );
+      const postsTable = testSchemaWithDbDefaults.tables.posts;
+
+      const result = encodeValuesWithDbDefaults(
+        { title: "Hello", status: "published" },
+        postsTable,
+        { createId: () => "post_2" },
+      );
+
+      expect(result).toEqual({
+        id: "post_2",
+        title: "Hello",
+        _version: 0,
+        status: "published",
+      });
     });
   });
 

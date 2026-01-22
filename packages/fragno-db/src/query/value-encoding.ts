@@ -1,6 +1,10 @@
 import type { AnyTable, AnyColumn } from "../schema/create";
 import { FragnoId, FragnoReference } from "../schema/create";
-import { generateRuntimeDefault } from "./column-defaults";
+import {
+  generateDatabaseDefault,
+  generateRuntimeDefault,
+  type RuntimeDefaultContext,
+} from "./column-defaults";
 
 /**
  * Marker class for reference column values that need subquery resolution.
@@ -104,6 +108,7 @@ export function encodeValues(
   values: Record<string, unknown>,
   table: AnyTable,
   generateDefault: boolean,
+  runtimeDefaults: RuntimeDefaultContext = {},
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -119,7 +124,7 @@ export function encodeValues(
     if (generateDefault && value === undefined) {
       // Only generate runtime defaults (defaultTo$), not static defaults (defaultTo).
       // Static defaults should be handled by the database via DEFAULT constraints.
-      value = generateRuntimeDefault(col);
+      value = generateRuntimeDefault(col, runtimeDefaults);
     }
 
     if (value !== undefined) {
@@ -165,4 +170,38 @@ export function encodeValues(
   }
 
   return result;
+}
+
+/**
+ * Encode values and apply database defaults in-process.
+ *
+ * This is intended for adapters that cannot rely on database DEFAULT constraints,
+ * such as the in-memory adapter.
+ *
+ * @internal
+ */
+export function encodeValuesWithDbDefaults(
+  values: Record<string, unknown>,
+  table: AnyTable,
+  runtimeDefaults: RuntimeDefaultContext = {},
+): Record<string, unknown> {
+  const resolved = encodeValues(values, table, true, runtimeDefaults);
+
+  for (const columnKey of Object.keys(table.columns)) {
+    const column = table.columns[columnKey];
+    if (column.role === "internal-id") {
+      continue;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(resolved, column.name)) {
+      continue;
+    }
+
+    const fallback = generateDatabaseDefault(column, runtimeDefaults);
+    if (fallback !== undefined) {
+      resolved[column.name] = fallback;
+    }
+  }
+
+  return resolved;
 }

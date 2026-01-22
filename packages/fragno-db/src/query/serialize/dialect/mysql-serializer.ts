@@ -98,12 +98,15 @@ export class MySQLSerializer extends SQLSerializer {
 
   protected deserializeInteger(value: unknown): number {
     if (typeof value === "number") {
+      if (Number.isNaN(value) || !Number.isFinite(value)) {
+        throw new Error(`Cannot deserialize integer from invalid number: ${value}`);
+      }
       return value;
     }
     // MySQL may return integers as strings
     if (typeof value === "string") {
       const num = Number(value);
-      if (isNaN(num)) {
+      if (Number.isNaN(num) || !Number.isFinite(num)) {
         throw new Error(`Cannot deserialize integer from invalid string: ${value}`);
       }
       return num;
@@ -123,11 +126,14 @@ export class MySQLSerializer extends SQLSerializer {
   protected deserializeDecimal(value: unknown): number {
     // MySQL can return decimals as numbers or strings
     if (typeof value === "number") {
+      if (Number.isNaN(value) || !Number.isFinite(value)) {
+        throw new Error(`Cannot deserialize decimal from invalid number: ${value}`);
+      }
       return value;
     }
     if (typeof value === "string") {
       const num = parseFloat(value);
-      if (isNaN(num)) {
+      if (Number.isNaN(num) || !Number.isFinite(num)) {
         throw new Error(`Cannot deserialize decimal from invalid string: ${value}`);
       }
       return num;
