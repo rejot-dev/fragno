@@ -112,7 +112,7 @@
     "curly": "error",
     "unicorn/empty-brace-spaces": "error",
     "unicorn/no-nested-ternary": "off",
-    "unicorn/number-literal-case": "error"
+    "unicorn/number-literal-case": "off"
   },
   "overrides": [
     {

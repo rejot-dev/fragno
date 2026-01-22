@@ -2,14 +2,15 @@
 #   https://lefthook.dev/configuration/
 
 pre-commit:
-  parallel: true
+  parallel: false
+  piped: true
   jobs:
+    - name: lint
+      run: pnpm exec oxlint --fix {staged_files}
     - name: prettier
       run:
-        sh -c 'pnpm exec prettier --ignore-unknown --check "{staged_files}"; code=$?; pnpm exec
-        prettier --ignore-unknown --write "{staged_files}"; exit $code'
-    - name: lint
-      run: pnpm exec oxlint --fix "{staged_files}"
+        sh -c 'pnpm exec prettier --ignore-unknown --check {staged_files}; code=$?; pnpm exec
+        prettier --ignore-unknown --write {staged_files}; exit $code'
     - name: "turbo: build + test + type-check"
       run:
         pnpm exec turbo run --output-logs new-only --no-daemon --filter='!./example-apps/**'
