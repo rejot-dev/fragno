@@ -58,7 +58,7 @@ export const workflows = {
 ## Create the Fragment Server
 
 ```ts title="lib/workflows-fragment.ts"
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import type { DatabaseAdapter } from "@fragno-dev/db";
 import {
   createWorkflowsRunner,
@@ -71,14 +71,15 @@ import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const db = adapter.createQueryEngine(workflowsSchema, "workflows");
-  const runner = createWorkflowsRunner({ db, workflows });
+  const runtime = defaultFragnoRuntime;
+  const runner = createWorkflowsRunner({ db, workflows, runtime });
   const dispatcher = createInProcessDispatcher({
     wake: () => void runner.tick({ maxInstances: 5, maxSteps: 50 }),
     pollIntervalMs: 2000,
   });
 
   const fragment = instantiate(workflowsFragmentDefinition)
-    .withConfig({ workflows, runner, dispatcher, enableRunnerTick: true })
+    .withConfig({ workflows, runner, dispatcher, runtime, enableRunnerTick: true })
     .withRoutes([workflowsRoutesFactory])
     .withOptions({ databaseAdapter: adapter })
     .build();
@@ -87,17 +88,27 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
 }
 ```
 
+## Runtime Injection
+
+Workflows require a `FragnoRuntime` for time and randomness. Use `defaultFragnoRuntime` for
+production, or inject a deterministic runtime for tests and model checking.
+
 ## Testing Workflows
 
 Use the test harness to drive the runner and control time:
 
 ```ts title="lib/workflows.test.ts"
-import { createWorkflowsTestHarness } from "@fragno-dev/fragment-workflows/test";
+import {
+  createWorkflowsTestHarness,
+  createWorkflowsTestRuntime,
+} from "@fragno-dev/fragment-workflows/test";
 import { workflows } from "./workflows";
 
+const runtime = createWorkflowsTestRuntime({ startAt: 0, seed: 42 });
 const harness = await createWorkflowsTestHarness({
   workflows,
   adapter: { type: "drizzle-pglite" },
+  runtime,
 });
 
 const instanceId = await harness.createInstance("approval", {

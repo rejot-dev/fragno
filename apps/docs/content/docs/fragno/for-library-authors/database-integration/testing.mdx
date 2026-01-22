@@ -1,0 +1,72 @@
+---
+title: Database Testing
+description: Test database-backed fragments with the database test harness.
+---
+
+This section covers database test utilities, including usage of the in-memory adapter.
+
+## Testing Database Fragments
+
+Use `buildDatabaseFragmentsTest` from `@fragno-dev/test` to set up a database adapter and apply
+migrations for your fragments:
+
+```typescript
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { instantiate } from "@fragno-dev/core";
+
+const { fragments, test } = await buildDatabaseFragmentsTest()
+  .withTestAdapter({ type: "kysely-sqlite" })
+  .withFragment(
+    "myFragment",
+    instantiate(myDatabaseFragmentDefinition).withConfig({ apiKey: "test-key" }).withRoutes(routes),
+    {
+      // Optional: migrate to specific schema version (defaults to latest)
+      migrateToVersion: 2,
+    },
+  )
+  .build();
+
+// Access fragment methods as usual
+await fragments.myFragment.services.createUser({ name: "John" });
+
+// Or test routes directly
+const response = await fragments.myFragment.callRoute("POST", "/users", {
+  body: { name: "John" },
+});
+```
+
+### Cleanup
+
+The `test.cleanup()` function closes database connections and removes any files created during
+testing. Use it in `afterAll` hooks:
+
+```typescript
+describe("User tests", () => {
+  type DatabaseFragmentsTest = Awaited<
+    ReturnType<ReturnType<typeof buildDatabaseFragmentsTest>["build"]>
+  >;
+  let fragments: DatabaseFragmentsTest["fragments"];
+  let test: DatabaseFragmentsTest["test"];
+
+  beforeAll(async () => {
+    const result = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment("auth", instantiate(authFragmentDefinition).withConfig({}).withRoutes(routes))
+      .build();
+
+    fragments = result.fragments;
+    test = result.test;
+  });
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("test 1", async () => {
+    const response = await fragments.auth.callRoute("POST", "/users", {
+      body: { name: "Alice" },
+    });
+    expect(response.type).toBe("json");
+  });
+});
+```
