@@ -749,9 +749,11 @@ export class ClientBuilder<
   ): FragnoClientHookData<
     "GET",
     TPath,
-    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["outputSchema"]>,
-    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["errorCodes"]>[number],
-    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath>["queryParameters"]>[number]
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath, "GET">["outputSchema"]>,
+    NonNullable<ExtractRouteByPath<TFragmentConfig["routes"], TPath, "GET">["errorCodes"]>[number],
+    NonNullable<
+      ExtractRouteByPath<TFragmentConfig["routes"], TPath, "GET">["queryParameters"]
+    >[number]
   > {
     const route = this.#fragmentConfig.routes.find(
       (
