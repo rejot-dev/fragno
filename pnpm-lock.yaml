@@ -1458,6 +1458,9 @@ importers:
       '@nanostores/solid':
         specifier: ^1.1.1
         version: 1.1.1(nanostores@1.1.0)(solid-js@1.9.10)
+      '@paralleldrive/cuid2':
+        specifier: ^2.3.1
+        version: 2.3.1
       '@standard-schema/spec':
         specifier: ^1.1.0
         version: 1.1.0

@@ -1,6 +1,11 @@
 import type { AnyColumn } from "../schema/create";
 import { createId } from "../id";
 
+export type RuntimeDefaultContext = {
+  now?: () => Date;
+  createId?: () => string;
+};
+
 /**
  * Generate a runtime default value for a column that has defaultTo$()
  *
@@ -12,7 +17,10 @@ import { createId } from "../id";
  *
  * @internal
  */
-export function generateRuntimeDefault(column: AnyColumn): unknown {
+export function generateRuntimeDefault(
+  column: AnyColumn,
+  context: RuntimeDefaultContext = {},
+): unknown {
   // Check if column has a default value configuration
   if (!column.default) {
     return undefined;
@@ -34,15 +42,45 @@ export function generateRuntimeDefault(column: AnyColumn): unknown {
   const runtime = column.default.runtime;
 
   if (runtime === "cuid") {
-    return createId();
+    return (context.createId ?? createId)();
   }
 
   if (runtime === "now") {
-    return new Date();
+    return (context.now ?? (() => new Date()))();
   }
 
   if (typeof runtime === "function") {
     return runtime();
+  }
+
+  return undefined;
+}
+
+/**
+ * Generate a fallback value for database-level defaults.
+ *
+ * This is used by adapters that cannot rely on database DEFAULT constraints,
+ * such as the in-memory adapter.
+ *
+ * @internal
+ */
+export function generateDatabaseDefault(
+  column: AnyColumn,
+  context: RuntimeDefaultContext = {},
+): unknown {
+  if (!column.default) {
+    return undefined;
+  }
+
+  if ("value" in column.default) {
+    return column.default.value;
+  }
+
+  if ("dbSpecial" in column.default) {
+    if (column.default.dbSpecial === "now") {
+      return (context.now ?? (() => new Date()))();
+    }
+    return undefined;
   }
 
   return undefined;

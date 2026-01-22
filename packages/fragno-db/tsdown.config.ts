@@ -12,6 +12,7 @@ export default defineConfig({
     "./src/adapters/drizzle/generate.ts",
     "./src/adapters/prisma/prisma-adapter.ts",
     "./src/adapters/prisma/generate.ts",
+    "./src/adapters/in-memory/index.ts",
     "./src/adapters/generic-sql/generic-sql-adapter.ts",
     "./src/adapters/generic-sql/driver-config.ts",
     "./src/sql-driver/sql-driver.ts",

@@ -22,12 +22,14 @@ import {
   fromUnitOfWorkCompiler,
   type UnitOfWorkFactory,
 } from "../shared/from-unit-of-work-compiler";
+import type { UOWInstrumentation } from "../../query/unit-of-work/unit-of-work";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault } from "./sqlite-storage";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
   dryRun?: boolean;
+  instrumentation?: UOWInstrumentation;
 }
 
 export interface GenericSQLOptions {

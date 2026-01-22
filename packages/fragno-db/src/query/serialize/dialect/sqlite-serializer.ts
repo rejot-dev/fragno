@@ -187,12 +187,15 @@ export class SQLiteSerializer extends SQLSerializer {
 
   protected deserializeInteger(value: unknown): number {
     if (typeof value === "number") {
+      if (Number.isNaN(value) || !Number.isFinite(value)) {
+        throw new Error(`Cannot deserialize integer from invalid number: ${value}`);
+      }
       return value;
     }
     // SQLite may return integers as strings for large values
     if (typeof value === "string") {
       const num = Number(value);
-      if (isNaN(num)) {
+      if (Number.isNaN(num) || !Number.isFinite(num)) {
         throw new Error(`Cannot deserialize integer from invalid string: ${value}`);
       }
       return num;
@@ -212,11 +215,14 @@ export class SQLiteSerializer extends SQLSerializer {
   protected deserializeDecimal(value: unknown): number {
     // SQLite stores decimals as REAL (floating point) or TEXT
     if (typeof value === "number") {
+      if (Number.isNaN(value) || !Number.isFinite(value)) {
+        throw new Error(`Cannot deserialize decimal from invalid number: ${value}`);
+      }
       return value;
     }
     if (typeof value === "string") {
       const num = parseFloat(value);
-      if (isNaN(num)) {
+      if (Number.isNaN(num) || !Number.isFinite(num)) {
         throw new Error(`Cannot deserialize decimal from invalid string: ${value}`);
       }
       return num;

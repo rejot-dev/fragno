@@ -73,6 +73,11 @@
       "types": "./dist/adapters/prisma/generate.d.ts",
       "default": "./dist/adapters/prisma/generate.js"
     },
+    "./adapters/in-memory": {
+      "development": "./src/adapters/in-memory/index.ts",
+      "types": "./dist/adapters/in-memory/index.d.ts",
+      "default": "./dist/adapters/in-memory/index.js"
+    },
     "./adapters/generic-sql": {
       "development": "./src/adapters/generic-sql/generic-sql-adapter.ts",
       "types": "./dist/adapters/generic-sql/generic-sql-adapter.d.ts",
