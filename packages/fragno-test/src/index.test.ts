@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { withDatabase } from "@fragno-dev/db";
+import { Cursor, withDatabase } from "@fragno-dev/db";
 import { defineFragment } from "@fragno-dev/core";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "./db-test";
@@ -14,6 +14,7 @@ const testSchema = schema((s) => {
         .addColumn("id", idColumn())
         .addColumn("name", column("string"))
         .addColumn("email", column("string"))
+        .createIndex("idx_users_name", ["name"])
         .createIndex("idx_users_all", ["id"]); // Index for querying
     })
     .alterTable("users", (t) => {
@@ -35,6 +36,18 @@ const testFragmentDef = defineFragment<{}>("test-fragment")
           b.whereIndex("idx_users_all", (eb) => eb("id", "!=", "")),
         );
         return users.map((u) => ({ ...u, id: u.id.valueOf() }));
+      },
+      getUsersWithCursor: async (cursor?: Cursor | string) => {
+        return deps.db.findWithCursor("users", (b) => {
+          let builder = b
+            .whereIndex("idx_users_name")
+            .orderByIndex("idx_users_name", "asc")
+            .pageSize(2);
+          if (cursor) {
+            builder = builder.after(cursor);
+          }
+          return builder;
+        });
       },
     };
   })
@@ -81,6 +94,70 @@ describe("buildDatabaseFragmentsTest", () => {
         .withFragment("nonDb", instantiate(nonDbFragmentDef).withConfig({}).withRoutes([]))
         .build(),
     ).rejects.toThrow("Fragment 'non-db-fragment' does not have a database schema");
+  });
+
+  it("should support the in-memory adapter", async () => {
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "in-memory" })
+      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
+      .build();
+
+    const user = await fragments.test.services.createUser({
+      name: "Memory User",
+      email: "memory@example.com",
+      age: 31,
+    });
+
+    expect(user).toMatchObject({
+      id: expect.any(String),
+      name: "Memory User",
+      email: "memory@example.com",
+      age: 31,
+    });
+
+    const users = await fragments.test.services.getUsers();
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject(user);
+
+    await test.cleanup();
+  });
+
+  it("should support cursor pagination with in-memory adapter", async () => {
+    const { fragments, test } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "in-memory" })
+      .withFragment("test", instantiate(testFragmentDef).withConfig({}).withRoutes([]))
+      .build();
+
+    const fragment = fragments.test;
+
+    const users = [
+      { name: "Alice", email: "alice@example.com" },
+      { name: "Brett", email: "brett@example.com" },
+      { name: "Cora", email: "cora@example.com" },
+      { name: "Dylan", email: "dylan@example.com" },
+      { name: "Emma", email: "emma@example.com" },
+    ];
+
+    for (const user of users) {
+      await fragment.services.createUser(user);
+    }
+
+    const firstPage = await fragment.services.getUsersWithCursor();
+    expect(firstPage.items.map((item) => item.name)).toEqual(["Alice", "Brett"]);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeDefined();
+
+    const secondPage = await fragment.services.getUsersWithCursor(firstPage.cursor);
+    expect(secondPage.items.map((item) => item.name)).toEqual(["Cora", "Dylan"]);
+    expect(secondPage.hasNextPage).toBe(true);
+    expect(secondPage.cursor).toBeDefined();
+
+    const thirdPage = await fragment.services.getUsersWithCursor(secondPage.cursor);
+    expect(thirdPage.items.map((item) => item.name)).toEqual(["Emma"]);
+    expect(thirdPage.hasNextPage).toBe(false);
+    expect(thirdPage.cursor).toBeUndefined();
+
+    await test.cleanup();
   });
 
   it("should reset database by truncating tables", async () => {

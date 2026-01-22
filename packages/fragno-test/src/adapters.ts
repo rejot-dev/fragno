@@ -4,12 +4,15 @@ import { KyselyPGlite } from "kysely-pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+import { InMemoryAdapter, type InMemoryAdapterOptions } from "@fragno-dev/db/adapters/in-memory";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
+import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/generic-sql";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
+import { ModelCheckerAdapter } from "./model-checker-adapter";
 import { createCommonTestContextMethods } from ".";
 import { PGLiteDriverConfig, SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 import { internalFragmentDef } from "@fragno-dev/db";
@@ -18,19 +21,38 @@ import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 // Adapter configuration types
 export interface KyselySqliteAdapter {
   type: "kysely-sqlite";
+  uowConfig?: UnitOfWorkConfig;
 }
 
 export interface KyselyPgliteAdapter {
   type: "kysely-pglite";
   databasePath?: string;
+  uowConfig?: UnitOfWorkConfig;
 }
 
 export interface DrizzlePgliteAdapter {
   type: "drizzle-pglite";
   databasePath?: string;
+  uowConfig?: UnitOfWorkConfig;
 }
 
-export type SupportedAdapter = KyselySqliteAdapter | KyselyPgliteAdapter | DrizzlePgliteAdapter;
+export interface InMemoryAdapterConfig {
+  type: "in-memory";
+  options?: InMemoryAdapterOptions;
+  uowConfig?: UnitOfWorkConfig;
+}
+
+export interface ModelCheckerAdapterConfig {
+  type: "model-checker";
+  options?: InMemoryAdapterOptions;
+}
+
+export type SupportedAdapter =
+  | KyselySqliteAdapter
+  | KyselyPgliteAdapter
+  | DrizzlePgliteAdapter
+  | InMemoryAdapterConfig
+  | ModelCheckerAdapterConfig;
 
 // Schema configuration for multi-schema adapters
 export interface SchemaConfig {
@@ -55,7 +77,9 @@ export type AdapterContext<T extends SupportedAdapter> = T extends
     ? {
         readonly drizzle: ReturnType<typeof drizzle<any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
       }
-    : never;
+    : T extends InMemoryAdapterConfig | ModelCheckerAdapterConfig
+      ? {}
+      : never;
 
 // Factory function return type
 interface AdapterFactoryResult<T extends SupportedAdapter> {
@@ -69,7 +93,7 @@ interface AdapterFactoryResult<T extends SupportedAdapter> {
  * Supports multiple schemas with separate namespaces
  */
 export async function createKyselySqliteAdapter(
-  _config: KyselySqliteAdapter,
+  config: KyselySqliteAdapter,
   schemas: SchemaConfig[],
 ): Promise<AdapterFactoryResult<KyselySqliteAdapter>> {
   // Helper to create a new database instance and run migrations for all schemas
@@ -85,6 +109,7 @@ export async function createKyselySqliteAdapter(
     const adapter = new KyselyAdapter({
       dialect,
       driverConfig: new SQLocalDriverConfig(),
+      uowConfig: config.uowConfig,
     });
 
     // Run migrations for all schemas in order
@@ -173,6 +198,7 @@ export async function createKyselyPgliteAdapter(
     const adapter = new KyselyAdapter({
       dialect: kyselyPglite.dialect,
       driverConfig: new PGLiteDriverConfig(),
+      uowConfig: config.uowConfig,
     });
 
     // Run migrations for all schemas in order
@@ -270,6 +296,7 @@ export async function createDrizzlePgliteAdapter(
     const adapter = new DrizzleAdapter({
       dialect,
       driverConfig: new PGLiteDriverConfig(),
+      uowConfig: config.uowConfig,
     });
 
     // Run migrations for all schemas
@@ -355,6 +382,89 @@ export async function createDrizzlePgliteAdapter(
 }
 
 /**
+ * Create InMemory adapter (no migrations required).
+ */
+export async function createInMemoryAdapter(
+  config: InMemoryAdapterConfig,
+  schemas: SchemaConfig[],
+): Promise<AdapterFactoryResult<InMemoryAdapterConfig>> {
+  const adapter = new InMemoryAdapter(config.options);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
+  for (const { schema, namespace } of schemas) {
+    const orm = adapter.createQueryEngine(schema, namespace);
+    ormMap.set(namespace, orm);
+  }
+
+  const resetDatabase = async () => {
+    await adapter.reset();
+  };
+
+  const cleanup = async () => {
+    await adapter.close();
+  };
+
+  const commonMethods = createCommonTestContextMethods(ormMap);
+
+  return {
+    testContext: {
+      get adapter() {
+        return adapter;
+      },
+      ...commonMethods,
+      resetDatabase,
+      cleanup,
+    },
+    get adapter() {
+      return adapter;
+    },
+  };
+}
+
+/**
+ * Create ModelChecker adapter (wraps the in-memory adapter).
+ */
+export async function createModelCheckerAdapter(
+  config: ModelCheckerAdapterConfig,
+  schemas: SchemaConfig[],
+): Promise<AdapterFactoryResult<ModelCheckerAdapterConfig>> {
+  const baseAdapter = new InMemoryAdapter(config.options);
+  const adapter = new ModelCheckerAdapter(baseAdapter);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
+  for (const { schema, namespace } of schemas) {
+    const orm = adapter.createQueryEngine(schema, namespace);
+    ormMap.set(namespace, orm);
+  }
+
+  const resetDatabase = async () => {
+    await baseAdapter.reset();
+  };
+
+  const cleanup = async () => {
+    await adapter.close();
+  };
+
+  const commonMethods = createCommonTestContextMethods(ormMap);
+
+  return {
+    testContext: {
+      get adapter() {
+        return adapter;
+      },
+      ...commonMethods,
+      resetDatabase,
+      cleanup,
+    },
+    get adapter() {
+      return adapter;
+    },
+  };
+}
+
+/**
  * Create adapter based on configuration
  * Supports multiple schemas with separate namespaces
  */
@@ -368,6 +478,10 @@ export async function createAdapter<T extends SupportedAdapter>(
     return createKyselyPgliteAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
   } else if (adapterConfig.type === "drizzle-pglite") {
     return createDrizzlePgliteAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
+  } else if (adapterConfig.type === "in-memory") {
+    return createInMemoryAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
+  } else if (adapterConfig.type === "model-checker") {
+    return createModelCheckerAdapter(adapterConfig, schemas) as Promise<AdapterFactoryResult<T>>;
   }
 
   throw new Error(`Unsupported adapter type: ${(adapterConfig as SupportedAdapter).type}`);
