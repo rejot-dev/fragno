@@ -1,5 +1,11 @@
 # Fragno Workflows Fragment — Spec
 
+## 0. Open Questions
+
+1. Should auth hook decisions (allow/deny/response) be recorded as explicit trace events by the
+   model checker when the workflows fragment runs under tracing, or should this be generalized as a
+   core middleware trace hook?
+
 ## 1. Overview
 
 This document specifies a new **Fragno Fragment** that provides a **durable workflow engine**
@@ -410,6 +416,36 @@ export class ParentWorkflow extends WorkflowEntrypoint {
 }
 ```
 
+### 6.7 Fragno Runtime (Time + Randomness)
+
+Workflows must use a shared Fragno runtime for **time** and **randomness** so tests and model
+checking can control these sources of nondeterminism consistently across fragments.
+
+Runtime interface (from `@fragno-dev/core`):
+
+```ts
+export type FragnoRuntime = {
+  time: {
+    now: () => Date;
+  };
+  random: {
+    float: () => number; // [0, 1)
+    uuid: () => string;
+    cuid: () => string;
+  };
+};
+```
+
+Rules:
+
+- Workflow instance IDs use `runtime.random.float()` (or `uuid()`/`cuid()` if configured that way)
+  rather than `Math.random`.
+- Runner IDs use `runtime.random.uuid()` rather than `crypto.randomUUID`.
+- All workflow timestamps (`createdAt`, `runAt`, `wakeAt`, etc.) use `runtime.time.now()`.
+- The workflows fragment must not call `new Date()` or `Math.random()` directly except inside the
+  runtime default implementation.
+- `FragnoRuntime` is exported from `@fragno-dev/core` as a stable API for fragments and tests.
+
 ## 7. Fragment responsibilities
 
 ### 7.1 What the fragment provides
@@ -435,11 +471,34 @@ export class ParentWorkflow extends WorkflowEntrypoint {
 
 - A Fragno DB adapter (`FragnoPublicConfigWithDatabase`) and migrations execution (via `fragno-cli`
   or `@fragno-dev/db` `migrate()` where relevant).
+- A **Fragno runtime** (`FragnoRuntime`) providing time and randomness (SPEC §6.7).
 - Any authentication/authorization policy for management endpoints (configurable).
 - A way to run/wake the runner (all supported):
   - in-process (Node) via `@fragno-dev/workflows-dispatcher-node`
   - HTTP “tick” endpoint invoked by cron/scheduler
   - Cloudflare Durable Object runtime via `@fragno-dev/workflows-dispatcher-cloudflare-do`
+
+### 7.4 WorkflowsFragmentConfig (runtime-focused)
+
+```ts
+export interface WorkflowsFragmentConfig {
+  workflows?: WorkflowsRegistry;
+  dispatcher?: WorkflowsDispatcher;
+  runner?: WorkflowsRunner;
+  runtime: FragnoRuntime;
+  enableRunnerTick?: boolean;
+
+  authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
+  authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;
+  authorizeManagement?: WorkflowsAuthorizeHook<WorkflowsAuthorizeManagementContext>;
+  authorizeSendEvent?: WorkflowsAuthorizeHook<WorkflowsAuthorizeSendEventContext>;
+  authorizeRunnerTick?: WorkflowsAuthorizeHook<WorkflowsAuthorizeRunnerTickContext>;
+}
+```
+
+Notes:
+
+- `runtime` is required; `clock` is removed in favor of `runtime.time`.
 
 ## 8. Data model (proposed)
 
@@ -751,7 +810,8 @@ These are Cloudflare-style guidance and should be documented prominently:
 - **Take care with `Promise.race()` / `Promise.any()`**: surround them with `step.do(...)` to ensure
   deterministic caching across replays.
 - **Instance IDs are unique per workflow**: don’t reuse business IDs directly; use composite IDs or
-  random IDs and store mappings if you need “many instances per user”.
+  random IDs and store mappings if you need “many instances per user”. Random IDs should be
+  generated via `FragnoRuntime.random`, not `Math.random`.
 
 ## 10. Durable hooks integration (required)
 
@@ -958,6 +1018,11 @@ The fragment must not impose a single auth model; instead provide hooks/config:
   - sending events
   - runner tick
 
+Guidance:
+
+- Auth hooks should be deterministic and rely on `FragnoRuntime` for time/randomness so they can be
+  traced and replayed under the model checker.
+
 ## 13. Limits & validation (defaults; configurable)
 
 Adopt Cloudflare-compatible defaults where practical:
@@ -1007,7 +1072,8 @@ Workflow authors should be able to test their workflows without spinning up HTTP
 dispatchers. Provide a **test harness** that integrates with Fragno-test and supports:
 
 - deterministic runner execution driven by `tick()`/`runUntilIdle()` from tests
-- a controllable clock for `sleep` and timeout behavior (advance time explicitly)
+- a controllable runtime clock for `sleep` and timeout behavior (advance time explicitly)
+- seeded runtime randomness for deterministic instance IDs and runner IDs
 - direct event injection to instances (equivalent to `sendEvent`)
 - access to instance status/history for assertions
 
@@ -1050,6 +1116,7 @@ Cloudflare-style expectations:
 10. `sendEvent` does not create instances (SPEC §11.7)
 11. Pausing does not freeze sleep/event timeouts (SPEC §9.4)
 12. Step attempt timeouts are best-effort (SPEC §9.3)
+13. Workflows runtime uses `FragnoRuntime`; `clock` is removed from config (SPEC §6.7, §7.4)
 
 ## 17. Workflow Management CLI (NEW; app: `fragno-wf`)
 

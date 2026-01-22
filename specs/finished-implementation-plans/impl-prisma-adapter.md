@@ -1,6 +1,6 @@
 # Fragno Prisma Support — Implementation Plan (Draft)
 
-This plan implements `specs/prisma-adapter-spec.md`.
+This plan implements `specs/spec-prisma-adapter.md`.
 
 ## Phase 0 — Decisions locked
 

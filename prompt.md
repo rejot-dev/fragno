@@ -1,4 +1,7 @@
-- study {{IMPLEMENTATION_PLAN}} and pick the most important thing to do
+- study specs/README.md
+- study {{IMPLEMENTATION_PLAN}} and pick the most important thing(s) to do
 - test code using fragno-test conventions (incl data layer)
 - after tests pass, lint checks and types check, commit and push
-- Update the implementation plan when done. If an item has no checkbox, add one.
+- follow conventional commits, study specs/COMMIT.md
+- update the implementation plan with current status
+- when all tasks are finished, write only <promise>TASKS_FINISHED</promise>
