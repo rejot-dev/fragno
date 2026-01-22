@@ -1,0 +1,351 @@
+---
+title: "Draft: Deterministic DB Tests with the In-Memory Adapter and Model Checker"
+description:
+  "A fast, deterministic way to exercise UOW interleavings and catch concurrency bugs without
+  spinning up a real database."
+date: "2026-01-22"
+author: "Wilco Kruijer"
+image: "test-tube.png"
+---
+
+# Draft: Deterministic DB Tests with the In-Memory Adapter and Model Checker
+
+Fragno DB uses optimistic concurrency control (OCC) with a two-phase Unit of Work (retrieve then
+mutate). That gives you nice ergonomics, but it also means concurrency bugs show up when two
+transactions interleave in just the wrong order. Reproducing those bugs with real databases is
+painful and nondeterministic.
+
+This post introduces two tools that make concurrency testing predictable and fast:
+
+- The **in-memory adapter**, which matches SQLite semantics but runs entirely in memory.
+- The **model checker**, which enumerates or samples interleavings of UOW transactions.
+
+The punchline: you can surface subtle interleaving bugs in seconds, without flakes, and without
+booting a database.
+
+## The In-Memory Adapter
+
+The in-memory adapter is a `DatabaseAdapter` implementation designed for testing. It mirrors the
+SQLite adapter behavior: constraints, indexes, and query semantics are aligned so your tests stay
+honest. It is deterministic by default when you provide an `idSeed`, and it can even accept custom
+ID generators for full control.
+
+```typescript
+import { InMemoryAdapter } from "@fragno-dev/db";
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
+
+const testSchema = schema((s) =>
+  s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+);
+
+const adapter = new InMemoryAdapter({ idSeed: "test-seed" });
+const db = adapter.createQueryEngine(testSchema, "test");
+
+await db.create("users", { name: "Ada" });
+const users = await db.find("users", (b) => b.whereIndex("primary"));
+
+await adapter.close();
+```
+
+Why this matters: you can run hundreds of test cases quickly, and you can trust that constraint
+errors, index lookups, and value comparisons behave like production.
+
+## The Model Checker
+
+The model checker executes UOW transactions under different interleavings. It is in active
+development, so expect API changes and expanding coverage. Each transaction has two phases: retrieve
+and mutate. The model checker explores the orderings of those phases so you can spot
+interleaving-sensitive bugs.
+
+```typescript
+import { createRawUowTransaction, runModelChecker } from "@fragno-dev/test";
+
+const result = await runModelChecker({
+  schema: testSchema,
+  mode: "exhaustive",
+  history: false,
+  createContext,
+  setup: async (ctx) => {
+    await ctx.queryEngine.create("users", { name: "seed" });
+  },
+  buildTransactions: () => [
+    /* ... */
+  ],
+});
+
+console.log(result.schedules);
+```
+
+The model checker supports three modes:
+
+- `exhaustive` enumerates all interleavings.
+- `random` samples schedules, using a seed for determinism.
+- `infinite` explores until the frontier is exhausted or you stop it.
+
+## A Concrete Bug: Overselling Inventory
+
+Here is a minimal example that consistently fails under certain interleavings. The bug is in the
+transaction logic: each buyer reads remaining stock and then writes a new value without a
+`check()`-guarded update or uniqueness constraint. With two buyers and one unit of stock, some
+interleavings allow **two orders**.
+
+```typescript
+import { InMemoryAdapter } from "@fragno-dev/db";
+import { idColumn, schema } from "@fragno-dev/db/schema";
+import { createRawUowTransaction, defaultStateHasher, runModelChecker } from "@fragno-dev/test";
+
+const reservationSchema = schema((s) =>
+  s
+    .addTable("stock", (t) => t.addColumn("id", idColumn()).addColumn("remaining", "integer"))
+    .addTable("orders", (t) => t.addColumn("id", idColumn()).addColumn("note", "string")),
+);
+
+const createContext = async () => {
+  const adapter = new InMemoryAdapter({ idSeed: "model-checker-invariant" });
+  const queryEngine = adapter.createQueryEngine(reservationSchema, "model-checker-invariant");
+  return {
+    ctx: {
+      queryEngine,
+      createUnitOfWork: queryEngine.createUnitOfWork,
+    },
+    cleanup: async () => {
+      await adapter.close();
+    },
+  };
+};
+
+const buildBuyer = (label: string) =>
+  createRawUowTransaction({
+    name: label,
+    retrieve: async (uow) => {
+      uow.find("stock", (b) => b.whereIndex("primary"));
+      const results = (await uow.executeRetrieve()) as unknown[];
+      const rows = (results[0] ?? []) as Array<{ id: unknown; remaining: number }>;
+      const stock = rows[0];
+      if (!stock) {
+        throw new Error("Stock row missing");
+      }
+      return { stockId: stock.id, remaining: stock.remaining };
+    },
+    mutate: async (uow, txCtx) => {
+      if (txCtx.retrieveResult.remaining <= 0) {
+        return;
+      }
+      uow.create("orders", { note: `order-${label}` });
+      uow.update("stock", txCtx.retrieveResult.stockId, (b) =>
+        b.set({ remaining: txCtx.retrieveResult.remaining - 1 }),
+      );
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Mutation failed");
+      }
+    },
+  });
+
+const maxOrders = 1;
+const stateHasher = async (ctx) => {
+  const orders = await ctx.queryEngine.find("orders", (b) => b.whereIndex("primary"));
+  if (orders.length > maxOrders) {
+    const suffix = maxOrders === 1 ? "" : "s";
+    throw new Error(`Invariant violated: expected at most ${maxOrders} order${suffix}`);
+  }
+  return defaultStateHasher(ctx);
+};
+
+await runModelChecker({
+  schema: reservationSchema,
+  mode: "exhaustive",
+  history: false,
+  stateHasher,
+  createContext,
+  setup: async (ctx) => {
+    await ctx.queryEngine.create("stock", { remaining: maxOrders });
+  },
+  buildTransactions: () => [buildBuyer("buyer-a"), buildBuyer("buyer-b")],
+});
+```
+
+This run fails with:
+
+```text
+Invariant violated: expected at most 1 order
+```
+
+That is exactly the failure you want to see in a test. The model checker forces the problematic
+interleaving and gives you a reproducible signal.
+
+## Drop-In Actor Scheduling (New)
+
+For real services and workflows, you can run the model checker without rewriting your code into raw
+UOW transactions. Wrap an adapter with `ModelCheckerAdapter`, then describe concurrent actors
+(runner ticks, event sends, time advancement) and attach invariants.
+
+```typescript
+import { ModelCheckerAdapter, runModelCheckerWithActors } from "@fragno-dev/test";
+import { InMemoryAdapter } from "@fragno-dev/db";
+
+const adapter = new ModelCheckerAdapter(new InMemoryAdapter({ idSeed: "mc" }));
+
+const result = await runModelCheckerWithActors({
+  schema: testSchema,
+  mode: "random",
+  seed: 7,
+  maxSchedules: 10,
+  history: false,
+  createContext: async () => {
+    const queryEngine = adapter.createQueryEngine(testSchema, "mc");
+    return {
+      adapter,
+      ctx: { queryEngine },
+      queryEngine,
+    };
+  },
+  buildActors: (ctx) => [
+    { name: "runner-a", run: () => ctx.queryEngine.find("users", (b) => b.whereIndex("primary")) },
+    { name: "runner-b", run: () => ctx.queryEngine.find("users", (b) => b.whereIndex("primary")) },
+  ],
+  invariants: [
+    async ({ queryEngine }) => {
+      const rows = await queryEngine.find("users", (b) => b.whereIndex("primary"));
+      if (rows.length > 1) {
+        throw new Error("Unexpected row count");
+      }
+    },
+  ],
+});
+```
+
+This is the same mechanism we now use to model-check real workflows: runner ticks, event sends,
+retries, timeouts, and child workflow creation.
+
+## Runtime Injection
+
+If your transactions depend on time or randomness, inject a deterministic runtime so interleavings
+stay reproducible.
+
+```typescript
+import { defaultFragnoRuntime } from "@fragno-dev/core";
+import { createWorkflowsTestRuntime } from "@fragno-dev/fragment-workflows/test";
+
+const runtime = process.env.CI
+  ? createWorkflowsTestRuntime({ startAt: 0, seed: 42 })
+  : defaultFragnoRuntime;
+
+const result = await runModelChecker({
+  schema: testSchema,
+  mode: "exhaustive",
+  runtime,
+  createContext,
+  buildTransactions: () => [
+    createRawUowTransaction({
+      name: "uses-runtime",
+      retrieve: async (ctx) => ctx.runtime?.time.now(),
+      mutate: async (ctx) => ctx.runtime?.random.uuid(),
+    }),
+  ],
+});
+```
+
+## Test Builder Integration
+
+You can also use the test builder with a model-checker adapter:
+
+```typescript
+const { fragments } = await buildDatabaseFragmentsTest()
+  .withTestAdapter({ type: "model-checker", options: { idSeed: "test-seed" } })
+  .withFragment("myFragment", instantiate(myDatabaseFragmentDefinition).withRoutes(routes))
+  .build();
+```
+
+## Invariants
+
+Invariants are test-only checks that run after each scheduled step. They are the primary way to
+encode correctness for concurrent workflows.
+
+```typescript
+const invariant = async ({ queryEngine }) => {
+  const tasks = await queryEngine.find("workflow_task", (b) => b.whereIndex("primary"));
+  const duplicates = new Set();
+  for (const task of tasks) {
+    const key = `${task.workflowName}:${task.instanceId}:${task.runNumber}`;
+    if (duplicates.has(key)) {
+      throw new Error("Duplicate workflow_task row detected");
+    }
+    duplicates.add(key);
+  }
+};
+```
+
+## Time Control
+
+Use a deterministic clock in your harness (such as `createWorkflowsTestClock`) and advance time as
+an actor. This lets you check timeout and sleep behavior under interleavings.
+
+```typescript
+buildActors: (harness) => [
+  { name: "runner", run: () => harness.tick({ maxInstances: 1, maxSteps: 5 }) },
+  { name: "advance-time", run: () => harness.clock.advanceBy("2 s") },
+];
+```
+
+## Workflow Examples
+
+This session added model-checker tests for real workflows using the fragment harness, including:
+
+- event delivery interleavings
+- retry steps with limits and errors
+- timeout flows with clock advancement
+- parent/child workflow creation
+
+Look at `packages/fragment-workflows/src/model-checker-examples.test.ts` and
+`packages/fragment-workflows/src/model-checker-runner.test.ts` for full examples.
+
+## Trace-Based Coverage
+
+When you want coverage based on observed behavior (not just database state), enable tracing and use
+trace hashes to avoid revisiting equivalent schedules.
+
+```typescript
+import { defaultTraceHasher } from "@fragno-dev/test";
+
+const traces: unknown[] = [];
+
+const result = await runModelChecker({
+  schema: testSchema,
+  mode: "random",
+  seed: 7,
+  traceRecorder: (event) => traces.push(event),
+  traceHasher: defaultTraceHasher,
+  traceHashMode: "state+trace",
+  createContext,
+  buildTransactions,
+});
+```
+
+Trace events include retrieve outputs, mutation inputs/results, runtime calls, and external events.
+Use `traceHashMode: "trace"` if you want coverage driven purely by behavior (ignoring state hashes).
+
+## Model Checker Tips
+
+- `mode: "exhaustive"` enumerates every interleaving for the configured transactions.
+- `mode: "random"` samples schedules; use `seed` for deterministic runs.
+- `mode: "infinite"` keeps exploring new paths until `maxSchedules` or the frontier is exhausted.
+- Use `defaultStateHasher` if you want the checker to avoid revisiting equivalent database states.
+
+## Fixing the Bug
+
+In practice, you fix this by enforcing concurrency checks in the mutation phase:
+
+- Use `.check()` on the stock row so the update fails if the version changed.
+- Or enforce a uniqueness constraint that makes the oversell invalid.
+
+Both choices are easy to model-check. If the invariant no longer fails across interleavings, your
+fix is likely correct.
+
+## Why This Matters
+
+Concurrency bugs are real and expensive. The in-memory adapter and model checker turn concurrency
+bugs into regular, deterministic unit tests. That is the difference between hoping a test suite
+catches race conditions and actually proving that it does.
+
+If you want help turning real transactional code into a model-checker scenario, I am happy to help.
