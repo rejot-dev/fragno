@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, test } from "vitest";
 import { createServer, type Server } from "node:http";
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import {
   WorkflowEntrypoint,
@@ -27,7 +27,7 @@ describe("workflows CLI client", async () => {
     .withFragment(
       "workflows",
       instantiate(workflowsFragmentDefinition)
-        .withConfig({ workflows })
+        .withConfig({ workflows, runtime: defaultFragnoRuntime })
         .withRoutes([workflowsRoutesFactory]),
     )
     .build();

@@ -142,6 +142,11 @@ export function instantiate(_definition: unknown) {
 export type { FragnoPublicConfig } from "./api/shared-types";
 
 // ============================================================================
+// Runtime
+// ============================================================================
+export { defaultFragnoRuntime, type FragnoRuntime } from "./runtime";
+
+// ============================================================================
 // Route Definition
 // ============================================================================
 export {

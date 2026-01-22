@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 import { createWorkflowsRunner } from "./runner";
 import type { WorkflowEvent, WorkflowStep } from "./workflow";
@@ -271,6 +271,7 @@ describe("Workflows Runner", () => {
   };
 
   const setup = async () => {
+    const runtime = defaultFragnoRuntime;
     const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "drizzle-pglite" })
       .withFragment(
@@ -278,14 +279,15 @@ describe("Workflows Runner", () => {
         instantiate(workflowsFragmentDefinition)
           .withConfig({
             workflows,
+            runtime,
           })
           .withRoutes([workflowsRoutesFactory]),
       )
       .build();
 
     const { fragment, db } = fragments.workflows;
-    const runner = createWorkflowsRunner({ db, workflows });
-    return { fragments, testContext, fragment, db, runner };
+    const runner = createWorkflowsRunner({ db, workflows, runtime });
+    return { fragments, testContext, fragment, db, runner, runtime };
   };
 
   type Setup = Awaited<ReturnType<typeof setup>>;
@@ -295,9 +297,10 @@ describe("Workflows Runner", () => {
   let fragment: Setup["fragment"];
   let db: Setup["db"];
   let runner: Setup["runner"];
+  let runtime: Setup["runtime"];
 
   beforeAll(async () => {
-    ({ fragments: _fragments, testContext, fragment, db, runner } = await setup());
+    ({ fragments: _fragments, testContext, fragment, db, runner, runtime } = await setup());
   });
 
   const createInstance = async (workflowName: string, params: unknown) => {
@@ -709,6 +712,7 @@ describe("Workflows Runner", () => {
     const leaseRunner = createWorkflowsRunner({
       db,
       workflows,
+      runtime,
       leaseMs,
       runnerId: "lease-runner",
     });
@@ -761,11 +765,13 @@ describe("Workflows Runner", () => {
     const runnerA = createWorkflowsRunner({
       db,
       workflows,
+      runtime,
       runnerId: "runner-a",
     });
     const runnerB = createWorkflowsRunner({
       db,
       workflows,
+      runtime,
       runnerId: "runner-b",
     });
 
@@ -815,6 +821,7 @@ describe("Workflows Runner", () => {
     const runner = createWorkflowsRunner({
       db,
       workflows,
+      runtime,
       runnerId: "fresh-runner",
     });
 

@@ -1,11 +1,7 @@
 import type { SimpleQueryInterface, TableToColumnValues } from "@fragno-dev/db/query";
 import { FragnoId } from "@fragno-dev/db/schema";
-import type {
-  InstanceStatus,
-  WorkflowEnqueuedHookPayload,
-  WorkflowsClock,
-  WorkflowsRegistry,
-} from "./workflow";
+import type { FragnoRuntime } from "@fragno-dev/core";
+import type { InstanceStatus, WorkflowEnqueuedHookPayload, WorkflowsRegistry } from "./workflow";
 import { workflowsSchema } from "./schema";
 import type { WorkflowsBindingsAdapter } from "./bindings";
 import { createWorkflowsBindings } from "./bindings";
@@ -33,9 +29,9 @@ const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "termin
 
 const PAUSED_STATUSES = new Set<InstanceStatus["status"]>(["paused", "waitingForPause"]);
 
-const generateInstanceId = (nowMs: number) => {
+const generateInstanceId = (nowMs: number, randomFloat: () => number) => {
   const timePart = nowMs.toString(36);
-  const randomPart = Math.random().toString(36).slice(2, 10);
+  const randomPart = randomFloat().toString(36).slice(2, 10);
   return `inst_${timePart}_${randomPart}`;
 };
 
@@ -101,15 +97,16 @@ const triggerEnqueued = async (
 
 const createRunnerBindingsAdapter = (
   db: SimpleQueryInterface<typeof workflowsSchema>,
+  runtime: FragnoRuntime,
   onWorkflowEnqueued?: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void,
-  clock?: WorkflowsClock,
 ): WorkflowsBindingsAdapter => {
-  const getNow = () => clock?.now() ?? new Date();
+  const getNow = () => runtime.time.now();
+  const randomFloat = () => runtime.random.float();
 
   return {
     createInstance: async (workflowName, options) => {
       const now = getNow();
-      const instanceId = options?.id ?? generateInstanceId(now.getTime());
+      const instanceId = options?.id ?? generateInstanceId(now.getTime(), randomFloat);
       const params = options?.params ?? {};
 
       const existing = await db.findFirst("workflow_instance", (b) =>
@@ -535,13 +532,13 @@ const createRunnerBindingsAdapter = (
 export function createWorkflowsBindingsForRunner(options: {
   db: SimpleQueryInterface<typeof workflowsSchema>;
   workflows: WorkflowsRegistry;
+  runtime: FragnoRuntime;
   onWorkflowEnqueued?: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
-  clock?: WorkflowsClock;
 }) {
   const adapter = createRunnerBindingsAdapter(
     options.db,
+    options.runtime,
     options.onWorkflowEnqueued,
-    options.clock,
   );
   return createWorkflowsBindings(options.workflows, adapter);
 }

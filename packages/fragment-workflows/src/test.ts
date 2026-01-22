@@ -1,4 +1,8 @@
-import { instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import {
+  instantiate,
+  type AnyFragnoInstantiatedFragment,
+  type FragnoRuntime,
+} from "@fragno-dev/core";
 import {
   buildDatabaseFragmentsTest,
   type SupportedAdapter,
@@ -13,7 +17,6 @@ import type {
   InstanceStatus,
   RunnerTickOptions,
   WorkflowDuration,
-  WorkflowsClock,
   WorkflowsDispatcher,
   WorkflowsFragmentConfig,
   WorkflowsRegistry,
@@ -75,20 +78,26 @@ export type WorkflowsHistory = {
   logsHasNextPage?: boolean;
 };
 
-export type WorkflowsTestClock = WorkflowsClock & {
+export type WorkflowsTestClock = {
+  now: () => Date;
   set: (timestamp: Date | number) => Date;
   advanceBy: (duration: WorkflowDuration) => Date;
+};
+
+export type WorkflowsTestRuntime = FragnoRuntime & {
+  time: WorkflowsTestClock;
 };
 
 export type WorkflowsTestHarnessOptions = {
   workflows: WorkflowsRegistry;
   adapter: SupportedAdapter;
   dispatcher?: WorkflowsDispatcher;
-  clock?: WorkflowsTestClock;
   clockStartAt?: Date | number;
+  runtime?: WorkflowsTestRuntime;
+  randomSeed?: number;
   fragmentConfig?: Omit<
     WorkflowsFragmentConfig,
-    "workflows" | "dispatcher" | "runner" | "enableRunnerTick" | "clock"
+    "workflows" | "dispatcher" | "runner" | "enableRunnerTick" | "runtime"
   >;
   runnerOptions?: {
     runnerId?: string;
@@ -101,6 +110,7 @@ export type WorkflowsTestHarness = {
   db: SimpleQueryInterface<typeof workflowsSchema>;
   runner: ReturnType<typeof createWorkflowsRunner>;
   clock: WorkflowsTestClock;
+  runtime: WorkflowsTestRuntime;
   test: TestContext<SupportedAdapter>;
   createInstance: (
     workflowNameOrKey: keyof WorkflowsRegistry | string,
@@ -141,7 +151,7 @@ export type WorkflowsTestHarness = {
   }) => Promise<{ processed: number; ticks: number }>;
 };
 
-export const createWorkflowsTestClock = (startAt?: Date | number): WorkflowsTestClock => {
+const createTestClock = (startAt?: Date | number): WorkflowsTestClock => {
   let currentMs =
     startAt instanceof Date
       ? startAt.getTime()
@@ -158,6 +168,48 @@ export const createWorkflowsTestClock = (startAt?: Date | number): WorkflowsTest
     advanceBy: (duration) => {
       currentMs += parseDurationMs(duration);
       return new Date(currentMs);
+    },
+  };
+};
+
+export const createWorkflowsTestRuntime = (options?: {
+  startAt?: Date | number;
+  seed?: number;
+}): WorkflowsTestRuntime => {
+  const time = createTestClock(options?.startAt);
+  let state = options?.seed ?? 1;
+
+  const nextFloat = () => {
+    state = (state * 48271) % 0x7fffffff;
+    return state / 0x7fffffff;
+  };
+
+  const nextHex = (length: number) => {
+    let value = "";
+    for (let i = 0; i < length; i += 1) {
+      value += Math.floor(nextFloat() * 16).toString(16);
+    }
+    return value;
+  };
+
+  const uuid = () => {
+    return [
+      nextHex(8),
+      nextHex(4),
+      `4${nextHex(3)}`,
+      `${(8 + Math.floor(nextFloat() * 4)).toString(16)}${nextHex(3)}`,
+      nextHex(12),
+    ].join("-");
+  };
+
+  const cuid = () => `cuid_${nextHex(8)}${nextHex(8)}`;
+
+  return {
+    time,
+    random: {
+      float: () => nextFloat(),
+      uuid,
+      cuid,
     },
   };
 };
@@ -180,7 +232,10 @@ const assertJsonResponse = <T>(response: { type: string; data?: T }) => {
 export async function createWorkflowsTestHarness(
   options: WorkflowsTestHarnessOptions,
 ): Promise<WorkflowsTestHarness> {
-  const clock = options.clock ?? createWorkflowsTestClock(options.clockStartAt);
+  const runtime =
+    options.runtime ??
+    createWorkflowsTestRuntime({ startAt: options.clockStartAt, seed: options.randomSeed });
+  const clock = runtime.time;
   const dispatcher = options.dispatcher ?? { wake: () => {} };
   const workflows = options.workflows;
 
@@ -192,7 +247,7 @@ export async function createWorkflowsTestHarness(
         .withConfig({
           workflows,
           dispatcher,
-          clock,
+          runtime,
           ...options.fragmentConfig,
         })
         .withRoutes([workflowsRoutesFactory]),
@@ -203,7 +258,7 @@ export async function createWorkflowsTestHarness(
   const runner = createWorkflowsRunner({
     db,
     workflows,
-    clock,
+    runtime,
     runnerId: options.runnerOptions?.runnerId,
     leaseMs: options.runnerOptions?.leaseMs,
   });
@@ -350,6 +405,7 @@ export async function createWorkflowsTestHarness(
     db,
     runner,
     clock,
+    runtime,
     test,
     createInstance,
     createBatch,

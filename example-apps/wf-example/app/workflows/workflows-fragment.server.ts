@@ -1,4 +1,4 @@
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import type { DatabaseAdapter } from "@fragno-dev/db";
 import { migrate } from "@fragno-dev/db";
 import {
@@ -26,7 +26,8 @@ export function getWorkflowsServer() {
 // oxlint-disable-next-line no-explicit-any
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const db = adapter.createQueryEngine(workflowsSchema, "workflows");
-  const runner = createWorkflowsRunner({ db, workflows });
+  const runtime = defaultFragnoRuntime;
+  const runner = createWorkflowsRunner({ db, workflows, runtime });
   const dispatcher = createInProcessDispatcher({
     wake: () => {
       Promise.resolve(runner.tick({ maxInstances: 5, maxSteps: 50 })).catch((error: unknown) => {
@@ -37,7 +38,7 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   });
 
   const fragment = instantiate(workflowsFragmentDefinition)
-    .withConfig({ workflows, runner, dispatcher, enableRunnerTick: true })
+    .withConfig({ workflows, runner, dispatcher, enableRunnerTick: true, runtime })
     .withRoutes([workflowsRoutesFactory])
     .withOptions({ databaseAdapter: adapter })
     .build();

@@ -19,7 +19,7 @@ const routes = [workflowsRoutesFactory] as const;
 
 /** Create a workflows fragment with routes, bindings, and database integration. */
 export function createWorkflowsFragment(
-  config: WorkflowsFragmentConfig = {},
+  config: WorkflowsFragmentConfig,
   fragnoConfig: FragnoPublicConfigWithDatabase,
 ) {
   const fragment = instantiate(workflowsFragmentDefinition)

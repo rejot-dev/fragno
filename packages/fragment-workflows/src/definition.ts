@@ -161,9 +161,9 @@ type ListHistoryParams = {
 
 type InstanceDetails = { id: string; details: InstanceStatus };
 
-function generateInstanceId(nowMs: number) {
+function generateInstanceId(nowMs: number, randomFloat: () => number) {
   const timePart = nowMs.toString(36);
-  const randomPart = Math.random().toString(36).slice(2, 10);
+  const randomPart = randomFloat().toString(36).slice(2, 10);
   return `inst_${timePart}_${randomPart}`;
 }
 
@@ -296,12 +296,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     }),
   }))
   .providesBaseService(({ defineService, config }) => {
-    const getNow = () => config.clock?.now() ?? new Date();
+    const getNow = () => config.runtime.time.now();
+    const randomFloat = () => config.runtime.random.float();
 
     return defineService({
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         const now = getNow();
-        const instanceId = options?.id ?? generateInstanceId(now.getTime());
+        const instanceId = options?.id ?? generateInstanceId(now.getTime(), randomFloat);
         const params = options?.params ?? {};
 
         return this.serviceTx(workflowsSchema)
