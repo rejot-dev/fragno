@@ -27,6 +27,7 @@ import type { FragnoPublicConfig } from "./shared-types";
 import { RequestContextStorage } from "./request-context-storage";
 import { bindServicesToContext, type BoundServices } from "./bind-services";
 import { instantiatedFragmentFakeSymbol } from "../internal/symbols";
+import { recordTraceEvent } from "../internal/trace-context";
 
 // Re-export types needed by consumers
 export type { BoundServices };
@@ -77,6 +78,30 @@ type AstroHandlers = {
 type ReactRouterHandlers = {
   loader: (args: { request: Request }) => Promise<Response>;
   action: (args: { request: Request }) => Promise<Response>;
+};
+
+const serializeHeadersForTrace = (headers: Headers): [string, string][] =>
+  Array.from(headers.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+const serializeQueryForTrace = (query: URLSearchParams): [string, string][] =>
+  Array.from(query.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+const serializeBodyForTrace = (body: RequestBodyType): unknown => {
+  if (body instanceof FormData) {
+    const entries = Array.from(body.entries()).map(([key, value]) => {
+      if (value instanceof Blob) {
+        return [key, { type: "blob", size: value.size, mime: value.type }] as const;
+      }
+      return [key, value] as const;
+    });
+    return { type: "form-data", entries };
+  }
+
+  if (body instanceof Blob) {
+    return { type: "blob", size: body.size, mime: body.type };
+  }
+
+  return body;
 };
 
 type SolidStartHandlers = {
@@ -574,6 +599,16 @@ export class FragnoInstantiatedFragment<
       shouldValidateInput: true, // Enable validation for production use
     });
 
+    recordTraceEvent({
+      type: "route-input",
+      method: route.method,
+      path: route.path,
+      pathParams: (pathParams ?? {}) as Record<string, string>,
+      queryParams: serializeQueryForTrace(searchParams),
+      headers: serializeHeadersForTrace(requestHeaders),
+      body: serializeBodyForTrace(body),
+    });
+
     // Construct RequestOutputContext
     const outputContext = new RequestOutputContext(route.outputSchema);
 
@@ -630,12 +665,26 @@ export class FragnoInstantiatedFragment<
         middlewareInputContext,
         middlewareOutputContext,
       );
+      recordTraceEvent({
+        type: "middleware-decision",
+        method: req.method,
+        path,
+        outcome: middlewareResult ? "deny" : "allow",
+        status: middlewareResult?.status,
+      });
       if (middlewareResult !== undefined) {
         return middlewareResult;
       }
     } catch (error) {
       console.error("Error in middleware", error);
 
+      recordTraceEvent({
+        type: "middleware-decision",
+        method: req.method,
+        path,
+        outcome: "deny",
+        status: error instanceof FragnoApiError ? error.status : 500,
+      });
       if (error instanceof FragnoApiError) {
         return error.toResponse();
       }
@@ -672,6 +721,16 @@ export class FragnoInstantiatedFragment<
       inputSchema,
       state: requestState,
       rawBody,
+    });
+
+    recordTraceEvent({
+      type: "route-input",
+      method: req.method,
+      path,
+      pathParams: inputContext.pathParams as Record<string, string>,
+      queryParams: serializeQueryForTrace(requestState.searchParams),
+      headers: serializeHeadersForTrace(requestState.headers),
+      body: serializeBodyForTrace(requestState.body),
     });
 
     const outputContext = new RequestOutputContext(outputSchema);

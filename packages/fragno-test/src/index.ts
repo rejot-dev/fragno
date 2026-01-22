@@ -5,6 +5,7 @@ import type {
   KyselySqliteAdapter,
   KyselyPgliteAdapter,
   DrizzlePgliteAdapter,
+  InMemoryAdapterConfig,
 } from "./adapters";
 import type { DatabaseAdapter } from "@fragno-dev/db";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
@@ -22,11 +23,44 @@ export type {
   KyselySqliteAdapter,
   KyselyPgliteAdapter,
   DrizzlePgliteAdapter,
+  InMemoryAdapterConfig,
   AdapterContext,
 } from "./adapters";
 
 // Re-export new builder-based database test utilities
 export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-test";
+export {
+  runModelChecker,
+  defaultStateHasher,
+  defaultTraceHasher,
+  type ModelCheckerConfig,
+  type ModelCheckerBounds,
+  type ModelCheckerRunResult,
+  type ModelCheckerScheduleResult,
+  type ModelCheckerMode,
+  type ModelCheckerStep,
+  type ModelCheckerTraceEvent,
+  type ModelCheckerTrace,
+  type ModelCheckerTraceRecorder,
+  type ModelCheckerTraceHasher,
+  type ModelCheckerTraceHashMode,
+  type NormalizedMutationOperation,
+  type RawUowTransaction,
+  type RawUowTransactionBuilder,
+  type RawUowTransactionContext,
+  type RawUowMutateContext,
+  createRawUowTransaction,
+} from "./model-checker";
+
+export {
+  runModelCheckerWithActors,
+  type ModelCheckerActor,
+  type ModelCheckerInvariant,
+  type ModelCheckerInvariantContext,
+  type ModelCheckerActorsConfig,
+} from "./model-checker-actors";
+
+export { ModelCheckerAdapter, type ModelCheckerScheduler } from "./model-checker-adapter";
 
 /**
  * Base test context with common functionality across all adapters
