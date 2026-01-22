@@ -1,5 +1,5 @@
 {
-  "$schema": "https://turborepo.com/schema.json",
+  "$schema": "https://turborepo.dev/schema.v2.json",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -11,14 +11,13 @@
         ".output/**",
         ".nuxt/**",
         ".react-router/**",
-        ".output/**",
         ".source/**",
         ".svelte-kit/**",
         "build/**"
       ]
     },
     "types:check": {
-      "dependsOn": ["^build", "^types:check"]
+      "dependsOn": ["^build"]
     },
     "dev": {
       "persistent": true,
