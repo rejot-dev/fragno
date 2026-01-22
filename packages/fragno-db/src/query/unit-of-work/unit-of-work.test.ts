@@ -4,6 +4,7 @@ import {
   type UOWCompiler,
   type UOWDecoder,
   createUnitOfWork,
+  UnitOfWork,
   type InferIdColumnName,
   type IndexColumns,
 } from "./unit-of-work";
@@ -1254,6 +1255,136 @@ describe("Phase promises with multiple views", () => {
 
     // IDs should still be unique
     expect(createdIds[0].externalId).not.toBe(createdIds[1].externalId);
+  });
+});
+
+describe("Instrumentation", () => {
+  const testSchema = schema((s) =>
+    s.addTable("users", (t) =>
+      t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+    ),
+  );
+
+  it("should run instrumentation hooks around retrieve and mutate phases", async () => {
+    const calls: string[] = [];
+    const contexts: Array<{
+      phase: string;
+      idempotencyKey: string;
+      retrievalOpsCount: number;
+      mutationOpsCount: number;
+    }> = [];
+
+    const executor = {
+      executeRetrievalPhase: async () => [[]],
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
+      instrumentation: {
+        beforeRetrieve: (ctx) => {
+          calls.push("beforeRetrieve");
+          contexts.push({
+            phase: ctx.phase,
+            idempotencyKey: ctx.idempotencyKey,
+            retrievalOpsCount: ctx.retrievalOpsCount,
+            mutationOpsCount: ctx.mutationOpsCount,
+          });
+        },
+        afterRetrieve: (ctx) => {
+          calls.push("afterRetrieve");
+          contexts.push({
+            phase: ctx.phase,
+            idempotencyKey: ctx.idempotencyKey,
+            retrievalOpsCount: ctx.retrievalOpsCount,
+            mutationOpsCount: ctx.mutationOpsCount,
+          });
+        },
+        beforeMutate: (ctx) => {
+          calls.push("beforeMutate");
+          contexts.push({
+            phase: ctx.phase,
+            idempotencyKey: ctx.idempotencyKey,
+            retrievalOpsCount: ctx.retrievalOpsCount,
+            mutationOpsCount: ctx.mutationOpsCount,
+          });
+        },
+        afterMutate: (ctx) => {
+          calls.push("afterMutate");
+          contexts.push({
+            phase: ctx.phase,
+            idempotencyKey: ctx.idempotencyKey,
+            retrievalOpsCount: ctx.retrievalOpsCount,
+            mutationOpsCount: ctx.mutationOpsCount,
+          });
+        },
+      },
+    });
+
+    const typed = uow.forSchema(testSchema);
+    typed.find("users", (b) => b.whereIndex("primary"));
+    typed.create("users", { name: "Alice", email: "alice@example.com" });
+
+    await uow.executeRetrieve();
+    await uow.executeMutations();
+
+    expect(calls).toEqual(["beforeRetrieve", "afterRetrieve", "beforeMutate", "afterMutate"]);
+
+    for (const ctx of contexts) {
+      expect(ctx.idempotencyKey).toBeTypeOf("string");
+      expect(ctx.idempotencyKey.length).toBeGreaterThan(0);
+      expect(ctx.retrievalOpsCount).toBe(1);
+      expect(ctx.mutationOpsCount).toBe(1);
+    }
+  });
+
+  it("should short-circuit mutations on conflict injection", async () => {
+    let mutationExecuted = false;
+
+    const executor = {
+      executeRetrievalPhase: async () => [],
+      executeMutationPhase: async () => {
+        mutationExecuted = true;
+        return { success: true, createdInternalIds: [] };
+      },
+    };
+
+    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
+      instrumentation: {
+        beforeMutate: () => ({ type: "conflict", reason: "Injected conflict" }),
+        afterMutate: () => {
+          throw new Error("afterMutate should not run");
+        },
+      },
+    });
+
+    uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
+
+    const result = await uow.executeMutations();
+    expect(result.success).toBe(false);
+    expect(mutationExecuted).toBe(false);
+  });
+
+  it("should throw on error injection before retrieval", async () => {
+    let retrievalExecuted = false;
+
+    const executor = {
+      executeRetrievalPhase: async () => {
+        retrievalExecuted = true;
+        return [];
+      },
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+
+    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
+      instrumentation: {
+        beforeRetrieve: () => ({ type: "error", error: new Error("Injected failure") }),
+      },
+    });
+
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+
+    await expect(uow.executeRetrieve()).rejects.toThrow("Injected failure");
+    expect(retrievalExecuted).toBe(false);
   });
 });
 

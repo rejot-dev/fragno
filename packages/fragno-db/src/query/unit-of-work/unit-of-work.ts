@@ -951,6 +951,45 @@ export interface IUnitOfWork {
 export interface IUnitOfWorkRestricted
   extends Omit<IUnitOfWork, "executeRetrieve" | "executeMutations"> {}
 
+export type UOWInstrumentationPhase =
+  | "beforeRetrieve"
+  | "afterRetrieve"
+  | "beforeMutate"
+  | "afterMutate";
+
+export type UOWInstrumentationInjection =
+  | { type: "conflict"; reason?: string }
+  | { type: "error"; error: Error };
+
+export type UOWInstrumentationContext = {
+  phase: UOWInstrumentationPhase;
+  uowName?: string;
+  idempotencyKey: string;
+  retrievalOpsCount: number;
+  mutationOpsCount: number;
+  uow: IUnitOfWork;
+};
+
+export type UOWInstrumentation = {
+  beforeRetrieve?: (
+    ctx: UOWInstrumentationContext,
+  ) => void | Promise<void> | UOWInstrumentationInjection;
+  afterRetrieve?: (
+    ctx: UOWInstrumentationContext,
+  ) => void | Promise<void> | UOWInstrumentationInjection;
+  beforeMutate?: (
+    ctx: UOWInstrumentationContext,
+  ) => void | Promise<void> | UOWInstrumentationInjection;
+  afterMutate?: (
+    ctx: UOWInstrumentationContext,
+  ) => void | Promise<void> | UOWInstrumentationInjection;
+};
+
+export type UOWInstrumentationFinalizer = {
+  afterRetrieve?: (ctx: UOWInstrumentationContext) => void | Promise<void>;
+  afterMutate?: (ctx: UOWInstrumentationContext) => void | Promise<void>;
+};
+
 export function createUnitOfWork(
   compiler: UOWCompiler<unknown>,
   executor: UOWExecutor<unknown, unknown>,
@@ -965,6 +1004,16 @@ export interface UnitOfWorkConfig {
   dryRun?: boolean;
   onQuery?: (query: unknown) => void;
   idempotencyKey?: string;
+  instrumentation?: UOWInstrumentation;
+  instrumentationFinalizer?: UOWInstrumentationFinalizer;
+}
+
+function isUowInstrumentationInjection(value: unknown): value is UOWInstrumentationInjection {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const injection = value as UOWInstrumentationInjection;
+  return injection.type === "conflict" || injection.type === "error";
 }
 
 /**
@@ -1243,6 +1292,61 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#idempotencyKey = config?.idempotencyKey ?? crypto.randomUUID();
   }
 
+  #createInstrumentationContext(phase: UOWInstrumentationPhase): UOWInstrumentationContext {
+    return {
+      phase,
+      uowName: this.#name,
+      idempotencyKey: this.#idempotencyKey,
+      retrievalOpsCount: this.#retrievalOps.length,
+      mutationOpsCount: this.#mutationOps.length,
+      uow: this,
+    };
+  }
+
+  async #runInstrumentation(
+    phase: UOWInstrumentationPhase,
+  ): Promise<UOWInstrumentationInjection | null> {
+    const hook = this.#config?.instrumentation?.[phase];
+    if (!hook) {
+      return null;
+    }
+
+    const result = await hook(this.#createInstrumentationContext(phase));
+    if (isUowInstrumentationInjection(result)) {
+      return result;
+    }
+
+    return null;
+  }
+
+  async #runInstrumentationFinalizer(phase: "afterRetrieve" | "afterMutate"): Promise<void> {
+    const hook = this.#config?.instrumentationFinalizer?.[phase];
+    if (!hook) {
+      return;
+    }
+
+    await hook(this.#createInstrumentationContext(phase));
+  }
+
+  #handleRetrieveInjection(injection: UOWInstrumentationInjection): never {
+    if (injection.type === "error") {
+      throw injection.error;
+    }
+
+    throw new Error(injection.reason ?? "Injected conflict");
+  }
+
+  #handleMutationInjection(injection: UOWInstrumentationInjection): { success: false } | never {
+    if (injection.type === "error") {
+      throw injection.error;
+    }
+
+    this.#state = "executed";
+    this.#createdInternalIds.length = 0;
+    this.#mutationPhaseDeferred.resolve();
+    return { success: false };
+  }
+
   /**
    * Register a schema with its namespace for cross-fragment operations.
    * This is used for internal fragments like hooks that need to create
@@ -1426,13 +1530,25 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       );
     }
 
+    let afterRan = false;
+    let failed = false;
     try {
       // Wait for all children to signal readiness
       await this.#coordinator.retrievalReadinessPromise;
 
+      const beforeInjection = await this.#runInstrumentation("beforeRetrieve");
+      if (beforeInjection) {
+        return this.#handleRetrieveInjection(beforeInjection);
+      }
+
       if (this.#retrievalOps.length === 0) {
         this.#state = "building-mutation";
         const emptyResults: unknown[] = [];
+        afterRan = true;
+        const afterInjection = await this.#runInstrumentation("afterRetrieve");
+        if (afterInjection) {
+          return this.#handleRetrieveInjection(afterInjection);
+        }
         this.#retrievalPhaseDeferred.resolve(emptyResults);
         return emptyResults;
       }
@@ -1450,6 +1566,11 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       if (this.#config?.dryRun) {
         this.#state = "executed";
         const emptyResults: unknown[] = [];
+        afterRan = true;
+        const afterInjection = await this.#runInstrumentation("afterRetrieve");
+        if (afterInjection) {
+          return this.#handleRetrieveInjection(afterInjection);
+        }
         this.#retrievalPhaseDeferred.resolve(emptyResults);
         return emptyResults;
       }
@@ -1462,12 +1583,33 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       this.#retrievalResults = results;
       this.#state = "building-mutation";
 
+      afterRan = true;
+      const afterInjection = await this.#runInstrumentation("afterRetrieve");
+      if (afterInjection) {
+        return this.#handleRetrieveInjection(afterInjection);
+      }
+
       this.#retrievalPhaseDeferred.resolve(this.#retrievalResults);
 
       return this.#retrievalResults;
     } catch (error) {
       this.#retrievalError = error instanceof Error ? error : new Error(String(error));
+      failed = true;
       throw error;
+    } finally {
+      try {
+        await this.#runInstrumentationFinalizer("afterRetrieve");
+      } catch {
+        // Ignore finalizer errors when unwinding failures.
+      }
+
+      if (!afterRan && failed) {
+        try {
+          await this.#runInstrumentation("afterRetrieve");
+        } catch {
+          // Ignore after-retrieve hook errors when unwinding failures.
+        }
+      }
     }
   }
 
@@ -1484,9 +1626,16 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       throw new Error(`Cannot execute mutations from state ${this.#state}.`);
     }
 
+    let afterRan = false;
+    let failed = false;
     try {
       // Wait for all children to signal readiness
       await this.#coordinator.mutationReadinessPromise;
+
+      const beforeInjection = await this.#runInstrumentation("beforeMutate");
+      if (beforeInjection) {
+        return this.#handleMutationInjection(beforeInjection);
+      }
 
       // Compile mutation operations using single compiler
       const mutationBatch: CompiledMutation<unknown>[] = [];
@@ -1500,6 +1649,11 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
       if (this.#config?.dryRun) {
         this.#state = "executed";
+        afterRan = true;
+        const afterInjection = await this.#runInstrumentation("afterMutate");
+        if (afterInjection) {
+          return this.#handleMutationInjection(afterInjection);
+        }
         this.#mutationPhaseDeferred.resolve();
         return {
           success: true,
@@ -1516,6 +1670,12 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         this.#createdInternalIds.push(...result.createdInternalIds);
       }
 
+      afterRan = true;
+      const afterInjection = await this.#runInstrumentation("afterMutate");
+      if (afterInjection) {
+        return this.#handleMutationInjection(afterInjection);
+      }
+
       // Resolve the mutation phase promise to unblock waiting service methods
       this.#mutationPhaseDeferred.resolve();
 
@@ -1524,7 +1684,22 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       };
     } catch (error) {
       this.#mutationError = error instanceof Error ? error : new Error(String(error));
+      failed = true;
       throw error;
+    } finally {
+      try {
+        await this.#runInstrumentationFinalizer("afterMutate");
+      } catch {
+        // Ignore finalizer errors when unwinding failures.
+      }
+
+      if (!afterRan && failed) {
+        try {
+          await this.#runInstrumentation("afterMutate");
+        } catch {
+          // Ignore after-mutate hook errors when unwinding failures.
+        }
+      }
     }
   }
 
