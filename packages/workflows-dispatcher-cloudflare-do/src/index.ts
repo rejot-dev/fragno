@@ -1,4 +1,4 @@
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate, type FragnoRuntime } from "@fragno-dev/core";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
@@ -85,12 +85,13 @@ export type WorkflowsDispatcherDurableObjectFactory<TEnv = unknown> = (
 
 export type WorkflowsDispatcherDurableObjectOptions<TEnv = unknown> = {
   workflows: WorkflowsRegistry;
+  runtime?: FragnoRuntime;
   namespace?: string;
   runnerId?: string;
   leaseMs?: number;
   tickOptions?: RunnerTickOptions;
   enableRunnerTick?: boolean;
-  fragmentConfig?: Omit<WorkflowsFragmentConfig, "workflows" | "runner" | "dispatcher">;
+  fragmentConfig?: Omit<WorkflowsFragmentConfig, "workflows" | "runner" | "dispatcher" | "runtime">;
   createAdapter?: (context: {
     state: WorkflowsDispatcherDurableObjectState;
     env: TEnv;
@@ -142,10 +143,12 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
 
     this.#adapter = createAdapter({ state: this.#state, env: this.#env });
     this.#db = this.#adapter.createQueryEngine(workflowsSchema, namespace);
+    const runtime = options.runtime ?? defaultFragnoRuntime;
 
     this.#runner = createWorkflowsRunner({
       db: this.#db,
       workflows: options.workflows,
+      runtime,
       runnerId: options.runnerId ?? this.#state.id.toString(),
       leaseMs: options.leaseMs,
     });
@@ -164,6 +167,7 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
         runner: runnerFacade,
         dispatcher,
         enableRunnerTick: options.enableRunnerTick ?? true,
+        runtime,
         ...options.fragmentConfig,
       })
       .withRoutes([workflowsRoutesFactory])

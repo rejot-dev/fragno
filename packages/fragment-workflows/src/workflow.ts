@@ -1,10 +1,7 @@
+import type { FragnoRuntime } from "@fragno-dev/core";
+
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
-
-/** Clock abstraction for tests or custom time sources. */
-export type WorkflowsClock = {
-  now: () => Date;
-};
 
 /** Event delivered to a workflow instance run. */
 export type WorkflowEvent<T> = {
@@ -219,7 +216,7 @@ export interface WorkflowsFragmentConfig {
   workflows?: WorkflowsRegistry;
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
-  clock?: WorkflowsClock;
+  runtime: FragnoRuntime;
   enableRunnerTick?: boolean;
   authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
   authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;

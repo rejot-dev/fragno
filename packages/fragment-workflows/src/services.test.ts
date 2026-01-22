@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
 
@@ -17,6 +17,7 @@ describe("Workflows Fragment Services", () => {
         "workflows",
         instantiate(workflowsFragmentDefinition).withConfig({
           dispatcher,
+          runtime: defaultFragnoRuntime,
         }),
       )
       .build();

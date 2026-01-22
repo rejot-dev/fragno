@@ -22,6 +22,7 @@ export default defineConfig({
     "./src/integrations/react-ssr.ts",
     "./src/integrations/svelte-kit.ts",
     "./src/test/test.ts",
+    "./src/internal/trace-context.ts",
     "./src/internal/symbols.ts",
   ],
   dts: true,

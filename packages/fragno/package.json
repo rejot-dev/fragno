@@ -40,6 +40,11 @@
       "types": "./dist/api/request-context-storage.d.ts",
       "default": "./dist/api/request-context-storage.js"
     },
+    "./internal/trace-context": {
+      "development": "./src/internal/trace-context.ts",
+      "types": "./dist/internal/trace-context.d.ts",
+      "default": "./dist/internal/trace-context.js"
+    },
     "./internal/symbols": {
       "development": "./src/internal/symbols.ts",
       "types": "./dist/internal/symbols.d.ts",
@@ -95,6 +100,7 @@
   "type": "module",
   "sideEffects": false,
   "dependencies": {
+    "@paralleldrive/cuid2": "^2.3.1",
     "@nanostores/query": "^0.3.4",
     "@nanostores/solid": "^1.1.1",
     "@standard-schema/spec": "^1.1.0",

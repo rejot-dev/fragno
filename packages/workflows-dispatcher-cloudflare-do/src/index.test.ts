@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import {
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
@@ -38,7 +38,7 @@ describe("workflows durable object dispatcher", async () => {
     .withFragment(
       "workflows",
       instantiate(workflowsFragmentDefinition)
-        .withConfig({ workflows, enableRunnerTick: true, runner })
+        .withConfig({ workflows, enableRunnerTick: true, runner, runtime: defaultFragnoRuntime })
         .withRoutes([workflowsRoutesFactory]),
     )
     .build();

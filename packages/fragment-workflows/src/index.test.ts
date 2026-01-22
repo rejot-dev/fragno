@@ -1,6 +1,6 @@
 import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
@@ -28,7 +28,7 @@ describe("Workflows Fragment", () => {
       .withFragment(
         "workflows",
         instantiate(workflowsFragmentDefinition)
-          .withConfig({ workflows, enableRunnerTick: true, runner })
+          .withConfig({ workflows, enableRunnerTick: true, runner, runtime: defaultFragnoRuntime })
           .withRoutes([workflowsRoutesFactory]),
       )
       .build();
@@ -369,6 +369,7 @@ describe("Workflows Fragment", () => {
               workflows,
               enableRunnerTick: true,
               runner: authRunner,
+              runtime: defaultFragnoRuntime,
               authorizeRequest,
               authorizeInstanceCreation,
               authorizeManagement,
