@@ -1,5 +1,6 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
-import type { SimpleQueryInterface, TableToColumnValues } from "@fragno-dev/db/query";
+import { ConcurrencyConflictError, type DatabaseRequestContext } from "@fragno-dev/db";
+import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "./schema";
 import type {
@@ -14,7 +15,6 @@ import type {
   WorkflowsRegistry,
   WorkflowsRunner,
   RunnerTickOptions,
-  WorkflowEnqueuedHookPayload,
 } from "./workflow";
 import { NonRetryableError } from "./workflow";
 import { createWorkflowsBindingsForRunner } from "./bindings-runner";
@@ -42,6 +42,8 @@ type WorkflowInstanceRecord = TableToColumnValues<
 >;
 
 type WorkflowInstanceUpdate = Omit<WorkflowInstanceRecord, "id">;
+
+type WorkflowStepRecord = TableToColumnValues<(typeof workflowsSchema)["tables"]["workflow_step"]>;
 
 class WorkflowSuspend extends Error {
   constructor(
@@ -72,12 +74,11 @@ class WaitForEventTimeoutError extends Error {
 }
 
 type WorkflowsRunnerOptions = {
-  db: SimpleQueryInterface<typeof workflowsSchema>;
+  fragment: WorkflowsRunnerFragment;
   workflows: WorkflowsRegistry;
   runtime: FragnoRuntime;
   runnerId?: string;
   leaseMs?: number;
-  onWorkflowEnqueued?: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
 };
 
 const coerceDate = (timestamp: Date | number) =>
@@ -91,6 +92,25 @@ const coerceEventTimestamp = (timestamp: unknown) => {
     return new Date(timestamp);
   }
   return new Date(NaN);
+};
+
+type RunHandlerTx = <T>(
+  callback: (handlerTx: DatabaseRequestContext["handlerTx"]) => T | Promise<T>,
+) => Promise<T>;
+
+type WorkflowsRunnerFragment = {
+  inContext: <T>(callback: (this: DatabaseRequestContext) => T | Promise<T>) => T | Promise<T>;
+  services: Record<string, unknown>;
+};
+
+const runHandlerTx = async <T>(
+  fragment: WorkflowsRunnerFragment,
+  callback: (handlerTx: DatabaseRequestContext["handlerTx"]) => T | Promise<T>,
+): Promise<T> => {
+  return await fragment.inContext(function (this: DatabaseRequestContext) {
+    const handlerTx: DatabaseRequestContext["handlerTx"] = (options) => this.handlerTx(options);
+    return callback(handlerTx);
+  });
 };
 
 const normalizeWaitTimeoutMs = (duration?: WorkflowDuration) => {
@@ -140,7 +160,7 @@ const isPausedStatus = (status: string) => status === "paused" || status === "wa
 
 class RunnerStep implements WorkflowStep {
   log: WorkflowLogger;
-  #db: SimpleQueryInterface<typeof workflowsSchema>;
+  #runHandlerTx: RunHandlerTx;
   #workflowName: string;
   #instanceId: string;
   #runNumber: number;
@@ -153,7 +173,7 @@ class RunnerStep implements WorkflowStep {
   #activeAttempt: number | null = null;
 
   constructor(options: {
-    db: SimpleQueryInterface<typeof workflowsSchema>;
+    runHandlerTx: RunHandlerTx;
     workflowName: string;
     instanceId: string;
     runNumber: number;
@@ -161,7 +181,7 @@ class RunnerStep implements WorkflowStep {
     time: FragnoRuntime["time"];
     isReplay: boolean;
   }) {
-    this.#db = options.db;
+    this.#runHandlerTx = options.runHandlerTx;
     this.#workflowName = options.workflowName;
     this.#instanceId = options.instanceId;
     this.#runNumber = options.runNumber;
@@ -191,93 +211,203 @@ class RunnerStep implements WorkflowStep {
     }
 
     this.#beginStep(name);
+    const now = this.#time.now();
 
     try {
-      const existing = await this.#db.findFirst("workflow_step", (b) =>
-        b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
-          eb.and(
-            eb("workflowName", "=", this.#workflowName),
-            eb("instanceId", "=", this.#instanceId),
-            eb("runNumber", "=", this.#runNumber),
-            eb("stepKey", "=", name),
-          ),
-        ),
+      const outcome = await this.#runHandlerTx((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_step", (b) =>
+              b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+                eb.and(
+                  eb("workflowName", "=", this.#workflowName),
+                  eb("instanceId", "=", this.#instanceId),
+                  eb("runNumber", "=", this.#runNumber),
+                  eb("stepKey", "=", name),
+                ),
+              ),
+            ),
+          )
+          .transformRetrieve(([existing]) => {
+            if (existing && existing.type !== "do") {
+              throw new Error("STEP_TYPE_MISMATCH");
+            }
+
+            if (existing?.status === "completed") {
+              return { kind: "return" as const, result: existing.result as T };
+            }
+
+            if (existing?.status === "waiting" && existing.nextRetryAt) {
+              if (existing.nextRetryAt > now) {
+                return { kind: "suspend" as const, runAt: existing.nextRetryAt };
+              }
+            }
+
+            if (existing?.status === "errored") {
+              const err = new Error(existing.errorMessage ?? "STEP_FAILED");
+              err.name = existing.errorName ?? "Error";
+              return { kind: "error" as const, error: err };
+            }
+
+            const { maxAttempts, delayMs, backoff } = normalizeRetryConfig(config);
+            const timeoutMs = config?.timeout ? parseDurationMs(config.timeout) : null;
+            const attempt = (existing?.attempts ?? 0) + 1;
+
+            if (existing) {
+              return {
+                kind: "update" as const,
+                stepId: existing.id,
+                attempt,
+                maxAttempts,
+                delayMs,
+                backoff,
+                timeoutMs,
+              };
+            }
+
+            return {
+              kind: "create" as const,
+              stepId: null,
+              attempt,
+              maxAttempts,
+              delayMs,
+              backoff,
+              timeoutMs,
+            };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult.kind === "update") {
+              const stepId = retrieveResult.stepId;
+              forSchema(workflowsSchema).update("workflow_step", stepId, (b) => {
+                const builder = b.set({
+                  status: "running",
+                  attempts: retrieveResult.attempt,
+                  maxAttempts: retrieveResult.maxAttempts,
+                  timeoutMs: retrieveResult.timeoutMs,
+                  nextRetryAt: null,
+                  errorName: null,
+                  errorMessage: null,
+                  updatedAt: now,
+                });
+                if (stepId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+              return stepId;
+            }
+
+            if (retrieveResult.kind === "create") {
+              return forSchema(workflowsSchema).create("workflow_step", {
+                workflowName: this.#workflowName,
+                instanceId: this.#instanceId,
+                runNumber: this.#runNumber,
+                stepKey: name,
+                name,
+                type: "do",
+                status: "running",
+                attempts: retrieveResult.attempt,
+                maxAttempts: retrieveResult.maxAttempts,
+                timeoutMs: retrieveResult.timeoutMs,
+                nextRetryAt: null,
+                wakeAt: null,
+                waitEventType: null,
+                result: null,
+                errorName: null,
+                errorMessage: null,
+              });
+            }
+
+            return undefined;
+          })
+          .transform(({ retrieveResult, mutateResult }) => {
+            if (retrieveResult.kind === "update") {
+              return {
+                kind: "run" as const,
+                stepId: retrieveResult.stepId,
+                attempt: retrieveResult.attempt,
+                maxAttempts: retrieveResult.maxAttempts,
+                delayMs: retrieveResult.delayMs,
+                backoff: retrieveResult.backoff,
+                timeoutMs: retrieveResult.timeoutMs,
+              };
+            }
+
+            if (retrieveResult.kind === "create") {
+              return {
+                kind: "run" as const,
+                stepId: mutateResult as WorkflowStepRecord["id"],
+                attempt: retrieveResult.attempt,
+                maxAttempts: retrieveResult.maxAttempts,
+                delayMs: retrieveResult.delayMs,
+                backoff: retrieveResult.backoff,
+                timeoutMs: retrieveResult.timeoutMs,
+              };
+            }
+
+            return retrieveResult;
+          })
+          .execute(),
       );
 
-      if (existing) {
-        if (existing.type !== "do") {
-          throw new Error("STEP_TYPE_MISMATCH");
-        }
-        if (existing.status === "completed") {
-          await this.#throwIfPauseRequested();
-          return existing.result as T;
-        }
-        if (existing.status === "waiting" && existing.nextRetryAt) {
-          if (existing.nextRetryAt > this.#time.now()) {
-            await this.#throwIfPauseRequested();
-            throw new WorkflowSuspend("retry", existing.nextRetryAt);
-          }
-        }
-        if (existing.status === "errored") {
-          const err = new Error(existing.errorMessage ?? "STEP_FAILED");
-          err.name = existing.errorName ?? "Error";
-          throw err;
-        }
+      if (outcome.kind === "return") {
+        await this.#throwIfPauseRequested();
+        return outcome.result as T;
       }
 
-      const { maxAttempts, delayMs, backoff } = normalizeRetryConfig(config);
-      const timeoutMs = config?.timeout ? parseDurationMs(config.timeout) : null;
-      const attempt = (existing?.attempts ?? 0) + 1;
-
-      let stepId = existing?.id;
-
-      if (stepId) {
-        await this.#db.update("workflow_step", stepId, (b) =>
-          b.set({
-            status: "running",
-            attempts: attempt,
-            maxAttempts,
-            timeoutMs,
-            nextRetryAt: null,
-            errorName: null,
-            errorMessage: null,
-            updatedAt: this.#time.now(),
-          }),
-        );
-      } else {
-        stepId = await this.#db.create("workflow_step", {
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          runNumber: this.#runNumber,
-          stepKey: name,
-          name,
-          type: "do",
-          status: "running",
-          attempts: attempt,
-          maxAttempts,
-          timeoutMs,
-          nextRetryAt: null,
-          wakeAt: null,
-          waitEventType: null,
-          result: null,
-          errorName: null,
-          errorMessage: null,
-        });
+      if (outcome.kind === "suspend") {
+        await this.#throwIfPauseRequested();
+        throw new WorkflowSuspend("retry", outcome.runAt);
       }
 
+      if (outcome.kind === "error") {
+        throw outcome.error;
+      }
+
+      const { attempt, maxAttempts, delayMs, backoff, timeoutMs } = outcome;
       this.#setStepContext(name, attempt);
 
       try {
         const result = await this.#runWithTimeout(callback, timeoutMs);
-        if (stepId) {
-          await this.#db.update("workflow_step", stepId, (b) =>
-            b.set({
-              status: "completed",
-              result,
-              updatedAt: this.#time.now(),
-            }),
-          );
-        }
+        await this.#runHandlerTx((handlerTx) =>
+          handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(workflowsSchema).findFirst("workflow_step", (b) =>
+                b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", this.#workflowName),
+                    eb("instanceId", "=", this.#instanceId),
+                    eb("runNumber", "=", this.#runNumber),
+                    eb("stepKey", "=", name),
+                  ),
+                ),
+              ),
+            )
+            .transformRetrieve(([current]) => {
+              if (!current) {
+                return { kind: "noop" as const };
+              }
+              return { kind: "update" as const, id: current.id };
+            })
+            .mutate(({ forSchema, retrieveResult }) => {
+              if (retrieveResult.kind !== "update") {
+                return;
+              }
+              const currentId = retrieveResult.id;
+              forSchema(workflowsSchema).update("workflow_step", currentId, (b) => {
+                const builder = b.set({
+                  status: "completed",
+                  result,
+                  updatedAt: this.#time.now(),
+                });
+                if (currentId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+            })
+            .execute(),
+        );
         await this.#throwIfPauseRequested();
         return result;
       } catch (err) {
@@ -297,17 +427,47 @@ class RunnerStep implements WorkflowStep {
           ? new Date(this.#time.now().getTime() + computeRetryDelayMs(attempt, delayMs, backoff))
           : null;
 
-        if (stepId) {
-          await this.#db.update("workflow_step", stepId, (b) =>
-            b.set({
-              status: shouldRetry ? "waiting" : "errored",
-              errorName: error.name,
-              errorMessage: error.message,
-              nextRetryAt,
-              updatedAt: this.#time.now(),
-            }),
-          );
-        }
+        await this.#runHandlerTx((handlerTx) =>
+          handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(workflowsSchema).findFirst("workflow_step", (b) =>
+                b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", this.#workflowName),
+                    eb("instanceId", "=", this.#instanceId),
+                    eb("runNumber", "=", this.#runNumber),
+                    eb("stepKey", "=", name),
+                  ),
+                ),
+              ),
+            )
+            .transformRetrieve(([current]) => {
+              if (!current) {
+                return { kind: "noop" as const };
+              }
+              return { kind: "update" as const, id: current.id };
+            })
+            .mutate(({ forSchema, retrieveResult }) => {
+              if (retrieveResult.kind !== "update") {
+                return;
+              }
+              const currentId = retrieveResult.id;
+              forSchema(workflowsSchema).update("workflow_step", currentId, (b) => {
+                const builder = b.set({
+                  status: shouldRetry ? "waiting" : "errored",
+                  errorName: error.name,
+                  errorMessage: error.message,
+                  nextRetryAt,
+                  updatedAt: this.#time.now(),
+                });
+                if (currentId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+            })
+            .execute(),
+        );
 
         if (shouldRetry && nextRetryAt) {
           await this.#throwIfPauseRequested();
@@ -337,151 +497,221 @@ class RunnerStep implements WorkflowStep {
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
     this.#beginStep(name);
     this.#setStepContext(name, null);
+    const now = this.#time.now();
 
     try {
-      const existing = await this.#db.findFirst("workflow_step", (b) =>
-        b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
-          eb.and(
-            eb("workflowName", "=", this.#workflowName),
-            eb("instanceId", "=", this.#instanceId),
-            eb("runNumber", "=", this.#runNumber),
-            eb("stepKey", "=", name),
-          ),
-        ),
-      );
-
-      if (existing) {
-        if (existing.type !== "waitForEvent") {
-          throw new Error("STEP_TYPE_MISMATCH");
-        }
-        if (existing.status === "completed" && existing.result) {
-          await this.#throwIfPauseRequested();
-          const result = existing.result as {
-            type: string;
-            payload: Readonly<T>;
-            timestamp: Date | string | number;
-          };
-          return {
-            ...result,
-            timestamp: coerceEventTimestamp(result.timestamp),
-          };
-        }
-        if (existing.status === "errored") {
-          throw new WaitForEventTimeoutError();
-        }
-      }
-
-      const events = await this.#db.find("workflow_event", (b) =>
-        b
-          .whereIndex("idx_workflow_event_history_createdAt", (eb) =>
-            eb.and(
-              eb("workflowName", "=", this.#workflowName),
-              eb("instanceId", "=", this.#instanceId),
-              eb("runNumber", "=", this.#runNumber),
-            ),
+      const outcome = await this.#runHandlerTx((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema)
+              .findFirst("workflow_step", (b) =>
+                b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", this.#workflowName),
+                    eb("instanceId", "=", this.#instanceId),
+                    eb("runNumber", "=", this.#runNumber),
+                    eb("stepKey", "=", name),
+                  ),
+                ),
+              )
+              .find("workflow_event", (b) =>
+                b
+                  .whereIndex("idx_workflow_event_history_createdAt", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", this.#workflowName),
+                      eb("instanceId", "=", this.#instanceId),
+                      eb("runNumber", "=", this.#runNumber),
+                    ),
+                  )
+                  .orderByIndex("idx_workflow_event_history_createdAt", "asc"),
+              ),
           )
-          .orderByIndex("idx_workflow_event_history_createdAt", "asc"),
+          .transformRetrieve(([existing, events]) => {
+            if (existing && existing.type !== "waitForEvent") {
+              throw new Error("STEP_TYPE_MISMATCH");
+            }
+
+            if (existing?.status === "completed" && existing.result) {
+              const result = existing.result as {
+                type: string;
+                payload: Readonly<T>;
+                timestamp: Date | string | number;
+              };
+              return { kind: "return" as const, result };
+            }
+
+            if (existing?.status === "errored") {
+              return { kind: "timeout" as const };
+            }
+
+            const event = events.find(
+              (candidate) => candidate.type === options.type && candidate.deliveredAt === null,
+            );
+
+            if (event) {
+              const result = {
+                type: event.type,
+                payload: event.payload as Readonly<T>,
+                timestamp: event.createdAt,
+              };
+
+              return {
+                kind: "deliver" as const,
+                event,
+                existingStepId: existing?.id ?? null,
+                result,
+              };
+            }
+
+            const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
+            const wakeAt = existing?.wakeAt ?? new Date(now.getTime() + timeoutMs);
+
+            if (existing?.wakeAt && existing.wakeAt <= now) {
+              return {
+                kind: "timeoutUpdate" as const,
+                stepId: existing.id,
+              };
+            }
+
+            return {
+              kind: "wait" as const,
+              stepId: existing?.id ?? null,
+              wakeAt,
+              timeoutMs,
+            };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            const typed = forSchema(workflowsSchema);
+
+            if (retrieveResult.kind === "deliver") {
+              typed.update("workflow_event", retrieveResult.event.id, (b) => {
+                const builder = b.set({
+                  deliveredAt: now,
+                  consumedByStepKey: name,
+                });
+                if (retrieveResult.event.id instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+
+              if (retrieveResult.existingStepId) {
+                const stepId = retrieveResult.existingStepId;
+                typed.update("workflow_step", stepId, (b) => {
+                  const builder = b.set({
+                    status: "completed",
+                    result: retrieveResult.result,
+                    updatedAt: now,
+                  });
+                  if (stepId instanceof FragnoId) {
+                    builder.check();
+                  }
+                  return builder;
+                });
+              } else {
+                typed.create("workflow_step", {
+                  workflowName: this.#workflowName,
+                  instanceId: this.#instanceId,
+                  runNumber: this.#runNumber,
+                  stepKey: name,
+                  name,
+                  type: "waitForEvent",
+                  status: "completed",
+                  attempts: 1,
+                  maxAttempts: 1,
+                  timeoutMs: normalizeWaitTimeoutMs(options.timeout),
+                  nextRetryAt: null,
+                  wakeAt: null,
+                  waitEventType: options.type,
+                  result: retrieveResult.result,
+                  errorName: null,
+                  errorMessage: null,
+                });
+              }
+              return;
+            }
+
+            if (retrieveResult.kind === "timeoutUpdate") {
+              const stepId = retrieveResult.stepId;
+              typed.update("workflow_step", stepId, (b) => {
+                const builder = b.set({
+                  status: "errored",
+                  errorName: "WaitForEventTimeoutError",
+                  errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
+                  updatedAt: now,
+                });
+                if (stepId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+              return;
+            }
+
+            if (retrieveResult.kind === "wait") {
+              if (retrieveResult.stepId) {
+                const stepId = retrieveResult.stepId;
+                typed.update("workflow_step", stepId, (b) => {
+                  const builder = b.set({
+                    status: "waiting",
+                    wakeAt: retrieveResult.wakeAt,
+                    waitEventType: options.type,
+                    timeoutMs: retrieveResult.timeoutMs,
+                    updatedAt: now,
+                  });
+                  if (stepId instanceof FragnoId) {
+                    builder.check();
+                  }
+                  return builder;
+                });
+              } else {
+                typed.create("workflow_step", {
+                  workflowName: this.#workflowName,
+                  instanceId: this.#instanceId,
+                  runNumber: this.#runNumber,
+                  stepKey: name,
+                  name,
+                  type: "waitForEvent",
+                  status: "waiting",
+                  attempts: 0,
+                  maxAttempts: 1,
+                  timeoutMs: retrieveResult.timeoutMs,
+                  nextRetryAt: null,
+                  wakeAt: retrieveResult.wakeAt,
+                  waitEventType: options.type,
+                  result: null,
+                  errorName: null,
+                  errorMessage: null,
+                });
+              }
+            }
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
       );
 
-      const event = events.find(
-        (candidate) => candidate.type === options.type && candidate.deliveredAt === null,
-      );
-
-      if (event) {
-        const result = {
-          type: event.type,
-          payload: event.payload as Readonly<T>,
-          timestamp: event.createdAt,
-        };
-
-        await this.#db.update("workflow_event", event.id, (b) =>
-          b.set({
-            deliveredAt: this.#time.now(),
-            consumedByStepKey: name,
-          }),
-        );
-
-        if (existing) {
-          await this.#db.update("workflow_step", existing.id, (b) =>
-            b.set({
-              status: "completed",
-              result,
-              updatedAt: this.#time.now(),
-            }),
-          );
-        } else {
-          await this.#db.create("workflow_step", {
-            workflowName: this.#workflowName,
-            instanceId: this.#instanceId,
-            runNumber: this.#runNumber,
-            stepKey: name,
-            name,
-            type: "waitForEvent",
-            status: "completed",
-            attempts: 1,
-            maxAttempts: 1,
-            timeoutMs: normalizeWaitTimeoutMs(options.timeout),
-            nextRetryAt: null,
-            wakeAt: null,
-            waitEventType: options.type,
-            result,
-            errorName: null,
-            errorMessage: null,
-          });
-        }
-
+      if (outcome.kind === "return") {
         await this.#throwIfPauseRequested();
-        return result;
+        return {
+          ...outcome.result,
+          timestamp: coerceEventTimestamp(outcome.result.timestamp),
+        };
       }
 
-      const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
-      const wakeAt = existing?.wakeAt ?? new Date(this.#time.now().getTime() + timeoutMs);
+      if (outcome.kind === "deliver") {
+        await this.#throwIfPauseRequested();
+        return {
+          ...outcome.result,
+          timestamp: coerceEventTimestamp(outcome.result.timestamp),
+        };
+      }
 
-      if (existing) {
-        if (existing.wakeAt && existing.wakeAt <= this.#time.now()) {
-          await this.#db.update("workflow_step", existing.id, (b) =>
-            b.set({
-              status: "errored",
-              errorName: "WaitForEventTimeoutError",
-              errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
-              updatedAt: this.#time.now(),
-            }),
-          );
-          throw new WaitForEventTimeoutError();
-        }
-
-        await this.#db.update("workflow_step", existing.id, (b) =>
-          b.set({
-            status: "waiting",
-            wakeAt,
-            waitEventType: options.type,
-            timeoutMs,
-            updatedAt: this.#time.now(),
-          }),
-        );
-      } else {
-        await this.#db.create("workflow_step", {
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          runNumber: this.#runNumber,
-          stepKey: name,
-          name,
-          type: "waitForEvent",
-          status: "waiting",
-          attempts: 0,
-          maxAttempts: 1,
-          timeoutMs,
-          nextRetryAt: null,
-          wakeAt,
-          waitEventType: options.type,
-          result: null,
-          errorName: null,
-          errorMessage: null,
-        });
+      if (outcome.kind === "timeout" || outcome.kind === "timeoutUpdate") {
+        throw new WaitForEventTimeoutError();
       }
 
       await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", wakeAt);
+      throw new WorkflowSuspend("wake", outcome.wakeAt);
     } finally {
       this.#endStep(name);
     }
@@ -490,64 +720,109 @@ class RunnerStep implements WorkflowStep {
   async #sleepUntil(name: string, wakeAt: Date): Promise<void> {
     this.#beginStep(name);
     this.#setStepContext(name, null);
+    const now = this.#time.now();
 
     try {
-      const existing = await this.#db.findFirst("workflow_step", (b) =>
-        b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
-          eb.and(
-            eb("workflowName", "=", this.#workflowName),
-            eb("instanceId", "=", this.#instanceId),
-            eb("runNumber", "=", this.#runNumber),
-            eb("stepKey", "=", name),
-          ),
-        ),
+      const outcome = await this.#runHandlerTx((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_step", (b) =>
+              b.whereIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey", (eb) =>
+                eb.and(
+                  eb("workflowName", "=", this.#workflowName),
+                  eb("instanceId", "=", this.#instanceId),
+                  eb("runNumber", "=", this.#runNumber),
+                  eb("stepKey", "=", name),
+                ),
+              ),
+            ),
+          )
+          .transformRetrieve(([existing]) => {
+            if (existing && existing.type !== "sleep") {
+              throw new Error("STEP_TYPE_MISMATCH");
+            }
+
+            if (existing?.status === "completed") {
+              return { kind: "return" as const };
+            }
+
+            if (existing?.wakeAt && existing.wakeAt <= now) {
+              return { kind: "complete" as const, stepId: existing.id };
+            }
+
+            if (existing) {
+              return {
+                kind: "wait" as const,
+                stepId: existing.id,
+                wakeAt: existing.wakeAt ?? wakeAt,
+              };
+            }
+
+            return { kind: "create" as const, wakeAt };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            const typed = forSchema(workflowsSchema);
+
+            if (retrieveResult.kind === "complete") {
+              const stepId = retrieveResult.stepId;
+              typed.update("workflow_step", stepId, (b) => {
+                const builder = b.set({ status: "completed", updatedAt: now });
+                if (stepId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+              return;
+            }
+
+            if (retrieveResult.kind === "wait") {
+              const stepId = retrieveResult.stepId;
+              typed.update("workflow_step", stepId, (b) => {
+                const builder = b.set({
+                  status: "waiting",
+                  wakeAt: retrieveResult.wakeAt,
+                  updatedAt: now,
+                });
+                if (stepId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+              return;
+            }
+
+            if (retrieveResult.kind === "create") {
+              typed.create("workflow_step", {
+                workflowName: this.#workflowName,
+                instanceId: this.#instanceId,
+                runNumber: this.#runNumber,
+                stepKey: name,
+                name,
+                type: "sleep",
+                status: "waiting",
+                attempts: 0,
+                maxAttempts: 1,
+                timeoutMs: null,
+                nextRetryAt: null,
+                wakeAt: retrieveResult.wakeAt,
+                waitEventType: null,
+                result: null,
+                errorName: null,
+                errorMessage: null,
+              });
+            }
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
       );
 
-      if (existing) {
-        if (existing.type !== "sleep") {
-          throw new Error("STEP_TYPE_MISMATCH");
-        }
-        if (existing.status === "completed") {
-          await this.#throwIfPauseRequested();
-          return;
-        }
-        if (existing.wakeAt && existing.wakeAt <= this.#time.now()) {
-          await this.#db.update("workflow_step", existing.id, (b) =>
-            b.set({ status: "completed", updatedAt: this.#time.now() }),
-          );
-          await this.#throwIfPauseRequested();
-          return;
-        }
-        await this.#db.update("workflow_step", existing.id, (b) =>
-          b.set({
-            status: "waiting",
-            wakeAt: existing.wakeAt ?? wakeAt,
-            updatedAt: this.#time.now(),
-          }),
-        );
-      } else {
-        await this.#db.create("workflow_step", {
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          runNumber: this.#runNumber,
-          stepKey: name,
-          name,
-          type: "sleep",
-          status: "waiting",
-          attempts: 0,
-          maxAttempts: 1,
-          timeoutMs: null,
-          nextRetryAt: null,
-          wakeAt,
-          waitEventType: null,
-          result: null,
-          errorName: null,
-          errorMessage: null,
-        });
+      if (outcome.kind === "return" || outcome.kind === "complete") {
+        await this.#throwIfPauseRequested();
+        return;
       }
 
       await this.#throwIfPauseRequested();
-      throw new WorkflowSuspend("wake", existing?.wakeAt ?? wakeAt);
+      throw new WorkflowSuspend("wake", outcome.wakeAt);
     } finally {
       this.#endStep(name);
     }
@@ -578,13 +853,20 @@ class RunnerStep implements WorkflowStep {
   }
 
   async #throwIfPauseRequested() {
-    const instance = await this.#db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(
-          eb("workflowName", "=", this.#workflowName),
-          eb("instanceId", "=", this.#instanceId),
-        ),
-      ),
+    const instance = await this.#runHandlerTx((handlerTx) =>
+      handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+            b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+              eb.and(
+                eb("workflowName", "=", this.#workflowName),
+                eb("instanceId", "=", this.#instanceId),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([record]) => record)
+        .execute(),
     );
 
     if (!instance) {
@@ -628,18 +910,24 @@ class RunnerStep implements WorkflowStep {
     data?: unknown,
     options?: WorkflowLogOptions,
   ): Promise<void> {
-    await this.#db.create("workflow_log", {
-      workflowName: this.#workflowName,
-      instanceId: this.#instanceId,
-      runNumber: this.#runNumber,
-      stepKey: this.#activeStepKey,
-      attempt: this.#activeAttempt,
-      level,
-      category: options?.category ?? "workflow",
-      message,
-      data: data ?? null,
-      isReplay: this.#isReplay,
-    });
+    await this.#runHandlerTx((handlerTx) =>
+      handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(workflowsSchema).create("workflow_log", {
+            workflowName: this.#workflowName,
+            instanceId: this.#instanceId,
+            runNumber: this.#runNumber,
+            stepKey: this.#activeStepKey,
+            attempt: this.#activeAttempt,
+            level,
+            category: options?.category ?? "workflow",
+            message,
+            data: data ?? null,
+            isReplay: this.#isReplay,
+          });
+        })
+        .execute(),
+    );
   }
 }
 
@@ -653,11 +941,11 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   const time = runtime.time;
   const runnerId = runnerOptions.runnerId ?? runtime.random.uuid();
   const leaseMs = runnerOptions.leaseMs ?? DEFAULT_LEASE_MS;
+  const runHandlerTxForRunner: RunHandlerTx = (callback) =>
+    runHandlerTx(runnerOptions.fragment, callback);
   const workflowBindings = createWorkflowsBindingsForRunner({
-    db: runnerOptions.db,
     workflows: runnerOptions.workflows,
-    runtime,
-    onWorkflowEnqueued: runnerOptions.onWorkflowEnqueued,
+    fragment: runnerOptions.fragment,
   });
 
   const claimTask = async (task: WorkflowTaskRecord, now: Date) => {
@@ -665,65 +953,103 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       return null;
     }
 
-    const instance = await runnerOptions.db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", task.workflowName), eb("instanceId", "=", task.instanceId)),
-      ),
-    );
-
-    if (!instance) {
-      await completeTask(task);
-      return null;
-    }
-
-    if (instance.runNumber !== task.runNumber) {
-      await completeTask(task);
-      return null;
-    }
-
-    if (isTerminalStatus(instance.status)) {
-      await completeTask(task);
-      return null;
-    }
-
-    if (isPausedStatus(instance.status)) {
-      return null;
-    }
-
-    const hasActiveLease = task.lockedUntil ? task.lockedUntil > now : false;
-    const canStealProcessing = task.status === "processing" && !hasActiveLease;
-    if (task.status !== "pending" && !canStealProcessing) {
-      return null;
-    }
-
-    if (task.status === "pending" && hasActiveLease) {
-      return null;
-    }
-
     const claimedAt = time.now();
     const lockedUntil = new Date(now.getTime() + leaseMs);
-    const uow = runnerOptions.db.createUnitOfWork("workflow-task-claim");
-    const typed = uow.forSchema(workflowsSchema);
-    typed.update("workflow_task", task.id, (b) => {
-      const builder = b.set({
-        status: "processing",
-        lockOwner: runnerId,
-        lockedUntil,
-        updatedAt: claimedAt,
-      });
-      if (task.id instanceof FragnoId) {
-        builder.check();
-      }
-      return builder;
-    });
 
-    const { success } = await uow.executeMutations();
-    if (!success) {
+    let outcome;
+    try {
+      outcome = await runHandlerTxForRunner((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema)
+              .findFirst("workflow_task", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
+              )
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", task.workflowName),
+                    eb("instanceId", "=", task.instanceId),
+                  ),
+                ),
+              ),
+          )
+          .transformRetrieve(([currentTask, instance]) => {
+            if (!currentTask) {
+              return { kind: "noop" as const };
+            }
+
+            if (!instance || instance.runNumber !== currentTask.runNumber) {
+              return { kind: "delete" as const, taskId: currentTask.id };
+            }
+
+            if (isTerminalStatus(instance.status)) {
+              return { kind: "delete" as const, taskId: currentTask.id };
+            }
+
+            if (isPausedStatus(instance.status)) {
+              return { kind: "noop" as const };
+            }
+
+            const hasActiveLease = currentTask.lockedUntil ? currentTask.lockedUntil > now : false;
+            const canStealProcessing = currentTask.status === "processing" && !hasActiveLease;
+            if (currentTask.status !== "pending" && !canStealProcessing) {
+              return { kind: "noop" as const };
+            }
+
+            if (currentTask.status === "pending" && hasActiveLease) {
+              return { kind: "noop" as const };
+            }
+
+            return {
+              kind: "claim" as const,
+              task: currentTask,
+            };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult.kind === "delete") {
+              const taskId = retrieveResult.taskId;
+              forSchema(workflowsSchema).delete("workflow_task", taskId, (b) => {
+                if (taskId instanceof FragnoId) {
+                  return b.check();
+                }
+                return b;
+              });
+              return;
+            }
+
+            if (retrieveResult.kind === "claim") {
+              const taskId = retrieveResult.task.id;
+              forSchema(workflowsSchema).update("workflow_task", taskId, (b) => {
+                const builder = b.set({
+                  status: "processing",
+                  lockOwner: runnerId,
+                  lockedUntil,
+                  updatedAt: claimedAt,
+                });
+                if (taskId instanceof FragnoId) {
+                  builder.check();
+                }
+                return builder;
+              });
+            }
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
+      );
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        return null;
+      }
+      throw err;
+    }
+
+    if (outcome.kind !== "claim") {
       return null;
     }
 
     return {
-      ...task,
+      ...outcome.task,
       status: "processing",
       lockOwner: runnerId,
       lockedUntil,
@@ -736,44 +1062,63 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     status: string,
     update: Partial<WorkflowInstanceUpdate>,
   ): Promise<boolean> => {
-    const current = await runnerOptions.db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(
-          eb("workflowName", "=", instance.workflowName),
-          eb("instanceId", "=", instance.instanceId),
-        ),
-      ),
-    );
-
-    if (!current) {
-      return false;
-    }
-
-    if (current.runNumber !== instance.runNumber) {
-      return false;
-    }
-
-    if (isTerminalStatus(current.status)) {
-      return false;
-    }
-
     const { id: _ignoredId, ...safeUpdate } = update as WorkflowInstanceRecord;
 
-    const uow = runnerOptions.db.createUnitOfWork("workflow-instance-update");
-    const typed = uow.forSchema(workflowsSchema);
-    typed.update("workflow_instance", current.id, (b) => {
-      const builder = b.set({
-        ...safeUpdate,
-        status,
-        updatedAt: time.now(),
-      });
-      if (current.id instanceof FragnoId) {
-        builder.check();
+    try {
+      const outcome = await runHandlerTxForRunner((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                eb.and(
+                  eb("workflowName", "=", instance.workflowName),
+                  eb("instanceId", "=", instance.instanceId),
+                ),
+              ),
+            ),
+          )
+          .transformRetrieve(([current]) => {
+            if (!current) {
+              return { kind: "noop" as const };
+            }
+
+            if (current.runNumber !== instance.runNumber) {
+              return { kind: "noop" as const };
+            }
+
+            if (isTerminalStatus(current.status)) {
+              return { kind: "noop" as const };
+            }
+
+            return { kind: "update" as const, id: current.id };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult.kind !== "update") {
+              return;
+            }
+            const currentId = retrieveResult.id;
+            forSchema(workflowsSchema).update("workflow_instance", currentId, (b) => {
+              const builder = b.set({
+                ...safeUpdate,
+                status,
+                updatedAt: time.now(),
+              });
+              if (currentId instanceof FragnoId) {
+                builder.check();
+              }
+              return builder;
+            });
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
+      );
+      return outcome.kind === "update";
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        return false;
       }
-      return builder;
-    });
-    const { success } = await uow.executeMutations();
-    return success;
+      throw err;
+    }
   };
 
   const scheduleTask = async (
@@ -781,72 +1126,142 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     kind: "wake" | "retry" | "run",
     runAt: Date,
   ) => {
-    const current = await runnerOptions.db.findFirst("workflow_task", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
-    );
+    try {
+      const outcome = await runHandlerTxForRunner((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_task", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
+            ),
+          )
+          .transformRetrieve(([current]) => {
+            if (!current) {
+              return { kind: "noop" as const };
+            }
 
-    if (!current) {
-      return false;
-    }
+            if (current.updatedAt.getTime() !== task.updatedAt.getTime()) {
+              return { kind: "noop" as const };
+            }
 
-    if (current.updatedAt.getTime() !== task.updatedAt.getTime()) {
-      return false;
-    }
-
-    const uow = runnerOptions.db.createUnitOfWork("workflow-task-schedule");
-    const typed = uow.forSchema(workflowsSchema);
-    typed.update("workflow_task", current.id, (b) => {
-      const builder = b.set({
-        kind,
-        runAt,
-        status: "pending",
-        attempts: 0,
-        lastError: null,
-        lockOwner: null,
-        lockedUntil: null,
-        updatedAt: time.now(),
-      });
-      if (current.id instanceof FragnoId) {
-        builder.check();
+            return { kind: "update" as const, id: current.id };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult.kind !== "update") {
+              return;
+            }
+            const currentId = retrieveResult.id;
+            forSchema(workflowsSchema).update("workflow_task", currentId, (b) => {
+              const builder = b.set({
+                kind,
+                runAt,
+                status: "pending",
+                attempts: 0,
+                lastError: null,
+                lockOwner: null,
+                lockedUntil: null,
+                updatedAt: time.now(),
+              });
+              if (currentId instanceof FragnoId) {
+                builder.check();
+              }
+              return builder;
+            });
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
+      );
+      return outcome.kind === "update";
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        return false;
       }
-      return builder;
-    });
-    const { success } = await uow.executeMutations();
-    return success;
+      throw err;
+    }
   };
 
   const completeTask = async (task: WorkflowTaskRecord) => {
-    await runnerOptions.db.delete("workflow_task", task.id);
+    try {
+      await runHandlerTxForRunner((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_task", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
+            ),
+          )
+          .transformRetrieve(([current]) => {
+            if (!current) {
+              return { kind: "noop" as const };
+            }
+            return { kind: "delete" as const, id: current.id };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult.kind !== "delete") {
+              return;
+            }
+            const currentId = retrieveResult.id;
+            forSchema(workflowsSchema).delete("workflow_task", currentId, (b) => {
+              if (currentId instanceof FragnoId) {
+                return b.check();
+              }
+              return b;
+            });
+          })
+          .execute(),
+      );
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        return;
+      }
+      throw err;
+    }
   };
 
   const renewTaskLease = async (taskId: WorkflowTaskRecord["id"]) => {
-    const current = await runnerOptions.db.findFirst("workflow_task", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", taskId)),
-    );
+    try {
+      const outcome = await runHandlerTxForRunner((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_task", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", taskId)),
+            ),
+          )
+          .transformRetrieve(([current]) => {
+            if (!current) {
+              return { kind: "noop" as const };
+            }
 
-    if (!current) {
-      return false;
-    }
+            if (current.status !== "processing" || current.lockOwner !== runnerId) {
+              return { kind: "noop" as const };
+            }
 
-    if (current.status !== "processing" || current.lockOwner !== runnerId) {
-      return false;
-    }
-
-    const uow = runnerOptions.db.createUnitOfWork("workflow-task-renew");
-    const typed = uow.forSchema(workflowsSchema);
-    typed.update("workflow_task", current.id, (b) => {
-      const builder = b.set({
-        lockedUntil: new Date(time.now().getTime() + leaseMs),
-        updatedAt: time.now(),
-      });
-      if (current.id instanceof FragnoId) {
-        builder.check();
+            return { kind: "update" as const, id: current.id };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult.kind !== "update") {
+              return;
+            }
+            const currentId = retrieveResult.id;
+            forSchema(workflowsSchema).update("workflow_task", currentId, (b) => {
+              const builder = b.set({
+                lockedUntil: new Date(time.now().getTime() + leaseMs),
+                updatedAt: time.now(),
+              });
+              if (currentId instanceof FragnoId) {
+                builder.check();
+              }
+              return builder;
+            });
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
+      );
+      return outcome.kind === "update";
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        return false;
       }
-      return builder;
-    });
-
-    const { success } = await uow.executeMutations();
-    return success;
+      throw err;
+    }
   };
 
   const startTaskLeaseHeartbeat = (taskId: WorkflowTaskRecord["id"]) => {
@@ -892,10 +1307,20 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       return 0;
     }
 
-    const instance = await runnerOptions.db.findFirst("workflow_instance", (b) =>
-      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-        eb.and(eb("workflowName", "=", task.workflowName), eb("instanceId", "=", task.instanceId)),
-      ),
+    const instance = await runHandlerTxForRunner((handlerTx) =>
+      handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+            b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+              eb.and(
+                eb("workflowName", "=", task.workflowName),
+                eb("instanceId", "=", task.instanceId),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([record]) => record)
+        .execute(),
     );
 
     if (!instance) {
@@ -952,18 +1377,25 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       instanceId: instance.instanceId,
     };
 
-    const existingStep = await runnerOptions.db.findFirst("workflow_step", (b) =>
-      b.whereIndex("idx_workflow_step_history_createdAt", (eb) =>
-        eb.and(
-          eb("workflowName", "=", instance.workflowName),
-          eb("instanceId", "=", instance.instanceId),
-          eb("runNumber", "=", instance.runNumber),
-        ),
-      ),
+    const existingStep = await runHandlerTxForRunner((handlerTx) =>
+      handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(workflowsSchema).findFirst("workflow_step", (b) =>
+            b.whereIndex("idx_workflow_step_history_createdAt", (eb) =>
+              eb.and(
+                eb("workflowName", "=", instance.workflowName),
+                eb("instanceId", "=", instance.instanceId),
+                eb("runNumber", "=", instance.runNumber),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([record]) => record)
+        .execute(),
     );
 
     const step = new RunnerStep({
-      db: runnerOptions.db,
+      runHandlerTx: runHandlerTxForRunner,
       workflowName: instance.workflowName,
       instanceId: instance.instanceId,
       runNumber: instance.runNumber,
@@ -1053,24 +1485,30 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       const maxInstances = tickOptions.maxInstances ?? DEFAULT_MAX_INSTANCES;
       const maxSteps = tickOptions.maxSteps ?? DEFAULT_MAX_STEPS;
 
-      const [pendingTasks, expiredProcessingTasks] = await Promise.all([
-        runnerOptions.db.find("workflow_task", (b) =>
-          b
-            .whereIndex("idx_workflow_task_status_runAt", (eb) =>
-              eb.and(eb("status", "=", "pending"), eb("runAt", "<=", now)),
-            )
-            .orderByIndex("idx_workflow_task_status_runAt", "asc")
-            .pageSize(maxInstances * 3),
-        ),
-        runnerOptions.db.find("workflow_task", (b) =>
-          b
-            .whereIndex("idx_workflow_task_status_lockedUntil", (eb) =>
-              eb.and(eb("status", "=", "processing"), eb("lockedUntil", "<=", now)),
-            )
-            .orderByIndex("idx_workflow_task_status_lockedUntil", "asc")
-            .pageSize(maxInstances * 3),
-        ),
-      ]);
+      const [pendingTasks, expiredProcessingTasks] = await runHandlerTxForRunner((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema)
+              .find("workflow_task", (b) =>
+                b
+                  .whereIndex("idx_workflow_task_status_runAt", (eb) =>
+                    eb.and(eb("status", "=", "pending"), eb("runAt", "<=", now)),
+                  )
+                  .orderByIndex("idx_workflow_task_status_runAt", "asc")
+                  .pageSize(maxInstances * 3),
+              )
+              .find("workflow_task", (b) =>
+                b
+                  .whereIndex("idx_workflow_task_status_lockedUntil", (eb) =>
+                    eb.and(eb("status", "=", "processing"), eb("lockedUntil", "<=", now)),
+                  )
+                  .orderByIndex("idx_workflow_task_status_lockedUntil", "asc")
+                  .pageSize(maxInstances * 3),
+              ),
+          )
+          .transformRetrieve(([pending, expired]) => [pending, expired])
+          .execute(),
+      );
 
       const tasksById = new Map<string, WorkflowTaskRecord>();
       for (const task of pendingTasks) {
