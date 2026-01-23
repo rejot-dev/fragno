@@ -74,25 +74,32 @@ import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
-  workflowsSchema,
 } from "@fragno-dev/fragment-workflows";
 import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
-  const db = adapter.createQueryEngine(workflowsSchema, "workflows");
   const runtime = defaultFragnoRuntime;
-  const runner = createWorkflowsRunner({ db, workflows, runtime });
+  let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
   const dispatcher = createInProcessDispatcher({
-    wake: () => void runner.tick({ maxInstances: 5, maxSteps: 50 }),
+    wake: () => {
+      if (!runner) {
+        return;
+      }
+      void runner.tick({ maxInstances: 5, maxSteps: 50 });
+    },
     pollIntervalMs: 2000,
   });
 
+  const config = { workflows, dispatcher, runtime, enableRunnerTick: true };
   const fragment = instantiate(workflowsFragmentDefinition)
-    .withConfig({ workflows, runner, dispatcher, runtime, enableRunnerTick: true })
+    .withConfig(config)
     .withRoutes([workflowsRoutesFactory])
     .withOptions({ databaseAdapter: adapter })
     .build();
+
+  runner = createWorkflowsRunner({ fragment, workflows, runtime });
+  config.runner = runner;
 
   return { fragment, dispatcher };
 }
