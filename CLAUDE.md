@@ -20,12 +20,25 @@ integration with React, Vue, Node.js, and various meta-frameworks.
 
 ## Common Commands
 
-These can be run in either the root or in specific package directories. In the root `turbo` is used
-as a monorepo manager.
+All commands use Turbo as the monorepo task runner. Always include `--output-logs=errors-only` to
+reduce noise and only show errors.
 
-- `pnpm run build` - Build all packages
-- `pnpm run types:check` - TypeScript type checking across all packages
-- `pnpm exec vitest run`
+- `pnpm exec turbo build --output-logs=errors-only` - Build all packages
+- `pnpm exec turbo types:check --output-logs=errors-only` - TypeScript type checking across all
+  packages
+- `pnpm exec turbo test --output-logs=errors-only` - Run tests across all packages
+
+Use `--filter` to target specific packages or directories:
+
+- `--filter=@fragno-dev/core` - Target a specific package by name
+- `--filter=./packages/fragno-db` - Target by path
+- `--filter=./packages/*` - Target all packages in a directory
+- `--filter=...@fragno-dev/core` - Target a package and all its dependencies
+
+Examples:
+
+- `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
+- `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
 
 ## Tools
 
