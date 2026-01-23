@@ -286,7 +286,7 @@ describe("Workflows Runner", () => {
       .build();
 
     const { fragment, db } = fragments.workflows;
-    const runner = createWorkflowsRunner({ db, workflows, runtime });
+    const runner = createWorkflowsRunner({ fragment, workflows, runtime });
     return { fragments, testContext, fragment, db, runner, runtime };
   };
 
@@ -710,7 +710,7 @@ describe("Workflows Runner", () => {
   test("tick should renew task lease while executing", async () => {
     const leaseMs = 100;
     const leaseRunner = createWorkflowsRunner({
-      db,
+      fragment,
       workflows,
       runtime,
       leaseMs,
@@ -763,13 +763,13 @@ describe("Workflows Runner", () => {
     const id = await createInstance("concurrent-workflow", {});
 
     const runnerA = createWorkflowsRunner({
-      db,
+      fragment,
       workflows,
       runtime,
       runnerId: "runner-a",
     });
     const runnerB = createWorkflowsRunner({
-      db,
+      fragment,
       workflows,
       runtime,
       runnerId: "runner-b",
@@ -819,7 +819,7 @@ describe("Workflows Runner", () => {
     );
 
     const runner = createWorkflowsRunner({
-      db,
+      fragment,
       workflows,
       runtime,
       runnerId: "fresh-runner",

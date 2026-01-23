@@ -256,7 +256,7 @@ export async function createWorkflowsTestHarness(
 
   const { fragment, db } = fragments.workflows;
   const runner = createWorkflowsRunner({
-    db,
+    fragment,
     workflows,
     runtime,
     runnerId: options.runnerOptions?.runnerId,
