@@ -1,4 +1,12 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
 import { baseConfig } from "@fragno-private/vitest-config";
 
-export default defineConfig(baseConfig);
+export default defineConfig(
+  mergeConfig(baseConfig, {
+    test: {
+      coverage: {
+        enabled: false,
+      },
+    },
+  }),
+);
