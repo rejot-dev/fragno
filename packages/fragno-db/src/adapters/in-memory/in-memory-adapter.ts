@@ -123,7 +123,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
         this.#schemaNamespaceMap,
       ).forSchema(schema);
 
-    return {
+    const queryEngine = {
       async find(tableName, builderFn) {
         const uow = createUow();
         uow.find(tableName, builderFn);
@@ -265,5 +265,6 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
         return createUow({ name, config });
       },
     } as SimpleQueryInterface<T, InMemoryUowConfig>;
+    return queryEngine;
   }
 }
