@@ -1,4 +1,4 @@
-import { createWorkflowsClients } from "..";
+import { createWorkflowsClients } from "./clients";
 
 import { useFragno } from "@fragno-dev/core/react";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
