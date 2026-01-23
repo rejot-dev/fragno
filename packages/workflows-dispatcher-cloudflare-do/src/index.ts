@@ -2,9 +2,8 @@ import { defaultFragnoRuntime, instantiate, type FragnoRuntime } from "@fragno-d
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
 import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
-import { migrate } from "@fragno-dev/db";
+import { migrate, type DatabaseRequestContext } from "@fragno-dev/db";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
@@ -119,8 +118,10 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
   #tickInFlight = false;
   #tickQueued = false;
   #onTickError?: (error: unknown) => void;
+  #fragment: {
+    inContext: <T>(callback: (this: DatabaseRequestContext) => T | Promise<T>) => T | Promise<T>;
+  };
   #fragmentHandler: (request: Request) => Promise<Response>;
-  #db: SimpleQueryInterface<typeof workflowsSchema, unknown>;
 
   constructor(options: WorkflowsDispatcherDurableObjectRuntimeOptions<TEnv>) {
     this.#state = options.state;
@@ -128,7 +129,6 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
     this.#tickOptions = options.tickOptions ?? {};
     this.#onTickError = options.onTickError;
 
-    const namespace = options.namespace ?? "workflows";
     const createAdapter =
       options.createAdapter ??
       ((context: { state: WorkflowsDispatcherDurableObjectState }) => {
@@ -142,37 +142,39 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
       });
 
     this.#adapter = createAdapter({ state: this.#state, env: this.#env });
-    this.#db = this.#adapter.createQueryEngine(workflowsSchema, namespace);
     const runtime = options.runtime ?? defaultFragnoRuntime;
 
-    this.#runner = createWorkflowsRunner({
-      db: this.#db,
-      workflows: options.workflows,
-      runtime,
-      runnerId: options.runnerId ?? this.#state.id.toString(),
-      leaseMs: options.leaseMs,
-    });
-
     const runnerFacade: WorkflowsRunner = {
-      tick: (tickOptions) => this.#queueTick(tickOptions),
+      tick: (tickOptions?: RunnerTickOptions) => this.#queueTick(tickOptions),
     };
 
     const dispatcher = {
       wake: (payload: WorkflowEnqueuedHookPayload) => this.#wake(payload),
     };
 
+    const fragmentConfig = {
+      workflows: options.workflows,
+      runner: runnerFacade,
+      dispatcher,
+      enableRunnerTick: options.enableRunnerTick ?? true,
+      runtime,
+      ...options.fragmentConfig,
+    } satisfies WorkflowsFragmentConfig;
+
     const fragment = instantiate(workflowsFragmentDefinition)
-      .withConfig({
-        workflows: options.workflows,
-        runner: runnerFacade,
-        dispatcher,
-        enableRunnerTick: options.enableRunnerTick ?? true,
-        runtime,
-        ...options.fragmentConfig,
-      })
+      .withConfig(fragmentConfig)
       .withRoutes([workflowsRoutesFactory])
       .withOptions({ databaseAdapter: this.#adapter })
       .build();
+
+    this.#fragment = fragment;
+    this.#runner = createWorkflowsRunner({
+      fragment,
+      workflows: options.workflows,
+      runtime,
+      runnerId: options.runnerId ?? this.#state.id.toString(),
+      leaseMs: options.leaseMs,
+    });
 
     this.#fragmentHandler = (request: Request) => fragment.handler(request);
 
@@ -233,20 +235,30 @@ class WorkflowsDispatcherDurableObjectRuntime<TEnv> {
       return;
     }
 
-    const nextPending = await this.#db.findFirst("workflow_task", (b) =>
-      b
-        .whereIndex("idx_workflow_task_status_runAt", (eb) =>
-          eb.and(eb("status", "=", "pending"), eb("runAt", ">=", new Date(0))),
+    const [nextPending, nextLocked] = await this.#fragment.inContext(function (
+      this: DatabaseRequestContext,
+    ) {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(workflowsSchema)
+            .findFirst("workflow_task", (b) =>
+              b
+                .whereIndex("idx_workflow_task_status_runAt", (eb) =>
+                  eb.and(eb("status", "=", "pending"), eb("runAt", ">=", new Date(0))),
+                )
+                .orderByIndex("idx_workflow_task_status_runAt", "asc"),
+            )
+            .findFirst("workflow_task", (b) =>
+              b
+                .whereIndex("idx_workflow_task_status_lockedUntil", (eb) =>
+                  eb.and(eb("status", "=", "processing"), eb("lockedUntil", ">=", new Date(0))),
+                )
+                .orderByIndex("idx_workflow_task_status_lockedUntil", "asc"),
+            ),
         )
-        .orderByIndex("idx_workflow_task_status_runAt", "asc"),
-    );
-    const nextLocked = await this.#db.findFirst("workflow_task", (b) =>
-      b
-        .whereIndex("idx_workflow_task_status_lockedUntil", (eb) =>
-          eb.and(eb("status", "=", "processing"), eb("lockedUntil", ">=", new Date(0))),
-        )
-        .orderByIndex("idx_workflow_task_status_lockedUntil", "asc"),
-    );
+        .transformRetrieve(([pending, locked]) => [pending, locked])
+        .execute();
+    });
 
     const nextRunAt = (nextPending as WorkflowTaskRunAt | null)?.runAt;
     const nextLockedUntil = (nextLocked as WorkflowTaskLocked | null)?.lockedUntil ?? null;

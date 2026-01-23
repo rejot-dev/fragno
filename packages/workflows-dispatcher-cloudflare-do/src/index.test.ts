@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import {
@@ -44,6 +44,20 @@ describe("workflows durable object dispatcher", async () => {
     .build();
 
   const { db } = fragments.workflows;
+
+  beforeAll(async () => {
+    const internalFragment =
+      fragments.workflows.fragment.$internal?.linkedFragments?._fragno_internal;
+    const internalSchema = internalFragment?.$internal?.deps?.schema;
+    if (!internalSchema) {
+      throw new Error("Internal fragment schema not found.");
+    }
+    const migrations = testContext.adapter.prepareMigrations?.(internalSchema, "");
+    if (!migrations) {
+      throw new Error("Database adapter does not support prepareMigrations.");
+    }
+    await migrations.execute(0, internalSchema.version, { updateVersionInMigration: false });
+  });
 
   beforeEach(async () => {
     await testContext.resetDatabase();
