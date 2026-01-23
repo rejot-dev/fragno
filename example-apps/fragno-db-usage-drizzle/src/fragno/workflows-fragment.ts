@@ -4,8 +4,8 @@ import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
-  workflowsSchema,
   WorkflowEntrypoint,
+  type WorkflowsFragmentConfig,
   type WorkflowEvent,
   type WorkflowStep,
 } from "@fragno-dev/fragment-workflows";
@@ -56,11 +56,13 @@ const workflows = {
 
 // oxlint-disable-next-line no-explicit-any
 export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
-  const db = a.createQueryEngine(workflowsSchema, "workflows");
   const runtime = defaultFragnoRuntime;
-  const runner = createWorkflowsRunner({ db, workflows, runtime });
+  let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
   const dispatcher = createInProcessDispatcher({
     wake: () => {
+      if (!runner) {
+        return;
+      }
       Promise.resolve(runner.tick({ maxInstances: 5, maxSteps: 50 })).catch((error: unknown) => {
         console.error("Workflows runner tick failed", error);
       });
@@ -68,11 +70,20 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
     pollIntervalMs: 2000,
   });
 
+  const config: WorkflowsFragmentConfig = {
+    workflows,
+    dispatcher,
+    enableRunnerTick: true,
+    runtime,
+  };
   const fragment = instantiate(workflowsFragmentDefinition)
-    .withConfig({ workflows, runner, dispatcher, enableRunnerTick: true, runtime })
+    .withConfig(config)
     .withRoutes([workflowsRoutesFactory])
     .withOptions({ databaseAdapter: a })
     .build();
+
+  runner = createWorkflowsRunner({ fragment, workflows, runtime });
+  config.runner = runner;
 
   return { fragment, dispatcher };
 }
