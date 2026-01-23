@@ -23,7 +23,6 @@ export default defineConfig([
   {
     ignoreWatch: ["./dist"],
     entry: [
-      "./src/index.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
       "./src/client/solid.ts",
@@ -32,7 +31,8 @@ export default defineConfig([
     ],
     dts: true,
     platform: "browser",
-    outDir: "./dist/browser",
+    outDir: "./dist/browser/client",
+    unbundle: true,
     plugins: [unpluginFragno({ platform: "browser" })],
     noExternal: [/^@fragno-dev\/core\//],
   },
