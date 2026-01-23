@@ -169,7 +169,7 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
       return engine.createUnitOfWork(name, configWithInstrumentation);
     };
 
-    return new Proxy(engine, {
+    const proxy = new Proxy(engine, {
       get(target, prop, receiver) {
         if (prop === "createUnitOfWork") {
           return wrappedCreateUnitOfWork;
@@ -181,6 +181,7 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
         return value;
       },
     });
+    return proxy;
   }
 
   createTableNameMapper(namespace: string): TableNameMapper {

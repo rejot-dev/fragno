@@ -156,7 +156,7 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       schemaNamespaceMap: this.#schemaNamespaceMap,
     };
 
-    return fromUnitOfWorkCompiler(schema, factory);
+    return fromUnitOfWorkCompiler(schema, factory) as SimpleQueryInterface<T, UnitOfWorkConfig>;
   }
 }
 
