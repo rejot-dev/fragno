@@ -626,14 +626,12 @@ describe("Workflows Runner", () => {
       attempt: null,
       level: "info",
       category: "workflow",
-      isReplay: false,
     });
     expect(insideLog).toMatchObject({
       stepKey: "logged-step",
       attempt: 1,
       level: "warn",
       category: "workflow",
-      isReplay: false,
     });
   });
 
@@ -672,7 +670,7 @@ describe("Workflows Runner", () => {
         .filter((value): value is number => value !== null)
         .sort((a, b) => a - b);
       expect(attemptNumbers).toEqual([1, 2]);
-      expect(logs.some((entry) => entry.isReplay)).toBe(true);
+      expect(logs).toHaveLength(2);
     } finally {
       vi.useRealTimers();
     }
@@ -704,7 +702,6 @@ describe("Workflows Runner", () => {
 
     const startLogs = logs.filter((entry) => entry.message === "start");
     expect(startLogs).toHaveLength(2);
-    expect(startLogs.some((entry) => entry.isReplay)).toBe(true);
   });
 
   test("tick should renew task lease while executing", async () => {

@@ -279,7 +279,6 @@ export const workflow_log_workflows = pgTable("workflow_log_workflows", {
   category: text("category").notNull(),
   message: text("message").notNull(),
   data: json("data"),
-  isReplay: boolean("isReplay").notNull().default(false),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
