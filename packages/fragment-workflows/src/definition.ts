@@ -91,7 +91,6 @@ type WorkflowLogRecord = {
   category: string;
   message: string;
   data: unknown | null;
-  isReplay: boolean;
   createdAt: Date;
 };
 
@@ -133,7 +132,6 @@ type WorkflowLogHistoryEntry = {
   category: string;
   message: string;
   data: unknown | null;
-  isReplay: boolean;
   createdAt: Date;
 };
 
@@ -275,7 +273,6 @@ function buildLogHistoryEntry(log: WorkflowLogRecord): WorkflowLogHistoryEntry {
     category: log.category,
     message: log.message,
     data: log.data ?? null,
-    isReplay: log.isReplay,
     createdAt: log.createdAt,
   };
 }

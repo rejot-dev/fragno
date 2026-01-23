@@ -61,7 +61,6 @@ export type WorkflowsHistoryLog = {
   category: string;
   message: string;
   data: unknown | null;
-  isReplay: boolean;
   createdAt: Date;
 };
 

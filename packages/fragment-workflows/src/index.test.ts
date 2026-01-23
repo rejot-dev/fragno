@@ -136,7 +136,6 @@ describe("Workflows Fragment", () => {
       category: "tests",
       message: "Created log entry",
       data: { ok: true },
-      isReplay: false,
     });
 
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
@@ -215,7 +214,6 @@ describe("Workflows Fragment", () => {
       category: "tests",
       message: "Created log entry",
       data: { ok: true },
-      isReplay: false,
     });
     expect(log.createdAt).toBeInstanceOf(Date);
   });

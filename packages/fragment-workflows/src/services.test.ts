@@ -540,7 +540,6 @@ describe("Workflows Fragment Services", () => {
       category: "alpha",
       message: "first",
       data: { ok: true },
-      isReplay: false,
       createdAt: new Date(1000),
     });
 
@@ -554,7 +553,6 @@ describe("Workflows Fragment Services", () => {
       category: "alpha",
       message: "second",
       data: { ok: false },
-      isReplay: true,
       createdAt: new Date(2000),
     });
 
@@ -568,7 +566,6 @@ describe("Workflows Fragment Services", () => {
       category: "beta",
       message: "third",
       data: null,
-      isReplay: false,
       createdAt: new Date(3000),
     });
 

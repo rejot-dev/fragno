@@ -104,7 +104,6 @@ describe("Workflows model checker", () => {
             category: "claim",
             message: `claimed:${runnerId}`,
             data: null,
-            isReplay: false,
           });
 
           const { success } = await uow.executeMutations();

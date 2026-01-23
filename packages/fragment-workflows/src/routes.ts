@@ -167,7 +167,6 @@ const historyLogSchema = z.object({
   category: z.string(),
   message: z.string(),
   data: z.unknown().nullable(),
-  isReplay: z.boolean(),
   createdAt: z.date(),
 });
 
