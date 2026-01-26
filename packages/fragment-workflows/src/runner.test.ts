@@ -1,3 +1,4 @@
+// Tests for workflow runner task claiming, execution, and pause/suspend behavior.
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
@@ -314,6 +315,18 @@ describe("Workflows Runner", () => {
     return response.data.id as string;
   };
 
+  const getInstanceRef = async (workflowName: string, instanceId: string) => {
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+      ),
+    );
+    if (!instance) {
+      throw new Error(`Instance not found: ${workflowName}/${instanceId}`);
+    }
+    return instance.id;
+  };
+
   beforeEach(async () => {
     await testContext.resetDatabase();
     doCallCount = 0;
@@ -470,8 +483,10 @@ describe("Workflows Runner", () => {
 
   test("tick should consume buffered events for waitForEvent", async () => {
     const id = await createInstance("event-workflow", {});
+    const instanceRef = await getInstanceRef("event-workflow", id);
 
     await db.create("workflow_event", {
+      instanceRef,
       workflowName: "event-workflow",
       instanceId: id,
       runNumber: 0,
@@ -853,15 +868,13 @@ describe("Workflows Runner", () => {
         errorMessage: null,
       });
 
-    await Promise.all([
-      createInstanceRecord("run-1"),
-      createInstanceRecord("wake-1"),
-      createInstanceRecord("retry-1"),
-      createInstanceRecord("resume-1"),
-    ]);
+    const instanceIds = ["run-1", "wake-1", "retry-1", "resume-1"];
+    const instanceRefs = await Promise.all(instanceIds.map(createInstanceRecord));
+    const instanceRefById = new Map(instanceIds.map((id, index) => [id, instanceRefs[index]]));
 
     const createTask = (instanceId: string, kind: "run" | "wake" | "retry" | "resume") =>
       db.create("workflow_task", {
+        instanceRef: instanceRefById.get(instanceId)!,
         workflowName: "priority-workflow",
         instanceId,
         runNumber: 0,
@@ -892,7 +905,7 @@ describe("Workflows Runner", () => {
 
   test("tick should clean up tasks for terminated instances", async () => {
     const now = new Date();
-    await db.create("workflow_instance", {
+    const instanceRef = await db.create("workflow_instance", {
       workflowName: "demo-workflow",
       instanceId: "terminated-1",
       status: "terminated",
@@ -908,6 +921,7 @@ describe("Workflows Runner", () => {
     });
 
     await db.create("workflow_task", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "terminated-1",
       runNumber: 0,

@@ -1,6 +1,6 @@
 // Database schema for workflow instances, steps, events, tasks, and logs.
 
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
 export const workflowsSchema = schema((s) => {
   return (
@@ -46,6 +46,7 @@ export const workflowsSchema = schema((s) => {
       .addTable("workflow_step", (t) => {
         return t
           .addColumn("id", idColumn())
+          .addColumn("instanceRef", referenceColumn())
           .addColumn("workflowName", column("string"))
           .addColumn("instanceId", column("string"))
           .addColumn("runNumber", column("integer"))
@@ -75,6 +76,7 @@ export const workflowsSchema = schema((s) => {
             ["workflowName", "instanceId", "runNumber", "stepKey"],
             { unique: true },
           )
+          .createIndex("idx_workflow_step_instanceRef_runNumber", ["instanceRef", "runNumber"])
           .createIndex("idx_workflow_step_history_createdAt", [
             "workflowName",
             "instanceId",
@@ -99,6 +101,7 @@ export const workflowsSchema = schema((s) => {
       .addTable("workflow_event", (t) => {
         return t
           .addColumn("id", idColumn())
+          .addColumn("instanceRef", referenceColumn())
           .addColumn("workflowName", column("string"))
           .addColumn("instanceId", column("string"))
           .addColumn("runNumber", column("integer"))
@@ -117,6 +120,11 @@ export const workflowsSchema = schema((s) => {
             "type",
             "deliveredAt",
           ])
+          .createIndex("idx_workflow_event_instanceRef_runNumber_createdAt", [
+            "instanceRef",
+            "runNumber",
+            "createdAt",
+          ])
           .createIndex("idx_workflow_event_history_createdAt", [
             "workflowName",
             "instanceId",
@@ -128,6 +136,7 @@ export const workflowsSchema = schema((s) => {
       .addTable("workflow_task", (t) => {
         return t
           .addColumn("id", idColumn())
+          .addColumn("instanceRef", referenceColumn())
           .addColumn("workflowName", column("string"))
           .addColumn("instanceId", column("string"))
           .addColumn("runNumber", column("integer"))
@@ -159,6 +168,7 @@ export const workflowsSchema = schema((s) => {
       .addTable("workflow_log", (t) => {
         return t
           .addColumn("id", idColumn())
+          .addColumn("instanceRef", referenceColumn())
           .addColumn("workflowName", column("string"))
           .addColumn("instanceId", column("string"))
           .addColumn("runNumber", column("integer"))
@@ -191,7 +201,32 @@ export const workflowsSchema = schema((s) => {
             "runNumber",
             "category",
             "createdAt",
+          ])
+          .createIndex("idx_workflow_log_instanceRef_runNumber_createdAt", [
+            "instanceRef",
+            "runNumber",
+            "createdAt",
           ]);
+      })
+      .addReference("taskInstance", {
+        type: "one",
+        from: { table: "workflow_task", column: "instanceRef" },
+        to: { table: "workflow_instance", column: "id" },
+      })
+      .addReference("stepInstance", {
+        type: "one",
+        from: { table: "workflow_step", column: "instanceRef" },
+        to: { table: "workflow_instance", column: "id" },
+      })
+      .addReference("eventInstance", {
+        type: "one",
+        from: { table: "workflow_event", column: "instanceRef" },
+        to: { table: "workflow_instance", column: "id" },
+      })
+      .addReference("logInstance", {
+        type: "one",
+        from: { table: "workflow_log", column: "instanceRef" },
+        to: { table: "workflow_instance", column: "id" },
       })
   );
 });

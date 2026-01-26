@@ -200,6 +200,7 @@ export const workflow_instance_workflows = pgTable("workflow_instance_workflows"
 
 export const workflow_step_workflows = pgTable("workflow_step_workflows", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
   runNumber: integer("runNumber").notNull(),
@@ -221,7 +222,13 @@ export const workflow_step_workflows = pgTable("workflow_step_workflows", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
+  foreignKey({
+    columns: [table.instanceRef],
+    foreignColumns: [workflow_instance_workflows._internalId],
+    name: "fk_workflow_step_workflow_instance_stepInstance_workflows"
+  }),
   uniqueIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.stepKey),
+  index("idx_workflow_step_instanceRef_runNumber_workflows").on(table.instanceRef, table.runNumber),
   index("idx_workflow_step_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
   index("idx_workflow_step_status_wakeAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.status, table.wakeAt),
   index("idx_workflow_step_workflowName_instanceId_status_workflows").on(table.workflowName, table.instanceId, table.status),
@@ -230,6 +237,7 @@ export const workflow_step_workflows = pgTable("workflow_step_workflows", {
 
 export const workflow_event_workflows = pgTable("workflow_event_workflows", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
   runNumber: integer("runNumber").notNull(),
@@ -241,12 +249,19 @@ export const workflow_event_workflows = pgTable("workflow_event_workflows", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
+  foreignKey({
+    columns: [table.instanceRef],
+    foreignColumns: [workflow_instance_workflows._internalId],
+    name: "fk_workflow_event_workflow_instance_eventInstance_workflows"
+  }),
   index("idx_workflow_event_type_deliveredAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.type, table.deliveredAt),
+  index("idx_workflow_event_instanceRef_runNumber_createdAt_workflows").on(table.instanceRef, table.runNumber, table.createdAt),
   index("idx_workflow_event_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt)
 ])
 
 export const workflow_task_workflows = pgTable("workflow_task_workflows", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
   runNumber: integer("runNumber").notNull(),
@@ -263,6 +278,11 @@ export const workflow_task_workflows = pgTable("workflow_task_workflows", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
+  foreignKey({
+    columns: [table.instanceRef],
+    foreignColumns: [workflow_instance_workflows._internalId],
+    name: "fk_workflow_task_workflow_instance_taskInstance_workflows"
+  }),
   index("idx_workflow_task_status_runAt_workflows").on(table.status, table.runAt),
   index("idx_workflow_task_status_lockedUntil_workflows").on(table.status, table.lockedUntil),
   uniqueIndex("idx_workflow_task_workflowName_instanceId_runNumber_workflows").on(table.workflowName, table.instanceId, table.runNumber)
@@ -270,6 +290,7 @@ export const workflow_task_workflows = pgTable("workflow_task_workflows", {
 
 export const workflow_log_workflows = pgTable("workflow_log_workflows", {
   id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
   runNumber: integer("runNumber").notNull(),
@@ -283,21 +304,84 @@ export const workflow_log_workflows = pgTable("workflow_log_workflows", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
+  foreignKey({
+    columns: [table.instanceRef],
+    foreignColumns: [workflow_instance_workflows._internalId],
+    name: "fk_workflow_log_workflow_instance_logInstance_workflows"
+  }),
   index("idx_workflow_log_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
   index("idx_workflow_log_level_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.level, table.createdAt),
-  index("idx_workflow_log_category_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.category, table.createdAt)
+  index("idx_workflow_log_category_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.category, table.createdAt),
+  index("idx_workflow_log_instanceRef_runNumber_createdAt_workflows").on(table.instanceRef, table.runNumber, table.createdAt)
 ])
+
+export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({
+  workflow_stepList: many(workflow_step_workflows, {
+    relationName: "workflow_step_workflow_instance"
+  }),
+  workflow_eventList: many(workflow_event_workflows, {
+    relationName: "workflow_event_workflow_instance"
+  }),
+  workflow_taskList: many(workflow_task_workflows, {
+    relationName: "workflow_task_workflow_instance"
+  }),
+  workflow_logList: many(workflow_log_workflows, {
+    relationName: "workflow_log_workflow_instance"
+  })
+}));
+
+export const workflow_step_workflowsRelations = relations(workflow_step_workflows, ({ one }) => ({
+  stepInstance: one(workflow_instance_workflows, {
+    relationName: "workflow_step_workflow_instance",
+    fields: [workflow_step_workflows.instanceRef],
+    references: [workflow_instance_workflows._internalId]
+  })
+}));
+
+export const workflow_event_workflowsRelations = relations(workflow_event_workflows, ({ one }) => ({
+  eventInstance: one(workflow_instance_workflows, {
+    relationName: "workflow_event_workflow_instance",
+    fields: [workflow_event_workflows.instanceRef],
+    references: [workflow_instance_workflows._internalId]
+  })
+}));
+
+export const workflow_task_workflowsRelations = relations(workflow_task_workflows, ({ one }) => ({
+  taskInstance: one(workflow_instance_workflows, {
+    relationName: "workflow_task_workflow_instance",
+    fields: [workflow_task_workflows.instanceRef],
+    references: [workflow_instance_workflows._internalId]
+  })
+}));
+
+export const workflow_log_workflowsRelations = relations(workflow_log_workflows, ({ one }) => ({
+  logInstance: one(workflow_instance_workflows, {
+    relationName: "workflow_log_workflow_instance",
+    fields: [workflow_log_workflows.instanceRef],
+    references: [workflow_instance_workflows._internalId]
+  })
+}));
 
 export const workflows_schema = {
   workflow_instance_workflows: workflow_instance_workflows,
+  workflow_instance_workflowsRelations: workflow_instance_workflowsRelations,
   workflow_instance: workflow_instance_workflows,
+  workflow_instanceRelations: workflow_instance_workflowsRelations,
   workflow_step_workflows: workflow_step_workflows,
+  workflow_step_workflowsRelations: workflow_step_workflowsRelations,
   workflow_step: workflow_step_workflows,
+  workflow_stepRelations: workflow_step_workflowsRelations,
   workflow_event_workflows: workflow_event_workflows,
+  workflow_event_workflowsRelations: workflow_event_workflowsRelations,
   workflow_event: workflow_event_workflows,
+  workflow_eventRelations: workflow_event_workflowsRelations,
   workflow_task_workflows: workflow_task_workflows,
+  workflow_task_workflowsRelations: workflow_task_workflowsRelations,
   workflow_task: workflow_task_workflows,
+  workflow_taskRelations: workflow_task_workflowsRelations,
   workflow_log_workflows: workflow_log_workflows,
+  workflow_log_workflowsRelations: workflow_log_workflowsRelations,
   workflow_log: workflow_log_workflows,
-  schemaVersion: 5
+  workflow_logRelations: workflow_log_workflowsRelations,
+  schemaVersion: 9
 }

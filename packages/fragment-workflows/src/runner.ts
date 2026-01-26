@@ -10,15 +10,19 @@ import {
   PRIORITY_BY_KIND,
 } from "./runner/constants";
 import { runHandlerTx } from "./runner/queries";
-import { claimTask, completeTask, scheduleTask, startTaskLeaseHeartbeat } from "./runner/task";
-import { setInstanceStatus } from "./runner/instance";
+import {
+  claimTask,
+  deleteTask,
+  startTaskLeaseHeartbeat,
+  commitInstanceAndTask,
+} from "./runner/task";
 import { processTask } from "./runner/process";
 import type { RunHandlerTx, WorkflowsRunnerOptions, WorkflowTaskRecord } from "./runner/types";
 
 // General flow:
 // 1) find runnable tasks and expired leases
 // 2) claim tasks with a lease
-// 3) load instance + workflow, run steps, and persist state
+// 3) load instance + workflow, run steps, and persist buffered state
 // 4) reschedule or complete tasks based on the outcome
 export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): WorkflowsRunner {
   const workflowsByName = new Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>();
@@ -42,23 +46,27 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   const claimTaskForRunner = (task: WorkflowTaskRecord, now: Date) =>
     claimTask(task, now, { runHandlerTx: runHandlerTxForRunner, time, runnerId, leaseMs });
 
-  const scheduleTaskForRunner = (
+  const commitInstanceAndTaskForRunner = (
     task: WorkflowTaskRecord,
-    kind: "wake" | "retry" | "run",
-    runAt: Date,
-  ) => scheduleTask(task, kind, runAt, { runHandlerTx: runHandlerTxForRunner, time });
+    instance: Parameters<typeof commitInstanceAndTask>[1],
+    status: Parameters<typeof commitInstanceAndTask>[2],
+    update: Parameters<typeof commitInstanceAndTask>[3],
+    taskAction: Parameters<typeof commitInstanceAndTask>[4],
+    mutations: Parameters<typeof commitInstanceAndTask>[5],
+  ) =>
+    commitInstanceAndTask(task, instance, status, update, taskAction, mutations, {
+      runHandlerTx: runHandlerTxForRunner,
+      time,
+    });
 
-  const completeTaskForRunner = (task: WorkflowTaskRecord) =>
-    completeTask(task, { runHandlerTx: runHandlerTxForRunner });
+  const deleteTaskForRunner = (task: WorkflowTaskRecord) =>
+    deleteTask(task, { runHandlerTx: runHandlerTxForRunner });
 
-  const setInstanceStatusForRunner = (
-    instance: Parameters<typeof setInstanceStatus>[0],
-    status: string,
-    update: Parameters<typeof setInstanceStatus>[2],
-  ) => setInstanceStatus(instance, status, update, { runHandlerTx: runHandlerTxForRunner, time });
-
-  const startTaskLeaseHeartbeatForRunner = (taskId: WorkflowTaskRecord["id"]) =>
-    startTaskLeaseHeartbeat(taskId, {
+  const startTaskLeaseHeartbeatForRunner = (
+    task: WorkflowTaskRecord,
+    state: Parameters<typeof startTaskLeaseHeartbeat>[1],
+  ) =>
+    startTaskLeaseHeartbeat(task, state, {
       runHandlerTx: runHandlerTxForRunner,
       time,
       runnerId,
@@ -124,13 +132,11 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
           continue;
         }
         processed += await processTask(claimed, maxSteps, {
-          runHandlerTx: runHandlerTxForRunner,
           time,
           workflowsByName,
           workflowBindings,
-          setInstanceStatus: setInstanceStatusForRunner,
-          scheduleTask: scheduleTaskForRunner,
-          completeTask: completeTaskForRunner,
+          commitInstanceAndTask: commitInstanceAndTaskForRunner,
+          deleteTask: deleteTaskForRunner,
           startTaskLeaseHeartbeat: startTaskLeaseHeartbeatForRunner,
         });
       }

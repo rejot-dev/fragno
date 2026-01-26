@@ -20,6 +20,22 @@ export type WorkflowStepRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_step"]
 >;
 
+export type WorkflowEventRecord = TableToColumnValues<
+  (typeof workflowsSchema)["tables"]["workflow_event"]
+>;
+
+export type WorkflowLogRecord = TableToColumnValues<
+  (typeof workflowsSchema)["tables"]["workflow_log"]
+>;
+
+export type WorkflowStepCreate = Omit<WorkflowStepRecord, "id">;
+
+export type WorkflowLogCreate = Omit<WorkflowLogRecord, "id">;
+
+export type WorkflowStepUpdate = Partial<Omit<WorkflowStepRecord, "id">>;
+
+export type WorkflowEventUpdate = Partial<Omit<WorkflowEventRecord, "id">>;
+
 export type WorkflowsRunnerFragment = {
   inContext: <T>(callback: (this: DatabaseRequestContext) => T | Promise<T>) => T | Promise<T>;
   services: Record<string, unknown>;

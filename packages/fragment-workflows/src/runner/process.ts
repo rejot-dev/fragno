@@ -1,105 +1,76 @@
 // Executes a single claimed task by running workflow code and updating persistence.
 
 import type { FragnoRuntime } from "@fragno-dev/core";
-import { workflowsSchema } from "../schema";
 import type {
   WorkflowEntrypoint,
   WorkflowEvent,
   WorkflowBindings,
   WorkflowsRegistry,
 } from "../workflow";
-import type { RunHandlerTx, WorkflowInstanceRecord, WorkflowTaskRecord } from "./types";
+import type {
+  WorkflowInstanceRecord,
+  WorkflowInstanceUpdate,
+  WorkflowEventRecord,
+  WorkflowStepRecord,
+  WorkflowTaskRecord,
+} from "./types";
 import { RunnerStep, WorkflowAbort, WorkflowPause, WorkflowSuspend } from "./step";
-import { isPausedStatus, isTerminalStatus } from "./status";
+import type { RunnerMutationBuffer, RunnerState } from "./state";
+import { createRunnerState } from "./state";
 
 export type ProcessTaskContext = {
-  runHandlerTx: RunHandlerTx;
   time: FragnoRuntime["time"];
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
   workflowBindings: WorkflowBindings;
-  setInstanceStatus: (
+  commitInstanceAndTask: (
+    task: WorkflowTaskRecord,
     instance: WorkflowInstanceRecord,
     status: string,
-    update: Partial<WorkflowInstanceRecord>,
+    update: Partial<WorkflowInstanceUpdate>,
+    taskAction:
+      | { kind: "delete" }
+      | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: Date },
+    mutations: RunnerMutationBuffer,
   ) => Promise<boolean>;
-  scheduleTask: (
-    task: WorkflowTaskRecord,
-    kind: "wake" | "retry" | "run",
-    runAt: Date,
-  ) => Promise<boolean>;
-  completeTask: (task: WorkflowTaskRecord) => Promise<void>;
-  startTaskLeaseHeartbeat: (taskId: WorkflowTaskRecord["id"]) => () => void;
+  deleteTask: (task: WorkflowTaskRecord) => Promise<void>;
+  startTaskLeaseHeartbeat: (task: WorkflowTaskRecord, state: RunnerState) => () => void;
 };
 
 export const processTask = async (
-  task: WorkflowTaskRecord,
+  claimed: {
+    task: WorkflowTaskRecord;
+    instance: WorkflowInstanceRecord;
+    steps: WorkflowStepRecord[];
+    events: WorkflowEventRecord[];
+  },
   maxSteps: number,
   ctx: ProcessTaskContext,
 ) => {
-  if (!task) {
-    return 0;
-  }
+  const { task, instance, steps, events } = claimed;
 
-  // Load the instance state to validate the task and hydrate the workflow run.
-  const instance = await ctx.runHandlerTx((handlerTx) =>
-    handlerTx()
-      .retrieve(({ forSchema }) =>
-        forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
-          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-            eb.and(
-              eb("workflowName", "=", task.workflowName),
-              eb("instanceId", "=", task.instanceId),
-            ),
-          ),
-        ),
-      )
-      .transformRetrieve(([record]) => record)
-      .execute(),
-  );
-
-  if (!instance) {
-    await ctx.completeTask(task);
-    return 0;
-  }
-
-  if (instance.runNumber !== task.runNumber) {
-    await ctx.completeTask(task);
-    return 0;
-  }
-
-  if (isTerminalStatus(instance.status)) {
-    await ctx.completeTask(task);
-    return 0;
-  }
-
-  if (isPausedStatus(instance.status)) {
-    await ctx.scheduleTask(task, task.kind as "run" | "wake" | "retry", task.runAt);
-    return 0;
-  }
+  const state = createRunnerState(instance, steps, events);
+  const startUpdate = instance.startedAt ? {} : { startedAt: ctx.time.now() };
 
   const workflowEntry = ctx.workflowsByName.get(instance.workflowName);
   if (!workflowEntry) {
-    const updated = await ctx.setInstanceStatus(instance, "errored", {
-      errorName: "WorkflowNotFound",
-      errorMessage: "WORKFLOW_NOT_FOUND",
-      completedAt: ctx.time.now(),
-    });
+    const updated = await ctx.commitInstanceAndTask(
+      task,
+      instance,
+      "errored",
+      {
+        ...startUpdate,
+        errorName: "WorkflowNotFound",
+        errorMessage: "WORKFLOW_NOT_FOUND",
+        completedAt: ctx.time.now(),
+      },
+      { kind: "delete" },
+      state.mutations,
+    );
     if (!updated) {
-      await ctx.completeTask(task);
+      await ctx.deleteTask(task);
       return 0;
     }
-    await ctx.completeTask(task);
     return 0;
-  }
-
-  if (instance.status !== "running") {
-    const updated = await ctx.setInstanceStatus(instance, "running", {
-      startedAt: instance.startedAt ?? ctx.time.now(),
-    });
-    if (!updated) {
-      await ctx.completeTask(task);
-      return 0;
-    }
   }
 
   const workflow = new workflowEntry.workflow() as WorkflowEntrypoint<unknown, unknown>;
@@ -112,8 +83,9 @@ export const processTask = async (
   };
 
   const step = new RunnerStep({
-    runHandlerTx: ctx.runHandlerTx,
+    state,
     workflowName: instance.workflowName,
+    instanceRef: task.instanceRef,
     instanceId: instance.instanceId,
     runNumber: instance.runNumber,
     maxSteps,
@@ -121,75 +93,109 @@ export const processTask = async (
   });
 
   // Keep the task lease alive while user code is running.
-  const stopHeartbeat = ctx.startTaskLeaseHeartbeat(task.id);
+  const stopHeartbeat = ctx.startTaskLeaseHeartbeat(task, state);
 
   try {
     const output = await workflow.run(event, step);
-    const updated = await ctx.setInstanceStatus(instance, "complete", {
-      output: output ?? null,
-      errorName: null,
-      errorMessage: null,
-      completedAt: ctx.time.now(),
-      pauseRequested: false,
-    });
+    const updated = await ctx.commitInstanceAndTask(
+      task,
+      instance,
+      "complete",
+      {
+        ...startUpdate,
+        output: output ?? null,
+        errorName: null,
+        errorMessage: null,
+        completedAt: ctx.time.now(),
+        pauseRequested: false,
+      },
+      { kind: "delete" },
+      state.mutations,
+    );
     if (!updated) {
-      await ctx.completeTask(task);
+      await ctx.deleteTask(task);
       return 0;
     }
-    await ctx.completeTask(task);
     return 1;
   } catch (err) {
     if (err instanceof WorkflowAbort) {
-      await ctx.completeTask(task);
+      await ctx.deleteTask(task);
       return 0;
     }
 
     if (err instanceof WorkflowPause) {
-      const updated = await ctx.setInstanceStatus(instance, "paused", {
-        pauseRequested: false,
-      });
+      const updated = await ctx.commitInstanceAndTask(
+        task,
+        instance,
+        "paused",
+        {
+          ...startUpdate,
+          pauseRequested: false,
+        },
+        { kind: "delete" },
+        state.mutations,
+      );
       if (!updated) {
-        await ctx.completeTask(task);
+        await ctx.deleteTask(task);
         return 0;
       }
-      await ctx.completeTask(task);
       return 1;
     }
 
     if (err instanceof WorkflowSuspend) {
       if (instance.pauseRequested) {
-        const updated = await ctx.setInstanceStatus(instance, "paused", {
-          pauseRequested: false,
-        });
+        const updated = await ctx.commitInstanceAndTask(
+          task,
+          instance,
+          "paused",
+          {
+            ...startUpdate,
+            pauseRequested: false,
+          },
+          { kind: "delete" },
+          state.mutations,
+        );
         if (!updated) {
-          await ctx.completeTask(task);
+          await ctx.deleteTask(task);
           return 0;
         }
-        await ctx.completeTask(task);
         return 1;
       }
 
-      const updated = await ctx.setInstanceStatus(instance, "waiting", {});
+      const updated = await ctx.commitInstanceAndTask(
+        task,
+        instance,
+        "waiting",
+        { ...startUpdate },
+        { kind: "schedule", taskKind: err.kind, runAt: err.runAt },
+        state.mutations,
+      );
       if (!updated) {
-        await ctx.completeTask(task);
+        await ctx.deleteTask(task);
         return 0;
       }
-      await ctx.scheduleTask(task, err.kind, err.runAt);
       return 1;
     }
 
     const error = err as Error;
-    const updated = await ctx.setInstanceStatus(instance, "errored", {
-      errorName: error.name ?? "Error",
-      errorMessage: error.message ?? "",
-      completedAt: ctx.time.now(),
-      pauseRequested: false,
-    });
+    const updated = await ctx.commitInstanceAndTask(
+      task,
+      instance,
+      "errored",
+      {
+        ...startUpdate,
+        errorName: error.name ?? "Error",
+        errorMessage: error.message ?? "",
+        completedAt: ctx.time.now(),
+        pauseRequested: false,
+      },
+      { kind: "delete" },
+      state.mutations,
+    );
     if (!updated) {
-      await ctx.completeTask(task);
+      await ctx.deleteTask(task);
       return 0;
     }
-    await ctx.completeTask(task);
     return 1;
   } finally {
     stopHeartbeat();
