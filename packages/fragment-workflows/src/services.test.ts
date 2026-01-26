@@ -1,3 +1,4 @@
+// Tests for workflow service APIs such as instance control, history, and events.
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
@@ -227,6 +228,7 @@ describe("Workflows Fragment Services", () => {
     );
 
     await db.create("workflow_step", {
+      instanceRef: instance.id,
       workflowName: "demo-workflow",
       instanceId: created.id,
       runNumber: 0,
@@ -318,6 +320,7 @@ describe("Workflows Fragment Services", () => {
     const currentStepAt = new Date("2024-01-02T00:00:30.000Z");
 
     await db.create("workflow_step", {
+      instanceRef: instance.id,
       workflowName: "demo-workflow",
       instanceId: created.id,
       runNumber: 0,
@@ -339,6 +342,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_step", {
+      instanceRef: instance.id,
       workflowName: "demo-workflow",
       instanceId: created.id,
       runNumber: 0,
@@ -417,7 +421,7 @@ describe("Workflows Fragment Services", () => {
   });
 
   test("listHistory should return steps and events for a run", async () => {
-    await db.create("workflow_instance", {
+    const instanceRef = await db.create("workflow_instance", {
       workflowName: "demo-workflow",
       instanceId: "history-2",
       status: "queued",
@@ -433,6 +437,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_step", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-2",
       runNumber: 1,
@@ -452,6 +457,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_step", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-2",
       runNumber: 1,
@@ -471,6 +477,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_event", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-2",
       runNumber: 1,
@@ -481,6 +488,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_event", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-2",
       runNumber: 1,
@@ -515,7 +523,7 @@ describe("Workflows Fragment Services", () => {
   });
 
   test("listHistory should include logs with filtering and pagination", async () => {
-    await db.create("workflow_instance", {
+    const instanceRef = await db.create("workflow_instance", {
       workflowName: "demo-workflow",
       instanceId: "history-logs",
       status: "queued",
@@ -531,6 +539,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_log", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-logs",
       runNumber: 1,
@@ -544,6 +553,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_log", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-logs",
       runNumber: 1,
@@ -557,6 +567,7 @@ describe("Workflows Fragment Services", () => {
     });
 
     await db.create("workflow_log", {
+      instanceRef,
       workflowName: "demo-workflow",
       instanceId: "history-logs",
       runNumber: 1,

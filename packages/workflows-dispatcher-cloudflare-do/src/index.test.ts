@@ -1,3 +1,4 @@
+// Tests for the Cloudflare Durable Object workflows dispatcher integration.
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
@@ -128,7 +129,7 @@ describe("workflows durable object dispatcher", async () => {
     const workflowName = "complete-workflow";
     const instanceId = "instance-1";
 
-    await db.create("workflow_instance", {
+    const instanceRef = await db.create("workflow_instance", {
       workflowName,
       instanceId,
       status: "queued",
@@ -139,6 +140,7 @@ describe("workflows durable object dispatcher", async () => {
     });
 
     await db.create("workflow_task", {
+      instanceRef,
       workflowName,
       instanceId,
       runNumber: 0,
@@ -179,7 +181,7 @@ describe("workflows durable object dispatcher", async () => {
     const workflowName = "sleep-workflow";
     const instanceId = "instance-2";
 
-    await db.create("workflow_instance", {
+    const instanceRef = await db.create("workflow_instance", {
       workflowName,
       instanceId,
       status: "queued",
@@ -191,6 +193,7 @@ describe("workflows durable object dispatcher", async () => {
 
     const runAt = new Date(Date.now() + 50);
     await db.create("workflow_task", {
+      instanceRef,
       workflowName,
       instanceId,
       runNumber: 0,

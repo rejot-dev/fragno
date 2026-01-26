@@ -1,3 +1,4 @@
+// Tests for workflow fragment persistence, routes, and bindings.
 import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
@@ -74,7 +75,7 @@ describe("Workflows Fragment", () => {
     const workflowName = "demo-workflow";
     const instanceId = "instance-1";
 
-    await db.create("workflow_instance", {
+    const instanceRef = await db.create("workflow_instance", {
       instanceId,
       workflowName,
       status: "pending",
@@ -85,6 +86,7 @@ describe("Workflows Fragment", () => {
     });
 
     await db.create("workflow_step", {
+      instanceRef,
       workflowName,
       instanceId,
       runNumber: 0,
@@ -104,6 +106,7 @@ describe("Workflows Fragment", () => {
     });
 
     await db.create("workflow_event", {
+      instanceRef,
       workflowName,
       instanceId,
       runNumber: 0,
@@ -114,6 +117,7 @@ describe("Workflows Fragment", () => {
     });
 
     await db.create("workflow_task", {
+      instanceRef,
       workflowName,
       instanceId,
       runNumber: 0,
@@ -127,6 +131,7 @@ describe("Workflows Fragment", () => {
     });
 
     await db.create("workflow_log", {
+      instanceRef,
       workflowName,
       instanceId,
       runNumber: 0,
@@ -288,7 +293,7 @@ describe("Workflows Fragment", () => {
     });
 
     test("GET /:workflowName/instances/:instanceId/history should return history", async () => {
-      await db.create("workflow_instance", {
+      const instanceRef = await db.create("workflow_instance", {
         workflowName: "demo-workflow",
         instanceId: "history-route",
         status: "queued",
@@ -304,6 +309,7 @@ describe("Workflows Fragment", () => {
       });
 
       await db.create("workflow_step", {
+        instanceRef,
         workflowName: "demo-workflow",
         instanceId: "history-route",
         runNumber: 2,
@@ -323,6 +329,7 @@ describe("Workflows Fragment", () => {
       });
 
       await db.create("workflow_event", {
+        instanceRef,
         workflowName: "demo-workflow",
         instanceId: "history-route",
         runNumber: 2,

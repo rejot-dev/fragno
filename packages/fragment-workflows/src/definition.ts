@@ -1,3 +1,4 @@
+// Fragment definition and service implementations for workflow instances.
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db";
@@ -315,7 +316,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               throw new Error("INSTANCE_ID_ALREADY_EXISTS");
             }
 
-            uow.create("workflow_instance", {
+            const instanceRef = uow.create("workflow_instance", {
               workflowName,
               instanceId,
               status: "queued",
@@ -331,6 +332,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             });
 
             uow.create("workflow_task", {
+              instanceRef,
               workflowName,
               instanceId,
               runNumber: 0,
@@ -396,7 +398,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               }
               processedIds.add(instance.id);
 
-              uow.create("workflow_instance", {
+              const instanceRef = uow.create("workflow_instance", {
                 workflowName,
                 instanceId: instance.id,
                 status: "queued",
@@ -412,6 +414,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               });
 
               uow.create("workflow_task", {
+                instanceRef,
                 workflowName,
                 instanceId: instance.id,
                 runNumber: 0,
@@ -831,6 +834,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               );
             } else {
               uow.create("workflow_task", {
+                instanceRef: instance.id,
                 workflowName,
                 instanceId,
                 runNumber: instance.runNumber,
@@ -936,6 +940,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             );
 
             uow.create("workflow_task", {
+              instanceRef: instance.id,
               workflowName,
               instanceId,
               runNumber: nextRun,
@@ -1005,6 +1010,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             }
 
             uow.create("workflow_event", {
+              instanceRef: instance.id,
               workflowName,
               instanceId,
               runNumber: instance.runNumber,
@@ -1041,6 +1047,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 );
               } else {
                 uow.create("workflow_task", {
+                  instanceRef: instance.id,
                   workflowName,
                   instanceId,
                   runNumber: instance.runNumber,

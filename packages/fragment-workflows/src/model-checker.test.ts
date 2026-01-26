@@ -1,3 +1,4 @@
+// Model checker tests for workflow task claiming behavior.
 import { describe, expect, it } from "vitest";
 import { InMemoryAdapter } from "@fragno-dev/db";
 import { FragnoId } from "@fragno-dev/db/schema";
@@ -26,6 +27,7 @@ describe("Workflows model checker", () => {
 
     const workflowName = "demo-workflow";
     const instanceId = "instance-1";
+    let instanceRef: FragnoId | null = null;
     const now = new Date("2025-01-01T00:00:00.000Z");
 
     const stateHasher = async (ctx: {
@@ -95,6 +97,7 @@ describe("Workflows model checker", () => {
           });
 
           uow.forSchema(workflowsSchema).create("workflow_log", {
+            instanceRef: instanceRef ?? instanceId,
             workflowName,
             instanceId,
             runNumber: 0,
@@ -121,7 +124,7 @@ describe("Workflows model checker", () => {
         stateHasher,
         createContext,
         setup: async (ctx) => {
-          await ctx.queryEngine.create("workflow_instance", {
+          instanceRef = await ctx.queryEngine.create("workflow_instance", {
             workflowName,
             instanceId,
             status: "queued",
@@ -137,6 +140,7 @@ describe("Workflows model checker", () => {
           });
 
           await ctx.queryEngine.create("workflow_task", {
+            instanceRef: instanceRef ?? instanceId,
             workflowName,
             instanceId,
             runNumber: 0,

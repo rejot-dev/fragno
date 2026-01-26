@@ -1,11 +1,27 @@
-// Task leasing and scheduling helpers for the workflow runner.
+// Task leasing and task/instance transition helpers for the workflow runner.
 
 import { ConcurrencyConflictError } from "@fragno-dev/db";
 import { FragnoId } from "@fragno-dev/db/schema";
 import type { FragnoRuntime } from "@fragno-dev/core";
 import { workflowsSchema } from "../schema";
-import type { RunHandlerTx, WorkflowTaskRecord } from "./types";
+import type {
+  RunHandlerTx,
+  WorkflowEventRecord,
+  WorkflowInstanceRecord,
+  WorkflowInstanceUpdate,
+  WorkflowStepRecord,
+  WorkflowTaskRecord,
+} from "./types";
 import { isPausedStatus, isTerminalStatus } from "./status";
+import type { RunnerMutationBuffer, RunnerState } from "./state";
+import { updateRemoteState } from "./state";
+
+const requireFragnoId = (value: unknown, label: string): FragnoId => {
+  if (value instanceof FragnoId) {
+    return value;
+  }
+  throw new Error(`OCC_REQUIRED_${label}`);
+};
 
 type TaskContext = {
   runHandlerTx: RunHandlerTx;
@@ -18,7 +34,12 @@ export const claimTask = async (
   task: WorkflowTaskRecord,
   now: Date,
   ctx: TaskContext,
-): Promise<WorkflowTaskRecord | null> => {
+): Promise<{
+  task: WorkflowTaskRecord;
+  instance: WorkflowInstanceRecord;
+  steps: WorkflowStepRecord[];
+  events: WorkflowEventRecord[];
+} | null> => {
   if (!task) {
     return null;
   }
@@ -33,21 +54,37 @@ export const claimTask = async (
         .retrieve(({ forSchema }) =>
           forSchema(workflowsSchema)
             .findFirst("workflow_task", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
+              b.whereIndex("primary", (eb) => eb("id", "=", task.id)).join((j) => j.taskInstance()),
             )
-            .findFirst("workflow_instance", (b) =>
-              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            .find("workflow_step", (b) =>
+              b.whereIndex("idx_workflow_step_instanceRef_runNumber", (eb) =>
                 eb.and(
-                  eb("workflowName", "=", task.workflowName),
-                  eb("instanceId", "=", task.instanceId),
+                  eb("instanceRef", "=", task.instanceRef),
+                  eb("runNumber", "=", task.runNumber),
                 ),
               ),
+            )
+            .find("workflow_event", (b) =>
+              b
+                .whereIndex("idx_workflow_event_instanceRef_runNumber_createdAt", (eb) =>
+                  eb.and(
+                    eb("instanceRef", "=", task.instanceRef),
+                    eb("runNumber", "=", task.runNumber),
+                  ),
+                )
+                .orderByIndex("idx_workflow_event_instanceRef_runNumber_createdAt", "asc"),
             ),
         )
-        .transformRetrieve(([currentTask, instance]) => {
+        .transformRetrieve(([currentTask, steps, events]) => {
           if (!currentTask) {
             return { kind: "noop" as const };
           }
+
+          const instance = (
+            currentTask as WorkflowTaskRecord & {
+              taskInstance?: WorkflowInstanceRecord | null;
+            }
+          ).taskInstance;
 
           if (!instance || instance.runNumber !== currentTask.runNumber) {
             return { kind: "delete" as const, taskId: currentTask.id };
@@ -74,32 +111,30 @@ export const claimTask = async (
           return {
             kind: "claim" as const,
             task: currentTask,
+            instance,
+            steps,
+            events,
           };
         })
         .mutate(({ forSchema, retrieveResult }) => {
           if (retrieveResult.kind === "delete") {
             const taskId = retrieveResult.taskId;
-            forSchema(workflowsSchema).delete("workflow_task", taskId, (b) => {
-              if (taskId instanceof FragnoId) {
-                return b.check();
-              }
-              return b;
-            });
+            requireFragnoId(taskId, "TASK_ID");
+            forSchema(workflowsSchema).delete("workflow_task", taskId, (b) => b.check());
             return;
           }
 
           if (retrieveResult.kind === "claim") {
             const taskId = retrieveResult.task.id;
             forSchema(workflowsSchema).update("workflow_task", taskId, (b) => {
+              requireFragnoId(taskId, "TASK_ID");
               const builder = b.set({
                 status: "processing",
                 lockOwner: ctx.runnerId,
                 lockedUntil,
                 updatedAt: claimedAt,
               });
-              if (taskId instanceof FragnoId) {
-                builder.check();
-              }
+              builder.check();
               return builder;
             });
           }
@@ -119,102 +154,203 @@ export const claimTask = async (
   }
 
   return {
-    ...outcome.task,
-    status: "processing",
-    lockOwner: ctx.runnerId,
-    lockedUntil,
-    updatedAt: claimedAt,
+    task: {
+      ...outcome.task,
+      status: "processing",
+      lockOwner: ctx.runnerId,
+      lockedUntil,
+      updatedAt: claimedAt,
+    },
+    instance: outcome.instance,
+    steps: outcome.steps,
+    events: outcome.events,
   };
 };
 
-export const scheduleTask = async (
+export const commitInstanceAndTask = async (
   task: WorkflowTaskRecord,
-  kind: "wake" | "retry" | "run",
-  runAt: Date,
+  instance: WorkflowInstanceRecord,
+  status: string,
+  update: Partial<WorkflowInstanceUpdate>,
+  taskAction:
+    | { kind: "delete" }
+    | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: Date },
+  mutations: RunnerMutationBuffer,
   ctx: Pick<TaskContext, "runHandlerTx" | "time">,
-) => {
+): Promise<boolean> => {
+  const { id: _ignoredInstanceId, ...safeUpdate } = update as WorkflowInstanceRecord;
+
   try {
-    const outcome = await ctx.runHandlerTx((handlerTx) =>
+    await ctx.runHandlerTx((handlerTx) =>
       handlerTx()
-        .retrieve(({ forSchema }) =>
-          forSchema(workflowsSchema).findFirst("workflow_task", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
-          ),
-        )
-        .transformRetrieve(([current]) => {
-          if (!current) {
-            return { kind: "noop" as const };
-          }
-
-          if (current.updatedAt.getTime() !== task.updatedAt.getTime()) {
-            return { kind: "noop" as const };
-          }
-
-          return { kind: "update" as const, id: current.id };
-        })
-        .mutate(({ forSchema, retrieveResult }) => {
-          if (retrieveResult.kind !== "update") {
-            return;
-          }
-          const currentId = retrieveResult.id;
-          forSchema(workflowsSchema).update("workflow_task", currentId, (b) => {
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(workflowsSchema);
+          const instanceId = instance.id;
+          uow.update("workflow_instance", instanceId, (b) => {
+            requireFragnoId(instanceId, "INSTANCE_ID");
             const builder = b.set({
-              kind,
-              runAt,
-              status: "pending",
-              attempts: 0,
-              lastError: null,
-              lockOwner: null,
-              lockedUntil: null,
+              ...safeUpdate,
+              status,
               updatedAt: ctx.time.now(),
             });
-            if (currentId instanceof FragnoId) {
-              builder.check();
-            }
+            builder.check();
             return builder;
           });
+
+          if (taskAction.kind === "delete") {
+            uow.delete("workflow_task", task.id);
+          } else {
+            uow.update("workflow_task", task.id, (b) =>
+              b.set({
+                kind: taskAction.taskKind,
+                runAt: taskAction.runAt,
+                status: "pending",
+                attempts: 0,
+                lastError: null,
+                lockOwner: null,
+                lockedUntil: null,
+                updatedAt: ctx.time.now(),
+              }),
+            );
+          }
+
+          for (const [, createData] of mutations.stepCreates) {
+            uow.create("workflow_step", createData);
+          }
+
+          for (const [, updateEntry] of mutations.stepUpdates) {
+            uow.update("workflow_step", updateEntry.id, (b) => {
+              requireFragnoId(updateEntry.id, "STEP_ID");
+              const builder = b.set(updateEntry.data);
+              builder.check();
+              return builder;
+            });
+          }
+
+          for (const [, eventUpdate] of mutations.eventUpdates) {
+            uow.update("workflow_event", eventUpdate.id, (b) => {
+              requireFragnoId(eventUpdate.id, "EVENT_ID");
+              const builder = b.set(eventUpdate.data);
+              builder.check();
+              return builder;
+            });
+          }
+
+          for (const log of mutations.logs) {
+            uow.create("workflow_log", log);
+          }
         })
-        .transform(({ retrieveResult }) => retrieveResult)
         .execute(),
     );
-    return outcome.kind === "update";
+    return true;
   } catch (err) {
     if (err instanceof ConcurrencyConflictError) {
-      return false;
+      const fallback = await ctx.runHandlerTx((handlerTx) =>
+        handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+              b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                eb.and(
+                  eb("workflowName", "=", instance.workflowName),
+                  eb("instanceId", "=", instance.instanceId),
+                ),
+              ),
+            ),
+          )
+          .transformRetrieve(([current]) => {
+            if (!current) {
+              return { kind: "deleteTask" as const };
+            }
+
+            if (current.runNumber !== instance.runNumber) {
+              return { kind: "deleteTask" as const };
+            }
+
+            if (isTerminalStatus(current.status)) {
+              return { kind: "deleteTask" as const };
+            }
+
+            if (
+              current.pauseRequested ||
+              current.status === "waitingForPause" ||
+              current.status === "paused"
+            ) {
+              return { kind: "pause" as const, instance: current };
+            }
+
+            return { kind: "noop" as const };
+          })
+          .mutate(({ forSchema, retrieveResult }) => {
+            const uow = forSchema(workflowsSchema);
+
+            if (retrieveResult.kind === "deleteTask") {
+              uow.delete("workflow_task", task.id);
+              return;
+            }
+
+            if (retrieveResult.kind !== "pause") {
+              return;
+            }
+
+            const instanceId = retrieveResult.instance.id;
+            uow.update("workflow_instance", instanceId, (b) => {
+              requireFragnoId(instanceId, "INSTANCE_ID");
+              const builder = b.set({
+                status: "paused",
+                pauseRequested: false,
+                updatedAt: ctx.time.now(),
+              });
+              builder.check();
+              return builder;
+            });
+
+            uow.delete("workflow_task", task.id);
+            for (const [, createData] of mutations.stepCreates) {
+              uow.create("workflow_step", createData);
+            }
+
+            for (const [, updateEntry] of mutations.stepUpdates) {
+              uow.update("workflow_step", updateEntry.id, (b) => {
+                requireFragnoId(updateEntry.id, "STEP_ID");
+                const builder = b.set(updateEntry.data);
+                builder.check();
+                return builder;
+              });
+            }
+
+            for (const [, eventUpdate] of mutations.eventUpdates) {
+              uow.update("workflow_event", eventUpdate.id, (b) => {
+                requireFragnoId(eventUpdate.id, "EVENT_ID");
+                const builder = b.set(eventUpdate.data);
+                builder.check();
+                return builder;
+              });
+            }
+
+            for (const log of mutations.logs) {
+              uow.create("workflow_log", log);
+            }
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .execute(),
+      );
+
+      return fallback.kind === "pause";
     }
     throw err;
   }
 };
 
-export const completeTask = async (
+export const deleteTask = async (
   task: WorkflowTaskRecord,
   ctx: Pick<TaskContext, "runHandlerTx">,
-) => {
+): Promise<void> => {
   try {
     await ctx.runHandlerTx((handlerTx) =>
       handlerTx()
-        .retrieve(({ forSchema }) =>
-          forSchema(workflowsSchema).findFirst("workflow_task", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", task.id)),
-          ),
-        )
-        .transformRetrieve(([current]) => {
-          if (!current) {
-            return { kind: "noop" as const };
-          }
-          return { kind: "delete" as const, id: current.id };
-        })
-        .mutate(({ forSchema, retrieveResult }) => {
-          if (retrieveResult.kind !== "delete") {
-            return;
-          }
-          const currentId = retrieveResult.id;
-          forSchema(workflowsSchema).delete("workflow_task", currentId, (b) => {
-            if (currentId instanceof FragnoId) {
-              return b.check();
-            }
-            return b;
-          });
+        .mutate(({ forSchema }) => {
+          // Delete without a version check to avoid stale ID conflicts.
+          forSchema(workflowsSchema).delete("workflow_task", task.id);
         })
         .execute(),
     );
@@ -226,59 +362,70 @@ export const completeTask = async (
   }
 };
 
-export const renewTaskLease = async (taskId: WorkflowTaskRecord["id"], ctx: TaskContext) => {
+export const renewTaskLease = async (
+  taskId: WorkflowTaskRecord["id"],
+  ctx: TaskContext,
+): Promise<{ ok: boolean; instance: WorkflowInstanceRecord | null }> => {
   try {
     const outcome = await ctx.runHandlerTx((handlerTx) =>
       handlerTx()
         .retrieve(({ forSchema }) =>
           forSchema(workflowsSchema).findFirst("workflow_task", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", taskId)),
+            b.whereIndex("primary", (eb) => eb("id", "=", taskId)).join((j) => j.taskInstance()),
           ),
         )
-        .transformRetrieve(([current]) => {
-          if (!current) {
-            return { kind: "noop" as const };
-          }
-
-          if (current.status !== "processing" || current.lockOwner !== ctx.runnerId) {
-            return { kind: "noop" as const };
-          }
-
-          return { kind: "update" as const, id: current.id };
+        .transformRetrieve(([currentTask]) => {
+          const instance = currentTask?.taskInstance;
+          return { task: currentTask ?? null, instance: instance ?? null };
         })
         .mutate(({ forSchema, retrieveResult }) => {
-          if (retrieveResult.kind !== "update") {
+          if (!retrieveResult.task) {
             return;
           }
-          const currentId = retrieveResult.id;
-          forSchema(workflowsSchema).update("workflow_task", currentId, (b) => {
-            const builder = b.set({
+          forSchema(workflowsSchema).update("workflow_task", taskId, (b) =>
+            b.set({
               lockedUntil: new Date(ctx.time.now().getTime() + ctx.leaseMs),
               updatedAt: ctx.time.now(),
-            });
-            if (currentId instanceof FragnoId) {
-              builder.check();
-            }
-            return builder;
-          });
+            }),
+          );
         })
         .transform(({ retrieveResult }) => retrieveResult)
         .execute(),
     );
-    return outcome.kind === "update";
+    if (!outcome.task) {
+      return { ok: false, instance: outcome.instance };
+    }
+    return { ok: true, instance: outcome.instance };
   } catch (err) {
     if (err instanceof ConcurrencyConflictError) {
-      return false;
+      return { ok: false, instance: null };
     }
     throw err;
   }
 };
 
-export const startTaskLeaseHeartbeat = (taskId: WorkflowTaskRecord["id"], ctx: TaskContext) => {
+export const startTaskLeaseHeartbeat = (
+  task: WorkflowTaskRecord,
+  state: RunnerState,
+  ctx: TaskContext,
+) => {
+  // Heartbeat refreshes the lease and snapshots pause/terminal state for in-memory checks.
   const intervalMs = Math.max(Math.floor(ctx.leaseMs / 2), 10);
   let stopped = false;
   let inFlight = false;
+  let refreshPromise: Promise<void> | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
+
+  const applyRefreshResult = (renewed: Awaited<ReturnType<typeof renewTaskLease>>) => {
+    updateRemoteState(state, renewed.instance);
+    if (!renewed.ok) {
+      stopped = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+  };
 
   const heartbeat = async () => {
     if (stopped || inFlight) {
@@ -286,14 +433,8 @@ export const startTaskLeaseHeartbeat = (taskId: WorkflowTaskRecord["id"], ctx: T
     }
     inFlight = true;
     try {
-      const renewed = await renewTaskLease(taskId, ctx);
-      if (!renewed) {
-        stopped = true;
-        if (timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-      }
+      const renewed = await renewTaskLease(task.id, ctx);
+      applyRefreshResult(renewed);
     } finally {
       inFlight = false;
     }
@@ -302,6 +443,27 @@ export const startTaskLeaseHeartbeat = (taskId: WorkflowTaskRecord["id"], ctx: T
   timer = setInterval(() => {
     void heartbeat();
   }, intervalMs);
+
+  state.remoteStateRefresh = async () => {
+    if (stopped) {
+      return;
+    }
+    if (refreshPromise) {
+      await refreshPromise;
+      return;
+    }
+
+    refreshPromise = (async () => {
+      const renewed = await renewTaskLease(task.id, ctx);
+      applyRefreshResult(renewed);
+    })();
+
+    try {
+      await refreshPromise;
+    } finally {
+      refreshPromise = null;
+    }
+  };
 
   return () => {
     stopped = true;

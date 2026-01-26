@@ -1,3 +1,4 @@
+// Test database adapter helpers and reset logic for fragment suites.
 import { Kysely } from "kysely";
 import { SQLocalKysely } from "sqlocal/kysely";
 import { KyselyPGlite } from "kysely-pglite";
@@ -343,7 +344,8 @@ export async function createDrizzlePgliteAdapter(
     // Truncate all tables by deleting rows
     for (const { schema, namespace } of schemas) {
       const mapper = adapter.createTableNameMapper(namespace);
-      for (const tableName of Object.keys(schema.tables)) {
+      const tableNames = Object.keys(schema.tables).slice().reverse();
+      for (const tableName of tableNames) {
         const physicalTableName = mapper.toPhysical(tableName);
         await drizzleDb.execute(`DELETE FROM "${physicalTableName}"`);
       }
