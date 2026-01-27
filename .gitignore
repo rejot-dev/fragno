@@ -88,3 +88,6 @@ lefthook-local.yml
 
 # .letta directory files
 .letta/
+
+.superset/
+
