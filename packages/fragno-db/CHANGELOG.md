@@ -1,5 +1,13 @@
 # @fragno-dev/db
 
+## 0.2.3
+
+### Patch Changes
+
+- dbbbf60: fix: ensure unit-of-work after-phase hooks run on errors
+- 1902f30: fix(db): normalize postgres timestamp decoding for timezone-less values.
+- a5ead11: feat(db): add Prisma adapter and SQLite Prisma profile support.
+
 ## 0.2.2
 
 ### Patch Changes
