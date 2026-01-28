@@ -131,17 +131,7 @@ describe("serialize", () => {
       it("should convert string timestamps to Date", () => {
         const timestampCol = column("timestamp");
         const time = "2024-01-01 12:30:45.123";
-        const result = deserialize(time, timestampCol, "postgresql");
-        assert.instanceOf(result, Date);
-        expect(result.toISOString()).toBe("2024-01-01T12:30:45.123Z");
-      });
-
-      it("should treat timezone-less ISO timestamps as UTC", () => {
-        const timestampCol = column("timestamp");
-        const time = "2024-01-01T12:30:45.123";
-        const result = deserialize(time, timestampCol, "postgresql");
-        assert.instanceOf(result, Date);
-        expect(result.toISOString()).toBe("2024-01-01T12:30:45.123Z");
+        expect(deserialize(time, timestampCol, "postgresql")).toEqual(new Date(time));
       });
 
       it("should convert ISO string timestamps to Date", () => {
@@ -272,9 +262,7 @@ describe("serialize", () => {
       it("should convert string timestamps to Date", () => {
         const timestampCol = column("timestamp");
         const time = "2024-01-01 12:30:45.123";
-        const result = deserialize(time, timestampCol, "cockroachdb");
-        assert.instanceOf(result, Date);
-        expect(result.toISOString()).toBe("2024-01-01T12:30:45.123Z");
+        expect(deserialize(time, timestampCol, "cockroachdb")).toEqual(new Date(time));
       });
 
       it("should convert date strings to Date", () => {

@@ -37,15 +37,11 @@ export class PostgreSQLSerializer extends SQLSerializer {
   protected deserializeDate(value: unknown, _col: AnyColumn): Date {
     void _col;
     if (value instanceof Date) {
-      if (this.driverConfig.driverType === "pglite") {
-        return new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
-      }
       return value;
     }
     // PostgreSQL returns timestamps/dates as strings
     if (typeof value === "string") {
-      // Normalize timezone-less timestamps to UTC to avoid local offset drift.
-      return new Date(normalizeTimestampString(value));
+      return new Date(value);
     }
     throw new Error(`Cannot deserialize date from value: ${value}`);
   }
@@ -139,21 +135,3 @@ export class PostgreSQLSerializer extends SQLSerializer {
     throw new Error(`Cannot deserialize string from value: ${typeof value}`);
   }
 }
-
-const normalizeTimestampString = (value: string) => {
-  if (!hasTimeComponent(value) || !isTimestampWithoutTimezone(value)) {
-    return value;
-  }
-  const withTimeSeparator = value.includes(" ") ? value.replace(" ", "T") : value;
-  return `${withTimeSeparator}Z`;
-};
-
-const hasTimeComponent = (value: string) => /\d{2}:\d{2}:\d{2}/.test(value);
-
-const isTimestampWithoutTimezone = (value: string) => {
-  // Detect RFC3339-like timezone indicators: Z or +/-HH(:MM)?
-  if (value.endsWith("Z")) {
-    return false;
-  }
-  return !/[+-]\d{2}(:?\d{2})?$/.test(value);
-};

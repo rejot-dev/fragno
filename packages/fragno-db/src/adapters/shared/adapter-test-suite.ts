@@ -1,0 +1,955 @@
+/**
+ * Shared test suite for database adapter integration tests.
+ *
+ * This module exports a function that runs a comprehensive test suite against
+ * any database adapter implementation. The tests cover:
+ *
+ * - Basic CRUD operations
+ * - Version checking and optimistic locking
+ * - Count operations
+ * - Cursor-based pagination
+ * - Simple joins (one-to-many)
+ * - Complex nested joins
+ * - Many-to-many relationships via junction tables
+ * - Unit of Work create operations with ID generation
+ * - Same-transaction foreign key references
+ * - Version conflict detection with check()
+ *
+ * Usage:
+ * ```typescript
+ * runAdapterTestSuite({
+ *   getQueryEngine: () => adapter.createQueryEngine(testSchema, namespace),
+ * });
+ * ```
+ */
+import { describe, expect, expectTypeOf, it } from "vitest";
+import { type FragnoId, type FragnoReference } from "../../schema/create";
+import { Cursor } from "../../query/cursor";
+import { testSchema, type TestSchema } from "./test-schema";
+import type { SimpleQueryInterface } from "../../query/simple-query-interface";
+
+export interface AdapterTestSuiteOptions {
+  /**
+   * Function that returns a query engine for the test schema.
+   * Called once at the start of each test to get a fresh query engine.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getQueryEngine: () => SimpleQueryInterface<TestSchema, any>;
+}
+
+/**
+ * Run the complete adapter test suite.
+ *
+ * This function defines all test cases but delegates the adapter setup to the caller.
+ * Tests are designed to be run sequentially as some tests depend on data created by previous tests.
+ */
+export function runAdapterTestSuite(options: AdapterTestSuiteOptions): void {
+  const { getQueryEngine } = options;
+
+  describe("Basic Operations", () => {
+    it("should run migrations and basic CRUD operations", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create a user
+      const userId = await queryEngine.create("users", {
+        name: "John Doe",
+        age: 30,
+      });
+
+      expect(userId).toMatchObject({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      });
+      expect(userId.version).toBe(0);
+
+      // Read the user
+      const getUser = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", userId)).select(["id", "name"]),
+      );
+      expect(getUser).toMatchObject({
+        id: expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+        name: "John Doe",
+      });
+
+      // Create 2 emails for the user
+      const email1Id = await queryEngine.create("emails", {
+        user_id: userId,
+        email: "john.doe@example.com",
+        is_primary: true,
+      });
+
+      const email2Id = await queryEngine.create("emails", {
+        // Pass only the string (external ID) here, to make sure we generate the right sub-query.
+        user_id: userId.toString(),
+        email: "john.doe.work@company.com",
+        is_primary: false,
+      });
+
+      expect(email1Id).toMatchObject({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      });
+
+      expect(email2Id).toMatchObject({
+        externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+        internalId: expect.any(BigInt),
+      });
+
+      // Update user name
+      await queryEngine.updateMany("users", (b) =>
+        b
+          .whereIndex("primary", (eb) => eb("id", "=", userId))
+          .set({
+            name: "Jane Doe",
+          }),
+      );
+
+      const updatedUser = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+      );
+      // Version has been incremented
+      expect(updatedUser!.id.version).toBe(1);
+
+      // Query emails with their users using join (since the relation is from emails to users)
+      const emailsWithUsers = await queryEngine.find("emails", (b) =>
+        b.whereIndex("primary").join((jb) => jb.user()),
+      );
+
+      expect(emailsWithUsers).toHaveLength(2); // One row per email
+      expect(emailsWithUsers[0]).toEqual({
+        id: expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+        user_id: expect.objectContaining({
+          internalId: expect.any(BigInt),
+        }),
+        email: expect.stringMatching(/\.com$/),
+        is_primary: expect.any(Boolean),
+        user: {
+          id: expect.objectContaining({
+            externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+            internalId: expect.any(BigInt),
+          }),
+          name: "Jane Doe",
+          age: 30,
+        },
+      });
+
+      // Also test a more specific join query to get emails for a specific user
+      const userEmails = await queryEngine.find("emails", (b) =>
+        b.whereIndex("user_emails", (eb) => eb("user_id", "=", userId)).join((jb) => jb.user()),
+      );
+
+      expect(userEmails).toHaveLength(2);
+    });
+  });
+
+  describe("Unit of Work", () => {
+    it("should execute Unit of Work with version checking", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create initial user
+      const initialUserId = await queryEngine.create("users", {
+        name: "Alice",
+        age: 25,
+      });
+
+      expect(initialUserId.version).toBe(0);
+
+      // Build a UOW to update the user with optimistic locking
+      const uow = queryEngine
+        .createUnitOfWork("update-user-age")
+        // Retrieval phase: find the user
+        .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)));
+
+      // Execute retrieval and transition to mutation phase
+      const [users] = await uow.executeRetrieve();
+
+      // Mutation phase: update with version check
+      uow.update("users", initialUserId, (b) => b.set({ age: 26 }).check());
+
+      // Execute mutations
+      const { success } = await uow.executeMutations();
+
+      // Should succeed
+      expect(success).toBe(true);
+      expect(users).toHaveLength(1);
+
+      // Verify the user was updated
+      const updatedUser = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)),
+      );
+
+      expect(updatedUser).toMatchObject({
+        id: expect.objectContaining({
+          externalId: initialUserId.externalId,
+          version: 1, // Version incremented
+        }),
+        name: "Alice",
+        age: 26,
+      });
+
+      // Try to update again with stale version (should fail)
+      const uow2 = queryEngine.createUnitOfWork("update-user-stale");
+
+      // Use the old version (0) which is now stale
+      uow2.update("users", initialUserId, (b) => b.set({ age: 27 }).check());
+
+      const { success: success2 } = await uow2.executeMutations();
+
+      // Should fail due to version conflict
+      expect(success2).toBe(false);
+
+      // Verify the user was NOT updated
+      const [[unchangedUser]] = await queryEngine
+        .createUnitOfWork("verify-unchanged")
+        .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", initialUserId)))
+        .executeRetrieve();
+
+      expect(unchangedUser).toMatchObject({
+        id: expect.objectContaining({
+          version: 1, // Still version 1
+        }),
+        age: 26, // Still 26, not 27
+      });
+
+      const uow3 = queryEngine
+        .createUnitOfWork("get-all-emails")
+        .find("emails", (b) => b.whereIndex("primary").orderByIndex("unique_email", "desc"));
+      const [allEmails] = await uow3.executeRetrieve();
+      const emailAddresses = allEmails.map((email) => email.email);
+      // Check both emails exist without asserting specific order (collation differs between databases)
+      expect(emailAddresses.sort()).toEqual(["john.doe.work@company.com", "john.doe@example.com"]);
+    });
+
+    it("should support selectCount in UOW", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Count all users
+      const uow = queryEngine
+        .createUnitOfWork("count-users")
+        .find("users", (b) => b.whereIndex("primary").selectCount());
+
+      const [count] = await uow.executeRetrieve();
+
+      // We created 2 users in previous tests (John Doe and Alice)
+      expect(count).toBeGreaterThanOrEqual(2);
+      expect(typeof count).toBe("number");
+
+      // Count with where clause
+      const uow2 = queryEngine
+        .createUnitOfWork("count-young-users")
+        .find("users", (b) => b.whereIndex("age_idx", (eb) => eb("age", "<", 28)).selectCount());
+
+      const [youngCount] = await uow2.executeRetrieve();
+      expect(youngCount).toBeGreaterThanOrEqual(1); // At least Alice (25)
+    });
+
+    it("should return created IDs from UOW create operations", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Test 1: Create operations return IDs with both external and internal IDs
+      const uow1 = queryEngine.createUnitOfWork("create-multiple-users");
+
+      uow1.create("users", { name: "Test User 1", age: 30 });
+      uow1.create("users", { name: "Test User 2", age: 35 });
+      uow1.create("users", { name: "Test User 3", age: 40 });
+
+      const { success: success1 } = await uow1.executeMutations();
+      expect(success1).toBe(true);
+
+      const createdIds1 = uow1.getCreatedIds();
+
+      expect(createdIds1).toMatchObject([
+        expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+        expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+        expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+      ]);
+
+      // All external IDs should be unique
+      const externalIds = createdIds1.map((id) => id.externalId);
+      expect(new Set(externalIds).size).toBe(3);
+
+      // Verify we can use these IDs to query the created users
+      const user1 = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[0].externalId)),
+      );
+
+      const user2 = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[1].externalId)),
+      );
+
+      const user3 = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", createdIds1[2].externalId)),
+      );
+
+      expect(user1).toMatchObject({
+        id: expect.objectContaining({
+          externalId: createdIds1[0].externalId,
+        }),
+        name: "Test User 1",
+        age: 30,
+      });
+
+      expect(user2).toMatchObject({
+        id: expect.objectContaining({
+          externalId: createdIds1[1].externalId,
+        }),
+        name: "Test User 2",
+        age: 35,
+      });
+
+      expect(user3).toMatchObject({
+        id: expect.objectContaining({
+          externalId: createdIds1[2].externalId,
+        }),
+        name: "Test User 3",
+        age: 40,
+      });
+
+      // Test 2: Mixed operations (creates, updates, deletes) - only creates return IDs
+      const uow2 = queryEngine.createUnitOfWork("mixed-operations");
+
+      uow2.create("users", { name: "New User", age: 50 });
+      uow2.update("users", createdIds1[0], (b) => b.set({ age: 31 }));
+      uow2.create("users", { name: "Another New User", age: 55 });
+      uow2.delete("users", createdIds1[2]);
+
+      const { success: success2 } = await uow2.executeMutations();
+      expect(success2).toBe(true);
+
+      const createdIds2 = uow2.getCreatedIds();
+
+      // Only 2 creates, so only 2 IDs
+      expect(createdIds2).toHaveLength(2);
+      expect(createdIds2[0].externalId).toBeDefined();
+      expect(createdIds2[1].externalId).toBeDefined();
+
+      // Test 3: User-provided IDs are preserved
+      const customId = "my-custom-user-id-12345";
+      const uow3 = queryEngine.createUnitOfWork("create-with-custom-id");
+
+      uow3.create("users", { id: customId, name: "Custom ID User", age: 60 });
+
+      const { success: success3 } = await uow3.executeMutations();
+      expect(success3).toBe(true);
+
+      const createdIds3 = uow3.getCreatedIds();
+
+      expect(createdIds3).toHaveLength(1);
+      expect(createdIds3[0].externalId).toBe(customId);
+      expect(createdIds3[0].internalId).toBeDefined();
+
+      // Verify the user was created with the custom ID
+      const customIdUser = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", customId)),
+      );
+
+      expect(customIdUser).toMatchObject({
+        id: expect.objectContaining({
+          externalId: customId,
+        }),
+        name: "Custom ID User",
+        age: 60,
+      });
+    });
+
+    it("should create user and post in same transaction using returned ID", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create UOW and create both user and post in same transaction
+      const uow = queryEngine.createUnitOfWork("create-user-and-post");
+
+      // Create user and capture the returned ID
+      const userId = uow.create("users", {
+        name: "UOW Test User",
+        age: 35,
+      });
+
+      // Use the returned FragnoId directly to create a post in the same transaction
+      // The compiler will extract externalId and generate a subquery to lookup the internal ID
+      const postId = uow.create("posts", {
+        user_id: userId,
+        title: "UOW Test Post",
+        content: "This post was created in the same transaction as the user",
+      });
+
+      // Execute all mutations in a single transaction
+      const { success } = await uow.executeMutations();
+      expect(success).toBe(true);
+
+      // Verify both records were created
+      const user = await queryEngine.findFirst("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+      );
+
+      expect(user?.name).toBe("UOW Test User");
+      expect(user?.age).toBe(35);
+
+      const post = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", postId.externalId)),
+      );
+
+      expect(post?.title).toBe("UOW Test Post");
+      expect(post?.content).toBe("This post was created in the same transaction as the user");
+
+      // Verify the foreign key relationship is correct
+      expect(post?.user_id.internalId).toBe(user?.id.internalId);
+    });
+
+    it("should fail check() when version changes", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create a user
+      const userId = await queryEngine.create("users", {
+        name: "Version Conflict User",
+        age: 40,
+      });
+
+      // Update the user to increment their version
+      await queryEngine.updateMany("users", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", userId)).set({ age: 41 }),
+      );
+
+      // Try to check with the old version (should fail)
+      const uow = queryEngine.createUnitOfWork("check-stale-version");
+      uow.check("users", userId); // This has version 0, but the user now has version 1
+      uow.create("posts", {
+        user_id: userId,
+        title: "Should Not Be Created",
+        content: "Content",
+      });
+
+      const { success } = await uow.executeMutations();
+      expect(success).toBe(false);
+
+      // Verify the post was NOT created
+      const posts = await queryEngine.find("posts", (b) =>
+        b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId)),
+      );
+      const conflictPosts = posts.filter((p) => p.title === "Should Not Be Created");
+      expect(conflictPosts).toHaveLength(0);
+    });
+  });
+
+  describe("Cursor Pagination", () => {
+    it("should support cursor-based pagination in UOW", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create some test users for pagination
+      const users = [
+        { name: "User A", age: 20 },
+        { name: "User B", age: 21 },
+        { name: "User C", age: 22 },
+        { name: "User D", age: 23 },
+        { name: "User E", age: 24 },
+      ];
+
+      for (const user of users) {
+        await queryEngine.create("users", user);
+      }
+
+      // Test forward pagination with after cursor, ordered by name
+      const page1 = queryEngine
+        .createUnitOfWork("page-1")
+        .find("users", (b) => b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(2));
+
+      const [page1Results] = await page1.executeRetrieve();
+      // Note: Previous tests created "Alice" and "Jane Doe"
+      expect(page1Results.map((u) => u.name)).toEqual(["Alice", "Another New User"]);
+
+      // Get cursor for pagination (using the last item from page 1)
+      const lastItem = page1Results[page1Results.length - 1]!;
+      const cursor = new Cursor({
+        indexName: "name_idx",
+        orderDirection: "asc",
+        pageSize: 2,
+        indexValues: { name: lastItem.name },
+      }).encode();
+
+      // Get page 2 using the cursor
+      const page2 = queryEngine
+        .createUnitOfWork("page-2")
+        .find("users", (b) =>
+          b.whereIndex("name_idx").orderByIndex("name_idx", "asc").after(cursor).pageSize(2),
+        );
+
+      const [page2Results] = await page2.executeRetrieve();
+      expect(page2Results.map((u) => u.name)).toEqual(["Custom ID User", "Jane Doe"]);
+
+      // Ensure no overlap between pages
+      const page1Names = new Set(page1Results.map((u) => u.name));
+      for (const user of page2Results) {
+        expect(page1Names.has(user.name)).toBe(false);
+      }
+    });
+
+    it("should support cursor-based pagination with findWithCursor()", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create exactly 15 users for precise pagination testing with unique prefix
+      const prefix = "CursorPagTest";
+
+      const userIds: FragnoId[] = [];
+      for (let i = 1; i <= 15; i++) {
+        const userId = await queryEngine.create("users", {
+          name: `${prefix} ${i.toString().padStart(2, "0")}`,
+          age: 20 + i,
+        });
+        userIds.push(userId);
+      }
+
+      // Fetch first page with cursor (pageSize=10, total=15 items)
+      const firstPage = await queryEngine.findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+
+      // Check structure and hasNextPage
+      expect(firstPage).toHaveProperty("items");
+      expect(firstPage).toHaveProperty("cursor");
+      expect(firstPage).toHaveProperty("hasNextPage");
+      expect(Array.isArray(firstPage.items)).toBe(true);
+      expect(firstPage.items).toHaveLength(10);
+      expect(firstPage.hasNextPage).toBe(true);
+      expect(firstPage.cursor).toBeInstanceOf(Cursor);
+
+      // Fetch second page using cursor (last page with 5 remaining items)
+      const secondPage = await queryEngine.findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", prefix))
+          .after(firstPage.cursor!)
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+
+      expect(secondPage.items).toHaveLength(5);
+      expect(secondPage.hasNextPage).toBe(false);
+      expect(secondPage.cursor).toBeUndefined();
+
+      // Verify no overlap - all names in second page should be different from first page
+      const firstPageNames = new Set(firstPage.items.map((u) => u.name));
+      const secondPageNames = secondPage.items.map((u) => u.name);
+
+      for (const name of secondPageNames) {
+        expect(firstPageNames.has(name)).toBe(false);
+      }
+
+      // Verify ordering - last item of first page should come before first item of second page
+      const firstPageLast = firstPage.items[firstPage.items.length - 1].name;
+      const secondPageFirst = secondPage.items[0].name;
+      expect(firstPageLast < secondPageFirst).toBe(true);
+
+      // Test empty results
+      const emptyPage = await queryEngine.findWithCursor("users", (b) =>
+        b
+          .whereIndex("name_idx", (eb) => eb("name", "starts with", "NonExistentPrefix"))
+          .orderByIndex("name_idx", "asc")
+          .pageSize(10),
+      );
+      expect(emptyPage.items).toHaveLength(0);
+      expect(emptyPage.hasNextPage).toBe(false);
+      expect(emptyPage.cursor).toBeUndefined();
+    });
+
+    it("should support findWithCursor() in Unit of Work", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create test users if not already present
+      const existingUsers = await queryEngine.find("users", (b) =>
+        b.whereIndex("name_idx").pageSize(1),
+      );
+
+      if (existingUsers.length === 0) {
+        for (let i = 1; i <= 5; i++) {
+          await queryEngine.create("users", {
+            name: `UOW Cursor User ${i}`,
+            age: 30 + i,
+          });
+        }
+      }
+
+      // Use findWithCursor in UOW
+      const uow = queryEngine
+        .createUnitOfWork("cursor-test")
+        .findWithCursor("users", (b) =>
+          b.whereIndex("name_idx").orderByIndex("name_idx", "asc").pageSize(3),
+        );
+
+      const [result] = await uow.executeRetrieve();
+
+      // Verify result structure including hasNextPage
+      expect(result).toHaveProperty("items");
+      expect(result).toHaveProperty("cursor");
+      expect(result).toHaveProperty("hasNextPage");
+      expect(Array.isArray(result.items)).toBe(true);
+      expect(result.items.length).toBeGreaterThan(0);
+      expect(typeof result.hasNextPage).toBe("boolean");
+      expect(result.cursor).toBeInstanceOf(Cursor);
+    });
+  });
+
+  describe("Joins", () => {
+    it("should support many-to-many queries through junction table", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create a user
+      const userId = await queryEngine.create("users", {
+        name: "Blog Author",
+        age: 28,
+      });
+
+      // Create posts
+      const post1Id = await queryEngine.create("posts", {
+        title: "TypeScript Tips",
+        content: "Learn TypeScript",
+        user_id: userId,
+      });
+
+      const post2Id = await queryEngine.create("posts", {
+        title: "Database Design",
+        content: "Learn databases",
+        user_id: userId,
+      });
+
+      // Create tags
+      const tagTypeScriptId = await queryEngine.create("tags", {
+        name: "TypeScript",
+      });
+
+      const tagDatabaseId = await queryEngine.create("tags", {
+        name: "Database",
+      });
+
+      const tagTutorialId = await queryEngine.create("tags", {
+        name: "Tutorial",
+      });
+
+      // Link posts to tags via junction table
+      // Post 1 has tags: TypeScript, Tutorial
+      await queryEngine.create("post_tags", {
+        post_id: post1Id,
+        tag_id: tagTypeScriptId,
+      });
+
+      await queryEngine.create("post_tags", {
+        post_id: post1Id,
+        tag_id: tagTutorialId,
+      });
+
+      // Post 2 has tags: Database, Tutorial
+      await queryEngine.create("post_tags", {
+        post_id: post2Id,
+        tag_id: tagDatabaseId,
+      });
+
+      await queryEngine.create("post_tags", {
+        post_id: post2Id,
+        tag_id: tagTutorialId,
+      });
+
+      // Query post_tags with joined post and tag data using UOW
+      const uow = queryEngine
+        .createUnitOfWork("get-post-tags")
+        .find("post_tags", (b) =>
+          b
+            .whereIndex("primary")
+            .join((jb) => jb.post((pb) => pb.select(["title"])).tag((tb) => tb.select(["name"]))),
+        );
+
+      const [postTags] = await uow.executeRetrieve();
+
+      // Should have 4 post_tag entries
+      expect(postTags).toHaveLength(4);
+
+      // Verify the structure includes both post and tag data
+      expect(postTags[0]).toMatchObject({
+        id: expect.objectContaining({
+          externalId: expect.any(String),
+        }),
+        post_id: expect.objectContaining({
+          internalId: expect.any(BigInt),
+        }),
+        tag_id: expect.objectContaining({
+          internalId: expect.any(BigInt),
+        }),
+        post: {
+          title: expect.any(String),
+        },
+        tag: {
+          name: expect.any(String),
+        },
+      });
+
+      type InferArrayElement<T> = T extends (infer U)[] ? U : never;
+      type Prettify<T> = {
+        [K in keyof T]: T[K];
+      } & {};
+      type RemoveIndex<T> = {
+        [K in keyof T as string extends K
+          ? never
+          : number extends K
+            ? never
+            : symbol extends K
+              ? never
+              : K]: T[K];
+      };
+
+      type PostTag = Prettify<InferArrayElement<typeof postTags>>;
+      type Tag = Prettify<RemoveIndex<PostTag["tag"]>>;
+      expectTypeOf<Tag>().toEqualTypeOf<{
+        id: FragnoId;
+        name: string;
+      } | null>();
+
+      // Verify we can find specific combinations
+      const typeScriptPosts = postTags.filter((pt) => pt.tag?.name === "TypeScript");
+      expect(typeScriptPosts).toHaveLength(1);
+      type Post = Prettify<(typeof typeScriptPosts)[number]["post"]>;
+      expectTypeOf<Post>().toEqualTypeOf<{
+        id: FragnoId;
+        user_id: FragnoReference;
+        title: string;
+        content: string;
+        created_at: Date | null;
+      } | null>();
+      expect(typeScriptPosts[0]!.post!.title).toBe("TypeScript Tips");
+
+      const tutorialPosts = postTags.filter((pt) => pt.tag!.name === "Tutorial");
+      expect(tutorialPosts).toHaveLength(2);
+      expect(tutorialPosts.map((pt) => pt.post!.title).sort()).toEqual([
+        "Database Design",
+        "TypeScript Tips",
+      ]);
+
+      // Test nested many-to-many join: post_tags -> post -> author
+      const uow2 = queryEngine
+        .createUnitOfWork("get-post-tags-with-authors")
+        .find("post_tags", (b) =>
+          b
+            .whereIndex("pt_post", (eb) => eb("post_id", "=", post1Id))
+            .join((jb) =>
+              jb.post((pb) =>
+                pb.select(["title"]).join((jb2) => jb2["author"]((ab) => ab.select(["name"]))),
+              ),
+            ),
+        );
+
+      const [postTagsWithAuthors] = await uow2.executeRetrieve();
+
+      // Should have 2 entries (TypeScript and Tutorial tags for post1)
+      expect(postTagsWithAuthors).toHaveLength(2);
+
+      // Verify nested structure
+      expect(postTagsWithAuthors[0]).toMatchObject({
+        post: {
+          title: "TypeScript Tips",
+          author: {
+            name: "Blog Author",
+          },
+        },
+      });
+
+      // Both should have the same author
+      for (const pt of postTagsWithAuthors) {
+        expect(pt.post!.author!.name).toBe("Blog Author");
+      }
+    });
+
+    it("should support complex nested joins (comments -> post -> author)", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create a user (author)
+      const authorId = await queryEngine.create("users", {
+        name: "Blog Author",
+        age: 30,
+      });
+
+      // Create a post by the author
+      const postId = await queryEngine.create("posts", {
+        user_id: authorId,
+        title: "My First Post",
+        content: "This is the content of my first post",
+      });
+
+      // Create a commenter
+      const commenterId = await queryEngine.create("users", {
+        name: "Commenter User",
+        age: 25,
+      });
+
+      // Create a comment on the post
+      await queryEngine.create("comments", {
+        post_id: postId,
+        user_id: commenterId,
+        text: "Great post!",
+      });
+
+      // Now perform a complex nested join: comments -> post -> author, and comments -> commenter
+      const uow = queryEngine.createUnitOfWork("test-complex-joins").find("comments", (b) =>
+        b.whereIndex("primary").join((jb) =>
+          jb
+            .post((postBuilder) =>
+              postBuilder
+                .select(["id", "title", "content"])
+                .orderByIndex("primary", "desc")
+                .pageSize(1)
+                .join((jb2) =>
+                  // Nested join to the post's author
+                  jb2.author((authorBuilder) =>
+                    authorBuilder.select(["id", "name", "age"]).orderByIndex("name_idx", "asc"),
+                  ),
+                ),
+            )
+            .commenter((commenterBuilder) => commenterBuilder.select(["id", "name"])),
+        ),
+      );
+
+      const [[comment]] = await uow.executeRetrieve();
+
+      // Verify the result structure with nested joins
+      expect(comment).toMatchObject({
+        id: expect.objectContaining({
+          externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
+          internalId: expect.any(BigInt),
+        }),
+        text: "Great post!",
+        // Post join (first level)
+        post: {
+          id: expect.objectContaining({
+            externalId: postId.externalId,
+          }),
+          title: "My First Post",
+          content: "This is the content of my first post",
+          // Nested author join (second level)
+          author: {
+            id: expect.objectContaining({
+              externalId: authorId.externalId,
+            }),
+            name: "Blog Author",
+            age: 30,
+          },
+        },
+        // Commenter join (first level)
+        commenter: {
+          id: expect.objectContaining({
+            externalId: commenterId.externalId,
+          }),
+          name: "Commenter User",
+        },
+      });
+    });
+  });
+
+  describe("Timestamps", () => {
+    it("should round-trip UTC timestamps correctly", async () => {
+      const queryEngine = getQueryEngine();
+
+      // Create a user
+      const userId = await queryEngine.create("users", {
+        name: "Timestamp Test User",
+        age: 28,
+      });
+
+      // Test with a specific UTC timestamp
+      const testDate = new Date("2024-06-15T14:30:00.000Z");
+
+      // Create a post with the timestamp
+      const postId = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "Timestamp Test Post",
+        content: "Testing timestamp handling",
+        created_at: testDate,
+      });
+
+      // Retrieve the post and verify the timestamp round-trips correctly
+      const post = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", postId)),
+      );
+
+      expect(post).toBeDefined();
+      expect(post!.created_at).toBeInstanceOf(Date);
+      expect(post!.created_at!.toISOString()).toBe(testDate.toISOString());
+    });
+
+    it("should handle timestamps at different times of day", async () => {
+      const queryEngine = getQueryEngine();
+
+      const userId = await queryEngine.create("users", {
+        name: "Timestamp Edge Case User",
+        age: 30,
+      });
+
+      // Test midnight UTC
+      const midnightUtc = new Date("2024-01-01T00:00:00.000Z");
+      const post1Id = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "Midnight Post",
+        content: "Created at midnight UTC",
+        created_at: midnightUtc,
+      });
+
+      const post1 = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", post1Id)),
+      );
+      expect(post1!.created_at!.toISOString()).toBe(midnightUtc.toISOString());
+
+      // Test end of day UTC
+      const endOfDay = new Date("2024-12-31T23:59:59.000Z");
+      const post2Id = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "End of Day Post",
+        content: "Created at end of day UTC",
+        created_at: endOfDay,
+      });
+
+      const post2 = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", post2Id)),
+      );
+      expect(post2!.created_at!.toISOString()).toBe(endOfDay.toISOString());
+    });
+
+    it("should handle timestamps with milliseconds", async () => {
+      const queryEngine = getQueryEngine();
+
+      const userId = await queryEngine.create("users", {
+        name: "Milliseconds User",
+        age: 25,
+      });
+
+      // Test timestamp with milliseconds
+      const dateWithMs = new Date("2024-07-20T10:15:30.123Z");
+      const postId = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "Milliseconds Post",
+        content: "Testing millisecond precision",
+        created_at: dateWithMs,
+      });
+
+      const post = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", postId)),
+      );
+
+      expect(post!.created_at).toBeInstanceOf(Date);
+      // Verify milliseconds are preserved (some databases may truncate)
+      expect(post!.created_at!.getTime()).toBe(dateWithMs.getTime());
+    });
+  });
+}
+
+export { testSchema };
