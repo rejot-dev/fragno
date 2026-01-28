@@ -39,6 +39,8 @@ jobs:
           --health-retries 5
 
     env:
+      # Run in non-UTC timezone to catch timestamp serialization bugs
+      TZ: Europe/Amsterdam
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       FRAGNO_TEST_DATABASE: ${{ matrix.database }}

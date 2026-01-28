@@ -45,6 +45,7 @@ export const testSchema = schema((s) => {
         .addColumn("user_id", referenceColumn())
         .addColumn("title", column("string"))
         .addColumn("content", column("string"))
+        .addColumn("created_at", column("timestamp").nullable())
         .createIndex("posts_user_idx", ["user_id"]);
     })
     .addTable("tags", (t) => {

@@ -726,6 +726,7 @@ export function runAdapterTestSuite(options: AdapterTestSuiteOptions): void {
         user_id: FragnoReference;
         title: string;
         content: string;
+        created_at: Date | null;
       } | null>();
       expect(typeScriptPosts[0]!.post!.title).toBe("TypeScript Tips");
 
@@ -856,7 +857,7 @@ export function runAdapterTestSuite(options: AdapterTestSuiteOptions): void {
   });
 
   describe("Timestamps", () => {
-    it("should handle timestamps and time zones correctly", async () => {
+    it("should round-trip UTC timestamps correctly", async () => {
       const queryEngine = getQueryEngine();
 
       // Create a user
@@ -865,40 +866,88 @@ export function runAdapterTestSuite(options: AdapterTestSuiteOptions): void {
         age: 28,
       });
 
-      // Create a post
+      // Test with a specific UTC timestamp
+      const testDate = new Date("2024-06-15T14:30:00.000Z");
+
+      // Create a post with the timestamp
       const postId = await queryEngine.create("posts", {
         user_id: userId,
         title: "Timestamp Test Post",
         content: "Testing timestamp handling",
+        created_at: testDate,
       });
 
-      // Retrieve the post
+      // Retrieve the post and verify the timestamp round-trips correctly
       const post = await queryEngine.findFirst("posts", (b) =>
         b.whereIndex("primary", (eb) => eb("id", "=", postId)),
       );
 
       expect(post).toBeDefined();
+      expect(post!.created_at).toBeInstanceOf(Date);
+      expect(post!.created_at!.toISOString()).toBe(testDate.toISOString());
+    });
 
-      // Test with a table that doesn't have timestamps
-      // Verify that Date handling works in general by checking basic Date operations
-      const now = new Date();
-      expect(now).toBeInstanceOf(Date);
-      expect(typeof now.getTime).toBe("function");
-      expect(typeof now.toISOString).toBe("function");
+    it("should handle timestamps at different times of day", async () => {
+      const queryEngine = getQueryEngine();
 
-      // Verify date serialization/deserialization works
-      const isoString = now.toISOString();
-      expect(typeof isoString).toBe("string");
-      expect(new Date(isoString).getTime()).toBe(now.getTime());
+      const userId = await queryEngine.create("users", {
+        name: "Timestamp Edge Case User",
+        age: 30,
+      });
 
-      // Test timezone preservation
-      const specificDate = new Date("2024-06-15T14:30:00Z");
-      expect(specificDate.toISOString()).toBe("2024-06-15T14:30:00.000Z");
+      // Test midnight UTC
+      const midnightUtc = new Date("2024-01-01T00:00:00.000Z");
+      const post1Id = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "Midnight Post",
+        content: "Created at midnight UTC",
+        created_at: midnightUtc,
+      });
 
-      // Verify that dates from different time zones are handled correctly
-      const localDate = new Date("2024-06-15T14:30:00");
-      expect(localDate).toBeInstanceOf(Date);
-      expect(typeof localDate.getTimezoneOffset()).toBe("number");
+      const post1 = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", post1Id)),
+      );
+      expect(post1!.created_at!.toISOString()).toBe(midnightUtc.toISOString());
+
+      // Test end of day UTC
+      const endOfDay = new Date("2024-12-31T23:59:59.000Z");
+      const post2Id = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "End of Day Post",
+        content: "Created at end of day UTC",
+        created_at: endOfDay,
+      });
+
+      const post2 = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", post2Id)),
+      );
+      expect(post2!.created_at!.toISOString()).toBe(endOfDay.toISOString());
+    });
+
+    it("should handle timestamps with milliseconds", async () => {
+      const queryEngine = getQueryEngine();
+
+      const userId = await queryEngine.create("users", {
+        name: "Milliseconds User",
+        age: 25,
+      });
+
+      // Test timestamp with milliseconds
+      const dateWithMs = new Date("2024-07-20T10:15:30.123Z");
+      const postId = await queryEngine.create("posts", {
+        user_id: userId,
+        title: "Milliseconds Post",
+        content: "Testing millisecond precision",
+        created_at: dateWithMs,
+      });
+
+      const post = await queryEngine.findFirst("posts", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", postId)),
+      );
+
+      expect(post!.created_at).toBeInstanceOf(Date);
+      // Verify milliseconds are preserved (some databases may truncate)
+      expect(post!.created_at!.getTime()).toBe(dateWithMs.getTime());
     });
   });
 }
