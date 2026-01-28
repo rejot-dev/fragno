@@ -1,0 +1,71 @@
+name: Database Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [postgres, mysql, sqlite]
+
+    services:
+      postgres:
+        image: ${{ matrix.database == 'postgres' && 'postgres:18' || '' }}
+        env:
+          POSTGRES_USER: fragno
+          POSTGRES_PASSWORD: fragno
+          POSTGRES_DB: fragno_test
+          PGTZ: Europe/Amsterdam
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+      mysql:
+        image: ${{ matrix.database == 'mysql' && 'mysql:9' || '' }}
+        env:
+          MYSQL_ROOT_PASSWORD: fragno
+          MYSQL_DATABASE: fragno_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost" --health-interval 10s --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      FRAGNO_TEST_DATABASE: ${{ matrix.database }}
+      FRAGNO_TEST_POSTGRES_URL:
+        ${{ matrix.database == 'postgres' && 'postgres://fragno:fragno@localhost:5432/fragno_test'
+        || '' }}
+      FRAGNO_TEST_MYSQL_URL:
+        ${{ matrix.database == 'mysql' && 'mysql://root:fragno@localhost:3306/fragno_test' || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm exec turbo run build --filter=@fragno-dev/db... --output-logs=errors-only
+
+      - name: Run Integration Tests
+        run: pnpm exec turbo run test --filter=@fragno-dev/db --output-logs=errors-only
