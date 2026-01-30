@@ -166,10 +166,10 @@ describe("generateSchema and migrate", () => {
       	"status" text NOT NULL,
       	"attempts" integer DEFAULT 0 NOT NULL,
       	"maxAttempts" integer DEFAULT 5 NOT NULL,
-      	"lastAttemptAt" timestamp,
-      	"nextRetryAt" timestamp,
+      	"lastAttemptAt" timestamp with time zone,
+      	"nextRetryAt" timestamp with time zone,
       	"error" text,
-      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
       	"nonce" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
@@ -182,8 +182,8 @@ describe("generateSchema and migrate", () => {
       	"age" integer,
       	"isActive" boolean DEFAULT true NOT NULL,
       	"bio" text,
-      	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"updatedAt" timestamp DEFAULT now() NOT NULL,
+      	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
+      	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
@@ -198,11 +198,11 @@ describe("generateSchema and migrate", () => {
       	"viewCount" integer DEFAULT 0 NOT NULL,
       	"likeCount" bigint DEFAULT 9999999999999999 NOT NULL,
       	"isPublished" boolean DEFAULT false NOT NULL,
-      	"publishedAt" timestamp,
+      	"publishedAt" timestamp with time zone,
       	"metadata" json,
       	"rating" numeric,
       	"thumbnail" "bytea",
-      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );
@@ -213,8 +213,8 @@ describe("generateSchema and migrate", () => {
       	"postId" bigint NOT NULL,
       	"userId" bigint NOT NULL,
       	"parentId" bigint,
-      	"createdAt" timestamp DEFAULT now() NOT NULL,
-      	"editedAt" timestamp,
+      	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
+      	"editedAt" timestamp with time zone,
       	"isDeleted" boolean DEFAULT false NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
@@ -236,7 +236,7 @@ describe("generateSchema and migrate", () => {
       	"postId" bigint NOT NULL,
       	"tagId" bigint NOT NULL,
       	"order" integer DEFAULT 0 NOT NULL,
-      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL
       );

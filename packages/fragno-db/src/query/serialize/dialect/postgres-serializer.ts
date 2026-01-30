@@ -37,9 +37,6 @@ export class PostgreSQLSerializer extends SQLSerializer {
   protected deserializeDate(value: unknown, _col: AnyColumn): Date {
     void _col;
     if (value instanceof Date) {
-      if (this.driverConfig.driverType === "pglite") {
-        return new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
-      }
       return value;
     }
     // PostgreSQL returns timestamps/dates as strings

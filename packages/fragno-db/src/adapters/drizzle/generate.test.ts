@@ -270,7 +270,7 @@ describe("generateSchema", () => {
 
         export const events_test = pgTable("events_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
+          createdAt: timestamp("createdAt", { withTimezone: true }).notNull().$defaultFn(() => new Date()),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
@@ -307,7 +307,7 @@ describe("generateSchema", () => {
 
         export const events_test = pgTable("events_test", {
           id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
-          createdAt: timestamp("createdAt").notNull().defaultNow(),
+          createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })

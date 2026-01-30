@@ -156,6 +156,9 @@ function getPrismaScalarType(
       if (provider === "sqlite" && sqliteStorageMode.timestampStorage === "epoch-ms") {
         return { type: "Int" };
       }
+      if (provider === "postgresql") {
+        return { type: "DateTime", nativeType: "@db.Timestamptz" };
+      }
       return { type: "DateTime" };
     case "date":
       if (provider === "sqlite" && sqliteStorageMode.dateStorage === "epoch-ms") {

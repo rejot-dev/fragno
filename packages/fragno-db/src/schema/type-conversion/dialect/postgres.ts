@@ -49,7 +49,7 @@ export class PostgreSQLTypeMapper extends SQLTypeMapper<PostgreSQLDatabaseType> 
   }
 
   protected mapTimestamp(): PostgreSQLDatabaseType {
-    return "timestamp";
+    return "timestamptz";
   }
 
   protected mapDate(): PostgreSQLDatabaseType {
