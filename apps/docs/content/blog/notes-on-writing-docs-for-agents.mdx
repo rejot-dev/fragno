@@ -1,0 +1,112 @@
+---
+title: "Writing docs for humans and coding agents"
+description:
+  "How tasking a coding agent to use your code is a great test for usability and quality of
+  documentation."
+date: "2026-02-04"
+author: "Jan Schutte"
+image: "blog-docs-for-agents.jpeg"
+---
+
+By tasking my coding agent to implement my library using only the documentation I’d written, I was
+able to surface usability problems and documentation gaps I had missed. Subtle differences arise
+when writing documentation for use by coding agents, and guarding against common failure modes
+improves both the “agent experience” and the developer experience.
+
+I recently built a [form builder library](/forms) and applied a simple test: I dropped a coding
+agent into an existing project and gave it nothing but the docs. A few failure modes showed up,
+patterns worth keeping in mind for writing future documentation.
+
+## Hallucinated APIs and values
+
+My library exposes frontend 'hooks' that make it easy to fetch data from the backend. In an earlier
+version of the docs, I only gave a list of hooks and their purpose:
+
+| Route        | Description          | Hook      |
+| ------------ | -------------------- | --------- |
+| `GET /:slug` | Fetch a form by slug | `useForm` |
+
+But this is not enough for an LLM to generate a correct implementation of this hook. What ended up
+happening is that we got a mixture of different conventions used by different fetch libraries in the
+JS ecosystem. For example:
+
+```typescript
+/*
+should be "data"    doesn't exist      should be "path.slug"
+        ↓               ↓                     ↓
+*/
+const { formDefinition, refetch } = useForm({ id: "some-form" });
+```
+
+Not only was the API incorrectly guessed, this code does not consider the "loading" or "error"
+states, which makes for a poor user experience in the final implementation.
+
+While a human developer has their editor to give type hints, allowing them to understand what this
+piece of code returns, the agent can run type checks, but this means another iteration cycle for the
+agent.
+
+To make sure an agent can one-shot a correct implementation, I made sure to provide
+[complete examples](/docs/forms/hooks#useform) that not only display the correct API but also
+include error handling and loading states.
+
+```typescript
+function FormDisplay() {
+  const { data: form, loading, error } = useForm({
+    path: { slug: "some-form" },
+  });
+
+  if (loading) return <div>Loading form...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <h1>{form.title}</h1>
+      <p>{form.description}</p>
+      {/* Render form using form.dataSchema and form.uiSchema */}
+    </div>
+  );
+}
+```
+
+## Shorten the feedback loop
+
+Another way to make sure that coding agents can quickly get to a correct implementation is by
+throwing errors for commonly hallucinated APIs. Throwing an error that according to the type system
+is impossible seems a bit silly, but in practice developers are running dev servers that are
+continuously hot-reloading code. Type checking is happening at a later stage. Doing it this way the
+mistake is found earlier, and the error message is more helpful.
+
+Here's a real example from our code.
+
+We have a helper function that returns a request handler for a particular JavaScript framework (like
+React Router, Tan Stack, Next.js, Nuxt, etc). In the case of Nuxt, however, a special import needs
+to be added by the developer. This pattern is so different from every other framework that adding
+this error message is a great improvement for the developer experience.
+
+```typescript title="packages/fragno/src/api/fragment-instantiator.ts"
+function handlersFor<T extends FullstackFrameworks>(framework: T): HandlersByFramework[T] {
+  /* ... */
+  // @ts-expect-error TS2367
+  if (framework === "h3" || framework === "nuxt") {
+    throw new Error(`To get handlers for h3, use the 'fromWebHandler' utility function:
+      import { fromWebHandler } from "h3";
+      export default fromWebHandler(myFragment().handler);`);
+  }
+  /* ... */
+}
+```
+
+## LLMs follow instructions too literally
+
+If you give an LLM an instruction it will try to adhere to it as closely as possible. In our
+quickstart guide I mentioned that the user needs to "instantiate a database adapter", what I didn't
+mention, however, was that the database adapter can be reused from another part of your code. My
+coding agent ended up re-creating the same database adapter multiple times across my project. Now I
+explicitly mention this.
+
+## Conclusions
+
+Having an agent implement your library is a great way to check the usability of your library. It can
+be a good substitute for a human reviewer, as any assumptions an agent might have, humans might have
+too. I think in the end many of the changes I've made to the documentation did not exclusively make
+the docs better for agents but for humans as well.
