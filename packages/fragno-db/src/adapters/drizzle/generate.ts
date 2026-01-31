@@ -224,7 +224,7 @@ function mapDBTypeToDrizzleFunction(
       case "text":
         // Check if it's JSON
         if (column.type === "json") {
-          return { name: "blob", params: [`{ mode: "json" }`] };
+          return { name: "text", params: [`{ mode: "json" }`] };
         }
         return { name: "text" };
       case "real":
@@ -315,7 +315,12 @@ function generateColumnDefinition(
     } else if ("dbSpecial" in column.default) {
       // Database-level special functions: defaultTo(b => b.now())
       if (column.default.dbSpecial === "now") {
-        parts.push("defaultNow()");
+        if (ctx.provider === "mysql") {
+          ctx.imports.addImport("sql", "drizzle-orm");
+          parts.push("default(sql`(now())`)");
+        } else {
+          parts.push("defaultNow()");
+        }
       }
     } else if ("runtime" in column.default) {
       // Runtime defaults: defaultTo$()

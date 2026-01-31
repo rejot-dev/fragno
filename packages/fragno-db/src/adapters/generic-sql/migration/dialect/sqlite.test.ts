@@ -166,7 +166,7 @@ describe("SQLiteSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table "timestamps_test" ("id" integer not null unique, "created_at" integer default CURRENT_TIMESTAMP not null)"`,
+        `"create table "timestamps_test" ("id" integer not null unique, "created_at" integer default (cast((julianday('now') - 2440587.5)*86400000 as integer)) not null)"`,
       );
     });
 
@@ -975,7 +975,6 @@ describe("SQLiteSQLGenerator", () => {
 
       // Posts table should contain inline FK constraint
       const postsSql = statements[2].sql;
-      expect(postsSql).toContain("posts_users_author_fk");
       expect(postsSql).toContain("foreign key");
       expect(postsSql).toContain("author_id");
       expect(postsSql).toContain("references");

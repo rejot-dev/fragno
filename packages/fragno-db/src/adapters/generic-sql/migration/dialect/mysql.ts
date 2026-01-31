@@ -101,4 +101,36 @@ export class MySQLSQLGenerator extends SQLGenerator {
       .dropConstraint(name)
       .compile();
   }
+
+  /**
+   * MySQL: add a named primary key constraint for the internal ID column to align naming.
+   */
+  protected override compileCreateTable(
+    operation: Extract<MigrationOperation, { type: "create-table" }>,
+    mapper?: TableNameMapper,
+  ): CompiledQuery {
+    const compiled = super.compileCreateTable(operation, mapper);
+    const tableName = this.getTableName(operation.name, mapper);
+    const internalIdColumn = operation.columns.find((col) => col.role === "internal-id");
+
+    if (!internalIdColumn) {
+      return compiled;
+    }
+
+    const pkColumn = internalIdColumn.name;
+    const pkName = `${tableName}__${pkColumn.replace(/^_+/, "")}`;
+    const escapedPkColumn = pkColumn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const columnRegex = new RegExp("`" + escapedPkColumn + "`([^,]*?)\\bprimary key\\b", "i");
+
+    let sqlText = compiled.sql.replace(columnRegex, "`" + pkColumn + "`$1");
+    sqlText = sqlText.replace(
+      /\)\s*$/,
+      ", constraint `" + pkName + "` primary key (`" + pkColumn + "`))",
+    );
+
+    return {
+      ...compiled,
+      sql: sqlText,
+    };
+  }
 }

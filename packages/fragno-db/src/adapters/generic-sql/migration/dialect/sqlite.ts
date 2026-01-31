@@ -105,6 +105,10 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     }
 
     if ("dbSpecial" in value && value.dbSpecial === "now") {
+      const dbType = this.typeMapper.getDatabaseType(column);
+      if (dbType === "integer" && (column.type === "timestamp" || column.type === "date")) {
+        return sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+      }
       return sql`CURRENT_TIMESTAMP`;
     }
 
@@ -150,7 +154,13 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       }
     }
 
-    return builder.compile();
+    const compiled = builder.compile();
+    // SQLite constraint names are ignored by Drizzle migrations; strip them for parity.
+    const sqlText = compiled.sql.replace(/\bconstraint\s+"[^"]+"\s+foreign key\b/gi, "foreign key");
+    return {
+      ...compiled,
+      sql: sqlText,
+    };
   }
 
   /**
