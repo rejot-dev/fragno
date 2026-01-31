@@ -1,0 +1,7 @@
+- study specs/README.md
+- study {{IMPLEMENTATION_PLAN}} and pick the most important thing(s) to do
+- make sure new code is well tested
+- after ALL tests pass, lint checks and types check, commit and push
+- follow conventional commits, study specs/COMMIT.md
+- update the implementation plan with current status
+- when ALL tasks are finished (all checkboxes marked), write only: <promise>TASKS_FINISHED</promise>

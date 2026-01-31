@@ -1,6 +1,6 @@
 ## Rules
 
-The goal is a gitr history that tells a clear story and allows easy debugging, revering, and
+The goal is a git history that tells a clear story and allows easy debugging, reverting, and
 cherry-picking.
 
 ### General
@@ -26,16 +26,16 @@ cherry-picking.
 - create - packages/create, packages/create-cli
 - dispatch - packages/workflows-dispatcher-cloudflare-do, packages/workflows-dispatcher-node
 - forms - packages/forms
-- node packages/fragno-node
+- node - packages/fragno-node
 - stripe - packages/stripe
-- unplugin packages/unplugin-fragno
+- unplugin - packages/unplugin-fragno
 - wf - apps/fragno-wf
 
 ### Changesets
 
-- The changeset file HAS TO BE part of the commit that includes the changes
+- The changeset file HAS TO BE part of the commit that includes the changes.
 - Create a changeset ONLY if the changes affect end users of Fragno (library authors or app
-  developers using Fragno)
+  developers using Fragno).
 - DO create changesets for:
   - New features, APIs, or functionality
   - Bug fixes that affect user code

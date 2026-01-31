@@ -1,7 +1,7 @@
 # References
 
 This folder stores snapshots of external or local reference material used while writing specs. See
-`specs/HELP.md` for the rules around capturing references.
+`specs/README.md` for the rules around capturing references.
 
 ## Guidelines
 
