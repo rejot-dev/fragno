@@ -295,6 +295,11 @@ function generateColumnDefinition(
     parts.push("notNull()");
   }
 
+  // External IDs are unique by definition in Fragno's SQL migrations.
+  if (column.role === "external-id") {
+    parts.push("unique()");
+  }
+
   // Default values
   if (column.default) {
     if ("value" in column.default) {
@@ -422,10 +427,25 @@ function generateTableConstraints(
   namespace?: string,
   mapper?: TableNameMapper,
 ): string[] {
-  return [
+  const constraints: string[] = [
     ...generateForeignKeys(ctx, table, namespace, mapper),
     ...generateIndexes(ctx, table, namespace),
   ];
+
+  if (ctx.provider === "sqlite") {
+    const externalIdColumn = Object.values(table.columns).find(
+      (column) => column.role === "external-id",
+    );
+    if (externalIdColumn) {
+      const indexName = namespace
+        ? `idx_${table.ormName}_external_id_${namespace}`
+        : `idx_${table.ormName}_external_id`;
+      ctx.imports.addImport("uniqueIndex", ctx.importSource);
+      constraints.push(`uniqueIndex("${indexName}").on(table.${externalIdColumn.ormName})`);
+    }
+  }
+
+  return constraints;
 }
 
 // ============================================================================

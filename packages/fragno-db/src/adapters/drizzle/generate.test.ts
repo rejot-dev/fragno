@@ -45,7 +45,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_test = pgTable("users_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
@@ -57,7 +57,7 @@ describe("generateSchema", () => {
         ])
 
         export const posts_test = pgTable("posts_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
@@ -116,7 +116,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_test = mysqlTable("users_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: int("age"),
@@ -128,7 +128,7 @@ describe("generateSchema", () => {
         ])
 
         export const posts_test = mysqlTable("posts_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
@@ -187,7 +187,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_test = sqliteTable("users_test", {
-          id: text("id").notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
@@ -195,11 +195,12 @@ describe("generateSchema", () => {
           _version: integer("_version").notNull().default(0)
         }, (table) => [
           uniqueIndex("idx_email_test").on(table.email),
-          index("idx_name_test").on(table.name)
+          index("idx_name_test").on(table.name),
+          uniqueIndex("idx_users_external_id_test").on(table.id)
         ])
 
         export const posts_test = sqliteTable("posts_test", {
-          id: text("id").notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: integer("userId").notNull(),
@@ -213,7 +214,8 @@ describe("generateSchema", () => {
             name: "fk_posts_users_author_test"
           }),
           index("idx_user_test").on(table.userId),
-          index("idx_title_test").on(table.title)
+          index("idx_title_test").on(table.title),
+          uniqueIndex("idx_posts_external_id_test").on(table.id)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -269,7 +271,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const events_test = pgTable("events_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -306,7 +308,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const events_test = pgTable("events_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().defaultNow(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -355,7 +357,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const files_test = pgTable("files_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           data: customBinary("data").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
@@ -410,14 +412,14 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_test = pgTable("users_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
         export const posts_test = pgTable("posts_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -474,14 +476,14 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_test = mysqlTable("users_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
         })
 
         export const posts_test = mysqlTable("posts_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -529,7 +531,7 @@ describe("generateSchema", () => {
     it("should generate SQLite schema with many relations", () => {
       const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, foreignKey, index } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -538,14 +540,16 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_test = sqliteTable("users_test", {
-          id: text("id").notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
-        })
+        }, (table) => [
+          uniqueIndex("idx_users_external_id_test").on(table.id)
+        ])
 
         export const posts_test = sqliteTable("posts_test", {
-          id: text("id").notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: integer("userId").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
@@ -556,7 +560,8 @@ describe("generateSchema", () => {
             foreignColumns: [users_test._internalId],
             name: "fk_posts_users_author_test"
           }),
-          index("idx_user_test").on(table.userId)
+          index("idx_user_test").on(table.userId),
+          uniqueIndex("idx_posts_external_id_test").on(table.id)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -638,14 +643,14 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const categories_test = pgTable("categories_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
         export const products_test = pgTable("products_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -714,7 +719,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const category_test = pgTable("category_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -784,7 +789,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const comment_test = pgTable("comment_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -831,7 +836,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const comment_test = mysqlTable("comment_test", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
@@ -869,7 +874,7 @@ describe("generateSchema", () => {
     it("should generate SQLite self-referencing foreign key using table parameter", () => {
       const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "sqlite");
       expect(generated).toMatchInlineSnapshot(`
-        "import { sqliteTable, text, integer, foreignKey, index } from "drizzle-orm/sqlite-core"
+        "import { sqliteTable, text, integer, foreignKey, index, uniqueIndex } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -878,7 +883,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const comment_test = sqliteTable("comment_test", {
-          id: text("id").notNull().$defaultFn(() => createId()),
+          id: text("id").notNull().unique().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: integer("parentId"),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
@@ -889,7 +894,8 @@ describe("generateSchema", () => {
             foreignColumns: [table._internalId],
             name: "fk_comment_comment_parent_test"
           }),
-          index("idx_parent_test").on(table.parentId)
+          index("idx_parent_test").on(table.parentId),
+          uniqueIndex("idx_comment_external_id_test").on(table.id)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
@@ -995,7 +1001,7 @@ describe("generateSchema", () => {
         // ============================================================================
 
         export const users_my_fragment_v2 = pgTable("users_my_fragment_v2", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
@@ -1007,7 +1013,7 @@ describe("generateSchema", () => {
         ])
 
         export const posts_my_fragment_v2 = pgTable("posts_my_fragment_v2", {
-          id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+          id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
