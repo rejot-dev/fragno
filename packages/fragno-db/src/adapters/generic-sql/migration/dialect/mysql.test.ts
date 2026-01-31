@@ -194,7 +194,7 @@ describe("MySQLSQLGenerator", () => {
 
       const sql = compileOne(operation);
       expect(sql).toMatchInlineSnapshot(
-        `"create table \`users\` (\`_internalId\` bigint not null primary key auto_increment, \`name\` text not null)"`,
+        `"create table \`users\` (\`_internalId\` bigint not null  auto_increment, \`name\` text not null, constraint \`users__internalId\` primary key (\`_internalId\`))"`,
       );
     });
   });

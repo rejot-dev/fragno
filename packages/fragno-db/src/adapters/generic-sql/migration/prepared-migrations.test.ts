@@ -200,7 +200,7 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
       `"create table "users_test" ("id" text not null unique)"`,
     );
     expect(statements[2].sql).toMatchInlineSnapshot(
-      `"create table "posts_test" ("id" text not null unique, "authorId" integer not null, constraint "posts_users_author_fk" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict)"`,
+      `"create table "posts_test" ("id" text not null unique, "authorId" integer not null, foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict)"`,
     );
   });
 
@@ -286,7 +286,7 @@ describe("PreparedMigrations - MySQL", () => {
     expect(statements.length).toBe(3);
     expect(statements[0].sql).toMatchInlineSnapshot(`"SET FOREIGN_KEY_CHECKS = 0"`);
     expect(statements[1].sql).toMatchInlineSnapshot(
-      `"create table \`users\` (\`_internalId\` bigint not null primary key auto_increment)"`,
+      `"create table \`users\` (\`_internalId\` bigint not null  auto_increment, constraint \`users__internalId\` primary key (\`_internalId\`))"`,
     );
     expect(statements[2].sql).toMatchInlineSnapshot(`"SET FOREIGN_KEY_CHECKS = 1"`);
   });
@@ -593,7 +593,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index "age_idx_users_test" on "users_test" ("age");
 
-      create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, constraint "posts_users_author_fk" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
+      create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
     `);
@@ -611,7 +611,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "SET FOREIGN_KEY_CHECKS = 0;
 
-      create table \`users_test\` (\`id\` varchar(30) not null unique, \`name\` text not null, \`_internalId\` bigint not null primary key auto_increment, \`_version\` integer default 0 not null);
+      create table \`users_test\` (\`id\` varchar(30) not null unique, \`name\` text not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
 
       alter table \`users_test\` add column \`age\` integer;
 
@@ -619,7 +619,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       create index \`age_idx_users_test\` on \`users_test\` (\`age\`);
 
-      create table \`posts_test\` (\`id\` varchar(30) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null primary key auto_increment, \`_version\` integer default 0 not null);
+      create table \`posts_test\` (\`id\` varchar(30) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
 
       alter table \`posts_test\` add constraint \`posts_users_author_fk\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
 
