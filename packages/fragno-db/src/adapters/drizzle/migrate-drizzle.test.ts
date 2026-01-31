@@ -155,7 +155,8 @@ describe("generateSchema and migrate", () => {
       	"key" text NOT NULL,
       	"value" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "fragno_db_settings_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "fragno_hooks" (
@@ -172,7 +173,8 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"nonce" text NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "users" (
@@ -185,7 +187,8 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"updatedAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "users_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "posts" (
@@ -204,7 +207,8 @@ describe("generateSchema and migrate", () => {
       	"thumbnail" "bytea",
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "posts_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "comments" (
@@ -217,7 +221,8 @@ describe("generateSchema and migrate", () => {
       	"editedAt" timestamp,
       	"isDeleted" boolean DEFAULT false NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "comments_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "tags" (
@@ -228,7 +233,8 @@ describe("generateSchema and migrate", () => {
       	"color" varchar(7),
       	"usageCount" bigint DEFAULT 0 NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "tags_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "postTags" (
@@ -238,7 +244,8 @@ describe("generateSchema and migrate", () => {
       	"order" integer DEFAULT 0 NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
-      	"_version" integer DEFAULT 0 NOT NULL
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "postTags_id_unique" UNIQUE("id")
       );
 
       ALTER TABLE "posts" ADD CONSTRAINT "posts_users_author_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("_internalId") ON DELETE no action ON UPDATE no action;

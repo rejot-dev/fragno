@@ -20,6 +20,7 @@ export async function writeAndLoadSchema(
   schema: Schema,
   dialect: SupportedProvider,
   namespace?: string,
+  includeInternalSchema: boolean = true,
 ) {
   // Create test-specific directory inside _generated
   const baseDir = join(import.meta.dirname, "_generated");
@@ -41,9 +42,11 @@ export async function writeAndLoadSchema(
   // Generate and write the Drizzle schema to file
   // Always include settings schema first (as done in generation-engine.ts), then the test schema
   // De-duplicate: if the test schema IS the settings schema, don't add it twice
-  const fragments: Array<{ namespace: string; schema: Schema }> = [
-    { namespace: "", schema: internalSchema },
-  ];
+  const fragments: Array<{ namespace: string; schema: Schema }> = [];
+
+  if (includeInternalSchema) {
+    fragments.push({ namespace: "", schema: internalSchema });
+  }
 
   if (schema !== internalSchema) {
     fragments.push({ namespace: namespace ?? "", schema });
