@@ -9,10 +9,10 @@ Reference: spec at `specs/spec-upload-fragment.md`.
 - [x] Implement key encoding utilities in `packages/fragment-upload/src/keys.ts` for
       `encodeFileKey`, `decodeFileKey`, and `encodeFileKeyPrefix` per spec section 6.3-6.4, with
       unit tests covering round-trip, prefix safety, invalid parts, and URL-safe output.
-- [ ] Define the storage adapter interface in `packages/fragment-upload/src/storage/types.ts` per
+- [x] Define the storage adapter interface in `packages/fragment-upload/src/storage/types.ts` per
       spec section 8.1-8.2 (use `FileKeyParts` + encoded `FileKeyEncoded`, checksum JSON) and export
       it from `packages/fragment-upload/src/index.ts`.
-- [ ] Implement adapter selection and configuration handling in
+- [x] Implement adapter selection and configuration handling in
       `packages/fragment-upload/src/config.ts` for `UploadFragmentConfig` defaults per spec section
       5.3 (thresholds, expirations, size limits).
 - [ ] Create a shared adapter test harness in

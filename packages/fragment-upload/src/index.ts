@@ -1,8 +1,19 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
+export type { FileHookPayload, UploadFragmentConfig, UploadFragmentResolvedConfig } from "./config";
+export { resolveUploadFragmentConfig } from "./config";
 export { uploadSchema } from "./schema";
 export type { FileKeyEncoded, FileKeyPart, FileKeyParts } from "./keys";
 export { decodeFileKey, encodeFileKey, encodeFileKeyPrefix } from "./keys";
+export type {
+  StorageAdapter,
+  StorageAdapterCapabilities,
+  StorageAdapterLimits,
+  StorageAdapterRecommendations,
+  UploadChecksum,
+  UploadMode,
+  UploadTransport,
+} from "./storage/types";
 
 export function createUploadFragmentClients(_config: FragnoPublicClientConfig = {}) {
   return {} as const;
