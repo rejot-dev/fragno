@@ -14,10 +14,12 @@ describe("createDurableHooksDispatcherDurableObject (shim)", () => {
 
     const handler = handlerFactory({ storage: { setAlarm, deleteAlarm } }, {});
 
+    await vi.waitFor(() => expect(setAlarm).toHaveBeenCalledTimes(1));
+
     await handler.alarm?.();
 
     expect(process).toHaveBeenCalledTimes(1);
-    expect(setAlarm).toHaveBeenCalledTimes(1);
+    expect(setAlarm).toHaveBeenCalledTimes(2);
     expect(deleteAlarm).not.toHaveBeenCalled();
   });
 });
