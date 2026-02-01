@@ -1,0 +1,52 @@
+---
+title: Client Helpers
+description: Hooks and helper flows for uploads and downloads.
+---
+
+## Hooks
+
+```ts
+const {
+  useFiles,
+  useFile,
+  useCreateUpload,
+  useUploadStatus,
+  useCompleteUpload,
+  useAbortUpload,
+  useUpdateFile,
+  useDeleteFile,
+} = uploadClient;
+```
+
+## Helpers
+
+The helper API wraps the common end-to-end flows. It is exposed as a reactive store hook in
+supported frameworks.
+
+```ts
+const { useUploadHelpers } = uploadClient;
+const helpers = useUploadHelpers();
+
+await helpers.createUploadAndTransfer(file, {
+  keyParts: ["teams", teamId, "logo"],
+  onProgress: ({ bytesUploaded, totalBytes }) => {
+    console.log(bytesUploaded, totalBytes);
+  },
+});
+```
+
+### `createUploadAndTransfer`
+
+- Creates an upload.
+- Chooses direct single, direct multipart, or server-streamed (proxy) uploads based on the server
+  response.
+- Tracks progress for multipart and server-streamed (proxy) uploads.
+
+### `downloadFile`
+
+```ts
+const response = await helpers.downloadFile(["teams", teamId, "logo"]);
+const blob = await response.blob();
+```
+
+Uses signed download URLs when supported, otherwise falls back to `/files/:fileKey/content`.

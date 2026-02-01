@@ -45,27 +45,27 @@ Reference: spec at `specs/spec-upload-fragment.md`.
       idempotent and does not allow file reuse.
 - [x] Add list/prefix/cursor pagination in `GET /files` using `findWithCursor` and `starts with`
       index query per spec section 10.4 and the querying docs in section 2 references.
-- [ ] Implement content streaming route `PUT /uploads/:uploadId/content` with
+- [x] Implement content streaming route `PUT /uploads/:uploadId/content` with
       `application/octet-stream` handling per spec section 10.2 and core streaming changes in 12.
-- [ ] Extend `@fragno-dev/core` routing to support `application/octet-stream` in
+- [x] Extend `@fragno-dev/core` routing to support `application/octet-stream` in
       `packages/fragno/src/api/api.ts` and `packages/fragno/src/api/fragment-instantiator.ts`
       following spec section 12.1-12.3, with new tests in core.
-- [ ] Add `bodyStream()` and `isBodyStream()` to `RequestInputContext` in
+- [x] Add `bodyStream()` and `isBodyStream()` to `RequestInputContext` in
       `packages/fragno/src/api/request-input-context.ts` per spec section 12.2, with tests.
-- [ ] Update client request body handling in `packages/fragno/src/client/client.ts` so
+- [x] Update client request body handling in `packages/fragno/src/client/client.ts` so
       `application/octet-stream` routes pass through `Blob`, `File`, `Uint8Array`, and streams
       without wrapping FormData per spec section 12.4, with tests.
-- [ ] Add fragment-level tests for direct single, direct multipart, proxy streaming, and error
+- [x] Add fragment-level tests for direct single, direct multipart, proxy streaming, and error
       conditions (invalid state, expired upload, checksum mismatch) per spec section 14.
-- [ ] Add tests for progress tracking: server-counted proxy bytes and client-reported progress per
+- [x] Add tests for progress tracking: server-counted proxy bytes and client-reported progress per
       spec section 9.3.
 - [x] Implement client API surface in `packages/fragment-upload/src/client/` with hooks + helpers
       per spec section 11, including `createUploadAndTransfer` and `downloadFile`, and ensure
       helpers accept `FileKeyParts` as canonical inputs.
-- [ ] Add client helper tests covering multipart part splitting, progress callbacks, and fallback to
+- [x] Add client helper tests covering multipart part splitting, progress callbacks, and fallback to
       proxy uploads per spec section 11.2.
-- [ ] Write docs under `apps/docs/content/docs/upload/` for overview, quickstart, routes, adapters,
+- [x] Write docs under `apps/docs/content/docs/upload/` for overview, quickstart, routes, adapters,
       key-system, and client usage per spec section 15, and add navigation entries.
-- [ ] Update `example-apps/upload-example` to demonstrate S3-compatible direct multipart +
+- [x] Update `example-apps/upload-example` to demonstrate S3-compatible direct multipart +
       filesystem proxy uploads with progress UI per spec section 16, and remove all workflow-related
       code from this example.

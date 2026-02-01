@@ -14,6 +14,7 @@ import {
   FileBraces,
   Code,
   Workflow,
+  Upload,
 } from "lucide-react";
 
 /**
@@ -37,5 +38,6 @@ export const iconComponents = {
   FileBraces,
   Code,
   Workflow,
+  Upload,
   CircleQuestionMark: CircleHelp, // Note: CircleQuestionMark -> CircleHelp in lucide-react
 } as const;

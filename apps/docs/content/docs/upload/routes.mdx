@@ -1,0 +1,35 @@
+---
+title: Routes
+description: HTTP endpoints for uploads and files.
+---
+
+## Uploads
+
+- `POST /uploads` — create an upload session and receive strategy details.
+- `GET /uploads/:uploadId` — read upload status and progress.
+- `POST /uploads/:uploadId/progress` — record client-side progress (direct uploads).
+- `POST /uploads/:uploadId/parts` — get signed URLs for multipart uploads.
+- `POST /uploads/:uploadId/parts/complete` — record uploaded parts.
+- `POST /uploads/:uploadId/complete` — finalize upload and mark file ready.
+- `POST /uploads/:uploadId/abort` — abort an upload.
+- `PUT /uploads/:uploadId/content` — server-stream (proxy) bytes to storage.
+
+## Files
+
+- `GET /files` — list files with cursor pagination and optional prefix filtering.
+- `GET /files/:fileKey` — fetch file metadata.
+- `PATCH /files/:fileKey` — update file metadata.
+- `DELETE /files/:fileKey` — delete a file (idempotent).
+- `GET /files/:fileKey/download-url` — signed download URL (if supported).
+- `GET /files/:fileKey/content` — server-stream (proxy) downloads (if supported).
+
+## Error codes
+
+- `UPLOAD_NOT_FOUND`
+- `FILE_NOT_FOUND`
+- `UPLOAD_EXPIRED`
+- `UPLOAD_INVALID_STATE`
+- `SIGNED_URL_UNSUPPORTED`
+- `STORAGE_ERROR`
+- `INVALID_FILE_KEY`
+- `INVALID_CHECKSUM`

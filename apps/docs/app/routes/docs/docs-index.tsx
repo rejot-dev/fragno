@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Lightbulb, ClipboardList, Workflow } from "lucide-react";
+import { Lightbulb, ClipboardList, Workflow, Upload } from "lucide-react";
 import { Stripe } from "@/components/logos/stripe";
 import { FragnoCircle } from "@/components/logos/fragno-circle";
 import type { ReactNode } from "react";
@@ -87,6 +87,12 @@ export default function DocsIndexPage() {
             icon={<ClipboardList className="size-6 text-gray-700 dark:text-gray-300" />}
             title="Form Fragment"
             description="Create forms and collect responses"
+          />
+          <DocCard
+            href="/docs/upload"
+            icon={<Upload className="size-6 text-gray-700 dark:text-gray-300" />}
+            title="Upload Fragment"
+            description="Direct, multipart, and proxy file uploads"
           />
           <DocCard
             href="https://rejot.dev/contact/"

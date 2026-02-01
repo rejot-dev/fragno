@@ -1,0 +1,17 @@
+{
+  "title": "Upload",
+  "description": "Upload Fragment",
+  "icon": "Upload",
+  "root": true,
+  "pages": [
+    "---Introduction---",
+    "index",
+    "overview",
+    "quickstart",
+    "---API---",
+    "routes",
+    "client",
+    "key-system",
+    "adapters"
+  ]
+}
