@@ -599,6 +599,71 @@ describe("fragment-instantiator", () => {
       const data = await response.json();
       expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
     });
+
+    it("should accept octet-stream for routes with contentType: application/octet-stream", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "PUT",
+        path: "/stream",
+        contentType: "application/octet-stream",
+        handler: async (ctx, { json }) => {
+          const stream = ctx.bodyStream();
+          const text = await new Response(stream).text();
+          return json({ received: text });
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const request = new Request("http://localhost/api/stream", {
+        method: "PUT",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: new TextEncoder().encode("hello"),
+      });
+
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toEqual({ received: "hello" });
+    });
+
+    it("should reject JSON for octet-stream routes", async () => {
+      const definition = defineFragment("test-fragment").build();
+
+      const route = defineRoute({
+        method: "PUT",
+        path: "/stream",
+        contentType: "application/octet-stream",
+        handler: async (ctx, { json }) => {
+          if (!ctx.isBodyStream()) {
+            throw new Error("Expected stream body");
+          }
+          return json({ ok: true });
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+
+      const request = new Request("http://localhost/api/stream", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hello: "world" }),
+      });
+
+      const response = await fragment.handler(request);
+
+      expect(response.status).toBe(415);
+      const data = await response.json();
+      expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+    });
   });
 
   describe("callRoute", () => {

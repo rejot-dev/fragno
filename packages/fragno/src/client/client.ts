@@ -6,6 +6,7 @@ import type {
   HTTPMethod,
   NonGetHTTPMethod,
   RequestThisContext,
+  RouteContentType,
 } from "../api/api";
 import {
   buildPath,
@@ -98,9 +99,28 @@ function toFormData(value: object): FormData {
  * Handles FormData (file uploads) vs JSON data.
  * @internal
  */
-function prepareRequestBody(body: unknown): { body: BodyInit | undefined; headers?: HeadersInit } {
+function prepareRequestBody(
+  body: unknown,
+  contentType?: RouteContentType,
+): { body: BodyInit | undefined; headers?: HeadersInit } {
   if (body === undefined) {
     return { body: undefined };
+  }
+
+  if (contentType === "application/octet-stream") {
+    if (
+      body instanceof ReadableStream ||
+      body instanceof Blob ||
+      body instanceof File ||
+      body instanceof ArrayBuffer ||
+      body instanceof Uint8Array
+    ) {
+      return { body: body as BodyInit, headers: { "Content-Type": "application/octet-stream" } };
+    }
+
+    throw new Error(
+      "Octet-stream routes only accept Blob, File, ArrayBuffer, Uint8Array, or ReadableStream bodies.",
+    );
   }
 
   // If already FormData, send as-is (browser sets Content-Type with boundary)
@@ -1069,7 +1089,10 @@ export class ClientBuilder<
 
       let response: Response;
       try {
-        const { body: preparedBody, headers: bodyHeaders } = prepareRequestBody(body);
+        const { body: preparedBody, headers: bodyHeaders } = prepareRequestBody(
+          body,
+          route.contentType,
+        );
 
         // Merge headers: fetcherOptions headers + body-specific headers (e.g., Content-Type for JSON)
         // For FormData, bodyHeaders is undefined and browser sets Content-Type with boundary automatically
