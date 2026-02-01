@@ -863,6 +863,94 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1(@types/node@25.0.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
+  example-apps/upload-example:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.3.11
+        version: 0.3.15
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../../packages/fragno
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../../packages/fragno-db
+      '@fragno-dev/fragment-workflows':
+        specifier: workspace:*
+        version: link:../../packages/fragment-workflows
+      '@fragno-dev/workflows-dispatcher-node':
+        specifier: workspace:*
+        version: link:../../packages/workflows-dispatcher-node
+      '@react-router/node':
+        specifier: ^7.5.3
+        version: 7.12.0(react-router@7.12.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
+      '@react-router/serve':
+        specifier: ^7.5.3
+        version: 7.12.0(react-router@7.12.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
+      drizzle-orm:
+        specifier: ^0.44.6
+        version: 0.44.7(@electric-sql/pglite@0.3.15)(@libsql/client@0.15.15)(@prisma/client@6.19.2(prisma@6.19.2(magicast@0.3.5)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(better-sqlite3@12.6.2)(kysely@0.28.10)(mysql2@3.16.1)(prisma@6.19.2(magicast@0.3.5)(typescript@5.9.3))
+      isbot:
+        specifier: ^5
+        version: 5.1.32
+      kysely-pglite:
+        specifier: ^0.6.1
+        version: 0.6.1(@electric-sql/pglite@0.3.15)(better-sqlite3@12.6.2)(kysely@0.28.10)(mysql2@3.16.1)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.3(react@19.2.3)
+      react-router:
+        specifier: ^7.5.3
+        version: 7.12.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+    devDependencies:
+      '@fragno-dev/cli':
+        specifier: workspace:*
+        version: link:../../apps/fragno-cli
+      '@react-router/dev':
+        specifier: ^7.5.3
+        version: 7.12.0(@react-router/serve@7.12.0(react-router@7.12.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3))(@types/node@22.19.7)(babel-plugin-macros@3.1.0)(jiti@2.6.1)(lightningcss@1.30.2)(react-router@7.12.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(terser@5.44.1)(tsx@4.21.0)(typescript@5.9.3)(vite@6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))(wrangler@4.59.2)(yaml@2.8.2)
+      '@tailwindcss/vite':
+        specifier: ^4.1.4
+        version: 4.1.18(vite@6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
+      '@types/node':
+        specifier: ^22
+        version: 22.19.7
+      '@types/react':
+        specifier: ^19.1.2
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: ^19.1.2
+        version: 19.2.3(@types/react@19.2.8)
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      drizzle-kit:
+        specifier: ^0.31.5
+        version: 0.31.8
+      tailwindcss:
+        specifier: ^4.1.4
+        version: 4.1.18
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.3.3
+        version: 6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+      vite-env-only:
+        specifier: ^3.0.3
+        version: 3.0.3(vite@6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
+      vite-plugin-devtools-json:
+        specifier: ^1.0.0
+        version: 1.0.0(vite@6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
+      vite-tsconfig-paths:
+        specifier: ^5.1.4
+        version: 5.1.4(typescript@5.9.3)(vite@6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.7)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
   example-apps/vue-spa-example:
     dependencies:
       '@fragno-dev/example-fragment':
@@ -1401,6 +1489,49 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.7)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/fragment-upload:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@standard-schema/spec':
+        specifier: ^1.0.0
+        version: 1.1.0
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.3
+      solid-js:
+        specifier: '>=1.0.0'
+        version: 1.9.10
+      svelte:
+        specifier: '>=4.0.0'
+        version: 5.47.1
+      typescript:
+        specifier: '>=5'
+        version: 5.9.3
+      vue:
+        specifier: '>=3.0.0'
+        version: 3.5.27(typescript@5.9.3)
+      zod:
+        specifier: ^4.0.5
+        version: 4.3.5
+    devDependencies:
+      '@fragno-dev/cli':
+        specifier: workspace:*
+        version: link:../../apps/fragno-cli
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../unplugin-fragno
+      '@types/node':
+        specifier: ^24
+        version: 24.10.9
+      tsdown:
+        specifier: ^0.12.0
+        version: 0.12.9(typescript@5.9.3)(vue-tsc@3.2.2(typescript@5.9.3))
+
   packages/fragment-workflows:
     dependencies:
       '@fragno-dev/core':
@@ -1858,65 +1989,6 @@ importers:
       webpack:
         specifier: ^5.104.1
         version: 5.104.1(esbuild@0.27.0)
-
-  packages/workflows-dispatcher-cloudflare-do:
-    dependencies:
-      '@fragno-dev/core':
-        specifier: workspace:*
-        version: link:../fragno
-      '@fragno-dev/db':
-        specifier: workspace:*
-        version: link:../fragno-db
-      '@fragno-dev/fragment-workflows':
-        specifier: workspace:*
-        version: link:../fragment-workflows
-    devDependencies:
-      '@fragno-dev/test':
-        specifier: workspace:*
-        version: link:../fragno-test
-      '@fragno-private/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages-private/typescript-config
-      '@fragno-private/vitest-config':
-        specifier: workspace:*
-        version: link:../../packages-private/vitest-config
-      '@types/node':
-        specifier: ^22
-        version: 22.19.1
-      '@vitest/coverage-istanbul':
-        specifier: ^3.2.4
-        version: 3.2.4(vitest@3.2.4)
-      tsdown:
-        specifier: ^0.15.12
-        version: 0.15.12(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
-
-  packages/workflows-dispatcher-node:
-    dependencies:
-      '@fragno-dev/db':
-        specifier: workspace:*
-        version: link:../fragno-db
-    devDependencies:
-      '@fragno-private/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages-private/typescript-config
-      '@fragno-private/vitest-config':
-        specifier: workspace:*
-        version: link:../../packages-private/vitest-config
-      '@types/node':
-        specifier: ^22
-        version: 22.19.1
-      '@vitest/coverage-istanbul':
-        specifier: ^3.2.4
-        version: 3.2.4(vitest@3.2.4)
-      tsdown:
-        specifier: ^0.15.12
-        version: 0.15.12(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.1)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
 packages:
 
@@ -16452,7 +16524,7 @@ snapshots:
   '@nuxt/devtools-wizard@3.1.1':
     dependencies:
       consola: 3.4.2
-      diff: 8.0.2
+      diff: 8.0.3
       execa: 8.0.1
       magicast: 0.5.1
       pathe: 2.0.3
@@ -18812,7 +18884,7 @@ snapshots:
       '@babel/parser': 7.28.6
       '@babel/preset-typescript': 7.28.5(@babel/core@7.28.6)
       ansis: 4.2.0
-      diff: 8.0.2
+      diff: 8.0.3
       pathe: 2.0.3
       tinyglobby: 0.2.15
     transitivePeerDependencies:
@@ -19008,7 +19080,7 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
 
   '@types/braces@3.0.5': {}
 
@@ -19021,7 +19093,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
 
   '@types/cookie@0.6.0': {}
 
@@ -19051,7 +19123,7 @@ snapshots:
 
   '@types/express-serve-static-core@5.1.0':
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
       '@types/qs': 6.14.0
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -19070,7 +19142,7 @@ snapshots:
 
   '@types/http-proxy@1.17.17':
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
 
   '@types/json-schema@7.0.15': {}
 
@@ -19079,7 +19151,7 @@ snapshots:
   '@types/marked-terminal@6.1.1':
     dependencies:
       '@types/cardinal': 2.1.1
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
       chalk: 5.6.2
       marked: 11.2.0
 
@@ -19162,12 +19234,12 @@ snapshots:
 
   '@types/send@1.2.1':
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
 
   '@types/serve-static@2.2.0':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
 
   '@types/ua-parser-js@0.7.39': {}
 
@@ -19179,7 +19251,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
 
   '@typescript-eslint/eslint-plugin@8.48.0(@typescript-eslint/parser@8.48.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)':
     dependencies:
@@ -19474,7 +19546,7 @@ snapshots:
       '@babel/core': 7.28.6
       '@babel/plugin-syntax-typescript': 7.27.1(@babel/core@7.28.6)
       '@babel/plugin-transform-typescript': 7.28.5(@babel/core@7.28.6)
-      '@rolldown/pluginutils': 1.0.0-beta.52
+      '@rolldown/pluginutils': 1.0.0-beta.53
       '@vue/babel-plugin-jsx': 2.0.1(@babel/core@7.28.6)
       vite: 7.3.1(@types/node@25.0.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
       vue: 3.5.27(typescript@5.9.3)
@@ -23139,7 +23211,7 @@ snapshots:
 
   happy-dom@20.3.4:
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
       entities: 4.5.0
@@ -23818,7 +23890,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 22.19.7
+      '@types/node': 24.10.9
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -27960,7 +28032,7 @@ snapshots:
       cac: 6.7.14
       chokidar: 4.0.3
       debug: 4.4.3(supports-color@5.5.0)
-      diff: 8.0.2
+      diff: 8.0.3
       empathic: 2.0.0
       hookable: 5.5.3
       rolldown: 1.0.0-beta.52

@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Space Grotesk", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+html,
+body {
+  @apply text-slate-900;
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(circle at top left, rgba(148, 163, 184, 0.25), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(148, 163, 184, 0.18), transparent 45%);
+
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "name": "@fragno-dev/fragment-upload",
+  "description": "Fragno upload fragment",
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "fragno",
+    "typescript",
+    "react",
+    "vue",
+    "svelte",
+    "solidjs"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./react": {
+      "development": {
+        "browser": "./dist/browser/client/react.js",
+        "default": "./src/client/react.ts"
+      },
+      "types": "./dist/browser/client/react.d.ts",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./vue": {
+      "development": {
+        "browser": "./dist/browser/client/vue.js",
+        "default": "./src/client/vue.ts"
+      },
+      "types": "./dist/browser/client/vue.d.ts",
+      "default": "./dist/browser/client/vue.js"
+    },
+    "./svelte": {
+      "development": {
+        "browser": "./dist/browser/client/svelte.js",
+        "default": "./src/client/svelte.ts"
+      },
+      "types": "./dist/browser/client/svelte.d.ts",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/client/solid.js",
+        "default": "./src/client/solid.ts"
+      },
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
+    "./vanilla": {
+      "development": {
+        "browser": "./dist/browser/client/vanilla.js",
+        "default": "./src/client/vanilla.ts"
+      },
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "default": "./dist/browser/client/vanilla.js"
+    }
+  },
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "build": "tsdown"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@standard-schema/spec": "^1.0.0",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@fragno-dev/cli": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "tsdown": "^0.12.0",
+    "@fragno-dev/db": "workspace:*"
+  },
+  "peerDependencies": {
+    "typescript": ">=5",
+    "react": ">=18.0.0",
+    "svelte": ">=4.0.0",
+    "solid-js": ">=1.0.0",
+    "vue": ">=3.0.0",
+    "@fragno-dev/db": "workspace:*"
+  }
+}
