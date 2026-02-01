@@ -62,6 +62,9 @@ very detailed, living documents that guide implementation without constraining t
 
 ## Specifications
 
+- [Durable Hooks Dispatchers — Spec](./spec-durable-hooks-dispatcher.md) — Process-at scheduling for
+  durable hooks plus generic dispatchers (Node polling, Cloudflare DO alarms) that live in
+  `@fragno-dev/db`.
 - [Fragno Workflows Fragment — Spec](./spec-workflows-fragment.md) — End-to-end workflows fragment
   design: public API shape, database schema and indexes, lifecycle semantics
   (run/replay/wait/sleep), runner/tick behavior, durable hooks wiring, HTTP routes, and
@@ -79,6 +82,8 @@ very detailed, living documents that guide implementation without constraining t
 
 ## Implementation Plans
 
+- [Durable Hooks Dispatchers — Implementation Plan](./impl-durable-hooks-dispatcher.md) —
+  Implementation tasks for process-at durable hooks and generic dispatchers.
 - [AI Fragment — Implementation Plan](./impl-ai-fragment.md) — Execution tasks for the AI fragment
   spec: data model, streaming, hooks, webhook handling, and tests.
 - [In-Memory Adapter + OCC Model Checker — Implementation Plan](./impl-in-memory-adapter.md) —
