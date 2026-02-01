@@ -14,10 +14,10 @@ exposing routes.
 
 ## Installation
 
-Install the fragment, dispatcher, and database packages:
+Install the fragment and database packages:
 
 ```npm
-npm install @fragno-dev/fragment-workflows @fragno-dev/workflows-dispatcher-node @fragno-dev/db
+npm install @fragno-dev/fragment-workflows @fragno-dev/db
 ```
 
 ## Define a Workflow
@@ -69,29 +69,20 @@ Wire the workflow runner, dispatcher, and fragment definition:
 
 ```ts title="lib/workflows-fragment.ts"
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import type { DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksProcessor, type DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
 import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
 } from "@fragno-dev/fragment-workflows";
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
   let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
-  const dispatcher = createInProcessDispatcher({
-    wake: () => {
-      if (!runner) {
-        return;
-      }
-      void runner.tick({ maxInstances: 5, maxSteps: 50 });
-    },
-    pollIntervalMs: 2000,
-  });
 
-  const config = { workflows, dispatcher, runtime, enableRunnerTick: true };
+  const config = { workflows, runtime, enableRunnerTick: true };
   const fragment = instantiate(workflowsFragmentDefinition)
     .withConfig(config)
     .withRoutes([workflowsRoutesFactory])
@@ -101,13 +92,26 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   runner = createWorkflowsRunner({ fragment, workflows, runtime });
   config.runner = runner;
 
+  const processor = createDurableHooksProcessor(fragment);
+  if (!processor) {
+    throw new Error("Durable hooks not configured for workflows fragment.");
+  }
+
+  const dispatcher = createDurableHooksDispatcher({
+    processor,
+    pollIntervalMs: 2000,
+  });
+
+  dispatcher.startPolling();
+  process.on("SIGTERM", () => dispatcher.stopPolling());
+
   return { fragment, dispatcher };
 }
 ```
 
 <Callout type="info">
   The in-process dispatcher is ideal for local dev. For Cloudflare deployments use
-  `@fragno-dev/workflows-dispatcher-cloudflare-do`.
+  `@fragno-dev/db/dispatchers/cloudflare-do`.
 </Callout>
 
 ## Mount the Routes

@@ -7,7 +7,7 @@ import { relations } from "drizzle-orm"
 // ============================================================================
 
 export const fragno_db_settings = pgTable("fragno_db_settings", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   key: text("key").notNull(),
   value: text("value").notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -17,7 +17,7 @@ export const fragno_db_settings = pgTable("fragno_db_settings", {
 ])
 
 export const fragno_hooks = pgTable("fragno_hooks", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   namespace: text("namespace").notNull(),
   hookName: text("hookName").notNull(),
   payload: json("payload").notNull(),
@@ -41,7 +41,7 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 // ============================================================================
 
 export const comment_fragno_db_comment = pgTable("comment_fragno-db-comment", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -84,7 +84,7 @@ export const fragno_db_comment_schema = {
 // ============================================================================
 
 export const upvote_fragno_db_rating = pgTable("upvote_fragno-db-rating", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
   rating: integer("rating").notNull(),
@@ -97,7 +97,7 @@ export const upvote_fragno_db_rating = pgTable("upvote_fragno-db-rating", {
 ])
 
 export const upvote_total_fragno_db_rating = pgTable("upvote_total_fragno-db-rating", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: integer("total").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -119,7 +119,7 @@ export const fragno_db_rating_schema = {
 // ============================================================================
 
 export const user_simple_auth = pgTable("user_simple-auth", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
   passwordHash: text("passwordHash").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -130,7 +130,7 @@ export const user_simple_auth = pgTable("user_simple-auth", {
 ])
 
 export const session_simple_auth = pgTable("session_simple-auth", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -176,7 +176,7 @@ export const simple_auth_schema = {
 // ============================================================================
 
 export const workflow_instance_workflows = pgTable("workflow_instance_workflows", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceId: text("instanceId").notNull(),
   workflowName: text("workflowName").notNull(),
   status: text("status").notNull(),
@@ -199,7 +199,7 @@ export const workflow_instance_workflows = pgTable("workflow_instance_workflows"
 ])
 
 export const workflow_step_workflows = pgTable("workflow_step_workflows", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
@@ -236,7 +236,7 @@ export const workflow_step_workflows = pgTable("workflow_step_workflows", {
 ])
 
 export const workflow_event_workflows = pgTable("workflow_event_workflows", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
@@ -260,7 +260,7 @@ export const workflow_event_workflows = pgTable("workflow_event_workflows", {
 ])
 
 export const workflow_task_workflows = pgTable("workflow_task_workflows", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),
@@ -289,7 +289,7 @@ export const workflow_task_workflows = pgTable("workflow_task_workflows", {
 ])
 
 export const workflow_log_workflows = pgTable("workflow_log_workflows", {
-  id: varchar("id", { length: 30 }).notNull().$defaultFn(() => createId()),
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
   instanceId: text("instanceId").notNull(),

@@ -17,7 +17,6 @@ import type {
   InstanceStatus,
   RunnerTickOptions,
   WorkflowDuration,
-  WorkflowsDispatcher,
   WorkflowsFragmentConfig,
   WorkflowsRegistry,
 } from "./workflow";
@@ -90,13 +89,13 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
 export type WorkflowsTestHarnessOptions = {
   workflows: WorkflowsRegistry;
   adapter: SupportedAdapter;
-  dispatcher?: WorkflowsDispatcher;
   clockStartAt?: Date | number;
   runtime?: WorkflowsTestRuntime;
   randomSeed?: number;
+  autoTickHooks?: boolean;
   fragmentConfig?: Omit<
     WorkflowsFragmentConfig,
-    "workflows" | "dispatcher" | "runner" | "enableRunnerTick" | "runtime"
+    "workflows" | "runner" | "enableRunnerTick" | "runtime"
   >;
   runnerOptions?: {
     runnerId?: string;
@@ -221,9 +220,17 @@ const resolveWorkflowName = (
   return lookup?.name ?? String(workflowNameOrKey);
 };
 
-const assertJsonResponse = <T>(response: { type: string; data?: T }) => {
+const assertJsonResponse = <T>(response: {
+  type: string;
+  data?: T;
+  error?: { message: string; code: string };
+}) => {
   if (response.type !== "json") {
-    throw new Error("Expected json response");
+    const errorDetails =
+      response.type === "error"
+        ? ` (${response.error?.code ?? "UNKNOWN"}: ${response.error?.message ?? "Unknown error"})`
+        : "";
+    throw new Error(`Expected json response, received ${response.type}${errorDetails}`);
   }
   return response.data as T;
 };
@@ -235,20 +242,19 @@ export async function createWorkflowsTestHarness(
     options.runtime ??
     createWorkflowsTestRuntime({ startAt: options.clockStartAt, seed: options.randomSeed });
   const clock = runtime.time;
-  const dispatcher = options.dispatcher ?? { wake: () => {} };
   const workflows = options.workflows;
+  const config: WorkflowsFragmentConfig = {
+    workflows,
+    runtime,
+    ...options.fragmentConfig,
+  };
 
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter(options.adapter)
     .withFragment(
       "workflows",
       instantiate(workflowsFragmentDefinition)
-        .withConfig({
-          workflows,
-          dispatcher,
-          runtime,
-          ...options.fragmentConfig,
-        })
+        .withConfig(config)
         .withRoutes([workflowsRoutesFactory]),
     )
     .build();
@@ -261,6 +267,9 @@ export async function createWorkflowsTestHarness(
     runnerId: options.runnerOptions?.runnerId,
     leaseMs: options.runnerOptions?.leaseMs,
   });
+  if (options.autoTickHooks !== false) {
+    config.runner = runner;
+  }
 
   const createInstance = async (
     workflowNameOrKey: keyof WorkflowsRegistry | string,

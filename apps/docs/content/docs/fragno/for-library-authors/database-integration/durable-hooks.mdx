@@ -64,6 +64,18 @@ subscribe: function (email: string) {
 The key point is that **the hook trigger is part of your transaction**: if the transaction rolls
 back, the hook trigger is not recorded, so the side effect won't run.
 
+## Scheduling hooks (`processAt`)
+
+You can schedule the first hook attempt for a specific time using `processAt`:
+
+```ts
+uow.triggerHook("onSubscribe", { email }, { processAt: new Date(Date.now() + 60_000) });
+```
+
+- If `processAt` is in the future, the hook is stored as pending until that time.
+- If `processAt` is in the past (or omitted), the hook is eligible immediately.
+- Retries still follow the retry policy; `processAt` only affects the first attempt.
+
 ## Running the transaction in a route handler
 
 Hooks are recorded when the handler executes the transaction:
@@ -84,6 +96,83 @@ defineRoute({
   },
 });
 ```
+
+## Dispatching hooks outside requests
+
+Durable hooks are processed after mutations, but you should also run a background dispatcher so
+retries and scheduled hooks fire even when no new requests arrive.
+
+### Node (polling)
+
+```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+
+const processor = createDurableHooksProcessor(fragment);
+if (processor) {
+  const dispatcher = createDurableHooksDispatcher({
+    processor,
+    pollIntervalMs: 2000,
+  });
+  dispatcher.startPolling();
+}
+```
+
+### Cloudflare Durable Objects (alarms)
+
+```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcherDurableObject } from "@fragno-dev/db/dispatchers/cloudflare-do";
+
+export class DurableHooksDispatcher {
+  handler: ReturnType<ReturnType<typeof createDurableHooksDispatcherDurableObject>>;
+
+  constructor(state: DurableObjectState, env: Env) {
+    const processor = createDurableHooksProcessor(env.fragment);
+    if (!processor) {
+      throw new Error("Fragment has no durable hooks configured.");
+    }
+    this.handler = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => processor,
+    })(state, env);
+  }
+
+  alarm() {
+    return this.handler.alarm?.();
+  }
+}
+```
+
+## Recovering stuck hooks
+
+If a worker crashes after marking a hook as `processing`, that hook can remain stuck forever. Fragno
+automatically re-queues hooks that have been in `processing` for too long (default: **10 minutes**).
+
+You can configure or disable this behavior when instantiating the fragment:
+
+```ts
+const fragment = instantiate(fragmentDef)
+  .withConfig(config)
+  .withOptions({
+    databaseAdapter,
+    durableHooks: {
+      // Minutes a hook may stay in `processing` before it is re-queued.
+      // Use `false` to disable stuck-processing recovery entirely.
+      stuckProcessingTimeoutMinutes: 10,
+      onStuckProcessingHooks: ({ namespace, timeoutMinutes, events }) => {
+        console.warn(
+          `Re-queued ${events.length} stuck hooks in ${namespace} after ${timeoutMinutes} minutes`,
+          events,
+        );
+      },
+    },
+  })
+  .build();
+```
+
+When hooks are re-queued they may run again, so hook implementations must remain **idempotent**. If
+`stuckProcessingTimeoutMinutes` is set to `false`, no stuck-processing checks run and the callback
+will not fire.
 
 ## Retry behavior
 

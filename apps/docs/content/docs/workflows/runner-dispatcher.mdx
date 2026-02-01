@@ -12,12 +12,20 @@ when work is available.
 Use the in-process dispatcher for local development or small deployments:
 
 ```ts
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
 
-const dispatcher = createInProcessDispatcher({
-  wake: () => void runner.tick({ maxInstances: 5, maxSteps: 50 }),
+const processor = createDurableHooksProcessor(fragment);
+if (!processor) {
+  throw new Error("Fragment has no durable hooks configured.");
+}
+
+const dispatcher = createDurableHooksDispatcher({
+  processor,
   pollIntervalMs: 2000,
 });
+
+dispatcher.startPolling();
 ```
 
 ## Cloudflare Durable Object dispatcher
@@ -25,21 +33,21 @@ const dispatcher = createInProcessDispatcher({
 For Cloudflare, use the Durable Object dispatcher package so alarms drive the runner:
 
 ```ts
-import { createWorkflowsDispatcherDurableObject } from "@fragno-dev/workflows-dispatcher-cloudflare-do";
-import { workflows } from "./workflows";
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcherDurableObject } from "@fragno-dev/db/dispatchers/cloudflare-do";
 
 export class WorkflowsDispatcher {
-  handler: ReturnType<ReturnType<typeof createWorkflowsDispatcherDurableObject>>;
+  handler: ReturnType<ReturnType<typeof createDurableHooksDispatcherDurableObject>>;
 
   constructor(state: DurableObjectState, env: Env) {
-    this.handler = createWorkflowsDispatcherDurableObject({
-      workflows,
-      namespace: "workflows",
-    })(state, env);
-  }
+    const processor = createDurableHooksProcessor(env.fragment);
+    if (!processor) {
+      throw new Error("Fragment has no durable hooks configured.");
+    }
 
-  fetch(request: Request) {
-    return this.handler.fetch(request);
+    this.handler = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => processor,
+    })(state, env);
   }
 
   alarm() {

@@ -43,6 +43,11 @@ export interface TriggerHookOptions {
    * If not provided, uses the default retry policy.
    */
   retryPolicy?: RetryPolicy;
+  /**
+   * Absolute time for the first attempt. If in the future, the hook is
+   * scheduled for that time; if in the past, it runs immediately.
+   */
+  processAt?: Date;
 }
 
 /**
@@ -58,8 +63,8 @@ export interface TriggeredHook {
 /**
  * Configuration for hook processing.
  */
-export interface HookProcessorConfig {
-  hooks: HooksMap;
+export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
+  hooks: THooks;
   namespace: string;
   internalFragment: InternalFragmentInstance;
   defaultRetryPolicy?: RetryPolicy;
@@ -70,7 +75,10 @@ export interface HookProcessorConfig {
  * This should be called before executeMutations() so hook records are created
  * in the same transaction as the user's mutations.
  */
-export function prepareHookMutations(uow: IUnitOfWork, config: HookProcessorConfig): void {
+export function prepareHookMutations<THooks extends HooksMap>(
+  uow: IUnitOfWork,
+  config: HookProcessorConfig<THooks>,
+): void {
   const { namespace, internalFragment, defaultRetryPolicy } = config;
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
 
@@ -86,6 +94,8 @@ export function prepareHookMutations(uow: IUnitOfWork, config: HookProcessorConf
   for (const hook of triggeredHooks) {
     const hookRetryPolicy = hook.options?.retryPolicy ?? retryPolicy;
     const maxAttempts = hookRetryPolicy.shouldRetry(4) ? 5 : 1;
+    const processAt = hook.options?.processAt ? new Date(hook.options.processAt) : null;
+    const nextRetryAt = processAt && processAt.getTime() > Date.now() ? processAt : null;
     internalUow.create("fragno_hooks", {
       namespace,
       hookName: hook.hookName,
@@ -94,7 +104,7 @@ export function prepareHookMutations(uow: IUnitOfWork, config: HookProcessorConf
       attempts: 0,
       maxAttempts,
       lastAttemptAt: null,
-      nextRetryAt: null,
+      nextRetryAt,
       error: null,
       nonce: uow.idempotencyKey,
     });
@@ -105,7 +115,9 @@ export function prepareHookMutations(uow: IUnitOfWork, config: HookProcessorConf
  * Process pending hook events after the transaction has committed.
  * This should be called in the onSuccess callback after executeMutations().
  */
-export async function processHooks(config: HookProcessorConfig): Promise<void> {
+export async function processHooks<THooks extends HooksMap>(
+  config: HookProcessorConfig<THooks>,
+): Promise<number> {
   const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
 
@@ -120,8 +132,19 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
   });
 
   if (pendingEvents.length === 0) {
-    return;
+    return 0;
   }
+
+  // Mark events as processing before executing hooks to avoid re-entrant reprocessing.
+  await internalFragment.inContext(async function () {
+    await this.handlerTx()
+      .withServiceCalls(() =>
+        pendingEvents.map((event) =>
+          internalFragment.services.hookService.markHookProcessing(event.id),
+        ),
+      )
+      .execute();
+  });
 
   // Process events (async work outside transaction)
   const processedEvents = await Promise.allSettled(
@@ -187,4 +210,11 @@ export async function processHooks(config: HookProcessorConfig): Promise<void> {
       })
       .execute();
   });
+
+  const processedCount = processedEvents.reduce(
+    (count, result) => count + (result.status === "fulfilled" ? 1 : 0),
+    0,
+  );
+
+  return processedCount;
 }

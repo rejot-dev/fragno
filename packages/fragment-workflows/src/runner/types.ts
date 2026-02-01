@@ -3,7 +3,7 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 import type { workflowsSchema } from "../schema";
-import type { WorkflowsRegistry, WorkflowsRunner } from "../workflow";
+import type { WorkflowsHooks, WorkflowsRegistry, WorkflowsRunner } from "../workflow";
 import type { DatabaseRequestContext } from "@fragno-dev/db";
 
 export type WorkflowTaskRecord = TableToColumnValues<
@@ -37,7 +37,9 @@ export type WorkflowStepUpdate = Partial<Omit<WorkflowStepRecord, "id">>;
 export type WorkflowEventUpdate = Partial<Omit<WorkflowEventRecord, "id">>;
 
 export type WorkflowsRunnerFragment = {
-  inContext: <T>(callback: (this: DatabaseRequestContext) => T | Promise<T>) => T | Promise<T>;
+  inContext: <T>(
+    callback: (this: DatabaseRequestContext<WorkflowsHooks>) => T | Promise<T>,
+  ) => T | Promise<T>;
   services: Record<string, unknown>;
 };
 
@@ -50,7 +52,7 @@ export type WorkflowsRunnerOptions = {
 };
 
 export type RunHandlerTx = <T>(
-  callback: (handlerTx: DatabaseRequestContext["handlerTx"]) => T | Promise<T>,
+  callback: (handlerTx: DatabaseRequestContext<WorkflowsHooks>["handlerTx"]) => T | Promise<T>,
 ) => Promise<T>;
 
 export type RunnerFactory = (options: WorkflowsRunnerOptions) => WorkflowsRunner;

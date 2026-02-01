@@ -11,7 +11,7 @@ observe workflow instances.
 ## Install
 
 ```bash
-npm install @fragno-dev/fragment-workflows @fragno-dev/workflows-dispatcher-node
+npm install @fragno-dev/fragment-workflows @fragno-dev/db
 ```
 
 ## Define a Workflow
@@ -59,29 +59,20 @@ export const workflows = {
 
 ```ts title="lib/workflows-fragment.ts"
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import type { DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksProcessor, type DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
 import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
 } from "@fragno-dev/fragment-workflows";
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
   let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
-  const dispatcher = createInProcessDispatcher({
-    wake: () => {
-      if (!runner) {
-        return;
-      }
-      void runner.tick({ maxInstances: 5, maxSteps: 50 });
-    },
-    pollIntervalMs: 2000,
-  });
 
-  const config = { workflows, dispatcher, runtime, enableRunnerTick: true };
+  const config = { workflows, runtime, enableRunnerTick: true };
   const fragment = instantiate(workflowsFragmentDefinition)
     .withConfig(config)
     .withRoutes([workflowsRoutesFactory])
@@ -90,6 +81,16 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
 
   runner = createWorkflowsRunner({ fragment, workflows, runtime });
   config.runner = runner;
+
+  const processor = createDurableHooksProcessor(fragment);
+  if (!processor) {
+    throw new Error("Durable hooks not configured for workflows fragment.");
+  }
+
+  const dispatcher = createDurableHooksDispatcher({
+    processor,
+    pollIntervalMs: 2000,
+  });
 
   return { fragment, dispatcher };
 }

@@ -25,6 +25,8 @@ import {
   type HooksMap,
   type HookFn,
   type HookContext,
+  type HookProcessorConfig,
+  type DurableHooksProcessingOptions,
 } from "./hooks/hooks";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
@@ -637,18 +639,31 @@ export class DatabaseFragmentDefinitionBuilder<
       options: FragnoPublicConfigWithDatabase;
     }) => InternalFragmentInstance;
 
+    const createHooksConfig = (context: {
+      config: TConfig;
+      options: FragnoPublicConfigWithDatabase;
+    }) => {
+      if (!this.#hooksFactory) {
+        return undefined;
+      }
+
+      const durableHooksOptions = context.options.durableHooks;
+      const hooksConfig: HookProcessorConfig<THooks> = {
+        hooks: this.#hooksFactory(context),
+        namespace: this.#namespace,
+        internalFragment: internalFragmentFactory(context),
+        stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
+        onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
+      };
+      return hooksConfig;
+    };
+
     const builderWithContext = builderWithStorage.withThisContext<
       DatabaseServiceContext<THooks>,
       DatabaseHandlerContext<THooks>
     >(({ storage, config, options }) => {
       // Create hooks config if hooks factory is defined
-      const hooksConfig = this.#hooksFactory
-        ? {
-            hooks: this.#hooksFactory({ config, options }),
-            namespace: this.#namespace,
-            internalFragment: internalFragmentFactory({ config, options }),
-          }
-        : undefined;
+      const hooksConfig = createHooksConfig({ config, options });
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
@@ -717,6 +732,14 @@ export class DatabaseFragmentDefinitionBuilder<
 
     // Build the final definition
     const finalDef = builderWithContext.build();
+    if (this.#hooksFactory) {
+      finalDef.internalDataFactory = ({ config, options }) => ({
+        durableHooks: createHooksConfig({
+          config: config as TConfig,
+          options: options as FragnoPublicConfigWithDatabase,
+        }),
+      });
+    }
 
     // Return the complete definition with proper typing and dependencies
     return {

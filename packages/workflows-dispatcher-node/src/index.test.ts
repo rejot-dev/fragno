@@ -1,23 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
-import { createInProcessDispatcher } from "./index";
+import { createDurableHooksDispatcher } from "./index";
 
-describe("createInProcessDispatcher", () => {
+describe("createDurableHooksDispatcher (shim)", () => {
   it("polls and stops polling", async () => {
     vi.useFakeTimers();
     try {
-      const wake = vi.fn();
-      const dispatcher = createInProcessDispatcher({ wake, pollIntervalMs: 10 });
+      const process = vi.fn().mockResolvedValue(0);
+      const getNextWakeAt = vi.fn().mockResolvedValue(new Date(Date.now() - 1000));
+      const dispatcher = createDurableHooksDispatcher({
+        processor: { process, getNextWakeAt, namespace: "test" },
+        pollIntervalMs: 10,
+      });
 
       dispatcher.startPolling();
       await vi.advanceTimersByTimeAsync(25);
 
-      expect(wake).toHaveBeenCalled();
+      expect(process).toHaveBeenCalled();
 
       dispatcher.stopPolling();
-      wake.mockClear();
+      process.mockClear();
 
       await vi.advanceTimersByTimeAsync(25);
-      expect(wake).not.toHaveBeenCalled();
+      expect(process).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

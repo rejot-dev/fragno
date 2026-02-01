@@ -123,7 +123,21 @@ export type { BoundServices } from "@fragno-dev/core";
 export { internalFragmentDef } from "./fragments/internal-fragment";
 export type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
-export type { HookContext, HooksMap, HookFn, HookPayload, TriggerHookOptions } from "./hooks/hooks";
+export type {
+  HookContext,
+  HooksMap,
+  HookFn,
+  HookPayload,
+  TriggerHookOptions,
+  DurableHooksProcessingOptions,
+  StuckHookProcessingInfo,
+  StuckHookProcessingEvent,
+  StuckHookProcessingTimeoutMinutes,
+} from "./hooks/hooks";
+export {
+  createDurableHooksProcessor,
+  type DurableHooksProcessor,
+} from "./hooks/durable-hooks-processor";
 
 export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

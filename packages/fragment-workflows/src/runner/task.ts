@@ -212,6 +212,21 @@ export const commitInstanceAndTask = async (
                 updatedAt: ctx.time.now(),
               }),
             );
+            const reason =
+              taskAction.taskKind === "retry"
+                ? "retry"
+                : taskAction.taskKind === "wake"
+                  ? "wake"
+                  : "create";
+            uow.triggerHook(
+              "onWorkflowEnqueued",
+              {
+                workflowName: task.workflowName,
+                instanceId: task.instanceId,
+                reason,
+              },
+              { processAt: taskAction.runAt },
+            );
           }
 
           for (const [, createData] of mutations.stepCreates) {

@@ -8,7 +8,7 @@ import {
   type FragnoPublicConfigWithDatabase,
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
-import type { FragnoId } from "../schema/create";
+import { FragnoId } from "../schema/create";
 import { schema, idColumn, column } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 
@@ -154,6 +154,128 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               maxAttempts: event.maxAttempts,
               idempotencyKey: event.nonce,
             }));
+          })
+          .build();
+      },
+
+      /**
+       * Re-queue hook events that have been stuck in processing for too long.
+       */
+      requeueStuckProcessingHooks(namespace: string, staleBefore: Date) {
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.find("fragno_hooks", (b) =>
+              b.whereIndex("idx_namespace_status_retry", (eb) =>
+                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
+              ),
+            ),
+          )
+          .transformRetrieve(([events]) => {
+            const stuck = events.filter((event) => {
+              if (!event.lastAttemptAt) {
+                return true;
+              }
+              return event.lastAttemptAt <= staleBefore;
+            });
+
+            return stuck.map((event) => ({
+              id: event.id,
+              hookName: event.hookName,
+              attempts: event.attempts,
+              maxAttempts: event.maxAttempts,
+              lastAttemptAt: event.lastAttemptAt,
+              nextRetryAt: event.nextRetryAt,
+            }));
+          })
+          .mutate(({ uow, retrieveResult }) => {
+            for (const event of retrieveResult) {
+              uow.update("fragno_hooks", event.id, (b) =>
+                b.set({ status: "pending", nextRetryAt: null }).check(),
+              );
+            }
+          })
+          .transform(({ retrieveResult }) => retrieveResult)
+          .build();
+      },
+
+      /**
+       * Get the next time a processing hook becomes stale.
+       */
+      getNextProcessingStaleAt(namespace: string, timeoutMinutes: number) {
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.find("fragno_hooks", (b) =>
+              b.whereIndex("idx_namespace_status_retry", (eb) =>
+                eb.and(eb("namespace", "=", namespace), eb("status", "=", "processing")),
+              ),
+            ),
+          )
+          .transformRetrieve(([events]) => {
+            if (events.length === 0) {
+              return null;
+            }
+
+            const now = Date.now();
+            const timeoutMs = timeoutMinutes * 60_000;
+            let earliestStaleAt: Date | null = null;
+
+            for (const event of events) {
+              if (!event.lastAttemptAt) {
+                return new Date();
+              }
+
+              const staleAtMs = event.lastAttemptAt.getTime() + timeoutMs;
+              if (staleAtMs <= now) {
+                return new Date();
+              }
+
+              const staleAt = new Date(staleAtMs);
+              if (!earliestStaleAt || staleAt < earliestStaleAt) {
+                earliestStaleAt = staleAt;
+              }
+            }
+
+            return earliestStaleAt;
+          })
+          .build();
+      },
+
+      /**
+       * Get the earliest pending hook wake time for a namespace.
+       */
+      getNextHookWakeAt(namespace: string) {
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_retry", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", "pending"),
+                      eb("nextRetryAt", "is", null),
+                    ),
+                  )
+                  .select(["nextRetryAt"]),
+              )
+              .findFirst("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_retry", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", "pending"),
+                      eb("nextRetryAt", "is not", null),
+                    ),
+                  )
+                  .orderByIndex("idx_namespace_status_retry", "asc")
+                  .select(["nextRetryAt"]),
+              ),
+          )
+          .transformRetrieve(([immediate, scheduled]) => {
+            if (immediate) {
+              return new Date();
+            }
+            return scheduled?.nextRetryAt ?? null;
           })
           .build();
       },

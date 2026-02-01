@@ -201,6 +201,7 @@ export class FragnoInstantiatedFragment<
   #createRequestStorage?: () => TRequestStorage;
   #options: TOptions;
   #linkedFragments: TLinkedFragments;
+  #internalData: Record<string, unknown>;
 
   constructor(params: {
     name: string;
@@ -214,6 +215,7 @@ export class FragnoInstantiatedFragment<
     createRequestStorage?: () => TRequestStorage;
     options: TOptions;
     linkedFragments?: TLinkedFragments;
+    internalData?: Record<string, unknown>;
   }) {
     this.#name = params.name;
     this.#routes = params.routes;
@@ -226,6 +228,7 @@ export class FragnoInstantiatedFragment<
     this.#createRequestStorage = params.createRequestStorage;
     this.#options = params.options;
     this.#linkedFragments = params.linkedFragments ?? ({} as TLinkedFragments);
+    this.#internalData = params.internalData ?? {};
 
     // Build router
     this.#router =
@@ -274,6 +277,7 @@ export class FragnoInstantiatedFragment<
       deps: this.#deps,
       options: this.#options,
       linkedFragments: this.#linkedFragments,
+      ...this.#internalData,
     };
   }
 
@@ -994,6 +998,13 @@ export function instantiateFragment<
 
   const serviceContext = contexts?.serviceContext;
   const handlerContext = contexts?.handlerContext;
+  const internalData =
+    definition.internalDataFactory?.({
+      config,
+      options,
+      deps,
+      linkedFragments: linkedFragmentInstances,
+    }) ?? {};
 
   // 9. Bind services to serviceContext (restricted)
   // Services get the restricted context (for database fragments, this excludes execute methods)
@@ -1034,6 +1045,7 @@ export function instantiateFragment<
     createRequestStorage: createRequestStorageWithContext,
     options,
     linkedFragments: linkedFragmentInstances,
+    internalData: internalData as Record<string, unknown>,
   });
 }
 
@@ -1110,7 +1122,7 @@ interface IFragnoInstantiatedFragment {
     deps: unknown;
     options: unknown;
     linkedFragments: unknown;
-  };
+  } & Record<string, unknown>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   withMiddleware(handler: any): this;
