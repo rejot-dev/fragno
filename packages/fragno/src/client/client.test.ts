@@ -2079,6 +2079,55 @@ describe("Custom Fetcher Configuration", () => {
     expect(url4).toBe("http://localhost:3000/api/test-fragment/users/456?include=posts");
   });
 
+  test("public mountRoute is used for hooks", async () => {
+    let capturedUrl: string | undefined;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url) => {
+      capturedUrl = String(url);
+      return {
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John" }],
+      } as Response;
+    });
+
+    const client = createClientBuilder(
+      testFragment,
+      { ...clientConfig, mountRoute: "/api/uploads-direct" },
+      testRoutes,
+    );
+
+    const useUsers = client.createHook("/users");
+    await useUsers.query();
+
+    expect(capturedUrl).toBe("http://localhost:3000/api/uploads-direct/users");
+  });
+
+  test("public mountRoute is used for mutators", async () => {
+    let capturedUrl: string | undefined;
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url) => {
+      capturedUrl = String(url);
+      return {
+        headers: new Headers(),
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 2, name: "Jane" }),
+      } as Response;
+    });
+
+    const client = createClientBuilder(
+      testFragment,
+      { ...clientConfig, mountRoute: "/api/uploads-proxy" },
+      testRoutes,
+    );
+
+    const mutator = client.createMutator("POST", "/users");
+    await mutator.mutateQuery({ body: { name: "Jane" } });
+
+    expect(capturedUrl).toBe("http://localhost:3000/api/uploads-proxy/users");
+  });
+
   test("getFetcher returns correct fetcher and options", () => {
     const customFetch = vi.fn() as unknown as typeof fetch;
     const client = createClientBuilder(

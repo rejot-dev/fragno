@@ -728,7 +728,10 @@ export class ClientBuilder<
     },
   ): string {
     const baseUrl = this.#publicConfig.baseUrl ?? "";
-    const mountRoute = getMountRoute(this.#fragmentConfig);
+    const mountRoute = getMountRoute({
+      name: this.#fragmentConfig.name,
+      mountRoute: this.#publicConfig.mountRoute,
+    });
 
     return buildUrl(
       { baseUrl, mountRoute, path },
@@ -862,7 +865,10 @@ export class ClientBuilder<
     }
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
-    const mountRoute = getMountRoute(this.#fragmentConfig);
+    const mountRoute = getMountRoute({
+      name: this.#fragmentConfig.name,
+      mountRoute: this.#publicConfig.mountRoute,
+    });
     const fetcher = this.#getFetcher();
     const fetcherOptions = this.#getFetcherOptions();
 
@@ -1053,7 +1059,10 @@ export class ClientBuilder<
     const method = route.method;
 
     const baseUrl = this.#publicConfig.baseUrl ?? "";
-    const mountRoute = getMountRoute(this.#fragmentConfig);
+    const mountRoute = getMountRoute({
+      name: this.#fragmentConfig.name,
+      mountRoute: this.#publicConfig.mountRoute,
+    });
     const fetcher = this.#getFetcher();
     const fetcherOptions = this.#getFetcherOptions();
 
@@ -1326,7 +1335,10 @@ export function createClientBuilder<
     routes,
   };
 
-  const mountRoute = publicConfig.mountRoute ?? `/${definition.name}`;
+  const mountRoute = getMountRoute({
+    name: definition.name,
+    mountRoute: publicConfig.mountRoute,
+  });
   const mergedFetcherConfig = mergeFetcherConfigs(authorFetcherConfig, publicConfig.fetcherConfig);
   const fullPublicConfig = {
     ...publicConfig,
