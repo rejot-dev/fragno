@@ -15,16 +15,16 @@ Reference: spec at `specs/spec-upload-fragment.md`.
 - [x] Implement adapter selection and configuration handling in
       `packages/fragment-upload/src/config.ts` for `UploadFragmentConfig` defaults per spec section
       5.3 (thresholds, expirations, size limits).
-- [ ] Create a shared adapter test harness in
+- [x] Create a shared adapter test harness in
       `packages/fragment-upload/src/storage/__tests__/adapter-contract.test.ts` that validates
       required behaviors (init, complete, delete, signed download) from spec sections 8 and 9.
-- [ ] Implement the S3-compatible adapter in `packages/fragment-upload/src/storage/s3.ts` using a
+- [x] Implement the S3-compatible adapter in `packages/fragment-upload/src/storage/s3.ts` using a
       pluggable SigV4 signer and enforcing multipart constraints per spec section 8.3; add tests
       with mocked signing and in-memory part list.
-- [ ] Add an optional R2 adapter in `packages/fragment-upload/src/storage/r2.ts` only for
+- [x] Add an optional R2 adapter in `packages/fragment-upload/src/storage/r2.ts` only for
       R2-specific deviations per spec section 8.4; otherwise ensure the S3 adapter works with R2 by
       configuration.
-- [ ] Implement the filesystem adapter in `packages/fragment-upload/src/storage/fs.ts` (Node-only),
+- [x] Implement the filesystem adapter in `packages/fragment-upload/src/storage/fs.ts` (Node-only),
       streaming write and read, plus path mapping from `storageKey` per spec section 8.5; add tests
       guarded for Node and temp directories.
 - [ ] Build upload services in `packages/fragment-upload/src/services/` for
