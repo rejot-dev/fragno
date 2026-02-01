@@ -75,6 +75,7 @@ export {
   DatabaseFragmentDefinitionBuilder,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
+  type DatabaseServiceContext,
   type DatabaseHandlerContext as DatabaseRequestContext,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";

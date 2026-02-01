@@ -1324,6 +1324,35 @@ describe("createMutator", () => {
 
     expect(result).toBeUndefined();
   });
+
+  test("should send octet-stream body without wrapping", async () => {
+    const testFragment = defineFragment("test-fragment").build();
+    const testRoutes = [
+      defineRoute({
+        method: "PUT",
+        path: "/upload",
+        contentType: "application/octet-stream",
+        inputSchema: z.unknown(),
+        handler: async (_ctx, { empty }) => empty(),
+      }),
+    ] as const;
+
+    vi.mocked(global.fetch).mockImplementation(async () => {
+      return new Response(null, { status: 204 });
+    });
+
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
+    const upload = cb.createMutator("PUT", "/upload");
+    const body = new Uint8Array([1, 2, 3, 4]);
+
+    await upload.mutateQuery({ body });
+
+    const [_url, options] = vi.mocked(global.fetch).mock.calls[0];
+    const headers = options?.headers as Record<string, string> | undefined;
+
+    expect(headers?.["Content-Type"]).toBe("application/octet-stream");
+    expect(options?.body).toBe(body);
+  });
 });
 
 describe("createMutator - streaming", () => {
