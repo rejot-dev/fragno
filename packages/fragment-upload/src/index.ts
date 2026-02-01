@@ -14,6 +14,14 @@ export type {
   UploadMode,
   UploadTransport,
 } from "./storage/types";
+export { createFilesystemStorageAdapter, type FilesystemStorageAdapterOptions } from "./storage/fs";
+export {
+  createS3CompatibleStorageAdapter,
+  type S3CompatibleStorageAdapterOptions,
+  type S3Signer,
+  type S3SignerInput,
+} from "./storage/s3";
+export { createR2StorageAdapter, type R2StorageAdapterOptions } from "./storage/r2";
 
 export function createUploadFragmentClients(_config: FragnoPublicClientConfig = {}) {
   return {} as const;
