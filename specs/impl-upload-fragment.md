@@ -27,17 +27,17 @@ Reference: spec at `specs/spec-upload-fragment.md`.
 - [x] Implement the filesystem adapter in `packages/fragment-upload/src/storage/fs.ts` (Node-only),
       streaming write and read, plus path mapping from `storageKey` per spec section 8.5; add tests
       guarded for Node and temp directories.
-- [ ] Build upload services in `packages/fragment-upload/src/services/` for
+- [x] Build upload services in `packages/fragment-upload/src/services/` for
       create/progress/complete/ abort/delete flows per spec section 9, using `FileKeyParts` as the
       canonical identifier and encoding to `fileKey` for storage; enforce atomicity with
       `this.serviceTx(...)` and `.check()` for optimistic concurrency as per spec section 5.4.
-- [ ] Audit all database access in the fragment to ensure no direct `deps.db` usage; handler routes
+- [x] Audit all database access in the fragment to ensure no direct `deps.db` usage; handler routes
       must use `this.handlerTx()` and background work must use `fragment.inContext(...).handlerTx()`
       per spec section 5.4.
-- [ ] Add durable hooks to the fragment definition in `packages/fragment-upload/src/definition.ts`
+- [x] Add durable hooks to the fragment definition in `packages/fragment-upload/src/definition.ts`
       for final events only (`onFileReady`, `onUploadFailed`, `onFileDeleted`) per spec section 13,
       and wire them into service mutations.
-- [ ] Implement upload routes in `packages/fragment-upload/src/routes/uploads.ts` for all endpoints
+- [x] Implement upload routes in `packages/fragment-upload/src/routes/uploads.ts` for all endpoints
       in spec section 10.1-10.2, including multipart parts handling and progress updates; decode
       `fileKey` path params into `FileKeyParts` before calling services.
 - [x] Implement file routes in `packages/fragment-upload/src/routes/files.ts` for all endpoints in
@@ -59,7 +59,7 @@ Reference: spec at `specs/spec-upload-fragment.md`.
       conditions (invalid state, expired upload, checksum mismatch) per spec section 14.
 - [ ] Add tests for progress tracking: server-counted proxy bytes and client-reported progress per
       spec section 9.3.
-- [ ] Implement client API surface in `packages/fragment-upload/src/client/` with hooks + helpers
+- [x] Implement client API surface in `packages/fragment-upload/src/client/` with hooks + helpers
       per spec section 11, including `createUploadAndTransfer` and `downloadFile`, and ensure
       helpers accept `FileKeyParts` as canonical inputs.
 - [ ] Add client helper tests covering multipart part splitting, progress callbacks, and fallback to
