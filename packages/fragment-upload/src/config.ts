@@ -10,7 +10,7 @@ export type FileHookPayload = {
   fileKeyParts: FileKeyParts;
   uploadId?: string;
   uploaderId?: string | null;
-  sizeBytes: bigint;
+  sizeBytes: number;
   contentType: string;
 };
 

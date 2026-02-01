@@ -40,10 +40,10 @@ Reference: spec at `specs/spec-upload-fragment.md`.
 - [ ] Implement upload routes in `packages/fragment-upload/src/routes/uploads.ts` for all endpoints
       in spec section 10.1-10.2, including multipart parts handling and progress updates; decode
       `fileKey` path params into `FileKeyParts` before calling services.
-- [ ] Implement file routes in `packages/fragment-upload/src/routes/files.ts` for all endpoints in
+- [x] Implement file routes in `packages/fragment-upload/src/routes/files.ts` for all endpoints in
       spec section 10.3-10.4, including metadata updates and delete behavior; ensure delete is
       idempotent and does not allow file reuse.
-- [ ] Add list/prefix/cursor pagination in `GET /files` using `findWithCursor` and `starts with`
+- [x] Add list/prefix/cursor pagination in `GET /files` using `findWithCursor` and `starts with`
       index query per spec section 10.4 and the querying docs in section 2 references.
 - [ ] Implement content streaming route `PUT /uploads/:uploadId/content` with
       `application/octet-stream` handling per spec section 10.2 and core streaming changes in 12.
