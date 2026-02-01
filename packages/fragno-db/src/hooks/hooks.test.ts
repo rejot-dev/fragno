@@ -470,6 +470,67 @@ describe("Hook System", () => {
       expect(result?.error).toBe("Hook 'onMissing' not found in hooks map");
     });
 
+    it("should re-queue stuck processing hooks and call the handler", async () => {
+      const namespace = "test-stuck-processing";
+      const hookFn = vi.fn();
+      const hooks: HooksMap = {
+        onStuck: hookFn,
+      };
+      const onStuckProcessingHooks = vi.fn();
+
+      let eventId: FragnoId;
+
+      await internalFragment.inContext(async function () {
+        const createdId = await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema);
+            return uow.create("fragno_hooks", {
+              namespace,
+              hookName: "onStuck",
+              payload: { ok: true },
+              status: "processing",
+              attempts: 0,
+              maxAttempts: 5,
+              lastAttemptAt: new Date(Date.now() - 20 * 60_000),
+              nextRetryAt: null,
+              error: null,
+              nonce: "test-nonce",
+            });
+          })
+          .execute();
+        eventId = createdId;
+      });
+
+      await processHooks({
+        hooks,
+        namespace,
+        internalFragment,
+        stuckProcessingTimeoutMinutes: 1,
+        onStuckProcessingHooks,
+      });
+
+      expect(hookFn).toHaveBeenCalledOnce();
+      expect(onStuckProcessingHooks).toHaveBeenCalledOnce();
+      expect(onStuckProcessingHooks).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace,
+          timeoutMinutes: 1,
+          events: [expect.objectContaining({ hookName: "onStuck" })],
+        }),
+      );
+
+      const result = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
+      });
+
+      expect(result?.status).toBe("completed");
+    });
+
     it("should process multiple hooks in parallel", async () => {
       const namespace = "test-parallel";
       const hook1 = vi.fn();

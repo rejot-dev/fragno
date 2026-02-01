@@ -37,6 +37,10 @@ import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter: DatabaseAdapter<any>;
+  /**
+   * Optional durable hooks processing configuration.
+   */
+  durableHooks?: DurableHooksProcessingOptions;
 };
 
 /**

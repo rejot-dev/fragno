@@ -3,6 +3,7 @@ import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-polic
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { InternalFragmentInstance } from "../fragments/internal-fragment";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
+import type { FragnoId } from "../schema/create";
 
 /**
  * Context available in hook functions via `this`.
@@ -68,6 +69,66 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
   namespace: string;
   internalFragment: InternalFragmentInstance;
   defaultRetryPolicy?: RetryPolicy;
+  /**
+   * Re-queue hooks that have been in `processing` for at least this many minutes.
+   * Use `false` to disable stuck-processing recovery entirely.
+   * Values <= 0 are treated as `false`.
+   *
+   * Default: 10 minutes.
+   */
+  stuckProcessingTimeoutMinutes?: StuckHookProcessingTimeoutMinutes;
+  /**
+   * Called when stuck processing hooks are detected and re-queued.
+   * Invoked after the hooks are moved back to `pending`.
+   */
+  onStuckProcessingHooks?: (info: StuckHookProcessingInfo) => void;
+}
+
+export type StuckHookProcessingTimeoutMinutes = number | false;
+
+export type StuckHookProcessingEvent = {
+  id: FragnoId;
+  hookName: string;
+  attempts: number;
+  maxAttempts: number;
+  lastAttemptAt: Date | null;
+  nextRetryAt: Date | null;
+};
+
+export type StuckHookProcessingInfo = {
+  namespace: string;
+  timeoutMinutes: number;
+  events: StuckHookProcessingEvent[];
+};
+
+export type DurableHooksProcessingOptions = {
+  /**
+   * Re-queue hooks that have been in `processing` for at least this many minutes.
+   * Use `false` to disable stuck-processing recovery entirely.
+   * Values <= 0 are treated as `false`.
+   *
+   * Default: 10 minutes.
+   */
+  stuckProcessingTimeoutMinutes?: StuckHookProcessingTimeoutMinutes;
+  /**
+   * Called when stuck processing hooks are detected and re-queued.
+   * Invoked after the hooks are moved back to `pending`.
+   */
+  onStuckProcessingHooks?: (info: StuckHookProcessingInfo) => void;
+};
+
+const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
+
+function resolveStuckProcessingTimeoutMinutes(
+  value: StuckHookProcessingTimeoutMinutes | undefined,
+): number | false {
+  if (value === false) {
+    return false;
+  }
+  if (typeof value === "number") {
+    return value > 0 ? value : false;
+  }
+  return DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES;
 }
 
 /**
@@ -120,6 +181,39 @@ export async function processHooks<THooks extends HooksMap>(
 ): Promise<number> {
   const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
+  const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
+    config.stuckProcessingTimeoutMinutes,
+  );
+
+  if (stuckProcessingTimeoutMinutes !== false) {
+    const staleBefore = new Date(Date.now() - stuckProcessingTimeoutMinutes * 60_000);
+    const stuckEvents = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              internalFragment.services.hookService.requeueStuckProcessingHooks(
+                namespace,
+                staleBefore,
+              ),
+            ] as const,
+        )
+        .transform(({ serviceResult: [events] }) => events)
+        .execute();
+    });
+
+    if (stuckEvents.length > 0) {
+      try {
+        config.onStuckProcessingHooks?.({
+          namespace,
+          timeoutMinutes: stuckProcessingTimeoutMinutes,
+          events: stuckEvents,
+        });
+      } catch {
+        // Ignore handler errors to avoid blocking hook processing.
+      }
+    }
+  }
 
   // Get pending events
   const pendingEvents = await internalFragment.inContext(async function () {
