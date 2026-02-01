@@ -1,6 +1,6 @@
 - study specs/README.md
 - study {{IMPLEMENTATION_PLAN}} and pick the most important thing(s) to do
-- make sure new code is well tested
+- make sure new code is well tested, where it makes sense using fragno-test
 - after ALL tests pass, lint checks and types check, commit and push
 - follow conventional commits, study specs/COMMIT.md
 - update the implementation plan with current status
