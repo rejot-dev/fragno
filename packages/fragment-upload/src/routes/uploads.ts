@@ -79,6 +79,7 @@ const errorCodes = [
   "UPLOAD_INVALID_STATE",
   "INVALID_FILE_KEY",
   "INVALID_CHECKSUM",
+  "INVALID_REQUEST",
   "STORAGE_ERROR",
 ] as const;
 
@@ -109,6 +110,8 @@ const handleServiceError = <Code extends UploadErrorCode>(
       return error({ message: "Invalid file key", code: "INVALID_FILE_KEY" as Code }, 400);
     case "INVALID_CHECKSUM":
       return error({ message: "Invalid checksum", code: "INVALID_CHECKSUM" as Code }, 400);
+    case "INVALID_REQUEST":
+      return error({ message: "Invalid request", code: "INVALID_REQUEST" as Code }, 400);
     case "STORAGE_ERROR":
       return error({ message: "Storage error", code: "STORAGE_ERROR" as Code }, 502);
     default:
@@ -118,7 +121,7 @@ const handleServiceError = <Code extends UploadErrorCode>(
 
 export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
-    const resolvedConfig = resolveUploadFragmentConfig(config);
+    const getResolvedConfig = () => resolveUploadFragmentConfig(config);
 
     return [
       defineRoute({
@@ -146,6 +149,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         errorCodes,
         handler: async function ({ input }, { json, error }) {
           const payload = await input.valid();
+          const resolvedConfig = getResolvedConfig();
 
           let resolvedKey;
           try {
@@ -266,6 +270,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         errorCodes,
         handler: async function ({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
+          const resolvedConfig = getResolvedConfig();
           try {
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
@@ -376,6 +381,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         errorCodes,
         handler: async function ({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
+          const resolvedConfig = getResolvedConfig();
           try {
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
@@ -438,6 +444,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes,
         handler: async function ({ pathParams }, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
           try {
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
@@ -449,7 +456,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               resolvedConfig.storage.abortMultipartUpload
             ) {
               await resolvedConfig.storage.abortMultipartUpload({
-                storageKey: resolveUploadFragmentConfig(config).storage.resolveStorageKey({
+                storageKey: resolvedConfig.storage.resolveStorageKey({
                   fileKey: upload.fileKey,
                   fileKeyParts: resolveFileKeyInput({ fileKey: upload.fileKey }).fileKeyParts,
                 }),
@@ -478,6 +485,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         errorCodes,
         handler: async function (context, { json, error }) {
           const { pathParams } = context;
+          const resolvedConfig = getResolvedConfig();
           try {
             const upload = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])

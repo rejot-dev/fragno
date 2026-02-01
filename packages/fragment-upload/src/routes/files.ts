@@ -56,6 +56,8 @@ const handleServiceError = <Code extends FileErrorCode>(
   switch (err.message) {
     case "FILE_NOT_FOUND":
       return error({ message: "File not found", code: "FILE_NOT_FOUND" as Code }, 404);
+    case "UPLOAD_NOT_FOUND":
+      return error({ message: "Upload not found", code: "UPLOAD_NOT_FOUND" as Code }, 404);
     case "UPLOAD_INVALID_STATE":
       return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" as Code }, 409);
     case "INVALID_FILE_KEY":
@@ -107,7 +109,7 @@ const parseMetadata = (value: FormDataEntryValue | null): Record<string, unknown
 
 export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
-    const resolvedConfig = resolveUploadFragmentConfig(config);
+    const getResolvedConfig = () => resolveUploadFragmentConfig(config);
 
     const parseListQuery = (query: URLSearchParams) => {
       const result = listQuerySchema.safeParse({
@@ -137,6 +139,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: fileMetadataSchema,
         errorCodes,
         handler: async function (context, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
           const form = context.formData();
           const file = form.get("file");
           if (!(file instanceof Blob)) {
@@ -411,6 +414,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes,
         handler: async function ({ pathParams }, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
           let resolvedKey;
           try {
             resolvedKey = resolveFileKeyInput({ fileKey: pathParams.fileKey });
@@ -453,6 +457,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         }),
         errorCodes,
         handler: async function ({ pathParams }, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
           let resolvedKey;
           try {
             resolvedKey = resolveFileKeyInput({ fileKey: pathParams.fileKey });
@@ -496,6 +501,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         path: "/files/:fileKey/content",
         errorCodes,
         handler: async function ({ pathParams }, { error }) {
+          const resolvedConfig = getResolvedConfig();
           let resolvedKey;
           try {
             resolvedKey = resolveFileKeyInput({ fileKey: pathParams.fileKey });
