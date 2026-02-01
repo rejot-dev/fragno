@@ -552,4 +552,103 @@ describe("Hook Service", () => {
     const futureEvent = events.find((e) => e.id.externalId === eventId.externalId);
     expect(futureEvent).toBeUndefined();
   });
+
+  it("should return now when pending hooks have no nextRetryAt", async () => {
+    const namespace = "wake-now";
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onImmediate",
+            payload: { test: "now" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-now",
+          });
+        })
+        .execute();
+    });
+
+    const wakeAt = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getNextHookWakeAt(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(wakeAt).toBeInstanceOf(Date);
+    expect(Math.abs((wakeAt as Date).getTime() - Date.now())).toBeLessThan(5000);
+  });
+
+  it("should return earliest scheduled hook time", async () => {
+    const namespace = "wake-future";
+    const soon = new Date(Date.now() + 10000);
+    const later = new Date(Date.now() + 60000);
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onSoon",
+            payload: { test: "soon" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: soon,
+            error: null,
+            nonce: "test-nonce-soon",
+          });
+          uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onLater",
+            payload: { test: "later" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: later,
+            error: null,
+            nonce: "test-nonce-later",
+          });
+        })
+        .execute();
+    });
+
+    const wakeAt = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getNextHookWakeAt(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(wakeAt).toEqual(soon);
+  });
+
+  it("should return null when no pending hooks exist", async () => {
+    const namespace = "wake-none";
+    const wakeAt = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getNextHookWakeAt(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(wakeAt).toBeNull();
+  });
 });

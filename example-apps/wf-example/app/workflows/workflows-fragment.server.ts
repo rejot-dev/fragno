@@ -1,13 +1,12 @@
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import type { DatabaseAdapter } from "@fragno-dev/db";
-import { migrate } from "@fragno-dev/db";
+import { createDurableHooksProcessor, migrate, type DatabaseAdapter } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
 import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
   type WorkflowsFragmentConfig,
 } from "@fragno-dev/fragment-workflows";
-import { createInProcessDispatcher } from "@fragno-dev/workflows-dispatcher-node";
 
 import { createWorkflowsAdapter } from "./adapter.server";
 import { workflows } from "./workflows";
@@ -27,21 +26,9 @@ export function getWorkflowsServer() {
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
   const runtime = defaultFragnoRuntime;
   let runner: ReturnType<typeof createWorkflowsRunner> | null = null;
-  const dispatcher = createInProcessDispatcher({
-    wake: () => {
-      if (!runner) {
-        return;
-      }
-      Promise.resolve(runner.tick({ maxInstances: 5, maxSteps: 50 })).catch((error: unknown) => {
-        console.error("Workflows runner tick failed", error);
-      });
-    },
-    pollIntervalMs: 2000,
-  });
 
   const config: WorkflowsFragmentConfig = {
     workflows,
-    dispatcher,
     enableRunnerTick: true,
     runtime,
   };
@@ -53,6 +40,19 @@ export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
 
   runner = createWorkflowsRunner({ fragment, workflows, runtime });
   config.runner = runner;
+
+  const processor = createDurableHooksProcessor(fragment);
+  if (!processor) {
+    throw new Error("Durable hooks not configured for workflows fragment.");
+  }
+
+  const dispatcher = createDurableHooksDispatcher({
+    processor,
+    pollIntervalMs: 2000,
+    onError: (error) => {
+      console.error("Workflows durable hooks dispatcher failed", error);
+    },
+  });
 
   return { fragment, dispatcher };
 }

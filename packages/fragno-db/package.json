@@ -103,6 +103,16 @@
       "types": "./dist/db-fragment-definition-builder.d.ts",
       "default": "./dist/db-fragment-definition-builder.js"
     },
+    "./dispatchers/node": {
+      "development": "./src/dispatchers/node/index.ts",
+      "types": "./dist/dispatchers/node/index.d.ts",
+      "default": "./dist/dispatchers/node/index.js"
+    },
+    "./dispatchers/cloudflare-do": {
+      "development": "./src/dispatchers/cloudflare-do/index.ts",
+      "types": "./dist/dispatchers/cloudflare-do/index.d.ts",
+      "default": "./dist/dispatchers/cloudflare-do/index.js"
+    },
     "./generation-engine": {
       "development": "./src/migration-engine/generation-engine.ts",
       "types": "./dist/migration-engine/generation-engine.d.ts",

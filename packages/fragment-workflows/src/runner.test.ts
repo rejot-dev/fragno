@@ -121,6 +121,13 @@ describe("Workflows Runner", () => {
     }
   }
 
+  class ScheduledWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      await step.sleep("scheduled-sleep", "10 minutes");
+      return { ok: true };
+    }
+  }
+
   class PauseBoundaryWorkflow extends WorkflowEntrypoint {
     async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
       await step.do("pause-boundary", () => {
@@ -267,6 +274,7 @@ describe("Workflows Runner", () => {
     logging: { name: "logging-workflow", workflow: LoggingWorkflow },
     replayLogs: { name: "replay-logs-workflow", workflow: ReplayLogWorkflow },
     distinct: { name: "distinct-step-workflow", workflow: DistinctStepWorkflow },
+    scheduled: { name: "scheduled-workflow", workflow: ScheduledWorkflow },
     child: { name: "child-workflow", workflow: ChildWorkflow },
     parent: { name: "parent-workflow", workflow: ParentWorkflow },
   };
@@ -1123,5 +1131,48 @@ describe("Workflows Runner", () => {
     expect(task?.status).toBe("pending");
     expect(task?.lockOwner).toBeNull();
     expect(task?.lockedUntil).toBeNull();
+  });
+
+  test("scheduled sleep should create a durable hook with processAt", async () => {
+    const id = await createInstance("scheduled-workflow", {});
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+
+    const task = await db.findFirst("workflow_task", (b) =>
+      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "scheduled-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+        ),
+      ),
+    );
+
+    expect(task?.kind).toBe("wake");
+    expect(task?.runAt).toBeInstanceOf(Date);
+    expect(task?.runAt.getTime()).toBeGreaterThan(Date.now());
+
+    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const namespace = fragment.$internal.deps.namespace;
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const scheduledHook = hooks.find((hook) => {
+      const payload = hook.payload as { instanceId?: string } | null;
+      return (
+        hook.hookName === "onWorkflowEnqueued" &&
+        hook.status === "pending" &&
+        payload?.instanceId === id
+      );
+    });
+
+    expect(scheduledHook?.nextRetryAt?.getTime()).toBe(task?.runAt.getTime());
   });
 });

@@ -177,6 +177,81 @@ describe("Hook System", () => {
 
       expect(events[0]?.maxAttempts).toBe(1);
     });
+
+    it("should set nextRetryAt when processAt is in the future", async () => {
+      const namespace = "test-process-at-future";
+      const hooks: HooksMap = {
+        onScheduled: vi.fn(),
+      };
+      const futureTime = new Date(Date.now() + 60000);
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+
+            uow.triggerHook("onScheduled", { data: "test" }, { processAt: futureTime });
+
+            prepareHookMutations(uow, {
+              hooks,
+              namespace,
+              internalFragment,
+              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            });
+          })
+          .execute();
+      });
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]?.nextRetryAt).toBeInstanceOf(Date);
+      expect(events[0]?.nextRetryAt?.getTime()).toBe(futureTime.getTime());
+    });
+
+    it("should clamp processAt in the past to immediate execution", async () => {
+      const namespace = "test-process-at-past";
+      const hooks: HooksMap = {
+        onImmediate: vi.fn(),
+      };
+      const pastTime = new Date(Date.now() - 60000);
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+
+            uow.triggerHook("onImmediate", { data: "test" }, { processAt: pastTime });
+
+            prepareHookMutations(uow, {
+              hooks,
+              namespace,
+              internalFragment,
+              defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+            });
+          })
+          .execute();
+      });
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0]?.nextRetryAt).toBeNull();
+    });
   });
 
   describe("processHooks", () => {

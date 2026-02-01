@@ -65,6 +65,7 @@ describe("workflows model checker (runner)", () => {
           workflows,
           adapter: { type: "model-checker", options: { idSeed: "workflows-model-checker" } },
           runtime,
+          autoTickHooks: false,
         });
 
         return {

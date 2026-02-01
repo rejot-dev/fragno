@@ -224,6 +224,16 @@ export interface FragmentDefinition<
   }) => RequestContextStorage<TRequestStorage>;
 
   /**
+   * Optional factory for internal data attached to fragment.$internal.
+   */
+  internalDataFactory?: (context: {
+    config: TConfig;
+    options: TOptions;
+    deps: TDeps;
+    linkedFragments: TLinkedFragments;
+  }) => Record<string, unknown> | void;
+
+  /**
    * Optional linked fragments that will be automatically instantiated with this fragment.
    * Linked fragments are service-only and share the same config/options as the parent.
    */

@@ -289,8 +289,8 @@ function isPausedStatus(status: InstanceStatus["status"]) {
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")
   .extend(withDatabase(workflowsSchema))
   .provideHooks(({ defineHook, config }) => ({
-    onWorkflowEnqueued: defineHook(async function (payload: WorkflowEnqueuedHookPayload) {
-      await config.dispatcher?.wake?.(payload);
+    onWorkflowEnqueued: defineHook(async function (_payload: WorkflowEnqueuedHookPayload) {
+      await config.runner?.tick();
     }),
   }))
   .providesBaseService(({ defineService, config }) => {

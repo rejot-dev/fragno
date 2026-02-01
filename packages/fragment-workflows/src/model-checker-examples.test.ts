@@ -34,6 +34,7 @@ const createContextFactory =
       workflows,
       adapter: { type: "model-checker", options: { idSeed } },
       runtime,
+      autoTickHooks: false,
     });
 
     return {

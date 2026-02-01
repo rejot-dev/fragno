@@ -33,6 +33,7 @@ import {
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import { unwrapObject } from "../util/nanostores";
 import type { FragmentDefinition } from "../api/fragment-definition-builder";
+import type { AnyFragnoInstantiatedFragment } from "../api/fragment-instantiator";
 import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
@@ -1264,6 +1265,7 @@ export function createClientBuilder<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -1275,7 +1277,8 @@ export function createClientBuilder<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >,
   publicConfig: FragnoPublicClientConfig,
   routesOrFactories: TRoutesOrFactories,

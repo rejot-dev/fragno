@@ -151,6 +151,10 @@ export type WorkflowEnqueuedHookPayload = {
   reason: "create" | "event" | "resume" | "retry" | "wake";
 };
 
+export type WorkflowsHooks = {
+  onWorkflowEnqueued: (payload: WorkflowEnqueuedHookPayload) => void | Promise<void>;
+};
+
 /** Dispatcher interface used by durable hooks to trigger runner work. */
 export interface WorkflowsDispatcher {
   wake: (payload: WorkflowEnqueuedHookPayload) => Promise<void> | void;
@@ -164,7 +168,7 @@ export type RunnerTickOptions = {
 
 /** Runner interface used by routes and dispatchers. */
 export interface WorkflowsRunner {
-  tick: (options: RunnerTickOptions) => Promise<number> | number;
+  tick: (options?: RunnerTickOptions) => Promise<number> | number;
 }
 
 /** Request metadata passed into authorization hooks. */
