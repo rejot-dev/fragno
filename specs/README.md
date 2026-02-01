@@ -69,6 +69,8 @@ very detailed, living documents that guide implementation without constraining t
   design: public API shape, database schema and indexes, lifecycle semantics
   (run/replay/wait/sleep), runner/tick behavior, durable hooks wiring, HTTP routes, and
   CLI/management surface.
+- [Fragno Upload Fragment - Spec](./spec-upload-fragment.md) - Generic file upload + management
+  fragment: storage adapters, key system, routes, DB schema, hooks, and client API.
 - [Fragno Prisma Support — Prisma Schema Generator Adapter — Spec](./spec-prisma-adapter.md) —
   Prisma integration spec covering schema generation rules, adapter responsibilities, naming
   conventions, provider-specific type mappings, migration expectations, and runtime serialization
@@ -94,6 +96,9 @@ very detailed, living documents that guide implementation without constraining t
   hooks, and conformance tests.
 - [Database Adapter Simplification — Implementation Plan](./impl-db-adapter-simplification.md) —
   Execution tasks for the SQL adapter unification and schema output refactor.
+- [Upload Fragment - Implementation Plan](./impl-upload-fragment.md) - Execution tasks for the
+  upload fragment spec: adapter implementations, routes, streaming support, tests, docs, and
+  examples.
 
 ## Implementation Plans (Finished)
 
