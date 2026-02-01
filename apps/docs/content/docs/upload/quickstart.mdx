@@ -1,0 +1,54 @@
+---
+title: Quickstart
+description: Install and mount the Upload fragment.
+---
+
+## Install
+
+```bash
+pnpm add @fragno-dev/fragment-upload
+```
+
+## Server setup
+
+```ts
+import { createUploadFragment, createFilesystemStorageAdapter } from "@fragno-dev/fragment-upload";
+import { migrate } from "@fragno-dev/db";
+
+const storage = createFilesystemStorageAdapter({ rootDir: "./uploads" });
+
+const fragment = createUploadFragment(
+  { storage },
+  {
+    // Provide your database adapter (Kysely/Drizzle) here
+    databaseAdapter,
+    mountRoute: "/api/uploads",
+  },
+);
+
+await migrate(fragment);
+```
+
+## Client setup
+
+```ts
+import { createUploadFragmentClient } from "@fragno-dev/fragment-upload/react";
+
+export const uploadClient = createUploadFragmentClient({
+  mountRoute: "/api/uploads",
+});
+```
+
+## Upload a file
+
+```ts
+const { useUploadHelpers } = uploadClient;
+
+const helpers = useUploadHelpers();
+await helpers.createUploadAndTransfer(file, {
+  keyParts: ["users", userId, "avatar"],
+  onProgress: (progress) => {
+    console.log(progress.bytesUploaded, progress.totalBytes);
+  },
+});
+```

@@ -1,5 +1,5 @@
 import { useFragno } from "@fragno-dev/core/svelte";
-import { createUploadFragmentClients } from "..";
+import { createUploadFragmentClients } from "./clients";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createUploadFragmentClient(config: FragnoPublicClientConfig = {}) {
