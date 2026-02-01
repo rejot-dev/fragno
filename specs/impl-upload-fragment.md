@@ -2,11 +2,11 @@
 
 Reference: spec at `specs/spec-upload-fragment.md`.
 
-- [ ] Add upload schema in `packages/fragment-upload/src/schema.ts` with `file`, `upload`,
+- [x] Add upload schema in `packages/fragment-upload/src/schema.ts` with `file`, `upload`,
       `upload_part` tables and indexes as defined in spec sections 7.1-7.2; store encoded `fileKey`
       (unique), store `checksum` as JSON, and use `fileKey` (not `fileId`) as the join key between
       `file` and `upload`.
-- [ ] Implement key encoding utilities in `packages/fragment-upload/src/keys.ts` for
+- [x] Implement key encoding utilities in `packages/fragment-upload/src/keys.ts` for
       `encodeFileKey`, `decodeFileKey`, and `encodeFileKeyPrefix` per spec section 6.3-6.4, with
       unit tests covering round-trip, prefix safety, invalid parts, and URL-safe output.
 - [ ] Define the storage adapter interface in `packages/fragment-upload/src/storage/types.ts` per

@@ -3,7 +3,8 @@
   "description": "Fragno upload fragment",
   "version": "0.0.1",
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "keywords": [
     "fragno",
@@ -17,6 +18,11 @@
     ".": {
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
+    },
+    "./cli": {
+      "development": "./src/cli/index.ts",
+      "types": "./dist/cli/index.d.ts",
+      "default": "./dist/cli/index.js"
     },
     "./react": {
       "development": {
@@ -64,19 +70,28 @@
   "types": "./dist/node/index.d.ts",
   "scripts": {
     "types:check": "tsc --noEmit",
-    "build": "tsdown"
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
   },
   "type": "module",
   "private": true,
+  "bin": {
+    "fragno-upload": "./bin/run.js"
+  },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@standard-schema/spec": "^1.0.0",
+    "gunshi": "^0.26.3",
     "zod": "^4.0.5"
   },
   "devDependencies": {
     "@types/node": "^24",
     "@fragno-dev/cli": "workspace:*",
+    "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@vitest/coverage-istanbul": "^3.2.4",
     "tsdown": "^0.12.0",
     "@fragno-dev/db": "workspace:*"
   },

@@ -1513,12 +1513,21 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../fragno-test
       '@fragno-dev/unplugin-fragno':
         specifier: workspace:*
         version: link:../unplugin-fragno
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
       '@types/node':
         specifier: ^24
         version: 24.10.9
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
       tsdown:
         specifier: ^0.12.0
         version: 0.12.9(typescript@5.9.3)(vue-tsc@3.2.2(typescript@5.9.3))
