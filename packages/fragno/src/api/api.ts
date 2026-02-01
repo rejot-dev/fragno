@@ -33,7 +33,10 @@ export interface RequestThisContext {}
  * - `"application/json"` (default): JSON request body, validated against inputSchema
  * - `"multipart/form-data"`: FormData request body (file uploads), no schema validation
  */
-export type RouteContentType = "application/json" | "multipart/form-data";
+export type RouteContentType =
+  | "application/json"
+  | "multipart/form-data"
+  | "application/octet-stream";
 
 export interface FragnoRouteConfig<
   TMethod extends HTTPMethod,

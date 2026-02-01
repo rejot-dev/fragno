@@ -101,6 +101,10 @@ const serializeBodyForTrace = (body: RequestBodyType): unknown => {
     return { type: "blob", size: body.size, mime: body.type };
   }
 
+  if (body instanceof ReadableStream) {
+    return { type: "stream" };
+  }
+
   return body;
 };
 
@@ -469,6 +473,18 @@ export class FragnoInstantiatedFragment<
             { status: 400 },
           );
         }
+      } else if (expectedContentType === "application/octet-stream") {
+        if (!requestContentType.includes("application/octet-stream")) {
+          return Response.json(
+            {
+              error: `This endpoint expects application/octet-stream, but received: ${requestContentType || "no content-type"}`,
+              code: "UNSUPPORTED_MEDIA_TYPE",
+            },
+            { status: 415 },
+          );
+        }
+
+        requestBody = req.body ?? new ReadableStream<Uint8Array>();
       } else {
         // Route expects JSON (default)
         // Note: We're lenient here - we accept requests without Content-Type header

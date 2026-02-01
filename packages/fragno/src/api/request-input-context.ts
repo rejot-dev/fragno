@@ -7,6 +7,7 @@ export type RequestBodyType =
   | unknown // JSON
   | FormData
   | Blob
+  | ReadableStream<Uint8Array>
   | null
   | undefined;
 
@@ -208,6 +209,27 @@ export class RequestInputContext<
    */
   isFormData(): boolean {
     return this.#parsedBody instanceof FormData;
+  }
+
+  /**
+   * Access the request body as a ReadableStream (application/octet-stream).
+   *
+   * @throws Error if the request body is not a ReadableStream
+   */
+  bodyStream(): ReadableStream<Uint8Array> {
+    if (!(this.#parsedBody instanceof ReadableStream)) {
+      throw new Error(
+        "Request body is not a ReadableStream. Ensure the request was sent with Content-Type: application/octet-stream.",
+      );
+    }
+    return this.#parsedBody;
+  }
+
+  /**
+   * Check if the request body is a ReadableStream.
+   */
+  isBodyStream(): boolean {
+    return this.#parsedBody instanceof ReadableStream;
   }
 
   /**
