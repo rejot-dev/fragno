@@ -14,6 +14,12 @@ export type FileHookPayload = {
   contentType: string;
 };
 
+export type UploadTimeoutPayload = {
+  uploadId: string;
+  fileKey: FileKeyEncoded;
+  fileKeyParts: FileKeyParts;
+};
+
 export interface UploadFragmentConfig {
   storage: StorageAdapter;
   storageKeyPrefix?: string;
@@ -36,6 +42,7 @@ export type UploadFragmentResolvedConfig = Omit<UploadFragmentConfig, "storageKe
 };
 
 const DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 60 * 60;
+const DEFAULT_UPLOAD_EXPIRES_IN_SECONDS = 60 * 60;
 
 const resolveLimits = (adapter: StorageAdapter): StorageAdapterLimits => adapter.limits ?? {};
 
@@ -54,7 +61,10 @@ export const resolveUploadFragmentConfig = (
   return {
     ...config,
     storageKeyPrefix: config.storageKeyPrefix ?? "",
-    uploadExpiresInSeconds: config.uploadExpiresInSeconds ?? recommendations.uploadExpiresInSeconds,
+    uploadExpiresInSeconds:
+      config.uploadExpiresInSeconds ??
+      recommendations.uploadExpiresInSeconds ??
+      DEFAULT_UPLOAD_EXPIRES_IN_SECONDS,
     signedUrlExpiresInSeconds:
       config.signedUrlExpiresInSeconds ??
       recommendations.signedUrlExpiresInSeconds ??

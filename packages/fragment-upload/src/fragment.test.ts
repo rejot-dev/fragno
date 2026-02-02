@@ -9,9 +9,13 @@ import { uploadFragmentDefinition } from "./definition";
 import { uploadRoutes } from "./index";
 import { createFilesystemStorageAdapter } from "./storage/fs";
 
-const createDirectAdapter = (strategy: "direct-single" | "direct-multipart") => {
+const createDirectAdapter = (
+  strategy: "direct-single" | "direct-multipart",
+  expiresAtOverride?: Date,
+) => {
   const finalizeUpload = vi.fn(async () => ({ etag: "etag-final" }));
   const completeMultipartUpload = vi.fn(async () => ({ etag: "etag-complete" }));
+  const expiresAt = expiresAtOverride ?? new Date(Date.now() + 60_000);
 
   const adapter: StorageAdapter = {
     name: "direct-test",
@@ -29,14 +33,14 @@ const createDirectAdapter = (strategy: "direct-single" | "direct-multipart") => 
           storageKey: `store/${fileKey}`,
           storageUploadId: "upload-123",
           partSizeBytes: 3,
-          expiresAt: new Date(Date.now() + 60_000),
+          expiresAt,
         };
       }
 
       return {
         strategy: "direct-single",
         storageKey: `store/${fileKey}`,
-        expiresAt: new Date(Date.now() + 60_000),
+        expiresAt,
         uploadUrl: "https://storage.local/upload",
         uploadHeaders: { "Content-Type": "text/plain" },
       };
@@ -51,7 +55,7 @@ const createDirectAdapter = (strategy: "direct-single" | "direct-multipart") => 
     deleteObject: async () => {},
   };
 
-  return { adapter, finalizeUpload, completeMultipartUpload };
+  return { adapter, finalizeUpload, completeMultipartUpload, expiresAt };
 };
 
 describe("upload fragment direct single flows", async () => {
@@ -199,6 +203,96 @@ describe("upload fragment direct single flows", async () => {
     assert(response.type === "error");
     expect(response.status).toBe(400);
     expect(response.error.code).toBe("INVALID_CHECKSUM");
+  });
+
+  it("schedules an upload timeout hook", async () => {
+    const { adapter: timedAdapter, expiresAt } = createDirectAdapter(
+      "direct-single",
+      new Date(Date.now() + 30_000),
+    );
+
+    const { fragments: timedFragments, test: timedContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "upload",
+        instantiate(uploadFragmentDefinition)
+          .withConfig({ storage: timedAdapter })
+          .withRoutes(uploadRoutes),
+      )
+      .build();
+
+    await timedContext.resetDatabase();
+
+    const { fragment: timedFragment } = timedFragments["upload"];
+
+    const createResponse = await timedFragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 4],
+        filename: "hello.txt",
+        sizeBytes: 2,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(createResponse.type === "json");
+
+    const internalFragment = timedFragment.$internal.linkedFragments._fragno_internal;
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const timeoutHook = hooks.find((hook) => hook.hookName === "onUploadTimeout");
+    expect(timeoutHook).toBeDefined();
+    expect(timeoutHook?.nextRetryAt?.getTime()).toBe(expiresAt.getTime());
+  });
+
+  it("marks uploads expired when timeout hook executes", async () => {
+    const { adapter: expiredAdapter } = createDirectAdapter(
+      "direct-single",
+      new Date(Date.now() - 1_000),
+    );
+
+    const { fragments: expiredFragments, test: expiredContext } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "drizzle-pglite" })
+      .withFragment(
+        "upload",
+        instantiate(uploadFragmentDefinition)
+          .withConfig({ storage: expiredAdapter })
+          .withRoutes(uploadRoutes),
+      )
+      .build();
+
+    await expiredContext.resetDatabase();
+
+    const { fragment: expiredFragment, db: expiredDb } = expiredFragments["upload"];
+
+    const createResponse = await expiredFragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 5],
+        filename: "hello.txt",
+        sizeBytes: 2,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(createResponse.type === "json");
+
+    const upload = await expiredDb.findFirst("upload", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
+    );
+    const file = await expiredDb.findFirst("file", (b) =>
+      b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", createResponse.data.fileKey)),
+    );
+
+    expect(upload?.status).toBe("expired");
+    expect(upload?.errorCode).toBe("UPLOAD_EXPIRED");
+    expect(file?.status).toBe("failed");
+    expect(file?.errorCode).toBe("UPLOAD_EXPIRED");
   });
 });
 
