@@ -128,25 +128,21 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Returns all pending events for the given namespace that are ready to be processed.
        */
       getPendingHookEvents(namespace: string) {
+        const now = new Date();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(eb("namespace", "=", namespace), eb("status", "=", "pending")),
+                eb.and(
+                  eb("namespace", "=", namespace),
+                  eb("status", "=", "pending"),
+                  eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
+                ),
               ),
             ),
           )
           .transformRetrieve(([events]) => {
-            const now = new Date();
-            // FIXME(Wilco): this should be handled by the database query, but there seems to be an issue.
-            const ready = events.filter((event) => {
-              if (!event.nextRetryAt) {
-                return true; // Newly created events (nextRetryAt = null) are ready
-              }
-              return event.nextRetryAt <= now; // Only include if retry time has passed
-            });
-
-            return ready.map((event) => ({
+            return events.map((event) => ({
               id: event.id,
               hookName: event.hookName,
               payload: event.payload as unknown,
@@ -155,6 +151,57 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               idempotencyKey: event.nonce,
             }));
           })
+          .build();
+      },
+
+      /**
+       * Claim pending hook events for processing.
+       * Returns ready events and marks them as processing in the same transaction.
+       */
+      claimPendingHookEvents(namespace: string) {
+        const now = new Date();
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.find("fragno_hooks", (b) =>
+              b.whereIndex("idx_namespace_status_retry", (eb) =>
+                eb.and(
+                  eb("namespace", "=", namespace),
+                  eb("status", "=", "pending"),
+                  eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
+                ),
+              ),
+            ),
+          )
+          .transformRetrieve(([events]) => {
+            return events.map((event) => ({
+              id: event.id,
+              hookName: event.hookName,
+              payload: event.payload,
+              attempts: event.attempts,
+              maxAttempts: event.maxAttempts,
+              idempotencyKey: event.nonce,
+            }));
+          })
+          .mutate(({ uow, retrieveResult }) => {
+            if (retrieveResult.length === 0) {
+              return;
+            }
+            for (const event of retrieveResult) {
+              uow.update("fragno_hooks", event.id, (b) =>
+                b.set({ status: "processing", lastAttemptAt: now }).check(),
+              );
+            }
+          })
+          .transform(({ retrieveResult }) =>
+            retrieveResult.map((event) => ({
+              ...event,
+              id: new FragnoId({
+                externalId: event.id.externalId,
+                internalId: event.id.internalId,
+                version: event.id.version + 1,
+              }),
+            })),
+          )
           .build();
       },
 
@@ -242,40 +289,77 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
 
       /**
        * Get the earliest pending hook wake time for a namespace.
+       * Optionally considers processing hooks becoming stale when timeoutMinutes is provided.
        */
-      getNextHookWakeAt(namespace: string) {
+      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false) {
+        const now = new Date();
+        const includeProcessing = typeof timeoutMinutes === "number" && timeoutMinutes > 0;
+        const timeoutMs = includeProcessing ? timeoutMinutes * 60_000 : 0;
+
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
-            uow
-              .findFirst("fragno_hooks", (b) =>
-                b
-                  .whereIndex("idx_namespace_status_retry", (eb) =>
-                    eb.and(
+            uow.find("fragno_hooks", (b) =>
+              b
+                .whereIndex("idx_namespace_status_retry", (eb) => {
+                  if (includeProcessing) {
+                    return eb.and(
                       eb("namespace", "=", namespace),
-                      eb("status", "=", "pending"),
-                      eb("nextRetryAt", "is", null),
-                    ),
-                  )
-                  .select(["nextRetryAt"]),
-              )
-              .findFirst("fragno_hooks", (b) =>
-                b
-                  .whereIndex("idx_namespace_status_retry", (eb) =>
-                    eb.and(
-                      eb("namespace", "=", namespace),
-                      eb("status", "=", "pending"),
-                      eb("nextRetryAt", "is not", null),
-                    ),
-                  )
-                  .orderByIndex("idx_namespace_status_retry", "asc")
-                  .select(["nextRetryAt"]),
-              ),
+                      eb.or(eb("status", "=", "pending"), eb("status", "=", "processing")),
+                    );
+                  }
+                  return eb.and(eb("namespace", "=", namespace), eb("status", "=", "pending"));
+                })
+                .select(["status", "nextRetryAt", "lastAttemptAt"]),
+            ),
           )
-          .transformRetrieve(([immediate, scheduled]) => {
-            if (immediate) {
-              return new Date();
+          .transformRetrieve(([events]) => {
+            if (events.length === 0) {
+              return null;
             }
-            return scheduled?.nextRetryAt ?? null;
+
+            const nowMs = now.getTime();
+            let earliestPendingAt: Date | null = null;
+            let earliestStaleAt: Date | null = null;
+
+            for (const event of events) {
+              if (event.status === "pending") {
+                const nextRetryAt = event.nextRetryAt;
+                if (!nextRetryAt || nextRetryAt.getTime() <= nowMs) {
+                  return now;
+                }
+                if (!earliestPendingAt || nextRetryAt < earliestPendingAt) {
+                  earliestPendingAt = nextRetryAt;
+                }
+                continue;
+              }
+
+              if (!includeProcessing || event.status !== "processing") {
+                continue;
+              }
+
+              const lastAttemptAt = event.lastAttemptAt;
+              if (!lastAttemptAt) {
+                return now;
+              }
+
+              const staleAtMs = lastAttemptAt.getTime() + timeoutMs;
+              if (staleAtMs <= nowMs) {
+                return now;
+              }
+
+              const staleAt = new Date(staleAtMs);
+              if (!earliestStaleAt || staleAt < earliestStaleAt) {
+                earliestStaleAt = staleAt;
+              }
+            }
+
+            if (!earliestPendingAt) {
+              return earliestStaleAt ?? null;
+            }
+            if (!earliestStaleAt) {
+              return earliestPendingAt;
+            }
+            return earliestPendingAt <= earliestStaleAt ? earliestPendingAt : earliestStaleAt;
           })
           .build();
       },

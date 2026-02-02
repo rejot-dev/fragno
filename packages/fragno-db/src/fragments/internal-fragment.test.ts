@@ -7,6 +7,7 @@ import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-b
 import { DrizzleAdapter } from "../adapters/drizzle/drizzle-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
+import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
 import type { FragnoId } from "../schema/create";
 
 describe("Internal Fragment", () => {
@@ -282,6 +283,51 @@ describe("Hook Service", () => {
     expect(result?.lastAttemptAt).toBeInstanceOf(Date);
   });
 
+  it("should reject marking completed with a stale id", async () => {
+    const namespace = "complete-stale";
+    const nonce = "test-nonce-complete-stale";
+    let staleId!: FragnoId;
+
+    await fragment.inContext(async function () {
+      const createdId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onCompleteStale",
+            payload: { test: "data" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        })
+        .execute();
+      staleId = createdId;
+    });
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.claimPendingHookEvents(namespace)] as const,
+        )
+        .execute();
+    });
+
+    await expect(
+      fragment.inContext(async function () {
+        await this.handlerTx({ retryPolicy: new NoRetryPolicy() })
+          .withServiceCalls(
+            () => [fragment.services.hookService.markHookCompleted(staleId)] as const,
+          )
+          .execute();
+      }),
+    ).rejects.toThrow(ConcurrencyConflictError);
+  });
+
   it("should mark a hook event as processing", async () => {
     const nonce = "test-nonce-3";
     let eventId: FragnoId;
@@ -477,6 +523,49 @@ describe("Hook Service", () => {
     expect(staleEvent?.attempts).toBe(1);
   });
 
+  it("should detect conflicts when requeueing after another update in the same transaction", async () => {
+    const namespace = "requeue-conflict";
+    const nonce = "test-nonce-requeue-conflict";
+    let eventId!: FragnoId;
+
+    const staleBefore = new Date(Date.now() - 60_000);
+    const lastAttemptAt = new Date(Date.now() - 120_000);
+
+    await fragment.inContext(async function () {
+      eventId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onRequeueConflict",
+            payload: { test: "requeue" },
+            status: "processing",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        })
+        .execute();
+    });
+
+    await expect(
+      fragment.inContext(async function () {
+        await this.handlerTx({ retryPolicy: new NoRetryPolicy() })
+          .withServiceCalls(
+            () =>
+              [
+                fragment.services.hookService.markHookProcessing(eventId),
+                fragment.services.hookService.requeueStuckProcessingHooks(namespace, staleBefore),
+              ] as const,
+          )
+          .execute();
+      }),
+    ).rejects.toThrow(ConcurrencyConflictError);
+  });
+
   it("should not retrieve events from different namespace", async () => {
     const nonce = "test-nonce-7";
 
@@ -551,6 +640,138 @@ describe("Hook Service", () => {
 
     const futureEvent = events.find((e) => e.id.externalId === eventId.externalId);
     expect(futureEvent).toBeUndefined();
+  });
+
+  it("should claim only ready pending events and mark them processing", async () => {
+    const namespace = "claim-ready";
+    const pastTime = new Date(Date.now() - 10000);
+    const futureTime = new Date(Date.now() + 60000);
+
+    let nullRetryId!: FragnoId;
+    let pastRetryId!: FragnoId;
+    let futureRetryId!: FragnoId;
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          nullRetryId = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onNullRetry",
+            payload: { test: "null" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "test-nonce-claim-null",
+          });
+          pastRetryId = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onPastRetry",
+            payload: { test: "past" },
+            status: "pending",
+            attempts: 1,
+            maxAttempts: 5,
+            lastAttemptAt: pastTime,
+            nextRetryAt: pastTime,
+            error: "Previous error",
+            nonce: "test-nonce-claim-past",
+          });
+          futureRetryId = uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onFutureRetry",
+            payload: { test: "future" },
+            status: "pending",
+            attempts: 1,
+            maxAttempts: 5,
+            lastAttemptAt: new Date(),
+            nextRetryAt: futureTime,
+            error: "Previous error",
+            nonce: "test-nonce-claim-future",
+          });
+        })
+        .execute();
+    });
+
+    const claimed = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.claimPendingHookEvents(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(claimed).toHaveLength(2);
+    const claimedIds = new Set(claimed.map((event) => event.id.externalId));
+    expect(claimedIds.has(nullRetryId.externalId)).toBe(true);
+    expect(claimedIds.has(pastRetryId.externalId)).toBe(true);
+    expect(claimedIds.has(futureRetryId.externalId)).toBe(false);
+
+    const [nullEvent, pastEvent, futureEvent] = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.hookService.getHookById(nullRetryId),
+              fragment.services.hookService.getHookById(pastRetryId),
+              fragment.services.hookService.getHookById(futureRetryId),
+            ] as const,
+        )
+        .transform(({ serviceResult: [nullResult, pastResult, futureResult] }) => [
+          nullResult,
+          pastResult,
+          futureResult,
+        ])
+        .execute();
+    });
+
+    expect(nullEvent?.status).toBe("processing");
+    expect(nullEvent?.lastAttemptAt).toBeInstanceOf(Date);
+    expect(pastEvent?.status).toBe("processing");
+    expect(pastEvent?.lastAttemptAt).toBeInstanceOf(Date);
+    expect(futureEvent?.status).toBe("pending");
+  });
+
+  it("should return claimed ids with incremented versions", async () => {
+    const namespace = "claim-version";
+    const nonce = "test-nonce-claim-version";
+    let createdId!: FragnoId;
+
+    await fragment.inContext(async function () {
+      createdId = await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          return uow.create("fragno_hooks", {
+            namespace,
+            hookName: "onClaimVersion",
+            payload: { test: "version" },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 5,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce,
+          });
+        })
+        .execute();
+    });
+
+    const claimed = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.claimPendingHookEvents(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.id.externalId).toBe(createdId.externalId);
+    expect(claimed[0]?.id.version).toBe(createdId.version + 1);
   });
 
   it("should return now when pending hooks have no nextRetryAt", async () => {

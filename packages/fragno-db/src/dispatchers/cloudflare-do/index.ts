@@ -32,6 +32,22 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
 ): DurableHooksDispatcherDurableObjectFactory<TEnv> {
   return (state, env) => {
     const processor = options.createProcessor({ state, env });
+    const onProcessError =
+      options.onProcessError ??
+      ((error: unknown) => {
+        console.error("Durable hooks dispatcher error", error);
+      });
+    const rawSetAlarm = state.storage.setAlarm;
+    const rawDeleteAlarm = state.storage.deleteAlarm;
+
+    if (!rawSetAlarm) {
+      throw new Error(
+        "Durable hooks dispatcher requires state.storage.setAlarm to schedule alarms.",
+      );
+    }
+    const setAlarm = rawSetAlarm.bind(state.storage);
+    const deleteAlarm = rawDeleteAlarm?.bind(state.storage);
+
     let processing = false;
     let queued = false;
     let currentPromise: Promise<void> | undefined;
@@ -49,7 +65,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
           try {
             await processor.process();
           } catch (error) {
-            options.onProcessError?.(error);
+            onProcessError(error);
           }
         } while (queued);
         processing = false;
@@ -59,23 +75,19 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     };
 
     const scheduleNextAlarm = async () => {
-      if (!state.storage.setAlarm) {
-        return;
-      }
-
       const nextWakeAt = await processor.getNextWakeAt();
       if (!nextWakeAt) {
-        await state.storage.deleteAlarm?.();
+        await deleteAlarm?.();
         return;
       }
 
       const now = Date.now();
       const scheduledAt = new Date(Math.max(nextWakeAt.getTime(), now));
-      await state.storage.setAlarm(scheduledAt);
+      await setAlarm(scheduledAt);
     };
 
     void scheduleNextAlarm().catch((error) => {
-      options.onProcessError?.(error);
+      onProcessError(error);
     });
 
     return {
@@ -84,7 +96,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
           await runProcess();
           await scheduleNextAlarm();
         } catch (error) {
-          options.onProcessError?.(error);
+          onProcessError(error);
         }
       },
     };

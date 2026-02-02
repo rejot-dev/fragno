@@ -16,6 +16,11 @@ export function createDurableHooksDispatcher(
   options: DurableHooksDispatcherOptions,
 ): DurableHooksDispatcher {
   const pollIntervalMs = options.pollIntervalMs ?? 5000;
+  const onError =
+    options.onError ??
+    ((error: unknown) => {
+      console.error("Durable hooks dispatcher error", error);
+    });
   let timer: ReturnType<typeof setInterval> | undefined;
   let processing = false;
   let queued = false;
@@ -34,7 +39,7 @@ export function createDurableHooksDispatcher(
         try {
           await options.processor.process();
         } catch (error) {
-          options.onError?.(error);
+          onError(error);
         }
       } while (queued);
       processing = false;
@@ -53,7 +58,7 @@ export function createDurableHooksDispatcher(
         await runProcess();
       }
     } catch (error) {
-      options.onError?.(error);
+      onError(error);
     }
   };
 
