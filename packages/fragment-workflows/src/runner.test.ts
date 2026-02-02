@@ -1,5 +1,5 @@
 // Tests for workflow runner task claiming, execution, and pause/suspend behavior.
-import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
@@ -1173,6 +1173,7 @@ describe("Workflows Runner", () => {
       );
     });
 
-    expect(scheduledHook?.nextRetryAt?.getTime()).toBe(task?.runAt.getTime());
+    assert(scheduledHook?.nextRetryAt);
+    expect(scheduledHook.nextRetryAt.getTime()).toBe(task?.runAt.getTime());
   });
 });

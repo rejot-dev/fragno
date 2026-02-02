@@ -209,17 +209,17 @@ export async function processHooks<THooks extends HooksMap>(
           timeoutMinutes: stuckProcessingTimeoutMinutes,
           events: stuckEvents,
         });
-      } catch {
-        // Ignore handler errors to avoid blocking hook processing.
+      } catch (error) {
+        console.error("Error calling onStuckProcessingHooks", error);
       }
     }
   }
 
-  // Get pending events
+  // Claim pending events in the same transaction to avoid double-processing.
   const pendingEvents = await internalFragment.inContext(async function () {
     return await this.handlerTx()
       .withServiceCalls(
-        () => [internalFragment.services.hookService.getPendingHookEvents(namespace)] as const,
+        () => [internalFragment.services.hookService.claimPendingHookEvents(namespace)] as const,
       )
       .transform(({ serviceResult: [events] }) => events)
       .execute();
@@ -228,17 +228,6 @@ export async function processHooks<THooks extends HooksMap>(
   if (pendingEvents.length === 0) {
     return 0;
   }
-
-  // Mark events as processing before executing hooks to avoid re-entrant reprocessing.
-  await internalFragment.inContext(async function () {
-    await this.handlerTx()
-      .withServiceCalls(() =>
-        pendingEvents.map((event) =>
-          internalFragment.services.hookService.markHookProcessing(event.id),
-        ),
-      )
-      .execute();
-  });
 
   // Process events (async work outside transaction)
   const processedEvents = await Promise.allSettled(

@@ -41,35 +41,17 @@ export function createDurableHooksProcessor(
     process: async () => processHooks(durableHooks),
     getNextWakeAt: async () => {
       return await internalFragment.inContext(async function () {
-        if (stuckProcessingTimeoutMinutes === false) {
-          return await this.handlerTx()
-            .withServiceCalls(
-              () => [internalFragment.services.hookService.getNextHookWakeAt(namespace)] as const,
-            )
-            .transform(({ serviceResult: [result] }) => result)
-            .execute();
-        }
-
         return await this.handlerTx()
           .withServiceCalls(
             () =>
               [
-                internalFragment.services.hookService.getNextHookWakeAt(namespace),
-                internalFragment.services.hookService.getNextProcessingStaleAt(
+                internalFragment.services.hookService.getNextHookWakeAt(
                   namespace,
                   stuckProcessingTimeoutMinutes,
                 ),
               ] as const,
           )
-          .transform(({ serviceResult: [nextHookWakeAt, nextStaleAt] }) => {
-            if (!nextHookWakeAt) {
-              return nextStaleAt ?? null;
-            }
-            if (!nextStaleAt) {
-              return nextHookWakeAt;
-            }
-            return nextHookWakeAt <= nextStaleAt ? nextHookWakeAt : nextStaleAt;
-          })
+          .transform(({ serviceResult: [result] }) => result)
           .execute();
       });
     },
