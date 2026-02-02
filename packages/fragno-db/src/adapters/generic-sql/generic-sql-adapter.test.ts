@@ -1,11 +1,11 @@
 import { SQLocalKysely } from "sqlocal/kysely";
 import { assert, describe, expect, it } from "vitest";
 import { SQLocalDriverConfig } from "./driver-config";
-import { GenericSQLAdapter } from "./generic-sql-adapter";
+import { SqlAdapter } from "./generic-sql-adapter";
 import { column, idColumn, schema } from "../../schema/create";
 import { internalSchema } from "../../fragments/internal-fragment";
 
-describe("GenericSQLAdapter", () => {
+describe("SqlAdapter", () => {
   const testSchema = schema((s) => {
     return s.addTable("products", (t) => {
       return t
@@ -16,11 +16,11 @@ describe("GenericSQLAdapter", () => {
     });
   });
 
-  it("Should be able to query using GenericSQLAdapter", async () => {
+  it("Should be able to query using SqlAdapter", async () => {
     const { dialect } = new SQLocalKysely(":memory:");
     const driverConfig = new SQLocalDriverConfig();
 
-    const adapter = new GenericSQLAdapter({ dialect, driverConfig });
+    const adapter = new SqlAdapter({ dialect, driverConfig });
 
     // Create settings table first (needed for version tracking)
     const settingsMigrations = adapter.prepareMigrations(internalSchema, "");

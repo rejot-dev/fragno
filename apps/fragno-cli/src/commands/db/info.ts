@@ -22,10 +22,15 @@ export const infoCommand = define({
     // Collect database information
     const dbInfos = await Promise.all(
       allFragnoDatabases.map(async (fragnoDb) => {
+        const adapterMetadata = fragnoDb.adapter.adapterMetadata;
+        const databaseType = adapterMetadata?.databaseType;
+        const sqliteProfile = adapterMetadata?.sqliteProfile;
         const info: {
           namespace: string;
           schemaVersion: number;
           migrationSupport: boolean;
+          databaseType?: string;
+          sqliteProfile?: string;
           currentVersion?: string;
           pendingVersions?: string;
           status?: string;
@@ -33,6 +38,8 @@ export const infoCommand = define({
           namespace: fragnoDb.namespace,
           schemaVersion: fragnoDb.schema.version,
           migrationSupport: !!fragnoDb.adapter.prepareMigrations,
+          databaseType,
+          sqliteProfile: databaseType === "sqlite" ? sqliteProfile : undefined,
         };
 
         // Get current database version if migrations are supported
@@ -54,6 +61,9 @@ export const infoCommand = define({
       }),
     );
 
+    const showDatabaseType = dbInfos.some((info) => !!info.databaseType);
+    const showSqliteProfile = dbInfos.some((info) => info.databaseType === "sqlite");
+
     // Determine if any database supports migrations
     const hasMigrationSupport = dbInfos.some((info) => info.migrationSupport);
 
@@ -65,6 +75,8 @@ export const infoCommand = define({
     // Table header
     const namespaceHeader = "Namespace";
     const versionHeader = "Schema";
+    const databaseHeader = "DB";
+    const profileHeader = "SQLite";
     const currentHeader = "Current";
     const statusHeader = "Status";
 
@@ -74,6 +86,8 @@ export const infoCommand = define({
     );
     const namespaceWidth = Math.max(maxNamespaceLen + 2, 20);
     const versionWidth = 8;
+    const databaseWidth = 8;
+    const profileWidth = 10;
     const currentWidth = 9;
     const statusWidth = 25;
 
@@ -81,12 +95,16 @@ export const infoCommand = define({
     console.log(
       namespaceHeader.padEnd(namespaceWidth) +
         versionHeader.padEnd(versionWidth) +
+        (showDatabaseType ? databaseHeader.padEnd(databaseWidth) : "") +
+        (showSqliteProfile ? profileHeader.padEnd(profileWidth) : "") +
         (hasMigrationSupport ? currentHeader.padEnd(currentWidth) : "") +
         statusHeader,
     );
     console.log(
       "-".repeat(namespaceWidth) +
         "-".repeat(versionWidth) +
+        (showDatabaseType ? "-".repeat(databaseWidth) : "") +
+        (showSqliteProfile ? "-".repeat(profileWidth) : "") +
         (hasMigrationSupport ? "-".repeat(currentWidth) : "") +
         "-".repeat(statusWidth),
     );
@@ -97,6 +115,8 @@ export const infoCommand = define({
       console.log(
         info.namespace.padEnd(namespaceWidth) +
           String(info.schemaVersion).padEnd(versionWidth) +
+          (showDatabaseType ? (info.databaseType ?? "-").padEnd(databaseWidth) : "") +
+          (showSqliteProfile ? (info.sqliteProfile ?? "-").padEnd(profileWidth) : "") +
           (hasMigrationSupport ? currentVersionStr.padEnd(currentWidth) : "") +
           (info.status || "-"),
       );

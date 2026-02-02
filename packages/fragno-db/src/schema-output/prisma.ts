@@ -1,15 +1,15 @@
-import { parseVarchar } from "../../util/parse";
-import type { AnyColumn, AnySchema, AnyTable, Relation } from "../../schema/create";
-import type { SupportedDatabase } from "../generic-sql/driver-config";
-import type { SQLiteStorageMode } from "../generic-sql/sqlite-storage";
-import { sqliteStorageDefault, sqliteStoragePrisma } from "../generic-sql/sqlite-storage";
+import { parseVarchar } from "../util/parse";
+import type { AnyColumn, AnySchema, AnyTable, Relation } from "../schema/create";
+import type { SupportedDatabase } from "../adapters/generic-sql/driver-config";
+import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
+import { sqliteStorageDefault, sqliteStoragePrisma } from "../adapters/generic-sql/sqlite-storage";
 import {
   createTableNameMapper,
   sanitizeNamespace,
   type TableNameMapper,
-} from "../shared/table-name-mapper";
+} from "../adapters/shared/table-name-mapper";
 
-export interface GenerateSchemaOptions {
+export interface GeneratePrismaSchemaOptions {
   sqliteStorageMode?: SQLiteStorageMode;
 }
 
@@ -498,10 +498,10 @@ function generateModel(
   return lines.join("\n");
 }
 
-export function generateSchema(
+export function generatePrismaSchema(
   fragments: { namespace: string; schema: AnySchema }[],
   provider: SupportedDatabase,
-  options?: GenerateSchemaOptions,
+  options?: GeneratePrismaSchemaOptions,
 ): string {
   const sqliteStorageMode =
     options?.sqliteStorageMode ??

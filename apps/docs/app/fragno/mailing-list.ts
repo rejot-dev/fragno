@@ -1,5 +1,5 @@
 import { createMailingListFragment } from "@fragno-dev/fragment-mailing-list";
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { sendEmail } from "@/resend/resend";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
@@ -9,7 +9,7 @@ export function createAdapter(state?: DurableObjectState) {
     ctx: state!,
   });
 
-  return new DrizzleAdapter({
+  return new SqlAdapter({
     dialect,
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { generateSchema } from "./generate";
-import { internalSchema } from "../../fragments/internal-fragment";
+import { column, idColumn, referenceColumn, schema } from "../schema/create";
+import { generateDrizzleSchema } from "./drizzle";
+import { internalSchema } from "../fragments/internal-fragment";
 
-describe("generateSchema", () => {
+describe("generateDrizzleSchema", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -34,7 +34,10 @@ describe("generateSchema", () => {
 
   describe("postgresql", () => {
     it("should generate PostgreSQL schema", () => {
-      const generated = generateSchema([{ namespace: "test", schema: testSchema }], "postgresql");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: testSchema }],
+        "postgresql",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
@@ -105,7 +108,7 @@ describe("generateSchema", () => {
 
   describe("mysql", () => {
     it("should generate MySQL schema", () => {
-      const generated = generateSchema([{ namespace: "test", schema: testSchema }], "mysql");
+      const generated = generateDrizzleSchema([{ namespace: "test", schema: testSchema }], "mysql");
       expect(generated).toMatchInlineSnapshot(`
         "import { mysqlTable, varchar, text, int, bigint, uniqueIndex, index, foreignKey } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
@@ -176,7 +179,10 @@ describe("generateSchema", () => {
 
   describe("sqlite", () => {
     it("should generate SQLite schema", () => {
-      const generated = generateSchema([{ namespace: "test", schema: testSchema }], "sqlite");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: testSchema }],
+        "sqlite",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { sqliteTable, text, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
@@ -258,7 +264,7 @@ describe("generateSchema", () => {
         });
       });
 
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "test", schema: timestampSchema }],
         "postgresql",
       );
@@ -295,7 +301,7 @@ describe("generateSchema", () => {
         });
       });
 
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "test", schema: timestampSchema }],
         "postgresql",
       );
@@ -331,7 +337,10 @@ describe("generateSchema", () => {
         });
       });
 
-      const generated = generateSchema([{ namespace: "test", schema: binarySchema }], "postgresql");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: binarySchema }],
+        "postgresql",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { pgTable, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
@@ -398,7 +407,7 @@ describe("generateSchema", () => {
     });
 
     it("should generate PostgreSQL schema with many relations", () => {
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "test", schema: oneToManySchema }],
         "postgresql",
       );
@@ -465,7 +474,10 @@ describe("generateSchema", () => {
     });
 
     it("should generate MySQL schema with many relations", () => {
-      const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "mysql");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: oneToManySchema }],
+        "mysql",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
@@ -529,7 +541,10 @@ describe("generateSchema", () => {
     });
 
     it("should generate SQLite schema with many relations", () => {
-      const generated = generateSchema([{ namespace: "test", schema: oneToManySchema }], "sqlite");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: oneToManySchema }],
+        "sqlite",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { sqliteTable, text, integer, uniqueIndex, foreignKey, index } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
@@ -614,7 +629,7 @@ describe("generateSchema", () => {
           });
       });
 
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "test", schema: manyOnlySchema }],
         "postgresql",
       );
@@ -696,7 +711,7 @@ describe("generateSchema", () => {
           });
       });
 
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "test", schema: selfManySchema }],
         "postgresql",
       );
@@ -775,7 +790,7 @@ describe("generateSchema", () => {
     });
 
     it("should generate PostgreSQL self-referencing foreign key using table parameter", () => {
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "test", schema: selfRefSchema }],
         "postgresql",
       );
@@ -825,7 +840,10 @@ describe("generateSchema", () => {
     });
 
     it("should generate MySQL self-referencing foreign key using table parameter", () => {
-      const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "mysql");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: selfRefSchema }],
+        "mysql",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
@@ -872,7 +890,10 @@ describe("generateSchema", () => {
     });
 
     it("should generate SQLite self-referencing foreign key using table parameter", () => {
-      const generated = generateSchema([{ namespace: "test", schema: selfRefSchema }], "sqlite");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: selfRefSchema }],
+        "sqlite",
+      );
       expect(generated).toMatchInlineSnapshot(`
         "import { sqliteTable, text, integer, foreignKey, index, uniqueIndex } from "drizzle-orm/sqlite-core"
         import { createId } from "@fragno-dev/db/id"
@@ -922,7 +943,7 @@ describe("generateSchema", () => {
 
   describe("namespace sanitization", () => {
     it("should sanitize namespace with hyphens for Drizzle compatibility", () => {
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "auth-db", schema: testSchema }],
         "postgresql",
       );
@@ -956,7 +977,10 @@ describe("generateSchema", () => {
     });
 
     it("should generate inverse relations for namespaced tables", () => {
-      const generated = generateSchema([{ namespace: "my-app", schema: testSchema }], "postgresql");
+      const generated = generateDrizzleSchema(
+        [{ namespace: "my-app", schema: testSchema }],
+        "postgresql",
+      );
 
       // User should have inverse "many" relation to posts
       expect(generated).toMatch(
@@ -970,7 +994,7 @@ describe("generateSchema", () => {
     });
 
     it("should sanitize namespace with special characters in foreign key references", () => {
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "my-fragment-v2", schema: testSchema }],
         "postgresql",
       );
@@ -1074,9 +1098,9 @@ describe("generateSchema", () => {
         });
       });
 
-      // De-duplication happens in generation-engine.ts before calling generateSchema
-      // This test verifies generateSchema works correctly with already-deduplicated inputs
-      const generated = generateSchema(
+      // De-duplication happens in generation-engine.ts before calling generateDrizzleSchema
+      // This test verifies generateDrizzleSchema works correctly with already-deduplicated inputs
+      const generated = generateDrizzleSchema(
         [
           { namespace: "", schema: internalSchema }, // Internal fragment (namespace: "")
           { namespace: "fragment1", schema: fragment1Schema },
@@ -1117,7 +1141,7 @@ describe("generateSchema", () => {
       });
 
       // De-duplication happens in generation-engine.ts, so we pass pre-deduplicated input
-      const generated = generateSchema(
+      const generated = generateDrizzleSchema(
         [{ namespace: "namespace1", schema: sharedSchema }],
         "postgresql",
       );

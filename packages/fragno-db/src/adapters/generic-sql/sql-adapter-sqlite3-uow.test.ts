@@ -1,6 +1,6 @@
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { DrizzleAdapter } from "./drizzle-adapter";
+import { SqlAdapter } from "./generic-sql-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
@@ -9,10 +9,10 @@ import {
   createHandlerTxBuilder,
 } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
-import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
+import { BetterSQLite3DriverConfig } from "./driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
 
-describe("DrizzleAdapter SQLite", () => {
+describe("SqlAdapter SQLite", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -94,7 +94,7 @@ describe("DrizzleAdapter SQLite", () => {
       });
   });
 
-  let adapter: DrizzleAdapter;
+  let adapter: SqlAdapter;
   let sqliteDatabase: InstanceType<typeof SQLite>;
 
   beforeAll(async () => {
@@ -104,7 +104,7 @@ describe("DrizzleAdapter SQLite", () => {
       database: sqliteDatabase,
     });
 
-    adapter = new DrizzleAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new BetterSQLite3DriverConfig(),
     });

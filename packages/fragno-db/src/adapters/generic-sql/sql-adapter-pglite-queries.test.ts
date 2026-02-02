@@ -1,16 +1,16 @@
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
-import { DrizzleAdapter } from "./drizzle-adapter";
+import { SqlAdapter } from "./generic-sql-adapter";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
-import { PGLiteDriverConfig } from "../generic-sql/driver-config";
+import { PGLiteDriverConfig } from "./driver-config";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
 import { internalSchema } from "../../fragments/internal-fragment";
 
-describe("DrizzleAdapter PGLite", () => {
+describe("SqlAdapter PGLite", () => {
   let pgliteDatabase: PGlite;
-  let adapter: DrizzleAdapter;
+  let adapter: SqlAdapter;
 
   const testSchema = schema((s) => {
     return s
@@ -98,7 +98,7 @@ describe("DrizzleAdapter PGLite", () => {
 
     const { dialect } = new KyselyPGlite(pgliteDatabase);
 
-    adapter = new DrizzleAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new PGLiteDriverConfig(),
     });

@@ -1,14 +1,18 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { define } from "gunshi";
-import { generateMigrationsOrSchema } from "@fragno-dev/db/generation-engine";
+import { generateSchemaArtifacts } from "@fragno-dev/db/generation-engine";
 import { importFragmentFiles } from "../../utils/find-fragno-databases";
 
 // Define the db generate command with type safety
 export const generateCommand = define({
   name: "generate",
-  description: "Generate schema files from FragnoDatabase definitions",
+  description: "Generate SQL migrations or schema outputs from FragnoDatabase definitions",
   args: {
+    format: {
+      type: "string",
+      description: "Output format: sql (migrations), drizzle (schema), prisma (schema)",
+    },
     output: {
       type: "string",
       short: "o",
@@ -35,6 +39,7 @@ export const generateCommand = define({
     // With `define()` and `multiple: true`, targets is properly typed as string[]
     const targets = ctx.positionals;
     const output = ctx.values.output;
+    const format = ctx.values.format ?? "sql";
     const toVersion = ctx.values.to;
     const fromVersion = ctx.values.from;
     const prefix = ctx.values.prefix;
@@ -43,22 +48,28 @@ export const generateCommand = define({
     const targetPaths = targets.map((target) => resolve(process.cwd(), target));
 
     // Import all fragment files and validate they use the same adapter
-    const { databases: allFragnoDatabases, adapter } = await importFragmentFiles(targetPaths);
+    const { databases: allFragnoDatabases } = await importFragmentFiles(targetPaths);
 
-    // Check if adapter supports any form of schema generation
-    if (!adapter.createSchemaGenerator && !adapter.prepareMigrations) {
-      throw new Error(
-        `The adapter does not support schema generation. ` +
-          `Please use an adapter that implements either createSchemaGenerator or prepareMigrations.`,
-      );
+    const allowedFormats = ["sql", "drizzle", "prisma"] as const;
+    if (!allowedFormats.includes(format as (typeof allowedFormats)[number])) {
+      throw new Error(`Unsupported format '${format}'. Use one of: ${allowedFormats.join(", ")}.`);
+    }
+
+    if (format !== "sql" && (toVersion !== undefined || fromVersion !== undefined)) {
+      throw new Error("--from and --to are only supported for SQL migration output.");
     }
 
     // Generate schema for all fragments
-    console.log("Generating schema...");
+    if (format === "sql") {
+      console.log("Generating SQL migrations...");
+    } else {
+      console.log(`Generating ${format} schema output...`);
+    }
 
     let results: { schema: string; path: string; namespace: string }[];
     try {
-      results = await generateMigrationsOrSchema(allFragnoDatabases, {
+      results = await generateSchemaArtifacts(allFragnoDatabases, {
+        format: format as "sql" | "drizzle" | "prisma",
         path: output,
         toVersion,
         fromVersion,
@@ -103,7 +114,7 @@ export const generateCommand = define({
       console.log(`✓ Generated: ${finalOutputPath}`);
     }
 
-    console.log(`\n✓ Schema generated successfully!`);
+    console.log(`\n✓ Output generated successfully!`);
     console.log(`  Files generated: ${results.length}`);
     console.log(`  Fragments:`);
     for (const db of allFragnoDatabases) {

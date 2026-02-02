@@ -1,5 +1,5 @@
 import { createStripeFragment } from "@fragno-dev/stripe";
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { db } from "../db";
 import { user } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -47,7 +47,7 @@ export const stripeFragment = createStripeFragment(
     enableAdminRoutes: true,
   },
   {
-    databaseAdapter: new DrizzleAdapter({
+    databaseAdapter: new SqlAdapter({
       dialect,
       driverConfig: new PGLiteDriverConfig(),
     }),

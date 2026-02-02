@@ -1,9 +1,9 @@
-# Kysely Adapter
+# SQL Adapter (Kysely Dialects)
 
-The KyselyAdapter connects Fragno's database API to your Kysely database instance.
+The SqlAdapter connects Fragno's database API to your SQL database via Kysely dialects.
 
 ```typescript @fragno-imports
-import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import {
   PGLiteDriverConfig,
   SQLocalDriverConfig,
@@ -17,14 +17,14 @@ import { KyselyPGlite } from "kysely-pglite";
 
 ## Basic Setup
 
-Create a KyselyAdapter with your Kysely dialect and driver configuration.
+Create a SqlAdapter with your Kysely dialect and driver configuration.
 
 ```typescript @fragno-test:basic-setup types-only
 const dialect = new SqliteDialect({
   database: new SQLite(":memory:"),
 });
 
-export const adapter = new KyselyAdapter({
+export const adapter = new SqlAdapter({
   dialect,
   driverConfig: new BetterSQLite3DriverConfig(),
 });
@@ -50,7 +50,7 @@ import { SqliteDialect, PostgresDialect, MysqlDialect } from "@fragno-dev/db/dia
 ```typescript @fragno-test:postgresql-example types-only
 const { dialect } = await KyselyPGlite.create();
 
-export const adapter = new KyselyAdapter({
+export const adapter = new SqlAdapter({
   dialect,
   driverConfig: new PGLiteDriverConfig(),
 });

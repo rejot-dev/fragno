@@ -48,40 +48,25 @@
       "types": "./dist/adapters/adapters.d.ts",
       "default": "./dist/adapters/adapters.js"
     },
-    "./adapters/kysely": {
-      "development": "./src/adapters/kysely/kysely-adapter.ts",
-      "types": "./dist/adapters/kysely/kysely-adapter.d.ts",
-      "default": "./dist/adapters/kysely/kysely-adapter.js"
-    },
-    "./adapters/drizzle": {
-      "development": "./src/adapters/drizzle/drizzle-adapter.ts",
-      "types": "./dist/adapters/drizzle/drizzle-adapter.d.ts",
-      "default": "./dist/adapters/drizzle/drizzle-adapter.js"
-    },
-    "./adapters/drizzle/generate": {
-      "development": "./src/adapters/drizzle/generate.ts",
-      "types": "./dist/adapters/drizzle/generate.d.ts",
-      "default": "./dist/adapters/drizzle/generate.js"
-    },
-    "./adapters/prisma": {
-      "development": "./src/adapters/prisma/prisma-adapter.ts",
-      "types": "./dist/adapters/prisma/prisma-adapter.d.ts",
-      "default": "./dist/adapters/prisma/prisma-adapter.js"
-    },
-    "./adapters/prisma/generate": {
-      "development": "./src/adapters/prisma/generate.ts",
-      "types": "./dist/adapters/prisma/generate.d.ts",
-      "default": "./dist/adapters/prisma/generate.js"
-    },
     "./adapters/in-memory": {
       "development": "./src/adapters/in-memory/index.ts",
       "types": "./dist/adapters/in-memory/index.d.ts",
       "default": "./dist/adapters/in-memory/index.js"
     },
-    "./adapters/generic-sql": {
-      "development": "./src/adapters/generic-sql/generic-sql-adapter.ts",
-      "types": "./dist/adapters/generic-sql/generic-sql-adapter.d.ts",
-      "default": "./dist/adapters/generic-sql/generic-sql-adapter.js"
+    "./adapters/sql": {
+      "development": "./src/adapters/sql/index.ts",
+      "types": "./dist/adapters/sql/index.d.ts",
+      "default": "./dist/adapters/sql/index.js"
+    },
+    "./schema-output/drizzle": {
+      "development": "./src/schema-output/drizzle.ts",
+      "types": "./dist/schema-output/drizzle.d.ts",
+      "default": "./dist/schema-output/drizzle.js"
+    },
+    "./schema-output/prisma": {
+      "development": "./src/schema-output/prisma.ts",
+      "types": "./dist/schema-output/prisma.d.ts",
+      "default": "./dist/schema-output/prisma.js"
     },
     "./unit-of-work": {
       "development": "./src/query/unit-of-work/unit-of-work.ts",

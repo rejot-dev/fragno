@@ -5,7 +5,7 @@ import { executeMigrations, type ExecuteMigrationResult } from "@fragno-dev/db/g
 
 export const migrateCommand = define({
   name: "migrate",
-  description: "Run database migrations for all fragments to their latest versions",
+  description: "Run SQL database migrations for all fragments to their latest versions",
   args: {},
   run: async (ctx) => {
     const targets = ctx.positionals;

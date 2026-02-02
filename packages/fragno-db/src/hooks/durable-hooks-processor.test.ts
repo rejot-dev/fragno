@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "../with-database";
 import { schema, column, idColumn } from "../schema/create";
-import { DrizzleAdapter } from "../adapters/drizzle/drizzle-adapter";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { internalSchema } from "../fragments/internal-fragment";
 import { createDurableHooksProcessor } from "./durable-hooks-processor";
@@ -21,10 +21,10 @@ const testFragmentDefinition = defineFragment("test")
   .build();
 
 describe("createDurableHooksProcessor", () => {
-  let adapter: DrizzleAdapter;
+  let adapter: SqlAdapter;
   let fragment: ReturnType<typeof instantiateFragment>;
 
-  function instantiateFragment(options: { databaseAdapter: DrizzleAdapter }) {
+  function instantiateFragment(options: { databaseAdapter: SqlAdapter }) {
     return instantiate(testFragmentDefinition).withConfig({}).withOptions(options).build();
   }
 
@@ -32,7 +32,7 @@ describe("createDurableHooksProcessor", () => {
     const sqliteDatabase = new SQLite(":memory:");
     const dialect = new SqliteDialect({ database: sqliteDatabase });
 
-    adapter = new DrizzleAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new BetterSQLite3DriverConfig(),
     });

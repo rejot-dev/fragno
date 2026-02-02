@@ -1,20 +1,20 @@
 import SQLite from "better-sqlite3";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../../schema/create";
+import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import {
   Cursor,
   createServiceTxBuilder,
   createHandlerTxBuilder,
   ExponentialBackoffRetryPolicy,
   type DatabaseAdapter,
-} from "../../../mod";
+} from "../../mod";
 import { SqliteDialect } from "kysely";
-import { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
-import { BetterSQLite3DriverConfig } from "../driver-config";
-import { GenericSQLAdapter } from "../generic-sql-adapter";
-import { internalSchema } from "../../../fragments/internal-fragment";
+import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
+import { BetterSQLite3DriverConfig } from "./driver-config";
+import { SqlAdapter } from "./generic-sql-adapter";
+import { internalSchema } from "../../fragments/internal-fragment";
 
-describe("GenericSQLAdapter with DrizzleAdapter better-sqlite3", () => {
+describe("SqlAdapter with better-sqlite3", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -105,7 +105,7 @@ describe("GenericSQLAdapter with DrizzleAdapter better-sqlite3", () => {
     });
     const sqlAdapter = new SqlDriverAdapter(dialect);
     const driverConfig = new BetterSQLite3DriverConfig();
-    const genericAdapter = new GenericSQLAdapter({ dialect, driverConfig });
+    const genericAdapter = new SqlAdapter({ dialect, driverConfig });
 
     {
       const migrations = genericAdapter.prepareMigrations(internalSchema, "");
