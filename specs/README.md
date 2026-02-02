@@ -73,6 +73,9 @@ very detailed, living documents that guide implementation without constraining t
   Prisma integration spec covering schema generation rules, adapter responsibilities, naming
   conventions, provider-specific type mappings, migration expectations, and runtime serialization
   constraints.
+- [Database Adapter Simplification — Spec](./spec-db-adapter-simplification.md) — Unify SQL runtime
+  adapters, make schema output formats explicit, and replace ORM-specific adapters with a single SQL
+  adapter plus explicit schema outputs.
 - [Fragno AI Fragment — Spec](./spec-ai-fragment.md) — AI fragment architecture and contract:
   thread/message/run models, NDJSON streaming semantics, persistence guarantees, webhook handling,
   runner execution behavior, config surface, and client hooks.
@@ -89,6 +92,8 @@ very detailed, living documents that guide implementation without constraining t
 - [In-Memory Adapter + OCC Model Checker — Implementation Plan](./impl-in-memory-adapter.md) —
   Execution tasks for the in-memory adapter and model checker, including indexes, OCC behavior,
   hooks, and conformance tests.
+- [Database Adapter Simplification — Implementation Plan](./impl-db-adapter-simplification.md) —
+  Execution tasks for the SQL adapter unification and schema output refactor.
 
 ## Implementation Plans (Finished)
 
