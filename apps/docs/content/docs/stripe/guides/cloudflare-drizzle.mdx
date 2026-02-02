@@ -48,50 +48,48 @@ Create `app/db/postgres.ts`:
 ```typescript title="app/db/postgres.ts"
 import { drizzle } from "drizzle-orm/node-postgres";
 import { schema } from "./postgres.schema.ts";
-import { Client } from "pg";
+import { Pool } from "pg";
 
-export function createPostgresClient() {
-  return new Client({
+export function createPostgresPool() {
+  return new Pool({
     connectionString: process.env.PG_DATABASE_URL!,
   });
 }
 
-export function createDrizzleDatabase(client: Client) {
-  return drizzle({ client, schema });
+export function createDrizzleDatabase(pool: Pool) {
+  return drizzle({ client: pool, schema });
 }
 
 export type DrizzleDatabase = ReturnType<typeof createDrizzleDatabase>;
 ```
 
 Cloudflare Worker invocations are short-lived and stateless, we therefore want to establish a new
-database connection for each request. The same pattern would also work if we later decided to start
-using Cloudflare Hyperdrive, in that case we'd obtain the `HYPERDRIVE` instance from the `env`
+database connection pool for each request. The same pattern would also work if we later decided to
+start using Cloudflare Hyperdrive, in that case we'd obtain the `HYPERDRIVE` instance from the `env`
 context in the Fetch handler.
 
-### 2.3 Create Drizzle Adapter for Fragno
+### 2.3 Create SQL Adapter for Fragno
 
 Create `app/fragno/database-adapter.ts`:
 
 ```typescript title="app/fragno/database-adapter.ts"
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
-import type { DrizzleDatabase } from "../db/postgres.ts";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { PostgresDialect } from "@fragno-dev/db/dialects";
+import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+import type { Pool } from "pg";
 
-export function createAdapter(db: DrizzleDatabase | (() => DrizzleDatabase)) {
-  if (typeof db === "function") {
-    return new DrizzleAdapter({
-      db: db(),
-      provider: "postgresql",
-    });
-  }
+export function createAdapter(pool: Pool | (() => Pool)) {
+  const resolvedPool = typeof pool === "function" ? pool() : pool;
+  const dialect = new PostgresDialect({ pool: resolvedPool });
 
-  return new DrizzleAdapter({
-    db,
-    provider: "postgresql",
+  return new SqlAdapter({
+    dialect,
+    driverConfig: new NodePostgresDriverConfig(),
   });
 }
 ```
 
-This adapter accepts either a database instance or a factory function, providing flexibility for
+This adapter accepts either a Pool instance or a factory function, providing flexibility for
 different initialization patterns.
 
 ## Step 3: Create Server-Side Fragment Instance
@@ -101,13 +99,10 @@ Create `app/fragno/stripe-server.ts`:
 ```typescript
 import { createStripeFragment } from "@fragno-dev/stripe";
 import { createAdapter } from "./database-adapter.ts";
-import {
-  createPostgresClient,
-  createDrizzleDatabase,
-  type DrizzleDatabase,
-} from "../db/postgres.ts";
+import { createPostgresPool } from "../db/postgres.ts";
+import type { Pool } from "pg";
 
-export function createStripeServer(db: DrizzleDatabase | (() => DrizzleDatabase)) {
+export function createStripeServer(pool: Pool | (() => Pool)) {
   return createStripeFragment(
     {
       stripeSecretKey: process.env.STRIPE_SECRET_KEY!,
@@ -124,15 +119,14 @@ export function createStripeServer(db: DrizzleDatabase | (() => DrizzleDatabase)
       },
     },
     {
-      databaseAdapter: createAdapter(db),
+      databaseAdapter: createAdapter(pool),
     },
   );
 }
 
 // Top-level instance for CLI tools (schema generation)
 export const fragment = createStripeServer(() => {
-  const client = createPostgresClient();
-  return createDrizzleDatabase(client);
+  return createPostgresPool();
 });
 ```
 
@@ -145,7 +139,8 @@ Update your `workers/app.ts` to create database connections per request and pass
 
 ```typescript
 import { createRequestHandler } from "react-router";
-import { createDrizzleDatabase, createPostgresClient, type DrizzleDatabase } from "~/db/postgres";
+import { createDrizzleDatabase, createPostgresPool, type DrizzleDatabase } from "~/db/postgres";
+import type { Pool } from "pg";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -154,6 +149,7 @@ declare module "react-router" {
       ctx: ExecutionContext;
     };
     db: DrizzleDatabase;
+    pool: Pool;
   }
 }
 
@@ -164,20 +160,20 @@ const requestHandler = createRequestHandler(
 
 export default {
   async fetch(request, env, ctx) {
-    const client = createPostgresClient();
+    const pool = createPostgresPool();
     try {
-      await client.connect();
-      const db = createDrizzleDatabase(client);
+      const db = createDrizzleDatabase(pool);
 
       return await requestHandler(request, {
         cloudflare: { env, ctx },
         db,
+        pool,
       });
     } catch (error) {
       console.error("Error fetching request", error);
       return new Response("Internal Server Error", { status: 500 });
     } finally {
-      await client.end();
+      await pool.end();
     }
   },
 } satisfies ExportedHandler<CloudflareEnv>;
@@ -198,11 +194,11 @@ import { createStripeServer } from "~/fragno/stripe-server";
 import type { Route } from "./+types/stripe";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  return createStripeServer(context.db).handler(request);
+  return createStripeServer(context.pool).handler(request);
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  return createStripeServer(context.db).handler(request);
+  return createStripeServer(context.pool).handler(request);
 }
 ```
 
@@ -247,7 +243,7 @@ Update your `package.json` to include the following script to generate the Fragn
 ```jsonc
 {
   "scripts": {
-    "db:fragno:generate": "npx @fragno-dev/cli db generate app/fragno/stripe-server.ts -o app/db/postgres/fragno-schema.ts",
+    "db:fragno:generate": "npx @fragno-dev/cli db generate app/fragno/stripe-server.ts --format drizzle -o app/db/postgres/fragno-schema.ts",
     // ...
   },
 }

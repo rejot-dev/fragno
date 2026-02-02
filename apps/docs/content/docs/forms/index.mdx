@@ -37,13 +37,13 @@ npm install @fragno-dev/forms @fragno-dev/db
 You must initialize the appropriate database adapter for use with the form fragment. If you already
 have other fragments configured, you can reuse the same adapter here. For additional details on
 setting the adapter see
-[our Fragno DB docs](/docs/fragno/for-users/database-fragments/overview#choose-your-adapter).
+[our Fragno DB docs](/docs/fragno/for-users/database-fragments/overview#choose-your-workflow).
 
 The example below uses DrizzleORM in combination with PostgreSQL, but adapters for other databases
 and ORMs are also available.
 
 ```ts title="db.ts"
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
 import { Pool } from "pg";
@@ -52,7 +52,7 @@ const dialect = new PostgresDialect({
   pool: new Pool({ connectionString: process.env.DATABASE_URL }),
 });
 
-export const fragmentDbAdapter = new DrizzleAdapter({
+export const fragmentDbAdapter = new SqlAdapter({
   dialect,
   driverConfig: new NodePostgresDriverConfig(),
 });
@@ -102,7 +102,7 @@ The fragment adds `form` and `response` tables to your database. Generate the sc
 
 ```npm
 # Generate schema file
-npx fragno-cli db generate lib/forms.ts -o db/forms.schema.ts
+npx fragno-cli db generate lib/forms.ts --format drizzle -o db/forms.schema.ts
 ```
 
 ### 5. Secure admin routes

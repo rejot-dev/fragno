@@ -76,7 +76,7 @@ provide:
 2. **Create an adapter (dialect + driver config):**
 
    ```typescript
-   import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+   import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
    import { PostgresDialect } from "@fragno-dev/db/dialects";
    import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
    import { Pool } from "pg";
@@ -85,7 +85,7 @@ provide:
      pool: new Pool({ connectionString: process.env.DATABASE_URL }),
    });
 
-   export const adapter = new DrizzleAdapter({
+   export const adapter = new SqlAdapter({
      dialect,
      driverConfig: new NodePostgresDriverConfig(),
    });
@@ -98,10 +98,14 @@ provide:
    ```
 
 4. **Run migrations:**
+
    ```bash
    npx fragno-cli db generate lib/fragment-instance.ts
    npx fragno-cli db migrate lib/fragment-instance.ts
    ```
+
+   For Drizzle or Prisma schema output, use `db generate --format drizzle` or
+   `db generate --format prisma`.
 
 For complete database integration instructions, see
 [Database Fragments](./database-fragments/overview).

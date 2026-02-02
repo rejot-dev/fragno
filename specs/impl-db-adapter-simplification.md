@@ -25,7 +25,7 @@ Spec: `specs/spec-db-adapter-simplification.md`
       explicit `--format` CLI flows (Spec 6.8). Depends on new adapter path exports.
 - [x] Update `@fragno-dev/db` package exports and `tsdown.config.ts` entries to remove old adapter
       paths and add new `adapters/sql` + `schema-output/*` entries (Spec 6.6).
-- [ ] Update documentation and corpus content to reflect the new adapter and format model, including
+- [x] Update documentation and corpus content to reflect the new adapter and format model, including
       `database-fragments` guides and CLI reference (Spec 6.5, 6.8).
 - [x] Update tests for adapter parity, Prisma storage profile behavior, and generation engine format
       branching (Spec 9).

@@ -18,11 +18,11 @@ npm install @fragno-dev/forms @fragno-dev/db
 ### 1. Initialize the database adapter
 
 See the
-[Fragno DB docs](https://fragno.dev/docs/fragno/for-users/database-fragments/overview#choose-your-adapter)
+[Fragno DB docs](https://fragno.dev/docs/fragno/for-users/database-fragments/overview#choose-your-workflow)
 for adapter options. Example with Drizzle ORM and Postgres:
 
 ```typescript
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
 import { Pool } from "pg";
@@ -31,7 +31,7 @@ const dialect = new PostgresDialect({
   pool: new Pool({ connectionString: process.env.DATABASE_URL }),
 });
 
-export const fragmentDbAdapter = new DrizzleAdapter({
+export const fragmentDbAdapter = new SqlAdapter({
   dialect,
   driverConfig: new NodePostgresDriverConfig(),
 });
@@ -68,7 +68,7 @@ app.all("/api/forms/*", (c) => formsFragment.handler(c.req.raw));
 
 ```bash
 # Generate schema file
-npx fragno-cli db generate lib/forms.ts -o db/forms.schema.ts
+npx fragno-cli db generate lib/forms.ts --format drizzle -o db/forms.schema.ts
 ```
 
 ### 5. Secure admin routes

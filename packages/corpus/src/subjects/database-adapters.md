@@ -75,6 +75,16 @@ export interface Fragment2Config {
 
 This ensures fragments integrate seamlessly with your existing database infrastructure.
 
+## Schema Output Formats
+
+Schema output is selected explicitly with the Fragno CLI:
+
+- `--format sql` (default) for SQL migrations
+- `--format drizzle` for Drizzle schema output
+- `--format prisma` for Prisma schema output
+
+The runtime adapter stays the same; only the CLI output changes.
+
 ## Cleanup
 
 Adapters manage connection lifecycle automatically. Call `close()` when shutting down your

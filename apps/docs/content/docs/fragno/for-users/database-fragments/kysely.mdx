@@ -1,11 +1,11 @@
 ---
-title: Kysely Adapter
-description: Using Kysely with database-enabled Fragments
+title: SQL Adapter (Kysely Dialect)
+description: Using the SqlAdapter with Kysely dialects
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The Kysely adapter integrates Fragno database Fragments with your database via a Kysely
+The SqlAdapter integrates Fragno database Fragments with your database via a Kysely
 [`Dialect`](https://kysely.dev/docs/recipes/connecting-to-databases). Kysely is a type-safe SQL
 query builder for TypeScript.
 
@@ -22,10 +22,10 @@ npm install kysely @fragno-dev/db
 
 ## Adapter Configuration
 
-Create a Kysely adapter using a Kysely `Dialect` + a Fragno `driverConfig`:
+Create a SqlAdapter using a Kysely `Dialect` + a Fragno `driverConfig`:
 
 ```typescript title="lib/database-adapter.ts"
-import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
 import { Pool } from "pg";
@@ -34,7 +34,7 @@ const dialect = new PostgresDialect({
   pool: new Pool({ connectionString: process.env.DATABASE_URL }),
 });
 
-export const fragmentDbAdapter = new KyselyAdapter({
+export const fragmentDbAdapter = new SqlAdapter({
   dialect,
   driverConfig: new NodePostgresDriverConfig(),
 });
@@ -54,7 +54,7 @@ Pick a matching `driverConfig` from `@fragno-dev/db/drivers`:
 The [Fragno CLI](/docs/reference/cli) enables you to generate migration files or apply migrations
 directly to your database.
 
-To generate a migration SQL file, run the following command:
+To generate a migration SQL file, run the following command (SQL output is the default):
 
 ```npm
 npx @fragno-dev/cli db generate lib/comment-fragment-server.ts -o migrations/

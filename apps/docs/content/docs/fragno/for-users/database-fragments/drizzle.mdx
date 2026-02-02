@@ -5,7 +5,7 @@ description: Using Drizzle ORM with database-enabled Fragments
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The Drizzle adapter integrates Fragno database Fragments with your database.
+The SQL adapter integrates Fragno database Fragments with your database.
 
 Note that Fragno executes SQL via **Kysely’s `Dialect` interface** (so we can reuse Kysely/community
 dialects). Drizzle is still the “user-facing” ORM here: the Fragno CLI can generate **Drizzle
@@ -24,10 +24,10 @@ npm install drizzle-orm @fragno-dev/db
 
 ## Adapter Configuration
 
-Create a Drizzle adapter using a Kysely `Dialect` + a Fragno `driverConfig`:
+Create a SqlAdapter using a Kysely `Dialect` + a Fragno `driverConfig`:
 
 ```typescript title="lib/database-adapter.ts"
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
 import { Pool } from "pg";
@@ -36,7 +36,7 @@ const dialect = new PostgresDialect({
   pool: new Pool({ connectionString: process.env.DATABASE_URL }),
 });
 
-export const fragmentDbAdapter = new DrizzleAdapter({
+export const fragmentDbAdapter = new SqlAdapter({
   dialect,
   driverConfig: new NodePostgresDriverConfig(),
 });
@@ -59,7 +59,7 @@ database schema.
 To generate a schema file, run the following command:
 
 ```npm
-npx @fragno-dev/cli db generate lib/comment-fragment-server.ts -o schema/comment-fragment-schema.ts
+npx @fragno-dev/cli db generate lib/comment-fragment-server.ts --format drizzle -o schema/comment-fragment-schema.ts
 ```
 
 This example assumes that `comment-fragment-server.ts` exports a `fragment` instance. The CLI uses

@@ -241,6 +241,7 @@ describe("Fragno Database Prisma", () => {
 
   describe("DB Generate Command", () => {
     const outputDir = resolve(process.cwd(), "_generated");
+    const outputFile = resolve(outputDir, "fragno.prisma");
 
     afterEach(async () => {
       // Clean up generated directory
@@ -253,7 +254,14 @@ describe("Fragno Database Prisma", () => {
       const { generateCommand } = await import("@fragno-dev/cli");
 
       await cli(
-        ["./src/fragno/comment-fragment.ts", "./src/fragno/rating-fragment.ts", "-o", "_generated"],
+        [
+          "./src/fragno/comment-fragment.ts",
+          "./src/fragno/rating-fragment.ts",
+          "--format",
+          "prisma",
+          "-o",
+          outputFile,
+        ],
         generateCommand,
         {
           name: "fragno-cli db generate",
@@ -266,7 +274,7 @@ describe("Fragno Database Prisma", () => {
 
       // Verify files were generated
       expect(logs.some((log) => log.includes("✓ Generated:"))).toBe(true);
-      expect(logs.some((log) => log.includes("Schema generated successfully"))).toBe(true);
+      expect(logs.some((log) => log.includes("Output generated successfully"))).toBe(true);
       expect(logs.some((log) => log.includes("fragno-db-comment"))).toBe(true);
       expect(logs.some((log) => log.includes("fragno-db-rating"))).toBe(true);
       expect(logs.some((log) => log.includes("Files generated:"))).toBe(true);
