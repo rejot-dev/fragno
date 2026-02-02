@@ -7,8 +7,8 @@ icon: Terminal
 import { Callout } from "fumadocs-ui/components/callout";
 
 The Fragno CLI (`@fragno-dev/cli`) provides command-line tools for working with Fragno. It is used
-to manage database-enabled Fragments. It handles schema migration generation, database version
-tracking, and migration execution.
+to manage database-enabled Fragments. It handles schema outputs, migration generation, database
+version tracking, and migration execution.
 
 ## Installation
 
@@ -32,11 +32,8 @@ npx @fragno-dev/cli --help
 
 ### `db generate`
 
-Generate a schema file for database setup or migrations. The type of generated file is determined by
-the database adapter used.
-
-- For SQL-based adapters (Kysely), the generated file is a SQL migration file.
-- For schema generator adapters (Drizzle), the generated file is a TypeScript schema file.
+Generate SQL migrations or schema outputs. The output format is explicit and selected with
+`--format`.
 
 **Usage:**
 
@@ -51,26 +48,34 @@ npx fragno-cli db generate <path-to-fragment-instance> [options]
 
 **Options:**
 
+- `--format` - Output format: `sql` (migrations, default), `drizzle` (schema), or `prisma` (schema)
 - `--output`, `-o` - Output path for the generated file (can be a file path or directory). Defaults
-  to `schema.sql` for SQL-based adapters, `schema.ts` for Drizzle
+  to the current directory. SQL migrations use date-prefixed filenames; Drizzle defaults to
+  `fragno-schema.ts`, Prisma defaults to `fragno.prisma`
 - `--from`, `-f` - Source version to generate migration from (default: current database version for
-  SQL adapters)
+  SQL output)
 - `--to`, `-t` - Target version to generate migration to (default: latest schema version)
 - `--prefix`, `-p` - String to prepend to the generated file (e.g., `/* eslint-disable */`)
 
-**Note:** `from` and `to` are _only_ supported in Kysely migrations.
+**Note:** `from` and `to` are _only_ supported for `--format sql`.
 
 **Examples:**
 
 ```bash
-# Generate schema for latest version (default output)
+# Generate SQL migrations (default output)
 npx fragno-cli db generate lib/comment-fragment-server.ts
 
-# Generate schema to specific file
+# Generate SQL migrations to specific file
 npx fragno-cli db generate lib/comment-fragment-server.ts --output migrations/001.sql
 
 # Generate migration between specific versions
 npx fragno-cli db generate lib/comment-fragment-server.ts --from 1 --to 3 --output migrations/v1-to-v3.sql
+
+# Generate a Drizzle schema module
+npx fragno-cli db generate lib/comment-fragment-server.ts --format drizzle --output schema/fragno-schema.ts
+
+# Generate a Prisma models-only schema
+npx fragno-cli db generate lib/comment-fragment-server.ts --format prisma --output prisma/schema/fragno.prisma
 
 # Generate with linter disable comment
 npx fragno-cli db generate lib/comment-fragment-server.ts --prefix "/* eslint-disable */"
@@ -78,20 +83,26 @@ npx fragno-cli db generate lib/comment-fragment-server.ts --prefix "/* eslint-di
 
 **What it does:**
 
-This command connects to your database and reads the current schema version in the database. It then
-generates a migration. If `--from` and `--to` are provided, it generates a migration from the source
-version to the target version. If `--from` is not provided, it generates a migration to the latest
-version.
+For `--format sql`, this command connects to your database and reads the current schema version. It
+then generates migrations. If `--from` and `--to` are provided, it generates a migration from the
+source version to the target version. If `--from` is not provided, it generates a migration to the
+latest version.
+
+For `--format drizzle` or `--format prisma`, no database connection is required. The CLI emits a
+schema artifact based on your Fragment schemas.
 
 **Output:**
 
 ```
 Loading target file: /path/to/lib/comment-fragment-server.ts
 Found FragnoDatabase instance: fragmentDb
-Generating schema for namespace: comment-fragment (from version 1 to version 3)
-✓ Schema generated successfully: schema.sql
-  Namespace: comment-fragment
-  Schema version: 3
+Generating SQL migrations...
+✓ Generated: /path/to/20250202_001_f001_t003_comment-fragment.sql
+
+✓ Output generated successfully!
+  Files generated: 1
+  Fragments:
+    - comment-fragment (version 3)
 ```
 
 ---
@@ -100,10 +111,9 @@ Generating schema for namespace: comment-fragment (from version 1 to version 3)
 
 Apply migrations to your database, bringing it to the target schema version.
 
-**Note:** this is _not_ supported in Drizzle. In Drizzle, you can use the `generate` command to
-generate a schema file and then use the `drizzle-kit push` command to apply the schema to your
-database. Make sure to update your `drizzle.config.ts` file to point to the generated schema file in
-addition to your own database schema.
+**Note:** this is _only_ supported for SQL migrations (`--format sql`). For Drizzle or Prisma
+workflows, use `db generate --format drizzle` or `db generate --format prisma` and apply changes
+with your ORM's tooling (for example `drizzle-kit` or `prisma migrate`).
 
 **Usage:**
 
@@ -163,10 +173,9 @@ Migrating to latest version (5)...
 ✓ Database is already at the target version. No migrations needed.
 ```
 
-<Callout title="Adapter Support Required" type="warn">
-  Not all database adapters support running migrations directly. Some adapters (like certain Drizzle
-  configurations) only support schema generation. If your adapter doesn't support migrations, you'll
-  receive an error message suggesting to use `db generate` instead.
+<Callout title="SQL Migrations Only" type="warn">
+  `db migrate` runs SQL migrations generated by `--format sql`. Schema outputs (Drizzle or Prisma)
+  are applied using your ORM's tooling.
 </Callout>
 
 <Callout title="Idempotent and Safe" type="info">

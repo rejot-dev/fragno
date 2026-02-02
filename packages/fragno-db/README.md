@@ -2,8 +2,9 @@
 
 Optional, ORM-agnostic database layer for Fragno libraries.
 
-Library authors define a type-safe schema; users plug in their existing Kysely or Drizzle setup so
-data is written directly into their database.
+Library authors define a type-safe schema; users plug in the SqlAdapter (configured with Kysely
+dialects) so data is written directly into their database. Schema output can be generated for SQL
+migrations, Drizzle, or Prisma workflows.
 
 Full docs live at
 [Database integration for library authors](https://fragno.dev/docs/fragno/for-library-authors/database-integration/overview).
@@ -91,22 +92,40 @@ export function createCommentLibrary(
 }
 ```
 
-Your users pass their own database adapter (Kysely or Drizzle) via `options`.
+Your users pass a SqlAdapter via `options`.
+
+```ts
+// User's application code
+import { SqlAdapter } from "@fragno-dev/db";
+import { PostgresDialect } from "kysely";
+import { Pool } from "pg";
+
+const commentLib = createCommentLibrary(
+  { maxCommentsPerPost: 10 },
+  {
+    databaseAdapter: new SqlAdapter({
+      dialect: new PostgresDialect({
+        pool: new Pool({
+          /* connection config */
+        }),
+      }),
+    }),
+  },
+);
+```
 
 ## Key features
 
 - **Schema definition**: define tables, columns, indexes, and relations with a fluent, typed API.
 - **Type-safe ORM**: full TypeScript inference for queries and results.
 - **User-owned database**: your library never owns the database; users provide the adapter.
-- **ORM agnostic**: works with Kysely or Drizzle (and more to come).
+- **ORM agnostic**: SQL runtime with explicit schema output formats (SQL, Drizzle, Prisma).
 - **Namespaced tables**: avoids conflicts with user tables.
 
 ## ORM and database support
 
-`@fragno-dev/db` works with:
-
-- **Kysely**
-- **Drizzle**
+`@fragno-dev/db` works with Kysely dialects for runtime execution and supports SQL migrations plus
+Drizzle or Prisma schema outputs.
 
 Backed by Postgres and SQLite, including PGLite and Cloudflare Durable Objects.
 

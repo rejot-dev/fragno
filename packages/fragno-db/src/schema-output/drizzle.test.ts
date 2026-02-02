@@ -942,7 +942,7 @@ describe("generateDrizzleSchema", () => {
   });
 
   describe("namespace sanitization", () => {
-    it("should sanitize namespace with hyphens for Drizzle compatibility", () => {
+    it("should sanitize exports while preserving physical table names", () => {
       const generated = generateDrizzleSchema(
         [{ namespace: "auth-db", schema: testSchema }],
         "postgresql",
@@ -952,12 +952,12 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("export const users_auth_db =");
       expect(generated).toContain("export const posts_auth_db =");
 
-      // Physical table names must also be sanitized for Drizzle's relational query system
-      expect(generated).toContain('pgTable("users_auth_db"');
-      expect(generated).toContain('pgTable("posts_auth_db"');
+      // Physical table names keep the original namespace to match runtime table names
+      expect(generated).toContain('pgTable("users_auth-db"');
+      expect(generated).toContain('pgTable("posts_auth-db"');
 
-      // Foreign key name should use sanitized namespace
-      expect(generated).toContain('name: "fk_posts_users_author_auth_db"');
+      // Foreign key name should use the original namespace
+      expect(generated).toContain('name: "fk_posts_users_author_auth-db"');
 
       // Relations should reference sanitized table names
       expect(generated).toContain("foreignColumns: [users_auth_db._internalId]");
@@ -993,7 +993,7 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("posts_my_appRelations: posts_my_appRelations");
     });
 
-    it("should sanitize namespace with special characters in foreign key references", () => {
+    it("should sanitize exports with special characters in foreign key references", () => {
       const generated = generateDrizzleSchema(
         [{ namespace: "my-fragment-v2", schema: testSchema }],
         "postgresql",
@@ -1011,9 +1011,9 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("fields: [posts_my_fragment_v2.userId]");
       expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
 
-      // Physical table names must also be sanitized for Drizzle's relational query system
-      expect(generated).toContain('pgTable("users_my_fragment_v2"');
-      expect(generated).toContain('pgTable("posts_my_fragment_v2"');
+      // Physical table names keep the original namespace to match runtime table names
+      expect(generated).toContain('pgTable("users_my-fragment-v2"');
+      expect(generated).toContain('pgTable("posts_my-fragment-v2"');
 
       expect(generated).toMatchInlineSnapshot(`
         "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
@@ -1024,7 +1024,7 @@ describe("generateDrizzleSchema", () => {
         // Fragment: my-fragment-v2
         // ============================================================================
 
-        export const users_my_fragment_v2 = pgTable("users_my_fragment_v2", {
+        export const users_my_fragment_v2 = pgTable("users_my-fragment-v2", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
@@ -1036,7 +1036,7 @@ describe("generateDrizzleSchema", () => {
           index("idx_name_my-fragment-v2").on(table.name)
         ])
 
-        export const posts_my_fragment_v2 = pgTable("posts_my_fragment_v2", {
+        export const posts_my_fragment_v2 = pgTable("posts_my-fragment-v2", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
@@ -1048,7 +1048,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_my_fragment_v2._internalId],
-            name: "fk_posts_users_author_my_fragment_v2"
+            name: "fk_posts_users_author_my-fragment-v2"
           }),
           index("idx_user_my-fragment-v2").on(table.userId),
           index("idx_title_my-fragment-v2").on(table.title)

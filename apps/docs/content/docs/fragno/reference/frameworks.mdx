@@ -39,22 +39,24 @@ import { Callout } from "fumadocs-ui/components/callout";
   could be easily integrated regardless.
 </Callout>
 
-## Database Adapters
+## Database Integration
 
-| Adapter | Support |
-| ------- | ------- |
-| Kysely  | ✅      |
-| Drizzle | ✅      |
-| Prisma  | ✅      |
+Fragno uses a single runtime adapter (`SqlAdapter`) built on Kysely dialects. Schema output formats
+are explicit:
 
-The Prisma adapter generates `.prisma` schema output so you can use Prisma migrations and client
-types. Fragno still executes queries via Kysely dialects.
+| Output Format  | Support |
+| -------------- | ------- |
+| SQL migrations | ✅      |
+| Drizzle schema | ✅      |
+| Prisma schema  | ✅      |
+
+Use `fragno-cli db generate --format drizzle` or `--format prisma` for schema outputs. SQL
+migrations remain the default.
 
 ### Kysely Dialects
 
 Fragno's data layer executes queries using the Kysely query builder. This is true even when using
-the Drizzle adapter, which is exclusively used to generate schema files to integrate directly with
-the user's existing Drizzle schema.
+Drizzle or Prisma workflows, which use schema outputs to integrate with your existing tooling.
 
 Kysely's dialect interface is relatively easy to implement, and there are already many first- and
 third-party dialects available. You can find a list of supported dialects

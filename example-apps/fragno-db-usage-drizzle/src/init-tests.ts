@@ -30,6 +30,8 @@ export const workflows_db_schema = {};\n`,
     "src/fragno/rating-fragment.ts",
     "src/fragno/auth-fragment.ts",
     "src/fragno/workflows-fragment.ts",
+    "--format",
+    "drizzle",
     "-o",
     schemaOut,
   ];

@@ -125,7 +125,7 @@ examples.
 Generate a schema and run migrations with the Fragno CLI:
 
 ```npm
-npx fragno-cli db generate lib/workflows-fragment.ts -o db/workflows.schema.ts
+npx fragno-cli db generate lib/workflows-fragment.ts --format drizzle -o db/workflows.schema.ts
 npx fragno-cli db migrate lib/workflows-fragment.ts
 ```
 

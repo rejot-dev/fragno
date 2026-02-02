@@ -63,12 +63,18 @@ If the Fragment requires database integration:
 2. Create a database adapter:
 
    ```ts title="lib/database-adapter.ts"
-   import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
-   import { db } from "./database"; // Your existing Kysely/Drizzle instance
+   import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+   import { PostgresDialect } from "@fragno-dev/db/dialects";
+   import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
+   import { Pool } from "pg";
 
-   export const fragmentDbAdapter = new KyselyAdapter({
-     db,
-     provider: "postgresql", // or "mysql", "sqlite"
+   const dialect = new PostgresDialect({
+     pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+   });
+
+   export const fragmentDbAdapter = new SqlAdapter({
+     dialect,
+     driverConfig: new NodePostgresDriverConfig(),
    });
    ```
 
@@ -91,10 +97,14 @@ If the Fragment requires database integration:
    ```
 
 4. Run migrations:
+
    ```bash
    npx fragno-cli db generate lib/example-fragment-server.ts
    npx fragno-cli db migrate lib/example-fragment-server.ts
    ```
+
+   For Drizzle or Prisma schema output, add `--format drizzle` or `--format prisma` to
+   `db generate`.
 
 For complete instructions, see
 [Database Fragments](/docs/fragno/for-users/database-fragments/overview).

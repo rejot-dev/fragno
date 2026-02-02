@@ -684,7 +684,7 @@ export function generateDrizzleSchema(
   const sections: string[] = [];
   const getMapper =
     options?.mapperFactory ||
-    ((ns: string | undefined) => (ns ? createTableNameMapper(ns, true) : undefined));
+    ((ns: string | undefined) => (ns ? createTableNameMapper(ns, false) : undefined));
 
   for (const { schema, namespace } of fragments) {
     const fragmentTables: string[] = [];

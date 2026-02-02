@@ -268,7 +268,7 @@ describe("Fragno Database Kysely", () => {
 
       // Verify files were generated
       expect(logs.some((log) => log.includes("✓ Generated:"))).toBe(true);
-      expect(logs.some((log) => log.includes("Schema generated successfully"))).toBe(true);
+      expect(logs.some((log) => log.includes("Output generated successfully"))).toBe(true);
       expect(logs.some((log) => log.includes("fragno-db-comment"))).toBe(true);
       expect(logs.some((log) => log.includes("fragno-db-rating"))).toBe(true);
       expect(logs.some((log) => log.includes("Files generated: 3"))).toBe(true);

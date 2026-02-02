@@ -50,16 +50,17 @@ npm install --save-dev @fragno-dev/cli
 </Step>
 
 <Step>
-### Choose Your Adapter
+<a id="choose-your-workflow"></a>
+### Choose Your Workflow
 
-Fragno supports three popular TypeScript ORMs:
+Fragno uses a single runtime adapter (`SqlAdapter`) for all SQL databases. You choose the schema
+output format that matches your workflow:
 
-- **[Kysely](/docs/fragno/for-users/database-fragments/kysely)** - Type-safe SQL query builder
-- **[Drizzle](/docs/fragno/for-users/database-fragments/drizzle)** - Modern TypeScript ORM
-- **[Prisma](/docs/fragno/for-users/database-fragments/prisma)** - Schema + migration tooling
+- **[SQL migrations](/docs/fragno/for-users/database-fragments/kysely)** - default `sql` output
+- **[Drizzle schema](/docs/fragno/for-users/database-fragments/drizzle)** - `drizzle` output
+- **[Prisma schema](/docs/fragno/for-users/database-fragments/prisma)** - `prisma` output
 
-Choose the adapter that matches your existing database setup. If you're starting fresh, any of the
-three works well.
+Pick the format that fits your migration tooling (SQL, Drizzle, or Prisma).
 
 </Step>
 
@@ -76,7 +77,7 @@ Adapters are configured with a **Kysely `Dialect`** plus a **Fragno `driverConfi
 match).
 
 ```typescript title="lib/database-adapter.ts"
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PostgresDialect } from "@fragno-dev/db/dialects";
 import { NodePostgresDriverConfig } from "@fragno-dev/db/drivers";
 import { Pool } from "pg";
@@ -85,13 +86,13 @@ const dialect = new PostgresDialect({
   pool: new Pool({ connectionString: process.env.DATABASE_URL }),
 });
 
-export const fragmentDbAdapter = new DrizzleAdapter({
+export const fragmentDbAdapter = new SqlAdapter({
   dialect,
   driverConfig: new NodePostgresDriverConfig(),
 });
 ```
 
-Swap `DrizzleAdapter` for `PrismaAdapter` if you're using Prisma.
+If you're using Prisma with SQLite, set `sqliteProfile: "prisma"` on the `SqlAdapter`.
 
 </Step>
 
@@ -122,19 +123,27 @@ export const fragment = createCommentFragmentInstance();
 <Step>
 ### Migrate your Database
 
-Generate and apply database migrations:
+Generate and apply database migrations (SQL output is the default):
 
 ```npm
-# Generate migration (or schema) file
+# Generate SQL migrations
 npx fragno-cli db generate lib/comment-fragment-server.ts
 
 # Or apply migrations directly
 npx fragno-cli db migrate lib/comment-fragment-server.ts
 ```
 
-For details on the CLI commands, see the [CLI Reference](/docs/reference/cli).
+For schema outputs, choose an explicit format:
 
-If you're using Prisma, generate a `.prisma` schema and run Prisma migrations against it.
+```npm
+# Drizzle schema output
+npx fragno-cli db generate lib/comment-fragment-server.ts --format drizzle -o schema/fragno-schema.ts
+
+# Prisma schema output
+npx fragno-cli db generate lib/comment-fragment-server.ts --format prisma -o prisma/schema/fragno.prisma
+```
+
+For details on the CLI commands, see the [CLI Reference](/docs/reference/cli).
 
 </Step>
 
@@ -142,7 +151,7 @@ If you're using Prisma, generate a `.prisma` schema and run Prisma migrations ag
 
 ## Supported Databases
 
-All adapters support:
+The SqlAdapter supports:
 
 - **PostgreSQL**
 - **MySQL**
@@ -165,9 +174,9 @@ Fragment author may change the schema in the future.
 
 **Q: What if I don't use Kysely, Drizzle, or Prisma?**
 
-A: Currently, only Kysely, Drizzle, and Prisma adapters are available. Support for other ORMs may be
-added in the future. Please let us know on [GitHub](https://github.com/rejot-dev/fragno/discussions)
-if you'd like to see support for other ORMs.
+A: Fragno uses Kysely dialects under the hood and currently supports SQL migrations plus Drizzle or
+Prisma schema outputs. Support for other workflows may be added in the future. Please let us know on
+[GitHub](https://github.com/rejot-dev/fragno/discussions) if you'd like to see additional formats.
 
 **Q: Can I use multiple database Fragments?**
 
@@ -181,7 +190,7 @@ const ratings = createRatingFragment({}, { databaseAdapter });
 
 ## Next Steps
 
-Choose your database adapter to continue:
+Choose your database workflow to continue:
 
 - [Kysely Integration Guide](/docs/fragno/for-users/database-fragments/kysely)
 - [Drizzle Integration Guide](/docs/fragno/for-users/database-fragments/drizzle)
