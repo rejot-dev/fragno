@@ -50,6 +50,7 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
 export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
   /**
    * Database query engine for the fragment's schema.
+   * @deprecated Prefer handlerTx/serviceTx instead of direct db usage.
    */
   db: SimpleQueryInterface<TSchema>;
   /**
@@ -652,10 +653,42 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const durableHooksOptions = context.options.durableHooks;
+      const dbContextForHooks = createDatabaseContext(
+        context.options,
+        this.#schema,
+        this.#namespace,
+      );
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: this.#hooksFactory(context),
         namespace: this.#namespace,
         internalFragment: internalFragmentFactory(context),
+        handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
+          const userOnBeforeMutate = execOptions?.onBeforeMutate;
+          const userOnAfterMutate = execOptions?.onAfterMutate;
+          return createHandlerTxBuilder<THooks>({
+            ...execOptions,
+            createUnitOfWork: () => {
+              const uow = dbContextForHooks.db.createUnitOfWork();
+              uow.registerSchema(
+                hooksConfig.internalFragment.$internal.deps.schema,
+                hooksConfig.internalFragment.$internal.deps.namespace,
+              );
+              return uow;
+            },
+            onBeforeMutate: (uow) => {
+              prepareHookMutations(uow, hooksConfig);
+              if (userOnBeforeMutate) {
+                userOnBeforeMutate(uow);
+              }
+            },
+            onAfterMutate: async (uow) => {
+              await processHooks(hooksConfig);
+              if (userOnAfterMutate) {
+                await userOnAfterMutate(uow);
+              }
+            },
+          });
+        },
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
       };

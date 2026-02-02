@@ -2,7 +2,13 @@ import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { instantiate } from "@fragno-dev/core";
-import { prepareHookMutations, processHooks, type HooksMap, type HookContext } from "./hooks";
+import {
+  prepareHookMutations,
+  processHooks,
+  type HooksMap,
+  type HookContext,
+  type HookHandlerTx,
+} from "./hooks";
 import { internalFragmentDef, internalSchema } from "../fragments/internal-fragment";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
@@ -11,6 +17,9 @@ import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-w
 import type { FragnoId } from "../schema/create";
 
 describe("Hook System", () => {
+  const handlerTx = (() => {
+    throw new Error("handlerTx not configured for hooks test");
+  }) as HookHandlerTx;
   let sqliteDatabase: SQLite.Database;
   let adapter: SqlAdapter;
   let internalFragment: ReturnType<typeof instantiateFragment>;
@@ -72,6 +81,7 @@ describe("Hook System", () => {
               hooks,
               namespace,
               internalFragment,
+              handlerTx,
               defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
             });
           })
@@ -118,6 +128,7 @@ describe("Hook System", () => {
               hooks,
               namespace,
               internalFragment,
+              handlerTx,
               defaultRetryPolicy: new NoRetryPolicy(),
             });
           })
@@ -160,6 +171,7 @@ describe("Hook System", () => {
               hooks,
               namespace,
               internalFragment,
+              handlerTx,
               defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 10 }),
             });
           })
@@ -196,6 +208,7 @@ describe("Hook System", () => {
               hooks,
               namespace,
               internalFragment,
+              handlerTx,
               defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
             });
           })
@@ -234,6 +247,7 @@ describe("Hook System", () => {
               hooks,
               namespace,
               internalFragment,
+              handlerTx,
               defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
             });
           })
@@ -291,6 +305,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
@@ -350,6 +365,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
@@ -404,6 +420,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new NoRetryPolicy(),
       });
 
@@ -454,6 +471,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new NoRetryPolicy(),
       });
 
@@ -505,6 +523,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         stuckProcessingTimeoutMinutes: 1,
         onStuckProcessingHooks,
       });
@@ -590,6 +609,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
@@ -670,6 +690,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 
@@ -706,6 +727,7 @@ describe("Hook System", () => {
         hooks,
         namespace,
         internalFragment,
+        handlerTx,
         defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
       });
 

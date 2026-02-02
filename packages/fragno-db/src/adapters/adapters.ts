@@ -53,6 +53,9 @@ export interface DatabaseAdapter<TUOWConfig = void> {
    */
   readonly adapterMetadata?: DatabaseAdapterMetadata;
 
+  /**
+   * @deprecated Avoid using query engines directly in fragment code. Prefer handlerTx/serviceTx.
+   */
   createQueryEngine: <const T extends AnySchema>(
     schema: T,
     namespace: string,
