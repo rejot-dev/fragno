@@ -1,4 +1,5 @@
 import { encodeFileKey, type FileKeyEncoded, type FileKeyParts } from "../keys";
+import { createHash } from "node:crypto";
 import type { StorageAdapter, UploadChecksum } from "./types";
 
 const BYTES_IN_MIB = 1024 * 1024;
@@ -112,7 +113,7 @@ const normalizeChecksum = (checksum?: UploadChecksum | null) => {
   const raw = checksum.value ?? "";
   const buf = parseHex(raw, expectedBytes) ?? parseBase64(raw, expectedBytes);
   if (!buf) {
-    return null;
+    throw new Error("INVALID_CHECKSUM");
   }
 
   return {
@@ -122,7 +123,7 @@ const normalizeChecksum = (checksum?: UploadChecksum | null) => {
   };
 };
 
-const resolveChecksumHeaders = (checksum?: UploadChecksum | null) => {
+const resolveChecksumHeaders = (checksum?: UploadChecksum | null): Record<string, string> => {
   const normalized = normalizeChecksum(checksum);
   if (!normalized) {
     return {};
@@ -146,6 +147,30 @@ const normalizeEtag = (etag: string | null) => {
   }
 
   return trimmed.toLowerCase();
+};
+
+const computeChecksumFromResponse = async (
+  response: Response,
+  algo: "md5" | "sha256",
+): Promise<string> => {
+  if (!response.body) {
+    throw new Error("STORAGE_ERROR");
+  }
+
+  const hash = createHash(algo);
+  const reader = response.body.getReader();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (value) {
+      hash.update(Buffer.from(value));
+    }
+  }
+
+  return hash.digest("hex");
 };
 
 const parseContentLength = (value: string | null) => {
@@ -475,7 +500,7 @@ export function createS3CompatibleStorageAdapter(
     getPartUploadUrls: async ({ storageKey, storageUploadId, partNumbers }) => {
       for (const partNumber of partNumbers) {
         if (partNumber < 1 || partNumber > maxMultipartParts) {
-          throw new Error("Part number is out of range");
+          throw new Error("INVALID_REQUEST");
         }
       }
 
@@ -571,14 +596,48 @@ export function createS3CompatibleStorageAdapter(
       if (normalized) {
         if (normalized.algo === "md5") {
           const etag = normalizeEtag(getHeaderValue(response.headers, "etag"));
-          if (etag && etag !== normalized.hex) {
-            throw new Error("INVALID_CHECKSUM");
+          if (etag) {
+            if (etag !== normalized.hex) {
+              throw new Error("INVALID_CHECKSUM");
+            }
+          } else {
+            const signedGet = await options.signer.sign({
+              method: "GET",
+              url: buildUrl(storageKey).toString(),
+            });
+            const getResponse = await fetch(signedGet.url, {
+              method: "GET",
+              headers: signedGet.headers,
+            });
+            if (!getResponse.ok) {
+              throw new Error("STORAGE_ERROR");
+            }
+            const computed = await computeChecksumFromResponse(getResponse, "md5");
+            if (computed !== normalized.hex) {
+              throw new Error("INVALID_CHECKSUM");
+            }
           }
         } else {
           const checksumHeader = getHeaderValue(response.headers, "x-amz-checksum-sha256");
           if (checksumHeader) {
             const remote = parseBase64(checksumHeader, 32);
-            if (remote && remote.toString("base64") !== normalized.base64) {
+            if (!remote || remote.toString("base64") !== normalized.base64) {
+              throw new Error("INVALID_CHECKSUM");
+            }
+          } else {
+            const signedGet = await options.signer.sign({
+              method: "GET",
+              url: buildUrl(storageKey).toString(),
+            });
+            const getResponse = await fetch(signedGet.url, {
+              method: "GET",
+              headers: signedGet.headers,
+            });
+            if (!getResponse.ok) {
+              throw new Error("STORAGE_ERROR");
+            }
+            const computed = await computeChecksumFromResponse(getResponse, "sha256");
+            if (computed !== normalized.hex) {
               throw new Error("INVALID_CHECKSUM");
             }
           }

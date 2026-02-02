@@ -46,6 +46,7 @@
     "clean": "find . -type d \\( -name dist -o -name node_modules -o -name .turbo -o -name .next -o -name .output -o -name .nuxt -o -name .react-router -o -name .open-next -o -name .source -o -name .svelte-kit -o -name .tanstack \\) -prune -exec rm -rf {} + -o -name tsconfig.tsbuildinfo -o -name coverage.json -exec rm -f {} +",
     "clean:install": "pnpm run clean && pnpm install",
     "build": "turbo run build --output-logs=errors-only",
+    "build:fast": "turbo run build --output-logs=errors-only --filter='...[main...HEAD]' --filter='./packages/**'",
     "build:watch": "turbo watch build --filter='./packages/**'",
     "build:watch:10m": "bash -c \"while true; do pnpm run build:watch & pid=$!; (sleep 600 && kill \\\"$pid\\\" 2>/dev/null) & wait $pid; echo 'Restarting...'; done\"",
     "build:ui": "turbo watch --ui tui build",
