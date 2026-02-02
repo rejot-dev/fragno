@@ -1,5 +1,9 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
-import type { FileHookPayload, UploadFragmentResolvedConfig } from "../config";
+import type {
+  FileHookPayload,
+  UploadFragmentResolvedConfig,
+  UploadTimeoutPayload,
+} from "../config";
 import type { FileKeyEncoded, FileKeyParts } from "../keys";
 import { uploadSchema } from "../schema";
 import type { FileStatus } from "../types";
@@ -23,6 +27,7 @@ type UploadHooks = {
   onFileReady: (payload: FileHookPayload) => void | Promise<void>;
   onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
   onFileDeleted: (payload: FileHookPayload) => void | Promise<void>;
+  onUploadTimeout: (payload: UploadTimeoutPayload) => void | Promise<void>;
 };
 
 type UploadServiceContext = DatabaseServiceContext<UploadHooks>;

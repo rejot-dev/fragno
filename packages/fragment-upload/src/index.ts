@@ -5,7 +5,12 @@ import type { UploadFragmentConfig } from "./config";
 import { uploadRoutes } from "./routes";
 import { createUploadFragmentClients } from "./client/clients";
 
-export type { FileHookPayload, UploadFragmentConfig, UploadFragmentResolvedConfig } from "./config";
+export type {
+  FileHookPayload,
+  UploadFragmentConfig,
+  UploadFragmentResolvedConfig,
+  UploadTimeoutPayload,
+} from "./config";
 export { resolveUploadFragmentConfig } from "./config";
 export { uploadSchema } from "./schema";
 export type { FileKeyEncoded, FileKeyPart, FileKeyParts } from "./keys";

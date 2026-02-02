@@ -1,6 +1,10 @@
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
-import type { FileHookPayload, UploadFragmentResolvedConfig } from "../config";
+import type {
+  FileHookPayload,
+  UploadFragmentResolvedConfig,
+  UploadTimeoutPayload,
+} from "../config";
 import type { FileKeyEncoded, FileKeyParts } from "../keys";
 import { uploadSchema } from "../schema";
 import type { UploadChecksum } from "../storage/types";
@@ -57,6 +61,7 @@ type UploadHooks = {
   onFileReady: (payload: FileHookPayload) => void | Promise<void>;
   onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
   onFileDeleted: (payload: FileHookPayload) => void | Promise<void>;
+  onUploadTimeout: (payload: UploadTimeoutPayload) => void | Promise<void>;
 };
 
 type UploadServiceContext = DatabaseServiceContext<UploadHooks>;
@@ -67,6 +72,10 @@ const isTerminalUploadStatus = (status: UploadStatus) =>
 const toBigInt = (value: number | bigint) => (typeof value === "bigint" ? value : BigInt(value));
 
 const ensureActiveUpload = (upload: UploadRow, now: Date) => {
+  if (upload.status === "expired") {
+    throw new Error("UPLOAD_EXPIRED");
+  }
+
   if (isTerminalUploadStatus(upload.status as UploadStatus)) {
     throw new Error("UPLOAD_INVALID_STATE");
   }
@@ -150,6 +159,16 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             errorCode: null,
             errorMessage: null,
           });
+
+          uow.triggerHook(
+            "onUploadTimeout",
+            {
+              uploadId: uploadId.toString(),
+              fileKey: resolved.fileKey,
+              fileKeyParts: resolved.fileKeyParts,
+            },
+            { processAt: storageInit.expiresAt },
+          );
 
           return {
             fileId: fileId.toString(),
