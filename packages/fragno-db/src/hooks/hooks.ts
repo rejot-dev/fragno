@@ -1,3 +1,7 @@
+import type {
+  ExecuteTxOptions,
+  HandlerTxBuilder,
+} from "../query/unit-of-work/execute-unit-of-work";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
@@ -15,6 +19,10 @@ export interface HookContext {
    * Use this for idempotency checks in your hook implementation.
    */
   idempotencyKey: string;
+  /**
+   * Create a handler transaction builder to run atomic operations.
+   */
+  handlerTx: HookHandlerTx;
 }
 
 /**
@@ -68,6 +76,7 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
   hooks: THooks;
   namespace: string;
   internalFragment: InternalFragmentInstance;
+  handlerTx: HookHandlerTx;
   defaultRetryPolicy?: RetryPolicy;
   /**
    * Re-queue hooks that have been in `processing` for at least this many minutes.
@@ -116,6 +125,10 @@ export type DurableHooksProcessingOptions = {
    */
   onStuckProcessingHooks?: (info: StuckHookProcessingInfo) => void;
 };
+
+export type HookHandlerTx = (
+  execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">,
+) => HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, HooksMap>;
 
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
 
@@ -244,7 +257,10 @@ export async function processHooks<THooks extends HooksMap>(
       }
 
       try {
-        const hookContext: HookContext = { idempotencyKey: event.idempotencyKey };
+        const hookContext: HookContext = {
+          idempotencyKey: event.idempotencyKey,
+          handlerTx: config.handlerTx,
+        };
         await hookFn.call(hookContext, event.payload);
         return {
           eventId: event.id,
