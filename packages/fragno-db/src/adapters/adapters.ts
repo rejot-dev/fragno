@@ -1,9 +1,10 @@
 import type { SimpleQueryInterface } from "../query/simple-query-interface";
-import type { SchemaGenerator } from "../schema-generator/schema-generator";
 import type { AnySchema } from "../schema/create";
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
+import type { SQLProvider } from "../shared/providers";
+import type { SQLiteStorageMode } from "./generic-sql/sqlite-storage";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
@@ -24,6 +25,14 @@ export interface TableNameMapper {
   toLogical(physicalName: string): string;
 }
 
+export type SQLiteProfile = "default" | "prisma";
+
+export interface DatabaseAdapterMetadata {
+  databaseType?: SQLProvider;
+  sqliteProfile?: SQLiteProfile;
+  sqliteStorageMode?: SQLiteStorageMode;
+}
+
 export interface DatabaseAdapter<TUOWConfig = void> {
   [fragnoDatabaseAdapterNameFakeSymbol]: string;
   [fragnoDatabaseAdapterVersionFakeSymbol]: number;
@@ -39,6 +48,11 @@ export interface DatabaseAdapter<TUOWConfig = void> {
    */
   getSchemaVersion(namespace: string): Promise<string | undefined>;
 
+  /**
+   * Optional metadata used by schema output tooling.
+   */
+  readonly adapterMetadata?: DatabaseAdapterMetadata;
+
   createQueryEngine: <const T extends AnySchema>(
     schema: T,
     namespace: string,
@@ -48,15 +62,6 @@ export interface DatabaseAdapter<TUOWConfig = void> {
     schema: T,
     namespace: string,
   ) => PreparedMigrations;
-
-  /**
-   * Generate a combined schema file from one or more fragments.
-   * If not implemented, schema generation is not supported for this adapter.
-   */
-  createSchemaGenerator?: (
-    fragments: { schema: AnySchema; namespace: string }[],
-    options?: { path?: string },
-  ) => SchemaGenerator;
 
   /**
    * Creates a table name mapper for the given namespace.

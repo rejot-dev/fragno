@@ -1,20 +1,20 @@
-import { importGenerator } from "../../util/import-generator";
-import { ident, parseVarchar } from "../../util/parse";
+import { importGenerator } from "../util/import-generator";
+import { ident, parseVarchar } from "../util/parse";
 import {
   type AnyColumn,
   type AnySchema,
   type AnyTable,
   type Relation,
   InternalIdColumn,
-} from "../../schema/create";
-import type { SQLProvider } from "../../shared/providers";
+} from "../schema/create";
 import {
   createTableNameMapper,
   sanitizeNamespace,
   type TableNameMapper,
-} from "../shared/table-name-mapper";
-import { type DatabaseTypeLiteral } from "../../schema/type-conversion/type-mapping";
-import { createSQLTypeMapper } from "../../schema/type-conversion/create-sql-type-mapper";
+} from "../adapters/shared/table-name-mapper";
+import { type DatabaseTypeLiteral } from "../schema/type-conversion/type-mapping";
+import { createSQLTypeMapper } from "../schema/type-conversion/create-sql-type-mapper";
+import type { SupportedDatabase } from "../adapters/generic-sql/driver-config";
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -32,7 +32,7 @@ const PROVIDER_TABLE_FUNCTIONS = {
   sqlite: "sqliteTable",
 } as const;
 
-export type SupportedProvider = Exclude<SQLProvider, "cockroachdb" | "mssql">;
+export type SupportedProvider = SupportedDatabase;
 
 // ============================================================================
 // CONTEXT
@@ -47,7 +47,7 @@ interface GeneratorContext {
 }
 
 function createContext(
-  provider: SupportedProvider,
+  provider: SupportedDatabase,
   idGeneratorImport?: { name: string; from: string },
 ): GeneratorContext {
   return {
@@ -674,9 +674,9 @@ export interface GenerateSchemaOptions {
 /**
  * Generate a schema file from one or more fragments with automatic de-duplication
  */
-export function generateSchema(
+export function generateDrizzleSchema(
   fragments: { namespace: string; schema: AnySchema }[],
-  provider: SupportedProvider,
+  provider: SupportedDatabase,
   options?: GenerateSchemaOptions,
 ): string {
   const ctx = createContext(provider, options?.idGeneratorImport);

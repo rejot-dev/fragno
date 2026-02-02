@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { internalSchema } from "../../fragments/internal-fragment";
-import { generateSchema } from "./generate";
-import { sqliteStorageDefault, sqliteStoragePrisma } from "../generic-sql/sqlite-storage";
+import { column, idColumn, referenceColumn, schema } from "../schema/create";
+import { internalSchema } from "../fragments/internal-fragment";
+import { generatePrismaSchema } from "./prisma";
+import { sqliteStorageDefault, sqliteStoragePrisma } from "../adapters/generic-sql/sqlite-storage";
 
 const blogSchema = schema((s) => {
   return s
@@ -127,7 +127,7 @@ const relationNamingSchema = schema((s) => {
     });
 });
 
-describe("generateSchema (Prisma)", () => {
+describe("generatePrismaSchema", () => {
   it("should generate stable ordering for internal models and namespaces", () => {
     const alphaSchema = schema((s) => {
       return s
@@ -139,7 +139,7 @@ describe("generateSchema (Prisma)", () => {
       return s.addTable("bravo", (t) => t.addColumn("id", idColumn()));
     });
 
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [
         { namespace: "bravo", schema: bravoSchema },
         { namespace: "", schema: internalSchema },
@@ -167,7 +167,7 @@ describe("generateSchema (Prisma)", () => {
     expect(zetaIndex).toBeLessThan(bravoIndex);
   });
   it("should generate SQLite Prisma schema", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [
         { namespace: "", schema: internalSchema },
         { namespace: "blog", schema: blogSchema },
@@ -182,7 +182,7 @@ describe("generateSchema (Prisma)", () => {
   });
 
   it("should generate SQLite Prisma schema for default storage mode", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [
         { namespace: "", schema: internalSchema },
         { namespace: "blog", schema: blogSchema },
@@ -197,7 +197,7 @@ describe("generateSchema (Prisma)", () => {
   });
 
   it("should generate PostgreSQL (PGLite) Prisma schema", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [
         { namespace: "", schema: internalSchema },
         { namespace: "blog", schema: blogSchema },
@@ -211,7 +211,7 @@ describe("generateSchema (Prisma)", () => {
   });
 
   it("should sanitize namespaces and map invalid identifiers for SQLite", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [{ namespace: "my-app", schema: weirdNamesSchema }],
       "sqlite",
       { sqliteStorageMode: sqliteStoragePrisma },
@@ -223,7 +223,7 @@ describe("generateSchema (Prisma)", () => {
   });
 
   it("should sanitize namespaces and map invalid identifiers for PostgreSQL", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [{ namespace: "my-app", schema: weirdNamesSchema }],
       "postgresql",
     );
@@ -234,7 +234,7 @@ describe("generateSchema (Prisma)", () => {
   });
 
   it("should disambiguate inverse relations for SQLite", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [{ namespace: "test", schema: relationNamingSchema }],
       "sqlite",
       { sqliteStorageMode: sqliteStoragePrisma },
@@ -253,7 +253,7 @@ describe("generateSchema (Prisma)", () => {
   });
 
   it("should disambiguate inverse relations for PostgreSQL", () => {
-    const generated = generateSchema(
+    const generated = generatePrismaSchema(
       [{ namespace: "test", schema: relationNamingSchema }],
       "postgresql",
     );

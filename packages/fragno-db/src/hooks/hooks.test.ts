@@ -5,14 +5,14 @@ import { instantiate } from "@fragno-dev/core";
 import { prepareHookMutations, processHooks, type HooksMap, type HookContext } from "./hooks";
 import { internalFragmentDef, internalSchema } from "../fragments/internal-fragment";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
-import { DrizzleAdapter } from "../adapters/drizzle/drizzle-adapter";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { FragnoId } from "../schema/create";
 
 describe("Hook System", () => {
   let sqliteDatabase: SQLite.Database;
-  let adapter: DrizzleAdapter;
+  let adapter: SqlAdapter;
   let internalFragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
@@ -26,7 +26,7 @@ describe("Hook System", () => {
       database: sqliteDatabase,
     });
 
-    adapter = new DrizzleAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new BetterSQLite3DriverConfig(),
     });

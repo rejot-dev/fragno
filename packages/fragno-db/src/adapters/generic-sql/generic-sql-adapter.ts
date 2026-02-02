@@ -4,6 +4,8 @@ import {
   fragnoDatabaseAdapterVersionFakeSymbol,
   type DatabaseAdapter,
   type DatabaseContextStorage,
+  type DatabaseAdapterMetadata,
+  type SQLiteProfile,
   type TableNameMapper,
 } from "../adapters";
 import type { CompiledQuery, Dialect, QueryResult } from "../../sql-driver/sql-driver";
@@ -24,7 +26,7 @@ import {
 } from "../shared/from-unit-of-work-compiler";
 import type { UOWInstrumentation } from "../../query/unit-of-work/unit-of-work";
 import type { SQLiteStorageMode } from "./sqlite-storage";
-import { sqliteStorageDefault } from "./sqlite-storage";
+import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -32,32 +34,60 @@ export interface UnitOfWorkConfig {
   instrumentation?: UOWInstrumentation;
 }
 
-export interface GenericSQLOptions {
+export interface SqlAdapterOptions {
   dialect: Dialect;
   driverConfig: DriverConfig;
   uowConfig?: UnitOfWorkConfig;
+  sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
 }
 
-export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
+export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
+  default: sqliteStorageDefault,
+  prisma: sqliteStoragePrisma,
+};
+
+export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly dialect: Dialect;
   readonly driverConfig: DriverConfig;
   readonly uowConfig?: UnitOfWorkConfig;
   readonly sqliteStorageMode?: SQLiteStorageMode;
+  readonly sqliteProfile?: SQLiteProfile;
+  readonly adapterMetadata: DatabaseAdapterMetadata;
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   #driver: SqlDriverAdapter;
 
-  constructor({ dialect, driverConfig, uowConfig, sqliteStorageMode }: GenericSQLOptions) {
+  constructor({
+    dialect,
+    driverConfig,
+    uowConfig,
+    sqliteProfile,
+    sqliteStorageMode,
+  }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
     this.uowConfig = uowConfig;
+    const resolvedProfile = sqliteProfile ?? "default";
+
+    if (sqliteStorageMode && sqliteProfile) {
+      throw new Error("sqliteStorageMode cannot be used together with sqliteProfile.");
+    }
+
     this.sqliteStorageMode =
       driverConfig.databaseType === "sqlite"
-        ? (sqliteStorageMode ?? sqliteStorageDefault)
+        ? (sqliteStorageMode ?? sqliteProfiles[resolvedProfile])
         : undefined;
+    this.sqliteProfile =
+      driverConfig.databaseType === "sqlite" && !sqliteStorageMode ? resolvedProfile : undefined;
+
+    this.adapterMetadata = {
+      databaseType: driverConfig.databaseType,
+      sqliteProfile: this.sqliteProfile,
+      sqliteStorageMode: this.sqliteStorageMode,
+    };
 
     this.#schemaNamespaceMap = new WeakMap<AnySchema, string>();
     this.#contextStorage = new RequestContextStorage();
@@ -70,11 +100,11 @@ export class GenericSQLAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {
-    return "generic-sql";
+    return "sql";
   }
 
   get [fragnoDatabaseAdapterVersionFakeSymbol](): number {
-    return 0;
+    return 1;
   }
 
   get contextStorage(): RequestContextStorage<DatabaseContextStorage> {

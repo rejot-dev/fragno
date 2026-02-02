@@ -4,12 +4,11 @@ import { SQLocalKysely } from "sqlocal/kysely";
 import { KyselyPGlite } from "kysely-pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
-import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
 import { InMemoryAdapter, type InMemoryAdapterOptions } from "@fragno-dev/db/adapters/in-memory";
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
-import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/generic-sql";
+import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/sql";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
@@ -106,8 +105,8 @@ export async function createKyselySqliteAdapter(
       dialect,
     });
 
-    // Create KyselyAdapter
-    const adapter = new KyselyAdapter({
+    // Create SqlAdapter
+    const adapter = new SqlAdapter({
       dialect,
       driverConfig: new SQLocalDriverConfig(),
       uowConfig: config.uowConfig,
@@ -195,8 +194,8 @@ export async function createKyselyPgliteAdapter(
       dialect: kyselyPglite.dialect,
     });
 
-    // Create KyselyAdapter
-    const adapter = new KyselyAdapter({
+    // Create SqlAdapter
+    const adapter = new SqlAdapter({
       dialect: kyselyPglite.dialect,
       driverConfig: new PGLiteDriverConfig(),
       uowConfig: config.uowConfig,
@@ -294,7 +293,7 @@ export async function createDrizzlePgliteAdapter(
 
     const { dialect } = new KyselyPGlite(pglite);
 
-    const adapter = new DrizzleAdapter({
+    const adapter = new SqlAdapter({
       dialect,
       driverConfig: new PGLiteDriverConfig(),
       uowConfig: config.uowConfig,

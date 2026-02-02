@@ -1,10 +1,12 @@
 # Database Adapters
 
-Database adapters connect Fragno's database API to your existing ORM (Kysely or Drizzle). They allow
-fragments to work with your application's database without dictating which ORM you use.
+Database adapters connect Fragno's database API to your existing SQL database. They allow fragments
+to work with your application's database without dictating which ORM you use.
 
 ```typescript @fragno-imports
 import type { DatabaseAdapter } from "@fragno-dev/db";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 ```
 
 ## What is a Database Adapter?
@@ -26,7 +28,7 @@ When a fragment needs database access, users pass an adapter configured with the
 
 ## Supported Providers
 
-Both KyselyAdapter and DrizzleAdapter support three database providers:
+The SqlAdapter supports three database providers:
 
 - `"postgresql"` - PostgreSQL databases
 - `"mysql"` - MySQL and MariaDB databases
@@ -40,19 +42,18 @@ Adapters can be created from factory functions instead of direct ORM instances. 
 lazy initialization (in serverless environments).
 
 ```typescript @fragno-test:factory-functions types-only
-async function createDbConnection() {
-  const db = {} as any; // Your ORM instance
-  return db;
-}
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+import { SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 
-declare const DrizzleAdapter: any;
-export const adapter = new DrizzleAdapter({
-  db: createDbConnection,
-  provider: "postgresql",
+declare const dialect: any; // Your Kysely-compatible dialect
+
+export const adapter = new SqlAdapter({
+  dialect,
+  driverConfig: new SQLocalDriverConfig(),
 });
 ```
 
-The adapter calls the factory function when it needs a database connection.
+The adapter calls into the dialect when it needs a database connection.
 
 ## Shared Adapters
 

@@ -1,6 +1,6 @@
 import { KyselyPGlite } from "kysely-pglite";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { KyselyAdapter } from "./kysely-adapter";
+import { SqlAdapter } from "./generic-sql-adapter";
 import {
   column,
   idColumn,
@@ -10,10 +10,10 @@ import {
   type FragnoReference,
 } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
-import { PGLiteDriverConfig } from "../generic-sql/driver-config";
+import { PGLiteDriverConfig } from "./driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
 
-describe("KyselyAdapter PGLite", () => {
+describe("SqlAdapter PGLite", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -96,12 +96,12 @@ describe("KyselyAdapter PGLite", () => {
       });
   });
 
-  let adapter: KyselyAdapter;
+  let adapter: SqlAdapter;
 
   beforeAll(async () => {
     const { dialect } = await KyselyPGlite.create();
 
-    adapter = new KyselyAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new PGLiteDriverConfig(),
     });

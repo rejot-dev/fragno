@@ -1,5 +1,6 @@
 import type {
   DatabaseAdapter,
+  DatabaseAdapterMetadata,
   DatabaseContextStorage,
   TableNameMapper,
 } from "@fragno-dev/db/adapters";
@@ -111,8 +112,8 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
   [fragnoDatabaseAdapterVersionFakeSymbol]: number;
 
   readonly contextStorage: RequestContextStorage<DatabaseContextStorage>;
+  readonly adapterMetadata?: DatabaseAdapterMetadata;
   prepareMigrations?: DatabaseAdapter<TUowConfig>["prepareMigrations"];
-  createSchemaGenerator?: DatabaseAdapter<TUowConfig>["createSchemaGenerator"];
 
   #baseAdapter: DatabaseAdapter<TUowConfig>;
   #scheduler: ModelCheckerScheduler | null = null;
@@ -120,11 +121,11 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
   constructor(baseAdapter: DatabaseAdapter<TUowConfig>) {
     this.#baseAdapter = baseAdapter;
     this.contextStorage = baseAdapter.contextStorage;
+    this.adapterMetadata = baseAdapter.adapterMetadata;
     this[fragnoDatabaseAdapterNameFakeSymbol] = baseAdapter[fragnoDatabaseAdapterNameFakeSymbol];
     this[fragnoDatabaseAdapterVersionFakeSymbol] =
       baseAdapter[fragnoDatabaseAdapterVersionFakeSymbol];
     this.prepareMigrations = baseAdapter.prepareMigrations?.bind(baseAdapter);
-    this.createSchemaGenerator = baseAdapter.createSchemaGenerator?.bind(baseAdapter);
   }
 
   setScheduler(scheduler: ModelCheckerScheduler | null): void {

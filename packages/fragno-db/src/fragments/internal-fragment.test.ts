@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { internalFragmentDef, internalSchema, SETTINGS_NAMESPACE } from "./internal-fragment";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
-import { DrizzleAdapter } from "../adapters/drizzle/drizzle-adapter";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
@@ -12,7 +12,7 @@ import type { FragnoId } from "../schema/create";
 
 describe("Internal Fragment", () => {
   let sqliteDatabase: SQLite.Database;
-  let adapter: DrizzleAdapter;
+  let adapter: SqlAdapter;
   let fragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
@@ -26,7 +26,7 @@ describe("Internal Fragment", () => {
       database: sqliteDatabase,
     });
 
-    adapter = new DrizzleAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new BetterSQLite3DriverConfig(),
     });
@@ -152,7 +152,7 @@ describe("Internal Fragment", () => {
 
 describe("Hook Service", () => {
   let sqliteDatabase: SQLite.Database;
-  let adapter: DrizzleAdapter;
+  let adapter: SqlAdapter;
   let fragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
@@ -166,7 +166,7 @@ describe("Hook Service", () => {
       database: sqliteDatabase,
     });
 
-    adapter = new DrizzleAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new BetterSQLite3DriverConfig(),
     });

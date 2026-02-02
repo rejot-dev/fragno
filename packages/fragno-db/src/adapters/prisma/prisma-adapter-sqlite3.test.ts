@@ -1,7 +1,7 @@
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { PrismaAdapter } from "./prisma-adapter";
+import { SqlAdapter } from "../generic-sql/generic-sql-adapter";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
 import {
@@ -12,8 +12,10 @@ import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-po
 import { BetterSQLite3DriverConfig } from "../generic-sql/driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "../generic-sql/sqlite-storage";
+import { FragnoDatabase } from "../../mod";
+import { generateSchemaArtifacts } from "../../migration-engine/generation-engine";
 
-describe("PrismaAdapter SQLite", () => {
+describe("SqlAdapter SQLite (prisma profile)", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -107,7 +109,7 @@ describe("PrismaAdapter SQLite", () => {
       });
   });
 
-  let adapter: PrismaAdapter;
+  let adapter: SqlAdapter;
   let sqliteDatabase: InstanceType<typeof SQLite>;
 
   beforeAll(async () => {
@@ -117,9 +119,10 @@ describe("PrismaAdapter SQLite", () => {
       database: sqliteDatabase,
     });
 
-    adapter = new PrismaAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new BetterSQLite3DriverConfig(),
+      sqliteProfile: "prisma",
     });
 
     {
@@ -143,18 +146,20 @@ describe("PrismaAdapter SQLite", () => {
     };
   }, 12000);
 
-  it("should default sqlite storage mode to prisma", () => {
+  it("should use prisma sqlite storage mode", () => {
     expect(adapter.sqliteStorageMode).toBe(sqliteStoragePrisma);
   });
 
-  it("should default schema generator output path to fragno.prisma", () => {
-    const generator = adapter.createSchemaGenerator([
-      { schema: testSchema, namespace: "namespace" },
-    ]);
+  it("should default schema output path to fragno.prisma", async () => {
+    const fragnoDb = new FragnoDatabase({
+      namespace: "namespace",
+      schema: testSchema,
+      adapter,
+    });
 
-    const { path } = generator.generateSchema();
+    const [result] = await generateSchemaArtifacts([fragnoDb], { format: "prisma" });
 
-    expect(path).toBe("fragno.prisma");
+    expect(result.path).toBe("fragno.prisma");
   });
 
   it("should store prisma storage values using sqlite-friendly types", async () => {
@@ -185,7 +190,7 @@ describe("PrismaAdapter SQLite", () => {
   it("should honor explicit sqlite storage overrides", async () => {
     const fragnoDatabase = new SQLite(":memory:");
     const fragnoDialect = new SqliteDialect({ database: fragnoDatabase });
-    const fragnoAdapter = new PrismaAdapter({
+    const fragnoAdapter = new SqlAdapter({
       dialect: fragnoDialect,
       driverConfig: new BetterSQLite3DriverConfig(),
       sqliteStorageMode: sqliteStorageDefault,

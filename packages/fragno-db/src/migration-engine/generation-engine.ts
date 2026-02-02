@@ -4,6 +4,8 @@ import {
   fragnoDatabaseAdapterNameFakeSymbol,
   fragnoDatabaseAdapterVersionFakeSymbol,
 } from "../adapters/adapters";
+import { generateDrizzleSchema } from "../schema-output/drizzle";
+import { generatePrismaSchema } from "../schema-output/prisma";
 import {
   internalFragmentDef,
   internalSchema,
@@ -11,11 +13,21 @@ import {
   getSchemaVersionFromDatabase,
 } from "../fragments/internal-fragment";
 import { instantiate } from "@fragno-dev/core";
+import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
 
 export interface GenerationEngineResult {
   schema: string;
   path: string;
   namespace: string;
+}
+
+export type SchemaOutputFormat = "sql" | "drizzle" | "prisma";
+
+export interface GenerateSchemaOptions {
+  format?: SchemaOutputFormat;
+  path?: string;
+  toVersion?: number;
+  fromVersion?: number;
 }
 
 export interface GenerationInternalResult {
@@ -33,29 +45,33 @@ export interface ExecuteMigrationResult {
   toVersion: number;
 }
 
-export async function generateMigrationsOrSchema<
+const DEFAULT_DRIZZLE_PATH = "fragno-schema.ts";
+const DEFAULT_PRISMA_PATH = "fragno.prisma";
+
+const isSupportedDatabase = (value: string): value is SupportedDatabase =>
+  supportedDatabases.includes(value as SupportedDatabase);
+
+export async function generateSchemaArtifacts<
   // oxlint-disable-next-line no-explicit-any
   const TDatabases extends FragnoDatabase<AnySchema, any>[],
->(
-  databases: TDatabases,
-  options?: {
-    path?: string;
-    toVersion?: number;
-    fromVersion?: number;
-  },
-): Promise<GenerationEngineResult[]> {
+>(databases: TDatabases, options?: GenerateSchemaOptions): Promise<GenerationEngineResult[]> {
   if (databases.length === 0) {
     throw new Error("No databases provided for schema generation");
   }
 
   const firstDb = databases[0];
   const adapter = firstDb.adapter;
+  const format = options?.format ?? "sql";
 
-  // If adapter has createSchemaGenerator, use it for combined generation (e.g., Drizzle)
-  if (adapter.createSchemaGenerator) {
+  if (format !== "sql") {
     if (options?.toVersion !== undefined || options?.fromVersion !== undefined) {
-      console.warn(
-        "⚠️ Warning: --from and --to version options are not supported when generating schemas for multiple fragments and will be ignored.",
+      throw new Error("--from and --to are only supported when generating SQL migrations.");
+    }
+
+    const databaseType = adapter.adapterMetadata?.databaseType;
+    if (!databaseType || !isSupportedDatabase(databaseType)) {
+      throw new Error(
+        "Adapter does not expose databaseType metadata required for schema output generation.",
       );
     }
 
@@ -82,22 +98,27 @@ export async function generateMigrationsOrSchema<
     }
 
     const allFragments = Array.from(fragmentsMap.values());
-    const generator = adapter.createSchemaGenerator(allFragments, {
-      path: options?.path,
-    });
+    const defaultPath = format === "drizzle" ? DEFAULT_DRIZZLE_PATH : DEFAULT_PRISMA_PATH;
+    const schema =
+      format === "drizzle"
+        ? generateDrizzleSchema(allFragments, databaseType)
+        : generatePrismaSchema(allFragments, databaseType, {
+            sqliteStorageMode: adapter.adapterMetadata?.sqliteStorageMode,
+          });
 
     return [
       {
-        ...generator.generateSchema(),
+        schema,
+        path: options?.path ?? defaultPath,
         namespace: firstDb.namespace,
       },
     ];
   }
 
-  // Otherwise, use migration engine for individual generation (e.g., Kysely, GenericSQL)
+  // Otherwise, use migration engine for SQL migration generation.
   if (!adapter.prepareMigrations) {
     throw new Error(
-      "Adapter does not support migration-based schema generation. Ensure your adapter implements prepareMigrations.",
+      "Adapter does not support migration generation. Ensure your adapter implements prepareMigrations.",
     );
   }
 
@@ -147,8 +168,8 @@ export async function generateMigrationsOrSchema<
     // Use migration engine
     if (!dbAdapter.prepareMigrations) {
       throw new Error(
-        `Adapter for ${db.namespace} does not support schema generation. ` +
-          `Ensure your adapter implements either createSchemaGenerator or prepareMigrations.`,
+        `Adapter for ${db.namespace} does not support migration generation. ` +
+          `Ensure your adapter implements prepareMigrations.`,
       );
     }
 
@@ -196,7 +217,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   if (!adapter.prepareMigrations) {
     throw new Error(
       "Adapter does not support running migrations. The adapter only supports schema generation.\n" +
-        "Try using 'generateMigrationsOrSchema' instead to generate schema files.",
+        "Try using 'generateSchemaArtifacts' instead to generate schema files.",
     );
   }
 

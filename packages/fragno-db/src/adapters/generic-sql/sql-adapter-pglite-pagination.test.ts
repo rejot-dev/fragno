@@ -1,14 +1,14 @@
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
 import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
-import { PrismaAdapter } from "./prisma-adapter";
+import { SqlAdapter } from "./generic-sql-adapter";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { Cursor } from "../../query/cursor";
-import { PGLiteDriverConfig } from "../generic-sql/driver-config";
+import { PGLiteDriverConfig } from "./driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
 
-describe("PrismaAdapter PGLite", () => {
+describe("SqlAdapter PGLite", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("users", (t) => {
@@ -79,14 +79,14 @@ describe("PrismaAdapter PGLite", () => {
       });
   });
 
-  let adapter: PrismaAdapter;
+  let adapter: SqlAdapter;
 
   beforeAll(async () => {
     const pgliteDatabase = new PGlite();
 
     const { dialect } = new KyselyPGlite(pgliteDatabase);
 
-    adapter = new PrismaAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new PGLiteDriverConfig(),
     });
@@ -111,11 +111,11 @@ describe("PrismaAdapter PGLite", () => {
 
     const createUow = queryEngine.createUnitOfWork("create-users");
     createUow.create("users", {
-      name: "Prisma PGLite Alice",
+      name: "SqlAdapter PGLite Alice",
       age: 25,
     });
     createUow.create("users", {
-      name: "Prisma PGLite Bob",
+      name: "SqlAdapter PGLite Bob",
       age: 30,
     });
 
@@ -145,7 +145,7 @@ describe("PrismaAdapter PGLite", () => {
     const { success } = await uow.executeMutations();
     expect(success).toBe(true);
     expect(users).toHaveLength(1);
-    expect(users[0].name).toBe("Prisma PGLite Alice");
+    expect(users[0].name).toBe("SqlAdapter PGLite Alice");
 
     const [[updatedUser]] = await queryEngine
       .createUnitOfWork("get-updated-user")
@@ -183,9 +183,9 @@ describe("PrismaAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     const createUow = queryEngine.createUnitOfWork("create-users-count");
-    createUow.create("users", { name: "Prisma PGLite Count 1", age: 21 });
-    createUow.create("users", { name: "Prisma PGLite Count 2", age: 31 });
-    createUow.create("users", { name: "Prisma PGLite Count 3", age: 41 });
+    createUow.create("users", { name: "SqlAdapter PGLite Count 1", age: 21 });
+    createUow.create("users", { name: "SqlAdapter PGLite Count 2", age: 31 });
+    createUow.create("users", { name: "SqlAdapter PGLite Count 3", age: 41 });
     await createUow.executeMutations();
 
     const [totalCount] = await queryEngine
@@ -199,7 +199,7 @@ describe("PrismaAdapter PGLite", () => {
 
   it("should support cursor-based pagination", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const prefix = "Prisma PGLite Manual Cursor";
+    const prefix = "SqlAdapter PGLite Manual Cursor";
 
     const createUow = queryEngine.createUnitOfWork("create-cursor-users");
     createUow.create("users", { name: `${prefix} A`, age: 20 });
@@ -248,7 +248,7 @@ describe("PrismaAdapter PGLite", () => {
 
   it("should support cursor-based pagination with findWithCursor()", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const prefix = "Prisma PGLite Cursor";
+    const prefix = "SqlAdapter PGLite Cursor";
 
     for (let i = 1; i <= 12; i++) {
       await queryEngine.create("users", {
@@ -306,7 +306,7 @@ describe("PrismaAdapter PGLite", () => {
 
   it("should support findWithCursor() in Unit of Work", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const prefix = "Prisma PGLite UOW Cursor";
+    const prefix = "SqlAdapter PGLite UOW Cursor";
 
     for (let i = 1; i <= 6; i++) {
       await queryEngine.create("users", {
@@ -334,20 +334,20 @@ describe("PrismaAdapter PGLite", () => {
     const queries: CompiledQuery[] = [];
 
     const createUow = queryEngine.createUnitOfWork("create-join-user");
-    createUow.create("users", { name: "Prisma PGLite Email User", age: 20 });
+    createUow.create("users", { name: "SqlAdapter PGLite Email User", age: 20 });
     const { success } = await createUow.executeMutations();
     expect(success).toBe(true);
 
     const [usersResult] = await queryEngine
       .createUnitOfWork("get-created-user")
       .find("users", (b) =>
-        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Email User")),
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Email User")),
       )
       .executeRetrieve();
 
     expect(usersResult).toHaveLength(1);
     const createdUser = usersResult[0];
-    expect(createdUser.name).toBe("Prisma PGLite Email User");
+    expect(createdUser.name).toBe("SqlAdapter PGLite Email User");
 
     const createEmailUow = queryEngine.createUnitOfWork("create-test-email");
     createEmailUow.create("emails", {
@@ -387,7 +387,7 @@ describe("PrismaAdapter PGLite", () => {
           externalId: expect.stringMatching(/^[a-z0-9]{20,}$/),
           internalId: expect.any(BigInt),
         }),
-        name: "Prisma PGLite Email User",
+        name: "SqlAdapter PGLite Email User",
         age: 20,
       },
     });
@@ -397,13 +397,13 @@ describe("PrismaAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-external-id");
-    createUserUow.create("users", { name: "Prisma PGLite External ID User", age: 35 });
+    createUserUow.create("users", { name: "SqlAdapter PGLite External ID User", age: 35 });
     await createUserUow.executeMutations();
 
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-external-id")
       .find("users", (b) =>
-        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite External ID User")),
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite External ID User")),
       )
       .executeRetrieve();
 
@@ -438,7 +438,7 @@ describe("PrismaAdapter PGLite", () => {
         id: expect.objectContaining({
           externalId: user.id.externalId,
         }),
-        name: "Prisma PGLite External ID User",
+        name: "SqlAdapter PGLite External ID User",
       },
     });
   });
@@ -448,13 +448,13 @@ describe("PrismaAdapter PGLite", () => {
 
     const uow = queryEngine.createUnitOfWork("create-user-and-post");
     const userId = uow.create("users", {
-      name: "Prisma PGLite UOW User",
+      name: "SqlAdapter PGLite UOW User",
       age: 35,
     });
 
     const postId = uow.create("posts", {
       user_id: userId,
-      title: "Prisma PGLite UOW Post",
+      title: "SqlAdapter PGLite UOW Post",
       content: "This post was created in the same transaction as the user",
     });
 
@@ -474,9 +474,9 @@ describe("PrismaAdapter PGLite", () => {
       .find("posts", (b) => b.whereIndex("primary", (eb) => eb("id", "=", postIdStr)))
       .executeRetrieve();
 
-    expect(user.name).toBe("Prisma PGLite UOW User");
+    expect(user.name).toBe("SqlAdapter PGLite UOW User");
     expect(user.age).toBe(35);
-    expect(post.title).toBe("Prisma PGLite UOW Post");
+    expect(post.title).toBe("SqlAdapter PGLite UOW Post");
     expect(post.content).toBe("This post was created in the same transaction as the user");
     expect(post.user_id.internalId).toBe(user.id.internalId);
   });
@@ -486,20 +486,20 @@ describe("PrismaAdapter PGLite", () => {
     const queries: CompiledQuery[] = [];
 
     const createAuthorUow = queryEngine.createUnitOfWork("create-author");
-    createAuthorUow.create("users", { name: "Prisma PGLite Author", age: 30 });
+    createAuthorUow.create("users", { name: "SqlAdapter PGLite Author", age: 30 });
     await createAuthorUow.executeMutations();
 
     const [[author]] = await queryEngine
       .createUnitOfWork("get-author")
       .find("users", (b) =>
-        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Author")),
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Author")),
       )
       .executeRetrieve();
 
     const createPostUow = queryEngine.createUnitOfWork("create-post");
     createPostUow.create("posts", {
       user_id: author.id,
-      title: "Prisma PGLite Post",
+      title: "SqlAdapter PGLite Post",
       content: "Nested join content",
     });
     await createPostUow.executeMutations();
@@ -510,13 +510,13 @@ describe("PrismaAdapter PGLite", () => {
       .executeRetrieve();
 
     const createCommenterUow = queryEngine.createUnitOfWork("create-commenter");
-    createCommenterUow.create("users", { name: "Prisma PGLite Commenter", age: 25 });
+    createCommenterUow.create("users", { name: "SqlAdapter PGLite Commenter", age: 25 });
     await createCommenterUow.executeMutations();
 
     const [[commenter]] = await queryEngine
       .createUnitOfWork("get-commenter")
       .find("users", (b) =>
-        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Commenter")),
+        b.whereIndex("name_idx", (eb) => eb("name", "=", "SqlAdapter PGLite Commenter")),
       )
       .executeRetrieve();
 
@@ -560,13 +560,13 @@ describe("PrismaAdapter PGLite", () => {
         id: expect.objectContaining({
           externalId: post.id.externalId,
         }),
-        title: "Prisma PGLite Post",
+        title: "SqlAdapter PGLite Post",
         content: "Nested join content",
         author: {
           id: expect.objectContaining({
             externalId: author.id.externalId,
           }),
-          name: "Prisma PGLite Author",
+          name: "SqlAdapter PGLite Author",
           age: 30,
         },
       },
@@ -574,7 +574,7 @@ describe("PrismaAdapter PGLite", () => {
         id: expect.objectContaining({
           externalId: commenter.id.externalId,
         }),
-        name: "Prisma PGLite Commenter",
+        name: "SqlAdapter PGLite Commenter",
       },
     });
 
@@ -588,9 +588,9 @@ describe("PrismaAdapter PGLite", () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
 
     const uow1 = queryEngine.createUnitOfWork("create-multiple-users");
-    uow1.create("users", { name: "Prisma PGLite ID User 1", age: 30 });
-    uow1.create("users", { name: "Prisma PGLite ID User 2", age: 35 });
-    uow1.create("users", { name: "Prisma PGLite ID User 3", age: 40 });
+    uow1.create("users", { name: "SqlAdapter PGLite ID User 1", age: 30 });
+    uow1.create("users", { name: "SqlAdapter PGLite ID User 2", age: 35 });
+    uow1.create("users", { name: "SqlAdapter PGLite ID User 3", age: 40 });
 
     const { success: success1 } = await uow1.executeMutations();
     expect(success1).toBe(true);
@@ -628,7 +628,7 @@ describe("PrismaAdapter PGLite", () => {
       id: expect.objectContaining({
         externalId: createdIds1[0].externalId,
       }),
-      name: "Prisma PGLite ID User 1",
+      name: "SqlAdapter PGLite ID User 1",
       age: 30,
     });
 
@@ -636,7 +636,7 @@ describe("PrismaAdapter PGLite", () => {
       id: expect.objectContaining({
         externalId: createdIds1[1].externalId,
       }),
-      name: "Prisma PGLite ID User 2",
+      name: "SqlAdapter PGLite ID User 2",
       age: 35,
     });
 
@@ -644,14 +644,14 @@ describe("PrismaAdapter PGLite", () => {
       id: expect.objectContaining({
         externalId: createdIds1[2].externalId,
       }),
-      name: "Prisma PGLite ID User 3",
+      name: "SqlAdapter PGLite ID User 3",
       age: 40,
     });
 
     const uow2 = queryEngine.createUnitOfWork("mixed-operations");
-    uow2.create("users", { name: "Prisma PGLite New User", age: 50 });
+    uow2.create("users", { name: "SqlAdapter PGLite New User", age: 50 });
     uow2.update("users", createdIds1[0], (b) => b.set({ age: 31 }));
-    uow2.create("users", { name: "Prisma PGLite Another New User", age: 55 });
+    uow2.create("users", { name: "SqlAdapter PGLite Another New User", age: 55 });
     uow2.delete("users", createdIds1[2]);
 
     const { success: success2 } = await uow2.executeMutations();
@@ -664,7 +664,7 @@ describe("PrismaAdapter PGLite", () => {
 
     const customId = "pglite-custom-user-id-1";
     const uow3 = queryEngine.createUnitOfWork("create-with-custom-id");
-    uow3.create("users", { id: customId, name: "Prisma PGLite Custom ID User", age: 60 });
+    uow3.create("users", { id: customId, name: "SqlAdapter PGLite Custom ID User", age: 60 });
 
     const { success: success3 } = await uow3.executeMutations();
     expect(success3).toBe(true);
@@ -682,7 +682,7 @@ describe("PrismaAdapter PGLite", () => {
       id: expect.objectContaining({
         externalId: customId,
       }),
-      name: "Prisma PGLite Custom ID User",
+      name: "SqlAdapter PGLite Custom ID User",
       age: 60,
     });
   });
@@ -726,7 +726,7 @@ describe("PrismaAdapter PGLite", () => {
 
     const createUserUow = queryEngine.createUnitOfWork("create-user-for-version-conflict");
     createUserUow.create("users", {
-      name: "Prisma PGLite Version Conflict User",
+      name: "SqlAdapter PGLite Version Conflict User",
       age: 40,
     });
     await createUserUow.executeMutations();
@@ -734,7 +734,9 @@ describe("PrismaAdapter PGLite", () => {
     const [[user]] = await queryEngine
       .createUnitOfWork("get-user-for-version-conflict")
       .find("users", (b) =>
-        b.whereIndex("name_idx", (eb) => eb("name", "=", "Prisma PGLite Version Conflict User")),
+        b.whereIndex("name_idx", (eb) =>
+          eb("name", "=", "SqlAdapter PGLite Version Conflict User"),
+        ),
       )
       .executeRetrieve();
 
@@ -746,7 +748,7 @@ describe("PrismaAdapter PGLite", () => {
     uow.check("users", user.id);
     uow.create("posts", {
       user_id: user.id,
-      title: "Prisma PGLite Should Not Be Created",
+      title: "SqlAdapter PGLite Should Not Be Created",
       content: "Content",
     });
 
@@ -758,7 +760,9 @@ describe("PrismaAdapter PGLite", () => {
       .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", user.id)))
       .executeRetrieve();
 
-    const conflictPosts = posts.filter((p) => p.title === "Prisma PGLite Should Not Be Created");
+    const conflictPosts = posts.filter(
+      (p) => p.title === "SqlAdapter PGLite Should Not Be Created",
+    );
     expect(conflictPosts).toHaveLength(0);
   });
 

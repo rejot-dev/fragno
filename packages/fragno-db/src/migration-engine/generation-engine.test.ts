@@ -3,9 +3,9 @@ import { DummyDriver, MysqlAdapter, PostgresAdapter, SqliteAdapter } from "kysel
 import {
   postProcessMigrationFilenames,
   type GenerationInternalResult,
-  generateMigrationsOrSchema,
+  generateSchemaArtifacts,
 } from "./generation-engine";
-import { KyselyAdapter } from "../adapters/kysely/kysely-adapter";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { column, idColumn, schema, type AnySchema } from "../schema/create";
 import { FragnoDatabase } from "../mod";
 import {
@@ -14,12 +14,12 @@ import {
   SQLocalDriverConfig,
 } from "../adapters/generic-sql/driver-config";
 
-describe("generateMigrationsOrSchema - kysely", () => {
+describe("generateSchemaArtifacts - sql", () => {
   const mockDate = new Date("2025-10-24T12:00:00Z");
-  let adapter: KyselyAdapter;
+  let adapter: SqlAdapter;
 
   beforeAll(() => {
-    adapter = new KyselyAdapter({
+    adapter = new SqlAdapter({
       dialect: {
         createAdapter: () => new PostgresAdapter(),
         createDriver: () => new DummyDriver(),
@@ -60,7 +60,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter,
     });
 
-    const results = await generateMigrationsOrSchema([fragnoDb]);
+    const results = await generateSchemaArtifacts([fragnoDb]);
 
     expect(results).toHaveLength(2); // Settings + test-db
     expect(results[0].namespace).toBe(""); // Empty namespace for settings table
@@ -111,7 +111,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter,
     });
 
-    const results = await generateMigrationsOrSchema([fragnoDb1, fragnoDb2, fragnoDb3]);
+    const results = await generateSchemaArtifacts([fragnoDb1, fragnoDb2, fragnoDb3]);
 
     expect(results).toHaveLength(4); // Settings + 3 databases
     expect(results[0].namespace).toBe(""); // Empty namespace for settings table
@@ -150,7 +150,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter,
     });
 
-    const results = await generateMigrationsOrSchema([fragnoDb]);
+    const results = await generateSchemaArtifacts([fragnoDb]);
 
     // Settings table already at version 1, so no settings migration needed
     // But fragment migration is still generated
@@ -176,7 +176,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
     });
 
     // Generate with toVersion = 0, fromVersion = 0 (no fragment changes)
-    const results = await generateMigrationsOrSchema([fragnoDb], {
+    const results = await generateSchemaArtifacts([fragnoDb], {
       toVersion: 0,
       fromVersion: 0,
     });
@@ -187,7 +187,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
   });
 
   it("should throw error when no databases provided", async () => {
-    await expect(generateMigrationsOrSchema([])).rejects.toThrow(
+    await expect(generateSchemaArtifacts([])).rejects.toThrow(
       "No databases provided for schema generation",
     );
   });
@@ -208,7 +208,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter,
     });
 
-    await expect(generateMigrationsOrSchema([fragnoDb])).rejects.toThrow(
+    await expect(generateSchemaArtifacts([fragnoDb])).rejects.toThrow(
       "Database connection is not healthy",
     );
   });
@@ -226,7 +226,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter,
     });
 
-    const results = await generateMigrationsOrSchema([fragnoDb]);
+    const results = await generateSchemaArtifacts([fragnoDb]);
 
     // Check settings migration includes version tracking
     expect(results[0].schema).toContain("fragno_db_settings");
@@ -257,7 +257,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
 
     // First migration: 0 -> 1 (should use INSERT)
     vi.spyOn(adapter, "getSchemaVersion").mockResolvedValueOnce(undefined);
-    const resultsV1 = await generateMigrationsOrSchema([fragnoDb], {
+    const resultsV1 = await generateSchemaArtifacts([fragnoDb], {
       fromVersion: 0,
       toVersion: 1,
     });
@@ -275,7 +275,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
 
     // Second migration: 1 -> 2 (should use UPDATE)
     vi.spyOn(adapter, "getSchemaVersion").mockResolvedValueOnce("1");
-    const resultsV2 = await generateMigrationsOrSchema([fragnoDb], {
+    const resultsV2 = await generateSchemaArtifacts([fragnoDb], {
       fromVersion: 1,
       toVersion: 2,
     });
@@ -294,7 +294,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
   });
 
   it("should include MySQL-specific foreign key checks in generated SQL", async () => {
-    const mysqlAdapter = new KyselyAdapter({
+    const mysqlAdapter = new SqlAdapter({
       dialect: {
         createAdapter: () => new MysqlAdapter(),
         createDriver: () => new DummyDriver(),
@@ -323,7 +323,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter: mysqlAdapter,
     });
 
-    const results = await generateMigrationsOrSchema([fragnoDb]);
+    const results = await generateSchemaArtifacts([fragnoDb]);
 
     expect(results).toHaveLength(2);
     // Check that MySQL foreign key checks are included
@@ -339,7 +339,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
   });
 
   it("should include SQLite-specific pragma in generated SQL", async () => {
-    const sqliteAdapter = new KyselyAdapter({
+    const sqliteAdapter = new SqlAdapter({
       dialect: {
         createAdapter: () => new SqliteAdapter(),
         createDriver: () => new DummyDriver(),
@@ -368,7 +368,7 @@ describe("generateMigrationsOrSchema - kysely", () => {
       adapter: sqliteAdapter,
     });
 
-    const results = await generateMigrationsOrSchema([fragnoDb]);
+    const results = await generateSchemaArtifacts([fragnoDb]);
 
     expect(results).toHaveLength(2);
     // Check that SQLite pragma is included
@@ -378,6 +378,111 @@ describe("generateMigrationsOrSchema - kysely", () => {
     const pragmaIndex = schemaContent.indexOf("PRAGMA defer_foreign_keys = ON");
     const createTableIndex = schemaContent.indexOf("create table");
     expect(pragmaIndex).toBeLessThan(createTableIndex);
+  });
+});
+
+describe("generateSchemaArtifacts - schema outputs", () => {
+  it("should generate drizzle schema without requiring a healthy connection", async () => {
+    const adapter = new SqlAdapter({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
+      },
+      driverConfig: new NodePostgresDriverConfig(),
+    });
+
+    const testSchema: AnySchema = schema((s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const fragnoDb = new FragnoDatabase({
+      namespace: "drizzle-db",
+      schema: testSchema,
+      adapter,
+    });
+
+    const healthSpy = vi.spyOn(adapter, "isConnectionHealthy").mockResolvedValue(false);
+    const [result] = await generateSchemaArtifacts([fragnoDb], { format: "drizzle" });
+
+    expect(result.path).toBe("fragno-schema.ts");
+    expect(result.schema).toContain("schemaVersion");
+    expect(healthSpy).not.toHaveBeenCalled();
+  });
+
+  it("should reject from/to versions for prisma output", async () => {
+    const adapter = new SqlAdapter({
+      dialect: {
+        createAdapter: () => new SqliteAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
+      },
+      driverConfig: new SQLocalDriverConfig(),
+      sqliteProfile: "prisma",
+    });
+
+    const testSchema: AnySchema = schema((s) => {
+      return s.addTable("events", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("createdAt", column("timestamp"));
+      });
+    });
+
+    const fragnoDb = new FragnoDatabase({
+      namespace: "prisma-db",
+      schema: testSchema,
+      adapter,
+    });
+
+    await expect(
+      generateSchemaArtifacts([fragnoDb], { format: "prisma", fromVersion: 0 }),
+    ).rejects.toThrow("--from and --to are only supported when generating SQL migrations.");
+  });
+
+  it("should honor sqlite prisma profile for schema output", async () => {
+    const adapter = new SqlAdapter({
+      dialect: {
+        createAdapter: () => new SqliteAdapter(),
+        createDriver: () => new DummyDriver(),
+        createQueryCompiler: () => ({
+          compileQuery: () => ({
+            sql: "",
+            parameters: [],
+          }),
+        }),
+      },
+      driverConfig: new SQLocalDriverConfig(),
+      sqliteProfile: "prisma",
+    });
+
+    const testSchema: AnySchema = schema((s) => {
+      return s.addTable("events", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("createdAt", column("timestamp"));
+      });
+    });
+
+    const fragnoDb = new FragnoDatabase({
+      namespace: "prisma-db",
+      schema: testSchema,
+      adapter,
+    });
+
+    const [result] = await generateSchemaArtifacts([fragnoDb], { format: "prisma" });
+
+    expect(result.path).toBe("fragno.prisma");
+    expect(result.schema).toContain("model Events_prisma_db");
+    expect(result.schema).toContain("DateTime");
   });
 });
 

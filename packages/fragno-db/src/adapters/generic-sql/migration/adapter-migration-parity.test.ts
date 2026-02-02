@@ -8,8 +8,7 @@ import {
   SqliteAdapter,
   SqliteQueryCompiler,
 } from "kysely";
-import { KyselyAdapter } from "../../kysely/kysely-adapter";
-import { DrizzleAdapter } from "../../drizzle/drizzle-adapter";
+import { SqlAdapter } from "../generic-sql-adapter";
 import type { Dialect } from "../../../sql-driver/sql-driver";
 import {
   MySQL2DriverConfig,
@@ -71,7 +70,7 @@ function createDummyDialect(database: "postgresql" | "mysql" | "sqlite"): Dialec
   }
 }
 
-function getMigrationSql(adapter: KyselyAdapter | DrizzleAdapter, namespace: string): string[] {
+function getMigrationSql(adapter: SqlAdapter, namespace: string): string[] {
   const prepared = adapter.prepareMigrations(paritySchema, namespace);
   const migration = prepared.compile(0, paritySchema.version, {
     updateVersionInMigration: false,
@@ -79,7 +78,7 @@ function getMigrationSql(adapter: KyselyAdapter | DrizzleAdapter, namespace: str
   return migration.statements.map((statement) => statement.sql);
 }
 
-describe("migration SQL parity across adapters", () => {
+describe("migration SQL parity across SqlAdapter instances", () => {
   const cases = [
     {
       name: "postgresql",
@@ -100,21 +99,20 @@ describe("migration SQL parity across adapters", () => {
       const dialect = createDummyDialect(testCase.name);
       const namespace = "parity";
 
-      const kyselyAdapter = new KyselyAdapter({
-        dialect,
-        driverConfig: testCase.driverConfig,
-      });
-      const drizzleAdapter = new DrizzleAdapter({
+      const firstAdapter = new SqlAdapter({
         dialect,
         driverConfig: testCase.driverConfig,
       });
 
-      const kyselySql = getMigrationSql(kyselyAdapter, namespace);
-      const drizzleSql = getMigrationSql(drizzleAdapter, namespace);
+      const secondAdapter = new SqlAdapter({
+        dialect,
+        driverConfig: testCase.driverConfig,
+      });
 
-      console.log(kyselySql);
+      const firstSql = getMigrationSql(firstAdapter, namespace);
+      const secondSql = getMigrationSql(secondAdapter, namespace);
 
-      expect(kyselySql).toEqual(drizzleSql);
+      expect(firstSql).toEqual(secondSql);
     });
   }
 });

@@ -1,7 +1,7 @@
 import { SQLocalKysely } from "sqlocal/kysely";
 import { assert, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { KyselyAdapter } from "./adapters/kysely/kysely-adapter";
+import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "./schema/create";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { defineRoutes } from "@fragno-dev/core/route";
@@ -209,7 +209,7 @@ describe.sequential("Database Fragment Integration", () => {
     }),
   ]);
 
-  let adapter: KyselyAdapter;
+  let adapter: SqlAdapter;
   let usersFragment: ReturnType<typeof instantiateUsersFragment>;
   let ordersFragment: ReturnType<typeof instantiateOrdersFragment>;
 
@@ -239,7 +239,7 @@ describe.sequential("Database Fragment Integration", () => {
   beforeAll(async () => {
     // Create in-memory SQLite database with Kysely
     const { dialect } = new SQLocalKysely(":memory:");
-    adapter = new KyselyAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new SQLocalDriverConfig(),
     });

@@ -1,10 +1,10 @@
 import { SQLocalKysely } from "sqlocal/kysely";
 import { beforeAll, describe, expect, it } from "vitest";
-import { KyselyAdapter } from "./kysely-adapter";
+import { SqlAdapter } from "./generic-sql-adapter";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
-import { SQLocalDriverConfig } from "../generic-sql/driver-config";
+import { SQLocalDriverConfig } from "./driver-config";
 
-describe("KyselyAdapter SQLite", () => {
+describe("SqlAdapter SQLite", () => {
   const testSchema = schema((s) => {
     return s
       .addTable("accounts", (t) => {
@@ -33,11 +33,11 @@ describe("KyselyAdapter SQLite", () => {
       });
   });
 
-  let adapter: KyselyAdapter;
+  let adapter: SqlAdapter;
 
   beforeAll(async () => {
     const { dialect } = new SQLocalKysely(":memory:");
-    adapter = new KyselyAdapter({
+    adapter = new SqlAdapter({
       dialect,
       driverConfig: new SQLocalDriverConfig(),
     });

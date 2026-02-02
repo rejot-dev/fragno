@@ -1,6 +1,6 @@
 import { mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
-import { generateSchema, type SupportedProvider } from "./generate";
+import { generateDrizzleSchema, type SupportedProvider } from "../../schema-output/drizzle";
 import type { Schema } from "../../schema/create";
 import { internalSchema } from "../../fragments/internal-fragment";
 
@@ -52,7 +52,7 @@ export async function writeAndLoadSchema(
     fragments.push({ namespace: namespace ?? "", schema });
   }
 
-  const drizzleSchemaTs = generateSchema(fragments, dialect);
+  const drizzleSchemaTs = generateDrizzleSchema(fragments, dialect);
   await writeFile(schemaFilePath, drizzleSchemaTs, "utf-8");
 
   // Ensure the file is accessible before importing (handle race conditions)

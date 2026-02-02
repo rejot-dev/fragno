@@ -1,9 +1,9 @@
-import { KyselyAdapter } from "@fragno-dev/db/adapters/kysely";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { dialect } from "../database";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
 
 export function createAdapter() {
-  return new KyselyAdapter({
+  return new SqlAdapter({
     dialect: dialect,
     driverConfig: new PGLiteDriverConfig(),
   });

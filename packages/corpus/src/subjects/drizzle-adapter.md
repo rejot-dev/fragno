@@ -1,9 +1,9 @@
-# Drizzle Adapter
+# SQL Adapter (Drizzle)
 
-The DrizzleAdapter connects Fragno's database API to your Drizzle ORM instance.
+The SqlAdapter connects Fragno's database API to your SQL database when using Drizzle ORM.
 
 ```typescript @fragno-imports
-import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 ```
