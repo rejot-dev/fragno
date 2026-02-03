@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { Kysely, PostgresDialect } from "kysely";
 import { UnitOfWorkEncoder } from "./uow-encoder";
 import { schema, column, idColumn, referenceColumn } from "../../schema/create";
+import { dbNow } from "../../query/db-now";
 import {
   BetterSQLite3DriverConfig,
   MySQL2DriverConfig,
@@ -16,7 +18,8 @@ describe("UnitOfWorkEncoder", () => {
           .addColumn("name", column("string"))
           .addColumn("age", column("integer").nullable())
           .addColumn("isActive", column("bool"))
-          .addColumn("createdAt", column("timestamp"));
+          .addColumn("createdAt", column("timestamp"))
+          .addColumn("birthDate", column("date").nullable());
       })
       .addTable("posts", (t) => {
         return t
@@ -110,6 +113,34 @@ describe("UnitOfWorkEncoder", () => {
       expect(result["id"]).toBeDefined();
       expect(typeof result["id"]).toBe("string");
       expect(result["title"]).toBe("Test");
+    });
+
+    it("should use sqlite dateStorage for dbNow date columns", () => {
+      type TestDB = { users: { id: string; birthDate: unknown } };
+      const dialectConfig = {} as unknown as ConstructorParameters<typeof PostgresDialect>[0];
+      const sqliteDb = new Kysely<TestDB>({
+        dialect: new PostgresDialect(dialectConfig),
+      });
+      const encoderWithStorage = new UnitOfWorkEncoder(sqliteConfig, sqliteDb, {
+        timestampStorage: "epoch-ms",
+        dateStorage: "iso-text",
+        bigintStorage: "blob",
+      });
+
+      const result = encoderWithStorage.encodeForDatabase({
+        values: { birthDate: dbNow() },
+        table: usersTable,
+        generateDefaults: false,
+      });
+
+      const query = sqliteDb
+        .updateTable("users")
+        .set({ birthDate: result["birthDate"] as unknown })
+        .where("id", "=", "test");
+
+      const sqlText = query.compile().sql;
+      expect(sqlText).toContain("CURRENT_TIMESTAMP");
+      expect(sqlText).not.toContain("julianday");
     });
   });
 
