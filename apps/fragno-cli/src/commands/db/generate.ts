@@ -66,7 +66,7 @@ export const generateCommand = define({
       console.log(`Generating ${format} schema output...`);
     }
 
-    let results: { schema: string; path: string; namespace: string }[];
+    let results: { schema: string; path: string; namespace: string | null }[];
     try {
       results = await generateSchemaArtifacts(allFragnoDatabases, {
         format: format as "sql" | "drizzle" | "prisma",
@@ -118,7 +118,8 @@ export const generateCommand = define({
     console.log(`  Files generated: ${results.length}`);
     console.log(`  Fragments:`);
     for (const db of allFragnoDatabases) {
-      console.log(`    - ${db.namespace} (version ${db.schema.version})`);
+      const namespaceLabel = db.namespace ?? "(none)";
+      console.log(`    - ${db.schema.name} [${namespaceLabel}] (version ${db.schema.version})`);
     }
   },
 });

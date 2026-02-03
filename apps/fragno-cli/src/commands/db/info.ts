@@ -25,6 +25,8 @@ export const infoCommand = define({
         const adapterMetadata = fragnoDb.adapter.adapterMetadata;
         const databaseType = adapterMetadata?.databaseType;
         const sqliteProfile = adapterMetadata?.sqliteProfile;
+        const namespaceKey = fragnoDb.namespace ?? fragnoDb.schema.name;
+        const displayNamespace = fragnoDb.namespace ?? "(none)";
         const info: {
           namespace: string;
           schemaVersion: number;
@@ -35,7 +37,7 @@ export const infoCommand = define({
           pendingVersions?: string;
           status?: string;
         } = {
-          namespace: fragnoDb.namespace,
+          namespace: displayNamespace,
           schemaVersion: fragnoDb.schema.version,
           migrationSupport: !!fragnoDb.adapter.prepareMigrations,
           databaseType,
@@ -44,7 +46,7 @@ export const infoCommand = define({
 
         // Get current database version if migrations are supported
         if (fragnoDb.adapter.prepareMigrations) {
-          const currentVersion = await fragnoDb.adapter.getSchemaVersion(fragnoDb.namespace);
+          const currentVersion = await fragnoDb.adapter.getSchemaVersion(namespaceKey);
           info.currentVersion = currentVersion;
           // info.pendingVersions = fragnoDb.schema.version - currentVersion;
 

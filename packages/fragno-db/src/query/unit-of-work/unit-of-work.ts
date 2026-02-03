@@ -161,7 +161,7 @@ export type RetrievalOperation<
   | {
       type: "find";
       schema: TSchema;
-      namespace?: string;
+      namespace?: string | null;
       table: TTable;
       indexName: string;
       options: FindOptions<TTable, SelectClause<TTable>>;
@@ -171,7 +171,7 @@ export type RetrievalOperation<
   | {
       type: "count";
       schema: TSchema;
-      namespace?: string;
+      namespace?: string | null;
       table: TTable;
       indexName: string;
       options: Pick<FindOptions<TTable>, "where" | "useIndex">;
@@ -187,7 +187,7 @@ export type MutationOperation<
   | {
       type: "update";
       schema: TSchema;
-      namespace?: string;
+      namespace?: string | null;
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
@@ -196,7 +196,7 @@ export type MutationOperation<
   | {
       type: "create";
       schema: TSchema;
-      namespace?: string;
+      namespace?: string | null;
       table: TTable["name"];
       values: TableToInsertValues<TTable>;
       generatedExternalId: string;
@@ -204,7 +204,7 @@ export type MutationOperation<
   | {
       type: "delete";
       schema: TSchema;
-      namespace?: string;
+      namespace?: string | null;
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
@@ -212,7 +212,7 @@ export type MutationOperation<
   | {
       type: "check";
       schema: TSchema;
-      namespace?: string;
+      namespace?: string | null;
       table: TTable["name"];
       id: FragnoId;
     };
@@ -840,7 +840,7 @@ export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
 
     builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => JoinFindBuilder<AnyTable>) => {
       // Create join builder for this relation's table
-      const joinBuilder = new JoinFindBuilder(relation.table.ormName, relation.table);
+      const joinBuilder = new JoinFindBuilder(relation.table.name, relation.table);
       if (builderFn) {
         builderFn(joinBuilder);
       }
@@ -941,7 +941,7 @@ export interface IUnitOfWork {
   ): TypedUnitOfWork<TOtherSchema, [], any, TOtherHooks>;
 
   // Schema registration (for cross-fragment operations like hooks)
-  registerSchema(schema: AnySchema, namespace: string): void;
+  registerSchema(schema: AnySchema, namespace: string | null): void;
 
   // Hook triggering (schema-agnostic, string-based hook names)
   triggerHook(hookName: string, payload: unknown, options?: TriggerHookOptions): void;
@@ -1002,7 +1002,7 @@ export function createUnitOfWork(
   compiler: UOWCompiler<unknown>,
   executor: UOWExecutor<unknown, unknown>,
   decoder: UOWDecoder<unknown>,
-  schemaNamespaceMap?: WeakMap<AnySchema, string>,
+  schemaNamespaceMap?: WeakMap<AnySchema, string | null>,
   name?: string,
 ): UnitOfWork {
   return new UnitOfWork(compiler, executor, decoder, name, undefined, schemaNamespaceMap);
@@ -1264,7 +1264,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #compiler: UOWCompiler<unknown>;
   #executor: UOWExecutor<unknown, TRawInput>;
   #decoder: UOWDecoder<TRawInput>;
-  #schemaNamespaceMap: WeakMap<AnySchema, string>;
+  #schemaNamespaceMap: WeakMap<AnySchema, string | null>;
 
   #retrievalResults?: unknown[];
   #createdInternalIds: (bigint | null)[] = [];
@@ -1289,7 +1289,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     decoder: UOWDecoder<TRawInput>,
     name?: string,
     config?: UnitOfWorkConfig,
-    schemaNamespaceMap?: WeakMap<AnySchema, string>,
+    schemaNamespaceMap?: WeakMap<AnySchema, string | null>,
   ) {
     this.#compiler = compiler;
     this.#executor = executor;
@@ -1360,7 +1360,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * This is used for internal fragments like hooks that need to create
    * records in a different schema during the same transaction.
    */
-  registerSchema(schema: AnySchema, namespace: string): void {
+  registerSchema(schema: AnySchema, namespace: string | null): void {
     this.#schemaNamespaceMap.set(schema, namespace);
   }
 
@@ -1833,12 +1833,12 @@ export class TypedUnitOfWork<
 > implements IUnitOfWork
 {
   #schema: TSchema;
-  #namespace?: string;
+  #namespace?: string | null;
   #uow: UnitOfWork<TRawInput>;
   #operationIndices: number[] = [];
   #cachedRetrievalPhase?: Promise<TRetrievalResults>;
 
-  constructor(schema: TSchema, namespace: string | undefined, uow: UnitOfWork<TRawInput>) {
+  constructor(schema: TSchema, namespace: string | null | undefined, uow: UnitOfWork<TRawInput>) {
     this.#schema = schema;
     this.#namespace = namespace;
     this.#uow = uow;
@@ -1931,7 +1931,7 @@ export class TypedUnitOfWork<
     return this.#uow.forSchema<TOtherSchema, TOtherHooks>(schema, hooks);
   }
 
-  registerSchema(schema: AnySchema, namespace: string): void {
+  registerSchema(schema: AnySchema, namespace: string | null): void {
     this.#uow.registerSchema(schema, namespace);
   }
 
@@ -2174,7 +2174,7 @@ export class TypedUnitOfWork<
     let updatedValues = values;
 
     // Check if ID value is provided in values
-    const providedIdValue = (values as Record<string, unknown>)[idColumn.ormName];
+    const providedIdValue = (values as Record<string, unknown>)[idColumn.name];
 
     if (providedIdValue !== undefined) {
       // Extract string from FragnoId or use string directly
@@ -2192,7 +2192,7 @@ export class TypedUnitOfWork<
       const generated = idColumn.generateDefaultValue();
       if (generated === undefined) {
         throw new Error(
-          `No ID value provided and ID column ${idColumn.ormName} has no default generator`,
+          `No ID value provided and ID column ${idColumn.name} has no default generator`,
         );
       }
       externalId = generated as string;
@@ -2200,7 +2200,7 @@ export class TypedUnitOfWork<
       // Add the generated ID to values so it's used in the insert
       updatedValues = {
         ...values,
-        [idColumn.ormName]: externalId,
+        [idColumn.name]: externalId,
       } as TableToInsertValues<TSchema["tables"][TableName]>;
     }
 

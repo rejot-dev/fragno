@@ -4,7 +4,7 @@ import { generateMigrationFromSchema } from "./auto-from-schema";
 
 describe("generateMigrationFromSchema", () => {
   it("should generate create-table operation for new tables", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -35,7 +35,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should generate multiple table operations in sequence", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -79,7 +79,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should generate add-foreign-key operation for new foreign keys", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn());
@@ -108,7 +108,7 @@ describe("generateMigrationFromSchema", () => {
     const fkOp = operations[0];
     if (fkOp.type === "add-foreign-key") {
       expect(fkOp.value).toMatchObject({
-        name: "posts_users_author_fk",
+        name: "author",
         referencedTable: "users",
         columns: ["authorId"],
         referencedColumns: ["_internalId"],
@@ -117,7 +117,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should generate add-index operation for indexes added via alterTable", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("email", column("string"));
@@ -141,7 +141,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should generate mixed operations for tables and foreign keys", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -166,7 +166,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should generate mixed operations for tables, indexes, and foreign keys", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("email", column("string"));
@@ -195,7 +195,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should generate no operations when version range is empty", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -207,7 +207,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should throw error when fromVersion exceeds schema version", () => {
-    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+    const mySchema = schema("my", (s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
       generateMigrationFromSchema(mySchema, 999, 1000);
@@ -215,7 +215,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should throw error when toVersion exceeds schema version", () => {
-    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+    const mySchema = schema("my", (s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
       generateMigrationFromSchema(mySchema, 0, 999);
@@ -223,7 +223,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should throw error when trying to migrate backwards", () => {
-    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+    const mySchema = schema("my", (s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
       generateMigrationFromSchema(mySchema, 1, 0);
@@ -231,7 +231,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should throw error for negative fromVersion", () => {
-    const mySchema = schema((s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
+    const mySchema = schema("my", (s) => s.addTable("users", (t) => t.addColumn("id", idColumn())));
 
     expect(() => {
       generateMigrationFromSchema(mySchema, -1, 1);
@@ -239,7 +239,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should only create constraints for references, not for referenceColumns", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("posts", (t) => {
           return t
@@ -276,7 +276,7 @@ describe("generateMigrationFromSchema", () => {
   });
 
   it("should not create duplicate foreign key constraints", () => {
-    const mySchema = schema((s) => {
+    const mySchema = schema("my", (s) => {
       return s
         .addTable("users", (t) => t.addColumn("id", idColumn()))
         .addTable("posts", (t) =>

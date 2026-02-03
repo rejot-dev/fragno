@@ -42,7 +42,6 @@ function shouldExposeOutboxRoutes(options: FragnoPublicConfigWithDatabase): bool
  */
 export function withDatabase<TSchema extends AnySchema>(
   schema: TSchema,
-  namespace?: string,
 ): <
   TConfig,
   TDeps,
@@ -118,7 +117,10 @@ export function withDatabase<TSchema extends AnySchema>(
         // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
         return instantiate(internalFragmentDef)
           .withConfig(config as {})
-          .withOptions(options as FragnoPublicConfigWithDatabase)
+          .withOptions({
+            ...(options as FragnoPublicConfigWithDatabase),
+            databaseNamespace: null,
+          })
           .withRoutes(internalRoutes)
           .build();
       },
@@ -157,7 +159,6 @@ export function withDatabase<TSchema extends AnySchema>(
         TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
       >,
       schema,
-      namespace,
     );
   };
 }

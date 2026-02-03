@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { column, idColumn, schema } from "../../schema/create";
 import { createInMemoryStore, ensureNamespaceStore } from "./store";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s
     .addTable("users", (t) =>
       t

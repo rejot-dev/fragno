@@ -2,7 +2,6 @@ import type {
   DatabaseAdapter,
   DatabaseAdapterMetadata,
   DatabaseContextStorage,
-  TableNameMapper,
 } from "@fragno-dev/db/adapters";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
@@ -113,6 +112,7 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
 
   readonly contextStorage: RequestContextStorage<DatabaseContextStorage>;
   readonly adapterMetadata?: DatabaseAdapterMetadata;
+  readonly namingStrategy: DatabaseAdapter<TUowConfig>["namingStrategy"];
   prepareMigrations?: DatabaseAdapter<TUowConfig>["prepareMigrations"];
 
   #baseAdapter: DatabaseAdapter<TUowConfig>;
@@ -122,6 +122,7 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
     this.#baseAdapter = baseAdapter;
     this.contextStorage = baseAdapter.contextStorage;
     this.adapterMetadata = baseAdapter.adapterMetadata;
+    this.namingStrategy = baseAdapter.namingStrategy;
     this[fragnoDatabaseAdapterNameFakeSymbol] = baseAdapter[fragnoDatabaseAdapterNameFakeSymbol];
     this[fragnoDatabaseAdapterVersionFakeSymbol] =
       baseAdapter[fragnoDatabaseAdapterVersionFakeSymbol];
@@ -142,7 +143,7 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
 
   createQueryEngine<const T extends AnySchema>(
     schema: T,
-    namespace: string,
+    namespace: string | null,
   ): SimpleQueryInterface<T, TUowConfig> {
     const engine = this.#baseAdapter.createQueryEngine(schema, namespace);
 
@@ -187,10 +188,6 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
       },
     });
     return proxy;
-  }
-
-  createTableNameMapper(namespace: string): TableNameMapper {
-    return this.#baseAdapter.createTableNameMapper(namespace);
   }
 
   isConnectionHealthy(): Promise<boolean> {

@@ -9,7 +9,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { internalSchema } from "../fragments/internal-fragment";
 import { createDurableHooksProcessor } from "./durable-hooks-processor";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
 );
 
@@ -37,7 +37,7 @@ describe("createDurableHooksProcessor", () => {
       driverConfig: new BetterSQLite3DriverConfig(),
     });
 
-    const internalMigrations = adapter.prepareMigrations(internalSchema, "");
+    const internalMigrations = adapter.prepareMigrations(internalSchema, null);
     await internalMigrations.executeWithDriver(adapter.driver, 0);
 
     const testMigrations = adapter.prepareMigrations(testSchema, "test");

@@ -59,7 +59,7 @@ function createMockDecoder(): UOWDecoder {
 
 describe("UOW Coordinator - Parent-Child Execution", () => {
   it("should allow child UOWs to add operations and parent to execute them", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
       ),
@@ -102,7 +102,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should handle nested service calls that await phase promises without deadlock", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
@@ -176,7 +176,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should handle retrieval-to-mutation flow with service composition", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t
@@ -303,7 +303,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should handle deeply nested child UOWs (3+ levels)", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
@@ -416,7 +416,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should handle sibling child UOWs at same nesting level", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t
@@ -526,7 +526,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should support transaction rollback pattern", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("accounts", (t) =>
           t
@@ -633,7 +633,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should handle errors thrown by service methods without unhandled rejections", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t
@@ -770,7 +770,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should not cause unhandled rejection when service method awaits retrievalPhase and executeRetrieve fails", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("settings", (t) =>
         t
           .addColumn("id", idColumn())
@@ -830,7 +830,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should allow child UOW to call getCreatedIds() after parent executes mutations", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("products", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("price", "integer"),
       ),
@@ -862,7 +862,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should preserve internal IDs in child UOW when using two-phase pattern with mutationPhase await", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("orders", (t) =>
         t
           .addColumn("id", idColumn())
@@ -916,7 +916,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should fail when handler executes mutations before service finishes scheduling them (anti-pattern)", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("totp_secret", (t) =>
         t
           .addColumn("id", idColumn())
@@ -997,7 +997,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
   });
 
   it("should succeed when handler awaits service promise between phases (correct pattern)", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("totp_secret", (t) =>
         t
           .addColumn("id", idColumn())

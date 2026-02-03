@@ -5,9 +5,10 @@ import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-bui
 import { ReferenceSubquery } from "../../../query/value-encoding";
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
 import { dbNow } from "../../../query/db-now";
+import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
 
 describe("where-builder", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -54,12 +55,18 @@ describe("where-builder", () => {
       expect(result).toBe("users.id");
     });
 
-    it("should work with table name mapper", () => {
-      const mapper = {
-        toPhysical: (ormName: string) => `prefix_${ormName}`,
-        toLogical: (physicalName: string) => physicalName.replace("prefix_", ""),
+    it("should work with naming resolver", () => {
+      const namingStrategy: SqlNamingStrategy = {
+        namespaceScope: "suffix",
+        namespaceToSchema: (namespace) => namespace,
+        tableName: (logicalTable) => `prefix_${logicalTable}`,
+        columnName: (logicalColumn) => logicalColumn,
+        indexName: (logicalIndex) => logicalIndex,
+        uniqueIndexName: (logicalIndex) => logicalIndex,
+        foreignKeyName: ({ referenceName }) => referenceName,
       };
-      const result = fullSQLName(usersTable.columns.name, mapper);
+      const resolver = createNamingResolver(testSchema, "namespace", namingStrategy);
+      const result = fullSQLName(usersTable.columns.name, resolver);
       expect(result).toBe("prefix_users.name");
     });
   });
@@ -627,11 +634,17 @@ describe("where-builder", () => {
         });
       });
 
-      it("should generate subquery with table name mapper", () => {
-        const mapper = {
-          toPhysical: (ormName: string) => `prefix_${ormName}`,
-          toLogical: (physicalName: string) => physicalName.replace("prefix_", ""),
+      it("should generate subquery with naming resolver", () => {
+        const namingStrategy: SqlNamingStrategy = {
+          namespaceScope: "suffix",
+          namespaceToSchema: (namespace) => namespace,
+          tableName: (logicalTable) => `prefix_${logicalTable}`,
+          columnName: (logicalColumn) => logicalColumn,
+          indexName: (logicalIndex) => logicalIndex,
+          uniqueIndexName: (logicalIndex) => logicalIndex,
+          foreignKeyName: ({ referenceName }) => referenceName,
         };
+        const resolver = createNamingResolver(testSchema, "namespace", namingStrategy);
 
         const condition = {
           type: "compare" as const,
@@ -646,7 +659,7 @@ describe("where-builder", () => {
           eb,
           new NodePostgresDriverConfig(),
           undefined,
-          mapper,
+          resolver,
           postsTable,
         );
 
@@ -737,17 +750,23 @@ describe("where-builder", () => {
       expect(processed).toEqual(values);
     });
 
-    it("should use table name mapper when provided", () => {
-      const mapper = {
-        toPhysical: (ormName: string) => `prefix_${ormName}`,
-        toLogical: (physicalName: string) => physicalName.replace("prefix_", ""),
+    it("should use naming resolver when provided", () => {
+      const namingStrategy: SqlNamingStrategy = {
+        namespaceScope: "suffix",
+        namespaceToSchema: (namespace) => namespace,
+        tableName: (logicalTable) => `prefix_${logicalTable}`,
+        columnName: (logicalColumn) => logicalColumn,
+        indexName: (logicalIndex) => logicalIndex,
+        uniqueIndexName: (logicalIndex) => logicalIndex,
+        foreignKeyName: ({ referenceName }) => referenceName,
       };
+      const resolver = createNamingResolver(testSchema, "namespace", namingStrategy);
 
       const values = {
         userId: new ReferenceSubquery(usersTable, "user-123"),
       };
 
-      const processed = processReferenceSubqueries(values, kysely, mapper);
+      const processed = processReferenceSubqueries(values, kysely, resolver);
 
       // Compile the subquery to check it uses the mapped table name
       const subquery = processed["userId"] as unknown as { compile: () => { sql: string } };

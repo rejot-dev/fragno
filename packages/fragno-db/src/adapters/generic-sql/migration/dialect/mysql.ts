@@ -5,7 +5,7 @@ import type {
   MigrationOperation,
 } from "../../../../migration-engine/shared";
 import { isUpdated } from "../../../../migration-engine/shared";
-import type { TableNameMapper } from "../../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../../naming/sql-naming";
 import { SQLGenerator } from "../sql-generator";
 
 const errors = {
@@ -69,7 +69,9 @@ export class MySQLSQLGenerator extends SQLGenerator {
    */
   protected override compileUpdateColumn(
     tableName: string,
+    logicalTableName: string,
     operation: Extract<ColumnOperation, { type: "update-column" }>,
+    resolver?: NamingResolver,
   ): CompiledQuery | CompiledQuery[] {
     const col = operation.value;
 
@@ -82,9 +84,13 @@ export class MySQLSQLGenerator extends SQLGenerator {
     }
 
     // MySQL: Use modifyColumn which requires the full column definition
-    return this.db.schema
+    return this.getSchemaBuilder(resolver)
       .alterTable(tableName)
-      .modifyColumn(operation.name, sql.raw(this.getDBType(col)), (b) => this.buildColumn(col, b))
+      .modifyColumn(
+        this.getColumnName(operation.name, logicalTableName, resolver),
+        sql.raw(this.getDBType(col)),
+        (b) => this.buildColumn(col, b),
+      )
       .compile();
   }
 
@@ -93,12 +99,12 @@ export class MySQLSQLGenerator extends SQLGenerator {
    */
   protected override compileDropForeignKey(
     operation: Extract<MigrationOperation, { type: "drop-foreign-key" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const { table, name } = operation;
-    return this.db.schema
-      .alterTable(this.getTableName(table, mapper))
-      .dropConstraint(name)
+    const { table, name, referencedTable } = operation;
+    return this.getSchemaBuilder(resolver)
+      .alterTable(this.getTableName(table, resolver))
+      .dropConstraint(this.getForeignKeyName(name, table, referencedTable, resolver))
       .compile();
   }
 
@@ -107,17 +113,17 @@ export class MySQLSQLGenerator extends SQLGenerator {
    */
   protected override compileCreateTable(
     operation: Extract<MigrationOperation, { type: "create-table" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const compiled = super.compileCreateTable(operation, mapper);
-    const tableName = this.getTableName(operation.name, mapper);
+    const compiled = super.compileCreateTable(operation, resolver);
+    const tableName = this.getTableName(operation.name, resolver);
     const internalIdColumn = operation.columns.find((col) => col.role === "internal-id");
 
     if (!internalIdColumn) {
       return compiled;
     }
 
-    const pkColumn = internalIdColumn.name;
+    const pkColumn = this.getColumnName(internalIdColumn.name, operation.name, resolver);
     const pkName = `${tableName}__${pkColumn.replace(/^_+/, "")}`;
     const escapedPkColumn = pkColumn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const columnRegex = new RegExp("`" + escapedPkColumn + "`([^,]*?)\\bprimary key\\b", "i");

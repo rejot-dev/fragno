@@ -1,3 +1,4 @@
+import type { AnySchema } from "../schema/create";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
 import { createHookScheduler, type HookProcessorConfig } from "./hooks";
 
@@ -24,8 +25,8 @@ function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined)
   return DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES;
 }
 
-export function createDurableHooksProcessor(
-  fragment: AnyFragnoInstantiatedDatabaseFragment,
+export function createDurableHooksProcessor<TSchema extends AnySchema>(
+  fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
 ): DurableHooksProcessor | null {
   const durableHooks = (fragment.$internal as DurableHooksInternal).durableHooks;
   if (!durableHooks) {

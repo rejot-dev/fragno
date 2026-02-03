@@ -2,7 +2,7 @@
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
-export const workflowsSchema = schema((s) => {
+export const workflowsSchema = schema("workflows", (s) => {
   return (
     s
       // Per-run instance lifecycle and metadata.

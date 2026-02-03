@@ -61,13 +61,13 @@ export type SupportedAdapter =
 // Schema configuration for multi-schema adapters
 export interface SchemaConfig {
   schema: AnySchema;
-  namespace: string;
+  namespace: string | null;
   migrateToVersion?: number;
 }
 
 // Internal test context extends BaseTestContext with getOrm (not exposed publicly)
 interface InternalTestContext extends BaseTestContext {
-  getOrm: <TSchema extends AnySchema>(namespace: string) => SimpleQueryInterface<TSchema>;
+  getOrm: <TSchema extends AnySchema>(namespace: string | null) => SimpleQueryInterface<TSchema>;
 }
 
 // Conditional return types based on adapter (adapter-specific properties only)
@@ -91,6 +91,39 @@ interface AdapterFactoryResult<T extends SupportedAdapter> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: DatabaseAdapter<any>;
 }
+
+const runInternalFragmentMigrations = async (
+  adapter: SqlAdapter,
+): Promise<SchemaConfig | undefined> => {
+  const dependencies = internalFragmentDef.dependencies;
+  if (!dependencies) {
+    return undefined;
+  }
+
+  const databaseDeps = dependencies({
+    config: {},
+    options: { databaseAdapter: adapter, databaseNamespace: null },
+  });
+  if (databaseDeps?.schema) {
+    const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+    return { schema: databaseDeps.schema, namespace: databaseDeps.namespace };
+  }
+  return undefined;
+};
+
+const resolveSchemaName = (
+  adapter: DatabaseAdapter<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  namespace: string | null,
+): string | null => {
+  if (adapter.namingStrategy.namespaceScope !== "schema") {
+    return null;
+  }
+  if (!namespace || namespace.length === 0) {
+    return null;
+  }
+  return adapter.namingStrategy.namespaceToSchema(namespace);
+};
 
 /**
  * Create Kysely + SQLite adapter using SQLocalKysely (always in-memory)
@@ -118,25 +151,11 @@ export async function createKyselySqliteAdapter(
       uowConfig: config.uowConfig,
       outbox: config.outbox,
     });
-
-    const databaseDeps = internalFragmentDef.dependencies?.({
-      config: {},
-      options: { databaseAdapter: adapter },
-    });
-    if (databaseDeps?.schema) {
-      const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
-      await migrations.executeWithDriver(adapter.driver, 0);
-      internalSchemaConfig = {
-        schema: databaseDeps.schema,
-        namespace: databaseDeps.namespace,
-      };
-    } else {
-      internalSchemaConfig = undefined;
-    }
+    internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
     // Run migrations for all schemas in order
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
+    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       // Run migrations
@@ -164,9 +183,8 @@ export async function createKyselySqliteAdapter(
 
     // For SQLite, truncate all tables by deleting rows
     for (const { schema, namespace } of schemasToTruncate) {
-      const mapper = namespace ? adapter.createTableNameMapper(namespace) : undefined;
       for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = mapper ? mapper.toPhysical(tableName) : tableName;
+        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
         await kysely.deleteFrom(physicalTableName).execute();
       }
     }
@@ -226,25 +244,11 @@ export async function createKyselyPgliteAdapter(
       uowConfig: config.uowConfig,
       outbox: config.outbox,
     });
-
-    const databaseDeps = internalFragmentDef.dependencies?.({
-      config: {},
-      options: { databaseAdapter: adapter },
-    });
-    if (databaseDeps?.schema) {
-      const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
-      await migrations.executeWithDriver(adapter.driver, 0);
-      internalSchemaConfig = {
-        schema: databaseDeps.schema,
-        namespace: databaseDeps.namespace,
-      };
-    } else {
-      internalSchemaConfig = undefined;
-    }
+    internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
     // Run migrations for all schemas in order
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
+    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       // Run migrations
@@ -276,10 +280,11 @@ export async function createKyselyPgliteAdapter(
 
     // Truncate all tables
     for (const { schema, namespace } of schemasToTruncate) {
-      const mapper = namespace ? adapter.createTableNameMapper(namespace) : undefined;
       for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = mapper ? mapper.toPhysical(tableName) : tableName;
-        await kysely.deleteFrom(physicalTableName).execute();
+        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
+        const schemaName = resolveSchemaName(adapter, namespace);
+        const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
+        await scopedKysely.deleteFrom(physicalTableName).execute();
       }
     }
   };
@@ -344,24 +349,11 @@ export async function createDrizzlePgliteAdapter(
       outbox: config.outbox,
     });
 
+    internalSchemaConfig = await runInternalFragmentMigrations(adapter);
+
     // Run migrations for all schemas
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
-
-    const databaseDeps = internalFragmentDef.dependencies?.({
-      config: {},
-      options: { databaseAdapter: adapter },
-    });
-    if (databaseDeps?.schema) {
-      const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
-      await migrations.executeWithDriver(adapter.driver, 0);
-      internalSchemaConfig = {
-        schema: databaseDeps.schema,
-        namespace: databaseDeps.namespace,
-      };
-    } else {
-      internalSchemaConfig = undefined;
-    }
+    const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       const preparedMigrations = adapter.prepareMigrations(schema, namespace);
@@ -395,11 +387,14 @@ export async function createDrizzlePgliteAdapter(
 
     // Truncate all tables by deleting rows
     for (const { schema, namespace } of schemasToTruncate) {
-      const mapper = namespace ? adapter.createTableNameMapper(namespace) : undefined;
       const tableNames = Object.keys(schema.tables).slice().reverse();
       for (const tableName of tableNames) {
-        const physicalTableName = mapper ? mapper.toPhysical(tableName) : tableName;
-        await drizzleDb.execute(`DELETE FROM "${physicalTableName}"`);
+        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
+        const schemaName = resolveSchemaName(adapter, namespace);
+        const qualifiedTable = schemaName
+          ? `"${schemaName}"."${physicalTableName}"`
+          : `"${physicalTableName}"`;
+        await drizzleDb.execute(`DELETE FROM ${qualifiedTable}`);
       }
     }
   };
@@ -445,7 +440,7 @@ export async function createInMemoryAdapter(
   const adapter = new InMemoryAdapter(config.options);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
+  const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
   for (const { schema, namespace } of schemas) {
     const orm = adapter.createQueryEngine(schema, namespace);
     ormMap.set(namespace, orm);
@@ -487,7 +482,7 @@ export async function createModelCheckerAdapter(
   const adapter = new ModelCheckerAdapter(baseAdapter);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ormMap = new Map<string, SimpleQueryInterface<any, any>>();
+  const ormMap = new Map<string | null, SimpleQueryInterface<any, any>>();
   for (const { schema, namespace } of schemas) {
     const orm = adapter.createQueryEngine(schema, namespace);
     ormMap.set(namespace, orm);

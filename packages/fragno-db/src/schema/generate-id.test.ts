@@ -3,7 +3,7 @@ import { schema, idColumn, FragnoId } from "./create";
 import { generateId } from "./generate-id";
 
 describe("generateId", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
       t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
     ),
@@ -34,7 +34,7 @@ describe("generateId", () => {
   });
 
   it("should work with multiple tables", () => {
-    const multiTableSchema = schema((s) =>
+    const multiTableSchema = schema("multitable", (s) =>
       s
         .addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),

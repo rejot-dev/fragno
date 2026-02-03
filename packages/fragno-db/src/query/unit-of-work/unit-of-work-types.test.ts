@@ -23,7 +23,7 @@ type InferJoinOut<T> =
 type InferJoinOutPrettify<T> = RecursivePrettify<InferJoinOut<T>>;
 
 describe("UnitOfWork type tests", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t

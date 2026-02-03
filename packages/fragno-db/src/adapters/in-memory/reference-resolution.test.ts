@@ -4,7 +4,7 @@ import { ReferenceSubquery } from "../../query/value-encoding";
 import { createInMemoryStore, ensureNamespaceStore } from "./store";
 import { resolveReferenceSubqueries } from "./reference-resolution";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s
     .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
     .addTable("posts", (t) => t.addColumn("id", idColumn()).addColumn("userId", referenceColumn()))

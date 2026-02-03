@@ -1,4 +1,5 @@
 import { createId, init } from "@paralleldrive/cuid2";
+import type { SqlNamingStrategy } from "../../naming/sql-naming";
 
 export type InMemoryAdapterOptions = {
   clock?: { now: () => Date };
@@ -7,6 +8,7 @@ export type InMemoryAdapterOptions = {
   internalIdGenerator?: () => bigint;
   enforceConstraints?: boolean;
   btreeOrder?: number;
+  namingStrategy?: SqlNamingStrategy;
 };
 
 export type ResolvedInMemoryAdapterOptions = {

@@ -67,19 +67,11 @@ export async function findBlogPostsWithAuthor() {
   return await db
     .selectFrom("blog_post")
     .innerJoin("user", "user.id", "blog_post.author_id")
-    .innerJoin("comment_fragno-db-comment", (join) =>
-      join.onRef(
-        sql.ref("comment_fragno-db-comment.postReference"),
-        "=",
-        sql.raw("blog_post.id::text"),
-      ),
+    .innerJoin("comment.comment as comment_comment", (join) =>
+      join.onRef(sql.ref("comment_comment.postReference"), "=", sql.raw("blog_post.id::text")),
     )
-    .leftJoin("upvote_total_fragno-db-rating", (join) =>
-      join.onRef(
-        sql.ref("upvote_total_fragno-db-rating.reference"),
-        "=",
-        sql.raw("blog_post.id::text"),
-      ),
+    .leftJoin("upvote.upvote_total as upvote_total_upvote", (join) =>
+      join.onRef(sql.ref("upvote_total_upvote.reference"), "=", sql.raw("blog_post.id::text")),
     )
     .select([
       "blog_post.id",
@@ -90,10 +82,10 @@ export async function findBlogPostsWithAuthor() {
       "user.id as author_id",
       "user.name as author_name",
       "user.email as author_email",
-      sql<unknown>`json_agg(${sql.table("comment_fragno-db-comment")})`.as("comments"),
-      sql<number>`COALESCE(${sql.ref("upvote_total_fragno-db-rating.total")}, 0)`.as("rating"),
+      sql<unknown>`json_agg(${sql.table("comment_comment")})`.as("comments"),
+      sql<number>`COALESCE(${sql.ref("upvote_total_upvote.total")}, 0)`.as("rating"),
     ])
-    .groupBy(["blog_post.id", "user.id", sql.ref("upvote_total_fragno-db-rating.total")])
+    .groupBy(["blog_post.id", "user.id", sql.ref("upvote_total_upvote.total")])
     .orderBy("blog_post.created_at", "desc")
     .execute();
 }

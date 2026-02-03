@@ -5,7 +5,7 @@ import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { SQLocalDriverConfig } from "./driver-config";
 
 describe("SqlAdapter SQLite", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("accounts", (t) => {
         return t

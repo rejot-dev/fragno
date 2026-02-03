@@ -12,7 +12,7 @@ import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
-import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../naming/sql-naming";
 import { buildWhere, fullSQLName } from "./where-builder";
 import { mapSelect, extendSelect } from "./select-builder";
 import type { CompiledJoin } from "../../../query/orm/orm";
@@ -98,7 +98,7 @@ export abstract class SQLQueryCompiler {
   protected readonly db: AnyKysely;
   protected readonly driverConfig: DriverConfig;
   protected readonly database: SupportedDatabase;
-  protected readonly mapper?: TableNameMapper;
+  protected readonly resolver?: NamingResolver;
   protected readonly encoder: UnitOfWorkEncoder;
   protected readonly sqliteStorageMode?: SQLiteStorageMode;
 
@@ -106,14 +106,14 @@ export abstract class SQLQueryCompiler {
     db: AnyKysely,
     driverConfig: DriverConfig,
     sqliteStorageMode?: SQLiteStorageMode,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ) {
     this.db = db;
     this.driverConfig = driverConfig;
     this.database = driverConfig.databaseType;
-    this.mapper = mapper;
+    this.resolver = resolver;
     this.sqliteStorageMode = sqliteStorageMode;
-    this.encoder = new UnitOfWorkEncoder(driverConfig, db, sqliteStorageMode, mapper);
+    this.encoder = new UnitOfWorkEncoder(driverConfig, db, sqliteStorageMode, resolver);
   }
 
   /**
@@ -141,14 +141,21 @@ export abstract class SQLQueryCompiler {
    * Get the physical table name, applying namespace mapping if provided.
    */
   protected getTableName(table: AnyTable): string {
-    return this.mapper ? this.mapper.toPhysical(table.name) : table.name;
+    return this.resolver ? this.resolver.getTableName(table.name) : table.name;
   }
 
   /**
    * Build WHERE clause from a condition tree.
    */
   protected buildWhereClause(condition: Condition, eb: AnyExpressionBuilder, table: AnyTable) {
-    return buildWhere(condition, eb, this.driverConfig, this.sqliteStorageMode, this.mapper, table);
+    return buildWhere(
+      condition,
+      eb,
+      this.driverConfig,
+      this.sqliteStorageMode,
+      this.resolver,
+      table,
+    );
   }
 
   /**
@@ -179,7 +186,7 @@ export abstract class SQLQueryCompiler {
 
       // Update select
       mappedSelect.push(
-        ...mapSelect(joinOptions.select, targetTable, {
+        ...mapSelect(joinOptions.select, targetTable, this.resolver, {
           relation: fullPath, // Use full path with colons for column aliases
           tableName: joinName, // Use underscore version for table name
         }),
@@ -196,9 +203,22 @@ export abstract class SQLQueryCompiler {
 
             conditions.push(
               eb(
-                `${parentTableName}.${parentTable.columns[left].name}`,
+                `${parentTableName}.${
+                  this.resolver
+                    ? this.resolver.getColumnName(parentTable.name, parentTable.columns[left].name)
+                    : parentTable.columns[left].name
+                }`,
                 "=",
-                eb.ref(`${joinName}.${targetTable.columns[actualRight].name}`),
+                eb.ref(
+                  `${joinName}.${
+                    this.resolver
+                      ? this.resolver.getColumnName(
+                          targetTable.name,
+                          targetTable.columns[actualRight].name,
+                        )
+                      : targetTable.columns[actualRight].name
+                  }`,
+                ),
               ),
             );
           }
@@ -267,7 +287,7 @@ export abstract class SQLQueryCompiler {
     // Apply ORDER BY
     if (options.orderBy) {
       for (const [col, mode] of options.orderBy) {
-        query = query.orderBy(fullSQLName(col, this.mapper), mode);
+        query = query.orderBy(fullSQLName(col, this.resolver), mode);
       }
     }
 
@@ -282,7 +302,9 @@ export abstract class SQLQueryCompiler {
 
     const compiledSelect = selectBuilder.compile();
     mappedSelect.push(
-      ...mapSelect(compiledSelect.result, table, { tableName: this.getTableName(table) }),
+      ...mapSelect(compiledSelect.result, table, this.resolver, {
+        tableName: this.getTableName(table),
+      }),
     );
 
     return query.select(mappedSelect).compile();
@@ -305,7 +327,9 @@ export abstract class SQLQueryCompiler {
 
     // Apply RETURNING if supported
     if (this.driverConfig.supportsReturning) {
-      const columns = mapSelect(true, table, { tableName: this.getTableName(table) });
+      const columns = mapSelect(true, table, this.resolver, {
+        tableName: this.getTableName(table),
+      });
       insert = this.applyReturning(insert, columns);
     }
 
@@ -324,7 +348,10 @@ export abstract class SQLQueryCompiler {
 
     // Add version increment (must be added after encoding, as a raw SQL expression)
     const versionCol = table.getVersionColumn();
-    encoded[versionCol.name] = sql.raw(`COALESCE(${versionCol.name}, 0) + 1`);
+    const versionColumnName = this.resolver
+      ? this.resolver.getColumnName(table.name, versionCol.name)
+      : versionCol.name;
+    encoded[versionColumnName] = sql`coalesce(${sql.ref(versionColumnName)}, 0) + 1`;
 
     let query = this.db.updateTable(this.getTableName(table)).set(encoded);
 

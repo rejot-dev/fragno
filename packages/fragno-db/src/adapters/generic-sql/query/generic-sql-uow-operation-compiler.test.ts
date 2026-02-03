@@ -5,7 +5,7 @@ import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../sc
 import { Cursor } from "../../../query/cursor";
 
 // Test schema with indexes
-const testSchema = schema((s) => {
+const testSchema = schema("test", (s) => {
   return s
     .addTable("users", (t) => {
       return t
@@ -17,7 +17,7 @@ const testSchema = schema((s) => {
         .addColumn("createdAt", column("timestamp"))
         .addColumn("invitedBy", referenceColumn().nullable())
         .createIndex("idx_email", ["email"], { unique: true })
-        .createIndex("idx_name", ["name"])
+        .createIndex("idx_users_name", ["name"])
         .createIndex("idx_age", ["age"]);
     })
     .addTable("posts", (t) => {
@@ -37,21 +37,21 @@ const testSchema = schema((s) => {
         .addColumn("content", column("string"))
         .addColumn("postId", referenceColumn())
         .addColumn("authorId", referenceColumn())
-        .createIndex("idx_post", ["postId"])
+        .createIndex("idx_comments_post", ["postId"])
         .createIndex("idx_author", ["authorId"]);
     })
     .addTable("tags", (t) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("name", column("string"))
-        .createIndex("idx_name", ["name"]);
+        .createIndex("idx_tags_name", ["name"]);
     })
     .addTable("post_tags", (t) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("postId", referenceColumn())
         .addColumn("tagId", referenceColumn())
-        .createIndex("idx_post", ["postId"])
+        .createIndex("idx_post_tags_post", ["postId"])
         .createIndex("idx_tag", ["tagId"]);
     })
     .addReference("author", {
@@ -87,7 +87,7 @@ const testSchema = schema((s) => {
 });
 
 // Schema with custom-named id columns
-const customIdSchema = schema((s) => {
+const customIdSchema = schema("customid", (s) => {
   return s
     .addTable("products", (t) => {
       return t
@@ -232,7 +232,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     expect(result).not.toBeNull();
     expect(result!.query.sql).toMatchInlineSnapshot(
-      `"update "users" set "name" = ?, "_version" = COALESCE(_version, 0) + 1 where "users"."id" = ?"`,
+      `"update "users" set "name" = ?, "_version" = coalesce("_version", 0) + 1 where "users"."id" = ?"`,
     );
     expect(result!.expectedAffectedRows).toBeNull();
   });
@@ -253,7 +253,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     expect(result).not.toBeNull();
     expect(result!.query.sql).toMatchInlineSnapshot(
-      `"update "users" set "name" = ?, "_version" = COALESCE(_version, 0) + 1 where ("users"."id" = ? and "users"."_version" = ?)"`,
+      `"update "users" set "name" = ?, "_version" = coalesce("_version", 0) + 1 where ("users"."id" = ? and "users"."_version" = ?)"`,
     );
     expect(result!.expectedAffectedRows).toBe(1n);
   });
@@ -396,7 +396,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = ? limit ?), "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = ?"`,
+        `"update "posts" set "userId" = (select "_internalId" from "users" where "id" = ? limit ?), "_version" = coalesce("_version", 0) + 1 where "posts"."id" = ?"`,
       );
     });
 
@@ -418,7 +418,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       // Should not have nested SELECT for the userId value
       expect(result!.query.sql).not.toMatch(/\(select.*from.*users/i);
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"update "posts" set "userId" = ?, "_version" = COALESCE(_version, 0) + 1 where "posts"."id" = ?"`,
+        `"update "posts" set "userId" = ?, "_version" = coalesce("_version", 0) + 1 where "posts"."id" = ?"`,
       );
     });
 
@@ -440,7 +440,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"update "users" set "name" = ?, "email" = ?, "isActive" = ?, "_version" = COALESCE(_version, 0) + 1 where "users"."id" = ?"`,
+        `"update "users" set "name" = ?, "email" = ?, "isActive" = ?, "_version" = coalesce("_version", 0) + 1 where "users"."id" = ?"`,
       );
     });
   });
@@ -612,7 +612,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"update "products" set "price" = ?, "_version" = COALESCE(_version, 0) + 1 where "products"."productId" = ?"`,
+        `"update "products" set "price" = ?, "_version" = coalesce("_version", 0) + 1 where "products"."productId" = ?"`,
       );
     });
 
@@ -757,11 +757,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         options: {
-          useIndex: "idx_name",
+          useIndex: "idx_users_name",
           select: true,
-          orderByIndex: { indexName: "idx_name", direction: "asc" },
+          orderByIndex: { indexName: "idx_users_name", direction: "asc" },
         },
       });
 
@@ -799,7 +799,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     test("should compile find with cursor pagination using after", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
       const cursor = new Cursor({
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         orderDirection: "asc",
         pageSize: 10,
         indexValues: { name: "Alice" },
@@ -809,11 +809,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         options: {
-          useIndex: "idx_name",
+          useIndex: "idx_users_name",
           select: true,
-          orderByIndex: { indexName: "idx_name", direction: "asc" },
+          orderByIndex: { indexName: "idx_users_name", direction: "asc" },
           after: cursor,
           pageSize: 10,
         },
@@ -829,7 +829,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     test("should compile find with cursor pagination using before", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
       const cursor = new Cursor({
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         orderDirection: "desc",
         pageSize: 10,
         indexValues: { name: "Bob" },
@@ -839,11 +839,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         options: {
-          useIndex: "idx_name",
+          useIndex: "idx_users_name",
           select: true,
-          orderByIndex: { indexName: "idx_name", direction: "desc" },
+          orderByIndex: { indexName: "idx_users_name", direction: "desc" },
           before: cursor,
           pageSize: 10,
         },
@@ -859,7 +859,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     test("should compile find with cursor pagination and additional where conditions", () => {
       const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
       const cursor = new Cursor({
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         orderDirection: "asc",
         pageSize: 5,
         indexValues: { name: "Alice" },
@@ -869,12 +869,12 @@ describe("GenericSQLUOWOperationCompiler", () => {
         type: "find",
         schema: testSchema,
         table: testSchema.tables.users,
-        indexName: "idx_name",
+        indexName: "idx_users_name",
         options: {
-          useIndex: "idx_name",
+          useIndex: "idx_users_name",
           select: true,
           where: (eb) => eb("isActive", "=", true),
-          orderByIndex: { indexName: "idx_name", direction: "asc" },
+          orderByIndex: { indexName: "idx_users_name", direction: "asc" },
           after: cursor,
           pageSize: 5,
         },

@@ -1,6 +1,6 @@
 import type { AnySchema } from "../../../schema/create";
 import type { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
-import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../naming/sql-naming";
 import { generateMigrationFromSchema } from "../../../migration-engine/auto-from-schema";
 import { createColdKysely } from "./cold-kysely";
 import { type SQLGenerator } from "./sql-generator";
@@ -88,7 +88,7 @@ export interface PreparedMigrationsConfig {
   database: SupportedDatabase;
   driverConfig?: DriverConfig;
   sqliteStorageMode?: SQLiteStorageMode;
-  mapper?: TableNameMapper;
+  resolver?: NamingResolver;
   driver?: SqlDriverAdapter;
   /**
    * Whether to automatically update the schema version in the database after migration.
@@ -145,7 +145,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
     const operations = generateMigrationFromSchema(schema, fromVersion, toVersion);
 
     // Phase 2: Compile operations to SQL
-    const statements = generator.compile(operations, config.mapper);
+    const statements = generator.compile(operations, config.resolver);
 
     // Add version update SQL if requested
     if (updateVersionInMigration && toVersion !== fromVersion) {

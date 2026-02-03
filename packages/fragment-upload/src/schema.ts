@@ -1,6 +1,6 @@
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
-export const uploadSchema = schema((s) => {
+export const uploadSchema = schema("upload", (s) => {
   return s
     .addTable("file", (t) => {
       return t

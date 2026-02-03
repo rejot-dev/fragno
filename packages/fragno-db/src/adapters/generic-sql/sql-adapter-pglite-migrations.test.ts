@@ -14,7 +14,7 @@ import { PGLiteDriverConfig } from "./driver-config";
 import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("SqlAdapter PGLite", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t

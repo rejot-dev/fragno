@@ -8,7 +8,7 @@ import type {
 } from "../../query/unit-of-work/unit-of-work";
 import { Cursor } from "../../query/cursor";
 import type { DriverConfig } from "../generic-sql/driver-config";
-import { createTableNameMapper, type TableNameMapper } from "./table-name-mapper";
+import { createNamingResolver, type NamingResolver } from "../../naming/sql-naming";
 
 /**
  * Options for compiling a find operation with cursor pagination
@@ -55,24 +55,24 @@ export interface CursorConditionResult {
  */
 export abstract class UOWOperationCompiler<TCompiledQuery> {
   #driverConfig: DriverConfig;
-  #mapperFactory?: (namespace: string | undefined) => TableNameMapper | undefined;
+  #resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver;
 
   constructor(
     driverConfig: DriverConfig,
-    mapperFactory?: (namespace: string | undefined) => TableNameMapper | undefined,
+    resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver,
   ) {
     this.#driverConfig = driverConfig;
-    this.#mapperFactory = mapperFactory;
+    this.#resolverFactory = resolverFactory;
   }
 
   protected get driverConfig(): DriverConfig {
     return this.#driverConfig;
   }
 
-  protected get mapperFactory():
-    | ((namespace: string | undefined) => TableNameMapper | undefined)
+  protected get resolverFactory():
+    | ((schema: AnySchema, namespace: string | null) => NamingResolver)
     | undefined {
-    return this.#mapperFactory;
+    return this.#resolverFactory;
   }
 
   abstract compileCount(
@@ -105,12 +105,18 @@ export abstract class UOWOperationCompiler<TCompiledQuery> {
   /**
    * Get the mapper for a specific operation based on its namespace
    */
-  protected getMapperForOperation(namespace: string | undefined): TableNameMapper | undefined {
-    return this.#mapperFactory
-      ? this.#mapperFactory(namespace)
-      : namespace
-        ? createTableNameMapper(namespace)
-        : undefined;
+  protected getNamingResolver(
+    schema: AnySchema,
+    namespace: string | null | undefined,
+  ): NamingResolver {
+    if (this.#resolverFactory) {
+      return this.#resolverFactory(schema, namespace ?? null);
+    }
+    return createNamingResolver(
+      schema,
+      namespace ?? null,
+      this.#driverConfig.defaultNamingStrategy,
+    );
   }
 
   /**
@@ -154,9 +160,13 @@ export abstract class UOWOperationCompiler<TCompiledQuery> {
   /**
    * Get the physical table name for an operation, applying namespace mapping if needed
    */
-  protected getPhysicalTableName(logicalName: string, namespace: string | undefined): string {
-    const mapper = this.getMapperForOperation(namespace);
-    return mapper ? mapper.toPhysical(logicalName) : logicalName;
+  protected getPhysicalTableName(
+    schema: AnySchema,
+    logicalName: string,
+    namespace: string | undefined,
+  ): string {
+    const resolver = this.getNamingResolver(schema, namespace ?? null);
+    return resolver.getTableName(logicalName);
   }
 }
 

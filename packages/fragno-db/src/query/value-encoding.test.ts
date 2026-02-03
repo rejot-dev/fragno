@@ -15,7 +15,7 @@ import {
 } from "./value-encoding";
 
 describe("encodeValues", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -136,7 +136,7 @@ describe("encodeValues", () => {
 
     it("should use injected runtime defaults when provided", () => {
       const testDate = new Date("2024-02-01T00:00:00Z");
-      const testSchemaWithDefaults = schema((s) =>
+      const testSchemaWithDefaults = schema("testschemawithdefaults", (s) =>
         s.addTable("entries", (t) =>
           t.addColumn("id", idColumn()).addColumn(
             "createdAt",
@@ -159,7 +159,7 @@ describe("encodeValues", () => {
   describe("database defaults in memory", () => {
     it("should apply static and dbSpecial defaults when requested", () => {
       const testDate = new Date("2024-03-01T00:00:00Z");
-      const testSchemaWithDbDefaults = schema((s) =>
+      const testSchemaWithDbDefaults = schema("testschemawithdbdefaults", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
@@ -188,7 +188,7 @@ describe("encodeValues", () => {
     });
 
     it("should not override explicit values when applying db defaults", () => {
-      const testSchemaWithDbDefaults = schema((s) =>
+      const testSchemaWithDbDefaults = schema("testschemawithdbdefaults", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())

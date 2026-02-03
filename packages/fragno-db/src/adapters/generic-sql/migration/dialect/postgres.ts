@@ -6,6 +6,7 @@ import type {
 } from "../../../../migration-engine/shared";
 import { isUpdated } from "../../../../migration-engine/shared";
 import { SQLGenerator } from "../sql-generator";
+import type { NamingResolver } from "../../../../naming/sql-naming";
 
 const errors = {
   IdColumnUpdate:
@@ -59,7 +60,9 @@ export class PostgresSQLGenerator extends SQLGenerator {
    */
   protected override compileUpdateColumn(
     tableName: string,
+    logicalTableName: string,
     operation: Extract<ColumnOperation, { type: "update-column" }>,
+    resolver?: NamingResolver,
   ): CompiledQuery | CompiledQuery[] {
     const col = operation.value;
 
@@ -72,13 +75,14 @@ export class PostgresSQLGenerator extends SQLGenerator {
     }
 
     const queries: CompiledQuery[] = [];
-    const alter = () => this.db.schema.alterTable(tableName);
+    const alter = () => this.getSchemaBuilder(resolver).alterTable(tableName);
+    const physicalColumnName = this.getColumnName(operation.name, logicalTableName, resolver);
 
     // PostgreSQL: Use explicit USING clause for type conversion
     if (operation.updateDataType) {
       const dbType = sql.raw(this.getDBType(col));
       queries.push(
-        sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(operation.name)} TYPE ${dbType} USING (${sql.ref(operation.name)}::${dbType})`.compile(
+        sql`ALTER TABLE ${sql.ref(tableName)} ALTER COLUMN ${sql.ref(physicalColumnName)} TYPE ${dbType} USING (${sql.ref(physicalColumnName)}::${dbType})`.compile(
           this.db,
         ),
       );
@@ -87,7 +91,7 @@ export class PostgresSQLGenerator extends SQLGenerator {
     if (operation.updateNullable) {
       queries.push(
         alter()
-          .alterColumn(operation.name, (build) =>
+          .alterColumn(physicalColumnName, (build) =>
             col.isNullable ? build.dropNotNull() : build.setNotNull(),
           )
           .compile(),
@@ -98,7 +102,7 @@ export class PostgresSQLGenerator extends SQLGenerator {
       const defaultValue = this.getDefaultValue(col);
       queries.push(
         alter()
-          .alterColumn(operation.name, (build) => {
+          .alterColumn(physicalColumnName, (build) => {
             if (!defaultValue) {
               return build.dropDefault();
             }

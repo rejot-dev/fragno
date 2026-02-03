@@ -39,7 +39,7 @@ function createMockDecoder(): UOWDecoder {
 
 describe("FindBuilder", () => {
   it("should support primary index", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t
           .addColumn("id", idColumn())
@@ -60,7 +60,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support custom indexes", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t
           .addColumn("id", idColumn())
@@ -83,7 +83,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support cursor-based pagination", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -103,7 +103,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support backward cursor pagination", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -123,7 +123,7 @@ describe("FindBuilder", () => {
   });
 
   it("should throw RangeError for pageSize <= 0", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -143,7 +143,7 @@ describe("FindBuilder", () => {
   });
 
   it("should throw RangeError for non-integer pageSize", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -167,7 +167,7 @@ describe("FindBuilder", () => {
   });
 
   it("should throw if index doesn't exist", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -178,7 +178,7 @@ describe("FindBuilder", () => {
   });
 
   it("should throw if finalized without index", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -191,7 +191,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support count operations", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("age", "integer"),
       ),
@@ -206,7 +206,7 @@ describe("FindBuilder", () => {
   });
 
   it("should throw when using both select and selectCount", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
     );
 
@@ -229,7 +229,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support orderByIndex", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t
           .addColumn("id", idColumn())
@@ -258,7 +258,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support join operations", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
         .addTable("posts", (t) =>
@@ -292,7 +292,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support join operations without builder function", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
         .addTable("posts", (t) =>
@@ -326,7 +326,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support join with whereIndex", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t
@@ -374,7 +374,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support join with orderByIndex", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) =>
           t
@@ -419,7 +419,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support join with pageSize", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
         .addTable("posts", (t) =>
@@ -454,7 +454,7 @@ describe("FindBuilder", () => {
   });
 
   it("should throw RangeError for invalid pageSize in join", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
         .addTable("posts", (t) =>
@@ -499,7 +499,7 @@ describe("FindBuilder", () => {
   });
 
   it("should support nested joins", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s
         .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string"))
         .addTable("posts", (t) =>
@@ -565,7 +565,7 @@ describe("FindBuilder", () => {
 });
 
 describe("IndexedConditionBuilder", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
       t
         .addColumn("id", idColumn())
@@ -586,7 +586,7 @@ describe("IndexedConditionBuilder", () => {
     const indexedColumns = new Set<string>();
     for (const index of Object.values(usersTable.indexes)) {
       for (const col of index.columns) {
-        indexedColumns.add(col.ormName);
+        indexedColumns.add(col.name);
       }
     }
 
@@ -713,7 +713,7 @@ describe("IndexedConditionBuilder", () => {
   describe("type safety", () => {
     it("should restrict to only indexed columns at type level", () => {
       // This schema has "bio" column that is NOT indexed
-      const typeTestSchema = schema((s) =>
+      const typeTestSchema = schema("typetest", (s) =>
         s.addTable("users", (t) =>
           t
             .addColumn("id", idColumn())
@@ -771,7 +771,7 @@ describe("IndexedConditionBuilder", () => {
 });
 
 describe("UpdateBuilder with string ID", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
   );
 
@@ -807,7 +807,7 @@ describe("UpdateBuilder with string ID", () => {
 });
 
 describe("DeleteBuilder with string ID", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", "string")),
   );
 
@@ -840,7 +840,7 @@ describe("DeleteBuilder with string ID", () => {
 });
 
 describe("generateId", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
       t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
     ),
@@ -904,7 +904,7 @@ describe("generateId", () => {
 });
 
 describe("getCreatedIds", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
       t.addColumn("id", idColumn()).addColumn("email", "string").addColumn("name", "string"),
     ),
@@ -1020,20 +1020,20 @@ describe("getCreatedIds", () => {
 describe("Phase promises with multiple views", () => {
   it("should return only operations added to the current view when using retrievalPhase promise", async () => {
     // Create two separate schemas
-    const schema1 = schema((s) =>
+    const schema1 = schema("schema1", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
       ),
     );
 
-    const schema2 = schema((s) =>
+    const schema2 = schema("schema2", (s) =>
       s.addTable("posts", (t) =>
         t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
       ),
     );
 
     // Create a schema namespace map
-    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string>();
+    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string | null>();
     schemaNamespaceMap.set(schema1, "namespace1");
     schemaNamespaceMap.set(schema2, "namespace2");
 
@@ -1090,7 +1090,7 @@ describe("Phase promises with multiple views", () => {
   });
 
   it("should isolate operations when getUnitOfWork is called multiple times with same schema", async () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
       ),
@@ -1136,19 +1136,19 @@ describe("Phase promises with multiple views", () => {
   });
 
   it("should show that getCreatedIds returns ALL created IDs regardless of which view created them", async () => {
-    const schema1 = schema((s) =>
+    const schema1 = schema("schema1", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
       ),
     );
 
-    const schema2 = schema((s) =>
+    const schema2 = schema("schema2", (s) =>
       s.addTable("posts", (t) =>
         t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
       ),
     );
 
-    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string>();
+    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string | null>();
     schemaNamespaceMap.set(schema1, "namespace1");
     schemaNamespaceMap.set(schema2, "namespace2");
 
@@ -1191,19 +1191,19 @@ describe("Phase promises with multiple views", () => {
   });
 
   it("should generate unique IDs when multiple views create items", async () => {
-    const schema1 = schema((s) =>
+    const schema1 = schema("schema1", (s) =>
       s.addTable("users", (t) =>
         t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
       ),
     );
 
-    const schema2 = schema((s) =>
+    const schema2 = schema("schema2", (s) =>
       s.addTable("posts", (t) =>
         t.addColumn("id", idColumn()).addColumn("title", "string").addColumn("content", "string"),
       ),
     );
 
-    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string>();
+    const schemaNamespaceMap = new WeakMap<typeof schema1 | typeof schema2, string | null>();
     schemaNamespaceMap.set(schema1, "namespace1");
     schemaNamespaceMap.set(schema2, "namespace2");
 
@@ -1259,7 +1259,7 @@ describe("Phase promises with multiple views", () => {
 });
 
 describe("Instrumentation", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
       t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
     ),
@@ -1389,7 +1389,7 @@ describe("Instrumentation", () => {
 });
 
 describe("Error Handling", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
       t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
     ),
@@ -1674,7 +1674,7 @@ describe("Error Handling", () => {
 });
 
 describe("findFirst convenience method", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s
       .addTable("users", (t) =>
         t

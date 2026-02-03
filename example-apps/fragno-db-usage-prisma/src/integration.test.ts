@@ -275,8 +275,8 @@ describe("Fragno Database Prisma", () => {
       // Verify files were generated
       expect(logs.some((log) => log.includes("✓ Generated:"))).toBe(true);
       expect(logs.some((log) => log.includes("Output generated successfully"))).toBe(true);
-      expect(logs.some((log) => log.includes("fragno-db-comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("fragno-db-rating"))).toBe(true);
+      expect(logs.some((log) => log.includes("comment"))).toBe(true);
+      expect(logs.some((log) => log.includes("upvote"))).toBe(true);
       expect(logs.some((log) => log.includes("Files generated:"))).toBe(true);
     });
   });

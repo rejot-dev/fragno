@@ -1,6 +1,6 @@
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
-export const authSchema = schema((s) => {
+export const authSchema = schema("auth", (s) => {
   return s
     .addTable("user", (t) => {
       return t

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { buildDatabaseFragmentsTest } from "./db-test";
 
 // Test schema with users table
-const userSchema = schema((s) => {
+const userSchema = schema("user", (s) => {
   return s.addTable("users", (t) => {
     return t
       .addColumn("id", idColumn())
@@ -18,7 +18,7 @@ const userSchema = schema((s) => {
 });
 
 // Test schema with posts table
-const postSchema = schema((s) => {
+const postSchema = schema("post", (s) => {
   return s.addTable("posts", (t) => {
     return t
       .addColumn("id", idColumn())

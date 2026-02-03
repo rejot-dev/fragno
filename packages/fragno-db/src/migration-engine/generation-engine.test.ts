@@ -14,6 +14,27 @@ import {
   SQLocalDriverConfig,
 } from "../adapters/generic-sql/driver-config";
 
+const buildFile = (
+  overrides: Partial<GenerationInternalResult> &
+    Pick<GenerationInternalResult, "schema" | "namespace" | "fromVersion" | "toVersion">,
+): GenerationInternalResult => {
+  const namespace = overrides.namespace ?? null;
+  const schemaName = overrides.schemaName ?? "test";
+  const namespaceKey = overrides.namespaceKey ?? namespace ?? schemaName;
+  const isSettings = overrides.isSettings ?? false;
+
+  return {
+    schema: overrides.schema,
+    path: overrides.path ?? "placeholder.sql",
+    namespace,
+    namespaceKey,
+    schemaName,
+    isSettings,
+    fromVersion: overrides.fromVersion,
+    toVersion: overrides.toVersion,
+  };
+};
+
 describe("generateSchemaArtifacts - sql", () => {
   const mockDate = new Date("2025-10-24T12:00:00Z");
   let adapter: SqlAdapter;
@@ -48,7 +69,7 @@ describe("generateSchemaArtifacts - sql", () => {
   });
 
   it("should generate migration for single database from version 0", async () => {
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -63,7 +84,7 @@ describe("generateSchemaArtifacts - sql", () => {
     const results = await generateSchemaArtifacts([fragnoDb]);
 
     expect(results).toHaveLength(2); // Settings + test-db
-    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(results[0].namespace).toBeNull();
     expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
     expect(results[0].schema).toContain("create table");
     expect(results[0].schema).toContain("fragno_db_settings");
@@ -71,23 +92,23 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results[1].namespace).toBe("test-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_test-db.sql");
     expect(results[1].schema).toContain("create table");
-    expect(results[1].schema).toContain("users_test-db");
+    expect(results[1].schema).toContain('"test_db"."users"');
   });
 
   it("should generate migrations for multiple databases in alphabetical order", async () => {
-    const schema1: AnySchema = schema((s) => {
+    const schema1: AnySchema = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const schema2: AnySchema = schema((s) => {
+    const schema2: AnySchema = schema("schema2", (s) => {
       return s.addTable("posts", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       });
     });
 
-    const schema3: AnySchema = schema((s) => {
+    const schema3: AnySchema = schema("schema3", (s) => {
       return s.addTable("comments", (t) => {
         return t.addColumn("id", idColumn()).addColumn("text", column("string"));
       });
@@ -114,24 +135,24 @@ describe("generateSchemaArtifacts - sql", () => {
     const results = await generateSchemaArtifacts([fragnoDb1, fragnoDb2, fragnoDb3]);
 
     expect(results).toHaveLength(4); // Settings + 3 databases
-    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(results[0].namespace).toBeNull();
     expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
 
     expect(results[1].namespace).toBe("apple-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_apple-db.sql");
-    expect(results[1].schema).toContain("posts_apple-db");
+    expect(results[1].schema).toContain('"apple_db"."posts"');
 
     expect(results[2].namespace).toBe("mango-db");
     expect(results[2].path).toBe("20251024_003_f000_t001_mango-db.sql");
-    expect(results[2].schema).toContain("comments_mango-db");
+    expect(results[2].schema).toContain('"mango_db"."comments"');
 
     expect(results[3].namespace).toBe("zebra-db");
     expect(results[3].path).toBe("20251024_004_f000_t001_zebra-db.sql");
-    expect(results[3].schema).toContain("users_zebra-db");
+    expect(results[3].schema).toContain('"zebra_db"."users"');
   });
 
   it("should handle existing settings version and generate both settings and fragment migrations", async () => {
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -155,7 +176,7 @@ describe("generateSchemaArtifacts - sql", () => {
     // Settings table already at version 1, so no settings migration needed
     // But fragment migration is still generated
     expect(results).toHaveLength(2);
-    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(results[0].namespace).toBeNull();
     expect(results[1].namespace).toBe("test-db");
     expect(results[1].path).toBe("20251024_002_f000_t002_test-db.sql");
     expect(results[1].schema).toContain("create table");
@@ -163,7 +184,7 @@ describe("generateSchemaArtifacts - sql", () => {
   });
 
   it("should generate settings migration even with no fragment changes", async () => {
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -181,9 +202,11 @@ describe("generateSchemaArtifacts - sql", () => {
       fromVersion: 0,
     });
 
-    // Settings migration is generated, but no fragment migration (since toVersion=0)
-    expect(results).toHaveLength(1);
-    expect(results[0].namespace).toBe(""); // Empty namespace for settings table
+    // Settings migration is generated, and fragment migration creates schema (toVersion=0)
+    expect(results).toHaveLength(2);
+    expect(results[0].namespace).toBeNull();
+    expect(results[1].namespace).toBe("test-db");
+    expect(results[1].schema).toContain('CREATE SCHEMA IF NOT EXISTS "test_db"');
   });
 
   it("should throw error when no databases provided", async () => {
@@ -193,7 +216,7 @@ describe("generateSchemaArtifacts - sql", () => {
   });
 
   it("should throw error when database connection is unhealthy", async () => {
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -214,7 +237,7 @@ describe("generateSchemaArtifacts - sql", () => {
   });
 
   it("should generate SQL with correct version tracking in settings", async () => {
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -239,7 +262,7 @@ describe("generateSchemaArtifacts - sql", () => {
   });
 
   it("should generate INSERT for version 0->N and UPDATE for version N->M", async () => {
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -268,7 +291,9 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toContain("test-db.schema_version");
     expect(resultsV1[1].schema).toContain("'1'");
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
-      "create table "users_test-db" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "CREATE SCHEMA IF NOT EXISTS "test_db";
+
+      create table "test_db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
     `);
@@ -287,7 +312,9 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV2[1].schema).toContain("test-db.schema_version");
     expect(resultsV2[1].schema).toContain("'2'");
     expect(resultsV2[1].schema).toMatchInlineSnapshot(`
-      "alter table "users_test-db" add column "email" text;
+      "CREATE SCHEMA IF NOT EXISTS "test_db";
+
+      alter table "test_db"."users" add column "email" text;
 
       update "fragno_db_settings" set "value" = '2' where "key" = 'test-db.schema_version';"
     `);
@@ -311,7 +338,7 @@ describe("generateSchemaArtifacts - sql", () => {
     vi.spyOn(mysqlAdapter, "isConnectionHealthy").mockResolvedValue(true);
     vi.spyOn(mysqlAdapter, "getSchemaVersion").mockResolvedValue(undefined);
 
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -356,7 +383,7 @@ describe("generateSchemaArtifacts - sql", () => {
     vi.spyOn(sqliteAdapter, "isConnectionHealthy").mockResolvedValue(true);
     vi.spyOn(sqliteAdapter, "getSchemaVersion").mockResolvedValue(undefined);
 
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -397,7 +424,7 @@ describe("generateSchemaArtifacts - schema outputs", () => {
       driverConfig: new NodePostgresDriverConfig(),
     });
 
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -433,7 +460,7 @@ describe("generateSchemaArtifacts - schema outputs", () => {
       sqliteProfile: "prisma",
     });
 
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("events", (t) => {
         return t.addColumn("id", idColumn()).addColumn("createdAt", column("timestamp"));
       });
@@ -466,7 +493,7 @@ describe("generateSchemaArtifacts - schema outputs", () => {
       sqliteProfile: "prisma",
     });
 
-    const testSchema: AnySchema = schema((s) => {
+    const testSchema: AnySchema = schema("test", (s) => {
       return s.addTable("events", (t) => {
         return t.addColumn("id", idColumn()).addColumn("createdAt", column("timestamp"));
       });
@@ -505,59 +532,56 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should order settings namespace first", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema1",
-        path: "placeholder.sql",
         namespace: "fragno-db-comment-db",
         fromVersion: 0,
         toVersion: 3,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema2",
-        path: "placeholder.sql",
-        namespace: "", // Empty namespace for settings table
+        namespace: null,
+        namespaceKey: "fragno_db_settings",
+        schemaName: "fragno_internal",
+        isSettings: true,
         fromVersion: 0,
         toVersion: 1,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema3",
-        path: "placeholder.sql",
         namespace: "fragno-db-rating-db",
         fromVersion: 0,
         toVersion: 2,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
 
     expect(result).toHaveLength(3);
-    expect(result[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(result[0].namespace).toBeNull();
     expect(result[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
   });
 
   it("should sort non-settings namespaces alphabetically", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema1",
-        path: "placeholder.sql",
         namespace: "zebra-db",
         fromVersion: 0,
         toVersion: 1,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema2",
-        path: "placeholder.sql",
         namespace: "apple-db",
         fromVersion: 0,
         toVersion: 1,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema3",
-        path: "placeholder.sql",
         namespace: "mango-db",
         fromVersion: 0,
         toVersion: 1,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
@@ -570,20 +594,21 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should format filename with correct ordering and version numbers", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "CREATE TABLE users;",
-        path: "placeholder.sql",
-        namespace: "", // Empty namespace for settings table
+        namespace: null,
+        namespaceKey: "fragno_db_settings",
+        schemaName: "fragno_internal",
+        isSettings: true,
         fromVersion: 0,
         toVersion: 5,
-      },
-      {
+      }),
+      buildFile({
         schema: "CREATE TABLE comments;",
-        path: "placeholder.sql",
         namespace: "comment-db",
         fromVersion: 5,
         toVersion: 10,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
@@ -594,13 +619,12 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should pad numbers to 3 digits", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema",
-        path: "placeholder.sql",
         namespace: "test-db",
         fromVersion: 99,
         toVersion: 999,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
@@ -610,13 +634,12 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should sanitize namespace with invalid characters", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema",
-        path: "placeholder.sql",
         namespace: "test@db#special!chars",
         fromVersion: 0,
         toVersion: 1,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
@@ -626,13 +649,12 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should preserve schema content", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "CREATE TABLE users (id INT);",
-        path: "placeholder.sql",
         namespace: "user-db",
         fromVersion: 0,
         toVersion: 1,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
@@ -642,40 +664,39 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should handle multiple files with settings first and others sorted", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema1",
-        path: "placeholder.sql",
         namespace: "zoo-db",
         fromVersion: 1,
         toVersion: 2,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema2",
-        path: "placeholder.sql",
-        namespace: "", // Empty namespace for settings table
+        namespace: null,
+        namespaceKey: "fragno_db_settings",
+        schemaName: "fragno_internal",
+        isSettings: true,
         fromVersion: 0,
         toVersion: 5,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema3",
-        path: "placeholder.sql",
         namespace: "apple-db",
         fromVersion: 3,
         toVersion: 4,
-      },
-      {
+      }),
+      buildFile({
         schema: "schema4",
-        path: "placeholder.sql",
         namespace: "mango-db",
         fromVersion: 2,
         toVersion: 3,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
 
     expect(result).toHaveLength(4);
-    expect(result[0].namespace).toBe(""); // Empty namespace for settings table
+    expect(result[0].namespace).toBeNull();
     expect(result[0].path).toBe("20251024_001_f000_t005_fragno_db_settings.sql");
     expect(result[1].namespace).toBe("apple-db");
     expect(result[1].path).toBe("20251024_002_f003_t004_apple-db.sql");
@@ -686,13 +707,14 @@ describe("postProcessMigrationFilenames", () => {
   });
 
   it("should handle ordering numbers beyond 100", () => {
-    const files: GenerationInternalResult[] = Array.from({ length: 150 }, (_, i) => ({
-      schema: `schema${i}`,
-      path: "placeholder.sql",
-      namespace: `db-${String(i).padStart(3, "0")}`,
-      fromVersion: 0,
-      toVersion: 1,
-    }));
+    const files: GenerationInternalResult[] = Array.from({ length: 150 }, (_, i) =>
+      buildFile({
+        schema: `schema${i}`,
+        namespace: `db-${String(i).padStart(3, "0")}`,
+        fromVersion: 0,
+        toVersion: 1,
+      }),
+    );
 
     const result = postProcessMigrationFilenames(files);
 
@@ -703,13 +725,12 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should preserve hyphens in namespace", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema",
-        path: "placeholder.sql",
         namespace: "my-awesome-db-fragment",
         fromVersion: 0,
         toVersion: 1,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);
@@ -719,13 +740,12 @@ describe("postProcessMigrationFilenames", () => {
 
   it("should use current date in YYYYMMDD format", () => {
     const files: GenerationInternalResult[] = [
-      {
+      buildFile({
         schema: "schema",
-        path: "placeholder.sql",
         namespace: "test-db",
         fromVersion: 0,
         toVersion: 1,
-      },
+      }),
     ];
 
     const result = postProcessMigrationFilenames(files);

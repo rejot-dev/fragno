@@ -41,6 +41,11 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
    * Optional durable hooks processing configuration.
    */
   durableHooks?: DurableHooksProcessingOptions;
+  /**
+   * Optional override for database namespace. If provided (including null), it is used as-is.
+   * When omitted, defaults to schema.name.
+   */
+  databaseNamespace?: string | null;
 };
 
 /**
@@ -60,7 +65,7 @@ export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
   /**
    * The database namespace for this fragment.
    */
-  namespace: string;
+  namespace: string | null;
   /**
    * Create a new Unit of Work for database operations.
    */
@@ -152,7 +157,6 @@ export type DatabaseFragmentContext<TSchema extends AnySchema> = {
 function createDatabaseContext<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
-  namespace: string,
 ): DatabaseFragmentContext<TSchema> {
   const databaseAdapter = options.databaseAdapter;
 
@@ -162,9 +166,18 @@ function createDatabaseContext<TSchema extends AnySchema>(
     );
   }
 
+  const namespace = resolveDatabaseNamespace(options, schema);
   const db = databaseAdapter.createQueryEngine(schema, namespace);
 
   return { databaseAdapter, db };
+}
+
+function resolveDatabaseNamespace<TSchema extends AnySchema>(
+  options: FragnoPublicConfigWithDatabase,
+  schema: TSchema,
+): string | null {
+  const hasOverride = options.databaseNamespace !== undefined;
+  return hasOverride ? (options.databaseNamespace ?? null) : schema.name;
 }
 
 /**
@@ -208,7 +221,6 @@ export class DatabaseFragmentDefinitionBuilder<
     TLinkedFragments
   >;
   #schema: TSchema;
-  #namespace: string;
   #hooksFactory?: (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => THooks;
 
   constructor(
@@ -226,7 +238,6 @@ export class DatabaseFragmentDefinitionBuilder<
       TLinkedFragments
     >,
     schema: TSchema,
-    namespace?: string,
     hooksFactory?: (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
@@ -234,7 +245,6 @@ export class DatabaseFragmentDefinitionBuilder<
   ) {
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
-    this.#namespace = namespace ?? baseBuilder.name;
     this.#hooksFactory = hooksFactory;
   }
 
@@ -264,7 +274,8 @@ export class DatabaseFragmentDefinitionBuilder<
   > {
     // Wrap user function to inject DB context
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
-      const dbContext = createDatabaseContext(context.options, this.#schema, this.#namespace);
+      const dbContext = createDatabaseContext(context.options, this.#schema);
+      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
 
       // Call user function with enriched context
       const userDeps = fn({
@@ -279,7 +290,7 @@ export class DatabaseFragmentDefinitionBuilder<
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         db: dbContext.db,
         schema: this.#schema,
-        namespace: this.#namespace,
+        namespace,
         createUnitOfWork: createUow,
       };
 
@@ -292,12 +303,7 @@ export class DatabaseFragmentDefinitionBuilder<
     // Create new base builder with wrapped function
     const newBaseBuilder = this.#baseBuilder.withDependencies(wrappedFn);
 
-    return new DatabaseFragmentDefinitionBuilder(
-      newBaseBuilder,
-      this.#schema,
-      this.#namespace,
-      this.#hooksFactory,
-    );
+    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
   }
 
   providesBaseService<TNewService>(
@@ -325,12 +331,7 @@ export class DatabaseFragmentDefinitionBuilder<
   > {
     const newBaseBuilder = this.#baseBuilder.providesBaseService<TNewService>(fn);
 
-    return new DatabaseFragmentDefinitionBuilder(
-      newBaseBuilder,
-      this.#schema,
-      this.#namespace,
-      this.#hooksFactory,
-    );
+    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
   }
 
   providesService<TServiceName extends string, TService>(
@@ -362,12 +363,7 @@ export class DatabaseFragmentDefinitionBuilder<
       fn,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(
-      newBaseBuilder,
-      this.#schema,
-      this.#namespace,
-      this.#hooksFactory,
-    );
+    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
   }
 
   /**
@@ -406,12 +402,7 @@ export class DatabaseFragmentDefinitionBuilder<
       fn,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(
-      newBaseBuilder,
-      this.#schema,
-      this.#namespace,
-      this.#hooksFactory,
-    );
+    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
   }
 
   /**
@@ -475,7 +466,6 @@ export class DatabaseFragmentDefinitionBuilder<
     const newBuilder = new DatabaseFragmentDefinitionBuilder(
       this.#baseBuilder,
       this.#schema,
-      this.#namespace,
     ) as unknown as DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
@@ -516,12 +506,7 @@ export class DatabaseFragmentDefinitionBuilder<
   > {
     const newBaseBuilder = this.#baseBuilder.usesService<TServiceName, TService>(serviceName);
 
-    return new DatabaseFragmentDefinitionBuilder(
-      newBaseBuilder,
-      this.#schema,
-      this.#namespace,
-      this.#hooksFactory,
-    );
+    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
   }
 
   /**
@@ -547,12 +532,7 @@ export class DatabaseFragmentDefinitionBuilder<
       serviceName,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(
-      newBaseBuilder,
-      this.#schema,
-      this.#namespace,
-      this.#hooksFactory,
-    );
+    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
   }
 
   /**
@@ -601,12 +581,13 @@ export class DatabaseFragmentDefinitionBuilder<
         }
       }
 
-      const { db } = createDatabaseContext(context.options, this.#schema, this.#namespace);
+      const { db } = createDatabaseContext(context.options, this.#schema);
+      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         db,
         schema: this.#schema,
-        namespace: this.#namespace,
+        namespace,
         createUnitOfWork: () => db.createUnitOfWork(),
       };
 
@@ -619,7 +600,7 @@ export class DatabaseFragmentDefinitionBuilder<
     // Use the adapter's shared context storage (all fragments using the same adapter share this storage)
     const builderWithExternalStorage = this.#baseBuilder.withExternalRequestStorage(
       ({ options }) => {
-        const dbContext = createDatabaseContext(options, this.#schema, this.#namespace);
+        const dbContext = createDatabaseContext(options, this.#schema);
         return dbContext.databaseAdapter.contextStorage;
       },
     );
@@ -628,7 +609,7 @@ export class DatabaseFragmentDefinitionBuilder<
     const builderWithStorage = builderWithExternalStorage.withRequestStorage(
       ({ options }): DatabaseRequestStorage => {
         // Create database context - needed here to create the UOW
-        const dbContextForStorage = createDatabaseContext(options, this.#schema, this.#namespace);
+        const dbContextForStorage = createDatabaseContext(options, this.#schema);
 
         // Create a new Unit of Work for this request
         const uow: IUnitOfWork = dbContextForStorage.db.createUnitOfWork();
@@ -664,6 +645,8 @@ export class DatabaseFragmentDefinitionBuilder<
         return cachedHooksConfig;
       }
 
+      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const namespaceKey = namespace ?? this.#schema.name;
       const durableHooksOptions = context.options.durableHooks;
       const hookAdapter =
         context.options.databaseAdapter.getHookProcessingAdapter?.() ??
@@ -672,10 +655,10 @@ export class DatabaseFragmentDefinitionBuilder<
         hookAdapter === context.options.databaseAdapter
           ? context.options
           : { ...context.options, databaseAdapter: hookAdapter };
-      const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema, this.#namespace);
+      const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: this.#hooksFactory(context),
-        namespace: this.#namespace,
+        namespace: namespaceKey,
         internalFragment: internalFragmentFactory({
           config: context.config,
           options: hookOptions,

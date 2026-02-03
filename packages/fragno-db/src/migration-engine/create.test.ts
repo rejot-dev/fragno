@@ -4,7 +4,7 @@ import { schema, idColumn, column, referenceColumn } from "../schema/create";
 import type { MigrationOperation } from "./shared";
 
 describe("createMigrator", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -296,7 +296,7 @@ describe("createMigrator", () => {
 
   describe("with foreign keys", () => {
     it("should handle schema with foreign keys", async () => {
-      const fkSchema = schema((s) => {
+      const fkSchema = schema("fk", (s) => {
         return s
           .addTable("users", (t) => {
             return t.addColumn("id", idColumn());

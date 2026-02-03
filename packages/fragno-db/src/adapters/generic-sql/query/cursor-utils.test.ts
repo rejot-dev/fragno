@@ -5,7 +5,7 @@ import type { Condition } from "../../../query/condition-builder";
 import { NodePostgresDriverConfig } from "../driver-config";
 import { buildCursorCondition } from "./cursor-utils";
 
-const testSchema = schema((s) => {
+const testSchema = schema("workflow", (s) => {
   return s.addTable("workflow_step", (t) => {
     return t
       .addColumn("id", idColumn())
@@ -38,7 +38,7 @@ const normalizeCondition = (condition?: Condition): NormalizedCondition | null =
     case "compare":
       return {
         type: "compare",
-        column: condition.a.ormName,
+        column: condition.a.name,
         operator: condition.operator,
         value: condition.b,
       };

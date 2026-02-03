@@ -5,7 +5,7 @@ import type {
   ForeignKeyInfo,
   MigrationOperation,
 } from "../../../../migration-engine/shared";
-import type { TableNameMapper } from "../../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../../naming/sql-naming";
 import { SQLGenerator } from "../sql-generator";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,15 +125,16 @@ export class SQLiteSQLGenerator extends SQLGenerator {
    */
   protected override compileCreateTable(
     operation: Extract<MigrationOperation, { type: "create-table" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const tableName = this.getTableName(operation.name, mapper);
-    let builder: CreateTableBuilderAny = this.db.schema.createTable(tableName);
+    const tableName = this.getTableName(operation.name, resolver);
+    let builder: CreateTableBuilderAny = this.getSchemaBuilder(resolver).createTable(tableName);
 
     // Add columns
     for (const col of operation.columns) {
+      const columnName = this.getColumnName(col.name, operation.name, resolver);
       builder = builder.addColumn(
-        col.name,
+        columnName,
         sql.raw(this.getDBType(col)),
         (b: ColumnDefinitionBuilder) => this.buildColumn(col, b),
       );
@@ -144,10 +145,12 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     if (metadata?.inlineForeignKeys) {
       for (const fk of metadata.inlineForeignKeys) {
         builder = builder.addForeignKeyConstraint(
-          fk.name,
-          fk.columns,
-          this.getTableName(fk.referencedTable, mapper),
-          fk.referencedColumns,
+          this.getForeignKeyName(fk.name, operation.name, fk.referencedTable, resolver),
+          fk.columns.map((columnName) => this.getColumnName(columnName, operation.name, resolver)),
+          this.getTableName(fk.referencedTable, resolver),
+          fk.referencedColumns.map((columnName) =>
+            this.getColumnName(columnName, fk.referencedTable, resolver),
+          ),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (cb: any) => cb.onUpdate("restrict").onDelete("restrict"),
         );
@@ -168,7 +171,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
    */
   protected override compileAddForeignKey(
     _operation: Extract<MigrationOperation, { type: "add-foreign-key" }>,
-    _mapper?: TableNameMapper,
+    _resolver?: NamingResolver,
   ): CompiledQuery {
     throw new Error(errors.SQLiteUpdateForeignKeys);
   }
@@ -178,7 +181,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
    */
   protected override compileDropForeignKey(
     _operation: Extract<MigrationOperation, { type: "drop-foreign-key" }>,
-    _mapper?: TableNameMapper,
+    _resolver?: NamingResolver,
   ): CompiledQuery {
     throw new Error(errors.SQLiteUpdateForeignKeys);
   }
@@ -188,7 +191,9 @@ export class SQLiteSQLGenerator extends SQLGenerator {
    */
   protected override compileUpdateColumn(
     _tableName: string,
+    _logicalTableName: string,
     operation: Extract<ColumnOperation, { type: "update-column" }>,
+    _resolver?: NamingResolver,
   ): CompiledQuery | CompiledQuery[] {
     const col = operation.value;
     if (col.role === "external-id" || col.role === "internal-id") {

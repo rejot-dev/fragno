@@ -16,7 +16,7 @@ import { FragnoDatabase } from "../../mod";
 import { generateSchemaArtifacts } from "../../migration-engine/generation-engine";
 
 describe("SqlAdapter SQLite (prisma profile)", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -86,7 +86,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       });
   });
 
-  const schema2 = schema((s) => {
+  const schema2 = schema("schema2", (s) => {
     return s
       .addTable("products", (t) => {
         return t
@@ -176,7 +176,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     });
     await createUow.executeMutations();
 
-    const tableName = adapter.createTableNameMapper("namespace").toPhysical("events");
+    const tableName = adapter.namingStrategy.tableName("events", "namespace");
     const row = sqliteDatabase
       .prepare(`SELECT happened_on, big_score FROM ${tableName} WHERE name = ?`)
       .get("Prisma Storage Event") as { happened_on?: unknown; big_score?: unknown } | undefined;
@@ -218,7 +218,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       });
       await createUow.executeMutations();
 
-      const tableName = fragnoAdapter.createTableNameMapper("namespace").toPhysical("events");
+      const tableName = fragnoAdapter.namingStrategy.tableName("events", "namespace");
       const row = fragnoDatabase
         .prepare(`SELECT happened_on, big_score FROM ${tableName} WHERE name = ?`)
         .get("Fragno Storage Event") as { happened_on?: number; big_score?: Buffer } | undefined;
@@ -926,7 +926,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     });
     await createUow.executeMutations();
 
-    const tableName = adapter.createTableNameMapper("namespace").toPhysical("events");
+    const tableName = adapter.namingStrategy.tableName("events", "namespace");
     const row = sqliteDatabase
       .prepare(`SELECT happened_on FROM ${tableName} WHERE name = ?`)
       .get("ISO Stored Event") as { happened_on?: string } | undefined;
@@ -1078,7 +1078,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
   it("should parse CURRENT_TIMESTAMP strings as UTC", async () => {
     const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
-    const tableName = adapter.createTableNameMapper("namespace").toPhysical("events");
+    const tableName = adapter.namingStrategy.tableName("events", "namespace");
 
     const createUow = queryEngine.createUnitOfWork("create-utc-event");
     createUow.create("events", {

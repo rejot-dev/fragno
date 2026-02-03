@@ -19,7 +19,7 @@ export async function writeAndLoadSchema(
   testFileName: string,
   schema: Schema,
   dialect: SupportedProvider,
-  namespace?: string,
+  namespace?: string | null,
   includeInternalSchema: boolean = true,
 ) {
   // Create test-specific directory inside _generated
@@ -42,14 +42,15 @@ export async function writeAndLoadSchema(
   // Generate and write the Drizzle schema to file
   // Always include settings schema first (as done in generation-engine.ts), then the test schema
   // De-duplicate: if the test schema IS the settings schema, don't add it twice
-  const fragments: Array<{ namespace: string; schema: Schema }> = [];
+  const fragments: Array<{ namespace: string | null; schema: Schema }> = [];
 
   if (includeInternalSchema) {
-    fragments.push({ namespace: "", schema: internalSchema });
+    fragments.push({ namespace: null, schema: internalSchema });
   }
 
   if (schema !== internalSchema) {
-    fragments.push({ namespace: namespace ?? "", schema });
+    const effectiveNamespace = namespace === undefined ? schema.name : namespace;
+    fragments.push({ namespace: effectiveNamespace, schema });
   }
 
   const drizzleSchemaTs = generateDrizzleSchema(fragments, dialect);

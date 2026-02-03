@@ -1,16 +1,21 @@
 import { parseVarchar } from "../util/parse";
 import type { AnyColumn, AnySchema, AnyTable, Relation } from "../schema/create";
-import type { SupportedDatabase } from "../adapters/generic-sql/driver-config";
+import {
+  defaultNamingStrategyForDatabase,
+  type SupportedDatabase,
+} from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "../adapters/generic-sql/sqlite-storage";
 import {
-  createTableNameMapper,
   sanitizeNamespace,
-  type TableNameMapper,
-} from "../adapters/shared/table-name-mapper";
+  createNamingResolver,
+  type NamingResolver,
+  type SqlNamingStrategy,
+} from "../naming/sql-naming";
 
 export interface GeneratePrismaSchemaOptions {
   sqliteStorageMode?: SQLiteStorageMode;
+  namingStrategy?: SqlNamingStrategy;
 }
 
 const VALID_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -55,27 +60,20 @@ function isVarcharType(value: string): value is `varchar(${number})` {
   return value.startsWith("varchar(");
 }
 
-function getModelName(table: AnyTable, namespace: string): string {
-  const base = toPascalCase(table.ormName);
+function getModelName(table: AnyTable, namespace: string | null): string {
+  const base = toPascalCase(table.name);
   if (!namespace) {
     return base;
   }
   return `${base}_${sanitizeNamespace(namespace)}`;
 }
 
-function getPhysicalTableName(
-  table: AnyTable,
-  namespace: string,
-  mapper?: TableNameMapper,
-): string {
-  if (namespace && mapper) {
-    return mapper.toPhysical(table.ormName);
-  }
-  return table.ormName;
+function getPhysicalTableName(table: AnyTable, resolver?: NamingResolver): string {
+  return resolver ? resolver.getTableName(table.name) : table.name;
 }
 
 function getRelationName(
-  namespace: string,
+  namespace: string | null,
   from: string,
   referenceName: string,
   to: string,
@@ -89,20 +87,32 @@ function getRelationName(
 function getForeignKeyMapName(
   table: AnyTable,
   relation: Relation,
-  namespace: string,
-  mapper?: TableNameMapper,
+  _namespace: string | null,
+  resolver?: NamingResolver,
 ): string {
-  if (namespace && mapper) {
-    return `fk_${mapper.toPhysical(`${table.ormName}_${relation.table.ormName}_${relation.name}`)}`;
+  if (resolver) {
+    return resolver.getForeignKeyName({
+      logicalTable: table.name,
+      logicalReferencedTable: relation.table.name,
+      referenceName: relation.name,
+    });
   }
-  return `${table.ormName}_${relation.table.ormName}_${relation.name}_fk`;
+  return `${table.name}_${relation.table.name}_${relation.name}_fk`;
 }
 
-function getIndexMapName(indexName: string, namespace: string): string {
-  if (!namespace) {
-    return indexName;
+function getIndexMapName(
+  indexName: string,
+  tableName: string,
+  namespace: string | null,
+  resolver?: NamingResolver,
+  unique?: boolean,
+): string {
+  if (!resolver) {
+    return namespace ? `${indexName}_${namespace}` : indexName;
   }
-  return `${indexName}_${namespace}`;
+  return unique
+    ? resolver.getUniqueIndexName(indexName, tableName)
+    : resolver.getIndexName(indexName, tableName);
 }
 
 function getPrismaScalarType(
@@ -296,6 +306,7 @@ function generateColumnFields(
   provider: SupportedDatabase,
   sqliteStorageMode: SQLiteStorageMode,
   fieldNameByColumn: Map<string, string>,
+  resolver?: NamingResolver,
 ): string[] {
   const lines: string[] = [];
 
@@ -323,8 +334,9 @@ function generateColumnFields(
       attributes.push(scalar.nativeType);
     }
 
-    if (fieldName !== column.name) {
-      attributes.push(`@map("${column.name}")`);
+    const physicalName = resolver ? resolver.getColumnName(table.name, column.name) : column.name;
+    if (fieldName !== physicalName) {
+      attributes.push(`@map("${physicalName}")`);
     }
 
     const suffix = isOptional ? "?" : "";
@@ -337,11 +349,11 @@ function generateColumnFields(
 
 function generateRelationFields(
   table: AnyTable,
-  namespace: string,
+  namespace: string | null,
   fieldNameByColumn: Map<string, string>,
   columnByName: Map<string, AnyColumn>,
   fieldNameByTableColumn: Map<AnyTable, Map<string, string>>,
-  namespaceMapper?: TableNameMapper,
+  resolver?: NamingResolver,
 ): string[] {
   const lines: string[] = [];
   const usedNames = new Set<string>(fieldNameByColumn.values());
@@ -357,12 +369,7 @@ function generateRelationFields(
     const fieldName = getRelationFieldName(relation.name, usedNames);
     usedNames.add(fieldName);
 
-    const relationName = getRelationName(
-      namespace,
-      table.ormName,
-      relation.name,
-      relation.table.ormName,
-    );
+    const relationName = getRelationName(namespace, table.name, relation.name, relation.table.name);
 
     const relatedModel = getModelName(relation.table, namespace);
     const localFields = relation.on.map(([left]) => fieldNameByColumn.get(left) ?? left);
@@ -372,7 +379,7 @@ function generateRelationFields(
       return refFieldNames?.get(actualRight) ?? actualRight;
     });
 
-    const fkMapName = getForeignKeyMapName(table, relation, namespace, namespaceMapper);
+    const fkMapName = getForeignKeyMapName(table, relation, namespace, resolver);
 
     const relationParts = [
       `"${relationName}"`,
@@ -396,16 +403,11 @@ function generateRelationFields(
     const relationName = matchingOne
       ? getRelationName(
           namespace,
-          matchingOne.referencer.ormName,
+          matchingOne.referencer.name,
           matchingOne.name,
-          matchingOne.table.ormName,
+          matchingOne.table.name,
         )
-      : getRelationName(
-          namespace,
-          relation.referencer.ormName,
-          relation.name,
-          relation.table.ormName,
-        );
+      : getRelationName(namespace, relation.referencer.name, relation.name, relation.table.name);
 
     const fieldName = getRelationFieldName(relation.name, usedNames);
     usedNames.add(fieldName);
@@ -429,7 +431,7 @@ function generateRelationFields(
       continue;
     }
 
-    const baseName = rel.referencer.ormName;
+    const baseName = rel.referencer.name;
     let fieldName = baseName;
     if (usedNames.has(fieldName)) {
       fieldName = `${baseName}_${rel.name}`;
@@ -437,12 +439,7 @@ function generateRelationFields(
     fieldName = getRelationFieldName(fieldName, usedNames);
     usedNames.add(fieldName);
 
-    const relationName = getRelationName(
-      namespace,
-      rel.referencer.ormName,
-      rel.name,
-      rel.table.ormName,
-    );
+    const relationName = getRelationName(namespace, rel.referencer.name, rel.name, rel.table.name);
 
     const relatedModel = getModelName(rel.referencer, namespace);
     lines.push(`  ${fieldName} ${relatedModel}[] @relation("${relationName}")`);
@@ -453,28 +450,28 @@ function generateRelationFields(
 
 function generateModel(
   table: AnyTable,
-  namespace: string,
+  namespace: string | null,
   provider: SupportedDatabase,
   sqliteStorageMode: SQLiteStorageMode,
   fieldNameByTableColumn: Map<AnyTable, Map<string, string>>,
   columnByTableName: Map<AnyTable, Map<string, AnyColumn>>,
-  mapper?: TableNameMapper,
+  resolver?: NamingResolver,
 ): string {
   const modelName = getModelName(table, namespace);
-  const physicalName = getPhysicalTableName(table, namespace, mapper);
+  const physicalName = getPhysicalTableName(table, resolver);
 
   const fieldNameByColumn = fieldNameByTableColumn.get(table)!;
   const columnByName = columnByTableName.get(table)!;
 
   const fieldLines = [
-    ...generateColumnFields(table, provider, sqliteStorageMode, fieldNameByColumn),
+    ...generateColumnFields(table, provider, sqliteStorageMode, fieldNameByColumn, resolver),
     ...generateRelationFields(
       table,
       namespace,
       fieldNameByColumn,
       columnByName,
       fieldNameByTableColumn,
-      mapper,
+      resolver,
     ),
   ];
 
@@ -487,7 +484,7 @@ function generateModel(
     const fields = index.columnNames
       .map((name) => fieldNameByColumn.get(name as string) ?? name)
       .join(", ");
-    const mapName = getIndexMapName(index.name, namespace);
+    const mapName = getIndexMapName(index.name, table.name, namespace, resolver, index.unique);
     const directive = index.unique ? "@@unique" : "@@index";
     indexLines.push(`  ${directive}([${fields}], map: "${mapName}")`);
   }
@@ -499,27 +496,30 @@ function generateModel(
 }
 
 export function generatePrismaSchema(
-  fragments: { namespace: string; schema: AnySchema }[],
+  fragments: { namespace: string | null; schema: AnySchema }[],
   provider: SupportedDatabase,
   options?: GeneratePrismaSchemaOptions,
 ): string {
   const sqliteStorageMode =
     options?.sqliteStorageMode ??
     (provider === "sqlite" ? sqliteStoragePrisma : sqliteStorageDefault);
+  const namingStrategy = options?.namingStrategy ?? defaultNamingStrategyForDatabase(provider);
   const namespaces = Array.from(new Set(fragments.map((fragment) => fragment.namespace)));
   const sortedNamespaces = namespaces.sort((a, b) => {
-    if (a === "") {
+    const aKey = a ?? "";
+    const bKey = b ?? "";
+    if (aKey === "") {
       return -1;
     }
-    if (b === "") {
+    if (bKey === "") {
       return 1;
     }
-    return a.localeCompare(b);
+    return aKey.localeCompare(bKey);
   });
 
   const sortedFragments = sortedNamespaces
     .map((namespace) => fragments.find((fragment) => fragment.namespace === namespace))
-    .filter((fragment): fragment is { namespace: string; schema: AnySchema } => !!fragment);
+    .filter((fragment): fragment is { namespace: string | null; schema: AnySchema } => !!fragment);
 
   const fieldNameByTableColumn = new Map<AnyTable, Map<string, string>>();
   const columnByTableName = new Map<AnyTable, Map<string, AnyColumn>>();
@@ -544,14 +544,12 @@ export function generatePrismaSchema(
   const models: string[] = [];
 
   for (const fragment of sortedFragments) {
-    const mapper = fragment.namespace
-      ? createTableNameMapper(fragment.namespace, false)
-      : undefined;
+    const resolver = createNamingResolver(fragment.schema, fragment.namespace, namingStrategy);
     const tables = Object.values(fragment.schema.tables)
       .slice()
       .sort((a, b) => {
-        const aName = getPhysicalTableName(a, fragment.namespace, mapper);
-        const bName = getPhysicalTableName(b, fragment.namespace, mapper);
+        const aName = getPhysicalTableName(a, resolver);
+        const bName = getPhysicalTableName(b, resolver);
         return aName.localeCompare(bName);
       });
 
@@ -564,7 +562,7 @@ export function generatePrismaSchema(
           sqliteStorageMode,
           fieldNameByTableColumn,
           columnByTableName,
-          mapper,
+          resolver,
         ),
       );
     }

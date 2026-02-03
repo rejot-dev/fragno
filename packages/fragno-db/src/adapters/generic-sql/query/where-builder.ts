@@ -8,7 +8,7 @@ import {
 } from "../../../schema/create";
 import type { Condition } from "../../../query/condition-builder";
 import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
-import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig } from "../driver-config";
 import { sqliteStorageDefault, type SQLiteStorageMode } from "../sqlite-storage";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
@@ -19,13 +19,14 @@ import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sq
  * Returns the fully qualified SQL name for a column (table.column).
  *
  * @param column - The column to get the full name for
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param resolver - Optional naming resolver for namespace prefixing
  * @returns The fully qualified SQL name in the format "tableName.columnName"
  * @internal
  */
-export function fullSQLName(column: AnyColumn, mapper?: TableNameMapper): string {
-  const tableName = mapper ? mapper.toPhysical(column.tableName) : column.tableName;
-  return `${tableName}.${column.name}`;
+export function fullSQLName(column: AnyColumn, resolver?: NamingResolver): string {
+  const tableName = resolver ? resolver.getTableName(column.tableName) : column.tableName;
+  const columnName = resolver ? resolver.getColumnName(column.tableName, column.name) : column.name;
+  return `${tableName}.${columnName}`;
 }
 
 /**
@@ -38,7 +39,7 @@ export function fullSQLName(column: AnyColumn, mapper?: TableNameMapper): string
  * @param condition - The condition tree to build the WHERE clause from
  * @param eb - Kysely expression builder for constructing SQL expressions
  * @param database - The database type (affects SQL generation)
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param resolver - Optional naming resolver for namespace prefixing
  * @param table - The table being queried (used for resolving reference columns)
  * @returns A Kysely expression wrapper representing the WHERE clause
  * @internal
@@ -48,7 +49,7 @@ export function buildWhere(
   eb: AnyExpressionBuilder,
   driverConfig: DriverConfig,
   sqliteStorageMode?: SQLiteStorageMode,
-  mapper?: TableNameMapper,
+  resolver?: NamingResolver,
   table?: AnyTable,
 ): AnyExpressionWrapper {
   const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
@@ -77,20 +78,28 @@ export function buildWhere(
         if (typeof val === "string") {
           // String external ID - create subquery to lookup internal ID
           const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.ormName),
+            rel.on.some(([localCol]) => localCol === left.name),
           );
           if (relation) {
             const refTable = relation.table;
             const internalIdCol = refTable.getInternalIdColumn();
             const idCol = refTable.getIdColumn();
-            const physicalTableName = mapper
-              ? mapper.toPhysical(refTable.ormName)
-              : refTable.ormName;
+            const physicalTableName = resolver
+              ? resolver.getTableName(refTable.name)
+              : refTable.name;
 
             val = eb
               .selectFrom(physicalTableName)
-              .select(internalIdCol.name)
-              .where(idCol.name, "=", val)
+              .select(
+                resolver
+                  ? resolver.getColumnName(refTable.name, internalIdCol.name)
+                  : internalIdCol.name,
+              )
+              .where(
+                resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
+                "=",
+                val,
+              )
               .limit(1);
           }
         } else if (val instanceof FragnoId && val.internalId !== undefined) {
@@ -99,20 +108,28 @@ export function buildWhere(
         } else if (val instanceof FragnoId && val.internalId === undefined) {
           // FragnoId without internal ID - create subquery using external ID
           const relation = Object.values(table.relations).find((rel) =>
-            rel.on.some(([localCol]) => localCol === left.ormName),
+            rel.on.some(([localCol]) => localCol === left.name),
           );
           if (relation) {
             const refTable = relation.table;
             const internalIdCol = refTable.getInternalIdColumn();
             const idCol = refTable.getIdColumn();
-            const physicalTableName = mapper
-              ? mapper.toPhysical(refTable.ormName)
-              : refTable.ormName;
+            const physicalTableName = resolver
+              ? resolver.getTableName(refTable.name)
+              : refTable.name;
 
             val = eb
               .selectFrom(physicalTableName)
-              .select(internalIdCol.name)
-              .where(idCol.name, "=", val.externalId)
+              .select(
+                resolver
+                  ? resolver.getColumnName(refTable.name, internalIdCol.name)
+                  : internalIdCol.name,
+              )
+              .where(
+                resolver ? resolver.getColumnName(refTable.name, idCol.name) : idCol.name,
+                "=",
+                val.externalId,
+              )
               .limit(1);
           }
         } else if (val instanceof FragnoReference) {
@@ -138,57 +155,67 @@ export function buildWhere(
         v = "like";
         rhs =
           val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))}, '%')`
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
             : `%${val}%`;
         break;
       case "not contains":
         v = "not like";
         rhs =
           val instanceof Column
-            ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))}, '%')`
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))}, '%')`
             : `%${val}%`;
         break;
       case "starts with":
         v = "like";
         rhs =
-          val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val, mapper))}, '%')` : `${val}%`;
+          val instanceof Column
+            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
+            : `${val}%`;
         break;
       case "not starts with":
         v = "not like";
         rhs =
-          val instanceof Column ? sql`concat(${eb.ref(fullSQLName(val, mapper))}, '%')` : `${val}%`;
+          val instanceof Column
+            ? sql`concat(${eb.ref(fullSQLName(val, resolver))}, '%')`
+            : `${val}%`;
         break;
       case "ends with":
         v = "like";
         rhs =
-          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))})` : `%${val}`;
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
+            : `%${val}`;
         break;
       case "not ends with":
         v = "not like";
         rhs =
-          val instanceof Column ? sql`concat('%', ${eb.ref(fullSQLName(val, mapper))})` : `%${val}`;
+          val instanceof Column
+            ? sql`concat('%', ${eb.ref(fullSQLName(val, resolver))})`
+            : `%${val}`;
         break;
       default:
         v = op;
-        rhs = val instanceof Column ? eb.ref(fullSQLName(val, mapper)) : val;
+        rhs = val instanceof Column ? eb.ref(fullSQLName(val, resolver)) : val;
     }
 
-    return eb(fullSQLName(left, mapper), v, rhs);
+    return eb(fullSQLName(left, resolver), v, rhs);
   }
 
   // Nested conditions
   if (condition.type === "and") {
     return eb.and(
-      condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, mapper, table)),
+      condition.items.map((v) =>
+        buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table),
+      ),
     );
   }
 
   if (condition.type === "not") {
-    return eb.not(buildWhere(condition.item, eb, driverConfig, sqliteStorageMode, mapper, table));
+    return eb.not(buildWhere(condition.item, eb, driverConfig, sqliteStorageMode, resolver, table));
   }
 
   return eb.or(
-    condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, mapper, table)),
+    condition.items.map((v) => buildWhere(v, eb, driverConfig, sqliteStorageMode, resolver, table)),
   );
 }
 
@@ -197,17 +224,18 @@ export function buildWhere(
  *
  * @param values - The encoded values that may contain ReferenceSubquery objects
  * @param kysely - The Kysely database instance for building subqueries
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param resolver - Optional naming resolver for namespace prefixing
  * @returns Processed values with subqueries in place of ReferenceSubquery markers
  * @internal
  */
 export function processReferenceSubqueries(
   values: Record<string, unknown>,
   kysely: AnyKysely,
-  mapper?: TableNameMapper,
+  resolver?: NamingResolver,
 ): Record<string, unknown> {
   const processed: Record<string, unknown> = {};
-  const getTableName = (table: AnyTable) => (mapper ? mapper.toPhysical(table.name) : table.name);
+  const getTableName = (table: AnyTable) =>
+    resolver ? resolver.getTableName(table.name) : table.name;
 
   for (const [key, value] of Object.entries(values)) {
     if (value instanceof ReferenceSubquery) {
@@ -216,11 +244,15 @@ export function processReferenceSubqueries(
       const tableName = getTableName(refTable);
       const internalIdCol = refTable.getInternalIdColumn().name;
       const idCol = refTable.getIdColumn().name;
+      const internalIdColumnName = resolver
+        ? resolver.getColumnName(refTable.name, internalIdCol)
+        : internalIdCol;
+      const idColumnName = resolver ? resolver.getColumnName(refTable.name, idCol) : idCol;
 
       processed[key] = kysely
         .selectFrom(tableName)
-        .select(internalIdCol)
-        .where(idCol, "=", externalId)
+        .select(internalIdColumnName)
+        .where(idColumnName, "=", externalId)
         .limit(1);
     } else {
       processed[key] = value;

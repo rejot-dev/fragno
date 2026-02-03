@@ -5,6 +5,12 @@
     "rootDir": ".",
     "composite": true
   },
-  "include": ["src", "kysely.config.ts", "drizzle.config.ts"],
+  "include": [
+    "src",
+    "kysely.config.ts",
+    "drizzle.config.ts",
+    "drizzle.sqlite.config.ts",
+    "drizzle.mysql.config.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

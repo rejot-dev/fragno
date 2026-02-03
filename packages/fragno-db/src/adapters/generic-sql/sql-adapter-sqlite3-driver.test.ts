@@ -15,7 +15,7 @@ import { SqlAdapter } from "./generic-sql-adapter";
 import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("SqlAdapter with better-sqlite3", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -73,7 +73,7 @@ describe("SqlAdapter with better-sqlite3", () => {
   });
 
   // Second schema for multi-schema testing
-  const schema2 = schema((s) => {
+  const schema2 = schema("schema2", (s) => {
     return s
       .addTable("products", (t) => {
         return t

@@ -54,6 +54,7 @@ export type MigrationOperation<
       type: "drop-foreign-key";
       table: string;
       name: string;
+      referencedTable: string;
     } & { metadata?: TMeta })
   | ({
       type: "drop-index";

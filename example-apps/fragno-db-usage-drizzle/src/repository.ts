@@ -1,25 +1,25 @@
-import { eq, like, desc, and, sql } from "drizzle-orm";
+import { eq, like, desc, and, sql, aliasedTable } from "drizzle-orm";
 import { getDrizzleDatabase } from "./database";
-import { user, blogPost } from "./schema/drizzle-schema";
-import { fragno_db_comment_schema, fragno_db_rating_schema } from "./schema/fragno-schema";
+import { appUser, blogPost } from "./schema/drizzle-schema";
+import { comment_schema, upvote_schema } from "./schema/fragno-schema";
 
-const { comment } = fragno_db_comment_schema;
-const { upvote_total } = fragno_db_rating_schema;
+const { comment } = comment_schema;
+const { upvote_total } = upvote_schema;
 
-type User = typeof user.$inferSelect;
-type NewUser = typeof user.$inferInsert;
+type User = typeof appUser.$inferSelect;
+type NewUser = typeof appUser.$inferInsert;
 type NewBlogPost = typeof blogPost.$inferInsert;
 
 // User repository methods
 export async function findUserById(id: number) {
   const db = await getDrizzleDatabase();
-  const result = await db.select().from(user).where(eq(user.id, id)).limit(1);
+  const result = await db.select().from(appUser).where(eq(appUser.id, id)).limit(1);
   return result[0];
 }
 
 export async function findUserByEmail(email: string) {
   const db = await getDrizzleDatabase();
-  const result = await db.select().from(user).where(eq(user.email, email)).limit(1);
+  const result = await db.select().from(appUser).where(eq(appUser.email, email)).limit(1);
   return result[0];
 }
 
@@ -28,45 +28,45 @@ export async function findUsers(criteria: Partial<User>) {
   const conditions = [];
 
   if (criteria.id) {
-    conditions.push(eq(user.id, criteria.id));
+    conditions.push(eq(appUser.id, criteria.id));
   }
 
   if (criteria.email) {
-    conditions.push(eq(user.email, criteria.email));
+    conditions.push(eq(appUser.email, criteria.email));
   }
 
   if (criteria.name) {
-    conditions.push(eq(user.name, criteria.name));
+    conditions.push(eq(appUser.name, criteria.name));
   }
 
   if (criteria.createdAt) {
-    conditions.push(eq(user.createdAt, criteria.createdAt));
+    conditions.push(eq(appUser.createdAt, criteria.createdAt));
   }
 
   if (conditions.length === 0) {
-    return await db.select().from(user);
+    return await db.select().from(appUser);
   }
 
   return await db
     .select()
-    .from(user)
+    .from(appUser)
     .where(and(...conditions));
 }
 
 export async function createUser(newUser: NewUser): Promise<User> {
   const db = await getDrizzleDatabase();
-  const result = await db.insert(user).values(newUser).returning();
+  const result = await db.insert(appUser).values(newUser).returning();
   return result[0];
 }
 
 export async function updateUser(id: number, updateWith: Partial<NewUser>) {
   const db = await getDrizzleDatabase();
-  await db.update(user).set(updateWith).where(eq(user.id, id));
+  await db.update(appUser).set(updateWith).where(eq(appUser.id, id));
 }
 
 export async function deleteUser(id: number) {
   const db = await getDrizzleDatabase();
-  const result = await db.delete(user).where(eq(user.id, id)).returning();
+  const result = await db.delete(appUser).where(eq(appUser.id, id)).returning();
   return result[0];
 }
 
@@ -93,6 +93,7 @@ export async function findAllBlogPosts() {
 
 export async function findBlogPostsWithAuthor() {
   const db = await getDrizzleDatabase();
+  const commentRow = aliasedTable(comment, "comment_row");
   return await db
     .select({
       id: blogPost.id,
@@ -100,18 +101,20 @@ export async function findBlogPostsWithAuthor() {
       content: blogPost.content,
       createdAt: blogPost.createdAt,
       updatedAt: blogPost.updatedAt,
-      authorId: user.id,
-      authorName: user.name,
-      authorEmail: user.email,
-      comments: sql<Array<typeof comment.$inferSelect>>`json_agg(${comment})`.as("comments"),
+      authorId: appUser.id,
+      authorName: appUser.name,
+      authorEmail: appUser.email,
+      comments: sql<Array<typeof comment.$inferSelect>>`json_agg(to_jsonb(${commentRow}))`.as(
+        "comments",
+      ),
       rating: sql<number>`COALESCE(${upvote_total.total}, 0)`.as("rating"),
     })
     .from(blogPost)
-    .innerJoin(user, eq(user.id, blogPost.authorId))
-    .innerJoin(comment, eq(comment.postReference, sql`${blogPost.id}::text`))
+    .innerJoin(appUser, eq(appUser.id, blogPost.authorId))
+    .innerJoin(commentRow, eq(commentRow.postReference, sql`${blogPost.id}::text`))
     .leftJoin(upvote_total, eq(upvote_total.reference, sql`${blogPost.id}::text`))
     .orderBy(desc(blogPost.createdAt))
-    .groupBy(blogPost.id, user.id, upvote_total.total);
+    .groupBy(blogPost.id, appUser.id, upvote_total.total);
 }
 
 export async function createBlogPost(post: NewBlogPost) {
@@ -186,12 +189,11 @@ export async function findAuthSessionById(sessionId: string) {
 }
 
 /**
- * Fetch auth users with all their sessions.
- * Note: We use the physical table name to avoid confusion with the app's 'user' table.
+ * Fetch auth users with all their sessions using the convenience alias.
  */
 export async function findAuthUsersWithSessions() {
   const db = await getDrizzleDatabase();
-  return await db.query.user_simple_auth_db.findMany({
+  return await db.query.user.findMany({
     with: {
       sessionList: {
         orderBy: (session, { desc }) => [desc(session.createdAt)],

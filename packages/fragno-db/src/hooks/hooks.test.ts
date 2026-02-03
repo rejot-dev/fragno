@@ -41,12 +41,13 @@ describe("Hook System", () => {
     });
 
     {
-      const migrations = adapter.prepareMigrations(internalSchema, "");
+      const migrations = adapter.prepareMigrations(internalSchema, null);
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
     const options: FragnoPublicConfigWithDatabase = {
       databaseAdapter: adapter,
+      databaseNamespace: null,
     };
 
     internalFragment = instantiateFragment(options);

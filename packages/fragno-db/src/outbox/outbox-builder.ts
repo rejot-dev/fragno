@@ -217,7 +217,7 @@ function resolveReferencedTable(table: AnyTable, columnName: string): AnyTable {
     }
   }
 
-  throw new Error(`Reference column ${columnName} not found in table ${table.ormName}`);
+  throw new Error(`Reference column ${columnName} not found in table ${table.name}`);
 }
 
 function getExternalId(id: FragnoId | string): string {

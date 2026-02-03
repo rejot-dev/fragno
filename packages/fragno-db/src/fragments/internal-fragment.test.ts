@@ -32,13 +32,14 @@ describe("Internal Fragment", () => {
     });
 
     {
-      const migrations = adapter.prepareMigrations(internalSchema, "");
+      const migrations = adapter.prepareMigrations(internalSchema, null);
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
     // Instantiate fragment with shared database adapter
     const options: FragnoPublicConfigWithDatabase = {
       databaseAdapter: adapter,
+      databaseNamespace: null,
     };
 
     fragment = instantiateFragment(options);
@@ -172,12 +173,13 @@ describe("Hook Service", () => {
     });
 
     {
-      const migrations = adapter.prepareMigrations(internalSchema, "");
+      const migrations = adapter.prepareMigrations(internalSchema, null);
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
     const options: FragnoPublicConfigWithDatabase = {
       databaseAdapter: adapter,
+      databaseNamespace: null,
     };
 
     fragment = instantiateFragment(options);

@@ -1,5 +1,6 @@
 import type { AnyTable } from "../../../schema/create";
 import type { AnySelectClause } from "../../../query/simple-query-interface";
+import type { NamingResolver } from "../../../naming/sql-naming";
 
 /**
  * Maps a select clause to SQL column names with optional aliases.
@@ -18,6 +19,7 @@ import type { AnySelectClause } from "../../../query/simple-query-interface";
 export function mapSelect(
   select: AnySelectClause,
   table: AnyTable,
+  resolver: NamingResolver | undefined,
   options: {
     relation?: string;
     tableName?: string;
@@ -37,7 +39,8 @@ export function mapSelect(
 
     // Add the column to the select list
     const name = relation ? `${relation}:${key}` : key;
-    out.push(`${tableName}.${col.name} as ${name}`);
+    const columnName = resolver ? resolver.getColumnName(table.name, col.name) : col.name;
+    out.push(`${tableName}.${columnName} as ${name}`);
   }
 
   // Always include hidden columns (for FragnoId construction with internal ID and version)
@@ -45,7 +48,8 @@ export function mapSelect(
     const col = table.columns[key];
     if (col.isHidden && !keys.includes(key)) {
       const name = relation ? `${relation}:${key}` : key;
-      out.push(`${tableName}.${col.name} as ${name}`);
+      const columnName = resolver ? resolver.getColumnName(table.name, col.name) : col.name;
+      out.push(`${tableName}.${columnName} as ${name}`);
     }
   }
 

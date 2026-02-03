@@ -7,6 +7,7 @@ import type { InMemoryNamespaceStore, InMemoryRow } from "./store";
 import { normalizeIndexValue } from "./store";
 import { resolveReferenceSubquery } from "./reference-resolution";
 import { compareNormalizedValues } from "./value-comparison";
+import type { NamingResolver } from "../../naming/sql-naming";
 
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;
@@ -16,6 +17,7 @@ const resolveReferenceValue = (
   column: AnyColumn,
   table: AnyTable,
   namespaceStore?: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
 ): unknown => {
   if (value instanceof FragnoReference) {
     return value.internalId;
@@ -25,14 +27,14 @@ const resolveReferenceValue = (
     if (value.internalId !== undefined) {
       return value.internalId;
     }
-    return resolveReferenceValue(value.externalId, column, table, namespaceStore);
+    return resolveReferenceValue(value.externalId, column, table, namespaceStore, resolver);
   }
 
   if (value instanceof ReferenceSubquery) {
     if (!namespaceStore) {
       throw new Error("In-memory condition evaluation requires a namespace store.");
     }
-    return resolveReferenceSubquery(namespaceStore, value);
+    return resolveReferenceSubquery(namespaceStore, value, resolver);
   }
 
   if (typeof value === "string") {
@@ -41,13 +43,17 @@ const resolveReferenceValue = (
     }
 
     const relation = Object.values(table.relations).find((rel) =>
-      rel.on.some(([localCol]) => localCol === column.ormName),
+      rel.on.some(([localCol]) => localCol === column.name),
     );
     if (!relation) {
-      throw new Error(`Missing relation for reference column "${column.ormName}".`);
+      throw new Error(`Missing relation for reference column "${column.name}".`);
     }
 
-    return resolveReferenceSubquery(namespaceStore, new ReferenceSubquery(relation.table, value));
+    return resolveReferenceSubquery(
+      namespaceStore,
+      new ReferenceSubquery(relation.table, value),
+      resolver,
+    );
   }
 
   return resolveFragnoIdValue(value, column);
@@ -58,11 +64,13 @@ const resolveComparisonValue = (
   column: AnyColumn,
   table: AnyTable,
   row: InMemoryRow,
-  namespaceStore: InMemoryNamespaceStore | undefined,
-  now: () => Date,
+  namespaceStore?: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): { value: unknown; column: AnyColumn } => {
   if (value instanceof Column) {
-    return { value: row[value.name], column: value };
+    const columnName = resolver ? resolver.getColumnName(table.name, value.name) : value.name;
+    return { value: row[columnName], column: value };
   }
 
   if (isDbNow(value)) {
@@ -70,7 +78,10 @@ const resolveComparisonValue = (
   }
 
   if (column.role === "reference") {
-    return { value: resolveReferenceValue(value, column, table, namespaceStore), column };
+    return {
+      value: resolveReferenceValue(value, column, table, namespaceStore, resolver),
+      column,
+    };
   }
 
   return { value: resolveFragnoIdValue(value, column), column };
@@ -95,6 +106,7 @@ export const evaluateCondition = (
   table: AnyTable,
   row: InMemoryRow,
   namespaceStore?: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
   now: () => Date = () => new Date(),
 ): boolean => {
   if (typeof condition === "boolean") {
@@ -104,7 +116,7 @@ export const evaluateCondition = (
   switch (condition.type) {
     case "and": {
       for (const item of condition.items) {
-        if (!evaluateCondition(item, table, row, namespaceStore, now)) {
+        if (!evaluateCondition(item, table, row, namespaceStore, resolver, now)) {
           return false;
         }
       }
@@ -112,14 +124,14 @@ export const evaluateCondition = (
     }
     case "or": {
       for (const item of condition.items) {
-        if (evaluateCondition(item, table, row, namespaceStore, now)) {
+        if (evaluateCondition(item, table, row, namespaceStore, resolver, now)) {
           return true;
         }
       }
       return false;
     }
     case "not":
-      return !evaluateCondition(condition.item, table, row, namespaceStore, now);
+      return !evaluateCondition(condition.item, table, row, namespaceStore, resolver, now);
     case "compare":
       break;
     default: {
@@ -129,8 +141,19 @@ export const evaluateCondition = (
   }
 
   const leftColumn = condition.a;
-  const leftValue = row[leftColumn.name];
-  const right = resolveComparisonValue(condition.b, leftColumn, table, row, namespaceStore, now);
+  const leftColumnName = resolver
+    ? resolver.getColumnName(table.name, leftColumn.name)
+    : leftColumn.name;
+  const leftValue = row[leftColumnName];
+  const right = resolveComparisonValue(
+    condition.b,
+    leftColumn,
+    table,
+    row,
+    namespaceStore,
+    resolver,
+    now,
+  );
 
   const op = condition.operator;
   const rightValue = right.value;
@@ -165,7 +188,15 @@ export const evaluateCondition = (
     let hasMatch = false;
 
     for (const item of rightValue) {
-      const resolved = resolveComparisonValue(item, leftColumn, table, row, namespaceStore, now);
+      const resolved = resolveComparisonValue(
+        item,
+        leftColumn,
+        table,
+        row,
+        namespaceStore,
+        resolver,
+        now,
+      );
       if (isNullish(resolved.value)) {
         hasNull = true;
         continue;

@@ -6,13 +6,11 @@ import {
   type DatabaseContextStorage,
   type DatabaseAdapterMetadata,
   type SQLiteProfile,
-  type TableNameMapper,
 } from "../adapters";
 import type { CompiledQuery, Dialect, QueryResult } from "../../sql-driver/sql-driver";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { sql } from "../../sql-driver/sql";
 import type { AnyColumn, AnySchema } from "../../schema/create";
-import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { SimpleQueryInterface } from "../../query/simple-query-interface";
 import { createExecutor } from "./generic-sql-uow-executor";
 import { UnitOfWorkDecoder } from "./uow-decoder";
@@ -29,6 +27,11 @@ import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 import type { OutboxConfig } from "../../outbox/outbox";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
+import {
+  createNamingResolver,
+  type NamingResolver,
+  type SqlNamingStrategy,
+} from "../../naming/sql-naming";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -43,6 +46,7 @@ export interface SqlAdapterOptions {
   outbox?: OutboxConfig;
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
+  namingStrategy?: SqlNamingStrategy;
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -58,8 +62,9 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly sqliteStorageMode?: SQLiteStorageMode;
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
+  readonly namingStrategy: SqlNamingStrategy;
 
-  #schemaNamespaceMap = new WeakMap<AnySchema, string>();
+  #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   #driver: SqlDriverAdapter;
@@ -71,11 +76,13 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     outbox,
     sqliteProfile,
     sqliteStorageMode,
+    namingStrategy,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
     this.uowConfig = uowConfig;
     this.outbox = outbox;
+    this.namingStrategy = namingStrategy ?? driverConfig.defaultNamingStrategy;
     const resolvedProfile = sqliteProfile ?? "default";
 
     if (sqliteStorageMode && sqliteProfile) {
@@ -95,7 +102,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
     };
 
-    this.#schemaNamespaceMap = new WeakMap<AnySchema, string>();
+    this.#schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
@@ -127,20 +134,17 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string): PreparedMigrations {
+  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null): PreparedMigrations {
+    const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
     return createPreparedMigrations({
       schema,
-      namespace,
+      namespace: namespace ?? schema.name,
       database: this.driverConfig.databaseType,
       driverConfig: this.driverConfig,
       sqliteStorageMode: this.sqliteStorageMode,
-      mapper: namespace ? this.createTableNameMapper(namespace) : undefined,
+      resolver,
       driver: this.#driver,
     });
-  }
-
-  createTableNameMapper(namespace: string): TableNameMapper {
-    return createTableNameMapper(namespace, false);
   }
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {
@@ -174,14 +178,16 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
 
   createQueryEngine<T extends AnySchema>(
     schema: T,
-    namespace: string,
+    namespace: string | null,
   ): SimpleQueryInterface<T, UnitOfWorkConfig> {
     this.#schemaNamespaceMap.set(schema, namespace);
+    const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
 
     const operationCompiler = new GenericSQLUOWOperationCompiler(
       this.driverConfig,
       this.sqliteStorageMode,
-      (ns) => (ns ? this.createTableNameMapper(ns) : undefined),
+      (schemaForResolver, namespaceForResolver): NamingResolver =>
+        createNamingResolver(schemaForResolver, namespaceForResolver, this.namingStrategy),
     );
 
     const factory: UnitOfWorkFactory = {
@@ -190,8 +196,9 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         dialect: this.dialect,
         dryRun: false,
         outbox: this.outbox,
+        namingStrategy: this.namingStrategy,
       }),
-      decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode),
+      decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode, resolver),
       uowConfig: this.uowConfig,
       schemaNamespaceMap: this.#schemaNamespaceMap,
     };

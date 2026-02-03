@@ -19,7 +19,7 @@ export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 // FIXME: In some places we simply use empty string "" as namespace, which is not correct.
 export const SETTINGS_NAMESPACE = "fragno-db-settings" as const;
 
-export const internalSchema = schema((s) => {
+export const internalSchema = schema("fragno_internal", (s) => {
   return s
     .addTable(SETTINGS_TABLE_NAME, (t) => {
       return t
@@ -80,7 +80,6 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
     DatabaseRequestStorage
   >("$fragno-internal-fragment"),
   internalSchema,
-  "", // intentionally blank namespace so there is no prefix
 )
   .providesBaseService(({ deps }) => ({
     getDbNow: async () => {
@@ -543,15 +542,37 @@ export async function getSchemaVersionFromDatabase(
   namespace: string,
 ): Promise<number> {
   try {
-    const setting = await fragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [fragment.services.settingsService.get(namespace, "schema_version")] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-    return setting ? parseInt(setting.value, 10) : 0;
+    const readSchemaVersion = async (targetNamespace: string): Promise<number | undefined> => {
+      const setting = await fragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [fragment.services.settingsService.get(targetNamespace, "schema_version")] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+      if (!setting) {
+        return undefined;
+      }
+      const parsed = parseInt(setting.value, 10);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    };
+
+    const primary = await readSchemaVersion(namespace);
+    if (primary !== undefined) {
+      return primary;
+    }
+
+    // Back-compat: older installs stored internal schema version under an empty namespace.
+    if (namespace === internalSchema.name) {
+      const legacy = await readSchemaVersion("");
+      if (legacy !== undefined) {
+        return legacy;
+      }
+    }
+
+    return 0;
   } catch {
     return 0;
   }

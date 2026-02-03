@@ -9,9 +9,11 @@ import { schema, column, idColumn } from "./schema/create";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
+import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
+import { suffixNamingStrategy } from "./naming/sql-naming";
 
 // Create a test schema
-const testSchema = schema((s) => {
+const testSchema = schema("test", (s) => {
   return s.addTable("users", (t) => {
     return t
       .addColumn("id", idColumn())
@@ -36,8 +38,10 @@ function createMockAdapter(): DatabaseAdapter {
 
   return {
     createQueryEngine: vi.fn(() => mockdb),
-    migrate: vi.fn(),
+    getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),
+    contextStorage: new RequestContextStorage(),
+    namingStrategy: suffixNamingStrategy,
   } as unknown as DatabaseAdapter;
 }
 
@@ -737,10 +741,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       const mockAdapter = createMockAdapter();
 
-      const definition = withDatabase(
-        testSchema,
-        "my-namespace",
-      )(defineFragment<Config>("complex-db-frag"))
+      const definition = withDatabase(testSchema)(defineFragment<Config>("complex-db-frag"))
         .withDependencies(({ config }) => ({
           connectionString: config.dbConnectionString,
           debug: config.debug,

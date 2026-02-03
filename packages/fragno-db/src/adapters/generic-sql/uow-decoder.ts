@@ -5,6 +5,7 @@ import { decodeResult } from "../../query/value-decoding";
 import { createCursorFromRecord, type Cursor, type CursorResult } from "../../query/cursor";
 import type { DriverConfig } from "./driver-config";
 import type { SQLiteStorageMode } from "./sqlite-storage";
+import type { NamingResolver } from "../../naming/sql-naming";
 
 /**
  * Decoder class for Unit of Work retrieval results.
@@ -15,10 +16,16 @@ import type { SQLiteStorageMode } from "./sqlite-storage";
 export class UnitOfWorkDecoder implements UOWDecoder<unknown> {
   readonly #driverConfig: DriverConfig;
   readonly #sqliteStorageMode?: SQLiteStorageMode;
+  readonly #resolver?: NamingResolver;
 
-  constructor(driverConfig: DriverConfig, sqliteStorageMode?: SQLiteStorageMode) {
+  constructor(
+    driverConfig: DriverConfig,
+    sqliteStorageMode?: SQLiteStorageMode,
+    resolver?: NamingResolver,
+  ) {
     this.#driverConfig = driverConfig;
     this.#sqliteStorageMode = sqliteStorageMode;
+    this.#resolver = resolver;
   }
 
   /**
@@ -64,7 +71,13 @@ export class UnitOfWorkDecoder implements UOWDecoder<unknown> {
     }
 
     const decodedRows = rows.map((row) =>
-      decodeResult(row, operation.table, this.#driverConfig, this.#sqliteStorageMode),
+      decodeResult(
+        row,
+        operation.table,
+        this.#driverConfig,
+        this.#sqliteStorageMode,
+        this.#resolver,
+      ),
     );
 
     if (operation.withCursor) {

@@ -3,7 +3,7 @@ import { column, idColumn, schema } from "../schema/create";
 import { createBuilder, createIndexedBuilder } from "./condition-builder";
 
 describe("ConditionBuilder", () => {
-  const testSchema = schema((s) =>
+  const testSchema = schema("test", (s) =>
     s
       .addTable("users", (t) =>
         t
@@ -11,7 +11,7 @@ describe("ConditionBuilder", () => {
           .addColumn("email", column("string"))
           .addColumn("name", column("string"))
           .addColumn("age", column("integer").nullable())
-          .createIndex("_primary", ["id"], { unique: true })
+          .createIndex("idx_users_primary", ["id"], { unique: true })
           .createIndex("idx_email", ["email"], { unique: true })
           .createIndex("idx_name_age", ["name", "age"]),
       )
@@ -21,7 +21,7 @@ describe("ConditionBuilder", () => {
           .addColumn("title", column("string"))
           .addColumn("content", column("string"))
           .addColumn("published", column("bool"))
-          .createIndex("_primary", ["id"], { unique: true })
+          .createIndex("idx_posts_primary", ["id"], { unique: true })
           .createIndex("idx_published", ["published"]),
       ),
   );

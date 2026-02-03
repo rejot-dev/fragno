@@ -77,7 +77,7 @@ export interface BaseTestContext {
  * Internal interface with getOrm for adapter implementations
  */
 export interface InternalTestContextMethods {
-  getOrm: <TSchema extends AnySchema>(namespace: string) => SimpleQueryInterface<TSchema>;
+  getOrm: <TSchema extends AnySchema>(namespace: string | null) => SimpleQueryInterface<TSchema>;
 }
 
 /**
@@ -86,13 +86,13 @@ export interface InternalTestContextMethods {
  */
 export function createCommonTestContextMethods(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string, SimpleQueryInterface<any>>,
+  ormMap: Map<string | null, SimpleQueryInterface<any>>,
 ): InternalTestContextMethods {
   return {
-    getOrm: <TSchema extends AnySchema>(namespace: string) => {
+    getOrm: <TSchema extends AnySchema>(namespace: string | null) => {
       const orm = ormMap.get(namespace);
       if (!orm) {
-        throw new Error(`No ORM found for namespace: ${namespace}`);
+        throw new Error(`No ORM found for namespace: ${String(namespace)}`);
       }
       return orm as SimpleQueryInterface<TSchema>;
     },

@@ -3,7 +3,7 @@ import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import { createAdapter, type SupportedAdapter } from "./adapters";
 
-const conformanceSchema = schema((s) =>
+const conformanceSchema = schema("conformance", (s) =>
   s
     .addTable("users", (t) =>
       t

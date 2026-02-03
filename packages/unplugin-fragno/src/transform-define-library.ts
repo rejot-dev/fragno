@@ -180,7 +180,19 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
           // Replace with a pass-through function that returns its parameter
           // This prevents errors like "Cannot read properties of undefined (reading 'build')"
           // when schema(() => {}) would return undefined
-          path.node.arguments = [createPassThroughArrowFunction()];
+          const args = path.node.arguments;
+          if (args.length >= 2) {
+            path.node.arguments = [args[0], createPassThroughArrowFunction()];
+          } else if (args.length === 1) {
+            const [arg] = args;
+            if (t.isArrowFunctionExpression(arg) || t.isFunctionExpression(arg)) {
+              path.node.arguments = [t.stringLiteral("schema"), createPassThroughArrowFunction()];
+            } else {
+              path.node.arguments = [arg, createPassThroughArrowFunction()];
+            }
+          } else {
+            path.node.arguments = [t.stringLiteral("schema"), createPassThroughArrowFunction()];
+          }
           return;
         }
       }
