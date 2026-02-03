@@ -15,7 +15,6 @@
     "db:fragno:migrate": "fragno-cli db migrate ./app/workflows/workflows-fragment.server.ts"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.11",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragment-workflows": "workspace:*",
@@ -23,7 +22,7 @@
     "@react-router/serve": "^7.5.3",
     "drizzle-orm": "^0.44.6",
     "isbot": "^5",
-    "kysely-pglite": "^0.6.1",
+    "pg": "^8.13.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router": "^7.5.3"

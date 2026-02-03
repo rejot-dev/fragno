@@ -117,8 +117,42 @@ export class ParallelStepsWorkflow extends WorkflowEntrypoint {
   }
 }
 
+export class WaitTimeoutWorkflow extends WorkflowEntrypoint {
+  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const startedAt = Date.now();
+    const edge = await step.waitForEvent("edge-wait", {
+      type: "edge",
+      timeout: "2 s",
+    });
+
+    return {
+      startedAt,
+      edge,
+    };
+  }
+}
+
+export class CrashTestWorkflow extends WorkflowEntrypoint {
+  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const startedAt = await step.do("record-start", () => Date.now());
+    const slowStep = await step.do("slow-step", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+      return { finishedAt: Date.now() };
+    });
+    const finishedAt = await step.do("record-finish", () => Date.now());
+
+    return {
+      startedAt,
+      slowStep,
+      finishedAt,
+    };
+  }
+}
+
 export const workflows = {
   approval: { name: "approval-workflow", workflow: ApprovalWorkflow },
   demoData: { name: "demo-data-workflow", workflow: DemoDataWorkflow },
   parallel: { name: "parallel-steps-workflow", workflow: ParallelStepsWorkflow },
+  waitTimeout: { name: "wait-timeout-workflow", workflow: WaitTimeoutWorkflow },
+  crashTest: { name: "crash-test-workflow", workflow: CrashTestWorkflow },
 } as const;
