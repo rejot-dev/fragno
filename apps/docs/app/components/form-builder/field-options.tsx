@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { EnumValuesEditor } from "./enum-values-editor";
 import { getFieldTypeConfig } from "./constants";
 import type { FieldType, FieldOptions as FieldOptionsType } from "./types";
@@ -17,7 +18,10 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
     onChange({ ...options, [key]: value });
   };
 
-  // Select field: show enum values editor
+  if (fieldType === "label") {
+    return null;
+  }
+
   if (fieldType === "select") {
     return (
       <div data-slot="field-options" className={cn("border-t pt-4", className)}>
@@ -29,14 +33,14 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
     );
   }
 
-  // Slider fields: show min/max (required)
   if (fieldType === "slider") {
     const defaults = getFieldTypeConfig("slider")?.defaultOptions;
     const defaultMin = defaults?.minimum ?? 1;
     const defaultMax = defaults?.maximum ?? 10;
+    const defaultValue = defaults?.defaultValue ?? defaultMin;
     return (
       <div data-slot="field-options" className={cn("border-t pt-4", className)}>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label htmlFor="min-value" className="text-muted-foreground text-sm">
               Minimum
@@ -48,6 +52,20 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
               onChange={(e) => {
                 const value = Number(e.target.value);
                 updateOption("minimum", Number.isNaN(value) ? defaultMin : value);
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="default-value" className="text-muted-foreground text-sm">
+              Default
+            </Label>
+            <Input
+              id="default-value"
+              type="number"
+              value={options?.defaultValue ?? defaultValue}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                updateOption("defaultValue", Number.isNaN(value) ? defaultValue : value);
               }}
             />
           </div>
@@ -70,7 +88,6 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
     );
   }
 
-  // Number/Integer fields: show min/max (optional)
   if (fieldType === "number" || fieldType === "integer") {
     return (
       <div data-slot="field-options" className={cn("border-t pt-4", className)}>
@@ -108,7 +125,6 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
     );
   }
 
-  // Text/Textarea fields: show placeholder
   if (fieldType === "text" || fieldType === "textarea") {
     return (
       <div data-slot="field-options" className={cn("border-t pt-4", className)}>
@@ -127,6 +143,38 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
     );
   }
 
-  // No options for other field types
+  if (fieldType === "unsupported") {
+    return (
+      <div data-slot="field-options" className={cn("space-y-4 border-t pt-4", className)}>
+        <div className="space-y-2">
+          <Label htmlFor="raw-json-schema" className="text-muted-foreground text-sm">
+            JSON Schema
+          </Label>
+          <Textarea
+            id="raw-json-schema"
+            className="font-mono text-xs"
+            rows={6}
+            placeholder="{}"
+            value={options?.rawJsonSchema ?? "{}"}
+            onChange={(e) => updateOption("rawJsonSchema", e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="raw-ui-schema" className="text-muted-foreground text-sm">
+            UI Schema
+          </Label>
+          <Textarea
+            id="raw-ui-schema"
+            className="font-mono text-xs"
+            rows={4}
+            placeholder="{}"
+            value={options?.rawUiSchema ?? "{}"}
+            onChange={(e) => updateOption("rawUiSchema", e.target.value)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }

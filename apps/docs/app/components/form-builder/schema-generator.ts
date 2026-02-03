@@ -7,6 +7,41 @@ import type {
   DataSchema,
 } from "./types";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isJsonSchemaProperty(value: unknown): value is JsonSchemaProperty {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const type = value.type;
+  return (
+    type === "string" ||
+    type === "number" ||
+    type === "integer" ||
+    type === "boolean" ||
+    type === "object" ||
+    type === "array"
+  );
+}
+
+function isUiSchemaElement(value: unknown): value is UiSchemaElement {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const type = value.type;
+  return (
+    type === "Control" ||
+    type === "VerticalLayout" ||
+    type === "HorizontalLayout" ||
+    type === "Group" ||
+    type === "Label"
+  );
+}
+
 /**
  * Converts a single field to its JSON Schema property definition.
  */
@@ -46,12 +81,13 @@ export function fieldToSchemaProperty(field: FormField): JsonSchemaProperty {
     case "slider": {
       const min = field.options?.minimum;
       const max = field.options?.maximum;
+      const defaultValue = field.options?.defaultValue ?? min;
       return {
         ...base,
         type: "number",
-        minimum: min,
-        maximum: max,
-        default: min,
+        ...(min !== undefined && { minimum: min }),
+        ...(max !== undefined && { maximum: max }),
+        ...(defaultValue !== undefined && { default: defaultValue }),
       };
     }
 
@@ -77,6 +113,19 @@ export function fieldToSchemaProperty(field: FormField): JsonSchemaProperty {
         enum: field.options?.enumValues ?? [],
       };
 
+    case "unsupported":
+      if (field.options?.rawJsonSchema) {
+        try {
+          const parsed = JSON.parse(field.options.rawJsonSchema);
+          if (isJsonSchemaProperty(parsed)) {
+            return parsed;
+          }
+        } catch {
+          return base;
+        }
+      }
+      return base;
+
     default:
       return base;
   }
@@ -86,12 +135,29 @@ export function fieldToSchemaProperty(field: FormField): JsonSchemaProperty {
  * Converts a single field to its UI Schema control element.
  */
 export function fieldToUiSchemaElement(field: FormField): UiSchemaElement {
+  if (field.fieldType === "label") {
+    return {
+      type: "Label",
+      text: field.label,
+    };
+  }
+
+  if (field.fieldType === "unsupported" && field.options?.rawUiSchema) {
+    try {
+      const parsed = JSON.parse(field.options.rawUiSchema);
+      if (isUiSchemaElement(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid UI schema JSON and fall back to default control.
+    }
+  }
+
   const control: UiSchemaElement = {
     type: "Control",
     scope: `#/properties/${field.fieldName}`,
   };
 
-  // Add type-specific UI options
   const options: Record<string, unknown> = {};
 
   if (field.fieldType === "textarea") {
@@ -122,7 +188,11 @@ export function generateSchemas(state: FormBuilderState): GeneratedSchemas {
   const uiElements: UiSchemaElement[] = [];
 
   for (const field of state.fields) {
-    // Skip fields without a valid field name
+    if (field.fieldType === "label") {
+      uiElements.push(fieldToUiSchemaElement(field));
+      continue;
+    }
+
     if (!field.fieldName) {
       continue;
     }
@@ -158,10 +228,9 @@ export function labelToFieldName(label: string): string {
   return (
     label
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_") // Replace non-alphanumeric with underscore
-      .replace(/^_+|_+$/g, "") // Trim leading/trailing underscores
-      .replace(/_+/g, "_") || // Collapse multiple underscores
-    "field"
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_") || "field"
   );
 }
 

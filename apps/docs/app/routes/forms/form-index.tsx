@@ -1,23 +1,19 @@
 import { useState, useEffect, type ComponentProps } from "react";
 import { Palette, Database, FileJson, Check, Hammer } from "lucide-react";
 import { JsonForms } from "@jsonforms/react";
-import type { JsonSchema, UISchemaElement } from "@jsonforms/core";
 import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
 import { SurveyAboutForms } from "../../components/survey-about-forms";
 import { FormDemo } from "../../components/form-demo";
 import { CopyFormsPromptButton } from "../../components/copy-forms-prompt-button";
-import {
-  FormBuilder,
-  FormMetadataEditor,
-  type GeneratedSchemas,
-  type FormMetadata,
-} from "@/components/form-builder";
+import { FormBuilder, type GeneratedSchemas } from "@/components/form-builder";
+import { FragnoCodeBlock } from "@/components/fragno-code-block";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Route } from "./+types/form-index";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { Link } from "react-router";
 import { GitHub } from "@/components/logos/github";
-import { FieldSeparator } from "@/components/ui/field";
 
 export function meta() {
   return [
@@ -37,13 +33,11 @@ export async function loader({ context }: Route.LoaderArgs) {
   };
 }
 
-// Pass through server data on client navigations
 export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
   return await serverLoader();
 }
 clientLoader.hydrate = true as const;
 
-// Hook to detect client-side rendering
 function useIsClient() {
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
@@ -52,8 +46,7 @@ function useIsClient() {
   return isClient;
 }
 
-// Wrapper that only renders JsonForms on the client
-// (JsonForms uses Ajv which requires `new Function()` - not available in Workers)
+// Note: JsonForms uses Ajv which requires `new Function()` and isn't available in Workers.
 function ClientSideJsonForms(props: Omit<ComponentProps<typeof JsonForms>, "renderers" | "cells">) {
   const isClient = useIsClient();
 
@@ -64,11 +57,17 @@ function ClientSideJsonForms(props: Omit<ComponentProps<typeof JsonForms>, "rend
   return <JsonForms {...props} renderers={shadcnRenderers} cells={shadcnCells} />;
 }
 
-// Form preview component
 function FormPreview({ schemas }: { schemas: GeneratedSchemas | null }) {
   const [formData, setFormData] = useState({});
+  const [showCode, setShowCode] = useState(false);
+  const hasDataFields = schemas
+    ? Object.keys(schemas.dataSchema.properties ?? {}).length > 0
+    : false;
+  const hasUiElements = schemas
+    ? Array.isArray(schemas.uiSchema.elements) && schemas.uiSchema.elements.length > 0
+    : false;
 
-  if (!schemas || Object.keys(schemas.dataSchema.properties || {}).length === 0) {
+  if (!schemas || (!hasDataFields && !hasUiElements)) {
     return (
       <Card>
         <CardHeader>
@@ -81,36 +80,86 @@ function FormPreview({ schemas }: { schemas: GeneratedSchemas | null }) {
     );
   }
 
+  const dataSchemaCode = JSON.stringify(schemas.dataSchema, null, 2);
+  const uiSchemaCode = JSON.stringify(schemas.uiSchema, null, 2);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Preview</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Preview</CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowCode((current) => !current)}
+            aria-pressed={showCode}
+          >
+            <FileJson className="mr-2 size-4" />
+            {showCode ? "Hide code" : "See code"}
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
         <ClientSideJsonForms
-          schema={schemas.dataSchema as JsonSchema}
-          uischema={schemas.uiSchema as UISchemaElement}
+          schema={schemas.dataSchema}
+          uischema={schemas.uiSchema}
           data={formData}
           onChange={({ data }) => setFormData(data)}
         />
+        {showCode && (
+          <div className="space-y-4 border-t pt-4">
+            <Tabs defaultValue="data">
+              <TabsList>
+                <TabsTrigger value="data">JSON Schema</TabsTrigger>
+                <TabsTrigger value="ui">UI Schema</TabsTrigger>
+              </TabsList>
+              <TabsContent value="data">
+                <FragnoCodeBlock lang="json" code={dataSchemaCode} />
+              </TabsContent>
+              <TabsContent value="ui">
+                <FragnoCodeBlock lang="json" code={uiSchemaCode} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-// =============================================================================
-// PAGE
-// =============================================================================
-
 export default function FormsPage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
   const isClient = useIsClient();
   const [schemas, setSchemas] = useState<GeneratedSchemas | null>(null);
-  const [formMetadata, setFormMetadata] = useState<FormMetadata>({
-    title: "",
-    description: "",
-    status: "open",
-  });
+
+  const initialSchemas: GeneratedSchemas = {
+    uiSchema: {
+      type: "VerticalLayout",
+      elements: [
+        {
+          type: "Control",
+          scope: "#/properties/how_would_you_rate_us",
+          options: {
+            slider: true,
+          },
+        },
+      ],
+    },
+    dataSchema: {
+      type: "object",
+      properties: {
+        how_would_you_rate_us: {
+          type: "number",
+          title: "How would you rate us?",
+          description: "Be honest",
+          minimum: 0,
+          maximum: 10,
+          default: 5,
+        },
+      },
+    },
+  };
 
   return (
     <main className="relative min-h-screen">
@@ -283,21 +332,10 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
           {isClient && (
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Form Builder Demo</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-col gap-6">
-                      <FormMetadataEditor value={formMetadata} onChange={setFormMetadata} />
-                      <FieldSeparator />
-                      <FormBuilder onChange={setSchemas} />
-                    </div>
-                  </CardContent>
-                </Card>
+                <FormBuilder onChange={setSchemas} defaultSchemas={initialSchemas} />
               </div>
               <div className="lg:sticky lg:top-4 lg:self-start">
-                <FormPreview schemas={schemas} />
+                <FormPreview schemas={schemas || initialSchemas} />
               </div>
             </div>
           )}

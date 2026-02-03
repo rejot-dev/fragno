@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
 export interface FieldCardProps {
   field: FormField;
   index: number;
-  totalCount: number;
   onUpdate: (updates: Partial<Omit<FormField, "id">>) => void;
   onUpdateLabel: (label: string) => void;
   onDelete: () => void;
@@ -27,7 +26,6 @@ export interface FieldCardProps {
 export function FieldCard({
   field,
   index,
-  totalCount,
   onUpdate,
   onUpdateLabel,
   onDelete,
@@ -46,15 +44,12 @@ export function FieldCard({
 
   return (
     <Card data-slot="field-card" className={cn("relative", className)}>
-      <CardContent className="pt-6">
-        {/* Field number badge */}
-        <div className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium">
-          Field {index + 1}
-        </div>
+      <div className="bg-background text-muted-foreground absolute -top-3 left-4 px-2 text-xs font-medium">
+        Field {index + 1}
+      </div>
 
-        {/* Main content */}
+      <CardContent className="pt-6">
         <div className="space-y-4">
-          {/* Top row: Label + Type */}
           <div className="flex flex-col gap-4 sm:flex-row">
             <div className="flex-1 space-y-2">
               <Label htmlFor={`field-label-${field.id}`}>Label</Label>
@@ -70,32 +65,35 @@ export function FieldCard({
             </div>
           </div>
 
-          {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor={`field-description-${field.id}`}>
-              Description <span className="text-muted-foreground font-normal">(optional)</span>
-            </Label>
-            <Input
-              id={`field-description-${field.id}`}
-              value={field.description ?? ""}
-              onChange={(e) => onUpdate({ description: e.target.value || undefined })}
-            />
-          </div>
-
-          {/* Required toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Switch
-                id={`field-required-${field.id}`}
-                checked={field.required}
-                onCheckedChange={(checked) => onUpdate({ required: checked })}
-              />
-              <Label htmlFor={`field-required-${field.id}`} className="cursor-pointer">
-                Required
+          {field.fieldType !== "unsupported" && field.fieldType !== "label" && (
+            <div className="space-y-2">
+              <Label htmlFor={`field-description-${field.id}`}>
+                Description <span className="text-muted-foreground font-normal">(optional)</span>
               </Label>
+              <Input
+                id={`field-description-${field.id}`}
+                value={field.description ?? ""}
+                onChange={(e) => onUpdate({ description: e.target.value || undefined })}
+              />
             </div>
+          )}
 
-            {/* Action buttons */}
+          <div className="flex items-center justify-between">
+            {field.fieldType !== "unsupported" && field.fieldType !== "label" ? (
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`field-required-${field.id}`}
+                  checked={field.required}
+                  onCheckedChange={(checked) => onUpdate({ required: checked })}
+                />
+                <Label htmlFor={`field-required-${field.id}`} className="cursor-pointer">
+                  Required
+                </Label>
+              </div>
+            ) : (
+              <div />
+            )}
+
             <TooltipProvider>
               <div className="flex items-center gap-1">
                 <Tooltip>
@@ -156,7 +154,6 @@ export function FieldCard({
                       size="icon"
                       className="text-destructive hover:text-destructive size-8"
                       onClick={onDelete}
-                      disabled={totalCount <= 1}
                     >
                       <Trash2 className="size-4" />
                       <span className="sr-only">Delete</span>
@@ -168,7 +165,6 @@ export function FieldCard({
             </TooltipProvider>
           </div>
 
-          {/* Type-specific options */}
           <FieldOptions
             fieldType={field.fieldType}
             options={field.options}

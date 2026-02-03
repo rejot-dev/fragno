@@ -9,6 +9,8 @@ import {
   Clock,
   CalendarClock,
   List,
+  Code,
+  Tag,
 } from "lucide-react";
 import type { FieldType, FieldOptions } from "./types";
 
@@ -59,6 +61,7 @@ export const FIELD_TYPES: FieldTypeConfig[] = [
     defaultOptions: {
       minimum: 1,
       maximum: 10,
+      defaultValue: 1,
     },
   },
   {
@@ -98,6 +101,22 @@ export const FIELD_TYPES: FieldTypeConfig[] = [
     description: "Select from options",
     defaultOptions: {
       enumValues: ["Option 1", "Option 2", "Option 3"],
+    },
+  },
+  {
+    type: "label",
+    label: "Label",
+    icon: Tag,
+    description: "Static label text",
+  },
+  {
+    type: "unsupported",
+    label: "Raw Schema",
+    icon: Code,
+    description: "Form builder cannot display this schema type",
+    defaultOptions: {
+      rawJsonSchema: "{}",
+      rawUiSchema: "{}",
     },
   },
 ];
