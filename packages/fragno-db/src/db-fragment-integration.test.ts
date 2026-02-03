@@ -414,6 +414,8 @@ describe.sequential("Database Fragment Integration", () => {
 
     const result = await usersFragment.inContext(async function () {
       return await this.handlerTx()
+        // Add a retrieve op so retry is allowed for the forced conflict below.
+        .retrieve(({ forSchema }) => forSchema(usersSchema).find("users"))
         .mutate(({ forSchema, idempotencyKey, currentAttempt }) => {
           if (currentAttempt === 0) {
             firstIdempotencyKey = idempotencyKey;

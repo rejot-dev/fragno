@@ -414,6 +414,26 @@ describe("Unified Tx API", () => {
       expect(result.userId).toBeInstanceOf(FragnoId);
     });
 
+    it("should throw when retry policy is provided without retrieve operations", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [],
+        executeMutationPhase: async () => ({ success: false }),
+      };
+      const decoder = createMockDecoder();
+
+      await expect(
+        createHandlerTxBuilder({
+          createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+          retryPolicy: new NoRetryPolicy(),
+        })
+          .mutate(() => ({ done: true }))
+          .execute(),
+      ).rejects.toThrow(
+        "Retry policy is only supported when the transaction includes retrieve operations.",
+      );
+    });
+
     it("should execute a transaction with serviceCalls as retrieve source", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
@@ -772,6 +792,7 @@ describe("Unified Tx API", () => {
         createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
         retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 5, initialDelayMs: 1 }),
       })
+        .retrieve(({ forSchema }) => forSchema(testSchema).find("users"))
         .mutate(({ forSchema }) => {
           forSchema(testSchema).create("users", {
             email: "test@example.com",
@@ -801,6 +822,7 @@ describe("Unified Tx API", () => {
           createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
           retryPolicy: new NoRetryPolicy(),
         })
+          .retrieve(({ forSchema }) => forSchema(testSchema).find("users"))
           .mutate(() => ({ done: true }))
           .execute(),
       ).rejects.toThrow(ConcurrencyConflictError);
@@ -850,6 +872,7 @@ describe("Unified Tx API", () => {
         },
         retryPolicy: new LinearBackoffRetryPolicy({ maxRetries: 3, delayMs: 1 }),
       })
+        .retrieve(({ forSchema }) => forSchema(testSchema).find("users"))
         .mutate(({ forSchema }) => {
           forSchema(testSchema).create("users", {
             email: "test@example.com",
@@ -882,6 +905,7 @@ describe("Unified Tx API", () => {
           retryPolicy: new LinearBackoffRetryPolicy({ maxRetries: 5, delayMs: 100 }),
           signal: controller.signal,
         })
+          .retrieve(({ forSchema }) => forSchema(testSchema).find("users"))
           .mutate(() => ({ done: true }))
           .execute(),
       ).rejects.toThrow("Transaction execution aborted");

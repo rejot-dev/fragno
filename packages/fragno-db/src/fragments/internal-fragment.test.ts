@@ -319,7 +319,7 @@ describe("Hook Service", () => {
 
     await expect(
       fragment.inContext(async function () {
-        await this.handlerTx({ retryPolicy: new NoRetryPolicy() })
+        await this.handlerTx()
           .withServiceCalls(
             () => [fragment.services.hookService.markHookCompleted(staleId)] as const,
           )
