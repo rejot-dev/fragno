@@ -1,7 +1,7 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-definition-builder";
 import { instantiate } from "./fragment-instantiator";
-import { defineRoute } from "./route";
+import { defineRoute, defineRoutes } from "./route";
 import { z } from "zod";
 import { FragnoApiValidationError } from "./error";
 
@@ -274,6 +274,52 @@ describe("Request Middleware", () => {
       name: "John Doe",
     });
     expect(middlewareCalled).toBe(true);
+  });
+
+  test("ifMatchesRoute - supports internal linked fragment routes", async () => {
+    const config = {};
+
+    const internalDef = defineFragment("internal").build();
+    const internalRoutes = defineRoutes(internalDef).create(({ defineRoute }) => [
+      defineRoute({
+        method: "GET",
+        path: "/status",
+        handler: async (_input, { json }) => {
+          return json({ ok: true });
+        },
+      }),
+    ]);
+
+    const definition = defineFragment<typeof config>("test-lib")
+      .withLinkedFragment("_fragno_internal", ({ config, options }) => {
+        return instantiate(internalDef)
+          .withConfig(config)
+          .withOptions(options)
+          .withRoutes([internalRoutes])
+          .build();
+      })
+      .build();
+
+    const instance = instantiate(definition)
+      .withConfig(config)
+      .withOptions({
+        mountRoute: "/api",
+      })
+      .build()
+      .withMiddleware(async ({ ifMatchesRoute }) => {
+        return await ifMatchesRoute("GET", "/_internal/status", async ({ path }, { json }) => {
+          expectTypeOf(path).toEqualTypeOf<"/_internal/status">();
+          return json({ ok: false }, 418);
+        });
+      });
+
+    const req = new Request("http://localhost/api/_internal/status", {
+      method: "GET",
+    });
+
+    const res = await instance.handler(req);
+    expect(res.status).toBe(418);
+    expect(await res.json()).toEqual({ ok: false });
   });
 
   test("only one middleware is supported", async () => {

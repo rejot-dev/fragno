@@ -1528,6 +1528,49 @@ describe("fragment-instantiator", () => {
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
 
+    it("should run middleware set on the internal fragment", async () => {
+      const linkedFragmentDef = defineFragment("linked-fragment").build();
+      const linkedRoutes = defineRoutes(linkedFragmentDef).create(({ defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/status",
+          handler: async (_input, { json }) => {
+            return json({ ok: true });
+          },
+        }),
+      ]);
+
+      const definition = defineFragment("main-fragment")
+        .withLinkedFragment("_fragno_internal", ({ config, options }) => {
+          return instantiate(linkedFragmentDef)
+            .withConfig(config)
+            .withOptions(options)
+            .withRoutes([linkedRoutes])
+            .build();
+        })
+        .build();
+
+      const fragment = instantiate(definition).withOptions({ mountRoute: "/api" }).build();
+
+      const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+      internalFragment.withMiddleware(async ({ ifMatchesRoute }) => {
+        const result = await ifMatchesRoute("GET", "/status", async (_input, { json }) => {
+          return json({ ok: false, source: "internal-middleware" }, 418);
+        });
+
+        return result;
+      });
+
+      const response = await fragment.handler(
+        new Request("http://localhost/api/_internal/status", {
+          method: "GET",
+        }),
+      );
+
+      expect(response.status).toBe(418);
+      expect(await response.json()).toEqual({ ok: false, source: "internal-middleware" });
+    });
+
     it("should pass config and options to linked fragments", () => {
       interface Config {
         value: string;

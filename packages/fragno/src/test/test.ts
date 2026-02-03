@@ -6,7 +6,12 @@ import {
   type FragmentDefinition,
   type ServiceConstructorFn,
 } from "../api/fragment-definition-builder";
-import { instantiateFragment, type FragnoInstantiatedFragment } from "../api/fragment-instantiator";
+import {
+  instantiateFragment,
+  type AnyFragnoInstantiatedFragment,
+  type FragnoInstantiatedFragment,
+  type RoutesWithInternal,
+} from "../api/fragment-instantiator";
 import type { BoundServices } from "../api/bind-services";
 
 // Re-export for convenience
@@ -200,6 +205,7 @@ export function createFragmentForTest<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -211,17 +217,20 @@ export function createFragmentForTest<
     TPrivateServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    TLinkedFragments
   >,
   routesOrFactories: TRoutesOrFactories,
   options: CreateFragmentForTestOptions<TConfig, TOptions, TServiceDependencies>,
 ): FragnoInstantiatedFragment<
-  FlattenRouteFactories<TRoutesOrFactories>,
+  RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TLinkedFragments>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
   TServiceThisContext,
   THandlerThisContext,
-  TRequestStorage
+  TRequestStorage,
+  TOptions,
+  TLinkedFragments
 > {
   const { config, options: fragmentOptions = {} as TOptions, serviceImplementations } = options;
 

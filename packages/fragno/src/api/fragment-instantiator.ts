@@ -32,6 +32,68 @@ import { recordTraceEvent } from "../internal/trace-context";
 // Re-export types needed by consumers
 export type { BoundServices };
 
+type InternalRoutePrefix = "/_internal";
+
+type JoinInternalRoutePath<TPath extends string> = TPath extends "" | "/"
+  ? InternalRoutePrefix
+  : TPath extends `/${string}`
+    ? `${InternalRoutePrefix}${TPath}`
+    : `${InternalRoutePrefix}/${TPath}`;
+
+type PrefixInternalRoute<TRoute> =
+  TRoute extends FragnoRouteConfig<
+    infer TMethod,
+    infer TPath,
+    infer TInputSchema,
+    infer TOutputSchema,
+    infer TErrorCode,
+    infer TQueryParameters,
+    infer TThisContext
+  >
+    ? FragnoRouteConfig<
+        TMethod,
+        JoinInternalRoutePath<TPath>,
+        TInputSchema,
+        TOutputSchema,
+        TErrorCode,
+        TQueryParameters,
+        TThisContext
+      >
+    : never;
+
+type PrefixInternalRoutes<TRoutes extends readonly AnyFragnoRouteConfig[]> =
+  TRoutes extends readonly [...infer TRoutesTuple]
+    ? { [K in keyof TRoutesTuple]: PrefixInternalRoute<TRoutesTuple[K]> }
+    : readonly AnyFragnoRouteConfig[];
+
+type ExtractRoutesFromFragment<T> =
+  T extends FragnoInstantiatedFragment<
+    infer TRoutes,
+    infer _TDeps,
+    infer _TServices,
+    infer _TServiceThisContext,
+    infer _THandlerThisContext,
+    infer _TRequestStorage,
+    infer _TOptions,
+    infer _TLinkedFragments
+  >
+    ? TRoutes
+    : never;
+
+type InternalLinkedRoutes<TLinkedFragments> =
+  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>
+    ? TLinkedFragments extends { _fragno_internal: infer TInternal }
+      ? ExtractRoutesFromFragment<TInternal> extends readonly AnyFragnoRouteConfig[]
+        ? PrefixInternalRoutes<ExtractRoutesFromFragment<TInternal>>
+        : readonly []
+      : readonly []
+    : readonly [];
+
+export type RoutesWithInternal<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TLinkedFragments,
+> = readonly [...TRoutes, ...InternalLinkedRoutes<TLinkedFragments>];
+
 /**
  * Helper type to extract the instantiated fragment type from a fragment definition.
  * This is useful for typing functions that accept instantiated fragments based on their definition.
@@ -60,7 +122,7 @@ export type InstantiatedFragmentFromDefinition<
     infer TLinkedFragments
   >
     ? FragnoInstantiatedFragment<
-        readonly AnyFragnoRouteConfig[], // Routes are dynamic, so we use a generic array
+        RoutesWithInternal<readonly AnyFragnoRouteConfig[], TLinkedFragments>,
         TDeps,
         BoundServices<TBaseServices & TServices>,
         TServiceThisContext,
@@ -163,6 +225,16 @@ export type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
 const INTERNAL_LINKED_FRAGMENT_NAME = "_fragno_internal";
 const INTERNAL_ROUTE_PREFIX = "/_internal";
 
+type InternalLinkedRouteMeta = {
+  fragment: AnyFragnoInstantiatedFragment;
+  originalPath: string;
+  routes: readonly AnyFragnoRouteConfig[];
+};
+
+type InternalLinkedRouteConfig = AnyFragnoRouteConfig & {
+  __internal?: InternalLinkedRouteMeta;
+};
+
 function normalizeRoutePrefix(prefix: string): string {
   if (!prefix.startsWith("/")) {
     prefix = `/${prefix}`;
@@ -181,23 +253,28 @@ function joinRoutePath(prefix: string, path: string): string {
 
 function collectLinkedFragmentRoutes(
   linkedFragments: Record<string, AnyFragnoInstantiatedFragment>,
-): AnyFragnoRouteConfig[] {
-  const linkedRoutes: AnyFragnoRouteConfig[] = [];
+): InternalLinkedRouteConfig[] {
+  const linkedRoutes: InternalLinkedRouteConfig[] = [];
 
   for (const [name, fragment] of Object.entries(linkedFragments)) {
     if (name !== INTERNAL_LINKED_FRAGMENT_NAME) {
       continue;
     }
 
-    const routes = (fragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
-    if (routes.length === 0) {
+    const internalRoutes = (fragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
+    if (internalRoutes.length === 0) {
       continue;
     }
 
-    for (const route of routes) {
+    for (const route of internalRoutes) {
       linkedRoutes.push({
         ...route,
         path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
+        __internal: {
+          fragment,
+          originalPath: route.path,
+          routes: internalRoutes,
+        },
       });
     }
   }
@@ -488,7 +565,7 @@ export class FragnoInstantiatedFragment<
     }
 
     // Get the expected content type from route config (default: application/json)
-    const routeConfig = route.data as AnyFragnoRouteConfig;
+    const routeConfig = route.data as InternalLinkedRouteConfig;
     const expectedContentType = routeConfig.contentType ?? "application/json";
 
     // Parse request body based on route's expected content type
@@ -578,11 +655,27 @@ export class FragnoInstantiatedFragment<
 
     // Execute middleware and handler
     const executeRequest = async (): Promise<Response> => {
-      // Middleware execution (if present)
-      if (this.#middlewareHandler) {
-        const middlewareResult = await this.#executeMiddleware(req, route, requestState);
-        if (middlewareResult !== undefined) {
-          return middlewareResult;
+      // Parent middleware execution
+      const middlewareResult = await this.#executeMiddleware(req, route, requestState);
+      if (middlewareResult !== undefined) {
+        return middlewareResult;
+      }
+
+      // Internal fragment middleware execution (if linked)
+      const internalMeta = routeConfig.__internal;
+      if (internalMeta) {
+        const internalResult = await FragnoInstantiatedFragment.#runMiddlewareForFragment(
+          internalMeta.fragment as AnyFragnoInstantiatedFragment,
+          {
+            req,
+            method: routeConfig.method,
+            path: internalMeta.originalPath,
+            requestState,
+            routes: internalMeta.routes,
+          },
+        );
+        if (internalResult !== undefined) {
+          return internalResult;
         }
       }
 
@@ -710,30 +803,57 @@ export class FragnoInstantiatedFragment<
     route: ReturnType<typeof findRoute>,
     requestState: MutableRequestState,
   ): Promise<Response | undefined> {
-    if (!this.#middlewareHandler || !route) {
+    if (!route) {
       return undefined;
     }
 
     const { path } = route.data as AnyFragnoRouteConfig;
-
-    const middlewareInputContext = new RequestMiddlewareInputContext(this.#routes, {
+    return FragnoInstantiatedFragment.#runMiddlewareForFragment(this, {
+      req,
       method: req.method as HTTPMethod,
       path,
-      request: req,
-      state: requestState,
+      requestState,
     });
+  }
 
-    const middlewareOutputContext = new RequestMiddlewareOutputContext(this.#deps, this.#services);
+  static async #runMiddlewareForFragment(
+    fragment: AnyFragnoInstantiatedFragment,
+    options: {
+      req: Request;
+      method: HTTPMethod;
+      path: string;
+      requestState: MutableRequestState;
+      routes?: readonly AnyFragnoRouteConfig[];
+    },
+  ): Promise<Response | undefined> {
+    if (!fragment.#middlewareHandler) {
+      return undefined;
+    }
+
+    const middlewareInputContext = new RequestMiddlewareInputContext(
+      (options.routes ?? fragment.#routes) as readonly AnyFragnoRouteConfig[],
+      {
+        method: options.method,
+        path: options.path,
+        request: options.req,
+        state: options.requestState,
+      },
+    );
+
+    const middlewareOutputContext = new RequestMiddlewareOutputContext(
+      fragment.#deps,
+      fragment.#services,
+    );
 
     try {
-      const middlewareResult = await this.#middlewareHandler(
+      const middlewareResult = await fragment.#middlewareHandler(
         middlewareInputContext,
         middlewareOutputContext,
       );
       recordTraceEvent({
         type: "middleware-decision",
-        method: req.method,
-        path,
+        method: options.method,
+        path: options.path,
         outcome: middlewareResult ? "deny" : "allow",
         status: middlewareResult?.status,
       });
@@ -745,8 +865,8 @@ export class FragnoInstantiatedFragment<
 
       recordTraceEvent({
         type: "middleware-decision",
-        method: req.method,
-        path,
+        method: options.method,
+        path: options.path,
         outcome: "deny",
         status: error instanceof FragnoApiError ? error.status : 500,
       });
@@ -871,7 +991,7 @@ export function instantiateFragment<
   serviceImplementations?: TServiceDependencies,
   instantiationOptions?: InstantiationOptions,
 ): FragnoInstantiatedFragment<
-  FlattenRouteFactories<TRoutesOrFactories>,
+  RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TLinkedFragments>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
   TServiceThisContext,
@@ -1101,7 +1221,10 @@ export function instantiateFragment<
   // Handlers get handlerContext which may have more capabilities than serviceContext
   return new FragnoInstantiatedFragment({
     name: definition.name,
-    routes: finalRoutes as unknown as FlattenRouteFactories<TRoutesOrFactories>,
+    routes: finalRoutes as unknown as RoutesWithInternal<
+      FlattenRouteFactories<TRoutesOrFactories>,
+      TLinkedFragments
+    >,
     deps,
     services: boundServices as BoundServices<TBaseServices & TServices>,
     mountRoute,
@@ -1362,7 +1485,7 @@ export class FragmentInstantiationBuilder<
    * Build and return the instantiated fragment
    */
   build(): FragnoInstantiatedFragment<
-    FlattenRouteFactories<TRoutesOrFactories>,
+    RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TLinkedFragments>,
     TDeps,
     BoundServices<TBaseServices & TServices>,
     TServiceThisContext,

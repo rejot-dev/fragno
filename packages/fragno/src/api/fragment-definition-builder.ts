@@ -24,12 +24,12 @@ export type LinkedFragmentCallback<
   TConfig,
   TOptions extends FragnoPublicConfig,
   TServiceDependencies,
+  TFragment extends AnyFragnoInstantiatedFragment = AnyFragnoInstantiatedFragment,
 > = (context: {
   config: TConfig;
   options: TOptions;
   serviceDependencies?: TServiceDependencies;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-}) => FragnoInstantiatedFragment<any, any, any, any, any, any, any>;
+}) => TFragment;
 
 /**
  * Extract the services type from a FragnoInstantiatedFragment
@@ -238,7 +238,12 @@ export interface FragmentDefinition<
    * Linked fragments are service-only and share the same config/options as the parent.
    */
   linkedFragments?: {
-    [K in keyof TLinkedFragments]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
+    [K in keyof TLinkedFragments]: LinkedFragmentCallback<
+      TConfig,
+      TOptions,
+      TServiceDependencies,
+      TLinkedFragments[K]
+    >;
   };
 
   $serviceThisContext?: TServiceThisContext;
@@ -317,7 +322,12 @@ export class FragmentDefinitionBuilder<
     deps: TDeps;
   }) => RequestContextStorage<TRequestStorage>;
   #linkedFragments?: {
-    [K in keyof TLinkedFragments]: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>;
+    [K in keyof TLinkedFragments]: LinkedFragmentCallback<
+      TConfig,
+      TOptions,
+      TServiceDependencies,
+      TLinkedFragments[K]
+    >;
   };
 
   constructor(
@@ -378,7 +388,8 @@ export class FragmentDefinitionBuilder<
         [K in keyof TLinkedFragments]: LinkedFragmentCallback<
           TConfig,
           TOptions,
-          TServiceDependencies
+          TServiceDependencies,
+          TLinkedFragments[K]
         >;
       };
     },
@@ -980,12 +991,9 @@ export class FragmentDefinitionBuilder<
    * are exposed as private services. Routes are not exposed by default, but the
    * instantiator may mount internal linked fragment routes under an internal prefix.
    */
-  withLinkedFragment<
-    const TName extends string,
-    TCallback extends LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies>,
-  >(
+  withLinkedFragment<const TName extends string, TFragment extends AnyFragnoInstantiatedFragment>(
     name: TName,
-    callback: TCallback,
+    callback: LinkedFragmentCallback<TConfig, TOptions, TServiceDependencies, TFragment>,
   ): FragmentDefinitionBuilder<
     TConfig,
     TOptions,
@@ -993,18 +1001,18 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServices,
     TServiceDependencies,
-    TPrivateServices & ExtractLinkedServices<TCallback>,
+    TPrivateServices & ExtractLinkedServices<() => TFragment>,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments & { [K in TName]: ReturnType<TCallback> }
+    TLinkedFragments & { [K in TName]: TFragment }
   > {
     const newLinkedFragments = {
       ...this.#linkedFragments,
       [name]: callback,
     };
 
-    // Cast is safe: We're declaring that the returned builder has TPrivateServices & ExtractLinkedServices<TCallback>,
+    // Cast is safe: We're declaring that the returned builder has TPrivateServices & ExtractLinkedServices<TFragment>,
     // even though the runtime privateServices hasn't changed yet. The linked fragment services will be
     // merged into privateServices at instantiation time by the instantiator.
     return new FragmentDefinitionBuilder(this.#name, {
@@ -1024,11 +1032,11 @@ export class FragmentDefinitionBuilder<
       TBaseServices,
       TServices,
       TServiceDependencies,
-      TPrivateServices & ExtractLinkedServices<TCallback>,
+      TPrivateServices & ExtractLinkedServices<() => TFragment>,
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments & { [K in TName]: ReturnType<TCallback> }
+      TLinkedFragments & { [K in TName]: TFragment }
     >;
   }
 
