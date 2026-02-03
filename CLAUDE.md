@@ -49,6 +49,7 @@ Examples:
 - Lefthook for pre-commit hooks
 - Prettier
 - oxlint
+- Changesets
 
 ## Development Practices
 
@@ -97,6 +98,12 @@ Examples:
 - `apps/fragno-cli/` - Dev CLI for running and inspecting fragments
 - `apps/fragno-wf/` - Workflows CLI
 - `apps/fragno-ai/` - AI helper app for Fragno workflows
+
+### Private Tooling Packages
+
+- `packages-private/oxlint-plugins/` - Custom oxlint rules
+- `packages-private/typescript-config/` - Shared TS config presets
+- `packages-private/vitest-config/` - Shared Vitest config presets
 
 ### Example Fragments
 

@@ -9,8 +9,10 @@ pre-commit:
       run: pnpm exec oxlint --fix {staged_files}
     - name: prettier
       run:
-        sh -c 'pnpm exec prettier --ignore-unknown --check {staged_files}; code=$?; pnpm exec
-        prettier --ignore-unknown --write {staged_files}; exit $code'
+        sh -c 'files=$(git diff --cached --name-only --diff-filter=ACMRT | while IFS= read -r f; do
+        [ -L "$f" ] && continue; printf "%s\n" "$f"; done); [ -z "$files" ] && exit 0; pnpm exec
+        prettier --ignore-unknown --check $files; code=$?; pnpm exec prettier --ignore-unknown
+        --write $files; exit $code'
     - name: "turbo: build + test + type-check"
       run:
         pnpm exec turbo run --output-logs new-only --no-daemon --filter='!./example-apps/**'
