@@ -113,7 +113,7 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
   // Defined as a field so that `this` reference stays in tact when destructuring
   ifMatchesRoute = async <
     const TMethod extends HTTPMethod,
-    const TPath extends ExtractRoutePath<TRoutes>,
+    const TPath extends ExtractRoutePath<TRoutes, TMethod>,
     const TRoute extends ExtractRouteByPath<TRoutes, TPath, TMethod> = ExtractRouteByPath<
       TRoutes,
       TPath,
