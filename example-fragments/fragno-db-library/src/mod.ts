@@ -11,7 +11,7 @@ type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};
 
-export const commentSchema = schema((s) => {
+export const commentSchema = schema("comment", (s) => {
   return s
     .addTable("comment", (t) => {
       return t

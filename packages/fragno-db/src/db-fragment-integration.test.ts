@@ -12,7 +12,7 @@ import { SQLocalDriverConfig } from "./adapters/generic-sql/driver-config";
 
 describe.sequential("Database Fragment Integration", () => {
   // Schema 1: Users fragment
-  const usersSchema = schema((s) => {
+  const usersSchema = schema("users", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -36,7 +36,7 @@ describe.sequential("Database Fragment Integration", () => {
   });
 
   // Schema 2: Orders fragment
-  const ordersSchema = schema((s) => {
+  const ordersSchema = schema("orders", (s) => {
     return s.addTable("orders", (t) => {
       return t
         .addColumn("id", idColumn())
@@ -50,7 +50,7 @@ describe.sequential("Database Fragment Integration", () => {
 
   // Define Users Fragment using the new unified serviceTx API
   const usersFragmentDef = defineFragment("users-fragment")
-    .extend(withDatabase(usersSchema, "users"))
+    .extend(withDatabase(usersSchema))
     .providesService("userService", ({ defineService }) => {
       return defineService({
         // Creates a user - returns TxResult<FragnoId>
@@ -118,7 +118,7 @@ describe.sequential("Database Fragment Integration", () => {
 
   // Define Orders Fragment with cross-fragment service dependency using new serviceTx API
   const ordersFragmentDef = defineFragment("orders-fragment")
-    .extend(withDatabase(ordersSchema, "orders"))
+    .extend(withDatabase(ordersSchema))
     .usesService<
       "userService",
       {

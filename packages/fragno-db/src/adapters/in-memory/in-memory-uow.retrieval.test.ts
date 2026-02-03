@@ -10,7 +10,7 @@ import {
 import { resolveInMemoryAdapterOptions } from "./options";
 import type { CompiledJoin } from "../../query/orm/orm";
 
-const joinSchema = schema((s) =>
+const joinSchema = schema("join", (s) =>
   s
     .addTable("users", (t) =>
       t

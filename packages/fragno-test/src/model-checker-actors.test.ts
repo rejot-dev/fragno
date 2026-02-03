@@ -4,7 +4,7 @@ import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { ModelCheckerAdapter } from "./model-checker-adapter";
 import { runModelCheckerWithActors } from "./model-checker-actors";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
 );
 

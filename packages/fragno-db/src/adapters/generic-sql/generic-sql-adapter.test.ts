@@ -6,7 +6,7 @@ import { column, idColumn, schema } from "../../schema/create";
 import { internalSchema } from "../../fragments/internal-fragment";
 
 describe("SqlAdapter", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s.addTable("products", (t) => {
       return t
         .addColumn("id", idColumn())

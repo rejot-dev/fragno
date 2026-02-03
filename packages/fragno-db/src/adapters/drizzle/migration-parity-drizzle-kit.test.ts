@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { writeAndLoadSchema } from "./test-utils";
 import { createPreparedMigrations } from "../generic-sql/migration/prepared-migrations";
+import { createNamingResolver } from "../../naming/sql-naming";
+import { defaultNamingStrategyForDatabase } from "../generic-sql/driver-config";
 
 const require = createRequire(import.meta.url);
 const {
@@ -14,7 +16,7 @@ const {
   generateMySQLMigration,
 } = require("drizzle-kit/api") as typeof import("drizzle-kit/api");
 
-const paritySchema = schema((s) => {
+const paritySchema = schema("parity", (s) => {
   return s
     .addTable("users", (t) => {
       return t
@@ -206,13 +208,23 @@ const NORMALIZATION_RULES: NormalizationRule[] = [
 const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
   {
     reason:
+      "Drizzle migrations do not emit CREATE SCHEMA; ignore schema creation for parity checks.",
+    apply: (sql, ctx) => {
+      if (ctx.dialect === "postgresql" && sql.startsWith("create schema ")) {
+        return null;
+      }
+      return sql;
+    },
+  },
+  {
+    reason:
       "External-id uniqueness can appear as column UNIQUE or a table-level UNIQUE(id); normalize to markers.",
     apply: (sql, ctx) => {
       if (!sql.startsWith("create table ")) {
         return sql;
       }
 
-      const tableMatch = sql.match(/^create table\s+(\w+)\s*\(/);
+      const tableMatch = sql.match(/^create table\s+([\w.]+)\s*\(/);
       const tableName = tableMatch?.[1];
       if (!tableName) {
         return sql;
@@ -515,7 +527,7 @@ async function getDrizzleMigrationSql(dialect: Dialect): Promise<string[]> {
     `drizzle-kit-parity-${dialect}`,
     paritySchema,
     dialect,
-    "",
+    paritySchema.name,
     false,
   );
 
@@ -547,11 +559,17 @@ async function getDrizzleMigrationSql(dialect: Dialect): Promise<string[]> {
 }
 
 function getKyselyMigrationSql(dialect: Dialect): string[] {
+  const resolver = createNamingResolver(
+    paritySchema,
+    paritySchema.name,
+    defaultNamingStrategyForDatabase(dialect),
+  );
   const prepared = createPreparedMigrations({
     schema: paritySchema,
-    namespace: "",
+    namespace: paritySchema.name,
     database: dialect,
     updateVersionInMigration: false,
+    resolver,
   });
 
   const statements = prepared

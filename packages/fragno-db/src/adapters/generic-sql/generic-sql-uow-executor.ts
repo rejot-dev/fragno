@@ -21,12 +21,13 @@ import {
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
-import { createTableNameMapper } from "../shared/table-name-mapper";
+import { type SqlNamingStrategy } from "../../naming/sql-naming";
 
 export interface ExecutorOptions {
   dryRun?: boolean;
   dialect: Dialect;
   outbox?: OutboxConfig;
+  namingStrategy?: SqlNamingStrategy;
 }
 
 export async function executeRetrieval(
@@ -62,6 +63,7 @@ export async function executeMutation(
   const createdInternalIds: (bigint | null)[] = [];
   const resultInterpreter = new ResultInterpreter(driverConfig);
   const outboxEnabled = options.outbox?.enabled ?? false;
+  const namingStrategy = options.namingStrategy ?? driverConfig.defaultNamingStrategy;
 
   const outboxOperations = outboxEnabled
     ? mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation] : []))
@@ -129,7 +131,12 @@ export async function executeMutation(
           throw new Error("Outbox mutation batch is missing uowId.");
         }
 
-        const refMap = await resolveOutboxRefMap(tx, driverConfig, outboxPlan.lookups);
+        const refMap = await resolveOutboxRefMap(
+          tx,
+          driverConfig,
+          outboxPlan.lookups,
+          namingStrategy,
+        );
         const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
         const payloadSerialized = superjson.serialize(payload);
         const versionstamp = encodeVersionstamp(outboxVersion, 0);
@@ -271,6 +278,7 @@ async function resolveOutboxRefMap(
   tx: SqlDriverAdapter,
   driverConfig: DriverConfig,
   lookups: OutboxRefLookup[],
+  namingStrategy: SqlNamingStrategy,
 ): Promise<OutboxRefMap | undefined> {
   if (lookups.length === 0) {
     return undefined;
@@ -280,12 +288,21 @@ async function resolveOutboxRefMap(
   const db = createColdKysely(driverConfig.databaseType);
 
   for (const lookup of lookups) {
-    const mapper = lookup.namespace ? createTableNameMapper(lookup.namespace) : undefined;
-    const tableName = mapper ? mapper.toPhysical(lookup.table.ormName) : lookup.table.ormName;
-    const internalColumn = lookup.table.getInternalIdColumn().name;
-    const externalColumn = lookup.table.getIdColumn().name;
+    const namespace = lookup.namespace ?? null;
+    const logicalTable = lookup.table.name;
+    const schemaName =
+      namingStrategy.namespaceScope === "schema" && namespace && namespace.length > 0
+        ? namingStrategy.namespaceToSchema(namespace)
+        : null;
+    const scopedDb = schemaName ? db.withSchema(schemaName) : db;
+    const tableName = namingStrategy.tableName(logicalTable, namespace);
+    const internalColumn = namingStrategy.columnName(
+      lookup.table.getInternalIdColumn().name,
+      logicalTable,
+    );
+    const externalColumn = namingStrategy.columnName(lookup.table.getIdColumn().name, logicalTable);
 
-    const query = db
+    const query = scopedDb
       .selectFrom(tableName)
       .select(externalColumn)
       .where(internalColumn, "=", lookup.internalId)

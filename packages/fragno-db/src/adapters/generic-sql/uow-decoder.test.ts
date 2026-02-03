@@ -8,7 +8,7 @@ import type { AnySchema } from "../../schema/create";
 describe("UnitOfWorkDecoder", () => {
   const driverConfig = new SQLocalDriverConfig();
 
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t

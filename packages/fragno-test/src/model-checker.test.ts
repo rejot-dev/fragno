@@ -11,7 +11,7 @@ import {
   type ModelCheckerStateHasherContext,
 } from "./model-checker";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s.addTable("users", (t) =>
     t
       .addColumn("id", idColumn())
@@ -190,7 +190,7 @@ describe("model checker", () => {
   });
 
   it("surfaces invariant violations across interleavings", async () => {
-    const reservationSchema = schema((s) =>
+    const reservationSchema = schema("reservation", (s) =>
       s
         .addTable("stock", (t) => t.addColumn("id", idColumn()).addColumn("remaining", "integer"))
         .addTable("orders", (t) => t.addColumn("id", idColumn()).addColumn("note", "string")),

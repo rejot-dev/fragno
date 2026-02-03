@@ -7,7 +7,7 @@ import { createNamespaceStore } from "./store";
 
 describe("in-memory condition evaluator", () => {
   it("evaluates SQLite-normalized comparisons and LIKE semantics", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("events", (t) =>
         t
           .addColumn("id", idColumn())
@@ -83,7 +83,7 @@ describe("in-memory condition evaluator", () => {
   });
 
   it("handles null and IN semantics", () => {
-    const testSchema = schema((s) =>
+    const testSchema = schema("test", (s) =>
       s.addTable("events", (t) =>
         t
           .addColumn("id", idColumn())
@@ -146,7 +146,7 @@ describe("in-memory condition evaluator", () => {
   });
 
   it("resolves reference values against the namespace store", () => {
-    const refSchema = schema((s) =>
+    const refSchema = schema("ref", (s) =>
       s
         .addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("email", column("string")),

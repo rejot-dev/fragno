@@ -20,7 +20,7 @@ import {
 } from "./retry-policy";
 import type { AwaitedPromisesInObject, TxResult } from "./execute-unit-of-work";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s.addTable("users", (t) =>
     t
       .addColumn("id", idColumn())

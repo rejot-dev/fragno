@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, customType, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, customType, pgSchema, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
 const customBinary = customType<
@@ -19,7 +19,7 @@ const customBinary = customType<
 });
 
 // ============================================================================
-// Fragment: 
+// Fragment: (none)
 // ============================================================================
 
 export const fragno_db_settings = pgTable("fragno_db_settings", {
@@ -67,10 +67,12 @@ export const fragno_db_outbox = pgTable("fragno_db_outbox", {
 ])
 
 // ============================================================================
-// Fragment: fragno-db-comment
+// Fragment: comment
 // ============================================================================
 
-export const comment_fragno_db_comment = pgTable("comment_fragno-db-comment", {
+const schema_comment = pgSchema("comment");
+
+export const comment_comment = schema_comment.table("comment", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -85,35 +87,37 @@ export const comment_fragno_db_comment = pgTable("comment_fragno-db-comment", {
   foreignKey({
     columns: [table.parentId],
     foreignColumns: [table._internalId],
-    name: "fk_comment_comment_parent_fragno-db-comment"
+    name: "fk_comment_comment_parent"
   }),
-  index("idx_comment_post_fragno-db-comment").on(table.postReference)
+  index("idx_comment_post").on(table.postReference)
 ])
 
-export const comment_fragno_db_commentRelations = relations(comment_fragno_db_comment, ({ one, many }) => ({
-  parent: one(comment_fragno_db_comment, {
+export const comment_commentRelations = relations(comment_comment, ({ one, many }) => ({
+  parent: one(comment_comment, {
     relationName: "comment_comment",
-    fields: [comment_fragno_db_comment.parentId],
-    references: [comment_fragno_db_comment._internalId]
+    fields: [comment_comment.parentId],
+    references: [comment_comment._internalId]
   }),
-  commentList: many(comment_fragno_db_comment, {
+  commentList: many(comment_comment, {
     relationName: "comment_comment"
   })
 }));
 
-export const fragno_db_comment_schema = {
-  comment_fragno_db_comment: comment_fragno_db_comment,
-  comment_fragno_db_commentRelations: comment_fragno_db_commentRelations,
-  comment: comment_fragno_db_comment,
-  commentRelations: comment_fragno_db_commentRelations,
+export const comment_schema = {
+  comment_comment: comment_comment,
+  comment_commentRelations: comment_commentRelations,
+  comment: comment_comment,
+  commentRelations: comment_commentRelations,
   schemaVersion: 3
 }
 
 // ============================================================================
-// Fragment: fragno-db-rating
+// Fragment: upvote
 // ============================================================================
 
-export const upvote_fragno_db_rating = pgTable("upvote_fragno-db-rating", {
+const schema_upvote = pgSchema("upvote");
+
+export const upvote_upvote = schema_upvote.table("upvote", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
@@ -123,32 +127,34 @@ export const upvote_fragno_db_rating = pgTable("upvote_fragno-db-rating", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  index("idx_upvote_reference_fragno-db-rating").on(table.reference, table.ownerReference)
+  index("idx_upvote_reference").on(table.reference, table.ownerReference)
 ])
 
-export const upvote_total_fragno_db_rating = pgTable("upvote_total_fragno-db-rating", {
+export const upvote_total_upvote = schema_upvote.table("upvote_total", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   reference: text("reference").notNull(),
   total: integer("total").notNull().default(0),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("idx_upvote_total_reference_fragno-db-rating").on(table.reference)
+  uniqueIndex("idx_upvote_total_reference").on(table.reference)
 ])
 
-export const fragno_db_rating_schema = {
-  upvote_fragno_db_rating: upvote_fragno_db_rating,
-  upvote: upvote_fragno_db_rating,
-  upvote_total_fragno_db_rating: upvote_total_fragno_db_rating,
-  upvote_total: upvote_total_fragno_db_rating,
+export const upvote_schema = {
+  upvote_upvote: upvote_upvote,
+  upvote: upvote_upvote,
+  upvote_total_upvote: upvote_total_upvote,
+  upvote_total: upvote_total_upvote,
   schemaVersion: 2
 }
 
 // ============================================================================
-// Fragment: simple-auth-db
+// Fragment: auth
 // ============================================================================
 
-export const user_simple_auth_db = pgTable("user_simple-auth-db", {
+const schema_auth = pgSchema("auth");
+
+export const user_auth = schema_auth.table("user", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
   passwordHash: text("passwordHash").notNull(),
@@ -157,12 +163,12 @@ export const user_simple_auth_db = pgTable("user_simple-auth-db", {
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  index("idx_user_email_simple-auth-db").on(table.email),
-  uniqueIndex("idx_user_id_simple-auth-db").on(table.id),
-  index("idx_user_createdAt_simple-auth-db").on(table.createdAt)
+  index("idx_user_email").on(table.email),
+  uniqueIndex("idx_user_id").on(table.id),
+  index("idx_user_createdAt").on(table.createdAt)
 ])
 
-export const session_simple_auth_db = pgTable("session_simple-auth-db", {
+export const session_auth = schema_auth.table("session", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
@@ -172,35 +178,35 @@ export const session_simple_auth_db = pgTable("session_simple-auth-db", {
 }, (table) => [
   foreignKey({
     columns: [table.userId],
-    foreignColumns: [user_simple_auth_db._internalId],
-    name: "fk_session_user_sessionOwner_simple-auth-db"
+    foreignColumns: [user_auth._internalId],
+    name: "fk_session_user_sessionOwner"
   }),
-  index("idx_session_user_simple-auth-db").on(table.userId)
+  index("idx_session_user").on(table.userId)
 ])
 
-export const user_simple_auth_dbRelations = relations(user_simple_auth_db, ({ many }) => ({
-  sessionList: many(session_simple_auth_db, {
+export const user_authRelations = relations(user_auth, ({ many }) => ({
+  sessionList: many(session_auth, {
     relationName: "session_user"
   })
 }));
 
-export const session_simple_auth_dbRelations = relations(session_simple_auth_db, ({ one }) => ({
-  sessionOwner: one(user_simple_auth_db, {
+export const session_authRelations = relations(session_auth, ({ one }) => ({
+  sessionOwner: one(user_auth, {
     relationName: "session_user",
-    fields: [session_simple_auth_db.userId],
-    references: [user_simple_auth_db._internalId]
+    fields: [session_auth.userId],
+    references: [user_auth._internalId]
   })
 }));
 
-export const simple_auth_db_schema = {
-  user_simple_auth_db: user_simple_auth_db,
-  user_simple_auth_dbRelations: user_simple_auth_dbRelations,
-  user: user_simple_auth_db,
-  userRelations: user_simple_auth_dbRelations,
-  session_simple_auth_db: session_simple_auth_db,
-  session_simple_auth_dbRelations: session_simple_auth_dbRelations,
-  session: session_simple_auth_db,
-  sessionRelations: session_simple_auth_dbRelations,
+export const auth_schema = {
+  user_auth: user_auth,
+  user_authRelations: user_authRelations,
+  user: user_auth,
+  userRelations: user_authRelations,
+  session_auth: session_auth,
+  session_authRelations: session_authRelations,
+  session: session_auth,
+  sessionRelations: session_authRelations,
   schemaVersion: 4
 }
 
@@ -208,7 +214,9 @@ export const simple_auth_db_schema = {
 // Fragment: workflows
 // ============================================================================
 
-export const workflow_instance_workflows = pgTable("workflow_instance_workflows", {
+const schema_workflows = pgSchema("workflows");
+
+export const workflow_instance_workflows = schema_workflows.table("workflow_instance", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceId: text("instanceId").notNull(),
   workflowName: text("workflowName").notNull(),
@@ -227,11 +235,11 @@ export const workflow_instance_workflows = pgTable("workflow_instance_workflows"
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  uniqueIndex("idx_workflow_instance_workflowName_instanceId_workflows").on(table.workflowName, table.instanceId),
-  index("idx_workflow_instance_status_updatedAt_workflows").on(table.workflowName, table.status, table.updatedAt)
+  uniqueIndex("idx_workflow_instance_workflowName_instanceId").on(table.workflowName, table.instanceId),
+  index("idx_workflow_instance_status_updatedAt").on(table.workflowName, table.status, table.updatedAt)
 ])
 
-export const workflow_step_workflows = pgTable("workflow_step_workflows", {
+export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
@@ -258,17 +266,17 @@ export const workflow_step_workflows = pgTable("workflow_step_workflows", {
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_step_workflow_instance_stepInstance_workflows"
+    name: "fk_workflow_step_workflow_instance_stepInstance"
   }),
-  uniqueIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.stepKey),
-  index("idx_workflow_step_instanceRef_runNumber_workflows").on(table.instanceRef, table.runNumber),
-  index("idx_workflow_step_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
-  index("idx_workflow_step_status_wakeAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.status, table.wakeAt),
-  index("idx_workflow_step_workflowName_instanceId_status_workflows").on(table.workflowName, table.instanceId, table.status),
-  index("idx_workflow_step_status_nextRetryAt_workflows").on(table.status, table.nextRetryAt)
+  uniqueIndex("idx_workflow_step_workflowName_instanceId_runNumber_stepKey").on(table.workflowName, table.instanceId, table.runNumber, table.stepKey),
+  index("idx_workflow_step_instanceRef_runNumber").on(table.instanceRef, table.runNumber),
+  index("idx_workflow_step_history_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
+  index("idx_workflow_step_status_wakeAt").on(table.workflowName, table.instanceId, table.runNumber, table.status, table.wakeAt),
+  index("idx_workflow_step_workflowName_instanceId_status").on(table.workflowName, table.instanceId, table.status),
+  index("idx_workflow_step_status_nextRetryAt").on(table.status, table.nextRetryAt)
 ])
 
-export const workflow_event_workflows = pgTable("workflow_event_workflows", {
+export const workflow_event_workflows = schema_workflows.table("workflow_event", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
@@ -285,14 +293,14 @@ export const workflow_event_workflows = pgTable("workflow_event_workflows", {
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_event_workflow_instance_eventInstance_workflows"
+    name: "fk_workflow_event_workflow_instance_eventInstance"
   }),
-  index("idx_workflow_event_type_deliveredAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.type, table.deliveredAt),
-  index("idx_workflow_event_instanceRef_runNumber_createdAt_workflows").on(table.instanceRef, table.runNumber, table.createdAt),
-  index("idx_workflow_event_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt)
+  index("idx_workflow_event_type_deliveredAt").on(table.workflowName, table.instanceId, table.runNumber, table.type, table.deliveredAt),
+  index("idx_workflow_event_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt),
+  index("idx_workflow_event_history_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt)
 ])
 
-export const workflow_task_workflows = pgTable("workflow_task_workflows", {
+export const workflow_task_workflows = schema_workflows.table("workflow_task", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
@@ -314,14 +322,14 @@ export const workflow_task_workflows = pgTable("workflow_task_workflows", {
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_task_workflow_instance_taskInstance_workflows"
+    name: "fk_workflow_task_workflow_instance_taskInstance"
   }),
-  index("idx_workflow_task_status_runAt_workflows").on(table.status, table.runAt),
-  index("idx_workflow_task_status_lockedUntil_workflows").on(table.status, table.lockedUntil),
-  uniqueIndex("idx_workflow_task_workflowName_instanceId_runNumber_workflows").on(table.workflowName, table.instanceId, table.runNumber)
+  index("idx_workflow_task_status_runAt").on(table.status, table.runAt),
+  index("idx_workflow_task_status_lockedUntil").on(table.status, table.lockedUntil),
+  uniqueIndex("idx_workflow_task_workflowName_instanceId_runNumber").on(table.workflowName, table.instanceId, table.runNumber)
 ])
 
-export const workflow_log_workflows = pgTable("workflow_log_workflows", {
+export const workflow_log_workflows = schema_workflows.table("workflow_log", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   workflowName: text("workflowName").notNull(),
@@ -340,12 +348,12 @@ export const workflow_log_workflows = pgTable("workflow_log_workflows", {
   foreignKey({
     columns: [table.instanceRef],
     foreignColumns: [workflow_instance_workflows._internalId],
-    name: "fk_workflow_log_workflow_instance_logInstance_workflows"
+    name: "fk_workflow_log_workflow_instance_logInstance"
   }),
-  index("idx_workflow_log_history_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
-  index("idx_workflow_log_level_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.level, table.createdAt),
-  index("idx_workflow_log_category_createdAt_workflows").on(table.workflowName, table.instanceId, table.runNumber, table.category, table.createdAt),
-  index("idx_workflow_log_instanceRef_runNumber_createdAt_workflows").on(table.instanceRef, table.runNumber, table.createdAt)
+  index("idx_workflow_log_history_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.createdAt),
+  index("idx_workflow_log_level_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.level, table.createdAt),
+  index("idx_workflow_log_category_createdAt").on(table.workflowName, table.instanceId, table.runNumber, table.category, table.createdAt),
+  index("idx_workflow_log_instanceRef_runNumber_createdAt").on(table.instanceRef, table.runNumber, table.createdAt)
 ])
 
 export const workflow_instance_workflowsRelations = relations(workflow_instance_workflows, ({ many }) => ({

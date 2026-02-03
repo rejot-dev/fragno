@@ -400,7 +400,7 @@ describe("defineFragmentWithDatabase with full database integration", () => {
     import { defineFragmentWithDatabase } from "@fragno-dev/db";
     import { z } from "zod";
 
-    export const noteSchema = schema((s) => {
+    export const noteSchema = schema("note", (s) => {
       return s.addTable("note", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -455,7 +455,7 @@ describe("defineFragmentWithDatabase with full database integration", () => {
       import { schema } from "@fragno-dev/db/schema";
       import type { TableToInsertValues } from "@fragno-dev/db/query";
       import { z } from "zod";
-      export const noteSchema = schema(s => s);
+      export const noteSchema = schema("note", s => s);
       const lib = defineFragment("mylib").providesService(() => {});"
     `);
   });
@@ -487,7 +487,7 @@ describe("defineFragmentWithDatabase with withDatabase and withDependencies", ()
     import { defineFragmentWithDatabase } from "@fragno-dev/db";
     import { schema } from "@fragno-dev/db/schema";
     
-    const mySchema = schema((s) => s.addTable("users", (t) => t));
+    const mySchema = schema("my", (s) => s.addTable("users", (t) => t));
     
     const lib = defineFragmentWithDatabase("mylib")
       .withDatabase(mySchema)
@@ -658,7 +658,7 @@ describe("schema utility function transformation", () => {
     import { column, idColumn, schema } from "@fragno-dev/db/schema";
     import { defineFragmentWithDatabase } from "@fragno-dev/db";
 
-    export const noteSchema = schema((s) => {
+    export const noteSchema = schema("note", (s) => {
       return s.addTable("note", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -675,7 +675,7 @@ describe("schema utility function transformation", () => {
 
   test("ssr:false - transforms schema call to no-op", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain("schema(s => s)");
+    expect(result.code).toContain('schema("note", s => s)');
     expect(result.code).not.toContain("addTable");
     expect(result.code).not.toContain("addColumn");
     expect(result.code).not.toContain("createIndex");
@@ -696,7 +696,7 @@ describe("schema from @fragno-dev/db", () => {
     import { schema } from "@fragno-dev/db";
     import { defineFragmentWithDatabase } from "@fragno-dev/db";
 
-    export const mySchema = schema((s) => {
+    export const mySchema = schema("my", (s) => {
       return s.addTable("users", (t) => t);
     });
     
@@ -706,7 +706,7 @@ describe("schema from @fragno-dev/db", () => {
 
   test("ssr:false - transforms schema from main package", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain("schema(s => s)");
+    expect(result.code).toContain('schema("my", s => s)');
     expect(result.code).not.toContain("addTable");
   });
 });
@@ -716,11 +716,11 @@ describe("multiple schema calls", () => {
     import { schema } from "@fragno-dev/db/schema";
     import { defineFragmentWithDatabase } from "@fragno-dev/db";
 
-    export const schema1 = schema((s) => {
+    export const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => t);
     });
     
-    export const schema2 = schema((s) => {
+    export const schema2 = schema("schema2", (s) => {
       return s.addTable("posts", (t) => t);
     });
     
@@ -730,7 +730,9 @@ describe("multiple schema calls", () => {
 
   test("ssr:false - transforms all schema calls", () => {
     const result = transform(source, "", { ssr: false });
-    const schemaNoOpCount = (result.code.match(/schema\(s => s\)/g) || []).length;
+    const schemaNoOpCount = (
+      result.code.match(/schema\(["'].*?["'],\s*(?:\(s\)|s)\s*=>\s*s\)/g) || []
+    ).length;
     expect(schemaNoOpCount).toBe(2);
     expect(result.code).not.toContain("addTable");
   });
@@ -740,7 +742,7 @@ describe("schema in separate file scenario", () => {
   const source = dedent`
     import { schema } from "@fragno-dev/db/schema";
     
-    export const authSchema = schema((s) => {
+    export const authSchema = schema("auth", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", { type: "string" });
       });
@@ -756,7 +758,7 @@ describe("schema in separate file scenario", () => {
 
     expect(result.code).toMatchInlineSnapshot(`
       "import { schema } from "@fragno-dev/db/schema";
-      export const authSchema = schema(s => s);"
+      export const authSchema = schema("auth", s => s);"
     `);
   });
 
@@ -775,7 +777,7 @@ describe("schema in separate file scenario", () => {
       return callback(builder).build();
     };
 
-    // The transformed code should be: schema(s => s)
+    // The transformed code should be: schema("name", s => s)
     // When executed, this should not throw an error
     expect(() => {
       mockSchema((s) => s);
@@ -976,7 +978,7 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       import { schema } from "@fragno-dev/db/schema";
       import { defineFragmentWithDatabase } from "@fragno-dev/db";
 
-      export const noteSchema = schema((s) => {
+      export const noteSchema = schema("note", (s) => {
         return s.addTable("note", (t) => {
           return t.addColumn("id", { type: "string" });
         });
@@ -996,7 +998,7 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       const result = transform(source, "", { ssr: false });
 
       // Schema should be transformed
-      expect(result.code).toContain("schema(s => s)");
+      expect(result.code).toContain('schema("note", s => s)');
       expect(result.code).not.toContain("addTable");
 
       // defineFragmentWithDatabase should be replaced

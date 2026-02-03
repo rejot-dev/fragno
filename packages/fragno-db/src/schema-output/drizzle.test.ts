@@ -4,7 +4,7 @@ import { generateDrizzleSchema } from "./drizzle";
 import { internalSchema } from "../fragments/internal-fragment";
 
 describe("generateDrizzleSchema", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -39,7 +39,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -47,7 +47,9 @@ describe("generateDrizzleSchema", () => {
         // Fragment: test
         // ============================================================================
 
-        export const users_test = pgTable("users_test", {
+        const schema_test = pgSchema("test");
+
+        export const users_test = schema_test.table("users", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
@@ -55,11 +57,11 @@ describe("generateDrizzleSchema", () => {
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
-          uniqueIndex("idx_email_test").on(table.email),
-          index("idx_name_test").on(table.name)
+          uniqueIndex("idx_email").on(table.email),
+          index("idx_name").on(table.name)
         ])
 
-        export const posts_test = pgTable("posts_test", {
+        export const posts_test = schema_test.table("posts", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
@@ -71,10 +73,10 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test"
+            name: "fk_posts_users_author"
           }),
-          index("idx_user_test").on(table.userId),
-          index("idx_title_test").on(table.title)
+          index("idx_user").on(table.userId),
+          index("idx_title").on(table.title)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -126,8 +128,8 @@ describe("generateDrizzleSchema", () => {
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
           _version: int("_version").notNull().default(0)
         }, (table) => [
-          uniqueIndex("idx_email_test").on(table.email),
-          index("idx_name_test").on(table.name)
+          uniqueIndex("uidx_users_idx_email_test_3d974845").on(table.email),
+          index("idx_users_idx_name_test_7f36c497").on(table.name)
         ])
 
         export const posts_test = mysqlTable("posts_test", {
@@ -142,10 +144,10 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test"
+            name: "fk_posts_users_author_test_8d48035c"
           }),
-          index("idx_user_test").on(table.userId),
-          index("idx_title_test").on(table.title)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
+          index("idx_posts_idx_title_test_00e97ff4").on(table.title)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -200,9 +202,9 @@ describe("generateDrizzleSchema", () => {
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
-          uniqueIndex("idx_email_test").on(table.email),
-          index("idx_name_test").on(table.name),
-          uniqueIndex("idx_users_external_id_test").on(table.id)
+          uniqueIndex("uidx_users_idx_email_test_3d974845").on(table.email),
+          index("idx_users_idx_name_test_7f36c497").on(table.name),
+          uniqueIndex("uidx_users_idx_users_external_id_test_8eaf053f").on(table.id)
         ])
 
         export const posts_test = sqliteTable("posts_test", {
@@ -217,11 +219,11 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test"
+            name: "fk_posts_users_author_test_8d48035c"
           }),
-          index("idx_user_test").on(table.userId),
-          index("idx_title_test").on(table.title),
-          uniqueIndex("idx_posts_external_id_test").on(table.id)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
+          index("idx_posts_idx_title_test_00e97ff4").on(table.title),
+          uniqueIndex("uidx_posts_idx_posts_external_id_test_80487638").on(table.id)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -255,7 +257,7 @@ describe("generateDrizzleSchema", () => {
 
   describe("default values", () => {
     it("should handle runtime default values", () => {
-      const timestampSchema = schema((s) => {
+      const timestampSchema = schema("timestamp", (s) => {
         return s.addTable("events", (t) => {
           return t.addColumn("id", idColumn()).addColumn(
             "createdAt",
@@ -269,14 +271,16 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
 
         // ============================================================================
         // Fragment: test
         // ============================================================================
 
-        export const events_test = pgTable("events_test", {
+        const schema_test = pgSchema("test");
+
+        export const events_test = schema_test.table("events", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -292,7 +296,7 @@ describe("generateDrizzleSchema", () => {
     });
 
     it("should handle database-level default values", () => {
-      const timestampSchema = schema((s) => {
+      const timestampSchema = schema("timestamp", (s) => {
         return s.addTable("events", (t) => {
           return t.addColumn("id", idColumn()).addColumn(
             "createdAt",
@@ -306,14 +310,16 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
 
         // ============================================================================
         // Fragment: test
         // ============================================================================
 
-        export const events_test = pgTable("events_test", {
+        const schema_test = pgSchema("test");
+
+        export const events_test = schema_test.table("events", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().defaultNow(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -331,7 +337,7 @@ describe("generateDrizzleSchema", () => {
 
   describe("binary columns", () => {
     it("should generate custom type for binary columns", () => {
-      const binarySchema = schema((s) => {
+      const binarySchema = schema("binary", (s) => {
         return s.addTable("files", (t) => {
           return t.addColumn("id", idColumn()).addColumn("data", column("binary"));
         });
@@ -342,7 +348,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         const customBinary = customType<
           {
@@ -365,7 +371,9 @@ describe("generateDrizzleSchema", () => {
         // Fragment: test
         // ============================================================================
 
-        export const files_test = pgTable("files_test", {
+        const schema_test = pgSchema("test");
+
+        export const files_test = schema_test.table("files", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           data: customBinary("data").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
@@ -382,7 +390,7 @@ describe("generateDrizzleSchema", () => {
   });
 
   describe("many relations", () => {
-    const oneToManySchema = schema((s) => {
+    const oneToManySchema = schema("onetomany", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -412,7 +420,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, bigint, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, bigserial, integer, bigint, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -420,14 +428,16 @@ describe("generateDrizzleSchema", () => {
         // Fragment: test
         // ============================================================================
 
-        export const users_test = pgTable("users_test", {
+        const schema_test = pgSchema("test");
+
+        export const users_test = schema_test.table("users", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
-        export const posts_test = pgTable("posts_test", {
+        export const posts_test = schema_test.table("posts", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
@@ -437,9 +447,9 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test"
+            name: "fk_posts_users_author"
           }),
-          index("idx_user_test").on(table.userId)
+          index("idx_user").on(table.userId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -504,9 +514,9 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test"
+            name: "fk_posts_users_author_test_8d48035c"
           }),
-          index("idx_user_test").on(table.userId)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -560,7 +570,7 @@ describe("generateDrizzleSchema", () => {
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
-          uniqueIndex("idx_users_external_id_test").on(table.id)
+          uniqueIndex("uidx_users_idx_users_external_id_test_8eaf053f").on(table.id)
         ])
 
         export const posts_test = sqliteTable("posts_test", {
@@ -573,10 +583,10 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_test._internalId],
-            name: "fk_posts_users_author_test"
+            name: "fk_posts_users_author_test_8d48035c"
           }),
-          index("idx_user_test").on(table.userId),
-          uniqueIndex("idx_posts_external_id_test").on(table.id)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
+          uniqueIndex("uidx_posts_idx_posts_external_id_test_80487638").on(table.id)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -611,7 +621,7 @@ describe("generateDrizzleSchema", () => {
     });
 
     it("should handle table with only many relations (no foreign keys)", () => {
-      const manyOnlySchema = schema((s) => {
+      const manyOnlySchema = schema("manyonly", (s) => {
         return s
           .addTable("categories", (t) => {
             return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -636,7 +646,7 @@ describe("generateDrizzleSchema", () => {
 
       // Categories table should NOT have a constraint callback (no foreign keys, no indexes)
       const categoriesTableMatch = generated.match(
-        /export const categories_test = pgTable\("categories_test", \{[^}]+\}\)/,
+        /export const categories_test = schema_test\.table\("categories", \{[^}]+\}\)/,
       );
       expect(categoriesTableMatch).toBeTruthy();
 
@@ -649,7 +659,7 @@ describe("generateDrizzleSchema", () => {
       // Should have schema export
       expect(generated).toContain("export const test_schema = {");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigserial, integer, bigint } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, bigserial, integer, bigint } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -657,14 +667,16 @@ describe("generateDrizzleSchema", () => {
         // Fragment: test
         // ============================================================================
 
-        export const categories_test = pgTable("categories_test", {
+        const schema_test = pgSchema("test");
+
+        export const categories_test = schema_test.table("categories", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         })
 
-        export const products_test = pgTable("products_test", {
+        export const products_test = schema_test.table("products", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
@@ -691,7 +703,7 @@ describe("generateDrizzleSchema", () => {
     });
 
     it("should handle self-referencing many relations", () => {
-      const selfManySchema = schema((s) => {
+      const selfManySchema = schema("selfmany", (s) => {
         return s
           .addTable("category", (t) => {
             return t
@@ -725,7 +737,7 @@ describe("generateDrizzleSchema", () => {
       expect(fkMatches).toHaveLength(1);
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigint, bigserial, integer, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, bigint, bigserial, integer, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -733,7 +745,9 @@ describe("generateDrizzleSchema", () => {
         // Fragment: test
         // ============================================================================
 
-        export const category_test = pgTable("category_test", {
+        const schema_test = pgSchema("test");
+
+        export const category_test = schema_test.table("category", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
@@ -743,7 +757,7 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_category_category_parent_test"
+            name: "fk_category_category_parent"
           })
         ])
 
@@ -773,7 +787,7 @@ describe("generateDrizzleSchema", () => {
   });
 
   describe("self-referencing foreign keys", () => {
-    const selfRefSchema = schema((s) => {
+    const selfRefSchema = schema("selfref", (s) => {
       return s
         .addTable("comment", (t) => {
           return t
@@ -795,7 +809,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, bigint, bigserial, integer, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, bigint, bigserial, integer, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -803,7 +817,9 @@ describe("generateDrizzleSchema", () => {
         // Fragment: test
         // ============================================================================
 
-        export const comment_test = pgTable("comment_test", {
+        const schema_test = pgSchema("test");
+
+        export const comment_test = schema_test.table("comment", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
@@ -813,9 +829,9 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_comment_comment_parent_test"
+            name: "fk_comment_comment_parent"
           }),
-          index("idx_parent_test").on(table.parentId)
+          index("idx_parent").on(table.parentId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
@@ -863,9 +879,9 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_comment_comment_parent_test"
+            name: "fk_comment_comment_parent_test_af0d05a4"
           }),
-          index("idx_parent_test").on(table.parentId)
+          index("idx_comment_idx_parent_test_3c264dbc").on(table.parentId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
@@ -913,10 +929,10 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.parentId],
             foreignColumns: [table._internalId],
-            name: "fk_comment_comment_parent_test"
+            name: "fk_comment_comment_parent_test_af0d05a4"
           }),
-          index("idx_parent_test").on(table.parentId),
-          uniqueIndex("idx_comment_external_id_test").on(table.id)
+          index("idx_comment_idx_parent_test_3c264dbc").on(table.parentId),
+          uniqueIndex("uidx_comment_idx_comment_external_id_test_6a1c2b8f").on(table.id)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
@@ -952,12 +968,13 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("export const users_auth_db =");
       expect(generated).toContain("export const posts_auth_db =");
 
-      // Physical table names keep the original namespace to match runtime table names
-      expect(generated).toContain('pgTable("users_auth-db"');
-      expect(generated).toContain('pgTable("posts_auth-db"');
+      // Physical table names use logical names with schema scoping
+      expect(generated).toContain('const schema_auth_db = pgSchema("auth_db");');
+      expect(generated).toContain('schema_auth_db.table("users"');
+      expect(generated).toContain('schema_auth_db.table("posts"');
 
-      // Foreign key name should use the original namespace
-      expect(generated).toContain('name: "fk_posts_users_author_auth-db"');
+      // Foreign key name should use the original namespace with hashed naming
+      expect(generated).toMatch(/name: "fk_posts_users_author"/);
 
       // Relations should reference sanitized table names
       expect(generated).toContain("foreignColumns: [users_auth_db._internalId]");
@@ -1011,12 +1028,13 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("fields: [posts_my_fragment_v2.userId]");
       expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
 
-      // Physical table names keep the original namespace to match runtime table names
-      expect(generated).toContain('pgTable("users_my-fragment-v2"');
-      expect(generated).toContain('pgTable("posts_my-fragment-v2"');
+      // Physical table names use logical names with schema scoping
+      expect(generated).toContain('const schema_my_fragment_v2 = pgSchema("my_fragment_v2");');
+      expect(generated).toContain('schema_my_fragment_v2.table("users"');
+      expect(generated).toContain('schema_my_fragment_v2.table("posts"');
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgTable, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, integer, bigserial, uniqueIndex, index, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -1024,7 +1042,9 @@ describe("generateDrizzleSchema", () => {
         // Fragment: my-fragment-v2
         // ============================================================================
 
-        export const users_my_fragment_v2 = pgTable("users_my-fragment-v2", {
+        const schema_my_fragment_v2 = pgSchema("my_fragment_v2");
+
+        export const users_my_fragment_v2 = schema_my_fragment_v2.table("users", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
@@ -1032,11 +1052,11 @@ describe("generateDrizzleSchema", () => {
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
           _version: integer("_version").notNull().default(0)
         }, (table) => [
-          uniqueIndex("idx_email_my-fragment-v2").on(table.email),
-          index("idx_name_my-fragment-v2").on(table.name)
+          uniqueIndex("idx_email").on(table.email),
+          index("idx_name").on(table.name)
         ])
 
-        export const posts_my_fragment_v2 = pgTable("posts_my-fragment-v2", {
+        export const posts_my_fragment_v2 = schema_my_fragment_v2.table("posts", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
@@ -1048,10 +1068,10 @@ describe("generateDrizzleSchema", () => {
           foreignKey({
             columns: [table.userId],
             foreignColumns: [users_my_fragment_v2._internalId],
-            name: "fk_posts_users_author_my-fragment-v2"
+            name: "fk_posts_users_author"
           }),
-          index("idx_user_my-fragment-v2").on(table.userId),
-          index("idx_title_my-fragment-v2").on(table.title)
+          index("idx_user").on(table.userId),
+          index("idx_title").on(table.title)
         ])
 
         export const users_my_fragment_v2Relations = relations(users_my_fragment_v2, ({ many }) => ({
@@ -1086,13 +1106,13 @@ describe("generateDrizzleSchema", () => {
   describe("schema generation", () => {
     it("should generate settings schema and multiple user fragments", () => {
       // settingsSchema is imported at the top to simulate what happens with linked internal fragments
-      const fragment1Schema = schema((s) => {
+      const fragment1Schema = schema("fragment1", (s) => {
         return s.addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
         });
       });
 
-      const fragment2Schema = schema((s) => {
+      const fragment2Schema = schema("fragment2", (s) => {
         return s.addTable("posts", (t) => {
           return t.addColumn("id", idColumn()).addColumn("title", column("string"));
         });
@@ -1102,7 +1122,7 @@ describe("generateDrizzleSchema", () => {
       // This test verifies generateDrizzleSchema works correctly with already-deduplicated inputs
       const generated = generateDrizzleSchema(
         [
-          { namespace: "", schema: internalSchema }, // Internal fragment (namespace: "")
+          { namespace: null, schema: internalSchema }, // Internal fragment (namespace: null)
           { namespace: "fragment1", schema: fragment1Schema },
           { namespace: "fragment2", schema: fragment2Schema },
         ],
@@ -1134,7 +1154,7 @@ describe("generateDrizzleSchema", () => {
 
     it("should generate schema for single fragment with custom namespace", () => {
       // Test a simple single-schema generation
-      const sharedSchema = schema((s) => {
+      const sharedSchema = schema("shared", (s) => {
         return s.addTable("shared_table", (t) => {
           return t.addColumn("id", idColumn()).addColumn("data", column("string"));
         });

@@ -5,9 +5,14 @@ import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
 import { MySQLSQLGenerator } from "./dialect/mysql";
 import { createPreparedMigrations } from "./prepared-migrations";
-import { createTableNameMapper } from "../../shared/table-name-mapper";
+import {
+  createNamingResolver,
+  schemaNamingStrategy,
+  suffixNamingStrategy,
+  type SqlNamingStrategy,
+} from "../../../naming/sql-naming";
 
-const testSchema = schema((s) => {
+const testSchema = schema("test", (s) => {
   return s
     .addTable("users", (t) => {
       return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -31,9 +36,12 @@ const testSchema = schema((s) => {
     });
 });
 
+const resolver = createNamingResolver(testSchema, "test", suffixNamingStrategy);
+
 describe("PreparedMigrations - PostgreSQL", () => {
   const coldKysely = createColdKysely("postgresql");
   const generator = new PostgresSQLGenerator(coldKysely, "postgresql");
+  const resolver = createNamingResolver(testSchema, "test", suffixNamingStrategy);
 
   test("compile migration 0 -> 1 (create users table)", () => {
     const statements = generator.compile(
@@ -55,7 +63,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
           ],
         },
       ],
-      { toPhysical: (n) => `${n}_test`, toLogical: (n) => n.replace("_test", "") },
+      resolver,
     );
 
     expect(statements.length).toBe(1);
@@ -78,7 +86,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
           ],
         },
       ],
-      { toPhysical: (n) => `${n}_test`, toLogical: (n) => n.replace("_test", "") },
+      resolver,
     );
 
     expect(statements.length).toBe(1);
@@ -98,12 +106,12 @@ describe("PreparedMigrations - PostgreSQL", () => {
           unique: false,
         },
       ],
-      { toPhysical: (n) => `${n}_test`, toLogical: (n) => n.replace("_test", "") },
+      resolver,
     );
 
     expect(statements.length).toBe(1);
     expect(statements[0].sql).toMatchInlineSnapshot(
-      `"create index "name_idx_users_test" on "users_test" ("name")"`,
+      `"create index "idx_users_name_idx_test_92db5054" on "users_test" ("name")"`,
     );
   });
 
@@ -122,11 +130,92 @@ describe("PreparedMigrations - PostgreSQL", () => {
       `"update "fragno_db_settings" set "value" = '2' where "key" = 'test_namespace.schema_version'"`,
     );
   });
+
+  test("compile uses custom naming strategy for columns and constraints", () => {
+    const customStrategy: SqlNamingStrategy = {
+      namespaceScope: "suffix",
+      namespaceToSchema: (namespace) => namespace,
+      tableName: (logicalTable, namespace) =>
+        namespace ? `tbl_${logicalTable}_${namespace}` : `tbl_${logicalTable}`,
+      columnName: (logicalColumn) => `col_${logicalColumn}`,
+      indexName: (logicalIndex, _table, namespace) =>
+        namespace ? `idx_custom_${logicalIndex}_${namespace}` : `idx_custom_${logicalIndex}`,
+      uniqueIndexName: (logicalIndex, _table, namespace) =>
+        namespace ? `uidx_custom_${logicalIndex}_${namespace}` : `uidx_custom_${logicalIndex}`,
+      foreignKeyName: ({ referenceName, namespace }) =>
+        namespace ? `fk_custom_${referenceName}_${namespace}` : `fk_custom_${referenceName}`,
+    };
+    const customResolver = createNamingResolver(testSchema, "custom", customStrategy);
+
+    const statements = generator.compile(
+      [
+        {
+          type: "create-table",
+          name: "users",
+          columns: [
+            { name: "id", type: "string", isNullable: false, role: "external-id" },
+            { name: "name", type: "string", isNullable: false, role: "regular" },
+          ],
+        },
+        {
+          type: "create-table",
+          name: "posts",
+          columns: [
+            { name: "id", type: "string", isNullable: false, role: "external-id" },
+            { name: "authorId", type: "bigint", isNullable: false, role: "reference" },
+          ],
+        },
+        {
+          type: "add-index",
+          table: "users",
+          name: "name_idx",
+          columns: ["name"],
+          unique: false,
+        },
+        {
+          type: "add-foreign-key",
+          table: "posts",
+          value: {
+            name: "author",
+            columns: ["authorId"],
+            referencedTable: "users",
+            referencedColumns: ["_internalId"],
+          },
+        },
+      ],
+      customResolver,
+    );
+
+    const sql = statements.map((stmt) => stmt.sql).join("\\n");
+    expect(sql).toContain(`create table "tbl_users_custom"`);
+    expect(sql).toContain(`"col_name"`);
+    expect(sql).toContain(`create index "idx_custom_name_idx_custom"`);
+    expect(sql).toContain(`add constraint "fk_custom_author_custom"`);
+  });
+
+  test("compile uses schema naming strategy for schema-scoped namespaces", () => {
+    const schemaResolver = createNamingResolver(testSchema, "tenant", schemaNamingStrategy);
+    const statements = generator.compile(
+      [
+        {
+          type: "create-table",
+          name: "users",
+          columns: [{ name: "id", type: "string", isNullable: false, role: "external-id" }],
+        },
+      ],
+      schemaResolver,
+    );
+
+    const sql = statements.map((stmt) => stmt.sql).join("\\n");
+    expect(sql).toContain(`CREATE SCHEMA IF NOT EXISTS "tenant"`);
+    expect(sql).toContain(`create table "tenant"."users"`);
+  });
 });
 
 describe("PreparedMigrations - SQLite FK Merging", () => {
   const coldKysely = createColdKysely("sqlite");
   const generator = new SQLiteSQLGenerator(coldKysely, "sqlite");
+  const resolver = createNamingResolver(testSchema, "test", suffixNamingStrategy);
 
   test("preprocess merges FK into create-table", () => {
     const operations = generator.preprocess([
@@ -191,7 +280,7 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
           },
         },
       ],
-      { toPhysical: (n) => `${n}_test`, toLogical: (n) => n.replace("_test", "") },
+      resolver,
     );
 
     expect(statements.length).toBe(3);
@@ -335,7 +424,7 @@ describe("PreparedMigrations - Integration", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       driver: mockDriver as any,
     });
@@ -379,7 +468,7 @@ describe("PreparedMigrations - Integration", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       driver: mockDriver as any,
     });
@@ -404,7 +493,7 @@ describe("PreparedMigrations - Integration", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -426,7 +515,7 @@ describe("PreparedMigrations - Integration", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -462,7 +551,7 @@ describe("PreparedMigrations - Integration", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       driver: mockDriver as any,
     });
@@ -478,7 +567,7 @@ describe("PreparedMigrations - Integration", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
       // No driver provided
     });
 
@@ -494,7 +583,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(0, 2, { updateVersionInMigration: true });
@@ -503,9 +592,9 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       alter table "users_test" add column "age" integer;
 
-      create index "name_idx_users_test" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
 
-      create index "age_idx_users_test" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '2');"
     `);
@@ -516,7 +605,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
@@ -525,13 +614,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       alter table "users_test" add column "age" integer;
 
-      create index "name_idx_users_test" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
 
-      create index "age_idx_users_test" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
       create table "posts_test" ("id" varchar(30) not null unique, "title" text not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
-      alter table "posts_test" add constraint "posts_users_author_fk" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
+      alter table "posts_test" add constraint "fk_posts_users_author_test_8d48035c" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '4');"
     `);
@@ -542,16 +631,16 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(1, 2, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
       "alter table "users_test" add column "age" integer;
 
-      create index "name_idx_users_test" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
 
-      create index "age_idx_users_test" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
       update "fragno_db_settings" set "value" = '2' where "key" = 'test.schema_version';"
     `);
@@ -562,7 +651,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(2, 3, { updateVersionInMigration: true });
@@ -578,7 +667,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "sqlite",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
@@ -589,9 +678,9 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       alter table "users_test" add column "age" integer;
 
-      create index "name_idx_users_test" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
 
-      create index "age_idx_users_test" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
 
       create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
 
@@ -604,7 +693,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "mysql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(0, 4, { updateVersionInMigration: true });
@@ -615,13 +704,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       alter table \`users_test\` add column \`age\` integer;
 
-      create index \`name_idx_users_test\` on \`users_test\` (\`name\`);
+      create index \`idx_users_name_idx_test_92db5054\` on \`users_test\` (\`name\`);
 
-      create index \`age_idx_users_test\` on \`users_test\` (\`age\`);
+      create index \`idx_users_age_idx_test_1c69311d\` on \`users_test\` (\`age\`);
 
       create table \`posts_test\` (\`id\` varchar(30) not null unique, \`title\` text not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
 
-      alter table \`posts_test\` add constraint \`posts_users_author_fk\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
+      alter table \`posts_test\` add constraint \`fk_posts_users_author_test_8d48035c\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
 
       SET FOREIGN_KEY_CHECKS = 1;
 
@@ -634,7 +723,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const compiled = prepared.compile(0, 2, { updateVersionInMigration: true });
@@ -649,7 +738,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
       schema: testSchema,
       namespace: "test",
       database: "postgresql",
-      mapper: createTableNameMapper("test"),
+      resolver,
     });
 
     const sql = prepared.getSQL(0, 1, { updateVersionInMigration: false });

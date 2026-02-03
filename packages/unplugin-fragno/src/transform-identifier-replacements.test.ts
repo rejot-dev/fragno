@@ -276,7 +276,7 @@ describe("edge cases", () => {
       import { stripeSchema } from "./database/schema";
       
       export const stripeFragmentDefinition = defineFragmentWithDatabase("stripe")
-        .withDatabase(stripeSchema, "stripe")
+        .withDatabase(stripeSchema)
         .withDependencies(({ config }) => {
           return {
             stripe: new StripeClient(config.stripeSecretKey),

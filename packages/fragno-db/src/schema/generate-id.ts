@@ -25,12 +25,12 @@ export function generateId<
   const idColumn = tableSchema.getIdColumn();
   const generated = idColumn.generateDefaultValue();
   if (generated === undefined) {
-    throw new Error(`ID column ${idColumn.ormName} on table ${tableName} has no default generator`);
+    throw new Error(`ID column ${idColumn.name} on table ${tableName} has no default generator`);
   }
 
   if (typeof generated !== "string") {
     throw new Error(
-      `ID column ${idColumn.ormName} on table ${tableName} has no default generator that generates a string.`,
+      `ID column ${idColumn.name} on table ${tableName} has no default generator that generates a string.`,
     );
   }
 

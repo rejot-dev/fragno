@@ -20,7 +20,7 @@ export interface AuthConfig {
 }
 
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
-  .extend(withDatabase(authSchema, "simple-auth-db"))
+  .extend(withDatabase(authSchema))
   .providesBaseService(({ defineService, config }) => {
     return defineService({
       ...createUserServices(),
@@ -36,7 +36,14 @@ export function createAuthFragment(
   config: AuthConfig = {},
   fragnoConfig: FragnoPublicConfigWithDatabase,
 ) {
-  const options = { ...fragnoConfig };
+  const options = {
+    ...fragnoConfig,
+    // Preserve legacy namespace to avoid changing physical table names.
+    databaseNamespace:
+      fragnoConfig.databaseNamespace !== undefined
+        ? fragnoConfig.databaseNamespace
+        : "simple-auth-db",
+  };
 
   return instantiate(authFragmentDefinition)
     .withConfig(config)

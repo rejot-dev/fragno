@@ -96,13 +96,13 @@ export class ExplicitRelationInit<
   TTables extends Record<string, AnyTable>,
   TTableName extends keyof TTables,
 > extends RelationInit<TRelationType, TTables, TTableName> {
-  init(ormName: string): Relation<TRelationType, TTables[TTableName]> {
-    const id = `${this.referencer.ormName}_${this.referencedTable.ormName}`;
+  init(name: string): Relation<TRelationType, TTables[TTableName]> {
+    const id = `${this.referencer.name}_${this.referencedTable.name}`;
 
     return {
       id,
       on: this.on,
-      name: ormName,
+      name,
       referencer: this.referencer,
       table: this.referencedTable,
       type: this.type,
@@ -130,7 +130,6 @@ export interface Table<
   TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
   name: string;
-  ormName: string;
 
   columns: TColumns;
   relations: TRelations;
@@ -204,7 +203,6 @@ export type TypeMap = {
 export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> {
   type: TType;
   name: string = "";
-  ormName: string = "";
   isNullable: boolean = false;
   role: "external-id" | "internal-id" | "version" | "reference" | "regular" = "regular";
   isHidden: boolean = false;
@@ -595,7 +593,6 @@ export class TableBuilder<
   #columns: TColumns;
   #relations: TRelations;
   #indexes: TIndexes;
-  #ormName: string = "";
   #columnOrder: string[] = [];
 
   constructor(name: string) {
@@ -631,7 +628,7 @@ export class TableBuilder<
    * Add a column to the table.
    */
   addColumn<TColumnName extends string, TColumn extends AnyColumn>(
-    ormName: TColumnName,
+    name: TColumnName,
     col: TColumn,
   ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations, TIndexes>;
 
@@ -639,7 +636,7 @@ export class TableBuilder<
    * Add a column to the table with simplified syntax.
    */
   addColumn<TColumnName extends string, TType extends keyof TypeMap>(
-    ormName: TColumnName,
+    name: TColumnName,
     type: TType,
   ): TableBuilder<
     TColumns & Record<TColumnName, Column<TType, ColumnInput<TType>, TypeMap[TType]>>,
@@ -648,19 +645,18 @@ export class TableBuilder<
   >;
 
   addColumn<TColumnName extends string, TColumn extends AnyColumn, TType extends keyof TypeMap>(
-    ormName: TColumnName,
+    name: TColumnName,
     colOrType: TColumn | TType,
   ): TableBuilder<TColumns & Record<TColumnName, TColumn>, TRelations, TIndexes> {
     // Create the column if a type string was provided
     const col = typeof colOrType === "string" ? column(colOrType) : colOrType;
 
     // Set column metadata
-    col.ormName = ormName;
-    col.name = ormName;
+    col.name = name;
 
     // Add column directly to this builder
-    this.#columns[ormName] = col as unknown as TColumns[TColumnName];
-    this.#columnOrder.push(ormName);
+    this.#columns[name] = col as unknown as TColumns[TColumnName];
+    this.#columnOrder.push(name);
 
     return this as unknown as TableBuilder<
       TColumns & Record<TColumnName, TColumn>,
@@ -721,7 +717,6 @@ export class TableBuilder<
     // Auto-add _internalId and _version columns if not already present
     if (!this.#columns["_internalId"]) {
       const col = internalIdColumn();
-      col.ormName = "_internalId";
       col.name = "_internalId";
       // Safe: we're adding system columns to the internal columns object
       (this.#columns as Record<string, AnyColumn>)["_internalId"] = col;
@@ -729,18 +724,13 @@ export class TableBuilder<
 
     if (!this.#columns["_version"]) {
       const col = versionColumn();
-      col.ormName = "_version";
       col.name = "_version";
       // Safe: we're adding system columns to the internal columns object
       (this.#columns as Record<string, AnyColumn>)["_version"] = col;
     }
 
-    // Use name as ormName if ormName is not set
-    const ormName = this.#ormName || this.#name;
-
     const table: Table<TColumns, TRelations, TIndexes> = {
       name: this.#name,
-      ormName,
       columns: this.#columns,
       relations: this.#relations,
       indexes: this.#indexes,
@@ -792,6 +782,10 @@ export class TableBuilder<
 }
 
 export interface Schema<TTables extends Record<string, AnyTable> = Record<string, AnyTable>> {
+  /**
+   * @description The name of the schema (required).
+   */
+  name: string;
   /**
    * @description The version of the schema, automatically incremented on each change.
    */
@@ -856,11 +850,15 @@ type ColumnsToTuple<
 } & AnyColumn[];
 
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
+  #name: string;
   #tables: TTables;
   #version: number = 0;
   #operations: SchemaOperation[] = [];
+  #tableNames: Set<string> = new Set();
+  #indexNames: Set<string> = new Set();
 
-  constructor(existingSchema?: Schema<TTables>) {
+  constructor(name: string, existingSchema?: Schema<TTables>) {
+    this.#name = name;
     if (existingSchema) {
       this.#tables = existingSchema.tables;
       this.#version = existingSchema.version;
@@ -868,6 +866,29 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     } else {
       this.#tables = {} as TTables;
     }
+
+    for (const table of Object.values(this.#tables)) {
+      this.#registerTableName(table.name);
+      for (const index of Object.values(table.indexes)) {
+        this.#registerIndexName(index.name, table.name);
+      }
+    }
+  }
+
+  #registerTableName(name: string): void {
+    if (this.#tableNames.has(name)) {
+      throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
+    }
+    this.#tableNames.add(name);
+  }
+
+  #registerIndexName(name: string, tableName: string): void {
+    if (this.#indexNames.has(name)) {
+      throw new Error(
+        `Duplicate index name "${name}" in schema "${this.#name}". Index names must be unique across tables (conflict on "${tableName}").`,
+      );
+    }
+    this.#indexNames.add(name);
   }
 
   /**
@@ -876,7 +897,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
    *
    * @example
    * ```ts
-   * const builder = new SchemaBuilder()
+   * const builder = new SchemaBuilder("combined")
    *   .add(userSchema)
    *   .add(postSchema)
    *   .addTable("comments", ...);
@@ -885,9 +906,31 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   mergeWithExistingSchema<TNewTables extends Record<string, AnyTable>>(
     schema: Schema<TNewTables>,
   ): SchemaBuilder<TTables & TNewTables> {
+    for (const table of Object.values(schema.tables)) {
+      if (this.#tableNames.has(table.name)) {
+        throw new Error(
+          `Duplicate table name "${table.name}" in schema "${this.#name}" when merging.`,
+        );
+      }
+      for (const index of Object.values(table.indexes)) {
+        if (this.#indexNames.has(index.name)) {
+          throw new Error(
+            `Duplicate index name "${index.name}" in schema "${this.#name}" when merging (conflict on "${table.name}").`,
+          );
+        }
+      }
+    }
+
     this.#tables = { ...this.#tables, ...schema.tables } as TTables & TNewTables;
     this.#operations = [...this.#operations, ...schema.operations];
     this.#version += schema.version;
+
+    for (const table of Object.values(schema.tables)) {
+      this.#tableNames.add(table.name);
+      for (const index of Object.values(table.indexes)) {
+        this.#indexNames.add(index.name);
+      }
+    }
 
     return this as unknown as SchemaBuilder<TTables & TNewTables>;
   }
@@ -901,7 +944,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     TRelations extends Record<string, AnyRelation>,
     TIndexes extends Record<string, Index> = Record<string, Index>,
   >(
-    ormName: TTableName,
+    name: TTableName,
     callback: (
       builder: TableBuilder<
         Record<string, AnyColumn>,
@@ -912,10 +955,22 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>> {
     this.#version++;
 
-    const tableBuilder = new TableBuilder(ormName);
+    if (this.#tableNames.has(name)) {
+      throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
+    }
+
+    const tableBuilder = new TableBuilder(name);
     const result = callback(tableBuilder);
     const builtTable = result.build();
-    builtTable.ormName = ormName;
+    const indexNames = result.getIndexes().map((idx) => idx.name);
+
+    for (const indexName of indexNames) {
+      if (this.#indexNames.has(indexName)) {
+        throw new Error(
+          `Duplicate index name "${indexName}" in schema "${this.#name}". Index names must be unique across tables (conflict on "${name}").`,
+        );
+      }
+    }
 
     // Collect sub-operations in order
     const subOperations: TableSubOperation[] = [];
@@ -952,7 +1007,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       subOperations.push({
         type: "add-index",
         name: idx.name,
-        columns: idx.columns.map((c) => c.ormName),
+        columns: idx.columns.map((c) => c.name),
         unique: idx.unique,
       });
     }
@@ -960,13 +1015,17 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     // Add the add-table operation
     this.#operations.push({
       type: "add-table",
-      tableName: ormName,
+      tableName: name,
       operations: subOperations,
     });
 
     // Update tables map
-    this.#tables = { ...this.#tables, [ormName]: builtTable } as TTables &
+    this.#tables = { ...this.#tables, [name]: builtTable } as TTables &
       Record<TTableName, Table<TColumns, TRelations, TIndexes>>;
+    this.#tableNames.add(name);
+    for (const indexName of indexNames) {
+      this.#indexNames.add(indexName);
+    }
 
     return this as unknown as SchemaBuilder<
       TTables & Record<TTableName, Table<TColumns, TRelations, TIndexes>>
@@ -982,7 +1041,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
    * @example
    * ```ts
    * // One-to-one or many-to-one: post -> user
-   * schema(s => s
+   * schema("blog", s => s
    *   .addTable("users", t => t.addColumn("id", idColumn()))
    *   .addTable("posts", t => t
    *     .addColumn("id", idColumn())
@@ -1035,6 +1094,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const table = this.#tables[config.from.table];
     const referencedTable = this.#tables[config.to.table];
 
+    if (!referenceName || referenceName.trim().length === 0) {
+      throw new Error(`referenceName is required for addReference on ${config.from.table}`);
+    }
+
     if (!table) {
       throw new Error(`Table ${config.from.table} not found in schema`);
     }
@@ -1057,6 +1120,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
     if (!referencedColumn) {
       throw new Error(`Column ${actualTargetColumnName} not found in table ${config.to.table}`);
+    }
+
+    if (table.relations[referenceName]) {
+      throw new Error(`Reference ${referenceName} already exists on table ${config.from.table}`);
     }
 
     // Verify that reference columns are bigint (matching internal ID type)
@@ -1103,7 +1170,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
    * @example
    * ```ts
    * // Add a new column to an existing table
-   * schema(s => s
+   * schema("blog", s => s
    *   .addTable("users", t => t
    *     .addColumn("id", idColumn())
    *     .addColumn("name", column("string")))
@@ -1173,10 +1240,15 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     // Add only new indexes
     for (const idx of resultBuilder.getIndexes()) {
       if (!existingIndexes.has(idx.name)) {
+        if (this.#indexNames.has(idx.name)) {
+          throw new Error(
+            `Duplicate index name "${idx.name}" in schema "${this.#name}". Index names must be unique across tables (conflict on "${tableName}").`,
+          );
+        }
         subOperations.push({
           type: "add-index",
           name: idx.name,
-          columns: idx.columns.map((c) => c.ormName),
+          columns: idx.columns.map((c) => c.name),
           unique: idx.unique,
         });
       }
@@ -1193,6 +1265,11 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
 
     // Update table reference in schema
     this.#tables[tableName] = newTable as unknown as TTables[TTableName];
+    for (const idx of resultBuilder.getIndexes()) {
+      if (!existingIndexes.has(idx.name)) {
+        this.#indexNames.add(idx.name);
+      }
+    }
 
     // Set table name for all columns
     for (const col of Object.values(newTable.columns)) {
@@ -1213,6 +1290,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const tables = this.#tables;
 
     const schema: Schema<TTables> = {
+      name: this.#name,
       version,
       tables,
       operations,
@@ -1236,7 +1314,6 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
             }
 
             clonedCol.name = col.name;
-            clonedCol.ormName = col.ormName;
             clonedCol.isNullable = col.isNullable;
             clonedCol.role = col.role;
             clonedCol.isHidden = col.isHidden;
@@ -1251,14 +1328,17 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
           };
         }
 
-        return new SchemaBuilder<TTables>({
+        const clonedSchema: Schema<TTables> = {
+          name: this.#name,
           version,
           tables: cloneTables as TTables,
           operations: [...operations],
           clone: () => {
             throw new Error("Cannot clone during clone");
           },
-        }).build();
+        };
+
+        return new SchemaBuilder<TTables>(this.#name, clonedSchema).build();
       },
     };
 
@@ -1277,19 +1357,18 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
  * Create a new schema with callback pattern.
  */
 export function schema<const TTables extends Record<string, AnyTable> = {}>(
+  name: string,
   callback: (builder: SchemaBuilder<{}>) => SchemaBuilder<TTables>,
 ): Schema<TTables> {
-  return callback(new SchemaBuilder()).build();
+  return callback(new SchemaBuilder(name)).build();
 }
 
-export function compileForeignKey(key: ForeignKey, nameType: "sql" | "orm" = "orm") {
+export function compileForeignKey(key: ForeignKey) {
   return {
     name: key.name,
-    table: nameType === "sql" ? key.table.name : key.table.ormName,
-    referencedTable: nameType === "sql" ? key.referencedTable.name : key.referencedTable.ormName,
-    referencedColumns: key.referencedColumns.map((col) =>
-      nameType === "sql" ? col.name : col.ormName,
-    ),
-    columns: key.columns.map((col) => (nameType === "sql" ? col.name : col.ormName)),
+    table: key.table.name,
+    referencedTable: key.referencedTable.name,
+    referencedColumns: key.referencedColumns.map((col) => col.name),
+    columns: key.columns.map((col) => col.name),
   };
 }

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MigrationOperation } from "../../../../migration-engine/shared";
 import { createColdKysely } from "../cold-kysely";
 import { PostgresSQLGenerator } from "./postgres";
+import { column, idColumn, schema } from "../../../../schema/create";
+import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
 
 describe("PostgresSQLGenerator", () => {
   const coldKysely = createColdKysely("postgresql");
@@ -646,6 +648,7 @@ describe("PostgresSQLGenerator", () => {
         type: "drop-foreign-key",
         table: "posts",
         name: "posts_user_id_fk",
+        referencedTable: "users",
       };
 
       const sql = compileOne(operation);
@@ -890,10 +893,25 @@ describe("PostgresSQLGenerator", () => {
   });
 
   describe("table name mapping", () => {
-    const mapper = {
-      toPhysical: (name: string) => `prefix_${name}`,
-      toLogical: (name: string) => name.replace("prefix_", ""),
+    const mappingSchema = schema("mapping", (s) =>
+      s
+        .addTable("users", (t) =>
+          t.addColumn("id", idColumn()).addColumn("email", column("string")),
+        )
+        .addTable("posts", (t) =>
+          t.addColumn("id", idColumn()).addColumn("user_id", column("string")),
+        ),
+    );
+    const namingStrategy: SqlNamingStrategy = {
+      namespaceScope: "suffix",
+      namespaceToSchema: (namespace) => namespace,
+      tableName: (logicalTable) => `prefix_${logicalTable}`,
+      columnName: (logicalColumn) => logicalColumn,
+      indexName: (logicalIndex) => `idx_${logicalIndex}`,
+      uniqueIndexName: (logicalIndex) => `uidx_${logicalIndex}`,
+      foreignKeyName: ({ referenceName }) => referenceName,
     };
+    const resolver = createNamingResolver(mappingSchema, null, namingStrategy);
 
     it("should apply table name mapping to create-table", () => {
       const operation: MigrationOperation = {
@@ -902,7 +920,7 @@ describe("PostgresSQLGenerator", () => {
         columns: [{ name: "id", type: "integer", isNullable: false, role: "external-id" }],
       };
 
-      const statements = generator.compile([operation], mapper);
+      const statements = generator.compile([operation], resolver);
       expect(statements[0].sql).toMatchInlineSnapshot(
         `"create table "prefix_users" ("id" integer not null unique)"`,
       );
@@ -920,7 +938,7 @@ describe("PostgresSQLGenerator", () => {
         },
       };
 
-      const statements = generator.compile([operation], mapper);
+      const statements = generator.compile([operation], resolver);
       expect(statements[0].sql).toMatchInlineSnapshot(
         `"alter table "prefix_posts" add constraint "posts_user_id_fk" foreign key ("user_id") references "prefix_users" ("id") on delete restrict on update restrict"`,
       );
@@ -935,9 +953,9 @@ describe("PostgresSQLGenerator", () => {
         unique: true,
       };
 
-      const statements = generator.compile([operation], mapper);
+      const statements = generator.compile([operation], resolver);
       expect(statements[0].sql).toMatchInlineSnapshot(
-        `"create unique index "idx_email_prefix_users" on "prefix_users" ("email")"`,
+        `"create unique index "uidx_idx_email" on "prefix_users" ("email")"`,
       );
     });
   });

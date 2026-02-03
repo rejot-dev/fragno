@@ -3,6 +3,7 @@ import { createSQLSerializer } from "./serialize/create-sql-serializer";
 import { FragnoId, FragnoReference } from "../schema/create";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
+import type { NamingResolver } from "../naming/sql-naming";
 
 /**
  * Decodes a database result record to application format.
@@ -34,11 +35,13 @@ export function decodeResult(
   table: AnyTable,
   driverConfig: DriverConfig,
   sqliteStorageMode?: SQLiteStorageMode,
+  resolver?: NamingResolver,
 ): Record<string, unknown> {
   const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
   const output: Record<string, unknown> = {};
   // First pass: collect all column values
   const columnValues: Record<string, unknown> = {};
+  const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
 
   // Collect all relation data (including nested) keyed by relation name
   const relationData: Record<string, Record<string, unknown>> = {};
@@ -49,13 +52,14 @@ export function decodeResult(
 
     // Direct column (no colon)
     if (colonIndex === -1) {
-      const col = table.columns[k];
+      const logicalName = columnMap?.[k] ?? k;
+      const col = table.columns[logicalName];
       if (!col) {
         continue;
       }
 
       // Store all column values (including hidden ones for FragnoId creation)
-      columnValues[k] = serializer.deserialize(value, col);
+      columnValues[logicalName] = serializer.deserialize(value, col);
       continue;
     }
 
@@ -86,6 +90,7 @@ export function decodeResult(
       relation.table,
       driverConfig,
       sqliteStorageMode,
+      resolver,
     );
   }
 

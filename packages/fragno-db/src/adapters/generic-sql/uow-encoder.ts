@@ -6,7 +6,7 @@ import {
 } from "../../query/serialize/create-sql-serializer";
 import { encodeValues } from "../../query/value-encoding";
 import { processReferenceSubqueries } from "./query/where-builder";
-import type { TableNameMapper } from "../shared/table-name-mapper";
+import type { NamingResolver } from "../../naming/sql-naming";
 import { sql, type Kysely } from "kysely";
 import { isDbNow } from "../../query/db-now";
 import { sqliteStorageDefault, type SQLiteStorageMode } from "./sqlite-storage";
@@ -26,20 +26,20 @@ export class UnitOfWorkEncoder {
   readonly #driverConfig: DriverConfig;
   readonly #serializer: SQLSerializer;
   readonly #db: Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  readonly #mapper?: TableNameMapper;
   readonly #sqliteStorageMode?: SQLiteStorageMode;
+  readonly #resolver?: NamingResolver;
 
   constructor(
     driverConfig: DriverConfig,
     db: Kysely<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     sqliteStorageMode?: SQLiteStorageMode,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ) {
     this.#driverConfig = driverConfig;
     this.#serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
     this.#db = db;
     this.#sqliteStorageMode = sqliteStorageMode;
-    this.#mapper = mapper;
+    this.#resolver = resolver;
   }
 
   /**
@@ -73,10 +73,16 @@ export class UnitOfWorkEncoder {
     generateDefaults: boolean;
   }): Record<string, unknown> {
     // Step 1: Resolution - Resolve FragnoId/FragnoReference and generate defaults
-    const resolved = encodeValues(options.values, options.table, options.generateDefaults);
+    const resolved = encodeValues(
+      options.values,
+      options.table,
+      options.generateDefaults,
+      {},
+      this.#resolver,
+    );
 
     // Step 2: Reference Processing - Convert external IDs to subqueries
-    const processed = processReferenceSubqueries(resolved, this.#db, this.#mapper);
+    const processed = processReferenceSubqueries(resolved, this.#db, this.#resolver);
 
     // Step 3: Serialization - Apply database-specific type conversions
     const serialized = this.serializeValues(processed, options.table);
@@ -101,10 +107,11 @@ export class UnitOfWorkEncoder {
     table: AnyTable,
   ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
+    const columnMap = this.#resolver ? this.#resolver.getColumnNameMap(table) : undefined;
 
     for (const [dbColumnName, value] of Object.entries(values)) {
       // Find the column definition by database column name
-      const col = this.findColumnByDbName(table, dbColumnName);
+      const col = this.findColumnByDbName(table, dbColumnName, columnMap);
 
       if (!col) {
         // Not a regular column (might be a special value like sql.raw())
@@ -143,9 +150,18 @@ export class UnitOfWorkEncoder {
    * @param dbColumnName - The database column name (e.g., "user_id")
    * @returns The column definition or undefined if not found
    */
-  private findColumnByDbName(table: AnyTable, dbColumnName: string): AnyColumn | undefined {
+  private findColumnByDbName(
+    table: AnyTable,
+    dbColumnName: string,
+    columnMap?: Record<string, string>,
+  ): AnyColumn | undefined {
+    const logicalName = columnMap?.[dbColumnName] ?? dbColumnName;
+    const direct = table.columns[logicalName];
+    if (direct) {
+      return direct;
+    }
     for (const col of Object.values(table.columns)) {
-      if (col.name === dbColumnName) {
+      if (col.name === logicalName) {
         return col;
       }
     }

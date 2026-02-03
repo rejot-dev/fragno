@@ -12,7 +12,7 @@ import { internalSchema, type InternalFragmentInstance } from "../fragments/inte
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
 import type { OutboxConfig, OutboxEntry, OutboxPayload } from "./outbox";
 
-const outboxSchema = schema((s) => {
+const outboxSchema = schema("outbox", (s) => {
   return s
     .addTable("users", (t) => {
       return t
@@ -70,7 +70,7 @@ async function createAdapter(config: OutboxAdapterConfig): Promise<{
     });
 
     await migrateSchema(adapter, internalSchema, "");
-    await migrateSchema(adapter, outboxSchema, outboxFragmentName);
+    await migrateSchema(adapter, outboxSchema, outboxSchema.name);
 
     return {
       adapter,
@@ -89,7 +89,7 @@ async function createAdapter(config: OutboxAdapterConfig): Promise<{
   });
 
   await migrateSchema(adapter, internalSchema, "");
-  await migrateSchema(adapter, outboxSchema, outboxFragmentName);
+  await migrateSchema(adapter, outboxSchema, outboxSchema.name);
 
   return {
     adapter,

@@ -5,6 +5,7 @@ import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
 import type { SQLProvider } from "../shared/providers";
 import type { SQLiteStorageMode } from "./generic-sql/sqlite-storage";
+import type { SqlNamingStrategy } from "../naming/sql-naming";
 
 export const fragnoDatabaseAdapterNameFakeSymbol = "$fragno-database-adapter-name" as const;
 export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-version" as const;
@@ -16,14 +17,6 @@ export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-
 export type DatabaseContextStorage = {
   uow: IUnitOfWork;
 };
-
-/**
- * Maps logical table names (used by fragment authors) to physical table names (with namespace suffix)
- */
-export interface TableNameMapper {
-  toPhysical(logicalName: string): string;
-  toLogical(physicalName: string): string;
-}
 
 export type SQLiteProfile = "default" | "prisma";
 
@@ -60,23 +53,22 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   readonly adapterMetadata?: DatabaseAdapterMetadata;
 
   /**
+   * Naming strategy used for physical SQL identifiers.
+   */
+  readonly namingStrategy: SqlNamingStrategy;
+
+  /**
    * @deprecated Avoid using query engines directly in fragment code. Prefer handlerTx/serviceTx.
    */
   createQueryEngine: <const T extends AnySchema>(
     schema: T,
-    namespace: string,
+    namespace: string | null,
   ) => SimpleQueryInterface<T, TUOWConfig>;
 
   prepareMigrations?: <const T extends AnySchema>(
     schema: T,
-    namespace: string,
+    namespace: string | null,
   ) => PreparedMigrations;
-
-  /**
-   * Creates a table name mapper for the given namespace.
-   * Used to convert between logical table names and physical table names.
-   */
-  createTableNameMapper: (namespace: string) => TableNameMapper;
 
   isConnectionHealthy: () => Promise<boolean>;
 

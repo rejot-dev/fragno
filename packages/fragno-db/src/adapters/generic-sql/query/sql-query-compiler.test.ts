@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import { Kysely, SqliteDialect } from "kysely";
 import Database from "better-sqlite3";
 import { schema, column, idColumn, referenceColumn } from "../../../schema/create";
+import { createNamingResolver, type SqlNamingStrategy } from "../../../naming/sql-naming";
 import { PostgreSQLQueryCompiler } from "./dialect/postgres";
 import { MySQLQueryCompiler } from "./dialect/mysql";
 import { SQLiteQueryCompiler } from "./dialect/sqlite";
@@ -12,7 +13,7 @@ import {
 } from "../driver-config";
 
 // Test schema
-const testSchema = schema((s) => {
+const testSchema = schema("test", (s) => {
   return s
     .addTable("users", (t) => {
       return t
@@ -130,7 +131,7 @@ describe("SQLQueryCompiler", () => {
       });
 
       expect(query.sql).toMatchInlineSnapshot(
-        `"update "users" set "name" = ?, "_version" = COALESCE(_version, 0) + 1 where "users"."id" = ?"`,
+        `"update "users" set "name" = ?, "_version" = coalesce("_version", 0) + 1 where "users"."id" = ?"`,
       );
     });
 
@@ -190,6 +191,55 @@ describe("SQLQueryCompiler", () => {
         `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
       );
       expect(query.sql).toContain("returning");
+    });
+
+    test("compileUpdate succeeds when version column needs quoting", async () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+
+      await db.schema
+        .createTable("users")
+        .addColumn("id", "text")
+        .addColumn("name", "text")
+        .addColumn("users-version", "integer")
+        .execute();
+
+      const namingStrategy: SqlNamingStrategy = {
+        namespaceScope: "suffix",
+        namespaceToSchema: (namespace) => namespace,
+        tableName: (logicalTable) => logicalTable,
+        columnName: (logicalColumn, logicalTable) =>
+          logicalColumn === "_version" ? `${logicalTable}-version` : logicalColumn,
+        indexName: (logicalIndex) => logicalIndex,
+        uniqueIndexName: (logicalIndex) => logicalIndex,
+        foreignKeyName: ({ referenceName }) => referenceName,
+      };
+
+      const resolver = createNamingResolver(testSchema, null, namingStrategy);
+      const compiler = new SQLiteQueryCompiler(
+        db,
+        new BetterSQLite3DriverConfig(),
+        undefined,
+        resolver,
+      );
+
+      const query = compiler.compileUpdate(testSchema.tables.users, {
+        set: { name: "Jane" },
+        where: {
+          type: "compare",
+          a: testSchema.tables.users.columns.id,
+          operator: "=",
+          b: "user123",
+        },
+      });
+
+      expect(query.sql).toContain('coalesce("users-version", 0) + 1');
+      try {
+        await expect(db.executeQuery(query)).resolves.toBeDefined();
+      } finally {
+        await db.destroy();
+      }
     });
   });
 });

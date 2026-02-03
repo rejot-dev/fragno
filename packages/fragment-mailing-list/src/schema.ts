@@ -1,6 +1,6 @@
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-export const mailingListSchema = schema((s) => {
+export const mailingListSchema = schema("mailing-list", (s) => {
   return s.addTable("subscriber", (t) => {
     return t
       .addColumn("id", idColumn())

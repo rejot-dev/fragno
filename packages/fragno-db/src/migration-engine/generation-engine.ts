@@ -10,6 +10,7 @@ import {
   internalFragmentDef,
   internalSchema,
   SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
   getSchemaVersionFromDatabase,
 } from "../fragments/internal-fragment";
 import { instantiate } from "@fragno-dev/core";
@@ -18,7 +19,7 @@ import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-
 export interface GenerationEngineResult {
   schema: string;
   path: string;
-  namespace: string;
+  namespace: string | null;
 }
 
 export type SchemaOutputFormat = "sql" | "drizzle" | "prisma";
@@ -33,13 +34,16 @@ export interface GenerateSchemaOptions {
 export interface GenerationInternalResult {
   schema: string;
   path: string;
-  namespace: string;
+  namespace: string | null;
+  namespaceKey: string;
+  schemaName: string;
+  isSettings: boolean;
   fromVersion: number;
   toVersion: number;
 }
 
 export interface ExecuteMigrationResult {
-  namespace: string;
+  namespace: string | null;
   didMigrate: boolean;
   fromVersion: number;
   toVersion: number;
@@ -78,19 +82,20 @@ export async function generateSchemaArtifacts<
     // Collect all schemas, de-duplicating by namespace.
     // The internal fragment (settings schema) is always included first since all database
     // fragments automatically link to it via withDatabase().
-    const fragmentsMap = new Map<string, { schema: AnySchema; namespace: string }>();
+    const fragmentsMap = new Map<string, { schema: AnySchema; namespace: string | null }>();
 
     // Include internal fragment first with empty namespace (settings table has no prefix)
-    fragmentsMap.set("", {
+    fragmentsMap.set(internalSchema.name, {
       schema: internalSchema,
-      namespace: "",
+      namespace: null,
     });
 
     // Add user fragments, de-duplicating by namespace
     // Each FragnoDatabase has a unique namespace, so this prevents duplicate schema generation
     for (const db of databases) {
-      if (!fragmentsMap.has(db.namespace)) {
-        fragmentsMap.set(db.namespace, {
+      const namespaceKey = db.namespace ?? db.schema.name;
+      if (!fragmentsMap.has(namespaceKey)) {
+        fragmentsMap.set(namespaceKey, {
           schema: db.schema,
           namespace: db.namespace,
         });
@@ -101,9 +106,12 @@ export async function generateSchemaArtifacts<
     const defaultPath = format === "drizzle" ? DEFAULT_DRIZZLE_PATH : DEFAULT_PRISMA_PATH;
     const schema =
       format === "drizzle"
-        ? generateDrizzleSchema(allFragments, databaseType)
+        ? generateDrizzleSchema(allFragments, databaseType, {
+            namingStrategy: adapter.namingStrategy,
+          })
         : generatePrismaSchema(allFragments, databaseType, {
             sqliteStorageMode: adapter.adapterMetadata?.sqliteStorageMode,
+            namingStrategy: adapter.namingStrategy,
           });
 
     return [
@@ -131,7 +139,7 @@ export async function generateSchemaArtifacts<
   // Use the internal fragment for settings management
   const internalFragment = instantiate(internalFragmentDef)
     .withConfig({})
-    .withOptions({ databaseAdapter: adapter })
+    .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(
@@ -141,8 +149,8 @@ export async function generateSchemaArtifacts<
 
   const generatedFiles: GenerationInternalResult[] = [];
 
-  // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
+  // Use null namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
+  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, null);
   const settingsTargetVersion = internalSchema.version;
 
   // Generate settings table migration
@@ -155,7 +163,10 @@ export async function generateSchemaArtifacts<
     generatedFiles.push({
       schema: settingsSql,
       path: "settings-migration.sql", // Placeholder, will be renamed in post-processing
-      namespace: "", // Empty namespace for settings table
+      namespace: null,
+      namespaceKey: SETTINGS_TABLE_NAME,
+      schemaName: internalSchema.name,
+      isSettings: true,
       fromVersion: settingsSourceVersion,
       toVersion: settingsTargetVersion,
     });
@@ -168,7 +179,7 @@ export async function generateSchemaArtifacts<
     // Use migration engine
     if (!dbAdapter.prepareMigrations) {
       throw new Error(
-        `Adapter for ${db.namespace} does not support migration generation. ` +
+        `Adapter for ${db.namespace ?? db.schema.name} does not support migration generation. ` +
           `Ensure your adapter implements prepareMigrations.`,
       );
     }
@@ -186,6 +197,9 @@ export async function generateSchemaArtifacts<
         schema: sql,
         path: "schema.sql", // Placeholder, will be renamed in post-processing
         namespace: db.namespace,
+        namespaceKey: db.namespace ?? db.schema.name,
+        schemaName: db.schema.name,
+        isSettings: false,
         fromVersion: sourceVersion,
         toVersion: targetVersion,
       });
@@ -245,7 +259,8 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
 
   const results: ExecuteMigrationResult[] = [];
   const migrationsToExecute: Array<{
-    namespace: string;
+    namespace: string | null;
+    namespaceKey: string;
     fromVersion: number;
     toVersion: number;
     execute: () => Promise<void>;
@@ -255,7 +270,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   // Use the internal fragment for settings management
   const internalFragment = instantiate(internalFragmentDef)
     .withConfig({})
-    .withOptions({ databaseAdapter: adapter })
+    .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(
@@ -263,8 +278,8 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     SETTINGS_NAMESPACE,
   );
 
-  // Use empty namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
+  // Use null namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
+  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, null);
   const settingsTargetVersion = internalSchema.version;
 
   if (settingsSourceVersion < settingsTargetVersion) {
@@ -276,7 +291,8 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
 
     if (compiledMigration.statements.length > 0) {
       migrationsToExecute.push({
-        namespace: "", // Empty namespace for settings table
+        namespace: null,
+        namespaceKey: SETTINGS_TABLE_NAME,
         fromVersion: settingsSourceVersion,
         toVersion: settingsTargetVersion,
         execute: () =>
@@ -288,11 +304,15 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   }
 
   // 2. Prepare fragment migrations (sorted alphabetically)
-  const sortedDatabases = [...databases].sort((a, b) => a.namespace.localeCompare(b.namespace));
+  const getNamespaceKey = (db: FragnoDatabase<AnySchema>) => db.namespace ?? db.schema.name;
+  const sortedDatabases = [...databases].sort((a, b) =>
+    getNamespaceKey(a).localeCompare(getNamespaceKey(b)),
+  );
 
   for (const fragnoDb of sortedDatabases) {
+    const namespaceKey = getNamespaceKey(fragnoDb);
     const preparedMigrations = adapter.prepareMigrations(fragnoDb.schema, fragnoDb.namespace);
-    const currentVersion = await getSchemaVersionFromDatabase(internalFragment, fragnoDb.namespace);
+    const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespaceKey);
     const targetVersion = fragnoDb.schema.version;
 
     if (currentVersion < targetVersion) {
@@ -303,6 +323,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
       if (compiledMigration.statements.length > 0) {
         migrationsToExecute.push({
           namespace: fragnoDb.namespace,
+          namespaceKey,
           fromVersion: currentVersion,
           toVersion: targetVersion,
           execute: () =>
@@ -315,6 +336,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   }
 
   // 3. Execute all migrations in order
+  const executedNamespaceKeys = new Set<string>();
   for (const migration of migrationsToExecute) {
     await migration.execute();
     results.push({
@@ -323,11 +345,13 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
       fromVersion: migration.fromVersion,
       toVersion: migration.toVersion,
     });
+    executedNamespaceKeys.add(migration.namespaceKey);
   }
 
   // 4. Add skipped migrations (already up-to-date)
   for (const fragnoDb of databases) {
-    if (!results.find((r) => r.namespace === fragnoDb.namespace)) {
+    const namespaceKey = getNamespaceKey(fragnoDb);
+    if (!executedNamespaceKeys.has(namespaceKey)) {
       results.push({
         namespace: fragnoDb.namespace,
         didMigrate: false,
@@ -343,7 +367,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
 /**
  * Post-processes migration files to add ordering and standardize naming.
  *
- * Sorts files with settings namespace first, then alphabetically by namespace,
+ * Sorts files with settings namespace first, then alphabetically by namespace key,
  * and assigns ordering numbers. Transforms filenames to format:
  * `<date>_<n>_f<from>_t<to>_<namespace>.sql`
  *
@@ -357,16 +381,15 @@ export function postProcessMigrationFilenames(
     return [];
   }
 
-  // Sort files: settings namespace first (empty string), then alphabetically by namespace
+  // Sort files: settings first, then alphabetically by namespace key
   const sortedFiles = [...files].sort((a, b) => {
-    // Settings table has empty namespace - sort it first
-    if (a.namespace === "") {
+    if (a.isSettings) {
       return -1;
     }
-    if (b.namespace === "") {
+    if (b.isSettings) {
       return 1;
     }
-    return a.namespace.localeCompare(b.namespace);
+    return a.namespaceKey.localeCompare(b.namespaceKey);
   });
 
   // Generate date prefix for filenames
@@ -382,10 +405,7 @@ export function postProcessMigrationFilenames(
     const fromPadded = fromVersion.toString().padStart(3, "0");
     const toPadded = toVersion.toString().padStart(3, "0");
 
-    // For settings table (empty namespace), use "fragno_db_settings" in the filename
-    // For other tables, use their namespace
-    const safeName =
-      file.namespace === "" ? "fragno_db_settings" : file.namespace.replace(/[^a-z0-9-]/gi, "_");
+    const safeName = file.namespaceKey.replace(/[^a-z0-9-]/gi, "_");
     const newPath = `${date}_${orderNum}_f${fromPadded}_t${toPadded}_${safeName}.sql`;
 
     return {

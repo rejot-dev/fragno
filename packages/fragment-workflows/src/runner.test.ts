@@ -1347,6 +1347,9 @@ describe("Workflows Runner", () => {
 
     const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
     const namespace = fragment.$internal.deps.namespace;
+    if (!namespace) {
+      throw new Error("Expected workflows namespace to be defined.");
+    }
     const hooks = await internalFragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(

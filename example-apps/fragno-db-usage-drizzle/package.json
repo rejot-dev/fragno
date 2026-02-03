@@ -12,11 +12,17 @@
   "module": "./dist/node/mod.js",
   "types": "./dist/node/mod.d.ts",
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && pnpm run db:fragno:generate:all",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
-    "db:fragno:generate": "fragno-cli db generate -o src/schema/fragno-schema.ts src/fragno/auth-fragment.ts src/fragno/comment-fragment.ts src/fragno/rating-fragment.ts src/fragno/workflows-fragment.ts"
+    "db:fragno:generate": "NODE_OPTIONS=--conditions=development pnpm exec tsx ./scripts/generate-fragno-schema.ts --dialect postgresql --out ./src/schema/fragno-schema.ts",
+    "db:fragno:generate:sqlite": "NODE_OPTIONS=--conditions=development pnpm exec tsx ./scripts/generate-fragno-schema.ts --dialect sqlite --out ./src/schema/fragno-schema.sqlite.ts",
+    "db:fragno:generate:mysql": "NODE_OPTIONS=--conditions=development pnpm exec tsx ./scripts/generate-fragno-schema.ts --dialect mysql --out ./src/schema/fragno-schema.mysql.ts",
+    "db:fragno:generate:all": "pnpm run db:fragno:generate && pnpm run db:fragno:generate:sqlite && pnpm run db:fragno:generate:mysql",
+    "db:drizzle:generate": "drizzle-kit generate --config ./drizzle.config.ts",
+    "db:drizzle:generate:sqlite": "drizzle-kit generate --config ./drizzle.sqlite.config.ts",
+    "db:drizzle:generate:mysql": "drizzle-kit generate --config ./drizzle.mysql.config.ts"
   },
   "type": "module",
   "dependencies": {

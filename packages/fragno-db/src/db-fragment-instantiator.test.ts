@@ -7,9 +7,10 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 import { z } from "zod";
+import { suffixNamingStrategy } from "./naming/sql-naming";
 
 // Create a test schema
-const testSchema = schema((s) => {
+const testSchema = schema("test", (s) => {
   return s.addTable("users", (t) => {
     return t.addColumn("id", idColumn()).addColumn("name", column("string"));
   });
@@ -80,10 +81,11 @@ function createMockAdapter(): DatabaseAdapter {
 
   return {
     createQueryEngine: vi.fn(() => mockdb),
-    migrate: vi.fn(),
+    getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),
     type: "mock",
     contextStorage: new RequestContextStorage(),
+    namingStrategy: suffixNamingStrategy,
   } as unknown as DatabaseAdapter;
 }
 
@@ -212,7 +214,7 @@ describe("db-fragment-instantiator", () => {
 
   describe("database operations with UOW", () => {
     it("should allow accessing schema-typed UOW in handlers via handlerTx", async () => {
-      const testSchemaWithCounter = schema((s) => {
+      const testSchemaWithCounter = schema("testschemawithcounter", (s) => {
         return s.addTable("counters", (t) => {
           return t.addColumn("id", idColumn()).addColumn("value", column("integer"));
         });
@@ -453,7 +455,41 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       expect(fragment.$internal.deps.schema).toBe(testSchema);
-      expect(fragment.$internal.deps.namespace).toBe("test-db-fragment");
+      expect(fragment.$internal.deps.namespace).toBe("test");
+    });
+
+    it("should use databaseNamespace override when provided", () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({
+          mountRoute: "/api",
+          databaseAdapter: mockAdapter,
+          databaseNamespace: "custom-namespace",
+        })
+        .build();
+
+      expect(fragment.$internal.deps.namespace).toBe("custom-namespace");
+    });
+
+    it("should allow explicit null namespace override", () => {
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({
+          mountRoute: "/api",
+          databaseAdapter: mockAdapter,
+          databaseNamespace: null,
+        })
+        .build();
+
+      expect(fragment.$internal.deps.namespace).toBeNull();
     });
 
     it("should populate $internal when using providesBaseService without withDependencies", () => {

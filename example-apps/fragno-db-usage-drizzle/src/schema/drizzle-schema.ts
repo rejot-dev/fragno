@@ -1,12 +1,7 @@
 import { integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
-import {
-  fragno_db_rating_schema,
-  fragno_db_comment_schema,
-  simple_auth_db_schema,
-  workflows_schema,
-} from "./fragno-schema";
+import { comment_schema, upvote_schema, auth_schema, workflows_schema } from "./fragno-schema";
 
-export const user = pgTable("user", {
+export const appUser = pgTable("user", {
   id: serial("id").primaryKey(),
   email: text("email").notNull(),
   name: text("name").notNull(),
@@ -24,10 +19,10 @@ export const blogPost = pgTable("blog_post", {
 
 // Runtime schema object for drizzle-orm
 export const schema = {
-  ...fragno_db_comment_schema,
-  ...fragno_db_rating_schema,
-  ...simple_auth_db_schema,
+  ...comment_schema,
+  ...upvote_schema,
+  ...auth_schema,
   ...workflows_schema,
-  user,
+  appUser,
   blogPost,
 };

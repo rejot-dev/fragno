@@ -13,7 +13,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 ```typescript @fragno-prelude:schema
 // Example schema for testing
-const userSchema = schema((s) => {
+const userSchema = schema("user", (s) => {
   return s
     .addTable("users", (t) => {
       return t

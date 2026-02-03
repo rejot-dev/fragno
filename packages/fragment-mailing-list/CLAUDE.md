@@ -133,7 +133,7 @@ Database schemas are defined in a separate `schema.ts` file using the Fragno sch
 ```typescript
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-export const noteSchema = schema((s) => {
+export const noteSchema = schema("note", (s) => {
   return s.addTable("note", (t) => {
     return t
       .addColumn("id", idColumn()) // Auto-generated ID

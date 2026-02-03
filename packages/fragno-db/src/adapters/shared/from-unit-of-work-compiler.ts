@@ -52,7 +52,7 @@ export interface UnitOfWorkFactory {
   /**
    * Optional WeakMap for schema-to-namespace lookups
    */
-  schemaNamespaceMap?: WeakMap<AnySchema, string>;
+  schemaNamespaceMap?: WeakMap<AnySchema, string | null>;
 }
 
 /**

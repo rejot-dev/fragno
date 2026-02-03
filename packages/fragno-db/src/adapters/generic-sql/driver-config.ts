@@ -1,3 +1,9 @@
+import {
+  schemaNamingStrategy,
+  suffixNamingStrategy,
+  type SqlNamingStrategy,
+} from "../../naming/sql-naming";
+
 export const supportedDatabases = ["sqlite", "postgresql", "mysql"] as const;
 export type SupportedDatabase = (typeof supportedDatabases)[number];
 
@@ -33,6 +39,10 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
     return !!this.extractAffectedRows;
   }
 
+  get defaultNamingStrategy(): SqlNamingStrategy {
+    return defaultNamingStrategyForDatabase(this.databaseType);
+  }
+
   /**
    * Extract the number of affected rows from a query result.
    * Only implemented for drivers that support affected rows reporting.
@@ -43,6 +53,19 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
    */
   extractAffectedRows?(result: Record<string, unknown>): bigint;
 }
+
+export const defaultNamingStrategyForDatabase = (
+  databaseType: SupportedDatabase,
+): SqlNamingStrategy => {
+  switch (databaseType) {
+    case "postgresql":
+      return schemaNamingStrategy;
+    case "sqlite":
+    case "mysql":
+    default:
+      return suffixNamingStrategy;
+  }
+};
 
 export type OutboxVersionstampStrategy =
   | "update-returning"

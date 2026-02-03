@@ -21,7 +21,7 @@ export type ModelCheckerTraceHashMode = "state" | "trace" | "state+trace";
 export type NormalizedMutationOperation = {
   type: "create" | "update" | "delete" | "check";
   table: string;
-  namespace?: string;
+  namespace?: string | null;
   id?: unknown;
   checkVersion?: boolean;
   set?: Record<string, unknown>;

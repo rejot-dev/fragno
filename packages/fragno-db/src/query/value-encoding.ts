@@ -5,6 +5,7 @@ import {
   generateRuntimeDefault,
   type RuntimeDefaultContext,
 } from "./column-defaults";
+import type { NamingResolver } from "../naming/sql-naming";
 
 /**
  * Marker class for reference column values that need subquery resolution.
@@ -109,6 +110,7 @@ export function encodeValues(
   table: AnyTable,
   generateDefault: boolean,
   runtimeDefaults: RuntimeDefaultContext = {},
+  resolver?: NamingResolver,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -128,6 +130,8 @@ export function encodeValues(
     }
 
     if (value !== undefined) {
+      const physicalColumnName = resolver ? resolver.getColumnName(table.name, col.name) : col.name;
+
       // Handle reference columns: strings or FragnoIds without internal IDs need subqueries
       if (col.role === "reference") {
         let needsSubquery = false;
@@ -143,11 +147,11 @@ export function encodeValues(
           externalIdForSubquery = value.externalId;
         } else if (value instanceof FragnoId && value.internalId !== undefined) {
           // FragnoId with internal ID - use it directly (will be serialized later)
-          result[col.name] = value.internalId;
+          result[physicalColumnName] = value.internalId;
           continue;
         } else if (value instanceof FragnoReference) {
           // FragnoReference - use internal ID directly (will be serialized later)
-          result[col.name] = value.internalId;
+          result[physicalColumnName] = value.internalId;
           continue;
         }
 
@@ -156,7 +160,10 @@ export function encodeValues(
             rel.on.some(([localCol]) => localCol === k),
           );
           if (relation) {
-            result[col.name] = new ReferenceSubquery(relation.table, externalIdForSubquery!);
+            result[physicalColumnName] = new ReferenceSubquery(
+              relation.table,
+              externalIdForSubquery!,
+            );
             continue;
           }
           throw new Error(`Reference column ${k} not found in table ${table.name}`);
@@ -165,7 +172,7 @@ export function encodeValues(
 
       // Resolve FragnoId/FragnoReference to primitive values (serialization happens later)
       const resolvedValue = resolveFragnoIdValue(value, col);
-      result[col.name] = resolvedValue;
+      result[physicalColumnName] = resolvedValue;
     }
   }
 
@@ -184,8 +191,9 @@ export function encodeValuesWithDbDefaults(
   values: Record<string, unknown>,
   table: AnyTable,
   runtimeDefaults: RuntimeDefaultContext = {},
+  resolver?: NamingResolver,
 ): Record<string, unknown> {
-  const resolved = encodeValues(values, table, true, runtimeDefaults);
+  const resolved = encodeValues(values, table, true, runtimeDefaults, resolver);
 
   for (const columnKey of Object.keys(table.columns)) {
     const column = table.columns[columnKey];
@@ -193,13 +201,16 @@ export function encodeValuesWithDbDefaults(
       continue;
     }
 
-    if (Object.prototype.hasOwnProperty.call(resolved, column.name)) {
+    const physicalColumnName = resolver
+      ? resolver.getColumnName(table.name, column.name)
+      : column.name;
+    if (Object.prototype.hasOwnProperty.call(resolved, physicalColumnName)) {
       continue;
     }
 
     const fallback = generateDatabaseDefault(column, runtimeDefaults);
     if (fallback !== undefined) {
-      resolved[column.name] = fallback;
+      resolved[physicalColumnName] = fallback;
     }
   }
 

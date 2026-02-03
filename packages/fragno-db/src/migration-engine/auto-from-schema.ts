@@ -16,7 +16,7 @@ import type { MigrationOperation, ColumnInfo } from "./shared";
  *
  * @example
  * ```ts
- * const mySchema = schema(s => s
+ * const mySchema = schema("my", s => s
  *   .addTable("users", t => t.addColumn("id", idColumn()))       // version 1
  *   .addTable("posts", t => t.addColumn("id", idColumn()))       // version 2
  * );
@@ -156,11 +156,14 @@ export function generateMigrationFromSchema(
         }
       }
     } else if (op.type === "add-reference") {
+      if (!op.referenceName || op.referenceName.trim().length === 0) {
+        throw new Error(`referenceName is required for add-reference on ${op.tableName}`);
+      }
       migrationOperations.push({
         type: "add-foreign-key",
         table: op.tableName,
         value: {
-          name: `${op.tableName}_${op.config.to.table}_${op.referenceName}_fk`,
+          name: op.referenceName,
           columns: [op.config.from.column],
           referencedTable: op.config.to.table,
           referencedColumns: [op.config.to.column],

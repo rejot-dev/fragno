@@ -12,7 +12,7 @@ describe("SqlAdapter PGLite", () => {
   let pgliteDatabase: PGlite;
   let adapter: SqlAdapter;
 
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -73,7 +73,7 @@ describe("SqlAdapter PGLite", () => {
       });
   });
 
-  const schema2 = schema((s) => {
+  const schema2 = schema("schema2", (s) => {
     return s
       .addTable("products", (t) => {
         return t
@@ -321,7 +321,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "emails_namespace"."id" as "id", "emails_namespace"."user_id" as "user_id", "emails_namespace"."email" as "email", "emails_namespace"."is_primary" as "is_primary", "emails_namespace"."_internalId" as "_internalId", "emails_namespace"."_version" as "_version" from "emails_namespace" left join "users_namespace" as "user" on "emails_namespace"."user_id" = "user"."_internalId""`,
+      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "namespace"."emails"."id" as "id", "namespace"."emails"."user_id" as "user_id", "namespace"."emails"."email" as "email", "namespace"."emails"."is_primary" as "is_primary", "namespace"."emails"."_internalId" as "_internalId", "namespace"."emails"."_version" as "_version" from "namespace"."emails" left join "namespace"."users" as "user" on "namespace"."emails"."user_id" = "user"."_internalId""`,
     );
 
     expect(email).toMatchObject({
@@ -502,7 +502,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "comments_namespace"."id" as "id", "comments_namespace"."post_id" as "post_id", "comments_namespace"."user_id" as "user_id", "comments_namespace"."text" as "text", "comments_namespace"."_internalId" as "_internalId", "comments_namespace"."_version" as "_version" from "comments_namespace" left join "posts_namespace" as "post" on "comments_namespace"."post_id" = "post"."_internalId" left join "users_namespace" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "users_namespace" as "commenter" on "comments_namespace"."user_id" = "commenter"."_internalId""`,
+      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "namespace"."comments"."id" as "id", "namespace"."comments"."post_id" as "post_id", "namespace"."comments"."user_id" as "user_id", "namespace"."comments"."text" as "text", "namespace"."comments"."_internalId" as "_internalId", "namespace"."comments"."_version" as "_version" from "namespace"."comments" left join "namespace"."posts" as "post" on "namespace"."comments"."post_id" = "post"."_internalId" left join "namespace"."users" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "namespace"."users" as "commenter" on "namespace"."comments"."user_id" = "commenter"."_internalId""`,
     );
   });
 
@@ -614,11 +614,11 @@ describe("SqlAdapter PGLite", () => {
 
     const [insertUserQuery, insertPostQuery] = queries;
     expect(insertUserQuery.sql).toMatchInlineSnapshot(
-      `"insert into "users_namespace" ("id", "name", "age") values ($1, $2, $3) returning "users_namespace"."id" as "id", "users_namespace"."name" as "name", "users_namespace"."age" as "age", "users_namespace"."_internalId" as "_internalId", "users_namespace"."_version" as "_version""`,
+      `"insert into "namespace"."users" ("id", "name", "age") values ($1, $2, $3) returning "namespace"."users"."id" as "id", "namespace"."users"."name" as "name", "namespace"."users"."age" as "age", "namespace"."users"."_internalId" as "_internalId", "namespace"."users"."_version" as "_version""`,
     );
     expect(insertUserQuery.parameters).toEqual([userId.externalId, "UOW Test User", 35]);
     expect(insertPostQuery.sql).toMatchInlineSnapshot(
-      `"insert into "posts_namespace" ("id", "user_id", "title", "content") values ($1, (select "_internalId" from "users_namespace" where "id" = $2 limit $3), $4, $5) returning "posts_namespace"."id" as "id", "posts_namespace"."user_id" as "user_id", "posts_namespace"."title" as "title", "posts_namespace"."content" as "content", "posts_namespace"."created_at" as "created_at", "posts_namespace"."_internalId" as "_internalId", "posts_namespace"."_version" as "_version""`,
+      `"insert into "namespace"."posts" ("id", "user_id", "title", "content") values ($1, (select "_internalId" from "namespace"."users" where "id" = $2 limit $3), $4, $5) returning "namespace"."posts"."id" as "id", "namespace"."posts"."user_id" as "user_id", "namespace"."posts"."title" as "title", "namespace"."posts"."content" as "content", "namespace"."posts"."created_at" as "created_at", "namespace"."posts"."_internalId" as "_internalId", "namespace"."posts"."_version" as "_version""`,
     );
     expect(insertPostQuery.parameters).toEqual([
       postId.externalId,

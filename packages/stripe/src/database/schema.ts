@@ -3,7 +3,7 @@ import { schema, idColumn, column } from "@fragno-dev/db/schema";
 /**
  * Database schema for subscriptions that are linked to external stripe subscriptions.
  */
-export const stripeSchema = schema((s) => {
+export const stripeSchema = schema("stripe", (s) => {
   return s.addTable("subscription", (t) => {
     return (
       t

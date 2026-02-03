@@ -13,7 +13,7 @@ import type { ConditionBuilder } from "./condition-builder";
 
 describe("query type tests", () => {
   // Create test schema
-  const _testSchema = schema((s) => {
+  const _testSchema = schema("_test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -337,7 +337,7 @@ describe("query type tests", () => {
   });
 
   describe("join", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));

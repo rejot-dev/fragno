@@ -1,5 +1,5 @@
 import type { DriverConfig } from "../driver-config";
-import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../naming/sql-naming";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { SQLQueryCompiler, type AnyKysely } from "./sql-query-compiler";
 import { PostgreSQLQueryCompiler } from "./dialect/postgres";
@@ -15,22 +15,22 @@ import { SQLiteQueryCompiler } from "./dialect/sqlite";
  * @param db - Kysely database instance
  * @param driverConfig - Driver configuration with database type and capabilities
  * @param sqliteStorageMode - Optional SQLite storage mode override
- * @param mapper - Optional table name mapper for namespace prefixing
+ * @param resolver - Optional naming resolver for namespace prefixing
  * @returns Dialect-specific SQLQueryCompiler instance
  */
 export function createSQLQueryCompiler(
   db: AnyKysely,
   driverConfig: DriverConfig,
   sqliteStorageMode?: SQLiteStorageMode,
-  mapper?: TableNameMapper,
+  resolver?: NamingResolver,
 ): SQLQueryCompiler {
   switch (driverConfig.databaseType) {
     case "postgresql":
-      return new PostgreSQLQueryCompiler(db, driverConfig, sqliteStorageMode, mapper);
+      return new PostgreSQLQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
     case "mysql":
-      return new MySQLQueryCompiler(db, driverConfig, sqliteStorageMode, mapper);
+      return new MySQLQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
     case "sqlite":
-      return new SQLiteQueryCompiler(db, driverConfig, sqliteStorageMode, mapper);
+      return new SQLiteQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
     default: {
       const exhaustiveCheck: never = driverConfig.databaseType;
       throw new Error(`Unsupported database type: ${exhaustiveCheck}`);

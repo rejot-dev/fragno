@@ -39,7 +39,7 @@ const { response } = await mutate({
 });`,
     },
     database: {
-      code: `schema((s) => {
+      code: `schema("chat", (s) => {
   return s.addTable("conversation", (t) => {
     return t
       .addColumn("id", idColumn())
@@ -84,7 +84,7 @@ if (redirect) {
 });`,
     },
     database: {
-      code: `schema((s) => {
+      code: `schema("stripe", (s) => {
   return s.addTable("subscription", (t) => {
     return t
       .addColumn("id", idColumn())
@@ -122,7 +122,7 @@ await signIn({
 });`,
     },
     database: {
-      code: `schema((s) => {
+      code: `schema("auth", (s) => {
   return s
     .addTable("user", (t) => {
       return t
@@ -174,7 +174,7 @@ await submit({
 });`,
     },
     database: {
-      code: `schema((s) => {
+      code: `schema("forms", (s) => {
   return s
     .addTable("form", (t) => {
       return t

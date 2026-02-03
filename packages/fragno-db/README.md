@@ -40,7 +40,7 @@ pnpm add --dev @fragno-dev/cli
 // schema.ts
 import { schema, idColumn, column } from "@fragno-dev/db/schema";
 
-export const commentSchema = schema((s) => {
+export const commentSchema = schema("comment", (s) => {
   return s
     .addTable("comment", (t) => {
       return t

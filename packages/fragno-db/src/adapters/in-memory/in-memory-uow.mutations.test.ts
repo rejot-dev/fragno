@@ -10,11 +10,11 @@ import {
 } from "./in-memory-uow";
 import { resolveInMemoryAdapterOptions, type InMemoryAdapterOptions } from "./options";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
 );
 
-const fkSchema = schema((s) =>
+const fkSchema = schema("fk", (s) =>
   s
     .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
     .addTable("posts", (t) =>

@@ -18,12 +18,13 @@ export { Cursor };
 export { dbNow };
 export type { DbNow };
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
+export { internalSchema } from "./fragments/internal-fragment";
 
 export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
 export const fragnoDatabaseLibraryVersion = "0.1" as const;
 
 export interface CreateFragnoDatabaseDefinitionOptions<T extends AnySchema> {
-  namespace: string;
+  namespace: string | null;
   schema: T;
 }
 
@@ -47,11 +48,15 @@ export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySch
  * Created from a FragnoDatabaseDefinition by calling .create(adapter).
  */
 export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
-  #namespace: string;
+  #namespace: string | null;
   #schema: T;
   #adapter: DatabaseAdapter<TUOWConfig>;
 
-  constructor(options: { namespace: string; schema: T; adapter: DatabaseAdapter<TUOWConfig> }) {
+  constructor(options: {
+    namespace: string | null;
+    schema: T;
+    adapter: DatabaseAdapter<TUOWConfig>;
+  }) {
     this.#namespace = options.namespace;
     this.#schema = options.schema;
     this.#adapter = options.adapter;
@@ -150,22 +155,23 @@ export {
   type DurableHooksProcessor,
 } from "./hooks/durable-hooks-processor";
 
-export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any,
-  ImplicitDatabaseDependencies<AnySchema>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any,
-  FragnoPublicConfigWithDatabase,
-  // Ensure the fragment has the internal fragment linked
-  { _fragno_internal: InternalFragmentInstance } & Record<string, AnyFragnoInstantiatedFragment>
->;
+export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = AnySchema> =
+  FragnoInstantiatedFragment<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    ImplicitDatabaseDependencies<TSchema>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    any,
+    FragnoPublicConfigWithDatabase,
+    // Ensure the fragment has the internal fragment linked
+    { _fragno_internal: InternalFragmentInstance } & Record<string, AnyFragnoInstantiatedFragment>
+  >;
 
 /**
  * Helper function to run migrations for a database fragment.
@@ -189,7 +195,9 @@ export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
  * await migrate(fragment);
  * ```
  */
-export async function migrate(fragment: AnyFragnoInstantiatedDatabaseFragment): Promise<void> {
+export async function migrate<TSchema extends AnySchema>(
+  fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
+): Promise<void> {
   const { options, deps, linkedFragments } = fragment.$internal;
   const adapter = options.databaseAdapter;
 
@@ -201,7 +209,7 @@ export async function migrate(fragment: AnyFragnoInstantiatedDatabaseFragment): 
   }
 
   const schema = deps.schema;
-  const namespace = deps.namespace;
+  const namespace = deps.namespace ?? schema.name;
 
   // Step 1: Ensure the internal fragment (settings table) is migrated first
   const internalFragment = linkedFragments._fragno_internal;
@@ -218,7 +226,7 @@ export async function migrate(fragment: AnyFragnoInstantiatedDatabaseFragment): 
 
   const internalDeps = internalFragment.$internal.deps;
   const internalSchema = internalDeps.schema;
-  const internalNamespace = internalDeps.namespace;
+  const internalNamespace = internalDeps.namespace ?? internalSchema.name;
 
   const internalCurrentVersion = await getSchemaVersionFromDatabase(
     internalFragment,

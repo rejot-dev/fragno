@@ -57,6 +57,7 @@ export class Cursor {
    * Encode cursor to an opaque base64 string (safe to send to client)
    */
   encode(): string {
+    assertSerializableIndexValues(this.#indexValues);
     const data: CursorData = {
       v: 1,
       indexName: this.#indexName,
@@ -101,7 +102,12 @@ export interface CursorData {
  * Encode cursor data to a base64 string (internal)
  */
 function encodeCursorData(data: CursorData): string {
-  const json = JSON.stringify(data);
+  let json: string;
+  try {
+    json = JSON.stringify(data);
+  } catch (error) {
+    throw new Error(`Invalid cursor: ${error instanceof Error ? error.message : "malformed data"}`);
+  }
   // Use Buffer in Node.js or btoa in browsers
   if (typeof Buffer !== "undefined") {
     return Buffer.from(json, "utf-8").toString("base64");
@@ -130,32 +136,38 @@ export function decodeCursor(cursor: string): Cursor {
       json = atob(cursor);
     }
     const data = JSON.parse(json);
+    const record = data as Record<string, unknown>;
 
     // Validate structure
     if (
-      !data ||
-      typeof data !== "object" ||
-      !data.indexValues ||
-      typeof data.indexValues !== "object" ||
-      typeof data.pageSize !== "number" ||
-      !data.indexName ||
-      !data.orderDirection ||
-      (data.orderDirection !== "asc" && data.orderDirection !== "desc")
+      !isPlainObject(data) ||
+      !isPlainObject(record["indexValues"]) ||
+      typeof record["indexName"] !== "string" ||
+      record["indexName"].length === 0 ||
+      typeof record["orderDirection"] !== "string" ||
+      (record["orderDirection"] !== "asc" && record["orderDirection"] !== "desc") ||
+      typeof record["pageSize"] !== "number" ||
+      !Number.isFinite(record["pageSize"]) ||
+      !Number.isInteger(record["pageSize"]) ||
+      record["pageSize"] <= 0
     ) {
       throw new Error("Invalid cursor structure");
     }
 
     // Only support v1
-    const version = typeof data.v === "number" ? data.v : 0;
+    if (typeof record["v"] !== "number") {
+      throw new Error("Unsupported cursor version: missing. Only v1 is supported.");
+    }
+    const version = record["v"];
     if (version !== 1) {
       throw new Error(`Unsupported cursor version: ${version}. Only v1 is supported.`);
     }
 
     return new Cursor({
-      indexName: data.indexName,
-      orderDirection: data.orderDirection,
-      pageSize: data.pageSize,
-      indexValues: data.indexValues,
+      indexName: record["indexName"],
+      orderDirection: record["orderDirection"],
+      pageSize: record["pageSize"],
+      indexValues: record["indexValues"],
     });
   } catch (error) {
     throw new Error(`Invalid cursor: ${error instanceof Error ? error.message : "malformed data"}`);
@@ -195,7 +207,11 @@ export function createCursorFromRecord(
   const indexValues: Record<string, unknown> = {};
 
   for (const col of indexColumns) {
-    indexValues[col.ormName] = record[col.ormName];
+    const value = record[col.name];
+    if (value === undefined) {
+      throw new Error(`Record is missing value for index column "${col.name}".`);
+    }
+    indexValues[col.name] = value;
   }
 
   return new Cursor({
@@ -239,20 +255,50 @@ export function serializeCursorValues(
 ): Record<string, unknown> {
   const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
   const serialized: Record<string, unknown> = {};
+  const missingColumns: string[] = [];
 
   for (const col of indexColumns) {
-    const value = cursor.indexValues[col.ormName];
-    if (value !== undefined) {
-      // First deserialize from JSON format to application format
-      // (e.g., "2025-11-07T09:36:57.959Z" string → Date object)
-      const deserialized = serializer.deserialize(value, col);
-      // Resolve FragnoId/FragnoReference to primitive values (if present)
-      const resolved = resolveFragnoIdValue(deserialized, col);
-      // Then serialize to database format
-      // (e.g., Date → database driver format)
-      serialized[col.ormName] = serializer.serialize(resolved, col);
+    const value = cursor.indexValues[col.name];
+    if (value === undefined) {
+      missingColumns.push(col.name);
+      continue;
     }
+    // First deserialize from JSON format to application format
+    // (e.g., "2025-11-07T09:36:57.959Z" string → Date object)
+    const deserialized = serializer.deserialize(value, col);
+    // Resolve FragnoId/FragnoReference to primitive values (if present)
+    const resolved = resolveFragnoIdValue(deserialized, col);
+    // Then serialize to database format
+    // (e.g., Date → database driver format)
+    serialized[col.name] = serializer.serialize(resolved, col);
+  }
+
+  if (missingColumns.length > 0) {
+    const suffix = cursor.indexName ? ` for index "${cursor.indexName}"` : "";
+    const columns = missingColumns.map((name) => `"${name}"`).join(", ");
+    const plural = missingColumns.length === 1 ? "" : "s";
+    throw new Error(`Cursor is missing values for index column${plural} ${columns}${suffix}.`);
   }
 
   return serialized;
 }
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const assertSerializableIndexValues = (values: Record<string, unknown>): void => {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) {
+      throw new Error(`Cursor index value "${key}" is undefined.`);
+    }
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      throw new Error(`Cursor index value "${key}" must be a finite number.`);
+    }
+    if (typeof value === "bigint") {
+      throw new Error(`Cursor index value "${key}" must not be a BigInt.`);
+    }
+    if (typeof value === "function" || typeof value === "symbol") {
+      throw new Error(`Cursor index value "${key}" is not JSON-serializable.`);
+    }
+  }
+};

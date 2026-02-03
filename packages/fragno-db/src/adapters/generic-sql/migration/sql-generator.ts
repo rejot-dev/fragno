@@ -13,7 +13,7 @@ import type {
   MigrationOperation,
 } from "../../../migration-engine/shared";
 import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
-import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { createSQLTypeMapper } from "../../../schema/type-conversion/create-sql-type-mapper";
@@ -110,12 +110,17 @@ export abstract class SQLGenerator {
    * Compile migration operations to SQL statements.
    * This is the main entry point for SQL generation.
    */
-  compile(operations: MigrationOperation[], mapper?: TableNameMapper): CompiledQuery[] {
+  compile(operations: MigrationOperation[], resolver?: NamingResolver): CompiledQuery[] {
     const preprocessed = this.preprocess(operations);
     const queries: CompiledQuery[] = [];
 
+    const schemaName = resolver?.getSchemaName();
+    if (schemaName && this.database === "postgresql") {
+      queries.push(sql`CREATE SCHEMA IF NOT EXISTS ${sql.id(schemaName)}`.compile(this.db));
+    }
+
     for (const operation of preprocessed) {
-      const compiled = this.compileOperation(operation, mapper);
+      const compiled = this.compileOperation(operation, resolver);
       if (Array.isArray(compiled)) {
         queries.push(...compiled);
       } else {
@@ -131,25 +136,25 @@ export abstract class SQLGenerator {
    */
   protected compileOperation(
     operation: MigrationOperation,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery | CompiledQuery[] {
     switch (operation.type) {
       case "create-table":
-        return this.compileCreateTable(operation, mapper);
+        return this.compileCreateTable(operation, resolver);
       case "rename-table":
-        return this.compileRenameTable(operation, mapper);
+        return this.compileRenameTable(operation, resolver);
       case "alter-table":
-        return this.compileAlterTable(operation, mapper);
+        return this.compileAlterTable(operation, resolver);
       case "drop-table":
-        return this.compileDropTable(operation, mapper);
+        return this.compileDropTable(operation, resolver);
       case "add-foreign-key":
-        return this.compileAddForeignKey(operation, mapper);
+        return this.compileAddForeignKey(operation, resolver);
       case "drop-foreign-key":
-        return this.compileDropForeignKey(operation, mapper);
+        return this.compileDropForeignKey(operation, resolver);
       case "add-index":
-        return this.compileAddIndex(operation, mapper);
+        return this.compileAddIndex(operation, resolver);
       case "drop-index":
-        return this.compileDropIndex(operation, mapper);
+        return this.compileDropIndex(operation, resolver);
       case "custom":
         return this.compileCustom(operation);
     }
@@ -161,19 +166,20 @@ export abstract class SQLGenerator {
    */
   protected compileCreateTable(
     operation: Extract<MigrationOperation, { type: "create-table" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const tableName = this.getTableName(operation.name, mapper);
-    let builder: CreateTableBuilderAny = this.db.schema.createTable(tableName);
+    const tableName = this.getTableName(operation.name, resolver);
+    let builder: CreateTableBuilderAny = this.getSchemaBuilder(resolver).createTable(tableName);
 
     for (const col of operation.columns) {
-      builder = builder.addColumn(col.name, sql.raw(this.getDBType(col)), (b) =>
+      const columnName = this.getColumnName(col.name, operation.name, resolver);
+      builder = builder.addColumn(columnName, sql.raw(this.getDBType(col)), (b) =>
         this.buildColumn(col, b),
       );
     }
 
     // Allow subclasses to add inline foreign keys
-    builder = this.addInlineForeignKeys(builder, operation, mapper);
+    builder = this.addInlineForeignKeys(builder, operation, resolver);
 
     return builder.compile();
   }
@@ -185,7 +191,7 @@ export abstract class SQLGenerator {
   protected addInlineForeignKeys(
     builder: CreateTableBuilderAny,
     _operation: Extract<MigrationOperation, { type: "create-table" }>,
-    _mapper?: TableNameMapper,
+    _resolver?: NamingResolver,
   ): CreateTableBuilderAny {
     return builder;
   }
@@ -195,11 +201,11 @@ export abstract class SQLGenerator {
    */
   protected compileRenameTable(
     operation: Extract<MigrationOperation, { type: "rename-table" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    return this.db.schema
-      .alterTable(this.getTableName(operation.from, mapper))
-      .renameTo(this.getTableName(operation.to, mapper))
+    return this.getSchemaBuilder(resolver)
+      .alterTable(this.getTableName(operation.from, resolver))
+      .renameTo(this.getTableName(operation.to, resolver))
       .compile();
   }
 
@@ -208,13 +214,13 @@ export abstract class SQLGenerator {
    */
   protected compileAlterTable(
     operation: Extract<MigrationOperation, { type: "alter-table" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery[] {
     const queries: CompiledQuery[] = [];
-    const tableName = this.getTableName(operation.name, mapper);
+    const tableName = this.getTableName(operation.name, resolver);
 
     for (const columnOp of operation.value) {
-      const compiled = this.compileColumnOperation(tableName, columnOp);
+      const compiled = this.compileColumnOperation(tableName, operation.name, columnOp, resolver);
       if (Array.isArray(compiled)) {
         queries.push(...compiled);
       } else {
@@ -231,26 +237,39 @@ export abstract class SQLGenerator {
    */
   protected compileColumnOperation(
     tableName: string,
+    logicalTableName: string,
     operation: ColumnOperation,
+    resolver?: NamingResolver,
   ): CompiledQuery | CompiledQuery[] {
-    const alter = () => this.db.schema.alterTable(tableName);
+    const alter = () => this.getSchemaBuilder(resolver).alterTable(tableName);
 
     switch (operation.type) {
       case "rename-column":
-        return alter().renameColumn(operation.from, operation.to).compile();
+        return alter()
+          .renameColumn(
+            this.getColumnName(operation.from, logicalTableName, resolver),
+            this.getColumnName(operation.to, logicalTableName, resolver),
+          )
+          .compile();
 
       case "drop-column":
-        return alter().dropColumn(operation.name).compile();
+        return alter()
+          .dropColumn(this.getColumnName(operation.name, logicalTableName, resolver))
+          .compile();
 
       case "create-column": {
         const col = operation.value;
         return alter()
-          .addColumn(col.name, sql.raw(this.getDBType(col)), (b) => this.buildColumn(col, b))
+          .addColumn(
+            this.getColumnName(col.name, logicalTableName, resolver),
+            sql.raw(this.getDBType(col)),
+            (b) => this.buildColumn(col, b),
+          )
           .compile();
       }
 
       case "update-column":
-        return this.compileUpdateColumn(tableName, operation);
+        return this.compileUpdateColumn(tableName, logicalTableName, operation, resolver);
     }
   }
 
@@ -260,7 +279,9 @@ export abstract class SQLGenerator {
    */
   protected abstract compileUpdateColumn(
     tableName: string,
+    logicalTableName: string,
     operation: Extract<ColumnOperation, { type: "update-column" }>,
+    resolver?: NamingResolver,
   ): CompiledQuery | CompiledQuery[];
 
   /**
@@ -268,9 +289,11 @@ export abstract class SQLGenerator {
    */
   protected compileDropTable(
     operation: Extract<MigrationOperation, { type: "drop-table" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    return this.db.schema.dropTable(this.getTableName(operation.name, mapper)).compile();
+    return this.getSchemaBuilder(resolver)
+      .dropTable(this.getTableName(operation.name, resolver))
+      .compile();
   }
 
   /**
@@ -279,16 +302,18 @@ export abstract class SQLGenerator {
    */
   protected compileAddForeignKey(
     operation: Extract<MigrationOperation, { type: "add-foreign-key" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
     const { table, value } = operation;
-    return this.db.schema
-      .alterTable(this.getTableName(table, mapper))
+    return this.getSchemaBuilder(resolver)
+      .alterTable(this.getTableName(table, resolver))
       .addForeignKeyConstraint(
-        value.name,
-        value.columns,
-        this.getTableName(value.referencedTable, mapper),
-        value.referencedColumns,
+        this.getForeignKeyName(value.name, table, value.referencedTable, resolver),
+        value.columns.map((columnName) => this.getColumnName(columnName, table, resolver)),
+        this.getTableName(value.referencedTable, resolver),
+        value.referencedColumns.map((columnName) =>
+          this.getColumnName(columnName, value.referencedTable, resolver),
+        ),
         (b) => b.onUpdate("restrict").onDelete("restrict"),
       )
       .compile();
@@ -300,12 +325,12 @@ export abstract class SQLGenerator {
    */
   protected compileDropForeignKey(
     operation: Extract<MigrationOperation, { type: "drop-foreign-key" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const { table, name } = operation;
-    return this.db.schema
-      .alterTable(this.getTableName(table, mapper))
-      .dropConstraint(name)
+    const { table, name, referencedTable } = operation;
+    return this.getSchemaBuilder(resolver)
+      .alterTable(this.getTableName(table, resolver))
+      .dropConstraint(this.getForeignKeyName(name, table, referencedTable, resolver))
       .ifExists()
       .compile();
   }
@@ -315,11 +340,22 @@ export abstract class SQLGenerator {
    */
   protected compileAddIndex(
     operation: Extract<MigrationOperation, { type: "add-index" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const tableName = this.getTableName(operation.table, mapper);
-    const indexName = this.getIndexName(operation.name, operation.table, mapper);
-    let builder = this.db.schema.createIndex(indexName).on(tableName).columns(operation.columns);
+    const tableName = this.getTableName(operation.table, resolver);
+    const indexName = this.getIndexName(
+      operation.name,
+      operation.table,
+      resolver,
+      operation.unique,
+    );
+    const columnNames = operation.columns.map((columnName) =>
+      this.getColumnName(columnName, operation.table, resolver),
+    );
+    let builder = this.getSchemaBuilder(resolver)
+      .createIndex(indexName)
+      .on(tableName)
+      .columns(columnNames);
 
     if (operation.unique) {
       builder = builder.unique();
@@ -333,11 +369,11 @@ export abstract class SQLGenerator {
    */
   protected compileDropIndex(
     operation: Extract<MigrationOperation, { type: "drop-index" }>,
-    mapper?: TableNameMapper,
+    resolver?: NamingResolver,
   ): CompiledQuery {
-    const tableName = this.getTableName(operation.table, mapper);
-    const indexName = this.getIndexName(operation.name, operation.table, mapper);
-    return this.db.schema.dropIndex(indexName).ifExists().on(tableName).compile();
+    const tableName = this.getTableName(operation.table, resolver);
+    const indexName = this.getIndexName(operation.name, operation.table, resolver);
+    return this.getSchemaBuilder(resolver).dropIndex(indexName).ifExists().on(tableName).compile();
   }
 
   /**
@@ -383,11 +419,11 @@ export abstract class SQLGenerator {
    * Get table name, applying namespace mapping if provided.
    * Settings table is never namespaced.
    */
-  protected getTableName(tableName: string, mapper?: TableNameMapper): string {
+  protected getTableName(tableName: string, resolver?: NamingResolver): string {
     if (tableName === SETTINGS_TABLE_NAME) {
       return tableName;
     }
-    return mapper ? mapper.toPhysical(tableName) : tableName;
+    return resolver ? resolver.getTableName(tableName) : tableName;
   }
 
   /**
@@ -395,14 +431,47 @@ export abstract class SQLGenerator {
    * Index names must be globally unique in most databases, so we namespace them
    * to avoid collisions when multiple fragments use the same logical index names.
    */
-  protected getIndexName(indexName: string, tableName: string, mapper?: TableNameMapper): string {
-    if (!mapper) {
+  protected getIndexName(
+    indexName: string,
+    tableName: string,
+    resolver?: NamingResolver,
+    unique?: boolean,
+  ): string {
+    if (!resolver) {
       return indexName;
     }
-    // Create a unique index name by including the physical table name
-    // This ensures index names are unique across namespaces
-    const physicalTable = mapper.toPhysical(tableName);
-    return `${indexName}_${physicalTable}`;
+    return unique
+      ? resolver.getUniqueIndexName(indexName, tableName)
+      : resolver.getIndexName(indexName, tableName);
+  }
+
+  protected getForeignKeyName(
+    name: string,
+    tableName: string,
+    referencedTable: string,
+    resolver?: NamingResolver,
+  ): string {
+    if (!resolver) {
+      return name;
+    }
+    return resolver.getForeignKeyName({
+      logicalTable: tableName,
+      logicalReferencedTable: referencedTable || tableName,
+      referenceName: name,
+    });
+  }
+
+  protected getColumnName(
+    columnName: string,
+    tableName: string,
+    resolver?: NamingResolver,
+  ): string {
+    return resolver ? resolver.getColumnName(tableName, columnName) : columnName;
+  }
+
+  protected getSchemaBuilder(resolver?: NamingResolver) {
+    const schemaName = resolver?.getSchemaName();
+    return schemaName ? this.db.schema.withSchema(schemaName) : this.db.schema;
   }
 
   /**

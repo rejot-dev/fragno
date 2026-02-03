@@ -9,7 +9,7 @@ import { internalSchema } from "../../fragments/internal-fragment";
 import type { CompiledQuery } from "../../sql-driver/sql-driver";
 
 describe("SqlAdapter PGLite", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -369,7 +369,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "emails_namespace"."id" as "id", "emails_namespace"."user_id" as "user_id", "emails_namespace"."email" as "email", "emails_namespace"."is_primary" as "is_primary", "emails_namespace"."_internalId" as "_internalId", "emails_namespace"."_version" as "_version" from "emails_namespace" left join "users_namespace" as "user" on "emails_namespace"."user_id" = "user"."_internalId" where "emails_namespace"."user_id" = $1"`,
+      `"select "user"."name" as "user:name", "user"."id" as "user:id", "user"."age" as "user:age", "user"."_internalId" as "user:_internalId", "user"."_version" as "user:_version", "namespace"."emails"."id" as "id", "namespace"."emails"."user_id" as "user_id", "namespace"."emails"."email" as "email", "namespace"."emails"."is_primary" as "is_primary", "namespace"."emails"."_internalId" as "_internalId", "namespace"."emails"."_version" as "_version" from "namespace"."emails" left join "namespace"."users" as "user" on "namespace"."emails"."user_id" = "user"."_internalId" where "namespace"."emails"."user_id" = $1"`,
     );
 
     expect(email).toMatchObject({
@@ -580,7 +580,7 @@ describe("SqlAdapter PGLite", () => {
 
     const [query] = queries;
     expect(query.sql).toMatchInlineSnapshot(
-      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "comments_namespace"."id" as "id", "comments_namespace"."post_id" as "post_id", "comments_namespace"."user_id" as "user_id", "comments_namespace"."text" as "text", "comments_namespace"."_internalId" as "_internalId", "comments_namespace"."_version" as "_version" from "comments_namespace" left join "posts_namespace" as "post" on "comments_namespace"."post_id" = "post"."_internalId" left join "users_namespace" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "users_namespace" as "commenter" on "comments_namespace"."user_id" = "commenter"."_internalId""`,
+      `"select "post"."id" as "post:id", "post"."title" as "post:title", "post"."content" as "post:content", "post"."_internalId" as "post:_internalId", "post"."_version" as "post:_version", "post_author"."id" as "post:author:id", "post_author"."name" as "post:author:name", "post_author"."age" as "post:author:age", "post_author"."_internalId" as "post:author:_internalId", "post_author"."_version" as "post:author:_version", "commenter"."id" as "commenter:id", "commenter"."name" as "commenter:name", "commenter"."_internalId" as "commenter:_internalId", "commenter"."_version" as "commenter:_version", "namespace"."comments"."id" as "id", "namespace"."comments"."post_id" as "post_id", "namespace"."comments"."user_id" as "user_id", "namespace"."comments"."text" as "text", "namespace"."comments"."_internalId" as "_internalId", "namespace"."comments"."_version" as "_version" from "namespace"."comments" left join "namespace"."posts" as "post" on "namespace"."comments"."post_id" = "post"."_internalId" left join "namespace"."users" as "post_author" on "post"."user_id" = "post_author"."_internalId" left join "namespace"."users" as "commenter" on "namespace"."comments"."user_id" = "commenter"."_internalId""`,
     );
   });
 

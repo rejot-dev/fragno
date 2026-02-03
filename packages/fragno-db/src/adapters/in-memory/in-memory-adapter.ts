@@ -4,11 +4,9 @@ import {
   fragnoDatabaseAdapterVersionFakeSymbol,
   type DatabaseAdapter,
   type DatabaseContextStorage,
-  type TableNameMapper,
 } from "../adapters";
 import type { AnySchema, AnyTable, FragnoId } from "../../schema/create";
 import type { SimpleQueryInterface, TableToUpdateValues } from "../../query/simple-query-interface";
-import { createTableNameMapper } from "../shared/table-name-mapper";
 import {
   resolveInMemoryAdapterOptions,
   type InMemoryAdapterOptions,
@@ -22,6 +20,11 @@ import {
 } from "./in-memory-uow";
 import { UnitOfWork, type UnitOfWorkConfig } from "../../query/unit-of-work/unit-of-work";
 import type { CursorResult } from "../../query/cursor";
+import {
+  createNamingResolver,
+  suffixNamingStrategy,
+  type SqlNamingStrategy,
+} from "../../naming/sql-naming";
 
 class UpdateManySpecialBuilder<TTable extends AnyTable> {
   #indexName?: string;
@@ -55,14 +58,16 @@ export type InMemoryUowConfig = UnitOfWorkConfig;
 
 export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
   readonly options: ResolvedInMemoryAdapterOptions;
+  readonly namingStrategy: SqlNamingStrategy;
 
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
   #store = createInMemoryStore();
-  #schemaNamespaceMap = new WeakMap<AnySchema, string>();
-  #schemaByNamespace = new Map<string, AnySchema>();
+  #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
+  #schemaByNamespace = new Map<string, { schema: AnySchema; namespace: string | null }>();
 
   constructor(options: InMemoryAdapterOptions = {}) {
     this.options = resolveInMemoryAdapterOptions(options);
+    this.namingStrategy = options.namingStrategy ?? suffixNamingStrategy;
     this.#contextStorage = new RequestContextStorage();
   }
 
@@ -82,10 +87,6 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     return undefined;
   }
 
-  createTableNameMapper(namespace: string): TableNameMapper {
-    return createTableNameMapper(namespace, false);
-  }
-
   async isConnectionHealthy(): Promise<boolean> {
     return true;
   }
@@ -96,22 +97,27 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
 
   async reset(): Promise<void> {
     this.#store.namespaces.clear();
-    for (const [namespace, schema] of this.#schemaByNamespace) {
-      ensureNamespaceStore(this.#store, namespace, schema);
+    for (const [namespaceKey, { schema, namespace }] of this.#schemaByNamespace) {
+      const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
+      ensureNamespaceStore(this.#store, namespaceKey, schema, resolver);
     }
   }
 
   createQueryEngine<T extends AnySchema>(
     schema: T,
-    namespace: string,
+    namespace: string | null,
   ): SimpleQueryInterface<T, InMemoryUowConfig> {
     this.#schemaNamespaceMap.set(schema, namespace);
-    this.#schemaByNamespace.set(namespace, schema);
-    ensureNamespaceStore(this.#store, namespace, schema);
+    const namespaceKey = namespace ?? schema.name;
+    this.#schemaByNamespace.set(namespaceKey, { schema, namespace });
+    const resolverFactory = (schemaForResolver: AnySchema, namespaceForResolver: string | null) =>
+      createNamingResolver(schemaForResolver, namespaceForResolver, this.namingStrategy);
+    const resolver = resolverFactory(schema, namespace);
+    ensureNamespaceStore(this.#store, namespaceKey, schema, resolver);
 
     const compiler = createInMemoryUowCompiler();
-    const executor = createInMemoryUowExecutor(this.#store, this.options);
-    const decoder = new InMemoryUowDecoder();
+    const executor = createInMemoryUowExecutor(this.#store, this.options, resolverFactory);
+    const decoder = new InMemoryUowDecoder(resolverFactory);
 
     const createUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
       new UnitOfWork(

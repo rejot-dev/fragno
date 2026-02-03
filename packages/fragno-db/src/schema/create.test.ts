@@ -16,7 +16,7 @@ import type {
 
 describe("create", () => {
   it("should create a table with columns using callback pattern", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s.addTable("users", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -45,7 +45,7 @@ describe("create", () => {
   });
 
   it("should create a schema with multiple tables using callback pattern", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -61,12 +61,12 @@ describe("create", () => {
     expect(userSchema.version).toBe(2); // Two addTable calls
     expect(userSchema.tables.users).toBeDefined();
     expect(userSchema.tables.posts).toBeDefined();
-    expect(userSchema.tables.users.ormName).toBe("users");
-    expect(userSchema.tables.posts.ormName).toBe("posts");
+    expect(userSchema.tables.users.name).toBe("users");
+    expect(userSchema.tables.posts.name).toBe("posts");
   });
 
   it("should generate default values for columns", () => {
-    const testSchema = schema((s) => {
+    const testSchema = schema("test", (s) => {
       return s.addTable("test", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -91,7 +91,7 @@ describe("create", () => {
   });
 
   it("should increment schema version on each schema-level operation", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t
@@ -108,7 +108,7 @@ describe("create", () => {
   });
 
   it("should support unique constraints on tables via unique method", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s.addTable("users", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -129,7 +129,7 @@ describe("create", () => {
   });
 
   it("should support creating indexes on tables", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s.addTable("users", (t) => {
         return t
           .addColumn("id", idColumn())
@@ -157,9 +157,54 @@ describe("create", () => {
     expect(usernameIndex!.unique).toBe(true);
   });
 
+  it("should throw on duplicate table names", () => {
+    expect(() =>
+      schema("dup", (s) => {
+        return s
+          .addTable("users", (t) => {
+            return t.addColumn("id", idColumn());
+          })
+          .addTable("users", (t) => {
+            return t.addColumn("id", idColumn());
+          });
+      }),
+    ).toThrow(/Duplicate table name "users"/);
+  });
+
+  it("should throw on duplicate index names across tables", () => {
+    expect(() =>
+      schema("dup", (s) => {
+        return s
+          .addTable("users", (t) => {
+            return t.addColumn("id", idColumn()).createIndex("idx_shared", ["id"]);
+          })
+          .addTable("posts", (t) => {
+            return t.addColumn("id", idColumn()).createIndex("idx_shared", ["id"]);
+          });
+      }),
+    ).toThrow(/Duplicate index name "idx_shared"/);
+  });
+
+  it("should throw on duplicate index names added via alterTable", () => {
+    expect(() =>
+      schema("dup", (s) => {
+        return s
+          .addTable("users", (t) => {
+            return t.addColumn("id", idColumn()).createIndex("idx_email", ["id"]);
+          })
+          .addTable("posts", (t) => {
+            return t.addColumn("id", idColumn());
+          })
+          .alterTable("posts", (t) => {
+            return t.createIndex("idx_email", ["id"]);
+          });
+      }),
+    ).toThrow(/Duplicate index name "idx_email"/);
+  });
+
   it("should demonstrate manual many-to-many relation setup", () => {
     // For many-to-many, create a junction table manually
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -211,7 +256,7 @@ describe("create", () => {
   });
 
   it("should create a foreign key reference using addReference", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -252,7 +297,7 @@ describe("create", () => {
   });
 
   it("should support multiple references by calling addReference multiple times", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -305,7 +350,7 @@ describe("create", () => {
   });
 
   it("should support self-referencing foreign keys", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t
@@ -340,7 +385,7 @@ describe("create", () => {
   });
 
   it("should allow altering an existing table to add columns", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -381,7 +426,7 @@ describe("create", () => {
   });
 
   it("should allow altering an existing table to add indexes", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t
@@ -406,7 +451,7 @@ describe("create", () => {
   });
 
   it("should allow multiple alterTable calls on the same table", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -445,7 +490,7 @@ describe("create", () => {
   });
 
   it("should preserve indexes when altering a table", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t
@@ -476,7 +521,7 @@ describe("create", () => {
   });
 
   it("should not duplicate existing indexes when altering a table", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t
@@ -514,7 +559,7 @@ describe("create", () => {
   });
 
   it("should only add new indexes when altering a table with additional indexes", () => {
-    const userSchema = schema((s) => {
+    const userSchema = schema("user", (s) => {
       return s
         .addTable("users", (t) => {
           return t
@@ -558,7 +603,7 @@ describe("create", () => {
   });
 
   it("Simple user table types", () => {
-    const _userSchema = schema((s) => {
+    const _userSchema = schema("_user", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
@@ -585,7 +630,7 @@ describe("create", () => {
   });
 
   it("Simple user table types after alter table statements", () => {
-    const _userSchema = schema((s) => {
+    const _userSchema = schema("_user", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -636,13 +681,13 @@ describe("referenceColumn", () => {
 
 describe("SchemaBuilder with existing schema", () => {
   it("should initialize with an existing schema", () => {
-    const existingSchema = schema((s) => {
+    const existingSchema = schema("existing", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const extendedSchema = new SchemaBuilder(existingSchema)
+    const extendedSchema = new SchemaBuilder(existingSchema.name, existingSchema)
       .addTable("posts", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       })
@@ -655,7 +700,7 @@ describe("SchemaBuilder with existing schema", () => {
   });
 
   it("should preserve operations from existing schema", () => {
-    const existingSchema = schema((s) => {
+    const existingSchema = schema("existing", (s) => {
       return s
         .addTable("users", (t) => {
           return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -665,7 +710,7 @@ describe("SchemaBuilder with existing schema", () => {
         });
     });
 
-    const extendedSchema = new SchemaBuilder(existingSchema)
+    const extendedSchema = new SchemaBuilder(existingSchema.name, existingSchema)
       .addTable("comments", (t) => {
         return t.addColumn("id", idColumn()).addColumn("text", column("string"));
       })
@@ -681,19 +726,19 @@ describe("SchemaBuilder with existing schema", () => {
   });
 
   it("should merge multiple schemas using mergeWithExistingSchema", () => {
-    const schema1 = schema((s) => {
+    const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const schema2 = schema((s) => {
+    const schema2 = schema("schema2", (s) => {
       return s.addTable("posts", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       });
     });
 
-    const mergedSchema = new SchemaBuilder()
+    const mergedSchema = new SchemaBuilder("merged")
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .build();
@@ -704,20 +749,62 @@ describe("SchemaBuilder with existing schema", () => {
     expect(mergedSchema.operations).toHaveLength(2);
   });
 
-  it("should extend merged schema with new tables", () => {
-    const schema1 = schema((s) => {
+  it("should throw on duplicate table names when merging schemas", () => {
+    const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const schema2 = schema((s) => {
+    const schema2 = schema("schema2", (s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("title", column("string"));
+      });
+    });
+
+    expect(() =>
+      new SchemaBuilder("merged").mergeWithExistingSchema(schema1).mergeWithExistingSchema(schema2),
+    ).toThrow(/Duplicate table name "users"/);
+  });
+
+  it("should throw on duplicate index names when merging schemas", () => {
+    const schema1 = schema("schema1", (s) => {
+      return s.addTable("users", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .createIndex("idx_shared", ["name"]);
+      });
+    });
+
+    const schema2 = schema("schema2", (s) => {
+      return s.addTable("posts", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("title", column("string"))
+          .createIndex("idx_shared", ["title"]);
+      });
+    });
+
+    expect(() =>
+      new SchemaBuilder("merged").mergeWithExistingSchema(schema1).mergeWithExistingSchema(schema2),
+    ).toThrow(/Duplicate index name "idx_shared"/);
+  });
+
+  it("should extend merged schema with new tables", () => {
+    const schema1 = schema("schema1", (s) => {
+      return s.addTable("users", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("name", column("string"));
+      });
+    });
+
+    const schema2 = schema("schema2", (s) => {
       return s.addTable("posts", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       });
     });
 
-    const extended = new SchemaBuilder()
+    const extended = new SchemaBuilder("extended")
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .addTable("comments", (t) => {
@@ -733,19 +820,19 @@ describe("SchemaBuilder with existing schema", () => {
   });
 
   it("should use mergeWithExistingSchema method to merge schemas", () => {
-    const schema1 = schema((s) => {
+    const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const schema2 = schema((s) => {
+    const schema2 = schema("schema2", (s) => {
       return s.addTable("posts", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       });
     });
 
-    const combined = new SchemaBuilder()
+    const combined = new SchemaBuilder("combined")
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .addTable("comments", (t) => {
@@ -761,13 +848,13 @@ describe("SchemaBuilder with existing schema", () => {
   });
 
   it("should merge operations from multiple schemas in order", () => {
-    const schema1 = schema((s) => {
+    const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const schema2 = schema((s) => {
+    const schema2 = schema("schema2", (s) => {
       return s
         .addTable("posts", (t) => {
           return t.addColumn("id", idColumn()).addColumn("title", column("string"));
@@ -777,7 +864,7 @@ describe("SchemaBuilder with existing schema", () => {
         });
     });
 
-    const mergedSchema = new SchemaBuilder()
+    const mergedSchema = new SchemaBuilder("merged")
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .build();
@@ -790,25 +877,25 @@ describe("SchemaBuilder with existing schema", () => {
   });
 
   it("should merge three or more schemas", () => {
-    const schema1 = schema((s) => {
+    const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const schema2 = schema((s) => {
+    const schema2 = schema("schema2", (s) => {
       return s.addTable("posts", (t) => {
         return t.addColumn("id", idColumn()).addColumn("title", column("string"));
       });
     });
 
-    const schema3 = schema((s) => {
+    const schema3 = schema("schema3", (s) => {
       return s.addTable("comments", (t) => {
         return t.addColumn("id", idColumn()).addColumn("text", column("string"));
       });
     });
 
-    const mergedSchema = new SchemaBuilder()
+    const mergedSchema = new SchemaBuilder("merged")
       .mergeWithExistingSchema(schema1)
       .mergeWithExistingSchema(schema2)
       .mergeWithExistingSchema(schema3)
@@ -822,13 +909,13 @@ describe("SchemaBuilder with existing schema", () => {
   });
 
   it("should handle single schema merge", () => {
-    const schema1 = schema((s) => {
+    const schema1 = schema("schema1", (s) => {
       return s.addTable("users", (t) => {
         return t.addColumn("id", idColumn()).addColumn("name", column("string"));
       });
     });
 
-    const mergedSchema = new SchemaBuilder().mergeWithExistingSchema(schema1).build();
+    const mergedSchema = new SchemaBuilder("merged").mergeWithExistingSchema(schema1).build();
 
     expect(mergedSchema.tables.users).toBeDefined();
     expect(mergedSchema.version).toBe(1);

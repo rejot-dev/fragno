@@ -1,7 +1,7 @@
 import { UOWOperationCompiler } from "../../shared/uow-operation-compiler";
 import type { CompiledQuery } from "kysely";
 import type { DriverConfig } from "../driver-config";
-import type { TableNameMapper } from "../../shared/table-name-mapper";
+import type { NamingResolver } from "../../../naming/sql-naming";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import type {
   RetrievalOperation,
@@ -30,25 +30,35 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   constructor(
     driverConfig: DriverConfig,
     sqliteStorageMode?: SQLiteStorageMode,
-    mapperFactory?: (namespace: string | undefined) => TableNameMapper | undefined,
+    resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver,
   ) {
-    super(driverConfig, mapperFactory);
+    super(driverConfig, resolverFactory);
     this.sqliteStorageMode = sqliteStorageMode;
   }
 
   /**
    * Get SQL compiler for a specific namespace
    */
-  private getSQLCompiler(namespace: string | undefined): SQLQueryCompiler {
-    const mapper = this.getMapperForOperation(namespace);
+  private getSQLCompiler(
+    schema: AnySchema,
+    namespace: string | null | undefined,
+  ): SQLQueryCompiler {
+    const resolver = this.getNamingResolver(schema, namespace ?? null);
     const kysely = createColdKysely(this.driverConfig.databaseType);
-    return createSQLQueryCompiler(kysely, this.driverConfig, this.sqliteStorageMode, mapper);
+    const schemaName = resolver.getSchemaName();
+    const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
+    return createSQLQueryCompiler(
+      scopedKysely,
+      this.driverConfig,
+      this.sqliteStorageMode,
+      resolver,
+    );
   }
 
   override compileCount(
     op: RetrievalOperation<AnySchema> & { type: "count" },
   ): CompiledQuery | null {
-    const sqlCompiler = this.getSQLCompiler(op.namespace);
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
 
     // Build where condition
     let conditions = op.options.where
@@ -66,7 +76,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   }
 
   override compileFind(op: RetrievalOperation<AnySchema> & { type: "find" }): CompiledQuery | null {
-    const sqlCompiler = this.getSQLCompiler(op.namespace);
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
 
     // Extract options
     const {
@@ -166,7 +176,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const compiledOptions = buildFindOptions(op.table, {
       ...findManyOptions,
       where: combinedWhere ? () => combinedWhere! : undefined,
-      orderBy: orderBy?.map(([col, dir]) => [col.ormName, dir]),
+      orderBy: orderBy?.map(([col, dir]) => [col.name, dir]),
       limit: effectiveLimit,
     });
 
@@ -180,7 +190,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   override compileCreate(
     op: MutationOperation<AnySchema> & { type: "create" },
   ): CompiledMutation<CompiledQuery> | null {
-    const sqlCompiler = this.getSQLCompiler(op.namespace);
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
     const table = this.getTable(op.schema, op.table);
 
     return {
@@ -195,7 +205,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   override compileUpdate(
     op: MutationOperation<AnySchema> & { type: "update" },
   ): CompiledMutation<CompiledQuery> | null {
-    const sqlCompiler = this.getSQLCompiler(op.namespace);
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
     const table = this.getTable(op.schema, op.table);
     const idColumn = table.getIdColumn();
     const versionColumn = table.getVersionColumn();
@@ -207,12 +217,9 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const conditionsResult =
       versionToCheck !== undefined
         ? buildCondition(table.columns, (eb) =>
-            eb.and(
-              eb(idColumn.ormName, "=", externalId),
-              eb(versionColumn.ormName, "=", versionToCheck),
-            ),
+            eb.and(eb(idColumn.name, "=", externalId), eb(versionColumn.name, "=", versionToCheck)),
           )
-        : buildCondition(table.columns, (eb) => eb(idColumn.ormName, "=", externalId));
+        : buildCondition(table.columns, (eb) => eb(idColumn.name, "=", externalId));
 
     if (conditionsResult === false) {
       return null;
@@ -246,7 +253,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   override compileDelete(
     op: MutationOperation<AnySchema> & { type: "delete" },
   ): CompiledMutation<CompiledQuery> | null {
-    const sqlCompiler = this.getSQLCompiler(op.namespace);
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
     const table = this.getTable(op.schema, op.table);
     const idColumn = table.getIdColumn();
     const versionColumn = table.getVersionColumn();
@@ -258,12 +265,9 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const conditionsResult =
       versionToCheck !== undefined
         ? buildCondition(table.columns, (eb) =>
-            eb.and(
-              eb(idColumn.ormName, "=", externalId),
-              eb(versionColumn.ormName, "=", versionToCheck),
-            ),
+            eb.and(eb(idColumn.name, "=", externalId), eb(versionColumn.name, "=", versionToCheck)),
           )
-        : buildCondition(table.columns, (eb) => eb(idColumn.ormName, "=", externalId));
+        : buildCondition(table.columns, (eb) => eb(idColumn.name, "=", externalId));
 
     if (conditionsResult === false) {
       return null;
@@ -296,7 +300,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   override compileCheck(
     op: MutationOperation<AnySchema> & { type: "check" },
   ): CompiledMutation<CompiledQuery> {
-    const sqlCompiler = this.getSQLCompiler(op.namespace);
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
     const table = this.getTable(op.schema, op.table);
     const idColumn = table.getIdColumn();
     const versionColumn = table.getVersionColumn();
@@ -306,7 +310,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     // Build a SELECT 1 query to check if the row exists with the correct version
     const condition = buildCondition(table.columns, (eb) =>
-      eb.and(eb(idColumn.ormName, "=", externalId), eb(versionColumn.ormName, "=", version)),
+      eb.and(eb(idColumn.name, "=", externalId), eb(versionColumn.name, "=", version)),
     );
 
     if (typeof condition === "boolean") {

@@ -92,6 +92,39 @@ describe("Cursor utilities", () => {
       const decoded = decodeCursor(encoded);
       expect(decoded.indexValues).toEqual({});
     });
+
+    it("should throw when index values contain undefined", () => {
+      const cursor = new Cursor({
+        indexName: "_primary",
+        orderDirection: "asc",
+        pageSize: 10,
+        indexValues: { id: undefined },
+      });
+
+      expect(() => cursor.encode()).toThrow(/undefined/i);
+    });
+
+    it("should throw when index values contain BigInt", () => {
+      const cursor = new Cursor({
+        indexName: "_primary",
+        orderDirection: "asc",
+        pageSize: 10,
+        indexValues: { id: 1n },
+      });
+
+      expect(() => cursor.encode()).toThrow(/bigint/i);
+    });
+
+    it("should throw when index values contain non-finite numbers", () => {
+      const cursor = new Cursor({
+        indexName: "_primary",
+        orderDirection: "asc",
+        pageSize: 10,
+        indexValues: { id: Number.NaN },
+      });
+
+      expect(() => cursor.encode()).toThrow(/finite/i);
+    });
   });
 
   describe("decodeCursor error handling", () => {
@@ -145,11 +178,58 @@ describe("Cursor utilities", () => {
       const encoded = Buffer.from(JSON.stringify(invalidData), "utf-8").toString("base64");
       expect(() => decodeCursor(encoded)).toThrow(/invalid cursor/i);
     });
+
+    it("should throw error for array indexValues", () => {
+      const invalidData = {
+        v: 1,
+        indexValues: [],
+        indexName: "test",
+        orderDirection: "asc",
+        pageSize: 10,
+      };
+      const encoded = Buffer.from(JSON.stringify(invalidData), "utf-8").toString("base64");
+      expect(() => decodeCursor(encoded)).toThrow(/invalid cursor/i);
+    });
+
+    it("should throw error for non-string indexName", () => {
+      const invalidData = {
+        v: 1,
+        indexValues: { id: "test" },
+        indexName: 123,
+        orderDirection: "asc",
+        pageSize: 10,
+      };
+      const encoded = Buffer.from(JSON.stringify(invalidData), "utf-8").toString("base64");
+      expect(() => decodeCursor(encoded)).toThrow(/invalid cursor/i);
+    });
+
+    it("should throw error for invalid pageSize values", () => {
+      const invalidData = {
+        v: 1,
+        indexValues: { id: "test" },
+        indexName: "test",
+        orderDirection: "asc",
+        pageSize: 0,
+      };
+      const encoded = Buffer.from(JSON.stringify(invalidData), "utf-8").toString("base64");
+      expect(() => decodeCursor(encoded)).toThrow(/invalid cursor/i);
+    });
+
+    it("should throw error for missing cursor version", () => {
+      const invalidData = {
+        indexValues: { id: "test" },
+        indexName: "test",
+        orderDirection: "asc",
+        pageSize: 10,
+      };
+      const encoded = Buffer.from(JSON.stringify(invalidData), "utf-8").toString("base64");
+      expect(() => decodeCursor(encoded)).toThrow(/unsupported cursor version/i);
+    });
   });
 
   describe("createCursorFromRecord", () => {
     it("should create a cursor from a record with single column index", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("name", column("string")),
         ),
@@ -172,7 +252,7 @@ describe("Cursor utilities", () => {
     });
 
     it("should create a cursor from a record with multi-column index", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
@@ -207,8 +287,31 @@ describe("Cursor utilities", () => {
       });
     });
 
+    it("should throw when record is missing index columns", () => {
+      const testSchema = schema("test", (s) =>
+        s.addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("createdAt", column("integer"))
+            .createIndex("created", ["createdAt"]),
+        ),
+      );
+
+      const table = testSchema.tables.posts;
+      const record = { id: "post123" };
+      const indexColumns = table.indexes.created.columns;
+
+      expect(() =>
+        createCursorFromRecord(record, indexColumns, {
+          indexName: "created",
+          orderDirection: "asc",
+          pageSize: 10,
+        }),
+      ).toThrow(/missing value/i);
+    });
+
     it("should only include columns that are in the index", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("users", (t) =>
           t
             .addColumn("id", idColumn())
@@ -235,7 +338,7 @@ describe("Cursor utilities", () => {
 
   describe("serializeCursorValues", () => {
     it("should serialize cursor values for database queries", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("age", column("integer")),
         ),
@@ -260,8 +363,8 @@ describe("Cursor utilities", () => {
       expect(serialized).toHaveProperty("age", 25);
     });
 
-    it("should handle missing values in cursor data", () => {
-      const testSchema = schema((s) =>
+    it("should throw when cursor data is missing index values", () => {
+      const testSchema = schema("test", (s) =>
         s.addTable("users", (t) =>
           t.addColumn("id", idColumn()).addColumn("name", column("string")),
         ),
@@ -276,20 +379,15 @@ describe("Cursor utilities", () => {
       });
 
       const indexColumns = [table.columns.id, table.columns.name];
-      const serialized = serializeCursorValues(
-        cursor,
-        indexColumns,
-        new NodePostgresDriverConfig(),
-      );
-
-      expect(serialized).toHaveProperty("id", "user123");
-      expect(serialized).not.toHaveProperty("name");
+      expect(() =>
+        serializeCursorValues(cursor, indexColumns, new NodePostgresDriverConfig()),
+      ).toThrow(/missing values/i);
     });
   });
 
   describe("round-trip integration", () => {
     it("should successfully round-trip cursor data through encode/decode", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
@@ -332,7 +430,7 @@ describe("Cursor utilities", () => {
     });
 
     it("should handle Date objects in cursors for PostgreSQL", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
@@ -379,7 +477,7 @@ describe("Cursor utilities", () => {
     });
 
     it("should handle Date objects in cursors for SQLite", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())
@@ -421,7 +519,7 @@ describe("Cursor utilities", () => {
     });
 
     it("should handle Date objects in cursors for MySQL", () => {
-      const testSchema = schema((s) =>
+      const testSchema = schema("test", (s) =>
         s.addTable("posts", (t) =>
           t
             .addColumn("id", idColumn())

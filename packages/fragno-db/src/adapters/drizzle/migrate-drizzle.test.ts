@@ -9,7 +9,7 @@ const { generateDrizzleJson, generateMigration } =
   require("drizzle-kit/api") as typeof import("drizzle-kit/api");
 
 describe("generateSchema and migrate", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -189,7 +189,7 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "fragno_db_outbox_id_unique" UNIQUE("id")
       );
 
-      CREATE TABLE "users" (
+      CREATE TABLE "test"."users" (
       	"id" varchar(30) NOT NULL,
       	"name" text NOT NULL,
       	"email" text NOT NULL,
@@ -203,7 +203,7 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "users_id_unique" UNIQUE("id")
       );
 
-      CREATE TABLE "posts" (
+      CREATE TABLE "test"."posts" (
       	"id" varchar(30) NOT NULL,
       	"title" text NOT NULL,
       	"slug" varchar(255) NOT NULL,
@@ -223,7 +223,7 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "posts_id_unique" UNIQUE("id")
       );
 
-      CREATE TABLE "comments" (
+      CREATE TABLE "test"."comments" (
       	"id" varchar(30) NOT NULL,
       	"content" text NOT NULL,
       	"postId" bigint NOT NULL,
@@ -237,7 +237,7 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "comments_id_unique" UNIQUE("id")
       );
 
-      CREATE TABLE "tags" (
+      CREATE TABLE "test"."tags" (
       	"id" varchar(30) NOT NULL,
       	"name" text NOT NULL,
       	"slug" varchar(100) NOT NULL,
@@ -249,7 +249,7 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "tags_id_unique" UNIQUE("id")
       );
 
-      CREATE TABLE "postTags" (
+      CREATE TABLE "test"."postTags" (
       	"id" varchar(30) NOT NULL,
       	"postId" bigint NOT NULL,
       	"tagId" bigint NOT NULL,
@@ -260,31 +260,31 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "postTags_id_unique" UNIQUE("id")
       );
 
-      ALTER TABLE "posts" ADD CONSTRAINT "posts_users_author_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "comments" ADD CONSTRAINT "comments_posts_post_fk" FOREIGN KEY ("postId") REFERENCES "public"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "comments" ADD CONSTRAINT "comments_users_author_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "comments" ADD CONSTRAINT "comments_comments_parent_fk" FOREIGN KEY ("parentId") REFERENCES "public"."comments"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "postTags" ADD CONSTRAINT "postTags_posts_post_fk" FOREIGN KEY ("postId") REFERENCES "public"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
-      ALTER TABLE "postTags" ADD CONSTRAINT "postTags_tags_tag_fk" FOREIGN KEY ("tagId") REFERENCES "public"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."posts" ADD CONSTRAINT "fk_posts_users_author" FOREIGN KEY ("userId") REFERENCES "test"."users"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_posts_post" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_users_author" FOREIGN KEY ("userId") REFERENCES "test"."users"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."comments" ADD CONSTRAINT "fk_comments_comments_parent" FOREIGN KEY ("parentId") REFERENCES "test"."comments"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_posts_post" FOREIGN KEY ("postId") REFERENCES "test"."posts"("_internalId") ON DELETE no action ON UPDATE no action;
+      ALTER TABLE "test"."postTags" ADD CONSTRAINT "fk_postTags_tags_tag" FOREIGN KEY ("tagId") REFERENCES "test"."tags"("_internalId") ON DELETE no action ON UPDATE no action;
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
       CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
       CREATE UNIQUE INDEX "idx_outbox_versionstamp" ON "fragno_db_outbox" USING btree ("versionstamp");
       CREATE INDEX "idx_outbox_uow" ON "fragno_db_outbox" USING btree ("uowId");
-      CREATE UNIQUE INDEX "idx_users_email" ON "users" USING btree ("email");
-      CREATE INDEX "idx_users_name" ON "users" USING btree ("name");
-      CREATE INDEX "idx_users_active" ON "users" USING btree ("isActive");
-      CREATE INDEX "idx_posts_user" ON "posts" USING btree ("userId");
-      CREATE INDEX "idx_posts_title" ON "posts" USING btree ("title");
-      CREATE UNIQUE INDEX "idx_posts_slug" ON "posts" USING btree ("slug");
-      CREATE INDEX "idx_posts_published" ON "posts" USING btree ("isPublished","publishedAt");
-      CREATE INDEX "idx_comments_post" ON "comments" USING btree ("postId");
-      CREATE INDEX "idx_comments_user" ON "comments" USING btree ("userId");
-      CREATE INDEX "idx_comments_parent" ON "comments" USING btree ("parentId");
-      CREATE UNIQUE INDEX "idx_tags_slug" ON "tags" USING btree ("slug");
-      CREATE INDEX "idx_tags_name" ON "tags" USING btree ("name");
-      CREATE UNIQUE INDEX "idx_postTags_post_tag" ON "postTags" USING btree ("postId","tagId");
-      CREATE INDEX "idx_postTags_tag" ON "postTags" USING btree ("tagId");"
+      CREATE UNIQUE INDEX "idx_users_email" ON "test"."users" USING btree ("email");
+      CREATE INDEX "idx_users_name" ON "test"."users" USING btree ("name");
+      CREATE INDEX "idx_users_active" ON "test"."users" USING btree ("isActive");
+      CREATE INDEX "idx_posts_user" ON "test"."posts" USING btree ("userId");
+      CREATE INDEX "idx_posts_title" ON "test"."posts" USING btree ("title");
+      CREATE UNIQUE INDEX "idx_posts_slug" ON "test"."posts" USING btree ("slug");
+      CREATE INDEX "idx_posts_published" ON "test"."posts" USING btree ("isPublished","publishedAt");
+      CREATE INDEX "idx_comments_post" ON "test"."comments" USING btree ("postId");
+      CREATE INDEX "idx_comments_user" ON "test"."comments" USING btree ("userId");
+      CREATE INDEX "idx_comments_parent" ON "test"."comments" USING btree ("parentId");
+      CREATE UNIQUE INDEX "idx_tags_slug" ON "test"."tags" USING btree ("slug");
+      CREATE INDEX "idx_tags_name" ON "test"."tags" USING btree ("name");
+      CREATE UNIQUE INDEX "idx_postTags_post_tag" ON "test"."postTags" USING btree ("postId","tagId");
+      CREATE INDEX "idx_postTags_tag" ON "test"."postTags" USING btree ("tagId");"
     `);
   });
 });

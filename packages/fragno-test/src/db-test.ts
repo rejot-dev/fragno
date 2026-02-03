@@ -304,14 +304,26 @@ export class DatabaseFragmentsTestBuilder<
 
       // Extract schema and namespace from definition by calling dependencies with a mock adapter
       let schema: AnySchema | undefined;
-      let namespace: string | undefined;
+      let namespace: string | null | undefined;
 
       if (definition.dependencies) {
         try {
           // Create a mock adapter to extract the schema
           const mockAdapter = {
             createQueryEngine: () => ({ schema: null }),
+            getSchemaVersion: async () => undefined,
+            namingStrategy: {
+              namespaceScope: "suffix",
+              namespaceToSchema: (value: string) => value,
+              tableName: (logicalTable: string, ns: string | null) =>
+                ns ? `${logicalTable}_${ns}` : logicalTable,
+              columnName: (logicalColumn: string) => logicalColumn,
+              indexName: (logicalIndex: string) => logicalIndex,
+              uniqueIndexName: (logicalIndex: string) => logicalIndex,
+              foreignKeyName: ({ referenceName }: { referenceName: string }) => referenceName,
+            },
             contextStorage: { run: (_data: unknown, fn: () => unknown) => fn() },
+            close: async () => {},
           };
 
           // Use the actual config from the builder instead of an empty mock
@@ -354,7 +366,7 @@ export class DatabaseFragmentsTestBuilder<
         );
       }
 
-      if (!namespace) {
+      if (namespace === undefined) {
         throw new Error(
           `Fragment '${definition.name}' does not have a namespace in dependencies. ` +
             `This should be automatically provided by withDatabase().`,
@@ -375,7 +387,6 @@ export class DatabaseFragmentsTestBuilder<
       });
     }
 
-    // Create adapter with all schemas
     const { testContext, adapter } = await createAdapter(adapterConfig, schemaConfigs);
 
     // Helper to create fragments with service wiring

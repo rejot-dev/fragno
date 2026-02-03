@@ -44,7 +44,7 @@ Required block at the top with all imports:
 
 Setup code shown to users reading the corpus (e.g., schema definitions, configuration):
 
-\`\`\`typescript @fragno-prelude:schema const userSchema = schema((s) => { return
+\`\`\`typescript @fragno-prelude:schema const userSchema = schema("user", (s) => { return
 s.addTable("users", (t) => { return t.addColumn("id", idColumn()); }); }); \`\`\`
 
 Optional ID syntax (`:schema`) helps identify code blocks for agent references.

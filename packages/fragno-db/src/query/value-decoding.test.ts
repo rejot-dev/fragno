@@ -9,7 +9,7 @@ import {
 } from "../adapters/generic-sql/driver-config";
 
 describe("decodeResult", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -217,7 +217,7 @@ describe("decodeResult", () => {
     });
 
     it("should handle multiple relations in same result", () => {
-      const schemaWithMultipleRelations = schema((s) => {
+      const schemaWithMultipleRelations = schema("schemawithmultiplerelations", (s) => {
         return s
           .addTable("users", (t) => {
             return t.addColumn("id", idColumn()).addColumn("name", column("string"));

@@ -1,11 +1,16 @@
 import { cli, parseArgs, resolveArgs } from "gunshi";
 import { generateCommand } from "@fragno-dev/cli";
 import { rm, writeFile } from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { PGlite } from "@electric-sql/pglite";
+import { createRequire } from "node:module";
 
 // Inline the pgFolder constant to avoid importing from database.ts
 const pgFolder = "./fragno-db-usage.pglite" as const;
 const schemaOut = "./src/schema/fragno-schema.ts" as const;
+
+const require = createRequire(import.meta.url);
+const { generateDrizzleJson, generateMigration } =
+  require("drizzle-kit/api") as typeof import("drizzle-kit/api");
 
 export default async function setup() {
   console.log("Setting up test environment...");
@@ -47,14 +52,32 @@ export const workflows_db_schema = {};\n`,
 
   await cli(args, generateCommand);
 
-  // Run drizzle-kit push to apply migrations
-  const migrateOutput = execSync("pnpm exec drizzle-kit push --config ./drizzle.config.ts", {
-    encoding: "utf-8",
-  });
+  // Ensure non-public schemas exist before pushing migrations.
+  const client = new PGlite(pgFolder);
+  await client.query('create schema if not exists "comment";');
+  await client.query('create schema if not exists "upvote";');
+  await client.query('create schema if not exists "auth";');
+  await client.query('create schema if not exists "workflows";');
 
-  if (!migrateOutput.includes("Changes applied")) {
-    throw new Error("Failed to apply database migrations");
+  const [drizzleModule, fragnoModule] = await Promise.all([
+    import("./schema/drizzle-schema.ts"),
+    import("./schema/fragno-schema.ts"),
+  ]);
+  const schemaModule = { ...drizzleModule, ...fragnoModule };
+  const schemaFilters = ["public", "comment", "upvote", "auth", "workflows"];
+  const migrationStatements = await generateMigration(
+    generateDrizzleJson({}, undefined, schemaFilters),
+    generateDrizzleJson(schemaModule, undefined, schemaFilters),
+  );
+  for (const statement of migrationStatements) {
+    const trimmed = statement.trim();
+    if (!trimmed) {
+      continue;
+    }
+    await client.query(trimmed);
   }
+  await client.syncToFs();
+  await client.close();
 
   console.log("Test environment setup complete!");
 }

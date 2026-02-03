@@ -7,7 +7,7 @@ import { buildDatabaseFragmentsTest } from "./db-test";
 import type { ExtractFragmentServices } from "@fragno-dev/core/route";
 
 // Test schema with multiple versions
-const testSchema = schema((s) => {
+const testSchema = schema("test", (s) => {
   return s
     .addTable("users", (t) => {
       return t
@@ -226,7 +226,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
   it("should work with multi-table schema", async () => {
     // Simplified auth schema for testing
-    const authSchema = schema((s) => {
+    const authSchema = schema("auth", (s) => {
       return s
         .addTable("user", (t) => {
           return t
@@ -291,7 +291,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
 describe("multi-fragment tests", () => {
   // Create two different schemas
-  const userSchema = schema((s) => {
+  const userSchema = schema("user", (s) => {
     return s.addTable("user", (t) => {
       return t
         .addColumn("id", idColumn())
@@ -301,7 +301,7 @@ describe("multi-fragment tests", () => {
     });
   });
 
-  const postSchema = schema((s) => {
+  const postSchema = schema("post", (s) => {
     return s.addTable("post", (t) => {
       return t
         .addColumn("id", idColumn())
@@ -402,7 +402,7 @@ describe("multi-fragment tests", () => {
 
 describe("ExtractFragmentServices", () => {
   it("extracts provided services from database fragment with new API", () => {
-    const testSchema = schema((s) => s);
+    const testSchema = schema("test", (s) => s);
 
     interface ITestService {
       doSomething: (input: string) => Promise<string>;
@@ -429,7 +429,7 @@ describe("ExtractFragmentServices", () => {
   });
 
   it("merges base services and provided services in database fragment", () => {
-    const testSchema = schema((s) => s);
+    const testSchema = schema("test", (s) => s);
 
     const fragment = defineFragment<{}>("test-db-fragment")
       .extend(withDatabase(testSchema))

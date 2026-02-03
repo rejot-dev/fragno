@@ -10,7 +10,7 @@ import {
 } from "./driver-config";
 
 describe("UnitOfWorkEncoder", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t

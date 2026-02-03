@@ -3,7 +3,7 @@ import { column, idColumn, referenceColumn, schema } from "../../../schema/creat
 import { mapSelect, extendSelect } from "./select-builder";
 
 describe("select-builder", () => {
-  const testSchema = schema((s) => {
+  const testSchema = schema("test", (s) => {
     return s
       .addTable("users", (t) => {
         return t
@@ -35,7 +35,7 @@ describe("select-builder", () => {
 
   describe("mapSelect", () => {
     it("should map select clause with array of keys", () => {
-      const result = mapSelect(["id", "name", "email"], usersTable);
+      const result = mapSelect(["id", "name", "email"], usersTable, undefined);
       expect(result).toEqual([
         "users.id as id",
         "users.name as name",
@@ -46,7 +46,7 @@ describe("select-builder", () => {
     });
 
     it("should map select all columns when true", () => {
-      const result = mapSelect(true, usersTable);
+      const result = mapSelect(true, usersTable, undefined);
       expect(result).toEqual([
         "users.id as id",
         "users.name as name",
@@ -60,7 +60,9 @@ describe("select-builder", () => {
     });
 
     it("should map select with relation prefix", () => {
-      const result = mapSelect(["id", "name"], usersTable, { relation: "author" });
+      const result = mapSelect(["id", "name"], usersTable, undefined, {
+        relation: "author",
+      });
       expect(result).toEqual([
         "users.id as author:id",
         "users.name as author:name",
@@ -70,7 +72,9 @@ describe("select-builder", () => {
     });
 
     it("should map select with custom table name", () => {
-      const result = mapSelect(["id", "title"], postsTable, { tableName: "p" });
+      const result = mapSelect(["id", "title"], postsTable, undefined, {
+        tableName: "p",
+      });
       expect(result).toEqual([
         "p.id as id",
         "p.title as title",
@@ -80,7 +84,7 @@ describe("select-builder", () => {
     });
 
     it("should map select with both relation and custom table name", () => {
-      const result = mapSelect(["id", "title"], postsTable, {
+      const result = mapSelect(["id", "title"], postsTable, undefined, {
         relation: "posts",
         tableName: "p",
       });
@@ -93,7 +97,7 @@ describe("select-builder", () => {
     });
 
     it("should handle single column select", () => {
-      const result = mapSelect(["name"], usersTable);
+      const result = mapSelect(["name"], usersTable, undefined);
       expect(result).toEqual([
         "users.name as name",
         "users._internalId as _internalId",
@@ -104,7 +108,7 @@ describe("select-builder", () => {
     it("should skip hidden columns when explicitly selecting", () => {
       // When an array is passed, hidden columns should not be included in the select
       // (unless they are in the array), but they should always be added at the end
-      const result = mapSelect(["name", "email"], usersTable);
+      const result = mapSelect(["name", "email"], usersTable, undefined);
       // Should not duplicate _internalId or _version in the main select
       expect(result).toEqual([
         "users.name as name",
@@ -116,19 +120,19 @@ describe("select-builder", () => {
 
     it("should always include hidden columns", () => {
       // Hidden columns (_internalId, _version) should always be included
-      const result = mapSelect(["name"], usersTable);
+      const result = mapSelect(["name"], usersTable, undefined);
       expect(result.some((col) => col.includes("_internalId"))).toBe(true);
       expect(result.some((col) => col.includes("_version"))).toBe(true);
     });
 
     it("should handle empty select array", () => {
-      const result = mapSelect([], usersTable);
+      const result = mapSelect([], usersTable, undefined);
       // Should still include hidden columns
       expect(result).toEqual(["users._internalId as _internalId", "users._version as _version"]);
     });
 
     it("should work with different table schemas", () => {
-      const result = mapSelect(["id", "title", "content"], postsTable);
+      const result = mapSelect(["id", "title", "content"], postsTable, undefined);
       expect(result).toEqual([
         "posts.id as id",
         "posts.title as title",

@@ -36,10 +36,24 @@ import { evaluateCondition } from "./condition-evaluator";
 import { resolveReferenceSubqueries } from "./reference-resolution";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { compareNormalizedValues } from "./value-comparison";
+import type { NamingResolver } from "../../naming/sql-naming";
 
 type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];
 type CursorInput = string | Cursor | undefined;
+type ResolverFactory = (schema: AnySchema, namespace: string | null) => NamingResolver;
+
+const getResolver = (
+  schema: AnySchema,
+  namespace: string | null | undefined,
+  resolverFactory?: ResolverFactory,
+) => (resolverFactory ? resolverFactory(schema, namespace ?? null) : undefined);
+
+const getPhysicalTableName = (table: AnyTable, resolver?: NamingResolver) =>
+  resolver ? resolver.getTableName(table.name) : table.name;
+
+const getPhysicalColumnName = (table: AnyTable, columnName: string, resolver?: NamingResolver) =>
+  resolver ? resolver.getColumnName(table.name, columnName) : columnName;
 
 const cursorSerializer = createSQLSerializer(new SQLocalDriverConfig());
 
@@ -52,19 +66,23 @@ class VersionConflictError extends Error {
 
 const getNamespaceStore = (
   store: InMemoryStore,
-  op: RetrievalOperation<AnySchema> | MutationOperation<AnySchema>,
+  schema: AnySchema,
+  namespace: string | null | undefined,
+  resolver?: NamingResolver,
 ): InMemoryNamespaceStore => {
-  const namespace = op.namespace ?? "";
-  return ensureNamespaceStore(store, namespace, op.schema);
+  const namespaceKey = namespace ?? schema.name;
+  return ensureNamespaceStore(store, namespaceKey, schema, resolver);
 };
 
 const getTableStore = (
   namespaceStore: InMemoryNamespaceStore,
-  tableName: string,
+  table: AnyTable,
+  resolver?: NamingResolver,
 ): InMemoryTableStore => {
-  const tableStore = namespaceStore.tables.get(tableName);
+  const physicalTableName = getPhysicalTableName(table, resolver);
+  const tableStore = namespaceStore.tables.get(physicalTableName);
   if (!tableStore) {
-    throw new Error(`Missing in-memory table store for "${tableName}".`);
+    throw new Error(`Missing in-memory table store for "${physicalTableName}".`);
   }
   return tableStore;
 };
@@ -72,6 +90,7 @@ const getTableStore = (
 const buildSelection = (
   table: AnyTable,
   select: undefined | true | readonly string[],
+  _resolver?: NamingResolver,
 ): Set<string> => {
   const selection = new Set<string>();
 
@@ -95,12 +114,14 @@ const selectRow = (
   row: InMemoryRow,
   table: AnyTable,
   select: undefined | true | readonly string[],
+  resolver?: NamingResolver,
 ): InMemoryRow => {
-  const selection = buildSelection(table, select);
+  const selection = buildSelection(table, select, resolver);
   const selected: InMemoryRow = {};
   for (const columnName of selection) {
-    if (Object.prototype.hasOwnProperty.call(row, columnName)) {
-      selected[columnName] = row[columnName];
+    const physicalColumnName = getPhysicalColumnName(table, columnName, resolver);
+    if (Object.prototype.hasOwnProperty.call(row, physicalColumnName)) {
+      selected[columnName] = row[physicalColumnName];
     }
   }
   return selected;
@@ -114,8 +135,9 @@ const prefixSelection = (
   table: AnyTable,
   select: undefined | true | readonly string[],
   prefix: string,
+  resolver?: NamingResolver,
 ): InMemoryRow => {
-  const selected = selectRow(row, table, select);
+  const selected = selectRow(row, table, select, resolver);
   const prefixed: InMemoryRow = {};
 
   for (const key in selected) {
@@ -128,6 +150,7 @@ const prefixSelection = (
 const orderRows = (
   rows: InMemoryRow[],
   orderBy: [AnyTable["columns"][string], "asc" | "desc"][] | undefined,
+  resolver?: NamingResolver,
 ): InMemoryRow[] => {
   if (!orderBy || orderBy.length === 0) {
     return rows;
@@ -135,8 +158,11 @@ const orderRows = (
 
   return rows.slice().sort((left, right) => {
     for (const [column, direction] of orderBy) {
-      const leftValue = normalizeIndexValue(left[column.name], column);
-      const rightValue = normalizeIndexValue(right[column.name], column);
+      const columnName = resolver
+        ? resolver.getColumnName(column.tableName, column.name)
+        : column.name;
+      const leftValue = normalizeIndexValue(left[columnName], column);
+      const rightValue = normalizeIndexValue(right[columnName], column);
       const comparison = compareNormalizedValues(leftValue, rightValue);
       if (comparison !== 0) {
         return direction === "asc" ? comparison : -comparison;
@@ -149,6 +175,7 @@ const orderRows = (
 const assertOrderByIndexOnly = (
   table: AnyTable,
   orderBy: [AnyTable["columns"][string], "asc" | "desc"][] | undefined,
+  resolver?: NamingResolver,
 ): void => {
   if (!orderBy || orderBy.length === 0) {
     return;
@@ -157,18 +184,24 @@ const assertOrderByIndexOnly = (
   const direction = orderBy[0][1];
   if (!orderBy.every(([, dir]) => dir === direction)) {
     throw new Error(
-      `In-memory adapter only supports orderByIndex; mixed orderBy directions found on table "${table.ormName}".`,
+      `In-memory adapter only supports orderByIndex; mixed orderBy directions found on table "${table.name}".`,
     );
   }
 
-  const orderColumnNames = orderBy.map(([column]) => column.ormName);
-  const idColumnName = table.getIdColumn().ormName;
+  const orderColumnNames = orderBy.map(([column]) =>
+    resolver ? resolver.getColumnName(table.name, column.name) : column.name,
+  );
+  const idColumnName = resolver
+    ? resolver.getColumnName(table.name, table.getIdColumn().name)
+    : table.getIdColumn().name;
   if (orderColumnNames.length === 1 && orderColumnNames[0] === idColumnName) {
     return;
   }
 
   for (const index of Object.values(table.indexes)) {
-    const indexColumnNames = index.columnNames as readonly string[];
+    const indexColumnNames = (index.columnNames as readonly string[]).map((columnName) =>
+      resolver ? resolver.getColumnName(table.name, columnName) : columnName,
+    );
     if (indexColumnNames.length !== orderColumnNames.length) {
       continue;
     }
@@ -185,7 +218,7 @@ const assertOrderByIndexOnly = (
   }
 
   throw new Error(
-    `In-memory adapter only supports orderByIndex; received orderBy on table "${table.ormName}".`,
+    `In-memory adapter only supports orderByIndex; received orderBy on table "${table.name}".`,
   );
 };
 
@@ -194,7 +227,8 @@ const findJoinMatches = (
   parentTable: AnyTable,
   join: CompiledJoin,
   namespaceStore: InMemoryNamespaceStore,
-  now: () => Date,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): InMemoryRow[] => {
   const { relation, options } = join;
   if (options === false) {
@@ -202,10 +236,10 @@ const findJoinMatches = (
   }
 
   const targetTable = relation.table;
-  const targetStore = getTableStore(namespaceStore, targetTable.ormName);
+  const targetStore = getTableStore(namespaceStore, targetTable, resolver);
   const matches: InMemoryRow[] = [];
 
-  assertOrderByIndexOnly(targetTable, options.orderBy);
+  assertOrderByIndexOnly(targetTable, options.orderBy, resolver);
 
   for (const row of targetStore.rows.values()) {
     let matchesJoin = true;
@@ -213,22 +247,22 @@ const findJoinMatches = (
     for (const [left, right] of relation.on) {
       const leftColumn = parentTable.columns[left];
       if (!leftColumn) {
-        throw new Error(`Column "${left}" not found on table "${parentTable.ormName}".`);
+        throw new Error(`Column "${left}" not found on table "${parentTable.name}".`);
       }
 
       const rightColumn = targetTable.columns[right];
       if (!rightColumn) {
-        throw new Error(`Column "${right}" not found on table "${targetTable.ormName}".`);
+        throw new Error(`Column "${right}" not found on table "${targetTable.name}".`);
       }
 
       const actualRight = rightColumn.role === "external-id" ? "_internalId" : right;
       const actualRightColumn = targetTable.columns[actualRight];
       if (!actualRightColumn) {
-        throw new Error(`Column "${actualRight}" not found on table "${targetTable.ormName}".`);
+        throw new Error(`Column "${actualRight}" not found on table "${targetTable.name}".`);
       }
 
-      const leftValue = parentRow[left];
-      const rightValue = row[actualRight];
+      const leftValue = parentRow[getPhysicalColumnName(parentTable, left, resolver)];
+      const rightValue = row[getPhysicalColumnName(targetTable, actualRight, resolver)];
       if (isNullish(leftValue) || isNullish(rightValue)) {
         matchesJoin = false;
         break;
@@ -246,14 +280,17 @@ const findJoinMatches = (
       continue;
     }
 
-    if (options.where && !evaluateCondition(options.where, targetTable, row, namespaceStore, now)) {
+    if (
+      options.where &&
+      !evaluateCondition(options.where, targetTable, row, namespaceStore, resolver, now)
+    ) {
       continue;
     }
 
     matches.push(row);
   }
 
-  const ordered = orderRows(matches, options.orderBy);
+  const ordered = orderRows(matches, options.orderBy, resolver);
   if (options.limit !== undefined) {
     return ordered.slice(0, Math.max(0, options.limit));
   }
@@ -267,7 +304,8 @@ const applyJoins = (
   parentTable: AnyTable,
   joins: CompiledJoin[] | undefined,
   namespaceStore: InMemoryNamespaceStore,
-  now: () => Date,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
   parentPath = "",
 ): InMemoryRow[] => {
   if (!joins || joins.length === 0) {
@@ -285,7 +323,7 @@ const applyJoins = (
     const nextOutputs: InMemoryRow[] = [];
 
     for (const currentOutput of outputs) {
-      const matches = findJoinMatches(parentRow, parentTable, join, namespaceStore, now);
+      const matches = findJoinMatches(parentRow, parentTable, join, namespaceStore, resolver, now);
 
       if (matches.length === 0) {
         nextOutputs.push(currentOutput);
@@ -298,6 +336,7 @@ const applyJoins = (
           join.relation.table,
           join.options.select,
           relationPath,
+          resolver,
         );
         const merged = { ...currentOutput, ...prefixed };
 
@@ -309,6 +348,7 @@ const applyJoins = (
               join.relation.table,
               join.options.join,
               namespaceStore,
+              resolver,
               now,
               relationPath,
             ),
@@ -346,8 +386,9 @@ const resolveReferenceSubqueriesOrThrow = (
   namespaceStore: InMemoryNamespaceStore,
   table: AnyTable,
   encodedValues: Record<string, unknown>,
+  resolver?: NamingResolver,
 ): Record<string, unknown> => {
-  const resolved = resolveReferenceSubqueries(namespaceStore, encodedValues);
+  const resolved = resolveReferenceSubqueries(namespaceStore, encodedValues, resolver);
   for (const [key, value] of Object.entries(encodedValues)) {
     if (!(value instanceof ReferenceSubquery)) {
       continue;
@@ -355,7 +396,7 @@ const resolveReferenceSubqueriesOrThrow = (
 
     if (resolved[key] === null || resolved[key] === undefined) {
       throw new Error(
-        `Foreign key constraint violation on table "${table.ormName}" for column "${key}".`,
+        `Foreign key constraint violation on table "${table.name}" for column "${key}".`,
       );
     }
   }
@@ -365,19 +406,23 @@ const resolveReferenceSubqueriesOrThrow = (
 const getReferencedColumn = (
   table: AnyTable,
   columnName: string,
+  resolver?: NamingResolver,
 ): { name: string; column: AnyTable["columns"][string] } => {
   const column = table.columns[columnName];
   if (!column) {
-    throw new Error(`Column "${columnName}" not found on table "${table.ormName}".`);
+    throw new Error(`Column "${columnName}" not found on table "${table.name}".`);
   }
 
   const actualName = column.role === "external-id" ? "_internalId" : columnName;
   const actualColumn = table.columns[actualName];
   if (!actualColumn) {
-    throw new Error(`Column "${actualName}" not found on table "${table.ormName}".`);
+    throw new Error(`Column "${actualName}" not found on table "${table.name}".`);
   }
 
-  return { name: actualName, column: actualColumn };
+  return {
+    name: getPhysicalColumnName(table, actualName, resolver),
+    column: actualColumn,
+  };
 };
 
 const enforceOutgoingForeignKeys = (
@@ -385,6 +430,7 @@ const enforceOutgoingForeignKeys = (
   table: AnyTable,
   row: InMemoryRow,
   columnsToCheck?: Set<string>,
+  resolver?: NamingResolver,
 ): void => {
   for (const relation of Object.values(table.relations)) {
     if (relation.type !== "one") {
@@ -396,27 +442,30 @@ const enforceOutgoingForeignKeys = (
       continue;
     }
 
-    const localValues = localColumnNames.map((name) => row[name]);
+    const localValues = localColumnNames.map(
+      (name) => row[getPhysicalColumnName(table, name, resolver)],
+    );
     if (localValues.some((value) => value === null || value === undefined)) {
       continue;
     }
 
     const referencedTable = relation.table;
-    const referencedStore = getTableStore(namespaceStore, referencedTable.ormName);
+    const referencedStore = getTableStore(namespaceStore, referencedTable, resolver);
     let foundMatch = false;
 
     for (const targetRow of referencedStore.rows.values()) {
       let matches = true;
       for (const [localName, foreignName] of relation.on) {
         if (!table.columns[localName]) {
-          throw new Error(`Column "${localName}" not found on table "${table.ormName}".`);
+          throw new Error(`Column "${localName}" not found on table "${table.name}".`);
         }
 
         const { name: actualForeignName, column: foreignColumn } = getReferencedColumn(
           referencedTable,
           foreignName,
+          resolver,
         );
-        const localValue = row[localName];
+        const localValue = row[getPhysicalColumnName(table, localName, resolver)];
         const targetValue = targetRow[actualForeignName];
 
         const normalizedLocal = normalizeIndexValue(localValue, foreignColumn);
@@ -436,7 +485,7 @@ const enforceOutgoingForeignKeys = (
 
     if (!foundMatch) {
       throw new Error(
-        `Foreign key constraint violation on table "${table.ormName}" for relation "${relation.name}".`,
+        `Foreign key constraint violation on table "${table.name}" for relation "${relation.name}".`,
       );
     }
   }
@@ -447,6 +496,7 @@ const enforceNoIncomingForeignKeys = (
   schema: AnySchema,
   table: AnyTable,
   row: InMemoryRow,
+  resolver?: NamingResolver,
 ): void => {
   for (const sourceTable of Object.values(schema.tables)) {
     for (const relation of Object.values(sourceTable.relations)) {
@@ -454,13 +504,13 @@ const enforceNoIncomingForeignKeys = (
         continue;
       }
 
-      if (relation.table.ormName !== table.ormName) {
+      if (relation.table.name !== table.name) {
         continue;
       }
 
-      const sourceStore = getTableStore(namespaceStore, sourceTable.ormName);
+      const sourceStore = getTableStore(namespaceStore, sourceTable, resolver);
       const targetColumnInfo = relation.on.map(([, foreignName]) =>
-        getReferencedColumn(table, foreignName),
+        getReferencedColumn(table, foreignName, resolver),
       );
       const targetValues = targetColumnInfo.map(({ name }) => row[name]);
       if (targetValues.some((value) => value === null || value === undefined)) {
@@ -472,7 +522,7 @@ const enforceNoIncomingForeignKeys = (
         for (let i = 0; i < relation.on.length; i += 1) {
           const [localName] = relation.on[i]!;
           const { column } = targetColumnInfo[i]!;
-          const localValue = sourceRow[localName];
+          const localValue = sourceRow[getPhysicalColumnName(sourceTable, localName, resolver)];
           if (localValue === null || localValue === undefined) {
             matches = false;
             break;
@@ -488,7 +538,7 @@ const enforceNoIncomingForeignKeys = (
 
         if (matches) {
           throw new Error(
-            `Foreign key constraint violation on table "${table.ormName}" for relation "${relation.name}".`,
+            `Foreign key constraint violation on table "${table.name}" for relation "${relation.name}".`,
           );
         }
       }
@@ -500,10 +550,12 @@ const findRowByExternalId = (
   tableStore: InMemoryTableStore,
   table: AnyTable,
   externalId: string,
+  resolver?: NamingResolver,
 ): { internalId: bigint; row: InMemoryRow } | undefined => {
   const idColumn = table.getIdColumn();
+  const idColumnName = getPhysicalColumnName(table, idColumn.name, resolver);
   for (const [internalId, row] of tableStore.rows) {
-    if (row[idColumn.name] === externalId) {
+    if (row[idColumnName] === externalId) {
       return { internalId, row };
     }
   }
@@ -532,6 +584,7 @@ const buildCursorKey = (
   cursor: CursorInput,
   table: AnyTable,
   columnNames: readonly string[],
+  resolver?: NamingResolver,
 ): readonly unknown[] | undefined => {
   if (!cursor) {
     return undefined;
@@ -539,13 +592,16 @@ const buildCursorKey = (
 
   const cursorObj = typeof cursor === "string" ? decodeCursor(cursor) : cursor;
 
+  const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
+
   return columnNames.map((columnName) => {
-    const column = table.columns[columnName];
+    const logicalName = columnMap?.[columnName] ?? columnName;
+    const column = table.columns[logicalName];
     if (!column) {
-      throw new Error(`Column "${columnName}" not found on table "${table.ormName}".`);
+      throw new Error(`Column "${logicalName}" not found on table "${table.name}".`);
     }
 
-    const rawValue = resolveCursorValue(cursorObj.indexValues[column.ormName], column);
+    const rawValue = resolveCursorValue(cursorObj.indexValues[column.name], column);
     if (rawValue === undefined) {
       return undefined;
     }
@@ -559,18 +615,29 @@ const findRows = (
   op: Extract<RetrievalOperation<AnySchema>, { type: "find" }>,
   namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
-  now: () => Date,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): InMemoryRow[] => {
   const table = op.table;
   const orderByIndex = op.options.orderByIndex;
   const orderIndexName = orderByIndex?.indexName ?? op.indexName;
   const orderIndex = tableStore.indexes.get(orderIndexName);
   if (!orderIndex) {
-    throw new Error(`Missing in-memory index "${orderIndexName}" on table "${table.ormName}".`);
+    throw new Error(`Missing in-memory index "${orderIndexName}" on table "${table.name}".`);
   }
   const direction = orderByIndex?.direction ?? "asc";
-  const afterKey = buildCursorKey(op.options.after, table, orderIndex.definition.columnNames);
-  const beforeKey = buildCursorKey(op.options.before, table, orderIndex.definition.columnNames);
+  const afterKey = buildCursorKey(
+    op.options.after,
+    table,
+    orderIndex.definition.columnNames,
+    resolver,
+  );
+  const beforeKey = buildCursorKey(
+    op.options.before,
+    table,
+    orderIndex.definition.columnNames,
+    resolver,
+  );
   const limit =
     op.withCursor && op.options.pageSize !== undefined
       ? op.options.pageSize + 1
@@ -623,7 +690,7 @@ const findRows = (
     if (!row) {
       continue;
     }
-    if (condition && !evaluateCondition(condition, table, row, namespaceStore, now)) {
+    if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
       continue;
     }
 
@@ -631,10 +698,19 @@ const findRows = (
       row,
       table,
       op.options.select as readonly string[] | true | undefined,
+      resolver,
     );
 
     if (op.options.joins && op.options.joins.length > 0) {
-      const joined = applyJoins(baseOutput, row, table, op.options.joins, namespaceStore, now);
+      const joined = applyJoins(
+        baseOutput,
+        row,
+        table,
+        op.options.joins,
+        namespaceStore,
+        resolver,
+        now,
+      );
       for (const joinedRow of joined) {
         results.push(joinedRow);
         if (limit !== undefined && results.length >= limit) {
@@ -657,7 +733,8 @@ const countRows = (
   op: Extract<RetrievalOperation<AnySchema>, { type: "count" }>,
   namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
-  now: () => Date,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
 ): number => {
   const table = op.table;
   const whereResult = op.options.where
@@ -672,7 +749,7 @@ const countRows = (
   let count = 0;
 
   for (const row of tableStore.rows.values()) {
-    if (condition && !evaluateCondition(condition, table, row, namespaceStore, now)) {
+    if (condition && !evaluateCondition(condition, table, row, namespaceStore, resolver, now)) {
       continue;
     }
     count += 1;
@@ -689,19 +766,25 @@ const createRow = (
   namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
   options: ResolvedInMemoryAdapterOptions,
+  resolver?: NamingResolver,
 ): bigint => {
   const table = op.schema.tables[op.table];
   if (!table) {
     throw new Error(`Invalid table name ${op.table}.`);
   }
 
-  const encoded = encodeValuesWithDbDefaults(op.values, table, {
-    now: options.clock.now,
-    createId: options.idGenerator,
-  });
+  const encoded = encodeValuesWithDbDefaults(
+    op.values,
+    table,
+    {
+      now: options.clock.now,
+      createId: options.idGenerator,
+    },
+    resolver,
+  );
   const resolvedValues = options.enforceConstraints
-    ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded)
-    : resolveReferenceSubqueries(namespaceStore, encoded);
+    ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded, resolver)
+    : resolveReferenceSubqueries(namespaceStore, encoded, resolver);
 
   const row: InMemoryRow = {};
   for (const columnName of Object.keys(table.columns)) {
@@ -710,22 +793,23 @@ const createRow = (
       continue;
     }
 
-    const value = resolvedValues[column.name];
+    const physicalColumnName = getPhysicalColumnName(table, column.name, resolver);
+    const value = resolvedValues[physicalColumnName];
     if (value === undefined) {
       if (column.isNullable) {
-        row[column.name] = null;
+        row[physicalColumnName] = null;
         continue;
       }
 
       if (column.role === "version") {
-        row[column.name] = 0;
+        row[physicalColumnName] = 0;
         continue;
       }
 
-      throw new Error(`Missing required value for column "${column.ormName}".`);
+      throw new Error(`Missing required value for column "${column.name}".`);
     }
 
-    row[column.name] = resolveDbNowValue(value, options);
+    row[physicalColumnName] = resolveDbNowValue(value, options);
   }
 
   const internalId = options.internalIdGeneratorProvided
@@ -735,17 +819,19 @@ const createRow = (
     tableStore.nextInternalId += 1n;
   }
 
-  row["_internalId"] = internalId;
-  row["_version"] = row["_version"] ?? 0;
+  const internalIdColumnName = getPhysicalColumnName(table, "_internalId", resolver);
+  const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
+  row[internalIdColumnName] = internalId;
+  row[versionColumnName] = row[versionColumnName] ?? 0;
 
   if (options.enforceConstraints) {
-    enforceOutgoingForeignKeys(namespaceStore, table, row);
+    enforceOutgoingForeignKeys(namespaceStore, table, row, undefined, resolver);
   }
 
   tableStore.rows.set(internalId, row);
 
   for (const indexStore of tableStore.indexes.values()) {
-    const key = buildIndexKey(table, indexStore.definition, row);
+    const key = buildIndexKey(table, indexStore.definition, row, resolver);
     indexStore.index.insert(key, internalId, { enforceUnique: options.enforceConstraints });
   }
 
@@ -757,6 +843,7 @@ const updateRow = (
   namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
   options: ResolvedInMemoryAdapterOptions,
+  resolver?: NamingResolver,
 ): (() => void) | null => {
   const table = op.schema.tables[op.table];
   if (!table) {
@@ -765,7 +852,7 @@ const updateRow = (
 
   const externalId = getExternalId(op.id);
   const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
-  const existing = findRowByExternalId(tableStore, table, externalId);
+  const existing = findRowByExternalId(tableStore, table, externalId, resolver);
   if (!existing) {
     if (versionToCheck !== undefined) {
       throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
@@ -773,15 +860,16 @@ const updateRow = (
     return null;
   }
 
-  const currentVersion = Number(existing.row["_version"] ?? 0);
+  const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
+  const currentVersion = Number(existing.row[versionColumnName] ?? 0);
   if (versionToCheck !== undefined && currentVersion !== versionToCheck) {
     throw new VersionConflictError(`Version conflict: row "${externalId}" has changed.`);
   }
 
-  const encoded = encodeValues(op.set as Record<string, unknown>, table, false);
+  const encoded = encodeValues(op.set as Record<string, unknown>, table, false, {}, resolver);
   const resolvedValues = options.enforceConstraints
-    ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded)
-    : resolveReferenceSubqueries(namespaceStore, encoded);
+    ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded, resolver)
+    : resolveReferenceSubqueries(namespaceStore, encoded, resolver);
 
   const resolvedUpdateValues: InMemoryRow = {};
   for (const [columnName, value] of Object.entries(resolvedValues)) {
@@ -789,7 +877,7 @@ const updateRow = (
   }
 
   const updatedRow: InMemoryRow = { ...existing.row, ...resolvedUpdateValues };
-  updatedRow["_version"] = currentVersion + 1;
+  updatedRow[versionColumnName] = currentVersion + 1;
 
   if (options.enforceConstraints) {
     enforceOutgoingForeignKeys(
@@ -797,13 +885,14 @@ const updateRow = (
       table,
       updatedRow,
       new Set(Object.keys(resolvedValues)),
+      resolver,
     );
   }
 
   const indexUpdates = Array.from(tableStore.indexes.values()).map((indexStore) => ({
     indexStore,
-    oldKey: buildIndexKey(table, indexStore.definition, existing.row),
-    newKey: buildIndexKey(table, indexStore.definition, updatedRow),
+    oldKey: buildIndexKey(table, indexStore.definition, existing.row, resolver),
+    newKey: buildIndexKey(table, indexStore.definition, updatedRow, resolver),
   }));
 
   const applied: typeof indexUpdates = [];
@@ -841,10 +930,11 @@ const deleteRow = (
   tableStore: InMemoryTableStore,
   table: AnyTable,
   options: ResolvedInMemoryAdapterOptions,
+  resolver?: NamingResolver,
 ): (() => void) | null => {
   const externalId = getExternalId(op.id);
   const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
-  const existing = findRowByExternalId(tableStore, table, externalId);
+  const existing = findRowByExternalId(tableStore, table, externalId, resolver);
   if (!existing) {
     if (versionToCheck !== undefined) {
       throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
@@ -852,18 +942,19 @@ const deleteRow = (
     return null;
   }
 
-  const currentVersion = Number(existing.row["_version"] ?? 0);
+  const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
+  const currentVersion = Number(existing.row[versionColumnName] ?? 0);
   if (versionToCheck !== undefined && currentVersion !== versionToCheck) {
     throw new VersionConflictError(`Version conflict: row "${externalId}" has changed.`);
   }
 
   if (options.enforceConstraints) {
-    enforceNoIncomingForeignKeys(namespaceStore, op.schema, table, existing.row);
+    enforceNoIncomingForeignKeys(namespaceStore, op.schema, table, existing.row, resolver);
   }
 
   const indexEntries = Array.from(tableStore.indexes.values()).map((indexStore) => ({
     indexStore,
-    key: buildIndexKey(table, indexStore.definition, existing.row),
+    key: buildIndexKey(table, indexStore.definition, existing.row, resolver),
   }));
 
   const removedEntries: typeof indexEntries = [];
@@ -896,13 +987,15 @@ const checkRow = (
   op: Extract<MutationOperation<AnySchema>, { type: "check" }>,
   tableStore: InMemoryTableStore,
   table: AnyTable,
+  resolver?: NamingResolver,
 ): void => {
-  const existing = findRowByExternalId(tableStore, table, op.id.externalId);
+  const existing = findRowByExternalId(tableStore, table, op.id.externalId, resolver);
   if (!existing) {
     throw new VersionConflictError(`Version conflict: row "${op.id.externalId}" not found.`);
   }
 
-  const currentVersion = Number(existing.row["_version"] ?? 0);
+  const versionColumnName = getPhysicalColumnName(table, "_version", resolver);
+  const currentVersion = Number(existing.row[versionColumnName] ?? 0);
   if (currentVersion !== op.id.version) {
     throw new VersionConflictError(`Version conflict: row "${op.id.externalId}" has changed.`);
   }
@@ -928,6 +1021,7 @@ export const createInMemoryUowCompiler = (): UOWCompiler<InMemoryCompiledQuery> 
 export const createInMemoryUowExecutor = (
   store: InMemoryStore,
   options: ResolvedInMemoryAdapterOptions,
+  resolverFactory?: ResolverFactory,
 ): UOWExecutor<InMemoryCompiledQuery, InMemoryRawResult> => ({
   async executeRetrievalPhase(
     retrievalBatch: InMemoryCompiledQuery[],
@@ -936,14 +1030,20 @@ export const createInMemoryUowExecutor = (
 
     for (const compiled of retrievalBatch) {
       if (compiled.type === "count" || compiled.type === "find") {
-        const namespaceStore = getNamespaceStore(store, compiled);
-        const tableStore = getTableStore(namespaceStore, compiled.table.ormName);
+        const resolver = getResolver(compiled.schema, compiled.namespace, resolverFactory);
+        const namespaceStore = getNamespaceStore(
+          store,
+          compiled.schema,
+          compiled.namespace,
+          resolver,
+        );
+        const tableStore = getTableStore(namespaceStore, compiled.table, resolver);
 
         if (compiled.type === "find") {
-          results.push(findRows(compiled, namespaceStore, tableStore, options.clock.now));
+          results.push(findRows(compiled, namespaceStore, tableStore, resolver, options.clock.now));
         } else {
           results.push([
-            { count: countRows(compiled, namespaceStore, tableStore, options.clock.now) },
+            { count: countRows(compiled, namespaceStore, tableStore, resolver, options.clock.now) },
           ]);
         }
         continue;
@@ -966,20 +1066,26 @@ export const createInMemoryUowExecutor = (
         const operation = compiled.query;
 
         if (operation.type === "create") {
-          const namespaceStore = getNamespaceStore(store, operation);
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
           const table = operation.schema.tables[operation.table];
           if (!table) {
             throw new Error(`Invalid table name ${operation.table}.`);
           }
-          const tableStore = getTableStore(namespaceStore, operation.table);
+          const tableStore = getTableStore(namespaceStore, table, resolver);
           const previousInternalId = tableStore.nextInternalId;
-          const internalId = createRow(operation, namespaceStore, tableStore, options);
+          const internalId = createRow(operation, namespaceStore, tableStore, options, resolver);
           createdInternalIds.push(internalId);
           rollbackActions.push(() => {
             const row = tableStore.rows.get(internalId);
             if (row) {
               for (const indexStore of tableStore.indexes.values()) {
-                const key = buildIndexKey(table, indexStore.definition, row);
+                const key = buildIndexKey(table, indexStore.definition, row, resolver);
                 indexStore.index.remove(key, internalId);
               }
               tableStore.rows.delete(internalId);
@@ -990,9 +1096,19 @@ export const createInMemoryUowExecutor = (
         }
 
         if (operation.type === "update") {
-          const namespaceStore = getNamespaceStore(store, operation);
-          const tableStore = getTableStore(namespaceStore, operation.table);
-          const rollback = updateRow(operation, namespaceStore, tableStore, options);
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
+          const table = operation.schema.tables[operation.table];
+          if (!table) {
+            throw new Error(`Invalid table name ${operation.table}.`);
+          }
+          const tableStore = getTableStore(namespaceStore, table, resolver);
+          const rollback = updateRow(operation, namespaceStore, tableStore, options, resolver);
           if (rollback) {
             rollbackActions.push(rollback);
           }
@@ -1000,13 +1116,26 @@ export const createInMemoryUowExecutor = (
         }
 
         if (operation.type === "delete") {
-          const namespaceStore = getNamespaceStore(store, operation);
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
           const table = operation.schema.tables[operation.table];
           if (!table) {
             throw new Error(`Invalid table name ${operation.table}.`);
           }
-          const tableStore = getTableStore(namespaceStore, operation.table);
-          const rollback = deleteRow(operation, namespaceStore, tableStore, table, options);
+          const tableStore = getTableStore(namespaceStore, table, resolver);
+          const rollback = deleteRow(
+            operation,
+            namespaceStore,
+            tableStore,
+            table,
+            options,
+            resolver,
+          );
           if (rollback) {
             rollbackActions.push(rollback);
           }
@@ -1014,13 +1143,19 @@ export const createInMemoryUowExecutor = (
         }
 
         if (operation.type === "check") {
-          const namespaceStore = getNamespaceStore(store, operation);
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
           const table = operation.schema.tables[operation.table];
           if (!table) {
             throw new Error(`Invalid table name ${operation.table}.`);
           }
-          const tableStore = getTableStore(namespaceStore, operation.table);
-          checkRow(operation, tableStore, table);
+          const tableStore = getTableStore(namespaceStore, table, resolver);
+          checkRow(operation, tableStore, table, resolver);
           continue;
         }
 
@@ -1041,6 +1176,12 @@ export const createInMemoryUowExecutor = (
 });
 
 export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
+  readonly #resolverFactory?: ResolverFactory;
+
+  constructor(resolverFactory?: ResolverFactory) {
+    this.#resolverFactory = resolverFactory;
+  }
+
   decode(rawResults: InMemoryRawResult[], operations: RetrievalOperation<AnySchema>[]): unknown[] {
     if (rawResults.length !== operations.length) {
       throw new Error("rawResults and ops must have the same length");
@@ -1056,8 +1197,9 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
         return this.decodeCount(result);
       }
 
+      const resolver = getResolver(op.schema, op.namespace, this.#resolverFactory);
       const rows = result as InMemoryRow[];
-      const decodedRows = rows.map((row) => this.decodeRow(row, op.table));
+      const decodedRows = rows.map((row) => this.decodeRow(row, op.table, resolver));
 
       if (op.withCursor) {
         return this.decodeCursorResult(decodedRows, op.table, op);
@@ -1084,16 +1226,22 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
     return count;
   }
 
-  private decodeRow(row: InMemoryRow, table: AnyTable): Record<string, unknown> {
+  private decodeRow(
+    row: InMemoryRow,
+    table: AnyTable,
+    resolver?: NamingResolver,
+  ): Record<string, unknown> {
     const output: Record<string, unknown> = {};
     const columnValues: Record<string, unknown> = {};
     const relationData: Record<string, Record<string, unknown>> = {};
+    const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
 
     for (const key in row) {
       const colonIndex = key.indexOf(":");
       if (colonIndex === -1) {
-        if (table.columns[key]) {
-          columnValues[key] = row[key];
+        const logicalName = columnMap?.[key] ?? key;
+        if (table.columns[logicalName]) {
+          columnValues[logicalName] = row[key];
         }
         continue;
       }
@@ -1114,7 +1262,7 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
       if (!relation) {
         continue;
       }
-      output[relationName] = this.decodeRow(relationData[relationName], relation.table);
+      output[relationName] = this.decodeRow(relationData[relationName], relation.table, resolver);
     }
 
     for (const key in columnValues) {

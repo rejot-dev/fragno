@@ -55,10 +55,7 @@ Examples:
 
 ## Development Practices
 
-### Core
-
-- [IMPORTANT]: When adding new exports to a package.json file, you must also update the
-  corresponding tsdown.config.ts file in the same directory to include the new entry points
+- [IMPORTANT]: Always run tests and type-check for relevant packages after making changes.
 
 ### Testing
 

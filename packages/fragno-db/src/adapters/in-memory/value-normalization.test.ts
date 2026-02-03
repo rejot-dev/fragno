@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../schema/create";
 import { buildIndexKey } from "./store";
 
-const testSchema = schema((s) =>
+const testSchema = schema("test", (s) =>
   s.addTable("events", (t) =>
     t
       .addColumn("id", idColumn())

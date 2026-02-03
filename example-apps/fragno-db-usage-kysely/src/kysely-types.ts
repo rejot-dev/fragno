@@ -4,9 +4,9 @@ export interface KyselyDatabase {
   user: UserTable;
   blog_post: BlogPostTable;
   fragno_db_settings: FragnoDbSettingsTable;
-  "comment_fragno-db-comment": CommentFragnoDbCommentDbTable;
-  "upvote_fragno-db-rating": UpvoteFragnoDbRatingDbTable;
-  "upvote_total_fragno-db-rating": UpvoteTotalFragnoDbRatingDbTable;
+  "comment.comment": CommentCommentTable;
+  "upvote.upvote": UpvoteUpvoteTable;
+  "upvote.upvote_total": UpvoteTotalUpvoteTable;
 }
 
 export interface UserTable {
@@ -45,7 +45,7 @@ export type FragnoDbSettings = Selectable<FragnoDbSettingsTable>;
 export type NewFragnoDbSettings = Insertable<FragnoDbSettingsTable>;
 export type FragnoDbSettingsUpdate = Updateable<FragnoDbSettingsTable>;
 
-export interface CommentFragnoDbCommentDbTable {
+export interface CommentCommentTable {
   id: string;
   title: string;
   content: string;
@@ -58,11 +58,11 @@ export interface CommentFragnoDbCommentDbTable {
   _version: Generated<number>;
 }
 
-export type CommentFragnoDbCommentDb = Selectable<CommentFragnoDbCommentDbTable>;
-export type NewCommentFragnoDbCommentDb = Insertable<CommentFragnoDbCommentDbTable>;
-export type CommentFragnoDbCommentDbUpdate = Updateable<CommentFragnoDbCommentDbTable>;
+export type CommentComment = Selectable<CommentCommentTable>;
+export type NewCommentComment = Insertable<CommentCommentTable>;
+export type CommentCommentUpdate = Updateable<CommentCommentTable>;
 
-export interface UpvoteFragnoDbRatingDbTable {
+export interface UpvoteUpvoteTable {
   id: string;
   reference: string;
   ownerReference: string | null;
@@ -73,11 +73,11 @@ export interface UpvoteFragnoDbRatingDbTable {
   _version: Generated<number>;
 }
 
-export type UpvoteFragnoDbRatingDb = Selectable<UpvoteFragnoDbRatingDbTable>;
-export type NewUpvoteFragnoDbRatingDb = Insertable<UpvoteFragnoDbRatingDbTable>;
-export type UpvoteFragnoDbRatingDbUpdate = Updateable<UpvoteFragnoDbRatingDbTable>;
+export type UpvoteUpvote = Selectable<UpvoteUpvoteTable>;
+export type NewUpvoteUpvote = Insertable<UpvoteUpvoteTable>;
+export type UpvoteUpvoteUpdate = Updateable<UpvoteUpvoteTable>;
 
-export interface UpvoteTotalFragnoDbRatingDbTable {
+export interface UpvoteTotalUpvoteTable {
   id: string;
   reference: string;
   total: Generated<number>;
@@ -85,6 +85,6 @@ export interface UpvoteTotalFragnoDbRatingDbTable {
   _version: Generated<number>;
 }
 
-export type UpvoteTotalFragnoDbRatingDb = Selectable<UpvoteTotalFragnoDbRatingDbTable>;
-export type NewUpvoteTotalFragnoDbRatingDb = Insertable<UpvoteTotalFragnoDbRatingDbTable>;
-export type UpvoteTotalFragnoDbRatingDbUpdate = Updateable<UpvoteTotalFragnoDbRatingDbTable>;
+export type UpvoteTotalUpvote = Selectable<UpvoteTotalUpvoteTable>;
+export type NewUpvoteTotalUpvote = Insertable<UpvoteTotalUpvoteTable>;
+export type UpvoteTotalUpvoteUpdate = Updateable<UpvoteTotalUpvoteTable>;

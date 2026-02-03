@@ -4,7 +4,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-export const upvoteSchema = schema((s) => {
+export const upvoteSchema = schema("upvote", (s) => {
   return s
     .addTable("upvote", (t) => {
       return t

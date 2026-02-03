@@ -17,7 +17,7 @@ import {
 } from "../driver-config";
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
 
-const paritySchema = schema((s) => {
+const paritySchema = schema("parity", (s) => {
   return s
     .addTable("users", (t) => {
       return t

@@ -1,6 +1,6 @@
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-export const otpSchema = schema((s) => {
+export const otpSchema = schema("otp", (s) => {
   return s.addTable("otp_code", (t) => {
     return t
       .addColumn("id", idColumn())
@@ -19,7 +19,7 @@ export const otpSchema = schema((s) => {
   });
 });
 
-export const authSchema = schema((s) => {
+export const authSchema = schema("auth", (s) => {
   return s.addTable("user", (t) => {
     return t
       .addColumn("id", idColumn())
