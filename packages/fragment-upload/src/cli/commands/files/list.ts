@@ -24,7 +24,7 @@ export const filesListCommand = define({
     },
     status: {
       type: "string",
-      description: "Filter by status (pending, uploading, ready, failed, deleted)",
+      description: "Filter by status (ready, deleted)",
     },
     "uploader-id": {
       type: "string",

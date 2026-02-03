@@ -16,7 +16,7 @@ const listQuerySchema = z.object({
   prefix: z.string().optional(),
   cursor: z.string().optional(),
   pageSize: z.coerce.number().min(1).max(100).catch(25),
-  status: z.enum(["pending", "uploading", "ready", "failed", "deleted"]).optional(),
+  status: z.enum(["ready", "deleted"]).optional(),
   uploaderId: z.string().optional(),
 });
 
@@ -29,6 +29,8 @@ const updateFileSchema = z.object({
 
 const errorCodes = [
   "UPLOAD_NOT_FOUND",
+  "UPLOAD_ALREADY_ACTIVE",
+  "FILE_ALREADY_EXISTS",
   "FILE_NOT_FOUND",
   "UPLOAD_EXPIRED",
   "UPLOAD_INVALID_STATE",
@@ -58,6 +60,15 @@ const handleServiceError = <Code extends FileErrorCode>(
       return error({ message: "File not found", code: "FILE_NOT_FOUND" as Code }, 404);
     case "UPLOAD_NOT_FOUND":
       return error({ message: "Upload not found", code: "UPLOAD_NOT_FOUND" as Code }, 404);
+    case "FILE_ALREADY_EXISTS":
+      return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" as Code }, 409);
+    case "UPLOAD_ALREADY_ACTIVE":
+      return error(
+        { message: "Upload already active", code: "UPLOAD_ALREADY_ACTIVE" as Code },
+        409,
+      );
+    case "UPLOAD_EXPIRED":
+      return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" as Code }, 410);
     case "UPLOAD_INVALID_STATE":
       return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" as Code }, 409);
     case "INVALID_FILE_KEY":
@@ -180,12 +191,55 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           const checksumForRecord = checksumResult.data ?? undefined;
 
           let storageInit;
+
+          const uploaderIdValue = form.get("uploaderId");
+          const uploaderId = typeof uploaderIdValue === "string" ? uploaderIdValue : undefined;
+          const visibilityValue = form.get("visibility");
+          const parsedVisibility =
+            typeof visibilityValue === "string" ? visibilityValue : undefined;
+          const visibilityResult = visibilitySchema.optional().safeParse(parsedVisibility);
+          if (!visibilityResult.success) {
+            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
+          }
+          const visibility = visibilityResult.data;
+          const filenameValue = form.get("filename");
+          const filename =
+            typeof filenameValue === "string" && filenameValue
+              ? filenameValue
+              : file instanceof File && file.name
+                ? file.name
+                : "upload";
+          const contentType = file.type || "application/octet-stream";
+
+          const createInput = {
+            fileKey: resolvedKey.fileKey,
+            keyParts: resolvedKey.fileKeyParts,
+            filename,
+            sizeBytes: file.size,
+            contentType,
+            checksum: checksumForRecord,
+            tags,
+            visibility,
+            uploaderId,
+            metadata,
+          };
+
+          try {
+            await this.handlerTx()
+              .withServiceCalls(() => [
+                services.checkUploadAvailability(createInput, { allowIdempotentReuse: false }),
+              ])
+              .execute();
+          } catch (err) {
+            return handleServiceError(err, error);
+          }
+
           try {
             storageInit = await resolvedConfig.storage.initUpload({
               fileKey: resolvedKey.fileKey,
               fileKeyParts: resolvedKey.fileKeyParts,
               sizeBytes: BigInt(file.size),
-              contentType: file.type || "application/octet-stream",
+              contentType,
               checksum: checksumForStorage,
               metadata: metadata ?? null,
             });
@@ -208,40 +262,14 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
           }
 
-          const uploaderIdValue = form.get("uploaderId");
-          const uploaderId = typeof uploaderIdValue === "string" ? uploaderIdValue : undefined;
-          const visibilityValue = form.get("visibility");
-          const parsedVisibility =
-            typeof visibilityValue === "string" ? visibilityValue : undefined;
-          const visibilityResult = visibilitySchema.optional().safeParse(parsedVisibility);
-          if (!visibilityResult.success) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
-          }
-          const visibility = visibilityResult.data;
-          const filenameValue = form.get("filename");
-          const filename =
-            typeof filenameValue === "string" && filenameValue
-              ? filenameValue
-              : file instanceof File && file.name
-                ? file.name
-                : "upload";
-
           let created;
           try {
             created = await this.handlerTx()
               .withServiceCalls(() => [
                 services.createUploadRecord({
-                  fileKey: resolvedKey.fileKey,
-                  keyParts: resolvedKey.fileKeyParts,
-                  filename,
-                  sizeBytes: file.size,
-                  contentType: file.type || "application/octet-stream",
-                  checksum: checksumForRecord,
-                  tags,
-                  visibility,
-                  uploaderId,
-                  metadata,
+                  ...createInput,
                   storageInit,
+                  allowIdempotentReuse: false,
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)
@@ -250,18 +278,20 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(err, error);
           }
 
+          const createdUpload = created.result;
+
           try {
-            if (created.strategy === "proxy") {
+            if (createdUpload.strategy === "proxy") {
               if (!resolvedConfig.storage.writeStream) {
                 throw new Error("STORAGE_ERROR");
               }
               await resolvedConfig.storage.writeStream({
                 storageKey: storageInit.storageKey,
                 body: file.stream(),
-                contentType: file.type || "application/octet-stream",
+                contentType,
                 sizeBytes: BigInt(file.size),
               });
-            } else if (created.strategy === "direct-single") {
+            } else if (createdUpload.strategy === "direct-single") {
               if (!storageInit.uploadUrl) {
                 throw new Error("STORAGE_ERROR");
               }
@@ -288,8 +318,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             await this.handlerTx()
               .withServiceCalls(() => [
                 services.markUploadFailed(
-                  created.uploadId,
-                  created.fileKey,
+                  createdUpload.uploadId,
                   "STORAGE_ERROR",
                   "Storage upload failed",
                 ),
@@ -301,7 +330,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           try {
             const completed = await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadComplete(created.uploadId, created.fileKey, {
+                services.markUploadComplete(createdUpload.uploadId, createdUpload.fileKey, {
                   sizeBytes: BigInt(file.size),
                 }),
               ])

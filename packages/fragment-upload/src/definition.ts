@@ -4,7 +4,7 @@ import type { UploadFragmentConfig } from "./config";
 import { resolveUploadFragmentConfig } from "./config";
 import { uploadSchema } from "./schema";
 import { createFileServices, createUploadServices } from "./services";
-import type { UploadStatus, FileStatus } from "./types";
+import type { UploadStatus } from "./types";
 
 export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("upload")
   .extend(withDatabase(uploadSchema))
@@ -31,15 +31,11 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
 
         const result = await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(uploadSchema)
-              .findFirst("upload", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", payload.uploadId)),
-              )
-              .findFirst("file", (b) =>
-                b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", payload.fileKey)),
-              ),
+            forSchema(uploadSchema).findFirst("upload", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", payload.uploadId)),
+            ),
           )
-          .mutate(({ forSchema, retrieveResult: [upload, file] }) => {
+          .mutate(({ forSchema, retrieveResult: [upload] }) => {
             if (!upload) {
               return { shouldNotify: false as const };
             }
@@ -68,33 +64,15 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
               }),
             );
 
-            if (!file) {
-              return { shouldNotify: false as const };
-            }
-
-            const fileStatus = file.status as FileStatus;
-            if (fileStatus === "ready" || fileStatus === "deleted") {
-              return { shouldNotify: false as const };
-            }
-
-            uow.update("file", file.id, (b) =>
-              b.set({
-                status: "failed",
-                updatedAt: now,
-                errorCode: "UPLOAD_EXPIRED",
-                errorMessage: "Upload expired",
-              }),
-            );
-
             return {
               shouldNotify: true as const,
               payload: {
-                fileKey: file.fileKey,
+                fileKey: upload.fileKey,
                 fileKeyParts: payload.fileKeyParts,
                 uploadId: payload.uploadId,
-                uploaderId: file.uploaderId,
-                sizeBytes: Number(file.sizeBytes),
-                contentType: file.contentType,
+                uploaderId: upload.uploaderId,
+                sizeBytes: Number(upload.expectedSizeBytes),
+                contentType: upload.contentType,
               },
             };
           })

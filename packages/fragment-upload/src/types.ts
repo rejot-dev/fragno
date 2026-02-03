@@ -1,6 +1,6 @@
 export type FileVisibility = "private" | "public" | "unlisted";
 
-export type FileStatus = "pending" | "uploading" | "ready" | "failed" | "deleted";
+export type FileStatus = "ready" | "deleted";
 
 export type UploadStatus =
   | "created"

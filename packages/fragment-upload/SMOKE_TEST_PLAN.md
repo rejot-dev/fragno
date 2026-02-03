@@ -14,8 +14,8 @@
 ### 1) Delete the PGlite DB (upload-example)
 
 - [ ] Stop any running dev server for the upload example.
-- [ ] Delete the PGlite database file:
-  - `rm -f example-apps/upload-example/upload-example.pglite`
+- [ ] Delete the PGlite database directory:
+  - `rm -rf example-apps/upload-example/upload-example.pglite`
 
 ### 2) Clear filesystem storage (proxy uploads)
 
@@ -57,7 +57,7 @@ Pick one method below:
 - [ ] Start the dev server (HTTPS is enabled by default in this repo):
   - `pnpm -C example-apps/upload-example dev`
 
-Expected base URLs:
+Expected base URLs (update if Vite selects a different port, e.g. 5174):
 
 - Direct: `https://localhost:5173/api/uploads-direct`
 - Proxy: `https://localhost:5173/api/uploads-proxy`
@@ -70,50 +70,52 @@ Use the CLI helper script:
 
 ### A) Direct single upload (happy path)
 
-- [x] `uploads transfer` with small file (direct-single)
+- [ ] `uploads transfer` with small file (direct-single)
   - Example:
     - `echo "direct smoke" > /tmp/direct-smoke.txt`
     - `packages/fragment-upload/scripts/run-dev-cli.sh --https --direct uploads transfer -f /tmp/direct-smoke.txt --key-parts '["smoke","direct","<ts>"]' --content-type text/plain`
-- [x] Capture `uploadId` + `fileKey` from response
-- [x] `uploads get` for `uploadId`
-- [x] `uploads progress` for `uploadId`
-- [x] `files get` for `fileKey`
-- [x] `files list` by prefix
-- [x] `files update` (e.g. change filename + metadata)
-- [x] `files download-url`
-- [x] `files download` (writes to file)
-- [x] `files delete`
+- [ ] Capture `uploadId` + `fileKey` from response
+- [ ] `uploads get` for `uploadId`
+- [ ] `uploads progress` for `uploadId` (expect `UPLOAD_INVALID_STATE` because `uploads transfer`
+      completes the upload)
+- [ ] `files get` for `fileKey`
+- [ ] `files list` by prefix
+- [ ] `files update` (e.g. change filename + metadata)
+- [ ] `files download-url`
+- [ ] `files download` (writes to file)
+- [ ] `files delete`
 
 ### B) Direct multipart endpoints (expected invalid state for direct-single)
 
-- [x] `uploads parts-urls` -> expect `UPLOAD_INVALID_STATE`
-- [x] `uploads parts-list` -> empty list or invalid state (observed empty list)
-- [x] `uploads parts-complete` -> expect `UPLOAD_INVALID_STATE`
+- [ ] `uploads parts-urls` -> expect `UPLOAD_INVALID_STATE`
+- [ ] `uploads parts-list` -> empty list or invalid state (observed empty list)
+- [ ] `uploads parts-complete` -> expect `UPLOAD_INVALID_STATE`
 
 ### C) Direct abort flow
 
-- [x] Create a new upload (`uploads create`) and immediately `uploads abort`
+- [ ] Create a new upload (`uploads create`) and immediately `uploads abort`
 
 ### D) Direct /files upload endpoint
 
-- [x] `files upload` with small file and key-parts
-- [x] `files delete` for that file
+- [ ] `files upload` with small file and key-parts
+- [ ] `files delete` for that file
 
 ### E) Direct content endpoint (expected invalid state)
 
-- [x] `uploads content` with direct upload ID and `text/plain`
+- [ ] `uploads content` with direct upload ID and `text/plain`
   - Observed `UNSUPPORTED_MEDIA_TYPE` when content-type not `application/octet-stream`.
   - Also expect `UPLOAD_INVALID_STATE` for direct strategy if correct content-type is used.
 
 ### F) Direct signed download URL behavior (fixed)
 
-- [x] Confirm that signed URL no longer has double `?` and `files download` works.
+- [ ] Confirm that signed URL no longer has double `?` and `files download` works.
   - Fix applied in `example-apps/upload-example/app/uploads/s3-signer.server.ts`.
 
 ### G) Direct multipart flow (NOT YET TESTED)
 
 - [ ] Create upload with file size exceeding multipart threshold (default is 5 GiB) **or** configure
-      lower multipart threshold in S3 adapter to force multipart.
+      lower multipart threshold in S3 adapter to force multipart. (Note: S3 minimum part size is 5
+      MiB; smaller `UPLOAD_S3_MULTIPART_PART_SIZE_BYTES` values will be clamped.)
 - [ ] `uploads create` returns `direct-multipart` strategy and includes `partSizeBytes`.
 - [ ] `uploads parts-urls` for all part numbers.
 - [ ] Upload each part directly to MinIO using provided URLs.
@@ -121,10 +123,15 @@ Use the CLI helper script:
 - [ ] `uploads complete` with `{ partNumber, etag }`.
 - [ ] Verify final `files get` shows `ready`.
 
-### H) Direct checksum verification (NOT YET TESTED)
+### H) Direct checksum verification + idempotent reuse (NOT YET TESTED)
 
 - [ ] Create upload with checksum (md5 or sha256) and verify success.
-- [ ] Create upload with **incorrect** checksum and verify failure (error code in upload/file).
+- [ ] Create upload with **incorrect** checksum and verify failure (for direct uploads, the PUT
+      fails with HTTP 400 from storage; no fragment error code is returned).
+- [ ] Re-run `uploads create` with the same checksum + metadata and verify it reuses the existing
+      upload (same `uploadId`, no new storage session).
+- [ ] Re-run `uploads create` without checksum and verify `UPLOAD_ALREADY_ACTIVE` when another
+      upload is active for the same `fileKey`.
 
 ## CLI Smoke Tests (Proxy Uploads)
 
@@ -134,41 +141,41 @@ Use the CLI helper script:
 
 ### A) Proxy upload (happy path)
 
-- [x] `uploads create` with `application/octet-stream`
-- [x] `uploads content` with `application/octet-stream`
-- [x] `uploads get` for `uploadId`
-- [x] `uploads progress`
-- [x] `files get`
-- [x] `files list` by prefix
-- [x] `files update`
-- [x] `files download` (streaming fallback)
-- [x] `files delete`
+- [ ] `uploads create` with `application/octet-stream`
+- [ ] `uploads content` with `application/octet-stream`
+- [ ] `uploads get` for `uploadId`
+- [ ] `uploads progress` (expect `UPLOAD_INVALID_STATE` because upload already completed)
+- [ ] `files get`
+- [ ] `files list` by prefix
+- [ ] `files update`
+- [ ] `files download` (streaming fallback)
+- [ ] `files delete`
 
 ### B) Proxy multipart endpoints (expected invalid state)
 
-- [x] `uploads parts-urls` -> expect `UPLOAD_INVALID_STATE`
-- [x] `uploads parts-list` -> empty list or invalid state (observed empty list)
-- [x] `uploads parts-complete` -> expect `UPLOAD_INVALID_STATE`
+- [ ] `uploads parts-urls` -> expect `UPLOAD_INVALID_STATE`
+- [ ] `uploads parts-list` -> empty list or invalid state (observed empty list)
+- [ ] `uploads parts-complete` -> expect `UPLOAD_INVALID_STATE`
 
 ### C) Proxy abort flow
 
-- [x] `uploads create` then `uploads abort`
+- [ ] `uploads create` then `uploads abort`
 
 ### D) Proxy /files upload endpoint
 
-- [x] `files upload`
-- [x] `files delete` for that file
+- [ ] `files upload`
+- [ ] `files delete` for that file
 
 ### E) Proxy signed URL unsupported (expected)
 
-- [x] `files download-url` returns `SIGNED_URL_UNSUPPORTED` (filesystem adapter)
+- [ ] `files download-url` returns `SIGNED_URL_UNSUPPORTED` (filesystem adapter)
 
 ## Additional Coverage (NOT YET TESTED)
 
 These items were not covered in the manual smoke tests above:
 
 - [ ] `files list` pagination (`cursor`, `pageSize`)
-- [ ] `files list` status filtering (`pending`, `uploading`, `ready`, `failed`, `deleted`)
+- [ ] `files list` status filtering (`ready`, `deleted`)
 - [ ] `files list` uploaderId filter
 - [ ] Validation errors for invalid `file-key` or mismatched `key-parts`
 - [ ] Validation errors for missing required fields (e.g. `uploads create` without `file-key` /

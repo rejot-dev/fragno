@@ -14,6 +14,13 @@ description: HTTP endpoints for uploads and files.
 - `POST /uploads/:uploadId/abort` — abort an upload.
 - `PUT /uploads/:uploadId/content` — server-stream (proxy) bytes to storage.
 
+Notes:
+
+- `POST /uploads` is idempotent only when a checksum is provided; if metadata matches, the existing
+  upload is returned to support resume without creating a new storage session.
+- If a file already exists for the key, `POST /uploads` and `POST /uploads/:uploadId/complete`
+  return `FILE_ALREADY_EXISTS`.
+
 ## Files
 
 - `GET /files` — list files with cursor pagination and optional prefix filtering.
@@ -23,10 +30,18 @@ description: HTTP endpoints for uploads and files.
 - `GET /files/:fileKey/download-url` — signed download URL (if supported).
 - `GET /files/:fileKey/content` — server-stream (proxy) downloads (if supported).
 
+Notes:
+
+- `POST /files` does not implement idempotent matching; active uploads and existing files return
+  `UPLOAD_ALREADY_ACTIVE` or `FILE_ALREADY_EXISTS`.
+
 ## Error codes
 
 - `UPLOAD_NOT_FOUND`
+- `UPLOAD_ALREADY_ACTIVE`
+- `UPLOAD_METADATA_MISMATCH`
 - `FILE_NOT_FOUND`
+- `FILE_ALREADY_EXISTS`
 - `UPLOAD_EXPIRED`
 - `UPLOAD_INVALID_STATE`
 - `SIGNED_URL_UNSUPPORTED`
