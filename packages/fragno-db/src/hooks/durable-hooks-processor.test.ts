@@ -1,6 +1,6 @@
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "../with-database";
 import { schema, column, idColumn } from "../schema/create";
@@ -83,14 +83,13 @@ describe("createDurableHooksProcessor", () => {
   });
 
   it("should wake for stale processing hooks", async () => {
-    vi.useFakeTimers();
-    const now = new Date("2024-01-01T00:00:00Z");
-    vi.setSystemTime(now);
-
     const processor = createDurableHooksProcessor(fragment);
     expect(processor).not.toBeNull();
 
     const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
+    const baseNow = services.getDbNow ? await services.getDbNow() : new Date();
+
     await internalFragment.inContext(async function () {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
@@ -102,7 +101,7 @@ describe("createDurableHooksProcessor", () => {
             status: "processing",
             attempts: 0,
             maxAttempts: 1,
-            lastAttemptAt: new Date(now.getTime() - 20 * 60_000),
+            lastAttemptAt: new Date(baseNow.getTime() - 20 * 60_000),
             nextRetryAt: null,
             error: null,
             nonce: "test-nonce-stuck",
@@ -113,8 +112,6 @@ describe("createDurableHooksProcessor", () => {
 
     const wakeAt = await processor!.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
-    expect(wakeAt!.getTime()).toBeLessThanOrEqual(now.getTime());
-
-    vi.useRealTimers();
+    expect(wakeAt!.getTime()).toBeLessThanOrEqual(baseNow.getTime());
   });
 });

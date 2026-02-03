@@ -246,6 +246,7 @@ export async function createWorkflowsTestHarness(
   const config: WorkflowsFragmentConfig = {
     workflows,
     runtime,
+    dbNow: () => runtime.time.now(),
     ...options.fragmentConfig,
   };
 
@@ -266,6 +267,7 @@ export async function createWorkflowsTestHarness(
     runtime,
     runnerId: options.runnerOptions?.runnerId,
     leaseMs: options.runnerOptions?.leaseMs,
+    getDbNow: async () => runtime.time.now(),
   });
   if (options.autoTickHooks !== false) {
     config.runner = runner;

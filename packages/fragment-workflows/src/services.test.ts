@@ -159,6 +159,8 @@ describe("Workflows Fragment Services", () => {
       errorName: null,
       errorMessage: null,
     });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    runner.tick.mockClear();
     const tickCallsBefore = runner.tick.mock.calls.length;
 
     const terminated = await runService<{ status: string }>(() =>

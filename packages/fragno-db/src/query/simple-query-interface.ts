@@ -134,6 +134,11 @@ export type FindManyOptions<
 
 export interface SimpleQueryInterface<TSchema extends AnySchema, TUOWConfig = void> {
   /**
+   * Fetch the current database timestamp.
+   * Optional for adapters that cannot provide DB time.
+   */
+  now?: () => Promise<Date>;
+  /**
    * Find multiple records using a builder pattern
    */
   find: {

@@ -1,4 +1,5 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
+import type { DbNow } from "@fragno-dev/db";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -221,6 +222,7 @@ export interface WorkflowsFragmentConfig {
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
   runtime: FragnoRuntime;
+  dbNow?: () => Date | DbNow;
   enableRunnerTick?: boolean;
   authorizeRequest?: WorkflowsAuthorizeHook<WorkflowsAuthorizeContext>;
   authorizeInstanceCreation?: WorkflowsAuthorizeHook<WorkflowsAuthorizeInstanceCreationContext>;

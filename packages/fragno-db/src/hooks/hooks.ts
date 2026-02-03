@@ -169,7 +169,7 @@ export function prepareHookMutations<THooks extends HooksMap>(
     const hookRetryPolicy = hook.options?.retryPolicy ?? retryPolicy;
     const maxAttempts = hookRetryPolicy.shouldRetry(4) ? 5 : 1;
     const processAt = hook.options?.processAt ? new Date(hook.options.processAt) : null;
-    const nextRetryAt = processAt && processAt.getTime() > Date.now() ? processAt : null;
+    const nextRetryAt = processAt ?? null;
     internalUow.create("fragno_hooks", {
       namespace,
       hookName: hook.hookName,
@@ -197,9 +197,17 @@ export async function processHooks<THooks extends HooksMap>(
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     config.stuckProcessingTimeoutMinutes,
   );
+  const getDbNow = async () => {
+    const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
+    if (services.getDbNow) {
+      return services.getDbNow();
+    }
+    return new Date();
+  };
+  const dbNow = await getDbNow();
 
   if (stuckProcessingTimeoutMinutes !== false) {
-    const staleBefore = new Date(Date.now() - stuckProcessingTimeoutMinutes * 60_000);
+    const staleBefore = new Date(dbNow.getTime() - stuckProcessingTimeoutMinutes * 60_000);
     const stuckEvents = await internalFragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
@@ -301,6 +309,7 @@ export async function processHooks<THooks extends HooksMap>(
                 error,
                 attempts,
                 retryPolicy,
+                dbNow,
               ),
             );
           }

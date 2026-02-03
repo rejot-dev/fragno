@@ -82,6 +82,14 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   internalSchema,
   "", // intentionally blank namespace so there is no prefix
 )
+  .providesBaseService(({ deps }) => ({
+    getDbNow: async () => {
+      if (deps.db.now) {
+        return deps.db.now();
+      }
+      return new Date();
+    },
+  }))
   .providesService("settingsService", ({ defineService }) => {
     return defineService({
       /**
@@ -264,7 +272,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       /**
        * Get the next time a processing hook becomes stale.
        */
-      getNextProcessingStaleAt(namespace: string, timeoutMinutes: number) {
+      getNextProcessingStaleAt(namespace: string, timeoutMinutes: number, now?: Date) {
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
@@ -278,18 +286,19 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               return null;
             }
 
-            const now = Date.now();
+            const baseNow = now ?? new Date();
+            const nowMs = baseNow.getTime();
             const timeoutMs = timeoutMinutes * 60_000;
             let earliestStaleAt: Date | null = null;
 
             for (const event of events) {
               if (!event.lastAttemptAt) {
-                return new Date();
+                return baseNow;
               }
 
               const staleAtMs = event.lastAttemptAt.getTime() + timeoutMs;
-              if (staleAtMs <= now) {
-                return new Date();
+              if (staleAtMs <= nowMs) {
+                return baseNow;
               }
 
               const staleAt = new Date(staleAtMs);
@@ -307,8 +316,8 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Get the earliest pending hook wake time for a namespace.
        * Optionally considers processing hooks becoming stale when timeoutMinutes is provided.
        */
-      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false) {
-        const now = new Date();
+      getNextHookWakeAt(namespace: string, timeoutMinutes?: number | false, now?: Date) {
+        const baseNow = now ?? new Date();
         const includeProcessing = typeof timeoutMinutes === "number" && timeoutMinutes > 0;
         const timeoutMs = includeProcessing ? timeoutMinutes * 60_000 : 0;
 
@@ -333,7 +342,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               return null;
             }
 
-            const nowMs = now.getTime();
+            const nowMs = baseNow.getTime();
             let earliestPendingAt: Date | null = null;
             let earliestStaleAt: Date | null = null;
 
@@ -341,7 +350,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               if (event.status === "pending") {
                 const nextRetryAt = event.nextRetryAt;
                 if (!nextRetryAt || nextRetryAt.getTime() <= nowMs) {
-                  return now;
+                  return baseNow;
                 }
                 if (!earliestPendingAt || nextRetryAt < earliestPendingAt) {
                   earliestPendingAt = nextRetryAt;
@@ -355,12 +364,12 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
 
               const lastAttemptAt = event.lastAttemptAt;
               if (!lastAttemptAt) {
-                return now;
+                return baseNow;
               }
 
               const staleAtMs = lastAttemptAt.getTime() + timeoutMs;
               if (staleAtMs <= nowMs) {
-                return now;
+                return baseNow;
               }
 
               const staleAt = new Date(staleAtMs);
@@ -396,7 +405,13 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       /**
        * Mark a hook event as failed and schedule next retry.
        */
-      markHookFailed(eventId: FragnoId, error: string, attempts: number, retryPolicy: RetryPolicy) {
+      markHookFailed(
+        eventId: FragnoId,
+        error: string,
+        attempts: number,
+        retryPolicy: RetryPolicy,
+        now?: Date,
+      ) {
         const newAttempts = attempts + 1;
         const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
 
@@ -404,7 +419,8 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
           .mutate(({ uow }) => {
             if (shouldRetry) {
               const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
-              const nextRetryAt = new Date(Date.now() + delayMs);
+              const baseNow = now ?? new Date();
+              const nextRetryAt = new Date(baseNow.getTime() + delayMs);
               uow.update("fragno_hooks", eventId, (b) =>
                 b
                   .set({

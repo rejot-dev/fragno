@@ -40,6 +40,8 @@ export function createDurableHooksProcessor(
     namespace,
     process: async () => processHooks(durableHooks),
     getNextWakeAt: async () => {
+      const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
+      const now = services.getDbNow ? await services.getDbNow() : new Date();
       return await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
@@ -48,6 +50,7 @@ export function createDurableHooksProcessor(
                 internalFragment.services.hookService.getNextHookWakeAt(
                   namespace,
                   stuckProcessingTimeoutMinutes,
+                  now,
                 ),
               ] as const,
           )

@@ -20,6 +20,7 @@ import { createRunnerState } from "./state";
 
 export type ProcessTaskContext = {
   time: FragnoRuntime["time"];
+  getDbNow: () => Promise<Date>;
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
   workflowBindings: WorkflowBindings;
   commitInstanceAndTask: (
@@ -90,6 +91,7 @@ export const processTask = async (
     runNumber: instance.runNumber,
     maxSteps,
     time: ctx.time,
+    getDbNow: ctx.getDbNow,
   });
 
   // Keep the task lease alive while user code is running.

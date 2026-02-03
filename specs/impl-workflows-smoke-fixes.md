@@ -20,7 +20,7 @@
 - [x] Replace local `new Date()` comparisons and updates with `dbNow()` in
       `packages/fragno-db/src/fragments/internal-fragment.ts` hook queries and `lastAttemptAt`
       updates (Spec 4.5).
-- [ ] Base scheduling offsets on **DB time** (fetch dbNow once per cycle and add offsets) for
+- [x] Base scheduling offsets on **DB time** (fetch dbNow once per cycle and add offsets) for
       `nextRetryAt`, `wakeAt`, `lockedUntil`, and `runAt` in workflow runner + hooks (Spec 4.5).
 - [x] Implement composite cursor conditions in
       `packages/fragno-db/src/adapters/generic-sql/query/cursor-utils.ts` and add tests covering

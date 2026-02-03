@@ -124,6 +124,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
       ).forSchema(schema);
 
     const queryEngine = {
+      now: async () => this.options.clock.now(),
       async find(tableName, builderFn) {
         const uow = createUow();
         uow.find(tableName, builderFn);
