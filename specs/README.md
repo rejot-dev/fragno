@@ -84,6 +84,8 @@ very detailed, living documents that guide implementation without constraining t
 - [In-Memory Adapter + OCC Model Checker — Spec](./spec-in-memory-adapter.md) — In-memory adapter
   design with optimistic concurrency control, SQLite-aligned semantics, storage/indexing, and model
   checker behavior.
+- [Fragno DB Outbox — Spec](./spec-outbox.md) — Optional outbox with a global clock stored in
+  internal settings, ordered UOW mutation capture, and programmatic retrieval.
 
 ## Implementation Plans
 
@@ -96,6 +98,8 @@ very detailed, living documents that guide implementation without constraining t
   hooks, and conformance tests.
 - [Database Adapter Simplification — Implementation Plan](./impl-db-adapter-simplification.md) —
   Execution tasks for the SQL adapter unification and schema output refactor.
+- [Fragno DB Outbox — Implementation Plan](./impl-outbox.md) — Implementation tasks for the outbox
+  clock, schema, adapter integration, and tests.
 - [Upload Fragment - Implementation Plan](./impl-upload-fragment.md) - Execution tasks for the
   upload fragment spec: adapter implementations, routes, streaming support, tests, docs, and
   examples.
