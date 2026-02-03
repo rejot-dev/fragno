@@ -28,6 +28,7 @@ type TaskContext = {
   time: FragnoRuntime["time"];
   runnerId: string;
   leaseMs: number;
+  getDbNow: () => Promise<Date>;
 };
 
 export const claimTask = async (
@@ -44,7 +45,7 @@ export const claimTask = async (
     return null;
   }
 
-  const claimedAt = ctx.time.now();
+  const claimedAt = now;
   const lockedUntil = new Date(now.getTime() + ctx.leaseMs);
 
   let outcome;
@@ -175,9 +176,10 @@ export const commitInstanceAndTask = async (
     | { kind: "delete" }
     | { kind: "schedule"; taskKind: "wake" | "retry" | "run"; runAt: Date },
   mutations: RunnerMutationBuffer,
-  ctx: Pick<TaskContext, "runHandlerTx" | "time">,
+  ctx: Pick<TaskContext, "runHandlerTx" | "time" | "getDbNow">,
 ): Promise<boolean> => {
   const { id: _ignoredInstanceId, ...safeUpdate } = update as WorkflowInstanceRecord;
+  const dbNow = await ctx.getDbNow();
 
   try {
     await ctx.runHandlerTx((handlerTx) =>
@@ -190,7 +192,7 @@ export const commitInstanceAndTask = async (
             const builder = b.set({
               ...safeUpdate,
               status,
-              updatedAt: ctx.time.now(),
+              updatedAt: dbNow,
             });
             builder.check();
             return builder;
@@ -208,7 +210,7 @@ export const commitInstanceAndTask = async (
                 lastError: null,
                 lockOwner: null,
                 lockedUntil: null,
-                updatedAt: ctx.time.now(),
+                updatedAt: dbNow,
               }),
             );
             const reason =
@@ -312,7 +314,7 @@ export const commitInstanceAndTask = async (
               const builder = b.set({
                 status: "paused",
                 pauseRequested: false,
-                updatedAt: ctx.time.now(),
+                updatedAt: dbNow,
               });
               builder.check();
               return builder;
@@ -380,6 +382,8 @@ export const renewTaskLease = async (
   taskId: WorkflowTaskRecord["id"],
   ctx: TaskContext,
 ): Promise<{ ok: boolean; instance: WorkflowInstanceRecord | null }> => {
+  const dbNow = await ctx.getDbNow();
+  const lockedUntil = new Date(dbNow.getTime() + ctx.leaseMs);
   try {
     const outcome = await ctx.runHandlerTx((handlerTx) =>
       handlerTx()
@@ -401,8 +405,8 @@ export const renewTaskLease = async (
           }
           forSchema(workflowsSchema).update("workflow_task", taskId, (b) =>
             b.set({
-              lockedUntil: new Date(ctx.time.now().getTime() + ctx.leaseMs),
-              updatedAt: ctx.time.now(),
+              lockedUntil,
+              updatedAt: dbNow,
             }),
           );
         })

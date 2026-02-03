@@ -229,7 +229,7 @@ describe("Hook System", () => {
       expect(events[0]?.nextRetryAt?.getTime()).toBe(futureTime.getTime());
     });
 
-    it("should clamp processAt in the past to immediate execution", async () => {
+    it("should keep processAt in the past while remaining immediately eligible", async () => {
       const namespace = "test-process-at-past";
       const hooks: HooksMap = {
         onImmediate: vi.fn(),
@@ -264,7 +264,8 @@ describe("Hook System", () => {
       });
 
       expect(events).toHaveLength(1);
-      expect(events[0]?.nextRetryAt).toBeNull();
+      expect(events[0]?.nextRetryAt).toBeInstanceOf(Date);
+      expect(events[0]?.nextRetryAt?.getTime()).toBe(pastTime.getTime());
     });
   });
 

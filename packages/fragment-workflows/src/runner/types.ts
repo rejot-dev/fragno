@@ -49,6 +49,7 @@ export type WorkflowsRunnerOptions = {
   runtime: FragnoRuntime;
   runnerId?: string;
   leaseMs?: number;
+  getDbNow?: () => Promise<Date>;
 };
 
 export type RunHandlerTx = <T>(

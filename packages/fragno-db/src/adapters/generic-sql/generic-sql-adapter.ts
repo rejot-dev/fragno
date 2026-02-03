@@ -11,7 +11,7 @@ import {
 import type { CompiledQuery, Dialect, QueryResult } from "../../sql-driver/sql-driver";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { sql } from "../../sql-driver/sql";
-import type { AnySchema } from "../../schema/create";
+import type { AnyColumn, AnySchema } from "../../schema/create";
 import { createTableNameMapper } from "../shared/table-name-mapper";
 import type { SimpleQueryInterface } from "../../query/simple-query-interface";
 import { createExecutor } from "./generic-sql-uow-executor";
@@ -28,6 +28,7 @@ import type { UOWInstrumentation } from "../../query/unit-of-work/unit-of-work";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
 import type { OutboxConfig } from "../../outbox/outbox";
+import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -195,7 +196,27 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       schemaNamespaceMap: this.#schemaNamespaceMap,
     };
 
-    return fromUnitOfWorkCompiler(schema, factory) as SimpleQueryInterface<T, UnitOfWorkConfig>;
+    const queryEngine = fromUnitOfWorkCompiler(schema, factory) as SimpleQueryInterface<
+      T,
+      UnitOfWorkConfig
+    >;
+
+    const serializer = createSQLSerializer(this.driverConfig, this.sqliteStorageMode);
+    const timestampColumn = { type: "timestamp" } as AnyColumn;
+
+    return {
+      ...queryEngine,
+      now: async () => {
+        const result = await this.#driver.executeQuery(
+          sql`SELECT CURRENT_TIMESTAMP as now`.compile(this.dialect),
+        );
+        const rawValue = result.rows[0]?.["now"];
+        if (rawValue === undefined || rawValue === null) {
+          throw new Error("Failed to fetch database time");
+        }
+        return serializer.deserialize(rawValue, timestampColumn) as Date;
+      },
+    };
   }
 }
 

@@ -34,6 +34,15 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   const time = runtime.time;
   const runnerId = runnerOptions.runnerId ?? runtime.random.uuid();
   const leaseMs = runnerOptions.leaseMs ?? DEFAULT_LEASE_MS;
+  const getDbNow =
+    runnerOptions.getDbNow ??
+    (async () => {
+      const services = runnerOptions.fragment.services as { getDbNow?: () => Promise<Date> };
+      if (services.getDbNow) {
+        return services.getDbNow();
+      }
+      return time.now();
+    });
 
   const runHandlerTxForRunner: RunHandlerTx = (callback) =>
     runHandlerTx(runnerOptions.fragment, callback);
@@ -44,7 +53,13 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
   });
 
   const claimTaskForRunner = (task: WorkflowTaskRecord, now: Date) =>
-    claimTask(task, now, { runHandlerTx: runHandlerTxForRunner, time, runnerId, leaseMs });
+    claimTask(task, now, {
+      runHandlerTx: runHandlerTxForRunner,
+      time,
+      runnerId,
+      leaseMs,
+      getDbNow,
+    });
 
   const commitInstanceAndTaskForRunner = (
     task: WorkflowTaskRecord,
@@ -57,6 +72,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
     commitInstanceAndTask(task, instance, status, update, taskAction, mutations, {
       runHandlerTx: runHandlerTxForRunner,
       time,
+      getDbNow,
     });
 
   const deleteTaskForRunner = (task: WorkflowTaskRecord) =>
@@ -71,11 +87,12 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
       time,
       runnerId,
       leaseMs,
+      getDbNow,
     });
 
   return {
     async tick(tickOptions: RunnerTickOptions = {}) {
-      const now = time.now();
+      const now = await getDbNow();
       const maxInstances = tickOptions.maxInstances ?? DEFAULT_MAX_INSTANCES;
       const maxSteps = tickOptions.maxSteps ?? DEFAULT_MAX_STEPS;
 
@@ -133,6 +150,7 @@ export function createWorkflowsRunner(runnerOptions: WorkflowsRunnerOptions): Wo
         }
         processed += await processTask(claimed, maxSteps, {
           time,
+          getDbNow,
           workflowsByName,
           workflowBindings,
           commitInstanceAndTask: commitInstanceAndTaskForRunner,
