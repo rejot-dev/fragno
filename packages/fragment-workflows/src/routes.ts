@@ -451,17 +451,21 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             return json({ instances: [] });
           }
 
-          const serviceCall = services.createBatch(workflowName, payload.instances) as TxResult<
-            RouteInstanceDetails[],
-            unknown
-          >;
+          try {
+            const serviceCall = services.createBatch(workflowName, payload.instances) as TxResult<
+              RouteInstanceDetails[],
+              unknown
+            >;
 
-          const result = await this.handlerTx()
-            .withServiceCalls(() => [serviceCall])
-            .transform(({ serviceResult: [result] }) => result)
-            .execute();
+            const result = await this.handlerTx()
+              .withServiceCalls(() => [serviceCall])
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
 
-          return json({ instances: result });
+            return json({ instances: result });
+          } catch (err) {
+            return handleServiceError(err, errorResponder);
+          }
         },
       }),
       defineRoute({

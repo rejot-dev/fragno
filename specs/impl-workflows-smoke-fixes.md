@@ -1,11 +1,11 @@
 # Workflows Reliability Fixes - Implementation Plan
 
-- [ ] Update `packages/fragno-db/src/db-fragment-definition-builder.ts` to schedule
+- [x] Update `packages/fragno-db/src/db-fragment-definition-builder.ts` to schedule
       `processHooks(...)` asynchronously in `onAfterMutate` (do not await) and log failures per Spec
       4.1.
-- [ ] Wrap batch create handler in `packages/fragment-workflows/src/routes.ts` with `try/catch` +
+- [x] Wrap batch create handler in `packages/fragment-workflows/src/routes.ts` with `try/catch` +
       `handleServiceError` per Spec 4.1.
-- [ ] Guard lease renewal in `packages/fragment-workflows/src/runner/task.ts` by requiring
+- [x] Guard lease renewal in `packages/fragment-workflows/src/runner/task.ts` by requiring
       `status === "processing"` and `lockOwner === runnerId`, and ignore leases on pending tasks
       when claiming (Spec 4.2).
 - [ ] Add the `maxAttempts` pre-run guard in `packages/fragment-workflows/src/runner/step.ts` and
