@@ -276,6 +276,12 @@ export class RequestInputContext<
       throw new Error("Schema validation is only supported for JSON data, not FormData or Blob");
     }
 
+    if (this.#parsedBody instanceof ReadableStream) {
+      throw new Error(
+        "Schema validation is only supported for JSON data, not FormData, Blob, or ReadableStream",
+      );
+    }
+
     const result = await this.#inputSchema["~standard"].validate(this.#parsedBody);
 
     if (result.issues) {

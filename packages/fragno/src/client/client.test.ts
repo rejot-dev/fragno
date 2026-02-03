@@ -1353,6 +1353,70 @@ describe("createMutator", () => {
     expect(headers?.["Content-Type"]).toBe("application/octet-stream");
     expect(options?.body).toBe(body);
   });
+
+  test("should send ReadableStream body with duplex for octet-stream", async () => {
+    const testFragment = defineFragment("test-fragment").build();
+    const testRoutes = [
+      defineRoute({
+        method: "PUT",
+        path: "/upload",
+        contentType: "application/octet-stream",
+        inputSchema: z.unknown(),
+        handler: async (_ctx, { empty }) => empty(),
+      }),
+    ] as const;
+
+    let capturedOptions: (RequestInit & { duplex?: "half" }) | undefined;
+    let capturedBodyText = "";
+
+    vi.mocked(global.fetch).mockImplementation(async (_url, options) => {
+      capturedOptions = options as RequestInit & { duplex?: "half" };
+      const body = capturedOptions?.body;
+
+      if (!(body instanceof ReadableStream)) {
+        throw new Error("Expected ReadableStream body");
+      }
+
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (value) {
+          chunks.push(value);
+        }
+      }
+
+      const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      capturedBodyText = new TextDecoder().decode(combined);
+
+      return new Response(null, { status: 204 });
+    });
+
+    const cb = createClientBuilder(testFragment, clientConfig, testRoutes);
+    const upload = cb.createMutator("PUT", "/upload");
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("streamed body"));
+        controller.close();
+      },
+    });
+
+    await upload.mutateQuery({ body });
+
+    const headers = capturedOptions?.headers as Record<string, string> | undefined;
+    expect(headers?.["Content-Type"]).toBe("application/octet-stream");
+    expect(capturedOptions?.duplex).toBe("half");
+    expect(capturedBodyText).toBe("streamed body");
+  });
 });
 
 describe("createMutator - streaming", () => {

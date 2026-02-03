@@ -292,6 +292,29 @@ describe("RequestContext", () => {
       );
     });
 
+    test("Should throw error when trying to validate ReadableStream", async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("stream body"));
+          controller.close();
+        },
+      });
+
+      const ctx = new RequestInputContext({
+        path: "/test",
+        pathParams: {},
+        searchParams: new URLSearchParams(),
+        headers: new Headers(),
+        parsedBody: stream,
+        inputSchema: validStringSchema,
+        method: "POST",
+      });
+
+      await expect(ctx.input.valid()).rejects.toThrow(
+        "Schema validation is only supported for JSON data, not FormData, Blob, or ReadableStream",
+      );
+    });
+
     test("Should handle null body", async () => {
       const ctx = new RequestInputContext({
         path: "/test",
