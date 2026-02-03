@@ -1110,12 +1110,15 @@ export class ClientBuilder<
           bodyHeaders,
         );
 
-        const requestOptions: RequestInit = {
+        const requestOptions: RequestInit & { duplex?: "half" } = {
           ...fetcherOptions,
           method,
           body: preparedBody,
           ...(mergedHeaders ? { headers: mergedHeaders } : {}),
         };
+        if (preparedBody instanceof ReadableStream) {
+          requestOptions.duplex = "half";
+        }
         response = await fetcher(url, requestOptions);
       } catch (error) {
         throw FragnoClientFetchError.fromUnknownFetchError(error);
