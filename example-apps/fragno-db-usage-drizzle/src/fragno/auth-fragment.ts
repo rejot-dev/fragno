@@ -1,4 +1,4 @@
-import { createAuthFragment } from "@fragno-dev/simple-auth-fragment";
+import { createAuthFragment } from "@fragno-dev/auth";
 import { adapter } from "../fragno-adapter";
 import type { DatabaseAdapter } from "@fragno-dev/db";
 

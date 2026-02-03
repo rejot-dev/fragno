@@ -7,8 +7,8 @@ implementation we are copying from).
 
 ## Goal
 
-Bring `example-fragments/simple-auth-fragment` in fragno up to parity with the is3a-site
-implementation, while keeping the fragno package name/scope and workspace dependency strategy.
+Bring `packages/auth` in fragno up to parity with the is3a-site implementation, while keeping the
+fragno package name/scope and workspace dependency strategy.
 
 ## Scope
 
@@ -19,9 +19,8 @@ implementation, while keeping the fragno package name/scope and workspace depend
 ## Plan
 
 1. **Inventory + alignment decisions**
-   - Confirm target folder: `example-fragments/simple-auth-fragment`.
-   - Keep package name `@fragno-dev/simple-auth-fragment` and workspace deps, but adopt the is3a
-     feature set.
+   - Confirm target folder: `packages/auth`.
+   - Keep package name `@fragno-dev/auth` and workspace deps, but adopt the is3a feature set.
    - Decide whether to include is3a's extra docs (e.g., `CLAUDE.md`) or keep fragno's
      `CHANGELOG.md`.
 
@@ -65,6 +64,6 @@ implementation, while keeping the fragno package name/scope and workspace depend
 
 ## Validation Commands
 
-- `pnpm -C /Users/wilco/dev/fragno/example-fragments/simple-auth-fragment types:check`
-- `pnpm -C /Users/wilco/dev/fragno/example-fragments/simple-auth-fragment test`
+- `pnpm -C /Users/wilco/dev/fragno/packages/auth types:check`
+- `pnpm -C /Users/wilco/dev/fragno/packages/auth test`
 - If examples were touched: run their type check/test commands as applicable.

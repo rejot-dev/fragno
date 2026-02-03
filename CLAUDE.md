@@ -84,6 +84,7 @@ Examples:
 
 - `packages/fragment-workflows/` - Workflows fragment
 - `packages/fragment-mailing-list/` - Mailing list fragment
+- `packages/auth/` - Auth fragment
 - `packages/forms/` - Forms fragment
 - `packages/stripe/` - Stripe integration fragment
 - `packages/corpus/` - Content corpus utilities used by fragments
@@ -111,7 +112,6 @@ Examples:
 - `example-fragments/example-fragment/` - Minimal fragment template
 - `example-fragments/fragno-db-library/` - Fragment using @fragno-dev/db
 - `example-fragments/otp-fragment/` - OTP fragment example
-- `example-fragments/simple-auth-fragment/` - Simple auth fragment example
 
 ### Documentation & Example Apps
 
