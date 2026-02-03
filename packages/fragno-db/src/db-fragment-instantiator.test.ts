@@ -35,6 +35,8 @@ function createMockAdapter(): DatabaseAdapter {
           mutationPhase: Promise.resolve(),
         })),
         restrict: vi.fn(() => createMockRestrictedUow()),
+        getRetrievalOperations: vi.fn(() => []),
+        getMutationOperations: vi.fn(() => []),
         table: vi.fn(() => ({
           findMany: vi.fn(),
         })),
@@ -62,6 +64,9 @@ function createMockAdapter(): DatabaseAdapter {
         commit: vi.fn(),
         rollback: vi.fn(),
         reset: vi.fn(),
+        getRetrievalOperations: vi.fn(() => []),
+        getMutationOperations: vi.fn(() => []),
+        getCreatedIds: vi.fn(() => []),
         table: vi.fn(() => ({
           findMany: vi.fn(),
         })),

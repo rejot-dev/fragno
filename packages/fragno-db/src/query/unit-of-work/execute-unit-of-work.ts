@@ -1,7 +1,7 @@
 import type { AnySchema } from "../../schema/create";
 import type { TypedUnitOfWork, IUnitOfWork } from "./unit-of-work";
 import type { HooksMap } from "../../hooks/hooks";
-import { ExponentialBackoffRetryPolicy, type RetryPolicy } from "./retry-policy";
+import { ExponentialBackoffRetryPolicy, NoRetryPolicy, type RetryPolicy } from "./retry-policy";
 
 /**
  * Symbol to identify TxResult objects
@@ -724,13 +724,6 @@ async function executeTx(
   type TServiceCalls = readonly (TxResult<any, any> | undefined)[];
   type TMutateResult = unknown;
   type THooks = HooksMap;
-  const retryPolicy =
-    options.retryPolicy ??
-    new ExponentialBackoffRetryPolicy({
-      maxRetries: 5,
-      initialDelayMs: 10,
-      maxDelayMs: 100,
-    });
   const signal = options.signal;
   let attempt = 0;
 
@@ -739,6 +732,8 @@ async function executeTx(
     if (signal?.aborted) {
       throw new Error("Transaction execution aborted");
     }
+
+    let retryPolicy: RetryPolicy | undefined;
 
     try {
       // Create a fresh UOW for this attempt
@@ -763,6 +758,24 @@ async function executeTx(
       const typedUowFromRetrieve = callbacks.retrieve?.(context);
 
       const allServiceCallTxResults = serviceCalls ? collectAllTxResults([...serviceCalls]) : [];
+
+      const hasRetrieveOps = baseUow.getRetrievalOperations().length > 0;
+      if (!hasRetrieveOps) {
+        if (options.retryPolicy) {
+          throw new Error(
+            "Retry policy is only supported when the transaction includes retrieve operations.",
+          );
+        }
+        retryPolicy = new NoRetryPolicy();
+      } else {
+        retryPolicy =
+          options.retryPolicy ??
+          new ExponentialBackoffRetryPolicy({
+            maxRetries: 5,
+            initialDelayMs: 10,
+            maxDelayMs: 100,
+          });
+      }
 
       await baseUow.executeRetrieve();
 
@@ -882,6 +895,10 @@ async function executeTx(
 
       // Only retry concurrency conflicts, not other errors
       if (!(error instanceof ConcurrencyConflictError)) {
+        throw error;
+      }
+
+      if (!retryPolicy) {
         throw error;
       }
 
