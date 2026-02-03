@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase, type InternalFragmentInstance } from "@fragno-dev/db";
-import { schema, idColumn, column, referenceColumn, FragnoReference } from "@fragno-dev/db/schema";
-import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
-import { buildDatabaseFragmentsTest } from "./db-test";
-import type { SupportedAdapter } from "./adapters";
+import { SQLocalKysely } from "sqlocal/kysely";
+import { KyselyPGlite } from "kysely-pglite";
+import { PGlite } from "@electric-sql/pglite";
 import superjson, { type SuperJSONResult } from "superjson";
+import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import { PGLiteDriverConfig, SQLocalDriverConfig } from "../adapters/generic-sql/driver-config";
+import type { SimpleQueryInterface } from "../query/simple-query-interface";
+import { withDatabase } from "../with-database";
+import { internalSchema, type InternalFragmentInstance } from "../fragments/internal-fragment";
+import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
+import type { OutboxConfig, OutboxEntry, OutboxPayload } from "./outbox";
 
 const outboxSchema = schema((s) => {
   return s
@@ -28,13 +33,86 @@ const outboxSchema = schema((s) => {
     });
 });
 
-const outboxFragmentDef = defineFragment("outbox-test").extend(withDatabase(outboxSchema)).build();
+const outboxFragmentName = "outbox-test";
+const outboxFragmentDef = defineFragment(outboxFragmentName)
+  .extend(withDatabase(outboxSchema))
+  .build();
 
-async function buildOutboxTest(adapterConfig: SupportedAdapter) {
-  return buildDatabaseFragmentsTest()
-    .withTestAdapter(adapterConfig)
-    .withFragment("outbox", instantiate(outboxFragmentDef).withConfig({}).withRoutes([]))
+type OutboxAdapterConfig =
+  | { type: "kysely-sqlite"; outbox?: OutboxConfig }
+  | { type: "kysely-pglite"; outbox?: OutboxConfig };
+
+type OutboxTestContext = {
+  db: SimpleQueryInterface<typeof outboxSchema>;
+  internalFragment: InternalFragmentInstance;
+  cleanup: () => Promise<void>;
+};
+
+async function migrateSchema(
+  adapter: SqlAdapter,
+  schemaToMigrate: typeof outboxSchema | typeof internalSchema,
+  namespace: string,
+): Promise<void> {
+  const migrations = adapter.prepareMigrations(schemaToMigrate, namespace);
+  await migrations.executeWithDriver(adapter.driver, 0);
+}
+
+async function createAdapter(config: OutboxAdapterConfig): Promise<{
+  adapter: SqlAdapter;
+  cleanup: () => Promise<void>;
+}> {
+  if (config.type === "kysely-sqlite") {
+    const { dialect } = new SQLocalKysely(":memory:");
+    const adapter = new SqlAdapter({
+      dialect,
+      driverConfig: new SQLocalDriverConfig(),
+      outbox: config.outbox,
+    });
+
+    await migrateSchema(adapter, internalSchema, "");
+    await migrateSchema(adapter, outboxSchema, outboxFragmentName);
+
+    return {
+      adapter,
+      cleanup: async () => {
+        await adapter.close();
+      },
+    };
+  }
+
+  const pgliteDatabase = new PGlite();
+  const { dialect } = new KyselyPGlite(pgliteDatabase);
+  const adapter = new SqlAdapter({
+    dialect,
+    driverConfig: new PGLiteDriverConfig(),
+    outbox: config.outbox,
+  });
+
+  await migrateSchema(adapter, internalSchema, "");
+  await migrateSchema(adapter, outboxSchema, outboxFragmentName);
+
+  return {
+    adapter,
+    cleanup: async () => {
+      await adapter.close();
+    },
+  };
+}
+
+async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<OutboxTestContext> {
+  const { adapter, cleanup } = await createAdapter(adapterConfig);
+  const fragment = instantiate(outboxFragmentDef)
+    .withConfig({})
+    .withRoutes([])
+    .withOptions({ databaseAdapter: adapter })
     .build();
+  const deps = fragment.$internal.deps as { db: SimpleQueryInterface<typeof outboxSchema> };
+
+  return {
+    db: deps.db,
+    internalFragment: fragment.$internal.linkedFragments._fragno_internal,
+    cleanup,
+  };
 }
 
 async function listOutbox(
@@ -53,25 +131,23 @@ const adapterConfigs = [{ type: "kysely-sqlite" as const }, { type: "kysely-pgli
 
 describe("Fragno DB Outbox", () => {
   it("does not write outbox entries when disabled", async () => {
-    const { fragments, test } = await buildOutboxTest({ type: "kysely-sqlite" });
-    const { fragment, db } = fragments.outbox;
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const { db, internalFragment, cleanup } = await buildOutboxTest({
+      type: "kysely-sqlite",
+    });
 
     await db.create("users", { email: "disabled@example.com" });
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(0);
 
-    await test.cleanup();
+    await cleanup();
   });
 
   it("stores refMap placeholders and lists entries in order", async () => {
-    const { fragments, test } = await buildOutboxTest({
+    const { db, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
       outbox: { enabled: true },
     });
-    const { fragment, db } = fragments.outbox;
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
 
     await db.create("users", { email: "alpha@example.com" });
     const user = await db.findFirst("users", (b) =>
@@ -121,16 +197,14 @@ describe("Fragno DB Outbox", () => {
     const afterInternal = await listOutbox(internalFragment);
     expect(afterInternal).toHaveLength(2);
 
-    await test.cleanup();
+    await cleanup();
   });
 
   it("orders outbox entries by commit order across concurrent UOWs", async () => {
-    const { fragments, test } = await buildOutboxTest({
+    const { db, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
       outbox: { enabled: true },
     });
-    const { fragment, db } = fragments.outbox;
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
 
     const uow1 = db.createUnitOfWork("uow-1");
     const uow2 = db.createUnitOfWork("uow-2");
@@ -150,30 +224,30 @@ describe("Fragno DB Outbox", () => {
     expect(entries.map((entry) => entry.uowId)).toEqual(completionOrder);
     expect(entries[0].versionstamp < entries[1].versionstamp).toBe(true);
 
-    await test.cleanup();
+    await cleanup();
   });
 
   describe.each(adapterConfigs)("adapter opt-in (%s)", (adapterConfig) => {
     it("writes outbox rows only when enabled", async () => {
-      const { fragments, test } = await buildOutboxTest(adapterConfig);
-      const { fragment, db } = fragments.outbox;
-      const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+      const { db, internalFragment, cleanup } = await buildOutboxTest(adapterConfig);
 
       await db.create("users", { email: "disabled@example.com" });
       const disabledEntries = await listOutbox(internalFragment);
       expect(disabledEntries).toHaveLength(0);
-      await test.cleanup();
+      await cleanup();
 
-      const { fragments: enabledFragments, test: enabledTest } = await buildOutboxTest({
+      const {
+        db: enabledDb,
+        internalFragment: enabledInternal,
+        cleanup: enabledCleanup,
+      } = await buildOutboxTest({
         ...adapterConfig,
         outbox: { enabled: true },
       });
-      const enabledInternal =
-        enabledFragments.outbox.fragment.$internal.linkedFragments._fragno_internal;
-      await enabledFragments.outbox.db.create("users", { email: "enabled@example.com" });
+      await enabledDb.create("users", { email: "enabled@example.com" });
       const enabledEntries = await listOutbox(enabledInternal);
       expect(enabledEntries).toHaveLength(1);
-      await enabledTest.cleanup();
-    });
+      await enabledCleanup();
+    }, 10_000);
   });
 });
