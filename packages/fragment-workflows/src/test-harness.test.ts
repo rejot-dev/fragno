@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "./workflow";
-import { createWorkflowsTestHarness } from "./test";
+import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 
 class SleepWorkflow extends WorkflowEntrypoint<unknown, { note: string }> {
   async run(event: WorkflowEvent<{ note: string }>, step: WorkflowStep) {
@@ -50,5 +50,52 @@ describe("createWorkflowsTestHarness", () => {
 
     status = await harness.getStatus("events", eventId);
     expect(status.status).toBe("complete");
+  });
+
+  test("schedules retries relative to failure time", async () => {
+    let attempts = 0;
+    let testClock: WorkflowsTestClock | null = null;
+
+    class RetryDelayWorkflow extends WorkflowEntrypoint {
+      async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+        return await step.do(
+          "retry-delay",
+          { retries: { limit: 1, delay: 60_000, backoff: "constant" } },
+          () => {
+            attempts += 1;
+            if (attempts === 1) {
+              if (!testClock) {
+                throw new Error("Missing test clock");
+              }
+              testClock.advanceBy(5 * 60_000);
+              throw new Error("RETRY_ME");
+            }
+            return { ok: true };
+          },
+        );
+      }
+    }
+
+    const workflows = {
+      retryDelay: { name: "retry-delay-workflow", workflow: RetryDelayWorkflow },
+    };
+
+    const harness = await createWorkflowsTestHarness({
+      workflows,
+      adapter: { type: "drizzle-pglite" },
+    });
+    testClock = harness.clock;
+
+    const startMs = testClock.now().getTime();
+    await harness.createInstance("retryDelay");
+    await harness.runUntilIdle();
+
+    const nowMs = testClock.now().getTime();
+    expect(nowMs - startMs).toBe(5 * 60_000);
+
+    const [step] = await harness.db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(step?.status).toBe("waiting");
+    expect(step?.nextRetryAt).toBeInstanceOf(Date);
+    expect(step?.nextRetryAt?.getTime()).toBe(nowMs + 60_000);
   });
 });
