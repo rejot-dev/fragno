@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import type { FormField, FormBuilderState, FieldType, GeneratedSchemas } from "./types";
 import { generateSchemas, labelToFieldName, ensureUniqueFieldName } from "./schema-generator";
+import { parseSchemas } from "./schema-parser";
 import { getFieldTypeConfig } from "./constants";
 
 /**
@@ -14,17 +15,25 @@ function generateId(): string {
  * Hook for managing form builder state.
  */
 export interface UseFormBuilderOptions {
+  /** Initial state for the form builder (takes precedence over initialSchemas) */
   initialState?: Partial<FormBuilderState>;
+  /** Initialize from existing schemas (parsed into FormBuilderState) */
+  initialSchemas?: GeneratedSchemas;
   onChange?: (schemas: GeneratedSchemas) => void;
 }
 
 export function useFormBuilder(options: UseFormBuilderOptions = {}) {
-  const { initialState, onChange } = options;
-  const [state, setState] = useState<FormBuilderState>({
-    fields: initialState?.fields ?? [],
+  const { initialState, initialSchemas, onChange } = options;
+  const [state, setState] = useState<FormBuilderState>(() => {
+    if (initialState) {
+      return { fields: initialState.fields ?? [] };
+    }
+    if (initialSchemas) {
+      return parseSchemas(initialSchemas);
+    }
+    return { fields: [] };
   });
 
-  // Helper to update state and notify parent - both calls batched by React
   const updateState = useCallback(
     (nextState: FormBuilderState) => {
       setState(nextState);

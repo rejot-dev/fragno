@@ -27,11 +27,11 @@ interface RegistryItem {
   files: RegistryFile[];
 }
 
-// Files to include in the registry
 const FILES = [
   "types.ts",
   "constants.ts",
   "schema-generator.ts",
+  "schema-parser.ts",
   "use-form-builder.ts",
   "field-type-selector.tsx",
   "enum-values-editor.tsx",

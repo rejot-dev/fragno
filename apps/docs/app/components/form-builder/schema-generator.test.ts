@@ -8,7 +8,6 @@ import {
 } from "./schema-generator";
 import type { FormField, FormBuilderState } from "./types";
 
-// Helper to create a minimal field
 function createField(overrides: Partial<FormField> = {}): FormField {
   return {
     id: "test-id",
@@ -127,6 +126,23 @@ describe("fieldToSchemaProperty", () => {
     });
   });
 
+  it("converts slider field with default", () => {
+    const field = createField({
+      fieldType: "slider",
+      label: "Rating",
+      options: { minimum: 1, maximum: 5, defaultValue: 3 },
+    });
+    const result = fieldToSchemaProperty(field);
+
+    expect(result).toEqual({
+      type: "number",
+      title: "Rating",
+      minimum: 1,
+      maximum: 5,
+      default: 3,
+    });
+  });
+
   it("converts select field with enum values", () => {
     const field = createField({
       fieldType: "select",
@@ -232,6 +248,24 @@ describe("generateSchemas", () => {
         { type: "Control", scope: "#/properties/email" },
       ],
     });
+  });
+
+  it("includes label fields only in UI schema", () => {
+    const state: FormBuilderState = {
+      fields: [
+        createField({ fieldName: "name", label: "Name", fieldType: "text" }),
+        createField({ fieldName: "label_1", label: "Section label", fieldType: "label" }),
+        createField({ fieldName: "email", label: "Email", fieldType: "email" }),
+      ],
+    };
+    const result = generateSchemas(state);
+
+    expect(Object.keys(result.dataSchema.properties)).toEqual(["name", "email"]);
+    expect(result.uiSchema.elements).toEqual([
+      { type: "Control", scope: "#/properties/name" },
+      { type: "Label", text: "Section label" },
+      { type: "Control", scope: "#/properties/email" },
+    ]);
   });
 
   it("handles required fields", () => {

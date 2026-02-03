@@ -13,7 +13,9 @@ export type FieldType =
   | "date"
   | "time"
   | "datetime"
-  | "select";
+  | "select"
+  | "label"
+  | "unsupported";
 
 /**
  * Type-specific configuration options for a field.
@@ -25,8 +27,14 @@ export interface FieldOptions {
   minimum?: number;
   /** Maximum value for number/integer fields */
   maximum?: number;
+  /** Default value for slider fields */
+  defaultValue?: number;
   /** Placeholder text for text/textarea fields */
   placeholder?: string;
+  /** Raw JSON Schema for unsupported field types */
+  rawJsonSchema?: string;
+  /** Raw UI Schema for unsupported field types */
+  rawUiSchema?: string;
 }
 
 /**
@@ -67,7 +75,15 @@ export interface JsonSchemaProperty {
   enum?: string[];
   minimum?: number;
   maximum?: number;
+  minLength?: number;
+  maxLength?: number;
   default?: unknown;
+  /** Nested properties for object types */
+  properties?: Record<string, JsonSchemaProperty>;
+  /** Required fields for object types */
+  required?: string[];
+  /** Items schema for array types */
+  items?: JsonSchemaProperty;
 }
 
 /**
@@ -83,10 +99,12 @@ export interface DataSchema {
  * UI Schema element (Control or Layout).
  */
 export interface UiSchemaElement {
-  type: "Control" | "VerticalLayout" | "HorizontalLayout" | "Group";
+  type: "Control" | "VerticalLayout" | "HorizontalLayout" | "Group" | "Label";
   scope?: string;
   elements?: UiSchemaElement[];
   options?: Record<string, unknown>;
+  /** Text content for Label elements */
+  text?: string;
 }
 
 /**

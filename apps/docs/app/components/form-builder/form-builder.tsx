@@ -6,15 +6,22 @@ import type { FormBuilderState, GeneratedSchemas, FieldType } from "./types";
 import { cn } from "@/lib/utils";
 
 export interface FormBuilderProps {
-  /** Initial state for the form builder */
+  /** Initial state for the form builder (takes precedence over defaultSchemas) */
   defaultValue?: FormBuilderState;
+  /** Initialize from existing schemas (parsed into FormBuilderState) */
+  defaultSchemas?: GeneratedSchemas;
   /** Callback when schemas change */
   onChange?: (schemas: GeneratedSchemas) => void;
   /** Additional class name */
   className?: string;
 }
 
-export function FormBuilder({ defaultValue, onChange, className }: FormBuilderProps) {
+export function FormBuilder({
+  defaultValue,
+  defaultSchemas,
+  onChange,
+  className,
+}: FormBuilderProps) {
   const {
     state,
     addField,
@@ -23,15 +30,14 @@ export function FormBuilder({ defaultValue, onChange, className }: FormBuilderPr
     moveField,
     duplicateField,
     updateFieldNameFromLabel,
-  } = useFormBuilder({ initialState: defaultValue, onChange });
+  } = useFormBuilder({ initialState: defaultValue, initialSchemas: defaultSchemas, onChange });
 
   const handleAddField = (fieldType?: FieldType) => {
     addField(fieldType);
   };
 
   return (
-    <div data-slot="form-builder" className={cn("space-y-4", className)}>
-      {/* Field list */}
+    <div data-slot="form-builder" className={cn("space-y-6", className)}>
       {state.fields.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-muted-foreground">
@@ -39,13 +45,12 @@ export function FormBuilder({ defaultValue, onChange, className }: FormBuilderPr
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {state.fields.map((field, index) => (
             <FieldCard
               key={field.id}
               field={field}
               index={index}
-              totalCount={state.fields.length}
               onUpdate={(updates) => updateField(field.id, updates)}
               onUpdateLabel={(label) => updateFieldNameFromLabel(field.id, label)}
               onDelete={() => deleteField(field.id)}
@@ -59,7 +64,6 @@ export function FormBuilder({ defaultValue, onChange, className }: FormBuilderPr
         </div>
       )}
 
-      {/* Add field button */}
       <Button type="button" variant="outline" className="w-full" onClick={() => handleAddField()}>
         <Plus className="mr-2 size-4" />
         Add Field
