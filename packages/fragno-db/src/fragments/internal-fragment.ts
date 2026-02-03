@@ -11,6 +11,7 @@ import {
 import { FragnoId } from "../schema/create";
 import { schema, idColumn, column } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
+import { coerceVersionstampBytes, hexToVersionstamp, versionstampToHex } from "../outbox/outbox";
 
 // Constants for Fragno's internal settings table
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
@@ -45,6 +46,20 @@ export const internalSchema = schema((s) => {
         .addColumn("nonce", column("string"))
         .createIndex("idx_namespace_status_retry", ["namespace", "status", "nextRetryAt"])
         .createIndex("idx_nonce", ["nonce"]);
+    })
+    .addTable("fragno_db_outbox", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("versionstamp", column("binary"))
+        .addColumn("uowId", column("string"))
+        .addColumn("payload", column("json"))
+        .addColumn("refMap", column("json").nullable())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_outbox_versionstamp", ["versionstamp"], { unique: true })
+        .createIndex("idx_outbox_uow", ["uowId"]);
     });
 });
 
@@ -454,6 +469,44 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
             ),
           )
           .transformRetrieve(([events]) => events)
+          .build();
+      },
+    });
+  })
+  .providesService("outboxService", ({ defineService }) => {
+    return defineService({
+      /**
+       * List outbox entries ordered by versionstamp (ascending).
+       */
+      list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
+        const afterBytes = afterVersionstamp ? hexToVersionstamp(afterVersionstamp) : undefined;
+
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.find("fragno_db_outbox", (b) => {
+              let builder = afterBytes
+                ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
+                    eb("versionstamp", ">", afterBytes),
+                  )
+                : b.whereIndex("idx_outbox_versionstamp");
+
+              builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
+              if (limit !== undefined) {
+                builder = builder.pageSize(limit);
+              }
+              return builder;
+            }),
+          )
+          .transformRetrieve(([entries]) =>
+            entries.map((entry) => ({
+              id: entry.id,
+              versionstamp: versionstampToHex(coerceVersionstampBytes(entry.versionstamp)),
+              uowId: entry.uowId,
+              payload: entry.payload,
+              refMap: entry.refMap ?? undefined,
+              createdAt: entry.createdAt,
+            })),
+          )
           .build();
       },
     });

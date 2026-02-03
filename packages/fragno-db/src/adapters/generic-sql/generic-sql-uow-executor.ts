@@ -3,10 +3,31 @@ import type {
   MutationResult,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import type { CompiledQuery } from "../../sql-driver/sql-driver";
+import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DriverConfig } from "./driver-config";
 import { ResultInterpreter } from "./result-interpreter";
+import { sql } from "../../sql-driver/sql";
+import { createId } from "../../id";
+import superjson from "superjson";
+import { createColdKysely } from "./migration/cold-kysely";
+import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment";
+import {
+  type OutboxConfig,
+  type OutboxRefLookup,
+  type OutboxRefMap,
+  encodeVersionstamp,
+  parseOutboxVersionValue,
+} from "../../outbox/outbox";
+import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
+import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
+import { createTableNameMapper } from "../shared/table-name-mapper";
+
+export interface ExecutorOptions {
+  dryRun?: boolean;
+  dialect: Dialect;
+  outbox?: OutboxConfig;
+}
 
 export async function executeRetrieval(
   adapter: SqlDriverAdapter,
@@ -32,6 +53,7 @@ export async function executeMutation(
   adapter: SqlDriverAdapter,
   driverConfig: DriverConfig,
   mutationBatch: CompiledMutation<CompiledQuery>[],
+  options: ExecutorOptions,
 ): Promise<MutationResult> {
   if (mutationBatch.length === 0) {
     return { success: true, createdInternalIds: [] };
@@ -39,9 +61,23 @@ export async function executeMutation(
 
   const createdInternalIds: (bigint | null)[] = [];
   const resultInterpreter = new ResultInterpreter(driverConfig);
+  const outboxEnabled = options.outbox?.enabled ?? false;
+
+  const outboxOperations = outboxEnabled
+    ? mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation] : []))
+    : [];
+
+  const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
+  const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
 
   try {
     await adapter.transaction(async (tx) => {
+      let outboxVersion: bigint | null = null;
+
+      if (shouldWriteOutbox) {
+        outboxVersion = await reserveOutboxVersion(tx, driverConfig, options.dialect);
+      }
+
       for (const compiledMutation of mutationBatch) {
         const result = await tx.executeQuery(compiledMutation.query);
 
@@ -86,6 +122,26 @@ export async function executeMutation(
           }
         }
       }
+
+      if (shouldWriteOutbox && outboxPlan && outboxVersion !== null) {
+        const uowId = mutationBatch[0]?.uowId;
+        if (!uowId) {
+          throw new Error("Outbox mutation batch is missing uowId.");
+        }
+
+        const refMap = await resolveOutboxRefMap(tx, driverConfig, outboxPlan.lookups);
+        const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
+        const payloadSerialized = superjson.serialize(payload);
+        const versionstamp = encodeVersionstamp(outboxVersion, 0);
+
+        await insertOutboxRow(tx, driverConfig, {
+          id: createId(),
+          versionstamp,
+          uowId,
+          payload: payloadSerialized,
+          refMap,
+        });
+      }
     });
 
     return { success: true, createdInternalIds };
@@ -104,8 +160,10 @@ export async function executeMutation(
 export function createExecutor(
   adapter: SqlDriverAdapter,
   driverConfig: DriverConfig,
-  dryRun?: boolean,
+  options: ExecutorOptions,
 ): UOWExecutor<CompiledQuery, unknown> {
+  const dryRun = options.dryRun ?? false;
+
   return {
     async executeRetrievalPhase(retrievalBatch: CompiledQuery[]) {
       // In dryRun mode, skip execution and return empty results
@@ -124,7 +182,150 @@ export function createExecutor(
         };
       }
 
-      return executeMutation(adapter, driverConfig, mutationBatch);
+      return executeMutation(adapter, driverConfig, mutationBatch, options);
     },
   };
+}
+
+async function reserveOutboxVersion(
+  tx: SqlDriverAdapter,
+  driverConfig: DriverConfig,
+  dialect: Dialect,
+): Promise<bigint> {
+  const key = `${SETTINGS_NAMESPACE}.outbox_version`;
+  const id = createId();
+
+  switch (driverConfig.outboxVersionstampStrategy) {
+    case "insert-on-conflict-returning": {
+      const query =
+        driverConfig.databaseType === "postgresql"
+          ? sql`
+              insert into fragno_db_settings (id, key, value)
+              values (${id}, ${key}, '0')
+              on conflict (key) do update
+                set value = (fragno_db_settings.value::bigint + 1)::text
+              returning value;
+            `
+          : sql`
+              insert into fragno_db_settings (id, key, value)
+              values (${id}, ${key}, '0')
+              on conflict (key) do update
+                set value = cast(fragno_db_settings.value as integer) + 1
+              returning value;
+            `;
+
+      const result = await tx.executeQuery(query.compile(dialect));
+      const value = result.rows[0]?.["value"];
+      return parseOutboxVersionValue(value);
+    }
+    case "update-returning": {
+      const query =
+        driverConfig.databaseType === "postgresql"
+          ? sql`
+              update fragno_db_settings
+              set value = (fragno_db_settings.value::bigint + 1)::text
+              where key = ${key}
+              returning value;
+            `
+          : sql`
+              update fragno_db_settings
+              set value = cast(fragno_db_settings.value as integer) + 1
+              where key = ${key}
+              returning value;
+            `;
+
+      const result = await tx.executeQuery(query.compile(dialect));
+      const value = result.rows[0]?.["value"];
+      if (value === undefined) {
+        throw new Error("Outbox version row was not found for update-returning strategy.");
+      }
+      return parseOutboxVersionValue(value);
+    }
+    case "insert-on-duplicate-last-insert-id": {
+      const insertQuery = sql`
+        insert into fragno_db_settings (id, key, value)
+        values (${id}, ${key}, LAST_INSERT_ID(0))
+        on duplicate key update value = LAST_INSERT_ID(cast(value as unsigned) + 1);
+      `;
+
+      await tx.executeQuery(insertQuery.compile(dialect));
+
+      const selectQuery = sql`select LAST_INSERT_ID() as value;`;
+      const result = await tx.executeQuery(selectQuery.compile(dialect));
+      const value = result.rows[0]?.["value"];
+      return parseOutboxVersionValue(value);
+    }
+  }
+}
+
+async function resolveOutboxRefMap(
+  tx: SqlDriverAdapter,
+  driverConfig: DriverConfig,
+  lookups: OutboxRefLookup[],
+): Promise<OutboxRefMap | undefined> {
+  if (lookups.length === 0) {
+    return undefined;
+  }
+
+  const refMap: OutboxRefMap = {};
+  const db = createColdKysely(driverConfig.databaseType);
+
+  for (const lookup of lookups) {
+    const mapper = lookup.namespace ? createTableNameMapper(lookup.namespace) : undefined;
+    const tableName = mapper ? mapper.toPhysical(lookup.table.ormName) : lookup.table.ormName;
+    const internalColumn = lookup.table.getInternalIdColumn().name;
+    const externalColumn = lookup.table.getIdColumn().name;
+
+    const query = db
+      .selectFrom(tableName)
+      .select(externalColumn)
+      .where(internalColumn, "=", lookup.internalId)
+      .compile();
+
+    const result = await tx.executeQuery(query);
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    const externalId = row?.[externalColumn];
+
+    if (typeof externalId !== "string") {
+      throw new Error(
+        `Failed to resolve outbox reference for ${tableName}.${internalColumn}=${String(lookup.internalId)}`,
+      );
+    }
+
+    refMap[lookup.key] = externalId;
+  }
+
+  return Object.keys(refMap).length > 0 ? refMap : undefined;
+}
+
+async function insertOutboxRow(
+  tx: SqlDriverAdapter,
+  driverConfig: DriverConfig,
+  options: {
+    id: string;
+    versionstamp: Uint8Array;
+    uowId: string;
+    payload: { json: unknown; meta?: Record<string, unknown> };
+    refMap?: OutboxRefMap;
+  },
+): Promise<void> {
+  const { id, versionstamp, uowId, payload, refMap } = options;
+  const refMapValue = refMap ?? null;
+  const serializer = createSQLSerializer(driverConfig);
+  const outboxTable = internalSchema.tables.fragno_db_outbox;
+  const values = { id, versionstamp, uowId, payload, refMap: refMapValue };
+  const serializedValues: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    const col = outboxTable.columns[key];
+    if (!col) {
+      serializedValues[key] = value;
+      continue;
+    }
+    serializedValues[col.name] = serializer.serialize(value, col);
+  }
+  const db = createColdKysely(driverConfig.databaseType);
+
+  const query = db.insertInto("fragno_db_outbox").values(serializedValues).compile();
+
+  await tx.executeQuery(query);
 }

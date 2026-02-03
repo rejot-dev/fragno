@@ -27,6 +27,7 @@ import {
 import type { UOWInstrumentation } from "../../query/unit-of-work/unit-of-work";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
+import type { OutboxConfig } from "../../outbox/outbox";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -38,6 +39,7 @@ export interface SqlAdapterOptions {
   dialect: Dialect;
   driverConfig: DriverConfig;
   uowConfig?: UnitOfWorkConfig;
+  outbox?: OutboxConfig;
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
 }
@@ -51,6 +53,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly dialect: Dialect;
   readonly driverConfig: DriverConfig;
   readonly uowConfig?: UnitOfWorkConfig;
+  readonly outbox?: OutboxConfig;
   readonly sqliteStorageMode?: SQLiteStorageMode;
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
@@ -64,12 +67,14 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     dialect,
     driverConfig,
     uowConfig,
+    outbox,
     sqliteProfile,
     sqliteStorageMode,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
     this.uowConfig = uowConfig;
+    this.outbox = outbox;
     const resolvedProfile = sqliteProfile ?? "default";
 
     if (sqliteStorageMode && sqliteProfile) {
@@ -180,7 +185,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
 
     const factory: UnitOfWorkFactory = {
       compiler: createUOWCompilerFromOperationCompiler(operationCompiler),
-      executor: createExecutor(this.#driver, this.driverConfig, false),
+      executor: createExecutor(this.#driver, this.driverConfig, {
+        dialect: this.dialect,
+        dryRun: false,
+        outbox: this.outbox,
+      }),
       decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode),
       uowConfig: this.uowConfig,
       schemaNamespaceMap: this.#schemaNamespaceMap,
@@ -192,3 +201,4 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
 
 export type { SQLiteStorageMode } from "./sqlite-storage";
 export { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
+export type { OutboxConfig } from "../../outbox/outbox";

@@ -63,6 +63,7 @@ function createMockAdapter(): DatabaseAdapter {
         executeMutations: vi.fn(async () => ({ success: true })),
         commit: vi.fn(),
         rollback: vi.fn(),
+        registerSchema: vi.fn(),
         reset: vi.fn(),
         getRetrievalOperations: vi.fn(() => []),
         getMutationOperations: vi.fn(() => []),
