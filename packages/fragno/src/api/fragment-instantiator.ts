@@ -160,6 +160,51 @@ export type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
   any
 >;
 
+const INTERNAL_LINKED_FRAGMENT_NAME = "_fragno_internal";
+const INTERNAL_ROUTE_PREFIX = "/_internal";
+
+function normalizeRoutePrefix(prefix: string): string {
+  if (!prefix.startsWith("/")) {
+    prefix = `/${prefix}`;
+  }
+  return prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
+}
+
+function joinRoutePath(prefix: string, path: string): string {
+  const normalizedPrefix = normalizeRoutePrefix(prefix);
+  if (!path || path === "/") {
+    return normalizedPrefix;
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedPrefix}${normalizedPath}`;
+}
+
+function collectLinkedFragmentRoutes(
+  linkedFragments: Record<string, AnyFragnoInstantiatedFragment>,
+): AnyFragnoRouteConfig[] {
+  const linkedRoutes: AnyFragnoRouteConfig[] = [];
+
+  for (const [name, fragment] of Object.entries(linkedFragments)) {
+    if (name !== INTERNAL_LINKED_FRAGMENT_NAME) {
+      continue;
+    }
+
+    const routes = (fragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
+    if (routes.length === 0) {
+      continue;
+    }
+
+    for (const route of routes) {
+      linkedRoutes.push({
+        ...route,
+        path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
+      });
+    }
+  }
+
+  return linkedRoutes;
+}
+
 export interface FragnoFragmentSharedConfig<
   TRoutes extends readonly FragnoRouteConfig<
     HTTPMethod,
@@ -1033,7 +1078,12 @@ export function instantiateFragment<
     services: boundServices,
     serviceDeps: serviceImplementations ?? ({} as TServiceDependencies),
   };
-  const routes = resolveRouteFactories(context, routesOrFactories);
+  const routes = resolveRouteFactories(context, routesOrFactories) as AnyFragnoRouteConfig[];
+  const linkedRoutes = collectLinkedFragmentRoutes(
+    linkedFragmentInstances as Record<string, AnyFragnoInstantiatedFragment>,
+  );
+  const finalRoutes =
+    linkedRoutes.length > 0 ? [...routes, ...linkedRoutes] : (routes as AnyFragnoRouteConfig[]);
 
   // 11. Calculate mount route
   const mountRoute = getMountRoute({
@@ -1051,7 +1101,7 @@ export function instantiateFragment<
   // Handlers get handlerContext which may have more capabilities than serviceContext
   return new FragnoInstantiatedFragment({
     name: definition.name,
-    routes,
+    routes: finalRoutes as unknown as FlattenRouteFactories<TRoutesOrFactories>,
     deps,
     services: boundServices as BoundServices<TBaseServices & TServices>,
     mountRoute,

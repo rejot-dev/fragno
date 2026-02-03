@@ -1499,6 +1499,35 @@ describe("fragment-instantiator", () => {
       expect(linkedFragment?.name).toBe("linked-fragment");
     });
 
+    it("should mount internal linked fragment routes under /_internal", async () => {
+      const linkedFragmentDef = defineFragment("linked-fragment").build();
+      const linkedRoutes = defineRoutes(linkedFragmentDef).create(({ defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/status",
+          handler: async (_input, { json }) => {
+            return json({ ok: true });
+          },
+        }),
+      ]);
+
+      const definition = defineFragment("main-fragment")
+        .withLinkedFragment("_fragno_internal", ({ config, options }) => {
+          return instantiate(linkedFragmentDef)
+            .withConfig(config)
+            .withOptions(options)
+            .withRoutes([linkedRoutes])
+            .build();
+        })
+        .build();
+
+      const fragment = instantiate(definition).withOptions({}).build();
+
+      const response = await fragment.callRouteRaw("GET", "/_internal/status" as never);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+    });
+
     it("should pass config and options to linked fragments", () => {
       interface Config {
         value: string;

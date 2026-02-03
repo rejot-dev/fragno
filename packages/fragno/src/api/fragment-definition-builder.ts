@@ -976,8 +976,9 @@ export class FragmentDefinitionBuilder<
 
   /**
    * Register a linked fragment that will be automatically instantiated.
-   * Linked fragments are service-only (no routes) and share the same config/options as the parent.
-   * All services from the linked fragment will be available as private services.
+   * Linked fragments share the same config/options as the parent and their services
+   * are exposed as private services. Routes are not exposed by default, but the
+   * instantiator may mount internal linked fragment routes under an internal prefix.
    */
   withLinkedFragment<
     const TName extends string,

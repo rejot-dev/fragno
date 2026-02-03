@@ -14,7 +14,13 @@ import {
   type DatabaseRequestStorage,
 } from "./db-fragment-definition-builder";
 import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
+import { internalFragmentRoutes } from "./fragments/internal-fragment.routes";
 import type { HooksMap } from "./hooks/hooks";
+
+function shouldExposeOutboxRoutes(options: FragnoPublicConfigWithDatabase): boolean {
+  const adapter = options.databaseAdapter as { outbox?: { enabled?: boolean } };
+  return adapter.outbox?.enabled ?? false;
+}
 
 /**
  * Helper to add database support to a fragment builder.
@@ -104,11 +110,16 @@ export function withDatabase<TSchema extends AnySchema>(
     const builderWithInternal = builder.withLinkedFragment(
       "_fragno_internal",
       ({ config, options }) => {
+        const internalRoutes = shouldExposeOutboxRoutes(options as FragnoPublicConfigWithDatabase)
+          ? [internalFragmentRoutes]
+          : [];
+
         // Cast is safe: by the time this callback is invoked during fragment instantiation,
         // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
         return instantiate(internalFragmentDef)
           .withConfig(config as {})
           .withOptions(options as FragnoPublicConfigWithDatabase)
+          .withRoutes(internalRoutes)
           .build();
       },
     );
