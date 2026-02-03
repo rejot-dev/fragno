@@ -145,6 +145,19 @@ export class RunnerStep implements WorkflowStep {
 
       const { maxAttempts, delayMs, backoff } = normalizeRetryConfig(config);
       const timeoutMs = config?.timeout ? parseDurationMs(config.timeout) : null;
+
+      if (existing && (existing.attempts ?? 0) >= maxAttempts) {
+        if (existing.id) {
+          queueStepUpdate(this.#state, name, existing.id, {
+            status: "errored",
+            errorName: "StepMaxAttemptsExceeded",
+            errorMessage: "STEP_MAX_ATTEMPTS_EXCEEDED",
+            updatedAt: now,
+          });
+        }
+        throw new NonRetryableError("STEP_MAX_ATTEMPTS_EXCEEDED", "StepMaxAttemptsExceeded");
+      }
+
       const attempt = (existing?.attempts ?? 0) + 1;
 
       const startUpdate = {
@@ -274,15 +287,26 @@ export class RunnerStep implements WorkflowStep {
         throw new WaitForEventTimeoutError();
       }
 
-      const event = this.#state.events.find(
-        (candidate) => candidate.type === options.type && candidate.deliveredAt === null,
-      );
+      const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
+      const wakeAt = existing?.wakeAt ?? new Date(now.getTime() + timeoutMs);
+
+      const event = this.#state.events.find((candidate) => {
+        if (candidate.type !== options.type || candidate.deliveredAt !== null) {
+          return false;
+        }
+        const createdAt = coerceEventTimestamp(candidate.createdAt);
+        if (Number.isNaN(createdAt.getTime())) {
+          return false;
+        }
+        return createdAt <= wakeAt;
+      });
 
       if (event) {
+        const eventTimestamp = coerceEventTimestamp(event.createdAt);
         const result = {
           type: event.type,
           payload: event.payload as Readonly<T>,
-          timestamp: event.createdAt,
+          timestamp: eventTimestamp,
         };
 
         queueEventUpdate(this.#state, event, {
@@ -324,11 +348,8 @@ export class RunnerStep implements WorkflowStep {
         return { ...result, timestamp: coerceEventTimestamp(result.timestamp) };
       }
 
-      const timeoutMs = existing?.timeoutMs ?? normalizeWaitTimeoutMs(options.timeout);
-      const wakeAt = existing?.wakeAt ?? new Date(now.getTime() + timeoutMs);
-
-      if (existing?.wakeAt && existing.wakeAt <= now) {
-        if (existing.id) {
+      if (wakeAt <= now) {
+        if (existing?.id) {
           queueStepUpdate(this.#state, name, existing.id, {
             status: "errored",
             errorName: "WaitForEventTimeoutError",

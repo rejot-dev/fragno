@@ -236,6 +236,7 @@ describe("Workflows Fragment Services", () => {
     await db.update("workflow_instance", instance.id, (b) =>
       b.set({ status: "waiting", updatedAt: new Date() }),
     );
+    await waitForHookTick(1);
     runner.tick.mockClear();
 
     await db.create("workflow_step", {
@@ -283,7 +284,82 @@ describe("Workflows Fragment Services", () => {
       status: "pending",
     });
 
+    await waitForHookTick(1);
     expect(runner.tick).toHaveBeenCalledTimes(1);
+  });
+
+  test("sendEvent should not wake when waitForEvent has timed out", async () => {
+    const instanceId = "event-timeout";
+    const instanceRef = await db.create("workflow_instance", {
+      workflowName: "demo-workflow",
+      instanceId,
+      status: "waiting",
+      params: {},
+      pauseRequested: false,
+      retentionUntil: null,
+      runNumber: 0,
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await db.create("workflow_task", {
+      instanceRef,
+      workflowName: "demo-workflow",
+      instanceId,
+      runNumber: 0,
+      kind: "run",
+      runAt: new Date(),
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 1,
+      lastError: null,
+      lockedUntil: null,
+      lockOwner: null,
+    });
+
+    runner.tick.mockClear();
+
+    await db.create("workflow_step", {
+      instanceRef,
+      workflowName: "demo-workflow",
+      instanceId,
+      runNumber: 0,
+      stepKey: "wait-timeout",
+      name: "Wait for approval",
+      type: "waitForEvent",
+      status: "waiting",
+      attempts: 0,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: new Date("2000-01-01T00:00:00.000Z"),
+      waitEventType: "approval",
+      result: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    await runService(() =>
+      fragment.services.sendEvent("demo-workflow", instanceId, {
+        type: "approval",
+        payload: { approved: true },
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
+    expect(event).toMatchObject({
+      workflowName: "demo-workflow",
+      instanceId,
+      type: "approval",
+    });
+
+    const [task] = await db.find("workflow_task", (b) => b.whereIndex("primary"));
+    expect(task.kind).not.toBe("wake");
+    expect(runner.tick).not.toHaveBeenCalled();
   });
 
   test("sendEvent should reject terminal instances", async () => {

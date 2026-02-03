@@ -10,8 +10,9 @@ import type { Condition } from "../../../query/condition-builder";
 import { createSQLSerializer } from "../../../query/serialize/create-sql-serializer";
 import type { TableNameMapper } from "../../shared/table-name-mapper";
 import type { DriverConfig } from "../driver-config";
-import type { SQLiteStorageMode } from "../sqlite-storage";
+import { sqliteStorageDefault, type SQLiteStorageMode } from "../sqlite-storage";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../../query/value-encoding";
+import { isDbNow } from "../../../query/db-now";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
 /**
@@ -58,8 +59,21 @@ export function buildWhere(
     let val = condition.b;
 
     if (!(val instanceof Column)) {
-      // Handle reference columns specially
-      if (left.role === "reference" && table) {
+      if (isDbNow(val)) {
+        if (driverConfig.databaseType === "sqlite") {
+          const storageMode = sqliteStorageMode ?? sqliteStorageDefault;
+          const storage =
+            left.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
+          if ((left.type === "timestamp" || left.type === "date") && storage === "epoch-ms") {
+            val = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+          } else {
+            val = sql`CURRENT_TIMESTAMP`;
+          }
+        } else {
+          val = sql`CURRENT_TIMESTAMP`;
+        }
+      } else if (left.role === "reference" && table) {
+        // Handle reference columns specially
         if (typeof val === "string") {
           // String external ID - create subquery to lookup internal ID
           const relation = Object.values(table.relations).find((rel) =>

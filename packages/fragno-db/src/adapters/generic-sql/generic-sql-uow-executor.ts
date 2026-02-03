@@ -152,6 +152,15 @@ export async function executeMutation(
       return { success: false };
     }
 
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? (error as { code?: unknown }).code
+        : undefined;
+
+    if (errorCode === "40001" || errorCode === "40P01") {
+      return { success: false };
+    }
+
     // Other database errors should be thrown
     throw error;
   }

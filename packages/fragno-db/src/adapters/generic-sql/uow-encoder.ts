@@ -1,6 +1,5 @@
 import type { AnyTable, AnyColumn } from "../../schema/create";
 import type { DriverConfig } from "./driver-config";
-import type { SQLiteStorageMode } from "./sqlite-storage";
 import {
   createSQLSerializer,
   type SQLSerializer,
@@ -8,7 +7,9 @@ import {
 import { encodeValues } from "../../query/value-encoding";
 import { processReferenceSubqueries } from "./query/where-builder";
 import type { TableNameMapper } from "../shared/table-name-mapper";
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
+import { isDbNow } from "../../query/db-now";
+import { sqliteStorageDefault, type SQLiteStorageMode } from "./sqlite-storage";
 
 /**
  * Encoder class for Unit of Work mutation operations.
@@ -22,9 +23,11 @@ import type { Kysely } from "kysely";
  * This class mirrors the UnitOfWorkDecoder pattern for symmetry.
  */
 export class UnitOfWorkEncoder {
+  readonly #driverConfig: DriverConfig;
   readonly #serializer: SQLSerializer;
   readonly #db: Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   readonly #mapper?: TableNameMapper;
+  readonly #sqliteStorageMode?: SQLiteStorageMode;
 
   constructor(
     driverConfig: DriverConfig,
@@ -32,8 +35,10 @@ export class UnitOfWorkEncoder {
     sqliteStorageMode?: SQLiteStorageMode,
     mapper?: TableNameMapper,
   ) {
+    this.#driverConfig = driverConfig;
     this.#serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
     this.#db = db;
+    this.#sqliteStorageMode = sqliteStorageMode;
     this.#mapper = mapper;
   }
 
@@ -105,6 +110,22 @@ export class UnitOfWorkEncoder {
         // Not a regular column (might be a special value like sql.raw())
         // Pass through as-is
         result[dbColumnName] = value;
+        continue;
+      }
+
+      if (isDbNow(value)) {
+        if (this.#driverConfig.databaseType === "sqlite") {
+          const storageMode = this.#sqliteStorageMode ?? sqliteStorageDefault;
+          const storage =
+            col.type === "date" ? storageMode.dateStorage : storageMode.timestampStorage;
+          if ((col.type === "timestamp" || col.type === "date") && storage === "epoch-ms") {
+            result[dbColumnName] = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+          } else {
+            result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
+          }
+        } else {
+          result[dbColumnName] = sql`CURRENT_TIMESTAMP`;
+        }
         continue;
       }
 

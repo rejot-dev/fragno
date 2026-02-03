@@ -1,6 +1,6 @@
 // Fragment definition and service implementations for workflow instances.
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { dbNow, withDatabase } from "@fragno-dev/db";
 import type { Cursor } from "@fragno-dev/db";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "./schema";
@@ -985,13 +985,22 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 ),
               )
               .find("workflow_step", (b) =>
-                b.whereIndex("idx_workflow_step_workflowName_instanceId_status", (eb) =>
-                  eb.and(
-                    eb("workflowName", "=", workflowName),
-                    eb("instanceId", "=", instanceId),
-                    eb("status", "=", "waiting"),
-                  ),
-                ),
+                b.whereIndex("idx_workflow_step_workflowName_instanceId_status", (eb) => {
+                  type AnyConditionBuilder = {
+                    (column: string, operator: string, value: unknown): ReturnType<typeof eb.and>;
+                    and: (...items: ReturnType<typeof eb.and>[]) => ReturnType<typeof eb.and>;
+                    or: (...items: ReturnType<typeof eb.and>[]) => ReturnType<typeof eb.and>;
+                    isNull: (column: string) => ReturnType<typeof eb.and>;
+                  };
+
+                  const builder = eb as unknown as AnyConditionBuilder;
+                  return builder.and(
+                    builder("workflowName", "=", workflowName),
+                    builder("instanceId", "=", instanceId),
+                    builder("status", "=", "waiting"),
+                    builder.or(builder.isNull("wakeAt"), builder("wakeAt", ">", dbNow())),
+                  );
+                }),
               )
               .find("workflow_task", (b) =>
                 b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>

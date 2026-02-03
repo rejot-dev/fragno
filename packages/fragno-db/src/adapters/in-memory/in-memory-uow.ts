@@ -16,6 +16,7 @@ import {
   encodeValuesWithDbDefaults,
   ReferenceSubquery,
 } from "../../query/value-encoding";
+import { isDbNow } from "../../query/db-now";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import type { CompiledJoin } from "../../query/orm/orm";
 import {
@@ -675,6 +676,9 @@ const countRows = (
   return count;
 };
 
+const resolveDbNowValue = (value: unknown, options: ResolvedInMemoryAdapterOptions): unknown =>
+  isDbNow(value) ? options.clock.now() : value;
+
 const createRow = (
   op: Extract<MutationOperation<AnySchema>, { type: "create" }>,
   namespaceStore: InMemoryNamespaceStore,
@@ -716,7 +720,7 @@ const createRow = (
       throw new Error(`Missing required value for column "${column.ormName}".`);
     }
 
-    row[column.name] = value;
+    row[column.name] = resolveDbNowValue(value, options);
   }
 
   const internalId = options.internalIdGeneratorProvided
@@ -774,7 +778,12 @@ const updateRow = (
     ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded)
     : resolveReferenceSubqueries(namespaceStore, encoded);
 
-  const updatedRow: InMemoryRow = { ...existing.row, ...resolvedValues };
+  const resolvedUpdateValues: InMemoryRow = {};
+  for (const [columnName, value] of Object.entries(resolvedValues)) {
+    resolvedUpdateValues[columnName] = resolveDbNowValue(value, options);
+  }
+
+  const updatedRow: InMemoryRow = { ...existing.row, ...resolvedUpdateValues };
   updatedRow["_version"] = currentVersion + 1;
 
   if (options.enforceConstraints) {

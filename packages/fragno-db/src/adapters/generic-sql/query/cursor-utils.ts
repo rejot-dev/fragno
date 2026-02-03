@@ -56,9 +56,35 @@ export function buildCursorCondition(
       operator,
       b: val,
     };
-  } else {
-    throw new Error(
-      "Multi-column cursor pagination is not yet supported in Generic SQL implementation",
-    );
   }
+
+  const operator = useGreaterThan ? ">" : "<";
+  const orConditions: Condition[] = [];
+
+  for (let i = 0; i < indexColumns.length; i += 1) {
+    const col = indexColumns[i]!;
+    const val = serializedValues[col.ormName];
+    const andItems: Condition[] = [];
+
+    for (let j = 0; j < i; j += 1) {
+      const prevCol = indexColumns[j]!;
+      andItems.push({
+        type: "compare",
+        a: prevCol,
+        operator: "=",
+        b: serializedValues[prevCol.ormName],
+      });
+    }
+
+    andItems.push({
+      type: "compare",
+      a: col,
+      operator,
+      b: val,
+    });
+
+    orConditions.push(andItems.length === 1 ? andItems[0]! : { type: "and", items: andItems });
+  }
+
+  return { type: "or", items: orConditions };
 }
