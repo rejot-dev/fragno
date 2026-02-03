@@ -15,3 +15,5 @@ Format:
 
 - [Fragno Upload Fragment - Implementation Plan](./impl-upload-fragment.md) - Tasks to implement
   upload fragment, adapters, core streaming support, tests, docs, and examples.
+- [Fragno Upload Fragment - File-on-Success Implementation Plan](./impl-upload-fragment-retry-semantics.md)
+  - Tasks to implement file-on-success upload semantics, retries, and related updates.
