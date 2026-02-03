@@ -106,6 +106,14 @@ const { mutate: submitForm } = formsClient.useSubmitForm({ slug: "my-form" });
 const { data: submissions } = formsClient.useSubmissions({ id });
 ```
 
+### Form Builder
+
+For shadcn/ui projects, we provide a visual form builder component:
+
+```bash
+pnpm dlx shadcn@latest add https://fragno.dev/forms/form-builder.json
+```
+
 ### Creating a Form
 
 Forms can be created dynamically at runtime using the admin hooks, or defined statically in code.

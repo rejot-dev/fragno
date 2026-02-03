@@ -9,3 +9,4 @@ example-apps/stripe-webshop/src/routeTree.gen.ts
 packages/stripe/src/webhook/test-events
 worker-configuration.d.ts
 AGENTS.md
+apps/docs/app/components/form-builder/form-builder.json

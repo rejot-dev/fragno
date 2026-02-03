@@ -157,8 +157,14 @@ Forms can be created dynamically at runtime using the admin hooks, or defined st
 (see [Static Forms](/docs/forms/static-forms)).
 
 <Callout>
-  We do not provide a visual form builder at this moment. Let [us know](/forms#survey) if that is
-  something you'd like to see!
+  We provide a visual form builder component for shadcn/ui projects. Install it with:
+
+```bash
+pnpm dlx shadcn@latest add https://fragno.dev/forms/form-builder.json
+```
+
+See the [Form Builder](#form-builder) section below for usage details.
+
 </Callout>
 
 <Callout>
@@ -261,3 +267,10 @@ multiple renderer sets including Material UI, Vanilla, and custom implementation
 
 For shadcn/ui projects, we provide a dedicated renderer package. See the
 [ShadCN Renderer](/docs/forms/shadcn-renderer) page for setup instructions.
+
+## Form Builder
+
+<include>../../.includes/forms/form-builder.md</include>
+
+See the [Form Builder](/docs/forms/form-builder) page for advanced usage, supported field types, and
+customization options.
