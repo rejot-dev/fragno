@@ -10,12 +10,14 @@ This document specifies a **generic file upload + file management Fragment** for
 fragment provides:
 
 - A **storage-agnostic** upload and file management API backed by the Fragno data layer.
+- **Upload attempts are distinct from files**: file rows are created only after successful
+  completion, and failed/expired uploads do not reserve a `fileKey`, enabling retries.
 - **Pluggable storage adapters** with an S3-compatible primary adapter (AWS S3 + R2) and a
   filesystem adapter.
 - **Direct-to-storage uploads** via signed URLs for large files (S3-compatible), plus **proxy
   streaming** uploads (filesystem and generic adapters).
 - A **key system** inspired by Deno KV key parts, encoded into URL-safe strings for use in routes.
-- Durable hooks for **final file lifecycle events** (ready/failed/deleted).
+- Durable hooks for **upload failures** and **final file lifecycle events** (ready/deleted).
 - A client API with hooks + helpers for common upload flows, including progress tracking.
 
 This fragment must align with Fragno's routing, data layer, durable hooks, and client state
@@ -62,8 +64,10 @@ Local:
 
 ## 3. Terminology
 
-- **File**: the durable entity tracked by the fragment (metadata + storage location).
-- **Upload**: an ephemeral session used to create a file (references a file).
+- **File**: the durable entity tracked by the fragment (metadata + storage location), created only
+  after a successful upload.
+- **Upload**: an ephemeral attempt to create a file, storing a mirror of file metadata + storage
+  session details until completion.
 - **File Key**: a URL-safe, encoded key derived from structured key parts.
 - **Storage Adapter**: pluggable implementation for storing and retrieving objects.
 - **Direct upload**: client uploads directly to storage (signed URL).
@@ -75,13 +79,15 @@ Local:
 
 1. Storage-agnostic API surface with a clean adapter interface.
 2. File metadata stored in Fragno data layer (DB), independent of storage.
-3. Support **direct** and **proxy** uploads, including large files.
-4. Provide **multipart** upload support (S3-compatible adapter required).
-5. URL-safe key system with **prefix querying** and cursor pagination.
-6. Durable hooks for final events (ready/failed/deleted).
-7. First-class client helpers + hooks, including progress reporting.
-8. Full test coverage (routes, services, adapters, core additions).
-9. Documentation layer similar to Stripe + Workflows docs.
+3. Uploads do not reserve file keys until completion; failed/expired uploads can be retried.
+4. Support **direct** and **proxy** uploads, including large files.
+5. Provide **multipart** upload support (S3-compatible adapter required).
+6. URL-safe key system with **prefix querying** and cursor pagination.
+7. Durable hooks for upload failures and final file events (ready/deleted).
+8. First-class client helpers + hooks, including progress reporting.
+9. Idempotent upload creation and resume semantics based on checksums when provided.
+10. Full test coverage (routes, services, adapters, core additions).
+11. Documentation layer similar to Stripe + Workflows docs.
 
 ### 4.2 Non-goals (initial)
 
@@ -224,6 +230,9 @@ This prevents partial-part matches (e.g. `n~1.` won't match `n~10.`).
 
 ## 7. Data Model (Fragno DB)
 
+Uploads carry all metadata required to create a file. File rows are created only after a successful
+upload completion; failed/aborted/expired uploads do not create file rows.
+
 ### 7.1 Tables
 
 #### `file`
@@ -238,10 +247,10 @@ This prevents partial-part matches (e.g. `n~1.` won't match `n~10.`).
 - `visibility` (string) - `"private" | "public" | "unlisted"`
 - `tags` (json, nullable) - array of strings
 - `metadata` (json, nullable) - arbitrary JSON object
-- `status` (string) - `"pending" | "uploading" | "ready" | "failed" | "deleted"`
+- `status` (string) - `"ready" | "deleted"`
 - `storageProvider` (string) - adapter name
 - `storageKey` (string)
-- `createdAt` (timestamp, default now)
+- `createdAt` (timestamp, default now) - set when upload completes
 - `updatedAt` (timestamp, default now)
 - `completedAt` (timestamp, nullable)
 - `deletedAt` (timestamp, nullable)
@@ -257,15 +266,26 @@ Indexes:
 #### `upload`
 
 - `id` (idColumn) - **uploadId** (ephemeral)
-- `fileKey` (string) - encoded key
+- `fileKey` (string) - encoded key (not reserved until a file row exists)
+- `uploaderId` (string, nullable)
+- `filename` (string)
+- `expectedSizeBytes` (bigint)
+- `contentType` (string)
+- `checksum` (json, nullable) - `{ algo: "sha256" | "md5"; value: string }`
+- `visibility` (string) - `"private" | "public" | "unlisted"`
+- `tags` (json, nullable) - array of strings
+- `metadata` (json, nullable) - arbitrary JSON object
 - `status` (string) - `"created" | "in_progress" | "completed" | "aborted" | "failed" | "expired"`
 - `strategy` (string) - `"direct-single" | "direct-multipart" | "proxy"`
+- `storageProvider` (string) - adapter name
+- `storageKey` (string)
 - `storageUploadId` (string, nullable) - for multipart sessions
-- `expectedSizeBytes` (bigint)
+- `uploadUrl` (string, nullable) - stored for direct-single idempotent reuse
+- `uploadHeaders` (json, nullable) - stored for direct-single idempotent reuse
 - `bytesUploaded` (bigint, default 0)
 - `partsUploaded` (integer, default 0)
 - `partSizeBytes` (integer, nullable)
-- `expiresAt` (timestamp)
+- `expiresAt` (timestamp) - upload session expiry (also used for idempotent reuse)
 - `createdAt` (timestamp, default now)
 - `updatedAt` (timestamp, default now)
 - `completedAt` (timestamp, nullable)
@@ -294,7 +314,18 @@ Indexes:
 
 ### 7.2 Constraints & validation
 
-- `fileKey` uniqueness enforced.
+- `fileKey` uniqueness is enforced in the `file` table only.
+- Upload creation must reject if a `file` already exists with the same `fileKey`.
+- Upload creation must reject if a non-terminal upload with the same `fileKey` already exists.
+- Upload creation must treat `expiresAt <= now` as terminal (even if the row is not yet marked
+  `expired`) so retries are not blocked by delayed timeout hooks.
+- Failed/aborted/expired uploads do **not** reserve file keys; retries are allowed.
+- Deleted files keep their `fileKey` reserved and cannot be reused.
+- File metadata is canonical after completion; upload metadata is a transient mirror used only until
+  file creation.
+- Upload metadata fields (`filename`, `contentType`, `checksum`, `visibility`, `tags`, `metadata`,
+  `uploaderId`, `expectedSizeBytes`) are immutable after upload creation. Only status, progress, and
+  timestamps may change.
 - Storage key length <= 1024 bytes (S3 and R2 limit).
 - Enforce provider-specific metadata size limits (R2: 8,192 bytes; S3 varies by provider).
 - Max upload size and parts enforced per adapter; defaults set to S3-compatible limits where
@@ -423,9 +454,12 @@ export interface StorageAdapter {
 
 File status:
 
-- `pending` -> `uploading` -> `ready`
-- `pending`/`uploading` -> `failed`
 - `ready` -> `deleted`
+
+Notes:
+
+- File rows are created only when an upload completes successfully.
+- Failed/aborted/expired uploads do not create file rows.
 
 Deletion rules:
 
@@ -437,7 +471,29 @@ Upload status:
 - `created` -> `in_progress` -> `completed`
 - `created`/`in_progress` -> `aborted`/`failed`/`expired`
 
-### 9.2 Strategy selection
+### 9.2 Key reservation and retries
+
+- Upload creation must reject if a file already exists with the same `fileKey`.
+- Only one non-terminal upload per `fileKey` may exist at a time.
+- Failed/aborted/expired uploads release the key for retries.
+- If an existing upload has `expiresAt <= now`, treat it as terminal for create/retry even if the
+  timeout hook has not executed yet.
+
+### 9.3 Idempotency and resume
+
+`POST /uploads` is idempotent **only when a checksum is supplied**.
+
+- If a non-terminal upload exists with the same `fileKey` **and** identical metadata (including
+  checksum), return the existing upload response (200) to allow resuming.
+- If a non-terminal upload exists but metadata differs, return `UPLOAD_METADATA_MISMATCH`.
+- If a completed file exists, return `FILE_ALREADY_EXISTS` (no idempotent file response).
+- If checksum is missing, skip idempotent matching and return `UPLOAD_ALREADY_ACTIVE` when another
+  non-terminal upload exists.
+- Idempotent reuse must not create a new storage session. For direct-multipart, reuse the existing
+  `storageUploadId` and `storageKey`. For direct-single, return the stored `uploadUrl` +
+  `uploadHeaders` from the upload row. If the upload is expired, create a new upload instead.
+
+### 9.4 Strategy selection
 
 `initUpload` chooses strategy based on:
 
@@ -445,7 +501,7 @@ Upload status:
 - Config thresholds (e.g., `directUploadThresholdBytes`)
 - Expected file size
 
-### 9.3 Progress tracking
+### 9.5 Progress tracking
 
 Progress is stored in `upload.bytesUploaded` and `upload.partsUploaded`. Updates can be:
 
@@ -454,6 +510,12 @@ Progress is stored in `upload.bytesUploaded` and `upload.partsUploaded`. Updates
 - Part-based via `POST /uploads/:uploadId/parts/complete` (multipart).
 
 Progress updates do **not** trigger durable hooks.
+
+### 9.6 Retention
+
+- Completed uploads are retained for audit/debugging.
+- The fragment does not ship a built-in TTL cleanup job; consumers may run periodic cleanup of
+  terminal uploads externally.
 
 ## 10. HTTP Routes (API Surface)
 
@@ -487,6 +549,14 @@ Rules:
 
 - At least one of `keyParts` or `fileKey` is required.
 - If both are provided, they must match after decoding.
+- `checksum` is optional; idempotent upload creation only applies when a checksum is provided.
+- Reject if a file already exists with the same `fileKey` (`FILE_ALREADY_EXISTS`).
+- Reject if another non-terminal upload exists for the same `fileKey` (`UPLOAD_ALREADY_ACTIVE`),
+  unless checksum is supplied and metadata matches (idempotent reuse).
+- For expired uploads (`expiresAt <= now`), allow a new upload without waiting for the timeout hook.
+- Storage side-effects must not occur on conflict. Implementations should perform conflict checks
+  before creating storage sessions. If a race occurs after storage init, abort multipart sessions
+  where possible.
 
 Output:
 
@@ -554,7 +624,8 @@ Input:
 
 #### `POST /uploads/:uploadId/complete`
 
-Finalize upload and mark file ready.
+Finalize upload and create the file record (ready). If a file already exists with the same
+`fileKey`, return `FILE_ALREADY_EXISTS`.
 
 Input:
 
@@ -566,7 +637,8 @@ Output: file metadata object (same as `GET /files/:fileKey`).
 
 #### `POST /uploads/:uploadId/abort`
 
-Abort upload; marks upload + file as failed/aborted (if not ready).
+Abort upload; marks the upload as aborted/failed and triggers `onUploadFailed`. No file row is
+created or updated.
 
 #### `POST /uploads/:uploadId/progress`
 
@@ -582,7 +654,7 @@ Input:
 
 #### `PUT /uploads/:uploadId/content`
 
-Streams upload body to storage.
+Streams upload body to storage and completes the upload on success.
 
 - Content-Type: `application/octet-stream`
 - Body: raw bytes stream (no buffering)
@@ -593,7 +665,8 @@ Returns: file metadata (ready state).
 
 #### `POST /files` (multipart/form-data)
 
-Simple single-step upload for small files.
+Simple single-step upload for small files. Internally creates an upload, transfers bytes, and
+completes it. If transfer fails, no file row is created and the upload is marked failed.
 
 FormData:
 
@@ -603,18 +676,25 @@ FormData:
 
 Returns: file metadata (ready state).
 
+Notes:
+
+- `POST /files` does **not** implement idempotent matching. If the file key already exists, return
+  `FILE_ALREADY_EXISTS`. If an active upload exists, return `UPLOAD_ALREADY_ACTIVE`.
+
 ### 10.4 File management routes
 
 #### `GET /files`
 
 List files (cursor pagination).
 
+Only completed uploads create file rows; in-progress or failed uploads are visible via `/uploads`.
+
 Query params:
 
 - `prefix` (encoded prefix produced by `encodeFileKeyPrefix(parts)`; must end with `.`)
 - `cursor` (opaque cursor string)
 - `pageSize` (default 25, max 100)
-- `status` (optional)
+- `status` (optional; `"ready"` or `"deleted"`)
 - `uploaderId` (optional)
 
 Uses `findWithCursor` on `idx_file_key` with `starts with` and the encoded prefix to guarantee
@@ -644,7 +724,10 @@ Proxy-stream file content (only if adapter supports streaming).
 ### 10.5 Error codes (initial)
 
 - `UPLOAD_NOT_FOUND`
+- `UPLOAD_ALREADY_ACTIVE`
+- `UPLOAD_METADATA_MISMATCH`
 - `FILE_NOT_FOUND`
+- `FILE_ALREADY_EXISTS`
 - `UPLOAD_EXPIRED`
 - `UPLOAD_INVALID_STATE`
 - `SIGNED_URL_UNSUPPORTED`
@@ -680,6 +763,7 @@ Expose a small helper layer for common flows:
 - `encodeFileKey`, `decodeFileKey`, `encodeFileKeyPrefix`.
 - `createUploadAndTransfer(file, opts)` (expects `keyParts` in `opts`):
   - Creates upload.
+  - Computes a checksum (default `sha256`) to enable idempotency, unless the caller supplies one.
   - If `direct-single`: PUT to signed URL, then call `complete`.
   - If `direct-multipart`: split file into parts, request URLs, upload parts, call `parts/complete`,
     then `complete`.
@@ -760,17 +844,24 @@ export type FileHookPayload = {
   fileKeyParts: FileKeyParts;
   uploadId?: string;
   uploaderId?: string | null;
-  sizeBytes: bigint;
+  sizeBytes: number;
   contentType: string;
 };
 ```
 
 Hooks should be triggered via `uow.triggerHook` during the mutation that changes state.
 
+Timeout safety:
+
+- Timeout processing must **only** update the upload row and must **not** mutate any file rows.
+- The hook must never overwrite a newly created file (e.g., a retry that already completed).
+
 Idempotency note:
 
-- File keys are never re-used once deleted (see section 9.1), so `fileKey` can be used by hook
-  consumers as a stable idempotency key for external side effects.
+- File keys are never re-used once deleted (see section 9.1), so `fileKey` is a stable idempotency
+  key for `onFileReady` and `onFileDeleted`.
+- `onUploadFailed` may fire multiple times for the same `fileKey` across retries; use `uploadId` (or
+  the hook idempotency key) to dedupe.
 
 ## 14. Testing Requirements
 
@@ -778,6 +869,8 @@ Idempotency note:
 - Route tests for each endpoint (success + error cases).
 - Multipart flow tests (parts, resume, complete).
 - Progress reporting tests.
+- File creation semantics: no file row on failed/aborted/expired uploads; file created on success.
+- Retry semantics: new upload allowed after terminal failure; concurrent active upload rejected.
 - Core streaming tests (`application/octet-stream` contentType).
 - Cursor pagination & prefix query tests (idx_file_key + `starts with`).
 

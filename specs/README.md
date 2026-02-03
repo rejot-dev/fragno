@@ -99,6 +99,9 @@ very detailed, living documents that guide implementation without constraining t
 - [Upload Fragment - Implementation Plan](./impl-upload-fragment.md) - Execution tasks for the
   upload fragment spec: adapter implementations, routes, streaming support, tests, docs, and
   examples.
+- [Upload Fragment - File-on-Success Implementation Plan](./impl-upload-fragment-retry-semantics.md)
+  - Execution tasks for the updated upload semantics: file creation on success, retry behavior, and
+    related tests/docs.
 
 ## Implementation Plans (Finished)
 
