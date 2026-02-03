@@ -77,11 +77,14 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.15",
     "@fragno-dev/cli": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/node": "^22.19.7",
+    "drizzle-orm": "^0.44.7",
     "kysely": "^0.28.10",
+    "kysely-pglite": "^0.6.1",
     "tsdown": "^0.11.13",
     "vitest": "^3.2.4"
   },

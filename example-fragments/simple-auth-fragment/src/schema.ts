@@ -7,11 +7,13 @@ export const authSchema = schema((s) => {
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
         .addColumn("passwordHash", column("string"))
+        .addColumn("role", column("string").defaultTo("user"))
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
-        .createIndex("idx_user_email", ["email"]);
+        .createIndex("idx_user_email", ["email"])
+        .createIndex("idx_user_id", ["id"], { unique: true });
     })
     .addTable("session", (t) => {
       return t
@@ -34,5 +36,8 @@ export const authSchema = schema((s) => {
         column: "id",
       },
       type: "one",
+    })
+    .alterTable("user", (t) => {
+      return t.createIndex("idx_user_createdAt", ["createdAt"]);
     });
 });
