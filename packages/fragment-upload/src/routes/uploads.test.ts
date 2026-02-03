@@ -15,14 +15,7 @@ describe("upload routes", () => {
   let fragment: UploadFragmentCaller;
 
   type UploadFragmentCaller = {
-    callRoute: (
-      method: string,
-      path: string,
-      options?: {
-        body?: unknown;
-        pathParams?: Record<string, string | number>;
-      },
-    ) => Promise<unknown>;
+    callRoute: (...args: unknown[]) => Promise<unknown>;
   };
 
   type JsonResponse<T extends Record<string, unknown> = Record<string, unknown>> = {
@@ -36,7 +29,9 @@ describe("upload routes", () => {
     error: { code: string };
   };
 
-  const asObject = (value: unknown): value is Record<string, unknown> =>
+  const asObject = (
+    value: unknown,
+  ): value is { type?: unknown; status?: unknown; error?: unknown; data?: unknown } =>
     typeof value === "object" && value !== null;
 
   const asJsonResponse = <T extends Record<string, unknown>>(value: unknown): JsonResponse<T> => {
@@ -50,8 +45,8 @@ describe("upload routes", () => {
     assert(asObject(value));
     assert(value.type === "error");
     assert(typeof value.status === "number");
-    assert(asObject(value.error));
-    assert(typeof value.error.code === "string");
+    const errorPayload = value.error as { code?: unknown };
+    assert(typeof errorPayload?.code === "string");
     return value as ErrorResponse;
   };
 
@@ -68,7 +63,7 @@ describe("upload routes", () => {
       .build();
 
     testContext = build.test;
-    fragment = build.fragments.upload.fragment;
+    fragment = build.fragments.upload.fragment as unknown as UploadFragmentCaller;
   });
 
   const resetStorage = async () => {
@@ -179,15 +174,15 @@ describe("upload routes", () => {
       expect(statusResponse.data.status).toBe("failed");
       expect(statusResponse.data.errorCode).toBe("STORAGE_ERROR");
 
-      const fileResponse = asJsonResponse<{ status: string; errorCode: string }>(
+      const fileResponse = asErrorResponse(
         await fragment.callRoute("GET", "/files/:fileKey", {
           pathParams: { fileKey },
         }),
       );
 
-      assert(fileResponse.type === "json");
-      expect(fileResponse.data.status).toBe("failed");
-      expect(fileResponse.data.errorCode).toBe("STORAGE_ERROR");
+      assert(fileResponse.type === "error");
+      expect(fileResponse.status).toBe(404);
+      expect(fileResponse.error.code).toBe("FILE_NOT_FOUND");
     } finally {
       storage.writeStream = originalWriteStream;
     }
@@ -247,5 +242,119 @@ describe("upload routes", () => {
     expect(statusResponse.data.status).toBe("in_progress");
     expect(statusResponse.data.bytesUploaded).toBe(2);
     expect(statusResponse.data.partsUploaded).toBe(1);
+  });
+
+  it("POST /uploads/:uploadId/abort does not create a file", async () => {
+    const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+      await fragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["users", 3, "avatar"],
+          filename: "abort.txt",
+          sizeBytes: 4,
+          contentType: "text/plain",
+        },
+      }),
+    );
+
+    assert(createResponse.type === "json");
+    const { uploadId, fileKey } = createResponse.data;
+
+    const abortResponse = asJsonResponse<{ ok: boolean }>(
+      await fragment.callRoute("POST", "/uploads/:uploadId/abort", {
+        pathParams: { uploadId },
+      }),
+    );
+
+    assert(abortResponse.type === "json");
+    expect(abortResponse.data.ok).toBe(true);
+
+    const statusResponse = asJsonResponse<{ status: string }>(
+      await fragment.callRoute("GET", "/uploads/:uploadId", {
+        pathParams: { uploadId },
+      }),
+    );
+
+    assert(statusResponse.type === "json");
+    expect(statusResponse.data.status).toBe("aborted");
+
+    const fileResponse = asErrorResponse(
+      await fragment.callRoute("GET", "/files/:fileKey", {
+        pathParams: { fileKey },
+      }),
+    );
+
+    assert(fileResponse.type === "error");
+    expect(fileResponse.status).toBe(404);
+    expect(fileResponse.error.code).toBe("FILE_NOT_FOUND");
+  });
+
+  it("allows retry after failed proxy upload", async () => {
+    const originalWriteStream = storage.writeStream;
+    storage.writeStream = async () => {
+      throw new Error("write failed");
+    };
+
+    const createResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+      await fragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["users", 4, "avatar"],
+          filename: "retry.txt",
+          sizeBytes: 5,
+          contentType: "text/plain",
+        },
+      }),
+    );
+
+    assert(createResponse.type === "json");
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("retry"));
+        controller.close();
+      },
+    });
+
+    const firstUpload = asErrorResponse(
+      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+        pathParams: { uploadId: createResponse.data.uploadId },
+        body: stream,
+      }),
+    );
+
+    assert(firstUpload.type === "error");
+    expect(firstUpload.status).toBe(502);
+
+    storage.writeStream = originalWriteStream;
+
+    const retryResponse = asJsonResponse<{ uploadId: string; fileKey: string }>(
+      await fragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["users", 4, "avatar"],
+          filename: "retry.txt",
+          sizeBytes: 5,
+          contentType: "text/plain",
+        },
+      }),
+    );
+
+    assert(retryResponse.type === "json");
+    expect(retryResponse.data.fileKey).toBe(createResponse.data.fileKey);
+
+    const retryStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("retry"));
+        controller.close();
+      },
+    });
+
+    const retryUpload = asJsonResponse<{ status: string }>(
+      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+        pathParams: { uploadId: retryResponse.data.uploadId },
+        body: retryStream,
+      }),
+    );
+
+    assert(retryUpload.type === "json");
+    expect(retryUpload.data.status).toBe("ready");
   });
 });

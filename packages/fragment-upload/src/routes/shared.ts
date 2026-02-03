@@ -34,7 +34,7 @@ export const fileMetadataSchema = z.object({
   visibility: visibilitySchema,
   tags: z.array(z.string()).nullable(),
   metadata: z.record(z.string(), z.unknown()).nullable(),
-  status: z.enum(["pending", "uploading", "ready", "failed", "deleted"]),
+  status: z.enum(["ready", "deleted"]),
   storageProvider: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),

@@ -6,7 +6,7 @@ description: What the Upload fragment provides out of the box.
 ## What you get
 
 - **File + upload data model**: Separate file and upload records with statuses, metadata, and
-  lifecycle timestamps.
+  lifecycle timestamps. Uploads are ephemeral; files are created only after a successful completion.
 - **Multiple upload strategies**: direct single/multipart to S3-backed storage, or server-streamed
   (proxy) uploads to file storage, depending on adapter capabilities and file size.
 - **Storage adapters**: S3-backed adapters (AWS S3 / R2) and a Node filesystem adapter.
@@ -18,8 +18,17 @@ description: What the Upload fragment provides out of the box.
 
 1. Create an upload with `POST /uploads`.
 2. Transfer file bytes (direct single, direct multipart, or server-streamed proxy).
-3. Complete the upload and move the file to `ready`.
+3. Complete the upload and create the file record in `ready`.
 4. Fetch metadata or download the file when needed.
+
+## Retry + idempotency
+
+- `POST /uploads` is idempotent **only when a checksum is provided**. If a matching, non-terminal
+  upload already exists, the server returns the existing upload so clients can resume without
+  creating new storage sessions.
+- If a checksum is missing, concurrent uploads for the same `fileKey` are rejected with
+  `UPLOAD_ALREADY_ACTIVE`.
+- Upload metadata is immutable and treated as the canonical source until the file is created.
 
 ## When to use server-streamed vs direct
 
@@ -27,3 +36,8 @@ description: What the Upload fragment provides out of the box.
   URL-capable storage adapter.
 - **Server-streamed (file storage)**: Best for smaller files or when storage credentials cannot be
   exposed to clients. The server proxies bytes to storage.
+
+## Retention
+
+- Completed uploads are retained for auditing and retries.
+- The fragment does not ship a built-in TTL cleanup job for terminal uploads.

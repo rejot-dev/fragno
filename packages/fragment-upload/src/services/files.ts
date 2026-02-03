@@ -34,6 +34,17 @@ type UploadServiceContext = DatabaseServiceContext<UploadHooks>;
 
 export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
   return {
+    findFileByKey: function (this: UploadServiceContext, fileKey: FileKeyEncoded) {
+      return this.serviceTx(uploadSchema)
+        .retrieve((uow) =>
+          uow.findFirst("file", (b) =>
+            b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", fileKey)),
+          ),
+        )
+        .transformRetrieve(([file]) => file ?? null)
+        .build();
+    },
+
     getFileByKey: function (this: UploadServiceContext, fileKey: FileKeyEncoded) {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>

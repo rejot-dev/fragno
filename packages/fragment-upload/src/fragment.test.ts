@@ -8,6 +8,7 @@ import type { StorageAdapter } from "./storage/types";
 import { uploadFragmentDefinition } from "./definition";
 import { uploadRoutes } from "./index";
 import { createFilesystemStorageAdapter } from "./storage/fs";
+import { uploadSchema } from "./schema";
 
 const createDirectAdapter = (
   strategy: "direct-single" | "direct-multipart",
@@ -16,6 +17,25 @@ const createDirectAdapter = (
   const finalizeUpload = vi.fn(async () => ({ etag: "etag-final" }));
   const completeMultipartUpload = vi.fn(async () => ({ etag: "etag-complete" }));
   const expiresAt = expiresAtOverride ?? new Date(Date.now() + 60_000);
+  const initUploadMock = vi.fn(async ({ fileKey }: Parameters<StorageAdapter["initUpload"]>[0]) => {
+    if (strategy === "direct-multipart") {
+      return {
+        strategy: "direct-multipart" as const,
+        storageKey: `store/${fileKey}`,
+        storageUploadId: "upload-123",
+        partSizeBytes: 3,
+        expiresAt,
+      };
+    }
+
+    return {
+      strategy: "direct-single" as const,
+      storageKey: `store/${fileKey}`,
+      expiresAt,
+      uploadUrl: "https://storage.local/upload",
+      uploadHeaders: { "Content-Type": "text/plain" },
+    };
+  });
 
   const adapter: StorageAdapter = {
     name: "direct-test",
@@ -26,25 +46,7 @@ const createDirectAdapter = (
       proxyUpload: false,
     },
     resolveStorageKey: ({ fileKey }) => `store/${fileKey}`,
-    initUpload: async ({ fileKey }) => {
-      if (strategy === "direct-multipart") {
-        return {
-          strategy: "direct-multipart",
-          storageKey: `store/${fileKey}`,
-          storageUploadId: "upload-123",
-          partSizeBytes: 3,
-          expiresAt,
-        };
-      }
-
-      return {
-        strategy: "direct-single",
-        storageKey: `store/${fileKey}`,
-        expiresAt,
-        uploadUrl: "https://storage.local/upload",
-        uploadHeaders: { "Content-Type": "text/plain" },
-      };
-    },
+    initUpload: initUploadMock as StorageAdapter["initUpload"],
     getPartUploadUrls: async ({ partNumbers }) =>
       partNumbers.map((partNumber) => ({
         partNumber,
@@ -55,11 +57,17 @@ const createDirectAdapter = (
     deleteObject: async () => {},
   };
 
-  return { adapter, finalizeUpload, completeMultipartUpload, expiresAt };
+  return {
+    adapter,
+    finalizeUpload,
+    completeMultipartUpload,
+    expiresAt,
+    initUpload: initUploadMock,
+  };
 };
 
 describe("upload fragment direct single flows", async () => {
-  const { adapter, finalizeUpload } = createDirectAdapter("direct-single");
+  const { adapter, finalizeUpload, initUpload } = createDirectAdapter("direct-single");
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
@@ -75,6 +83,7 @@ describe("upload fragment direct single flows", async () => {
   beforeEach(async () => {
     await testContext.resetDatabase();
     finalizeUpload.mockClear();
+    initUpload.mockClear();
   });
 
   it("completes a direct single upload", async () => {
@@ -106,6 +115,87 @@ describe("upload fragment direct single flows", async () => {
     expect(stored?.status).toBe("ready");
   });
 
+  it("reuses an upload when checksum and metadata match", async () => {
+    const payload = {
+      keyParts: ["files", "direct", 10],
+      filename: "hello.txt",
+      sizeBytes: 5,
+      contentType: "text/plain",
+      checksum: { algo: "sha256" as const, value: "deadbeef" },
+    };
+
+    const first = await fragment.callRoute("POST", "/uploads", {
+      body: payload,
+    });
+
+    assert(first.type === "json");
+
+    const second = await fragment.callRoute("POST", "/uploads", {
+      body: payload,
+    });
+
+    assert(second.type === "json");
+    expect(second.data.uploadId).toBe(first.data.uploadId);
+    expect(second.data.fileKey).toBe(first.data.fileKey);
+    expect(initUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects upload reuse when metadata mismatches", async () => {
+    const first = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 11],
+        filename: "hello.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+        checksum: { algo: "sha256" as const, value: "deadbeef" },
+      },
+    });
+
+    assert(first.type === "json");
+
+    const second = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 11],
+        filename: "different.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+        checksum: { algo: "sha256" as const, value: "deadbeef" },
+      },
+    });
+
+    assert(second.type === "error");
+    expect(second.status).toBe(409);
+    expect(second.error.code).toBe("UPLOAD_METADATA_MISMATCH");
+    expect(initUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects active uploads when checksum is missing", async () => {
+    const first = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 12],
+        filename: "hello.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(first.type === "json");
+
+    const second = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 12],
+        filename: "hello.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(second.type === "error");
+    expect(second.status).toBe(409);
+    expect(second.error.code).toBe("UPLOAD_ALREADY_ACTIVE");
+    expect(initUpload).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects completing an upload twice", async () => {
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
@@ -132,7 +222,7 @@ describe("upload fragment direct single flows", async () => {
 
     assert(secondComplete.type === "error");
     expect(secondComplete.status).toBe(409);
-    expect(secondComplete.error.code).toBe("UPLOAD_INVALID_STATE");
+    expect(secondComplete.error.code).toBe("FILE_ALREADY_EXISTS");
   });
 
   it("rejects expired uploads", async () => {
@@ -159,6 +249,58 @@ describe("upload fragment direct single flows", async () => {
     assert(response.type === "error");
     expect(response.status).toBe(410);
     expect(response.error.code).toBe("UPLOAD_EXPIRED");
+  });
+
+  it("returns FILE_ALREADY_EXISTS when completing an upload after a file is created", async () => {
+    const createResponse = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 13],
+        filename: "hello.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(createResponse.type === "json");
+
+    const upload = await db.findFirst("upload", (b) =>
+      b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
+    );
+    expect(upload).toBeTruthy();
+    if (!upload) {
+      throw new Error("Upload row missing");
+    }
+
+    const now = new Date();
+    await db.create("file", {
+      fileKey: upload.fileKey,
+      uploaderId: upload.uploaderId,
+      filename: upload.filename,
+      sizeBytes: upload.expectedSizeBytes,
+      contentType: upload.contentType,
+      checksum: upload.checksum,
+      visibility: upload.visibility,
+      tags: upload.tags,
+      metadata: upload.metadata,
+      status: "ready",
+      storageProvider: upload.storageProvider,
+      storageKey: upload.storageKey,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: now,
+      deletedAt: null,
+      errorCode: null,
+      errorMessage: null,
+    });
+
+    const completeResponse = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: createResponse.data.uploadId },
+      body: {},
+    });
+
+    assert(completeResponse.type === "error");
+    expect(completeResponse.status).toBe(409);
+    expect(completeResponse.error.code).toBe("FILE_ALREADY_EXISTS");
   });
 
   it("surfaces checksum mismatches", async () => {
@@ -189,7 +331,7 @@ describe("upload fragment direct single flows", async () => {
         filename: "hello.txt",
         sizeBytes: 2,
         contentType: "text/plain",
-        checksum: { algo: "sha256", value: "deadbeef" },
+        checksum: { algo: "sha256" as const, value: "deadbeef" },
       },
     });
 
@@ -291,8 +433,95 @@ describe("upload fragment direct single flows", async () => {
 
     expect(upload?.status).toBe("expired");
     expect(upload?.errorCode).toBe("UPLOAD_EXPIRED");
-    expect(file?.status).toBe("failed");
-    expect(file?.errorCode).toBe("UPLOAD_EXPIRED");
+    expect(file).toBeNull();
+  });
+
+  it("does not overwrite a completed retry when the timeout hook runs", async () => {
+    const createResponse = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 14],
+        filename: "hello.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      },
+    });
+
+    assert(createResponse.type === "json");
+
+    await db.update("upload", createResponse.data.uploadId, (b) =>
+      b.set({ expiresAt: new Date(Date.now() - 1_000) }),
+    );
+
+    const retryResponse = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        keyParts: ["files", "direct", 14],
+        filename: "hello.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+        checksum: { algo: "sha256" as const, value: "deadbeef" },
+      },
+    });
+
+    assert(retryResponse.type === "json");
+
+    const completedRetry = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: retryResponse.data.uploadId },
+      body: {},
+    });
+
+    assert(completedRetry.type === "json");
+    expect(completedRetry.data.status).toBe("ready");
+
+    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    const timeoutHook = hooks.find((hook) => {
+      const hookPayload = hook.payload as { uploadId?: string } | null;
+      return (
+        hook.hookName === "onUploadTimeout" &&
+        hookPayload?.uploadId === createResponse.data.uploadId
+      );
+    });
+
+    expect(timeoutHook).toBeDefined();
+    if (!timeoutHook) {
+      throw new Error("Timeout hook missing");
+    }
+
+    await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalFragment.$internal.deps.schema);
+          uow.update("fragno_hooks", timeoutHook.id, (b) =>
+            b.set({ nextRetryAt: new Date(Date.now() - 1_000) }),
+          );
+        })
+        .execute();
+    });
+
+    await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(uploadSchema);
+          uow.update("upload", retryResponse.data.uploadId, (b) =>
+            b.set({ updatedAt: new Date() }),
+          );
+        })
+        .execute();
+    });
+
+    const file = await db.findFirst("file", (b) =>
+      b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", retryResponse.data.fileKey)),
+    );
+
+    expect(file?.status).toBe("ready");
   });
 });
 
