@@ -30,13 +30,32 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  const [saltHex, iterationsStr, hashHex] = storedHash.split(":");
-  const iterations = parseInt(iterationsStr, 10);
+  const parts = storedHash.split(":");
+  if (parts.length !== 3) {
+    return false;
+  }
 
-  const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
-  const storedHashBytes = new Uint8Array(
-    hashHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
-  );
+  const [saltHex, iterationsStr, hashHex] = parts;
+  const iterations = Number.parseInt(iterationsStr, 10);
+  const isHex = (value: string) => /^[0-9a-f]+$/i.test(value) && value.length % 2 === 0;
+
+  if (!saltHex || !hashHex || !isHex(saltHex) || !isHex(hashHex)) {
+    return false;
+  }
+
+  if (!Number.isFinite(iterations) || iterations <= 0) {
+    return false;
+  }
+
+  const saltPairs = saltHex.match(/.{1,2}/g);
+  const hashPairs = hashHex.match(/.{1,2}/g);
+
+  if (!saltPairs || !hashPairs) {
+    return false;
+  }
+
+  const salt = new Uint8Array(saltPairs.map((byte) => Number.parseInt(byte, 16)));
+  const storedHashBytes = new Uint8Array(hashPairs.map((byte) => Number.parseInt(byte, 16)));
 
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(

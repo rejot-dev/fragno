@@ -101,7 +101,7 @@ export function createSessionServices(
 }
 
 export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
-  ({ services }) => {
+  ({ services, config }) => {
     return [
       defineRoute({
         method: "POST",
@@ -128,7 +128,7 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
           const success = await services.invalidateSession(sessionId);
 
           // Build response with clear cookie header
-          const clearCookieHeader = buildClearCookieHeader();
+          const clearCookieHeader = buildClearCookieHeader(config.cookieOptions ?? {});
 
           if (!success) {
             // Still clear the cookie even if session not found in DB

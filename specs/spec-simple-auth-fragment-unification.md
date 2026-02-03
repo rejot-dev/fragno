@@ -1,6 +1,6 @@
 # Source of Truth (copy from)
 
-Absolute path: `/Users/wilco/dev/is3a-site/packages/simple-auth-fragment` (this is the
+Source path (repo-relative): `packages/simple-auth-fragment` in the is3a-site repo (this is the
 implementation we are copying from).
 
 # Simple Auth Fragment Unification Plan
@@ -28,6 +28,8 @@ fragno package name/scope and workspace dependency strategy.
    - Update `package.json` to add required dev deps (`@electric-sql/pglite`, `drizzle-orm`,
      `kysely-pglite`) and keep versions aligned with the repo standards.
    - Align `tsdown.config.ts` to externalize `@fragno-dev/db` (as in is3a).
+   - Ensure fragment code splitting is configured via `@fragno-dev/unplugin-fragno` with the
+     appropriate framework adapter (`/rollup`, `/webpack`, `/rspack`, etc.).
    - Ensure scripts remain consistent (keep or drop `build:watch` per fragno conventions).
 
 3. **Schema updates**
@@ -64,6 +66,6 @@ fragno package name/scope and workspace dependency strategy.
 
 ## Validation Commands
 
-- `pnpm -C /Users/wilco/dev/fragno/packages/auth types:check`
-- `pnpm -C /Users/wilco/dev/fragno/packages/auth test`
+- `pnpm -C packages/auth types:check`
+- `pnpm -C packages/auth test`
 - If examples were touched: run their type check/test commands as applicable.
