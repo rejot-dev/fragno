@@ -1,12 +1,23 @@
-import { useState, useEffect } from "react";
-import { Palette, Database, FileJson, Check } from "lucide-react";
+import { useState, useEffect, type ComponentProps } from "react";
+import { Palette, Database, FileJson, Check, Hammer } from "lucide-react";
+import { JsonForms } from "@jsonforms/react";
+import type { JsonSchema, UISchemaElement } from "@jsonforms/core";
+import { shadcnRenderers, shadcnCells } from "@fragno-dev/jsonforms-shadcn-renderers";
 import { SurveyAboutForms } from "../../components/survey-about-forms";
 import { FormDemo } from "../../components/form-demo";
 import { CopyFormsPromptButton } from "../../components/copy-forms-prompt-button";
+import {
+  FormBuilder,
+  FormMetadataEditor,
+  type GeneratedSchemas,
+  type FormMetadata,
+} from "@/components/form-builder";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Route } from "./+types/form-index";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { Link } from "react-router";
 import { GitHub } from "@/components/logos/github";
+import { FieldSeparator } from "@/components/ui/field";
 
 export function meta() {
   return [
@@ -41,6 +52,52 @@ function useIsClient() {
   return isClient;
 }
 
+// Wrapper that only renders JsonForms on the client
+// (JsonForms uses Ajv which requires `new Function()` - not available in Workers)
+function ClientSideJsonForms(props: Omit<ComponentProps<typeof JsonForms>, "renderers" | "cells">) {
+  const isClient = useIsClient();
+
+  if (!isClient) {
+    return <div className="h-32 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />;
+  }
+
+  return <JsonForms {...props} renderers={shadcnRenderers} cells={shadcnCells} />;
+}
+
+// Form preview component
+function FormPreview({ schemas }: { schemas: GeneratedSchemas | null }) {
+  const [formData, setFormData] = useState({});
+
+  if (!schemas || Object.keys(schemas.dataSchema.properties || {}).length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Preview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-sm">Add fields to see your form preview here.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Preview</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ClientSideJsonForms
+          schema={schemas.dataSchema as JsonSchema}
+          uischema={schemas.uiSchema as UISchemaElement}
+          data={formData}
+          onChange={({ data }) => setFormData(data)}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 // =============================================================================
 // PAGE
 // =============================================================================
@@ -48,6 +105,12 @@ function useIsClient() {
 export default function FormsPage({ loaderData }: Route.ComponentProps) {
   const { turnstileSitekey } = loaderData;
   const isClient = useIsClient();
+  const [schemas, setSchemas] = useState<GeneratedSchemas | null>(null);
+  const [formMetadata, setFormMetadata] = useState<FormMetadata>({
+    title: "",
+    description: "",
+    status: "open",
+  });
 
   return (
     <main className="relative min-h-screen">
@@ -198,6 +261,46 @@ export default function FormsPage({ loaderData }: Route.ComponentProps) {
               No third-party services, you own your data
             </li>
           </ul>
+        </section>
+
+        {/* Divider */}
+        <div className="mx-auto w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+
+        {/* Form Builder Section */}
+        <section className="mx-auto max-w-6xl space-y-6">
+          <div className="space-y-4 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 dark:bg-violet-400/20">
+              <Hammer className="size-7 text-violet-600 dark:text-violet-400" />
+            </div>
+            <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+              Form Builder <span className="text-violet-600 dark:text-violet-400">Included</span>
+            </h2>
+            <p className="text-fd-muted-foreground text-lg">
+              Drop in the pre-built form builder component. Generates JSON Schema and JSON Forms UI
+              Schema that you can use with any JSONForms renderer.
+            </p>
+          </div>
+          {isClient && (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Form Builder Demo</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col gap-6">
+                      <FormMetadataEditor value={formMetadata} onChange={setFormMetadata} />
+                      <FieldSeparator />
+                      <FormBuilder onChange={setSchemas} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="lg:sticky lg:top-4 lg:self-start">
+                <FormPreview schemas={schemas} />
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Divider */}

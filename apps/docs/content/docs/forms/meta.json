@@ -7,8 +7,9 @@
     "index",
     "static-forms",
     "hooks",
-    "---Renderers---",
+    "---Rendering---",
     "shadcn-renderer",
+    "form-builder",
     "---Guides---",
     "...guides"
   ]

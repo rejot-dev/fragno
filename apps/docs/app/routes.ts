@@ -10,6 +10,7 @@ export default [
     route("docs", "routes/docs/docs-index.tsx"),
     route("docs/*", "routes/docs/docs-page.tsx"),
     route("forms", "routes/forms/form-index.tsx"),
+    route("forms/form-builder.json", "routes/forms/shadcn-registry.ts"),
   ]),
 
   route("code-preview", "routes/code-preview/code-preview-page.tsx"),

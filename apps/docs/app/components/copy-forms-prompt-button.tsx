@@ -14,6 +14,8 @@ Key steps:
 Check with me the following:
 - What path to mount the api routes (default /api/forms)
 - What JSONforms Renderer to use (default shadcn/ui: https://fragno.dev/docs/forms/shadcn-renderer)
+- Whether I want the visual Form Builder component installed (shadcn/ui only):
+  pnpm dlx shadcn@latest add https://fragno.dev/forms/form-builder.json
 `;
 
 export function CopyFormsPromptButton() {

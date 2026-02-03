@@ -1,0 +1,83 @@
+---
+title: Form Builder
+description: Visual form builder component for shadcn/ui projects
+icon: Hammer
+---
+
+## Overview
+
+The Form Builder is a shadcn/ui component for building out forms interactively. It generates JSON
+Schema and JSON Forms UI Schema. It can be used independently of the Form fragment.
+
+## Installation
+
+<include>../../.includes/forms/form-builder.md</include>
+
+## Using with the Form Fragment
+
+Combine the form builder with the `useCreateForm` hook to create forms dynamically:
+
+```tsx title="components/admin/create-form.tsx"
+import { useState } from "react";
+import { FormBuilder, FormMetadataEditor } from "@/components/ui/form-builder";
+import type { GeneratedSchemas, FormMetadata } from "@/components/ui/form-builder";
+import { formsClient } from "@/lib/forms-client";
+
+export function CreateFormPage() {
+  const [schemas, setSchemas] = useState<GeneratedSchemas | null>(null);
+  const [metadata, setMetadata] = useState<FormMetadata>({
+    title: "",
+    description: "",
+    status: "draft",
+  });
+  const { mutate: createForm, loading } = formsClient.useCreateForm();
+
+  const handleSave = async () => {
+    if (!schemas) return;
+
+    const result = await createForm({
+      body: {
+        title: metadata.title,
+        description: metadata.description,
+        status: metadata.status,
+        slug: metadata.title.toLowerCase().replace(/\s+/g, "-"),
+        dataSchema: schemas.dataSchema,
+        uiSchema: schemas.uiSchema,
+      },
+    });
+
+    if (result.success) {
+      console.log("Form created with ID:", result.data);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <FormMetadataEditor value={metadata} onChange={setMetadata} />
+      <FormBuilder onChange={setSchemas} />
+      <button onClick={handleSave} disabled={loading || !schemas}>
+        {loading ? "Saving..." : "Save Form"}
+      </button>
+    </div>
+  );
+}
+```
+
+## Form Metadata Editor
+
+The `FormMetadataEditor` component is specific to the Form fragment and provides fields for title,
+description, and status. If you're using the form builder standalone (without the Form fragment),
+you can remove this component from your project.
+
+```tsx
+import { FormMetadataEditor } from "@/components/ui/form-builder";
+import type { FormMetadata } from "@/components/ui/form-builder";
+
+const [metadata, setMetadata] = useState<FormMetadata>({
+  title: "Contact Form",
+  description: "Get in touch with us",
+  status: "open",
+});
+
+<FormMetadataEditor value={metadata} onChange={setMetadata} />;
+```

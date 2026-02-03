@@ -13,6 +13,7 @@
     "db:fragno:generate": "fragno-cli db generate app/fragno/mailing-list.ts -o app/db/mailing-list-do.schema.ts && fragno-cli db generate app/fragno/forms.ts -o app/db/forms-do.schema.ts",
     "db:mailing-list-do:generate": "drizzle-kit generate --config mailing-list-do.drizzle.config.ts",
     "db:forms-do:generate": "drizzle-kit generate --config forms-do.drizzle.config.ts",
+    "shadcn:generate": "tsx app/components/form-builder/generate-registry.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -48,6 +49,7 @@
     "isbot": "^5.1.32",
     "lucide-react": "^0.555.0",
     "motion": "^12.27.0",
+    "radix-ui": "^1.4.3",
     "react": "^19.2.3",
     "react-day-picker": "^9.13.0",
     "react-dom": "^19.2.3",
