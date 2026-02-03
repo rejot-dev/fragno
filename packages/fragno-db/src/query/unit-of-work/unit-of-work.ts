@@ -223,6 +223,14 @@ export type MutationOperation<
 export interface CompiledMutation<TOutput> {
   query: TOutput;
   /**
+   * Original mutation operation for execution metadata (e.g., outbox payloads).
+   */
+  operation?: MutationOperation<AnySchema>;
+  /**
+   * Idempotency key for the Unit of Work that produced this mutation.
+   */
+  uowId?: string;
+  /**
    * The type of mutation operation (create, update, delete, or check).
    */
   op: "create" | "update" | "delete" | "check";
@@ -1642,6 +1650,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       for (const op of this.#mutationOps) {
         const compiled = this.#compiler.compileMutationOperation(op);
         if (compiled !== null) {
+          compiled.uowId = this.#idempotencyKey;
           this.#config?.onQuery?.(compiled);
           mutationBatch.push(compiled);
         }
@@ -1798,6 +1807,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     for (const op of this.#mutationOps) {
       const compiled = compiler.compileMutationOperation(op);
       if (compiled !== null) {
+        compiled.uowId = this.#idempotencyKey;
         mutationBatch.push(compiled);
       }
     }

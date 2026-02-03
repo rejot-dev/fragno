@@ -29,6 +29,8 @@ function createMockAdapter(): DatabaseAdapter {
       forSchema: vi.fn(),
       executeRetrieve: vi.fn(),
       executeMutations: vi.fn(),
+      registerSchema: vi.fn(),
+      reset: vi.fn(),
     })),
   } as unknown as SimpleQueryInterface<TestSchema>;
 

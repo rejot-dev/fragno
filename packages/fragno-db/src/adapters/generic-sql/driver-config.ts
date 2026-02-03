@@ -18,6 +18,7 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
 
   abstract readonly supportsReturning: boolean;
   abstract readonly supportsJson: boolean;
+  abstract readonly outboxVersionstampStrategy: OutboxVersionstampStrategy;
 
   /**
    * Column name for internal ID in RETURNING results.
@@ -43,12 +44,18 @@ export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriv
   extractAffectedRows?(result: Record<string, unknown>): bigint;
 }
 
+export type OutboxVersionstampStrategy =
+  | "update-returning"
+  | "insert-on-conflict-returning"
+  | "insert-on-duplicate-last-insert-id";
+
 export class SQLocalDriverConfig extends DriverConfig<"sqlocal"> {
   override readonly driverType = "sqlocal";
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
   override readonly supportsJson = false;
   override readonly internalIdColumn = "_internalId";
+  override readonly outboxVersionstampStrategy = "insert-on-conflict-returning";
 }
 
 export class CloudflareDurableObjectsDriverConfig extends DriverConfig<"cloudflare_durable_objects"> {
@@ -57,6 +64,7 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig<"cloudfla
   override readonly supportsReturning = true;
   override readonly supportsJson = false;
   override readonly internalIdColumn = "_internalId";
+  override readonly outboxVersionstampStrategy = "insert-on-conflict-returning";
 }
 
 export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
@@ -65,6 +73,7 @@ export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
   override readonly supportsReturning = true;
   override readonly supportsJson = false;
   override readonly internalIdColumn = "_internalId";
+  override readonly outboxVersionstampStrategy = "insert-on-conflict-returning";
 
   override extractAffectedRows(result: Record<string, unknown>): bigint {
     if ("numAffectedRows" in result) {
@@ -89,6 +98,7 @@ export class NodePostgresDriverConfig extends DriverConfig<"pg"> {
   override readonly supportsReturning = true;
   override readonly supportsJson = true;
   override readonly internalIdColumn = "_internalId";
+  override readonly outboxVersionstampStrategy = "insert-on-conflict-returning";
 
   override extractAffectedRows(result: Record<string, unknown>): bigint {
     if ("numAffectedRows" in result) {
@@ -121,6 +131,7 @@ export class PGLiteDriverConfig extends DriverConfig<"pglite"> {
   override readonly supportsReturning = true;
   override readonly supportsJson = true;
   override readonly internalIdColumn = "_internalId";
+  override readonly outboxVersionstampStrategy = "insert-on-conflict-returning";
 
   override extractAffectedRows(result: Record<string, unknown>): bigint {
     if ("affectedRows" in result) {
@@ -144,4 +155,5 @@ export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
   override readonly supportsReturning = false;
   override readonly supportsJson = true;
   override readonly internalIdColumn = undefined;
+  override readonly outboxVersionstampStrategy = "insert-on-duplicate-last-insert-id";
 }

@@ -123,6 +123,13 @@ export type { BoundServices } from "@fragno-dev/core";
 
 export { internalFragmentDef } from "./fragments/internal-fragment";
 export type { InternalFragmentInstance } from "./fragments/internal-fragment";
+export type {
+  OutboxConfig,
+  OutboxEntry,
+  OutboxPayload,
+  OutboxMutation,
+  OutboxRefMap,
+} from "./outbox/outbox";
 
 export type {
   HookContext,

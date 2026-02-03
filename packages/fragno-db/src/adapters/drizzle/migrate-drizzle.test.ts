@@ -177,6 +177,18 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
       );
 
+      CREATE TABLE "fragno_db_outbox" (
+      	"id" varchar(30) NOT NULL,
+      	"versionstamp" "bytea" NOT NULL,
+      	"uowId" text NOT NULL,
+      	"payload" json NOT NULL,
+      	"refMap" json,
+      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "fragno_db_outbox_id_unique" UNIQUE("id")
+      );
+
       CREATE TABLE "users" (
       	"id" varchar(30) NOT NULL,
       	"name" text NOT NULL,
@@ -257,6 +269,8 @@ describe("generateSchema and migrate", () => {
       CREATE UNIQUE INDEX "unique_key" ON "fragno_db_settings" USING btree ("key");
       CREATE INDEX "idx_namespace_status_retry" ON "fragno_hooks" USING btree ("namespace","status","nextRetryAt");
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
+      CREATE UNIQUE INDEX "idx_outbox_versionstamp" ON "fragno_db_outbox" USING btree ("versionstamp");
+      CREATE INDEX "idx_outbox_uow" ON "fragno_db_outbox" USING btree ("uowId");
       CREATE UNIQUE INDEX "idx_users_email" ON "users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "users" USING btree ("name");
       CREATE INDEX "idx_users_active" ON "users" USING btree ("isActive");

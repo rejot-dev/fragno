@@ -701,6 +701,9 @@ export class DatabaseFragmentDefinitionBuilder<
     >(({ storage, config, options }) => {
       // Create hooks config if hooks factory is defined
       const hooksConfig = createHooksConfig({ config, options });
+      const internalFragment =
+        hooksConfig?.internalFragment ??
+        (internalFragmentFactory ? internalFragmentFactory({ config, options }) : undefined);
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
@@ -733,10 +736,10 @@ export class DatabaseFragmentDefinitionBuilder<
           ...execOptions,
           createUnitOfWork: () => {
             currentStorage.uow.reset();
-            if (hooksConfig) {
+            if (internalFragment) {
               currentStorage.uow.registerSchema(
-                hooksConfig.internalFragment.$internal.deps.schema,
-                hooksConfig.internalFragment.$internal.deps.namespace,
+                internalFragment.$internal.deps.schema,
+                internalFragment.$internal.deps.namespace,
               );
             }
             return currentStorage.uow;

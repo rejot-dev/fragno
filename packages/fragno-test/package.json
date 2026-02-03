@@ -58,6 +58,7 @@
     "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
+    "superjson": "^2.2.1",
     "vitest": "^3.2.4",
     "zod": "^4.3.5"
   },

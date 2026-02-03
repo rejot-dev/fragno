@@ -185,6 +185,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query: sqlCompiler.compileCreate(table, op.values),
+      operation: op,
       op: "create",
       expectedAffectedRows: null, // creates don't need affected row checks
       expectedReturnedRows: null,
@@ -235,6 +236,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query,
+      operation: op,
       op: "update",
       expectedAffectedRows: useReturningForCheck ? null : op.checkVersion ? 1n : null,
       expectedReturnedRows: useReturningForCheck ? 1 : null,
@@ -284,6 +286,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query,
+      operation: op,
       op: "delete",
       expectedAffectedRows: useReturningForCheck ? null : op.checkVersion ? 1n : null,
       expectedReturnedRows: useReturningForCheck ? 1 : null,
@@ -312,6 +315,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
 
     return {
       query: sqlCompiler.compileCheck(table, condition),
+      operation: op,
       op: "check",
       expectedAffectedRows: null,
       expectedReturnedRows: 1, // Check that exactly 1 row was returned

@@ -2,6 +2,7 @@ export {
   SqlAdapter,
   type SqlAdapterOptions,
   type UnitOfWorkConfig,
+  type OutboxConfig,
   sqliteProfiles,
   sqliteStorageDefault,
   sqliteStoragePrisma,

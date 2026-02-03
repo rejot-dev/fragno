@@ -903,6 +903,7 @@ export const createInMemoryUowCompiler = (): UOWCompiler<InMemoryCompiledQuery> 
   ): CompiledMutation<InMemoryCompiledQuery> | null {
     return {
       query: op,
+      operation: op,
       op: op.type,
       expectedAffectedRows: null,
       expectedReturnedRows: null,

@@ -9,6 +9,7 @@ import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/sql";
+import type { OutboxConfig } from "@fragno-dev/db/adapters/sql";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
@@ -22,18 +23,21 @@ import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 export interface KyselySqliteAdapter {
   type: "kysely-sqlite";
   uowConfig?: UnitOfWorkConfig;
+  outbox?: OutboxConfig;
 }
 
 export interface KyselyPgliteAdapter {
   type: "kysely-pglite";
   databasePath?: string;
   uowConfig?: UnitOfWorkConfig;
+  outbox?: OutboxConfig;
 }
 
 export interface DrizzlePgliteAdapter {
   type: "drizzle-pglite";
   databasePath?: string;
   uowConfig?: UnitOfWorkConfig;
+  outbox?: OutboxConfig;
 }
 
 export interface InMemoryAdapterConfig {
@@ -96,6 +100,8 @@ export async function createKyselySqliteAdapter(
   config: KyselySqliteAdapter,
   schemas: SchemaConfig[],
 ): Promise<AdapterFactoryResult<KyselySqliteAdapter>> {
+  let internalSchemaConfig: SchemaConfig | undefined;
+
   // Helper to create a new database instance and run migrations for all schemas
   const createDatabase = async () => {
     // Create SQLocalKysely instance (always in-memory for tests)
@@ -110,7 +116,23 @@ export async function createKyselySqliteAdapter(
       dialect,
       driverConfig: new SQLocalDriverConfig(),
       uowConfig: config.uowConfig,
+      outbox: config.outbox,
     });
+
+    const databaseDeps = internalFragmentDef.dependencies?.({
+      config: {},
+      options: { databaseAdapter: adapter },
+    });
+    if (databaseDeps?.schema) {
+      const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
+      await migrations.executeWithDriver(adapter.driver, 0);
+      internalSchemaConfig = {
+        schema: databaseDeps.schema,
+        namespace: databaseDeps.namespace,
+      };
+    } else {
+      internalSchemaConfig = undefined;
+    }
 
     // Run migrations for all schemas in order
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -138,11 +160,13 @@ export async function createKyselySqliteAdapter(
 
   // Reset database function - truncates all tables (only supported for in-memory databases)
   const resetDatabase = async () => {
+    const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
+
     // For SQLite, truncate all tables by deleting rows
-    for (const { schema, namespace } of schemas) {
-      const mapper = adapter.createTableNameMapper(namespace);
+    for (const { schema, namespace } of schemasToTruncate) {
+      const mapper = namespace ? adapter.createTableNameMapper(namespace) : undefined;
       for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = mapper.toPhysical(tableName);
+        const physicalTableName = mapper ? mapper.toPhysical(tableName) : tableName;
         await kysely.deleteFrom(physicalTableName).execute();
       }
     }
@@ -182,6 +206,7 @@ export async function createKyselyPgliteAdapter(
   schemas: SchemaConfig[],
 ): Promise<AdapterFactoryResult<KyselyPgliteAdapter>> {
   const databasePath = config.databasePath;
+  let internalSchemaConfig: SchemaConfig | undefined;
 
   // Helper to create a new database instance and run migrations for all schemas
   const createDatabase = async () => {
@@ -199,7 +224,23 @@ export async function createKyselyPgliteAdapter(
       dialect: kyselyPglite.dialect,
       driverConfig: new PGLiteDriverConfig(),
       uowConfig: config.uowConfig,
+      outbox: config.outbox,
     });
+
+    const databaseDeps = internalFragmentDef.dependencies?.({
+      config: {},
+      options: { databaseAdapter: adapter },
+    });
+    if (databaseDeps?.schema) {
+      const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
+      await migrations.executeWithDriver(adapter.driver, 0);
+      internalSchemaConfig = {
+        schema: databaseDeps.schema,
+        namespace: databaseDeps.namespace,
+      };
+    } else {
+      internalSchemaConfig = undefined;
+    }
 
     // Run migrations for all schemas in order
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,11 +272,13 @@ export async function createKyselyPgliteAdapter(
       throw new Error("resetDatabase is only supported for in-memory databases");
     }
 
+    const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
+
     // Truncate all tables
-    for (const { schema, namespace } of schemas) {
-      const mapper = adapter.createTableNameMapper(namespace);
+    for (const { schema, namespace } of schemasToTruncate) {
+      const mapper = namespace ? adapter.createTableNameMapper(namespace) : undefined;
       for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = mapper.toPhysical(tableName);
+        const physicalTableName = mapper ? mapper.toPhysical(tableName) : tableName;
         await kysely.deleteFrom(physicalTableName).execute();
       }
     }
@@ -286,6 +329,7 @@ export async function createDrizzlePgliteAdapter(
   schemas: SchemaConfig[],
 ): Promise<AdapterFactoryResult<DrizzlePgliteAdapter>> {
   const databasePath = config.databasePath;
+  let internalSchemaConfig: SchemaConfig | undefined;
 
   // Helper to create a new database instance and run migrations for all schemas
   const createDatabase = async () => {
@@ -297,6 +341,7 @@ export async function createDrizzlePgliteAdapter(
       dialect,
       driverConfig: new PGLiteDriverConfig(),
       uowConfig: config.uowConfig,
+      outbox: config.outbox,
     });
 
     // Run migrations for all schemas
@@ -310,6 +355,12 @@ export async function createDrizzlePgliteAdapter(
     if (databaseDeps?.schema) {
       const migrations = adapter.prepareMigrations(databaseDeps.schema, databaseDeps.namespace);
       await migrations.executeWithDriver(adapter.driver, 0);
+      internalSchemaConfig = {
+        schema: databaseDeps.schema,
+        namespace: databaseDeps.namespace,
+      };
+    } else {
+      internalSchemaConfig = undefined;
     }
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
@@ -340,12 +391,14 @@ export async function createDrizzlePgliteAdapter(
       throw new Error("resetDatabase is only supported for in-memory databases");
     }
 
+    const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
+
     // Truncate all tables by deleting rows
-    for (const { schema, namespace } of schemas) {
-      const mapper = adapter.createTableNameMapper(namespace);
+    for (const { schema, namespace } of schemasToTruncate) {
+      const mapper = namespace ? adapter.createTableNameMapper(namespace) : undefined;
       const tableNames = Object.keys(schema.tables).slice().reverse();
       for (const tableName of tableNames) {
-        const physicalTableName = mapper.toPhysical(tableName);
+        const physicalTableName = mapper ? mapper.toPhysical(tableName) : tableName;
         await drizzleDb.execute(`DELETE FROM "${physicalTableName}"`);
       }
     }
