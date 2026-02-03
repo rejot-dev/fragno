@@ -4,8 +4,8 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import { userOverviewRoutesFactory } from "./user-overview";
 
-describe("User Overview Services", async () => {
-  const { fragments, test } = await buildDatabaseFragmentsTest()
+const buildAuthTest = async () =>
+  buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "auth",
@@ -13,8 +13,11 @@ describe("User Overview Services", async () => {
     )
     .build();
 
-  const fragment = fragments.auth;
-  const services = fragment.services;
+type BuildResult = Awaited<ReturnType<typeof buildAuthTest>>;
+
+describe("User Overview Services", () => {
+  let services!: BuildResult["fragments"]["auth"]["services"];
+  let testContext!: BuildResult["test"];
 
   // Test data setup
   const testUsers = [
@@ -26,6 +29,11 @@ describe("User Overview Services", async () => {
   ];
 
   beforeAll(async () => {
+    const { fragments, test } = await buildAuthTest();
+
+    services = fragments.auth.services;
+    testContext = test;
+
     // Create test users
     for (const user of testUsers) {
       await services.createUser(user.email, user.password);
@@ -33,7 +41,7 @@ describe("User Overview Services", async () => {
   });
 
   afterAll(async () => {
-    await test.cleanup();
+    await testContext.cleanup();
   });
 
   describe("getUsersWithCursor", () => {
@@ -281,8 +289,10 @@ describe("User Overview Services", async () => {
             cursor: currentCursor,
           });
 
-          // Should return the last item again (as cursor repeats the query)
-          expect(beyondLastPage.users.length).toBeGreaterThanOrEqual(0);
+          expect(beyondLastPage.users.map((user) => user.id)).toEqual(
+            nextPage.users.map((user) => user.id),
+          );
+          expect(beyondLastPage.cursor).toBeUndefined();
           break;
         }
 

@@ -4,7 +4,6 @@ import { authSchema } from "../schema";
 import { z } from "zod";
 import { hashPassword, verifyPassword } from "./password";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
-import { FragnoApiValidationError } from "@fragno-dev/core/api";
 import type { authFragmentDefinition } from "..";
 
 export function createUserServices(orm: SimpleQueryInterface<typeof authSchema>) {
@@ -147,17 +146,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         }),
         errorCodes: ["invalid_credentials"],
         handler: async ({ input }, { json, error }) => {
-          let email: string;
-          let password: string;
-          try {
-            ({ email, password } = await input.valid());
-          } catch (error) {
-            if (error instanceof FragnoApiValidationError) {
-              console.log("validation failed", { issues: error.issues });
-            }
-
-            throw error;
-          }
+          const { email, password } = await input.valid();
 
           // Get user by email
           const user = await services.getUserByEmail(email);

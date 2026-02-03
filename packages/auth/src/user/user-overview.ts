@@ -81,20 +81,16 @@ export function createUserOverviewServices(db: SimpleQueryInterface<typeof authS
 }
 
 const sortBySchema = z.enum(["email", "createdAt"]);
+const sortOrderSchema = z.enum(["asc", "desc"]);
 
 export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ services }) => {
-    const parseQueryParams = (query: URLSearchParams) => {
-      const search = query.get("search") || undefined;
-      const requestedSortBy = (query.get("sortBy") || "createdAt") as SortField;
-      const sortOrder = (query.get("sortOrder") || "desc") as SortOrder;
-      const pageSize = Math.min(Math.max(Number(query.get("pageSize")) || 20, 1), 100);
-
-      // When searching, enforce email sorting for efficient queries
-      const sortBy: SortField = search ? "email" : requestedSortBy;
-
-      return { search, sortBy, sortOrder, pageSize };
-    };
+    const querySchema = z.object({
+      search: z.string().optional(),
+      sortBy: sortBySchema.default("createdAt"),
+      sortOrder: sortOrderSchema.default("desc"),
+      pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    });
 
     const parseCursor = (cursorParam: string | null): Cursor | undefined => {
       if (!cursorParam) {
@@ -126,8 +122,21 @@ export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinit
           sortBy: sortBySchema,
         }),
         errorCodes: ["invalid_input"],
-        handler: async ({ query }, { json }) => {
-          const params = parseQueryParams(query);
+        handler: async ({ query }, { json, error }) => {
+          const parsed = querySchema.safeParse(Object.fromEntries(query.entries()));
+          if (!parsed.success) {
+            return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
+          }
+
+          const rawSearch = parsed.data.search?.trim();
+          const search = rawSearch ? rawSearch : undefined;
+          const sortBy: SortField = search ? "email" : parsed.data.sortBy;
+          const params = {
+            search,
+            sortBy,
+            sortOrder: parsed.data.sortOrder as SortOrder,
+            pageSize: parsed.data.pageSize,
+          };
           const cursor = parseCursor(query.get("cursor"));
 
           const result = await services.getUsersWithCursor({

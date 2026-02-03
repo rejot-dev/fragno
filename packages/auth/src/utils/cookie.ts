@@ -48,6 +48,7 @@ export function buildSetCookieHeader(value: string, options: CookieOptions = {})
     maxAge = MAX_AGE,
     path = "/",
   } = options;
+  const effectiveSecure = sameSite === "None" ? true : secure;
 
   const parts = [
     `${COOKIE_NAME}=${encodeURIComponent(value)}`,
@@ -59,7 +60,7 @@ export function buildSetCookieHeader(value: string, options: CookieOptions = {})
     parts.push("HttpOnly");
   }
 
-  if (secure) {
+  if (effectiveSecure) {
     parts.push("Secure");
   }
 
@@ -73,8 +74,8 @@ export function buildSetCookieHeader(value: string, options: CookieOptions = {})
 /**
  * Build a Set-Cookie header to clear the session cookie
  */
-export function buildClearCookieHeader(): string {
-  return buildSetCookieHeader("", { maxAge: 0 });
+export function buildClearCookieHeader(options: CookieOptions = {}): string {
+  return buildSetCookieHeader("", { ...options, maxAge: 0 });
 }
 
 /**

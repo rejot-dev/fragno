@@ -72,9 +72,9 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     },
   );
 
-  const { fetcher, defaultOptions } = b.getFetcher();
-
   const useMe = b.createHook("/me");
+  const useSignUp = b.createMutator("POST", "/sign-up");
+  const useSignIn = b.createMutator("POST", "/sign-in");
   const useSignOut = b.createMutator("POST", "/sign-out");
   const useUsers = b.createHook("/users");
   const useUpdateUserRole = b.createMutator("PATCH", "/users/:userId/role");
@@ -82,8 +82,8 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
 
   return {
     // Reactive hooks - Auth
-    useSignUp: b.createMutator("POST", "/sign-up"),
-    useSignIn: b.createMutator("POST", "/sign-in"),
+    useSignUp,
+    useSignIn,
     useSignOut,
     useMe,
     useUsers,
@@ -102,50 +102,30 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
         rememberMe?: boolean;
       }) => {
         // Note: rememberMe is accepted but not yet implemented on the backend
-        const response = await fetcher("/sign-in", {
-          ...defaultOptions,
-          method: "POST",
-          body: JSON.stringify({ email, password }),
+        return useSignIn.mutateQuery({
+          body: {
+            email,
+            password,
+          },
         });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Sign in failed");
-        }
-
-        return response.json() as Promise<{
-          sessionId: string;
-          userId: string;
-          email: string;
-          role: Role;
-        }>;
       },
     },
 
     signUp: {
       email: async ({ email, password }: { email: string; password: string }) => {
-        const response = await fetcher("/sign-up", {
-          ...defaultOptions,
-          method: "POST",
-          body: JSON.stringify({ email, password }),
+        return useSignUp.mutateQuery({
+          body: {
+            email,
+            password,
+          },
         });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Sign up failed");
-        }
-
-        return response.json() as Promise<{
-          sessionId: string;
-          userId: string;
-          email: string;
-          role: Role;
-        }>;
       },
     },
 
-    signOut: () => {
-      return useSignOut.mutateQuery({ body: { sessionId: undefined } });
+    signOut: (params?: { sessionId?: string }) => {
+      return useSignOut.mutateQuery({
+        body: params?.sessionId ? { sessionId: params.sessionId } : {},
+      });
     },
 
     // signOut: async () => {
@@ -165,15 +145,12 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
     //   }>;
     // },
 
-    me: async () => {
-      const response = await fetcher("/me", {
-        ...defaultOptions,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Me failed");
+    me: async (params?: { sessionId?: string }) => {
+      if (params?.sessionId) {
+        return useMe.query({ query: { sessionId: params.sessionId } });
       }
+
+      return useMe.query();
     },
   };
 }
