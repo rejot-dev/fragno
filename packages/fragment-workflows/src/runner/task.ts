@@ -98,13 +98,12 @@ export const claimTask = async (
             return { kind: "noop" as const };
           }
 
-          const hasActiveLease = currentTask.lockedUntil ? currentTask.lockedUntil > now : false;
+          const hasActiveLease =
+            currentTask.status === "processing" && currentTask.lockedUntil
+              ? currentTask.lockedUntil > now
+              : false;
           const canStealProcessing = currentTask.status === "processing" && !hasActiveLease;
           if (currentTask.status !== "pending" && !canStealProcessing) {
-            return { kind: "noop" as const };
-          }
-
-          if (currentTask.status === "pending" && hasActiveLease) {
             return { kind: "noop" as const };
           }
 
@@ -390,11 +389,14 @@ export const renewTaskLease = async (
           ),
         )
         .transformRetrieve(([currentTask]) => {
-          const instance = currentTask?.taskInstance;
-          return { task: currentTask ?? null, instance: instance ?? null };
+          const instance = currentTask?.taskInstance ?? null;
+          const task = currentTask ?? null;
+          const canRenew =
+            !!task && task.status === "processing" && task.lockOwner === ctx.runnerId;
+          return { task, instance, canRenew };
         })
         .mutate(({ forSchema, retrieveResult }) => {
-          if (!retrieveResult.task) {
+          if (!retrieveResult.task || !retrieveResult.canRenew) {
             return;
           }
           forSchema(workflowsSchema).update("workflow_task", taskId, (b) =>
@@ -407,8 +409,8 @@ export const renewTaskLease = async (
         .transform(({ retrieveResult }) => retrieveResult)
         .execute(),
     );
-    if (!outcome.task) {
-      return { ok: false, instance: outcome.instance };
+    if (!outcome.task || !outcome.canRenew) {
+      return { ok: false, instance: outcome.instance ?? null };
     }
     return { ok: true, instance: outcome.instance };
   } catch (err) {

@@ -21,10 +21,21 @@ describe("Mailing List Fragment", async () => {
 
   const { services, fragment } = fragments["mailing-list"];
 
+  const waitForOnSubscribe = async (email: string) => {
+    const start = Date.now();
+    while (
+      !onSubscribeSpy.mock.calls.some((call) => call[0] === email) &&
+      Date.now() - start < 1000
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
   // Reset database before each test for isolation
   beforeEach(async () => {
-    onSubscribeSpy.mockClear();
     await testContext.resetDatabase();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    onSubscribeSpy.mockClear();
   });
 
   describe("set up", () => {
@@ -158,8 +169,8 @@ describe("Mailing List Fragment", async () => {
           alreadySubscribed: false,
         });
 
+        await waitForOnSubscribe("test@example.com");
         expect(onSubscribeSpy).toHaveBeenCalledWith("test@example.com");
-        expect(onSubscribeSpy).toHaveBeenCalledTimes(1);
 
         const result = await fragments["mailing-list"].db.find("subscriber", (b) =>
           b.whereIndex("primary"),

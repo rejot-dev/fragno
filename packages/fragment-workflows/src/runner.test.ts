@@ -858,6 +858,52 @@ describe("Workflows Runner", () => {
     expect(instance?.status).toBe("complete");
   });
 
+  test("pending task with a lease should still be claimable", async () => {
+    const id = await createInstance("concurrent-workflow", {});
+
+    const task = await db.findFirst("workflow_task", (b) =>
+      b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>
+        eb.and(
+          eb("workflowName", "=", "concurrent-workflow"),
+          eb("instanceId", "=", id),
+          eb("runNumber", "=", 0),
+        ),
+      ),
+    );
+
+    if (!task) {
+      throw new Error("Expected workflow task");
+    }
+
+    await db.update("workflow_task", task.id, (b) =>
+      b.set({
+        status: "pending",
+        lockOwner: "stale-runner",
+        lockedUntil: new Date(Date.now() + 60_000),
+        updatedAt: new Date(),
+      }),
+    );
+
+    const runner = createWorkflowsRunner({
+      fragment,
+      workflows,
+      runtime,
+      runnerId: "fresh-runner",
+    });
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+    expect(concurrentCallCount).toBe(1);
+
+    const instance = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "concurrent-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(instance?.status).toBe("complete");
+  });
+
   test("tick should prioritize wake/retry/resume before run tasks", async () => {
     const now = new Date();
     const createInstanceRecord = (instanceId: string) =>

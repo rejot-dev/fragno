@@ -45,6 +45,13 @@ describe("Workflows Fragment Services", () => {
         .execute();
     }) as Promise<T>;
 
+  const waitForHookTick = async (expectedCalls: number) => {
+    const start = Date.now();
+    while (runner.tick.mock.calls.length < expectedCalls && Date.now() - start < 200) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  };
+
   beforeEach(async () => {
     await testContext.resetDatabase();
     runner.tick.mockReset();
@@ -88,6 +95,7 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
+    await waitForHookTick(1);
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
@@ -137,13 +145,24 @@ describe("Workflows Fragment Services", () => {
   });
 
   test("terminate should mark instance as terminated", async () => {
-    const created = await runService<{ id: string }>(() =>
-      fragment.services.createInstance("demo-workflow", { id: "terminate-1" }),
-    );
-    runner.tick.mockClear();
+    await db.create("workflow_instance", {
+      workflowName: "demo-workflow",
+      instanceId: "terminate-1",
+      status: "queued",
+      params: {},
+      pauseRequested: false,
+      retentionUntil: null,
+      runNumber: 0,
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+    const tickCallsBefore = runner.tick.mock.calls.length;
 
     const terminated = await runService<{ status: string }>(() =>
-      fragment.services.terminateInstance("demo-workflow", created.id),
+      fragment.services.terminateInstance("demo-workflow", "terminate-1"),
     );
 
     expect(terminated.status).toBe("terminated");
@@ -151,12 +170,13 @@ describe("Workflows Fragment Services", () => {
     const [instance] = await db.find("workflow_instance", (b) => b.whereIndex("primary"));
     expect(instance).toMatchObject({
       workflowName: "demo-workflow",
-      instanceId: created.id,
+      instanceId: "terminate-1",
       status: "terminated",
       pauseRequested: false,
     });
     expect(instance.completedAt).toBeInstanceOf(Date);
-    expect(runner.tick).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(runner.tick.mock.calls.length).toBe(tickCallsBefore);
   });
 
   test("restart should enqueue new run and reset instance state", async () => {

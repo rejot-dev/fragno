@@ -754,7 +754,11 @@ export class DatabaseFragmentDefinitionBuilder<
           },
           onAfterMutate: async (uow) => {
             if (hooksConfig) {
-              await processHooks(hooksConfig);
+              queueMicrotask(() => {
+                void processHooks(hooksConfig).catch((error) => {
+                  console.error("Durable hooks processing failed", error);
+                });
+              });
             }
             if (userOnAfterMutate) {
               await userOnAfterMutate(uow);
