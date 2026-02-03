@@ -1,6 +1,6 @@
 {
-  "name": "@fragno-dev/simple-auth-fragment",
-  "description": "A Fragno fragment",
+  "name": "@fragno-dev/auth",
+  "description": "Auth fragment",
   "version": "0.0.13",
   "files": [
     "dist"

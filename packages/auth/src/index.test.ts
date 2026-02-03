@@ -5,7 +5,7 @@ import { sessionRoutesFactory } from "./session/session";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 
-describe("simple-auth-fragment", async () => {
+describe("auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(

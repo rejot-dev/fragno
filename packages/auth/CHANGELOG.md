@@ -1,4 +1,4 @@
-# @fragno-dev/simple-auth-fragment
+# @fragno-dev/auth
 
 ## 0.0.13
 
