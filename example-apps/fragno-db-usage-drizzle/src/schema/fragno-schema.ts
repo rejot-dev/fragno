@@ -115,21 +115,24 @@ export const fragno_db_rating_schema = {
 }
 
 // ============================================================================
-// Fragment: simple-auth
+// Fragment: simple-auth-db
 // ============================================================================
 
-export const user_simple_auth = pgTable("user_simple-auth", {
+export const user_simple_auth_db = pgTable("user_simple-auth-db", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   email: text("email").notNull(),
   passwordHash: text("passwordHash").notNull(),
+  role: text("role").notNull().default("user"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
-  index("idx_user_email_simple-auth").on(table.email)
+  index("idx_user_email_simple-auth-db").on(table.email),
+  uniqueIndex("idx_user_id_simple-auth-db").on(table.id),
+  index("idx_user_createdAt_simple-auth-db").on(table.createdAt)
 ])
 
-export const session_simple_auth = pgTable("session_simple-auth", {
+export const session_simple_auth_db = pgTable("session_simple-auth-db", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
   userId: bigint("userId", { mode: "number" }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
@@ -139,36 +142,36 @@ export const session_simple_auth = pgTable("session_simple-auth", {
 }, (table) => [
   foreignKey({
     columns: [table.userId],
-    foreignColumns: [user_simple_auth._internalId],
-    name: "fk_session_user_sessionOwner_simple-auth"
+    foreignColumns: [user_simple_auth_db._internalId],
+    name: "fk_session_user_sessionOwner_simple-auth-db"
   }),
-  index("idx_session_user_simple-auth").on(table.userId)
+  index("idx_session_user_simple-auth-db").on(table.userId)
 ])
 
-export const user_simple_authRelations = relations(user_simple_auth, ({ many }) => ({
-  sessionList: many(session_simple_auth, {
+export const user_simple_auth_dbRelations = relations(user_simple_auth_db, ({ many }) => ({
+  sessionList: many(session_simple_auth_db, {
     relationName: "session_user"
   })
 }));
 
-export const session_simple_authRelations = relations(session_simple_auth, ({ one }) => ({
-  sessionOwner: one(user_simple_auth, {
+export const session_simple_auth_dbRelations = relations(session_simple_auth_db, ({ one }) => ({
+  sessionOwner: one(user_simple_auth_db, {
     relationName: "session_user",
-    fields: [session_simple_auth.userId],
-    references: [user_simple_auth._internalId]
+    fields: [session_simple_auth_db.userId],
+    references: [user_simple_auth_db._internalId]
   })
 }));
 
-export const simple_auth_schema = {
-  user_simple_auth: user_simple_auth,
-  user_simple_authRelations: user_simple_authRelations,
-  user: user_simple_auth,
-  userRelations: user_simple_authRelations,
-  session_simple_auth: session_simple_auth,
-  session_simple_authRelations: session_simple_authRelations,
-  session: session_simple_auth,
-  sessionRelations: session_simple_authRelations,
-  schemaVersion: 3
+export const simple_auth_db_schema = {
+  user_simple_auth_db: user_simple_auth_db,
+  user_simple_auth_dbRelations: user_simple_auth_dbRelations,
+  user: user_simple_auth_db,
+  userRelations: user_simple_auth_dbRelations,
+  session_simple_auth_db: session_simple_auth_db,
+  session_simple_auth_dbRelations: session_simple_auth_dbRelations,
+  session: session_simple_auth_db,
+  sessionRelations: session_simple_auth_dbRelations,
+  schemaVersion: 4
 }
 
 // ============================================================================

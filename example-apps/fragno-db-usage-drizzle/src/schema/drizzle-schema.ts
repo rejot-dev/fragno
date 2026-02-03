@@ -2,7 +2,7 @@ import { integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import {
   fragno_db_rating_schema,
   fragno_db_comment_schema,
-  simple_auth_schema,
+  simple_auth_db_schema,
   workflows_schema,
 } from "./fragno-schema";
 
@@ -26,7 +26,7 @@ export const blogPost = pgTable("blog_post", {
 export const schema = {
   ...fragno_db_comment_schema,
   ...fragno_db_rating_schema,
-  ...simple_auth_schema,
+  ...simple_auth_db_schema,
   ...workflows_schema,
   user,
   blogPost,

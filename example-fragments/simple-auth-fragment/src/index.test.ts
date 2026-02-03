@@ -1,12 +1,20 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
-import { authFragmentDef, routes } from ".";
+import { authFragmentDefinition } from ".";
+import { userActionsRoutesFactory } from "./user/user-actions";
+import { sessionRoutesFactory } from "./session/session";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 
-describe.sequential("simple-auth-fragment", async () => {
+describe("simple-auth-fragment", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "kysely-sqlite" })
-    .withFragment("auth", instantiate(authFragmentDef).withConfig({}).withRoutes(routes))
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition).withRoutes([
+        userActionsRoutesFactory,
+        sessionRoutesFactory,
+      ]),
+    )
     .build();
 
   const fragment = fragments.auth;
@@ -32,8 +40,9 @@ describe.sequential("simple-auth-fragment", async () => {
         userId: expect.any(String),
         email: "test@test.com",
       });
-      sessionId = response.data.sessionId;
-      userId = response.data.userId;
+      const data = response.data;
+      sessionId = data.sessionId;
+      userId = data.userId;
     });
 
     it("/me - get active session", async () => {
@@ -84,8 +93,9 @@ describe.sequential("simple-auth-fragment", async () => {
         email: "test@test.com",
       });
 
-      sessionId = response.data.sessionId;
-      userId = response.data.userId;
+      const data = response.data as { sessionId: string; userId: string; email: string };
+      sessionId = data.sessionId;
+      userId = data.userId;
     });
   });
 });

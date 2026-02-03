@@ -191,7 +191,7 @@ export async function findAuthSessionById(sessionId: string) {
  */
 export async function findAuthUsersWithSessions() {
   const db = await getDrizzleDatabase();
-  return await db.query.user_simple_auth.findMany({
+  return await db.query.user_simple_auth_db.findMany({
     with: {
       sessionList: {
         orderBy: (session, { desc }) => [desc(session.createdAt)],
