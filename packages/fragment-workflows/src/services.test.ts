@@ -45,6 +45,13 @@ describe("Workflows Fragment Services", () => {
         .execute();
     }) as Promise<T>;
 
+  const waitForHookTick = async (expectedCalls: number) => {
+    const start = Date.now();
+    while (runner.tick.mock.calls.length < expectedCalls && Date.now() - start < 200) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  };
+
   beforeEach(async () => {
     await drainDurableHooks(fragment);
     await testContext.resetDatabase();
@@ -89,7 +96,7 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
-    await drainDurableHooks(fragment);
+    await waitForHookTick(1);
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
