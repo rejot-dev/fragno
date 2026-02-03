@@ -1,4 +1,5 @@
 import { createId } from "../id";
+import type { DbNow } from "../query/db-now";
 
 export { generateId } from "./generate-id";
 
@@ -421,9 +422,13 @@ export class VersionColumn<TIn = unknown, TOut = unknown> extends Column<"intege
   }
 }
 
+type ColumnInput<TType extends keyof TypeMap> =
+  | TypeMap[TType]
+  | (TType extends "timestamp" | "date" ? DbNow : never);
+
 export function column<TType extends keyof TypeMap>(
   type: TType,
-): Column<TType, TypeMap[TType], TypeMap[TType]> {
+): Column<TType, ColumnInput<TType>, TypeMap[TType]> {
   return new Column(type);
 }
 

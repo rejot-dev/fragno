@@ -16,6 +16,11 @@ let dbInstance: DatabaseInstance | undefined;
 export function getPostgresPool(): Pool {
   if (!poolInstance) {
     poolInstance = new Pool({ connectionString: postgresUrl });
+    poolInstance.on("error", (error) => {
+      console.error("Postgres pool error", error);
+      poolInstance = undefined;
+      dbInstance = undefined;
+    });
   }
   return poolInstance;
 }

@@ -18,6 +18,7 @@ describe("Workflows Runner", () => {
   let pauseBoundaryCount = 0;
   let pauseResumeCount = 0;
   let retryLogCount = 0;
+  let maxAttemptsCallCount = 0;
   let pauseBoundaryStarted: Promise<void>;
   let pauseBoundaryStartedResolve: (() => void) | null = null;
   let pauseBoundaryContinue: (() => void) | null = null;
@@ -99,6 +100,19 @@ describe("Workflows Runner", () => {
             throw new Error("RETRY_LOG");
           }
           return { ok: true };
+        },
+      );
+    }
+  }
+
+  class MaxAttemptsWorkflow extends WorkflowEntrypoint {
+    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+      return await step.do(
+        "max-attempt-step",
+        { retries: { limit: 0, delay: "10 ms", backoff: "constant" } },
+        () => {
+          maxAttemptsCallCount += 1;
+          throw new Error("MAX_ATTEMPT_FAIL");
         },
       );
     }
@@ -264,6 +278,7 @@ describe("Workflows Runner", () => {
     slow: { name: "slow-workflow", workflow: SlowWorkflow },
     retry: { name: "retry-workflow", workflow: RetryWorkflow },
     retryLogs: { name: "retry-logs-workflow", workflow: RetryLogWorkflow },
+    maxAttempts: { name: "max-attempts-workflow", workflow: MaxAttemptsWorkflow },
     concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
     pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
     pauseBoundary: { name: "pause-boundary-workflow", workflow: PauseBoundaryWorkflow },
@@ -346,6 +361,7 @@ describe("Workflows Runner", () => {
     pauseBoundaryCount = 0;
     pauseResumeCount = 0;
     retryLogCount = 0;
+    maxAttemptsCallCount = 0;
     pauseBoundaryContinue = null;
     pauseBoundaryStartedResolve = null;
     pauseBoundaryStarted = new Promise((resolve) => {
@@ -562,6 +578,95 @@ describe("Workflows Runner", () => {
     }
   });
 
+  test("waitForEvent should accept events created before wakeAt even if processed late", async () => {
+    vi.useFakeTimers();
+    try {
+      const id = await createInstance("timeout-workflow", {});
+      const instanceRef = await getInstanceRef("timeout-workflow", id);
+
+      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processed).toBe(1);
+
+      const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+      if (!step.wakeAt) {
+        throw new Error("Missing wakeAt");
+      }
+
+      await db.create("workflow_event", {
+        instanceRef,
+        workflowName: "timeout-workflow",
+        instanceId: id,
+        runNumber: 0,
+        type: "timeout",
+        payload: { ok: true },
+        createdAt: new Date(step.wakeAt.getTime() - 100),
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+
+      await vi.advanceTimersByTimeAsync(1100);
+
+      const processedLate = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processedLate).toBe(1);
+
+      const completed = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+
+      expect(completed?.status).toBe("complete");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("waitForEvent should ignore events created after wakeAt", async () => {
+    vi.useFakeTimers();
+    try {
+      const id = await createInstance("timeout-workflow", {});
+      const instanceRef = await getInstanceRef("timeout-workflow", id);
+
+      const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processed).toBe(1);
+
+      const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+      if (!step.wakeAt) {
+        throw new Error("Missing wakeAt");
+      }
+
+      await vi.advanceTimersByTimeAsync(1100);
+
+      await db.create("workflow_event", {
+        instanceRef,
+        workflowName: "timeout-workflow",
+        instanceId: id,
+        runNumber: 0,
+        type: "timeout",
+        payload: { ok: true },
+        createdAt: new Date(step.wakeAt.getTime() + 100),
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+
+      const processedLate = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+      expect(processedLate).toBe(1);
+
+      const errored = await db.findFirst("workflow_instance", (b) =>
+        b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+          eb.and(eb("workflowName", "=", "timeout-workflow"), eb("instanceId", "=", id)),
+        ),
+      );
+
+      expect(errored?.status).toBe("errored");
+
+      const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
+      expect(event.deliveredAt).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("do should clear timeout timers after success", async () => {
     vi.useFakeTimers();
     try {
@@ -621,6 +726,47 @@ describe("Workflows Runner", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("do should guard against attempts exceeding maxAttempts", async () => {
+    const id = await createInstance("max-attempts-workflow", {});
+    const instanceRef = await getInstanceRef("max-attempts-workflow", id);
+
+    await db.create("workflow_step", {
+      instanceRef,
+      workflowName: "max-attempts-workflow",
+      instanceId: id,
+      runNumber: 0,
+      stepKey: "max-attempt-step",
+      name: "max-attempt-step",
+      type: "do",
+      status: "waiting",
+      attempts: 1,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: new Date(Date.now() - 1000),
+      wakeAt: null,
+      waitEventType: null,
+      result: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    const processed = await runner.tick({ maxInstances: 1, maxSteps: 5 });
+    expect(processed).toBe(1);
+    expect(maxAttemptsCallCount).toBe(0);
+
+    const errored = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "max-attempts-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+
+    expect(errored?.status).toBe("errored");
+    expect(errored?.errorName).toBe("StepMaxAttemptsExceeded");
+
+    const [step] = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    expect(step.status).toBe("errored");
   });
 
   test("tick should persist step logs with context", async () => {

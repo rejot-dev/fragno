@@ -4,6 +4,7 @@ import { column, idColumn, referenceColumn, schema } from "../../../schema/creat
 import { fullSQLName, buildWhere, processReferenceSubqueries } from "./where-builder";
 import { ReferenceSubquery } from "../../../query/value-encoding";
 import { BetterSQLite3DriverConfig, NodePostgresDriverConfig } from "../driver-config";
+import { dbNow } from "../../../query/db-now";
 
 describe("where-builder", () => {
   const testSchema = schema((s) => {
@@ -15,7 +16,8 @@ describe("where-builder", () => {
           .addColumn("email", column("string"))
           .addColumn("age", column("integer").nullable())
           .addColumn("isActive", column("bool"))
-          .addColumn("createdAt", column("timestamp"));
+          .addColumn("createdAt", column("timestamp"))
+          .addColumn("birthDate", column("date").nullable());
       })
       .addTable("posts", (t) => {
         return t
@@ -111,6 +113,56 @@ describe("where-builder", () => {
     };
 
     describe("comparison operators", () => {
+      it("should serialize dbNow to CURRENT_TIMESTAMP", () => {
+        const condition = {
+          type: "compare" as const,
+          a: usersTable.columns.createdAt,
+          operator: "<=" as const,
+          b: dbNow(),
+        };
+
+        type TestDB = { users: { id: string } };
+        const db = new Kysely<TestDB>({
+          dialect: new PostgresDialect({ pool: {} as any }), // eslint-disable-line @typescript-eslint/no-explicit-any
+        });
+
+        const query = db
+          .selectFrom("users")
+          .select("id")
+          .where((eb) => buildWhere(condition, eb, new NodePostgresDriverConfig()));
+
+        expect(query.compile().sql).toContain("CURRENT_TIMESTAMP");
+      });
+
+      it("should respect sqlite date storage for dbNow", () => {
+        const condition = {
+          type: "compare" as const,
+          a: usersTable.columns.birthDate,
+          operator: "<=" as const,
+          b: dbNow(),
+        };
+
+        type TestDB = { users: { id: string } };
+        const db = new Kysely<TestDB>({
+          dialect: new PostgresDialect({ pool: {} as any }), // eslint-disable-line @typescript-eslint/no-explicit-any
+        });
+
+        const query = db
+          .selectFrom("users")
+          .select("id")
+          .where((eb) =>
+            buildWhere(condition, eb, new BetterSQLite3DriverConfig(), {
+              timestampStorage: "epoch-ms",
+              dateStorage: "iso-text",
+              bigintStorage: "blob",
+            }),
+          );
+
+        const sqlText = query.compile().sql;
+        expect(sqlText).toContain("CURRENT_TIMESTAMP");
+        expect(sqlText).not.toContain("julianday");
+      });
+
       it("should build simple equality comparison", () => {
         const condition = {
           type: "compare" as const,

@@ -1,5 +1,6 @@
 import type { Condition } from "../../query/condition-builder";
 import { ReferenceSubquery, resolveFragnoIdValue } from "../../query/value-encoding";
+import { isDbNow } from "../../query/db-now";
 import type { AnyColumn, AnyTable } from "../../schema/create";
 import { Column, FragnoId, FragnoReference } from "../../schema/create";
 import type { InMemoryNamespaceStore, InMemoryRow } from "./store";
@@ -61,6 +62,10 @@ const resolveComparisonValue = (
 ): { value: unknown; column: AnyColumn } => {
   if (value instanceof Column) {
     return { value: row[value.name], column: value };
+  }
+
+  if (isDbNow(value)) {
+    return { value: new Date(), column };
   }
 
   if (column.role === "reference") {

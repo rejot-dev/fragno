@@ -12,6 +12,7 @@ import { FragnoId } from "../schema/create";
 import { schema, idColumn, column } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { coerceVersionstampBytes, hexToVersionstamp, versionstampToHex } from "../outbox/outbox";
+import { dbNow } from "../query/db-now";
 
 // Constants for Fragno's internal settings table
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
@@ -143,7 +144,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Returns all pending events for the given namespace that are ready to be processed.
        */
       getPendingHookEvents(namespace: string) {
-        const now = new Date();
+        const now = dbNow();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
@@ -174,7 +175,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Returns ready events and marks them as processing in the same transaction.
        */
       claimPendingHookEvents(namespace: string) {
-        const now = new Date();
+        const now = dbNow();
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
@@ -386,7 +387,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         return this.serviceTx(internalSchema)
           .mutate(({ uow }) =>
             uow.update("fragno_hooks", eventId, (b) =>
-              b.set({ status: "completed", lastAttemptAt: new Date() }).check(),
+              b.set({ status: "completed", lastAttemptAt: dbNow() }).check(),
             ),
           )
           .build();
@@ -409,7 +410,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                   .set({
                     status: "pending",
                     attempts: newAttempts,
-                    lastAttemptAt: new Date(),
+                    lastAttemptAt: dbNow(),
                     nextRetryAt,
                     error,
                   })
@@ -421,7 +422,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                   .set({
                     status: "failed",
                     attempts: newAttempts,
-                    lastAttemptAt: new Date(),
+                    lastAttemptAt: dbNow(),
                     error,
                   })
                   .check(),
@@ -438,7 +439,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         return this.serviceTx(internalSchema)
           .mutate(({ uow }) =>
             uow.update("fragno_hooks", eventId, (b) =>
-              b.set({ status: "processing", lastAttemptAt: new Date() }).check(),
+              b.set({ status: "processing", lastAttemptAt: dbNow() }).check(),
             ),
           )
           .build();

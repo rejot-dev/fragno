@@ -2,6 +2,7 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { AnySchema } from "./schema/create";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
+import { dbNow, type DbNow } from "./query/db-now";
 import type { FragnoInstantiatedFragment, AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
 import type {
   FragnoPublicConfigWithDatabase,
@@ -14,6 +15,8 @@ import {
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
+export { dbNow };
+export type { DbNow };
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 
 export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
