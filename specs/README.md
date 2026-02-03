@@ -71,6 +71,9 @@ very detailed, living documents that guide implementation without constraining t
   CLI/management surface.
 - [Fragno Upload Fragment - Spec](./spec-upload-fragment.md) - Generic file upload + management
   fragment: storage adapters, key system, routes, DB schema, hooks, and client API.
+- [Workflows Reliability Fixes - Spec](./spec-workflows-smoke-fixes.md) - Reliability fixes for the
+  workflows fragment and durable hooks: batch create, task leasing, retries, timeouts, pagination,
+  dispatcher clock skew, retention/GC, and Postgres resilience.
 - [Fragno Prisma Support — Prisma Schema Generator Adapter — Spec](./spec-prisma-adapter.md) —
   Prisma integration spec covering schema generation rules, adapter responsibilities, naming
   conventions, provider-specific type mappings, migration expectations, and runtime serialization
@@ -106,6 +109,8 @@ very detailed, living documents that guide implementation without constraining t
 - [Upload Fragment - File-on-Success Implementation Plan](./impl-upload-fragment-retry-semantics.md)
   - Execution tasks for the updated upload semantics: file creation on success, retry behavior, and
     related tests/docs.
+- [Workflows Reliability Fixes - Implementation Plan](./impl-workflows-smoke-fixes.md) —
+  Implementation tasks for the workflows reliability fixes spec.
 
 ## Implementation Plans (Finished)
 
