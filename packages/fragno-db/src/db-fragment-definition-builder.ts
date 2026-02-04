@@ -21,12 +21,12 @@ import {
 } from "./query/unit-of-work/execute-unit-of-work";
 import {
   prepareHookMutations,
-  processHooks,
   type HooksMap,
   type HookFn,
   type HookContext,
   type HookProcessorConfig,
   type DurableHooksProcessingOptions,
+  createHookScheduler,
 } from "./hooks/hooks";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
@@ -644,24 +644,38 @@ export class DatabaseFragmentDefinitionBuilder<
       options: FragnoPublicConfigWithDatabase;
     }) => InternalFragmentInstance;
 
+    // Cache per instantiated fragment (deps object is unique per instantiation).
+    const hooksConfigCache = new WeakMap<object, HookProcessorConfig<THooks>>();
+
     const createHooksConfig = (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
+      deps: TDeps;
     }) => {
       if (!this.#hooksFactory) {
         return undefined;
       }
+      const cachedHooksConfig = hooksConfigCache.get(context.deps as object);
+      if (cachedHooksConfig) {
+        return cachedHooksConfig;
+      }
 
       const durableHooksOptions = context.options.durableHooks;
-      const dbContextForHooks = createDatabaseContext(
-        context.options,
-        this.#schema,
-        this.#namespace,
-      );
+      const hookAdapter =
+        context.options.databaseAdapter.getHookProcessingAdapter?.() ??
+        context.options.databaseAdapter;
+      const hookOptions =
+        hookAdapter === context.options.databaseAdapter
+          ? context.options
+          : { ...context.options, databaseAdapter: hookAdapter };
+      const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema, this.#namespace);
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: this.#hooksFactory(context),
         namespace: this.#namespace,
-        internalFragment: internalFragmentFactory(context),
+        internalFragment: internalFragmentFactory({
+          config: context.config,
+          options: hookOptions,
+        }),
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
@@ -682,7 +696,9 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             },
             onAfterMutate: async (uow) => {
-              await processHooks(hooksConfig);
+              void hooksConfig.scheduler?.schedule().catch((error) => {
+                console.error("Durable hooks processing failed", error);
+              });
               if (userOnAfterMutate) {
                 await userOnAfterMutate(uow);
               }
@@ -692,15 +708,17 @@ export class DatabaseFragmentDefinitionBuilder<
         stuckProcessingTimeoutMinutes: durableHooksOptions?.stuckProcessingTimeoutMinutes,
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
       };
+      hooksConfig.scheduler = createHookScheduler(hooksConfig);
+      hooksConfigCache.set(context.deps as object, hooksConfig);
       return hooksConfig;
     };
 
     const builderWithContext = builderWithStorage.withThisContext<
       DatabaseServiceContext<THooks>,
       DatabaseHandlerContext<THooks>
-    >(({ storage, config, options }) => {
+    >(({ storage, config, options, deps }) => {
       // Create hooks config if hooks factory is defined
-      const hooksConfig = createHooksConfig({ config, options });
+      const hooksConfig = createHooksConfig({ config, options, deps });
       const internalFragment =
         hooksConfig?.internalFragment ??
         (internalFragmentFactory ? internalFragmentFactory({ config, options }) : undefined);
@@ -753,11 +771,9 @@ export class DatabaseFragmentDefinitionBuilder<
             }
           },
           onAfterMutate: async (uow) => {
-            if (hooksConfig) {
-              queueMicrotask(() => {
-                void processHooks(hooksConfig).catch((error) => {
-                  console.error("Durable hooks processing failed", error);
-                });
+            if (hooksConfig?.scheduler) {
+              void hooksConfig.scheduler.schedule().catch((error) => {
+                console.error("Durable hooks processing failed", error);
               });
             }
             if (userOnAfterMutate) {
@@ -777,10 +793,11 @@ export class DatabaseFragmentDefinitionBuilder<
     // Build the final definition
     const finalDef = builderWithContext.build();
     if (this.#hooksFactory) {
-      finalDef.internalDataFactory = ({ config, options }) => ({
+      finalDef.internalDataFactory = ({ config, options, deps }) => ({
         durableHooks: createHooksConfig({
           config: config as TConfig,
           options: options as FragnoPublicConfigWithDatabase,
+          deps: deps as TDeps,
         }),
       });
     }

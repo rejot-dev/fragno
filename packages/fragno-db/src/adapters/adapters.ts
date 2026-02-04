@@ -44,6 +44,12 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   readonly contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
   /**
+   * Optional adapter override used for durable hook processing.
+   * Use this when the public adapter wraps another adapter (e.g. model checker).
+   */
+  getHookProcessingAdapter?: () => DatabaseAdapter<TUOWConfig>;
+
+  /**
    * Get current schema version, undefined if not initialized.
    */
   getSchemaVersion(namespace: string): Promise<string | undefined>;

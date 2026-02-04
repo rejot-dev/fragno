@@ -1824,6 +1824,9 @@ importers:
       kysely-pglite:
         specifier: ^0.6.1
         version: 0.6.1(@electric-sql/pglite@0.3.15)(better-sqlite3@12.6.2)(kysely@0.28.10)(mysql2@3.16.1)(pg@8.18.0)
+      superjson:
+        specifier: ^2.2.1
+        version: 2.2.6
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.7)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)

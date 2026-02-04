@@ -29,6 +29,7 @@ export type {
 
 // Re-export new builder-based database test utilities
 export { buildDatabaseFragmentsTest, DatabaseFragmentsTestBuilder } from "./db-test";
+export { drainDurableHooks } from "./durable-hooks";
 export {
   runModelChecker,
   defaultStateHasher,

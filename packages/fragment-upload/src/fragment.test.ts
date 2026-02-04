@@ -1,5 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it, assert, vi } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, assert, vi } from "vitest";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
 import path from "node:path";
 import os from "node:os";
@@ -9,6 +9,7 @@ import { uploadFragmentDefinition } from "./definition";
 import { uploadRoutes } from "./index";
 import { createFilesystemStorageAdapter } from "./storage/fs";
 import { uploadSchema } from "./schema";
+import type { UploadFragmentConfig } from "./config";
 
 const createDirectAdapter = (
   strategy: "direct-single" | "direct-multipart",
@@ -17,7 +18,7 @@ const createDirectAdapter = (
   const finalizeUpload = vi.fn(async () => ({ etag: "etag-final" }));
   const completeMultipartUpload = vi.fn(async () => ({ etag: "etag-complete" }));
   const expiresAt = expiresAtOverride ?? new Date(Date.now() + 60_000);
-  const initUploadMock = vi.fn(async ({ fileKey }: Parameters<StorageAdapter["initUpload"]>[0]) => {
+  const initUploadMock = vi.fn<StorageAdapter["initUpload"]>(async ({ fileKey }) => {
     if (strategy === "direct-multipart") {
       return {
         strategy: "direct-multipart" as const,
@@ -46,7 +47,7 @@ const createDirectAdapter = (
       proxyUpload: false,
     },
     resolveStorageKey: ({ fileKey }) => `store/${fileKey}`,
-    initUpload: initUploadMock as StorageAdapter["initUpload"],
+    initUpload: initUploadMock,
     getPartUploadUrls: async ({ partNumbers }) =>
       partNumbers.map((partNumber) => ({
         partNumber,
@@ -66,27 +67,50 @@ const createDirectAdapter = (
   };
 };
 
-describe("upload fragment direct single flows", async () => {
-  const { adapter, finalizeUpload, initUpload } = createDirectAdapter("direct-single");
-  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
+const buildUploadFragment = async (config: UploadFragmentConfig) =>
+  buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withFragment(
       "upload",
-      instantiate(uploadFragmentDefinition)
-        .withConfig({ storage: adapter })
-        .withRoutes(uploadRoutes),
+      instantiate(uploadFragmentDefinition).withConfig(config).withRoutes(uploadRoutes),
     )
     .build();
 
-  const { fragment, db } = fragments["upload"];
+type UploadBuild = Awaited<ReturnType<typeof buildUploadFragment>>;
+
+const withUploadBuild = async (
+  config: UploadFragmentConfig,
+  fn: (build: UploadBuild) => Promise<void>,
+) => {
+  const build = await buildUploadFragment(config);
+  try {
+    await build.test.resetDatabase();
+    await fn(build);
+  } finally {
+    await build.test.cleanup();
+  }
+};
+
+describe("upload fragment direct single flows", () => {
+  const { adapter, finalizeUpload, initUpload } = createDirectAdapter("direct-single");
+  let build!: UploadBuild;
+
+  beforeAll(async () => {
+    build = await buildUploadFragment({ storage: adapter });
+  });
 
   beforeEach(async () => {
-    await testContext.resetDatabase();
+    await build.test.resetDatabase();
     finalizeUpload.mockClear();
     initUpload.mockClear();
   });
 
+  afterAll(async () => {
+    await build.test.cleanup();
+  });
+
   it("completes a direct single upload", async () => {
+    const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 1],
@@ -116,6 +140,7 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("reuses an upload when checksum and metadata match", async () => {
+    const { fragment } = build.fragments.upload;
     const payload = {
       keyParts: ["files", "direct", 10],
       filename: "hello.txt",
@@ -141,6 +166,7 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("rejects upload reuse when metadata mismatches", async () => {
+    const { fragment } = build.fragments.upload;
     const first = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 11],
@@ -170,6 +196,7 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("rejects active uploads when checksum is missing", async () => {
+    const { fragment } = build.fragments.upload;
     const first = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 12],
@@ -197,6 +224,7 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("rejects completing an upload twice", async () => {
+    const { fragment } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 2],
@@ -226,6 +254,7 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("rejects expired uploads", async () => {
+    const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 3],
@@ -252,6 +281,7 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("returns FILE_ALREADY_EXISTS when completing an upload after a file is created", async () => {
+    const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 13],
@@ -304,47 +334,36 @@ describe("upload fragment direct single flows", async () => {
   });
 
   it("surfaces checksum mismatches", async () => {
-    const checksumAdapter: StorageAdapter = {
+    const checksumAdapter = {
       ...adapter,
       finalizeUpload: async () => {
         throw new Error("INVALID_CHECKSUM");
       },
-    };
+    } satisfies StorageAdapter;
 
-    const { fragments: checksumFragments, test: checksumContext } =
-      await buildDatabaseFragmentsTest()
-        .withTestAdapter({ type: "drizzle-pglite" })
-        .withFragment(
-          "upload",
-          instantiate(uploadFragmentDefinition)
-            .withConfig({ storage: checksumAdapter })
-            .withRoutes(uploadRoutes),
-        )
-        .build();
+    await withUploadBuild({ storage: checksumAdapter }, async ({ fragments }) => {
+      const { fragment: checksumFragment } = fragments.upload;
+      const createResponse = await checksumFragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["files", "checksum", 1],
+          filename: "hello.txt",
+          sizeBytes: 2,
+          contentType: "text/plain",
+          checksum: { algo: "sha256" as const, value: "deadbeef" },
+        },
+      });
 
-    await checksumContext.resetDatabase();
+      assert(createResponse.type === "json");
 
-    const { fragment: checksumFragment } = checksumFragments["upload"];
-    const createResponse = await checksumFragment.callRoute("POST", "/uploads", {
-      body: {
-        keyParts: ["files", "checksum", 1],
-        filename: "hello.txt",
-        sizeBytes: 2,
-        contentType: "text/plain",
-        checksum: { algo: "sha256" as const, value: "deadbeef" },
-      },
+      const response = await checksumFragment.callRoute("POST", "/uploads/:uploadId/complete", {
+        pathParams: { uploadId: createResponse.data.uploadId },
+        body: {},
+      });
+
+      assert(response.type === "error");
+      expect(response.status).toBe(400);
+      expect(response.error.code).toBe("INVALID_CHECKSUM");
     });
-
-    assert(createResponse.type === "json");
-
-    const response = await checksumFragment.callRoute("POST", "/uploads/:uploadId/complete", {
-      pathParams: { uploadId: createResponse.data.uploadId },
-      body: {},
-    });
-
-    assert(response.type === "error");
-    expect(response.status).toBe(400);
-    expect(response.error.code).toBe("INVALID_CHECKSUM");
   });
 
   it("schedules an upload timeout hook", async () => {
@@ -353,44 +372,33 @@ describe("upload fragment direct single flows", async () => {
       new Date(Date.now() + 30_000),
     );
 
-    const { fragments: timedFragments, test: timedContext } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition)
-          .withConfig({ storage: timedAdapter })
-          .withRoutes(uploadRoutes),
-      )
-      .build();
+    await withUploadBuild({ storage: timedAdapter }, async ({ fragments }) => {
+      const { fragment: timedFragment } = fragments.upload;
+      const createResponse = await timedFragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["files", "direct", 4],
+          filename: "hello.txt",
+          sizeBytes: 2,
+          contentType: "text/plain",
+        },
+      });
 
-    await timedContext.resetDatabase();
+      assert(createResponse.type === "json");
 
-    const { fragment: timedFragment } = timedFragments["upload"];
+      const internalFragment = timedFragment.$internal.linkedFragments._fragno_internal;
+      const hooks = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
 
-    const createResponse = await timedFragment.callRoute("POST", "/uploads", {
-      body: {
-        keyParts: ["files", "direct", 4],
-        filename: "hello.txt",
-        sizeBytes: 2,
-        contentType: "text/plain",
-      },
+      const timeoutHook = hooks.find((hook) => hook.hookName === "onUploadTimeout");
+      expect(timeoutHook).toBeDefined();
+      expect(timeoutHook?.nextRetryAt?.getTime()).toBe(expiresAt.getTime());
     });
-
-    assert(createResponse.type === "json");
-
-    const internalFragment = timedFragment.$internal.linkedFragments._fragno_internal;
-    const hooks = await internalFragment.inContext(async function () {
-      return await this.handlerTx()
-        .withServiceCalls(
-          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-    });
-
-    const timeoutHook = hooks.find((hook) => hook.hookName === "onUploadTimeout");
-    expect(timeoutHook).toBeDefined();
-    expect(timeoutHook?.nextRetryAt?.getTime()).toBe(expiresAt.getTime());
   });
 
   it("marks uploads expired when timeout hook executes", async () => {
@@ -399,44 +407,37 @@ describe("upload fragment direct single flows", async () => {
       new Date(Date.now() - 1_000),
     );
 
-    const { fragments: expiredFragments, test: expiredContext } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
-      .withFragment(
-        "upload",
-        instantiate(uploadFragmentDefinition)
-          .withConfig({ storage: expiredAdapter })
-          .withRoutes(uploadRoutes),
-      )
-      .build();
+    await withUploadBuild({ storage: expiredAdapter }, async ({ fragments }) => {
+      const { fragment: expiredFragment, db: expiredDb } = fragments.upload;
+      const createResponse = await expiredFragment.callRoute("POST", "/uploads", {
+        body: {
+          keyParts: ["files", "direct", 5],
+          filename: "hello.txt",
+          sizeBytes: 2,
+          contentType: "text/plain",
+        },
+      });
 
-    await expiredContext.resetDatabase();
+      assert(createResponse.type === "json");
 
-    const { fragment: expiredFragment, db: expiredDb } = expiredFragments["upload"];
+      await drainDurableHooks(expiredFragment);
 
-    const createResponse = await expiredFragment.callRoute("POST", "/uploads", {
-      body: {
-        keyParts: ["files", "direct", 5],
-        filename: "hello.txt",
-        sizeBytes: 2,
-        contentType: "text/plain",
-      },
+      const upload = await expiredDb.findFirst("upload", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
+      );
+
+      const file = await expiredDb.findFirst("file", (b) =>
+        b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", createResponse.data.fileKey)),
+      );
+
+      expect(upload?.status).toBe("expired");
+      expect(upload?.errorCode).toBe("UPLOAD_EXPIRED");
+      expect(file).toBeNull();
     });
-
-    assert(createResponse.type === "json");
-
-    const upload = await expiredDb.findFirst("upload", (b) =>
-      b.whereIndex("primary", (eb) => eb("id", "=", createResponse.data.uploadId)),
-    );
-    const file = await expiredDb.findFirst("file", (b) =>
-      b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", createResponse.data.fileKey)),
-    );
-
-    expect(upload?.status).toBe("expired");
-    expect(upload?.errorCode).toBe("UPLOAD_EXPIRED");
-    expect(file).toBeNull();
   });
 
   it("does not overwrite a completed retry when the timeout hook runs", async () => {
+    const { fragment, db } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "direct", 14],
@@ -517,6 +518,8 @@ describe("upload fragment direct single flows", async () => {
         .execute();
     });
 
+    await drainDurableHooks(fragment);
+
     const file = await db.findFirst("file", (b) =>
       b.whereIndex("idx_file_key", (eb) => eb("fileKey", "=", retryResponse.data.fileKey)),
     );
@@ -525,26 +528,25 @@ describe("upload fragment direct single flows", async () => {
   });
 });
 
-describe("upload fragment direct multipart flows", async () => {
+describe("upload fragment direct multipart flows", () => {
   const { adapter, completeMultipartUpload } = createDirectAdapter("direct-multipart");
-  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
-    .withFragment(
-      "upload",
-      instantiate(uploadFragmentDefinition)
-        .withConfig({ storage: adapter })
-        .withRoutes(uploadRoutes),
-    )
-    .build();
+  let build!: UploadBuild;
 
-  const { fragment } = fragments["upload"];
+  beforeAll(async () => {
+    build = await buildUploadFragment({ storage: adapter });
+  });
 
   beforeEach(async () => {
-    await testContext.resetDatabase();
+    await build.test.resetDatabase();
     completeMultipartUpload.mockClear();
   });
 
+  afterAll(async () => {
+    await build.test.cleanup();
+  });
+
   it("tracks multipart uploads", async () => {
+    const { fragment } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "multipart", 1],
@@ -603,31 +605,31 @@ describe("upload fragment direct multipart flows", async () => {
   });
 });
 
-describe("upload fragment proxy streaming", async () => {
-  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-fragment-"));
-  const storage = createFilesystemStorageAdapter({ rootDir });
+describe("upload fragment proxy streaming", () => {
+  let rootDir: string;
+  let storage: ReturnType<typeof createFilesystemStorageAdapter>;
+  let build!: UploadBuild;
 
-  const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
-    .withFragment(
-      "upload",
-      instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
-    )
-    .build();
+  beforeAll(async () => {
+    rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-fragment-"));
+    storage = createFilesystemStorageAdapter({ rootDir });
 
-  const { fragment } = fragments["upload"];
+    build = await buildUploadFragment({ storage });
+  });
 
   beforeEach(async () => {
-    await testContext.resetDatabase();
+    await build.test.resetDatabase();
     await fs.rm(rootDir, { recursive: true, force: true });
     await fs.mkdir(rootDir, { recursive: true });
   });
 
   afterAll(async () => {
+    await build.test.cleanup();
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
   it("streams proxy uploads to storage", async () => {
+    const { fragment } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
       body: {
         keyParts: ["files", "proxy", 1],

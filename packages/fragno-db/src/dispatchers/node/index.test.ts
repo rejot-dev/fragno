@@ -5,9 +5,10 @@ describe("createDurableHooksDispatcher", () => {
   it("should wake and process hooks", async () => {
     const process = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt, namespace: "test" },
+      processor: { process, getNextWakeAt, drain, namespace: "test" },
     });
 
     await dispatcher.wake();
@@ -21,9 +22,15 @@ describe("createDurableHooksDispatcher", () => {
       resolveFirst = resolve;
     });
     const process = vi.fn().mockReturnValueOnce(firstPromise).mockResolvedValue(0);
+    const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt: vi.fn().mockResolvedValue(null), namespace: "test" },
+      processor: {
+        process,
+        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        drain,
+        namespace: "test",
+      },
     });
 
     const first = dispatcher.wake();
@@ -45,9 +52,10 @@ describe("createDurableHooksDispatcher", () => {
 
     const process = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 1000));
+    const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt, namespace: "test" },
+      processor: { process, getNextWakeAt, drain, namespace: "test" },
       pollIntervalMs: 1000,
     });
 
@@ -66,9 +74,10 @@ describe("createDurableHooksDispatcher", () => {
 
     const process = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() + 60000));
+    const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { process, getNextWakeAt, namespace: "test" },
+      processor: { process, getNextWakeAt, drain, namespace: "test" },
       pollIntervalMs: 1000,
     });
 

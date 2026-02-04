@@ -1,9 +1,10 @@
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
-import { processHooks, type HookProcessorConfig } from "./hooks";
+import { createHookScheduler, type HookProcessorConfig } from "./hooks";
 
 export type DurableHooksProcessor = {
   process: () => Promise<number>;
   getNextWakeAt: () => Promise<Date | null>;
+  drain: () => Promise<void>;
   namespace: string;
 };
 
@@ -35,10 +36,13 @@ export function createDurableHooksProcessor(
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
     durableHooks.stuckProcessingTimeoutMinutes,
   );
+  const scheduler =
+    durableHooks.scheduler ?? (durableHooks.scheduler = createHookScheduler(durableHooks));
 
   return {
     namespace,
-    process: async () => processHooks(durableHooks),
+    process: async () => scheduler.schedule(),
+    drain: async () => scheduler.drain(),
     getNextWakeAt: async () => {
       const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
       const now = services.getDbNow ? await services.getDbNow() : new Date();
