@@ -69,6 +69,11 @@ export interface TriggeredHook {
   options?: TriggerHookOptions;
 }
 
+export type HookScheduler = {
+  schedule: () => Promise<number>;
+  drain: () => Promise<void>;
+};
+
 /**
  * Configuration for hook processing.
  */
@@ -77,6 +82,10 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
   namespace: string;
   internalFragment: InternalFragmentInstance;
   handlerTx: HookHandlerTx;
+  /**
+   * Internal hook scheduler used to coordinate processing/drain.
+   */
+  scheduler?: HookScheduler;
   defaultRetryPolicy?: RetryPolicy;
   /**
    * Re-queue hooks that have been in `processing` for at least this many minutes.
@@ -325,4 +334,45 @@ export async function processHooks<THooks extends HooksMap>(
   );
 
   return processedCount;
+}
+
+export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
+  let processing = false;
+  let queued = false;
+  let currentPromise: Promise<number> | null = null;
+
+  const schedule = async () => {
+    if (processing) {
+      queued = true;
+      return currentPromise ?? Promise.resolve(0);
+    }
+
+    processing = true;
+    currentPromise = (async () => {
+      let lastCount = 0;
+      try {
+        do {
+          queued = false;
+          lastCount = await processHooks(config);
+        } while (queued);
+        return lastCount;
+      } finally {
+        processing = false;
+        queued = false;
+      }
+    })();
+
+    return currentPromise;
+  };
+
+  const drain = async () => {
+    while (true) {
+      const processed = await schedule();
+      if (processed === 0) {
+        return;
+      }
+    }
+  };
+
+  return { schedule, drain };
 }

@@ -16,6 +16,7 @@ import {
 import type { DatabaseAdapter } from "@fragno-dev/db";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { BaseTestContext } from ".";
+import { drainDurableHooks } from "./durable-hooks";
 
 // BoundServices is an internal type that strips 'this' parameters from service methods
 // It's used to represent services after they've been bound to a context
@@ -510,9 +511,47 @@ export class DatabaseFragmentsTestBuilder<
       throw new Error("At least one fragment must be added");
     }
 
+    const originalCleanup = testContext.cleanup;
+    const cleanup = async () => {
+      let drainError: unknown;
+      let cleanupError: unknown;
+
+      for (const result of fragmentResults) {
+        try {
+          await drainDurableHooks(result.fragment);
+        } catch (error) {
+          if (!drainError) {
+            drainError = error;
+          }
+        }
+      }
+
+      try {
+        await originalCleanup();
+      } catch (error) {
+        cleanupError = error;
+      }
+
+      if (drainError && cleanupError) {
+        throw new AggregateError(
+          [drainError, cleanupError],
+          "Failed to drain durable hooks and clean up test context",
+        );
+      }
+
+      if (drainError) {
+        throw drainError;
+      }
+
+      if (cleanupError) {
+        throw cleanupError;
+      }
+    };
+
     const finalTestContext = {
       ...testContext,
       resetDatabase,
+      cleanup,
       adapter,
       inContext: firstFragment.inContext.bind(firstFragment),
     };

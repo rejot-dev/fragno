@@ -5,10 +5,11 @@ describe("createDurableHooksDispatcherDurableObject", () => {
   it("should schedule an initial alarm on creation", async () => {
     const process = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date());
+    const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
-      createProcessor: () => ({ process, getNextWakeAt, namespace: "test" }),
+      createProcessor: () => ({ process, getNextWakeAt, drain, namespace: "test" }),
     });
 
     handlerFactory({ storage: { setAlarm } }, {});
@@ -21,11 +22,12 @@ describe("createDurableHooksDispatcherDurableObject", () => {
   it("should delete the alarm when no pending hooks exist", async () => {
     const process = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
     const deleteAlarm = vi.fn().mockResolvedValue(undefined);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
-      createProcessor: () => ({ process, getNextWakeAt, namespace: "test" }),
+      createProcessor: () => ({ process, getNextWakeAt, drain, namespace: "test" }),
     });
 
     const handler = handlerFactory({ storage: { setAlarm, deleteAlarm } }, {});
@@ -47,11 +49,12 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
     const process = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 10000));
+    const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
     const deleteAlarm = vi.fn().mockResolvedValue(undefined);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
-      createProcessor: () => ({ process, getNextWakeAt, namespace: "test" }),
+      createProcessor: () => ({ process, getNextWakeAt, drain, namespace: "test" }),
     });
 
     const handler = handlerFactory({ storage: { setAlarm, deleteAlarm } }, {});

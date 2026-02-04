@@ -1,6 +1,6 @@
 // Tests for workflow service APIs such as instance control, history, and events.
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import type { TxResult } from "@fragno-dev/db";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
@@ -45,14 +45,8 @@ describe("Workflows Fragment Services", () => {
         .execute();
     }) as Promise<T>;
 
-  const waitForHookTick = async (expectedCalls: number) => {
-    const start = Date.now();
-    while (runner.tick.mock.calls.length < expectedCalls && Date.now() - start < 200) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-  };
-
   beforeEach(async () => {
+    await drainDurableHooks(fragment);
     await testContext.resetDatabase();
     runner.tick.mockReset();
   });
@@ -95,7 +89,7 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
-    await waitForHookTick(1);
+    await drainDurableHooks(fragment);
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 
@@ -238,7 +232,7 @@ describe("Workflows Fragment Services", () => {
     await db.update("workflow_instance", instance.id, (b) =>
       b.set({ status: "waiting", updatedAt: new Date() }),
     );
-    await waitForHookTick(1);
+    await drainDurableHooks(fragment);
     runner.tick.mockClear();
 
     await db.create("workflow_step", {
@@ -286,7 +280,7 @@ describe("Workflows Fragment Services", () => {
       status: "pending",
     });
 
-    await waitForHookTick(1);
+    await drainDurableHooks(fragment);
     expect(runner.tick).toHaveBeenCalledTimes(1);
   });
 

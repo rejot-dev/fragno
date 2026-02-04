@@ -132,6 +132,10 @@ export class ModelCheckerAdapter<TUowConfig = void> implements DatabaseAdapter<T
     this.#scheduler = scheduler;
   }
 
+  getHookProcessingAdapter(): DatabaseAdapter<TUowConfig> {
+    return this.#baseAdapter;
+  }
+
   getSchemaVersion(namespace: string): Promise<string | undefined> {
     return this.#baseAdapter.getSchemaVersion(namespace);
   }

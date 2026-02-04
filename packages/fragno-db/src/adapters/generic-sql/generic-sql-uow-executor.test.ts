@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CompiledMutation } from "../../query/unit-of-work/unit-of-work";
-import type { CompiledQuery } from "../../sql-driver/sql-driver";
+import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import { NodePostgresDriverConfig } from "./driver-config";
 import { executeMutation } from "./generic-sql-uow-executor";
@@ -24,6 +24,12 @@ const createAdapterThatThrows = (error: Error) =>
   }) as unknown as SqlDriverAdapter;
 
 describe("executeMutation", () => {
+  const dialect = {
+    createAdapter: () => ({}) as Dialect["createAdapter"] extends () => infer T ? T : never,
+    createDriver: () => ({}) as Dialect["createDriver"] extends () => infer T ? T : never,
+    createQueryCompiler: () =>
+      ({}) as Dialect["createQueryCompiler"] extends () => infer T ? T : never,
+  } satisfies Dialect;
   const compiledQuery: CompiledQuery = {
     sql: "SELECT 1",
     parameters: [],
@@ -40,7 +46,9 @@ describe("executeMutation", () => {
 
   it.each(["40001", "40P01"])("returns success=false on SQLSTATE %s", async (code) => {
     const adapter = createAdapterThatThrows(createError(code));
-    const result = await executeMutation(adapter, new NodePostgresDriverConfig(), mutationBatch);
+    const result = await executeMutation(adapter, new NodePostgresDriverConfig(), mutationBatch, {
+      dialect,
+    });
     expect(result.success).toBe(false);
   });
 });
