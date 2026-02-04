@@ -58,14 +58,15 @@ const resolveComparisonValue = (
   column: AnyColumn,
   table: AnyTable,
   row: InMemoryRow,
-  namespaceStore?: InMemoryNamespaceStore,
+  namespaceStore: InMemoryNamespaceStore | undefined,
+  now: () => Date,
 ): { value: unknown; column: AnyColumn } => {
   if (value instanceof Column) {
     return { value: row[value.name], column: value };
   }
 
   if (isDbNow(value)) {
-    return { value: new Date(), column };
+    return { value: now(), column };
   }
 
   if (column.role === "reference") {
@@ -94,6 +95,7 @@ export const evaluateCondition = (
   table: AnyTable,
   row: InMemoryRow,
   namespaceStore?: InMemoryNamespaceStore,
+  now: () => Date = () => new Date(),
 ): boolean => {
   if (typeof condition === "boolean") {
     return condition;
@@ -102,7 +104,7 @@ export const evaluateCondition = (
   switch (condition.type) {
     case "and": {
       for (const item of condition.items) {
-        if (!evaluateCondition(item, table, row, namespaceStore)) {
+        if (!evaluateCondition(item, table, row, namespaceStore, now)) {
           return false;
         }
       }
@@ -110,14 +112,14 @@ export const evaluateCondition = (
     }
     case "or": {
       for (const item of condition.items) {
-        if (evaluateCondition(item, table, row, namespaceStore)) {
+        if (evaluateCondition(item, table, row, namespaceStore, now)) {
           return true;
         }
       }
       return false;
     }
     case "not":
-      return !evaluateCondition(condition.item, table, row, namespaceStore);
+      return !evaluateCondition(condition.item, table, row, namespaceStore, now);
     case "compare":
       break;
     default: {
@@ -128,7 +130,7 @@ export const evaluateCondition = (
 
   const leftColumn = condition.a;
   const leftValue = row[leftColumn.name];
-  const right = resolveComparisonValue(condition.b, leftColumn, table, row, namespaceStore);
+  const right = resolveComparisonValue(condition.b, leftColumn, table, row, namespaceStore, now);
 
   const op = condition.operator;
   const rightValue = right.value;
@@ -163,7 +165,7 @@ export const evaluateCondition = (
     let hasMatch = false;
 
     for (const item of rightValue) {
-      const resolved = resolveComparisonValue(item, leftColumn, table, row, namespaceStore);
+      const resolved = resolveComparisonValue(item, leftColumn, table, row, namespaceStore, now);
       if (isNullish(resolved.value)) {
         hasNull = true;
         continue;
