@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { authFragmentDefinition } from "..";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
-import { userOverviewRoutesFactory } from "./user-overview";
+import { userOverviewRoutesFactory, type GetUsersParams } from "./user-overview";
+import { hashPassword } from "./password";
 
 const buildAuthTest = async () =>
   buildDatabaseFragmentsTest()
@@ -17,6 +18,7 @@ type BuildResult = Awaited<ReturnType<typeof buildAuthTest>>;
 
 describe("User Overview Services", () => {
   let services!: BuildResult["fragments"]["auth"]["services"];
+  let fragment!: BuildResult["fragments"]["auth"]["fragment"];
   let testContext!: BuildResult["test"];
 
   // Test data setup
@@ -32,11 +34,17 @@ describe("User Overview Services", () => {
     const { fragments, test } = await buildAuthTest();
 
     services = fragments.auth.services;
+    fragment = fragments.auth.fragment;
     testContext = test;
 
     // Create test users
     for (const user of testUsers) {
-      await services.createUser(user.email, user.password);
+      const passwordHash = await hashPassword(user.password);
+      await fragment.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [services.createUser(user.email, passwordHash)])
+          .execute();
+      });
     }
   });
 
@@ -44,9 +52,17 @@ describe("User Overview Services", () => {
     await testContext.cleanup();
   });
 
+  const getUsers = (params: GetUsersParams) =>
+    fragment.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [services.getUsersWithCursor(params)])
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
   describe("getUsersWithCursor", () => {
     it("should return users without search filter", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 20,
@@ -56,7 +72,7 @@ describe("User Overview Services", () => {
     });
 
     it("should filter users by email search", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "example.com",
         sortBy: "createdAt",
         sortOrder: "desc",
@@ -70,7 +86,7 @@ describe("User Overview Services", () => {
     });
 
     it("should filter users by partial email search", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "alice",
         sortBy: "createdAt",
         sortOrder: "desc",
@@ -82,7 +98,7 @@ describe("User Overview Services", () => {
     });
 
     it("should sort users by email ascending", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "example.com",
         sortBy: "email",
         sortOrder: "asc",
@@ -96,7 +112,7 @@ describe("User Overview Services", () => {
     });
 
     it("should sort users by email descending", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "example.com",
         sortBy: "email",
         sortOrder: "desc",
@@ -110,7 +126,7 @@ describe("User Overview Services", () => {
     });
 
     it("should sort users by createdAt ascending", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "asc",
         pageSize: 20,
@@ -125,7 +141,7 @@ describe("User Overview Services", () => {
     });
 
     it("should sort users by createdAt descending", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 20,
@@ -140,7 +156,7 @@ describe("User Overview Services", () => {
     });
 
     it("should respect pageSize parameter", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 2,
@@ -152,7 +168,7 @@ describe("User Overview Services", () => {
 
     it("should support cursor-based pagination", async () => {
       // Get first page
-      const firstPage = await services.getUsersWithCursor({
+      const firstPage = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 2,
@@ -162,7 +178,7 @@ describe("User Overview Services", () => {
       expect(firstPage.cursor).toBeDefined();
 
       // Get second page using cursor
-      const secondPage = await services.getUsersWithCursor({
+      const secondPage = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 2,
@@ -175,7 +191,7 @@ describe("User Overview Services", () => {
     });
 
     it("should handle large page sizes", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 100,
@@ -186,7 +202,7 @@ describe("User Overview Services", () => {
 
       // If cursor is defined, using it should return no more results
       if (result.cursor) {
-        const nextPage = await services.getUsersWithCursor({
+        const nextPage = await getUsers({
           sortBy: "email",
           sortOrder: "asc",
           pageSize: 100,
@@ -197,7 +213,7 @@ describe("User Overview Services", () => {
     });
 
     it("should combine search, sort, and pagination", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "test.com",
         sortBy: "email",
         sortOrder: "asc",
@@ -211,7 +227,7 @@ describe("User Overview Services", () => {
 
     it("should navigate from page 1 to page 2 using cursor", async () => {
       // Get page 1 with 2 users
-      const page1 = await services.getUsersWithCursor({
+      const page1 = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 2,
@@ -221,7 +237,7 @@ describe("User Overview Services", () => {
       expect(page1.cursor).toBeDefined();
 
       // Use cursor from page 1 to get page 2
-      const page2 = await services.getUsersWithCursor({
+      const page2 = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 2,
@@ -239,7 +255,7 @@ describe("User Overview Services", () => {
 
     it("should return empty results when using cursor with no more data", async () => {
       // Get all users in one page
-      const allUsers = await services.getUsersWithCursor({
+      const allUsers = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 100,
@@ -248,7 +264,7 @@ describe("User Overview Services", () => {
       // If there's a cursor, it means there might be more data to fetch
       // But since we used a large page size, the next page should be empty
       if (allUsers.cursor) {
-        const nextPage = await services.getUsersWithCursor({
+        const nextPage = await getUsers({
           sortBy: "email",
           sortOrder: "asc",
           pageSize: 100,
@@ -260,7 +276,7 @@ describe("User Overview Services", () => {
       }
 
       // Alternative: Get a page that exhausts the data
-      const smallPage = await services.getUsersWithCursor({
+      const smallPage = await getUsers({
         sortBy: "email",
         sortOrder: "asc",
         pageSize: 1,
@@ -272,7 +288,7 @@ describe("User Overview Services", () => {
       const maxIterations = 20; // Safety limit
 
       while (currentCursor && iterations < maxIterations) {
-        const nextPage = await services.getUsersWithCursor({
+        const nextPage = await getUsers({
           sortBy: "email",
           sortOrder: "asc",
           pageSize: 1,
@@ -282,7 +298,7 @@ describe("User Overview Services", () => {
         if (!nextPage.cursor) {
           // We've reached the last page
           // Try to fetch one more time with the last cursor we had
-          const beyondLastPage = await services.getUsersWithCursor({
+          const beyondLastPage = await getUsers({
             sortBy: "email",
             sortOrder: "asc",
             pageSize: 1,
@@ -304,7 +320,7 @@ describe("User Overview Services", () => {
     });
 
     it("should return empty results for non-matching search", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "nonexistent@domain.com",
         sortBy: "createdAt",
         sortOrder: "desc",
@@ -316,7 +332,7 @@ describe("User Overview Services", () => {
     });
 
     it("should handle pageSize of 1", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 1,
@@ -326,7 +342,7 @@ describe("User Overview Services", () => {
     });
 
     it("should handle large pageSize values", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 100,
@@ -336,7 +352,7 @@ describe("User Overview Services", () => {
     });
 
     it("should return users with all required fields", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 1,
@@ -353,7 +369,7 @@ describe("User Overview Services", () => {
     });
 
     it("should not include password hash in results", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 1,
@@ -366,14 +382,14 @@ describe("User Overview Services", () => {
 
   describe("Edge cases", () => {
     it("should handle case-sensitive email search", async () => {
-      const lowerResult = await services.getUsersWithCursor({
+      const lowerResult = await getUsers({
         search: "alice",
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: 20,
       });
 
-      const upperResult = await services.getUsersWithCursor({
+      const upperResult = await getUsers({
         search: "ALICE",
         sortBy: "createdAt",
         sortOrder: "desc",
@@ -387,7 +403,7 @@ describe("User Overview Services", () => {
     });
 
     it("should handle search with special characters", async () => {
-      const result = await services.getUsersWithCursor({
+      const result = await getUsers({
         search: "@",
         sortBy: "createdAt",
         sortOrder: "desc",
@@ -406,7 +422,7 @@ describe("User Overview Services", () => {
       const maxIterations = 10; // Prevent infinite loops
 
       do {
-        const result = await services.getUsersWithCursor({
+        const result = await getUsers({
           sortBy: "email",
           sortOrder: "asc",
           pageSize: 2,
@@ -425,7 +441,7 @@ describe("User Overview Services", () => {
       const promises = Array(10)
         .fill(0)
         .map(() =>
-          services.getUsersWithCursor({
+          getUsers({
             sortBy: "createdAt",
             sortOrder: "desc",
             pageSize: 5,
