@@ -20,6 +20,8 @@ integration with React, Vue, Node.js, and various meta-frameworks.
 
 ## Common Commands
 
+Note: Always run tasks through `turbo` and always include `--output-logs=errors-only`.
+
 All commands use Turbo as the monorepo task runner. Always include `--output-logs=errors-only` to
 reduce noise and only show errors.
 

@@ -91,3 +91,6 @@ lefthook-local.yml
 
 .superset/
 
+
+# Fiberplane local issue tracking
+.fp/
