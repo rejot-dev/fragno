@@ -18,8 +18,12 @@ export function getPostgresPool(): Pool {
     poolInstance = new Pool({ connectionString: postgresUrl });
     poolInstance.on("error", (error) => {
       console.error("Postgres pool error", error);
+      const poolToClose = poolInstance;
       poolInstance = undefined;
       dbInstance = undefined;
+      void poolToClose?.end().catch((closeError) => {
+        console.error("Failed to close Postgres pool", closeError);
+      });
     });
   }
   return poolInstance;

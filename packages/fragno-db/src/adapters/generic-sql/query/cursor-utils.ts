@@ -60,6 +60,12 @@ export function buildCursorCondition(
 
   const operator = useGreaterThan ? ">" : "<";
   const orConditions: Condition[] = [];
+  const isNullish = (value: unknown): value is null | undefined =>
+    value === null || value === undefined;
+  const buildEqualityCondition = (column: AnyColumn, value: unknown): Condition =>
+    isNullish(value)
+      ? { type: "compare", a: column, operator: "is", b: null }
+      : { type: "compare", a: column, operator: "=", b: value };
 
   for (let i = 0; i < indexColumns.length; i += 1) {
     const col = indexColumns[i]!;
@@ -68,12 +74,7 @@ export function buildCursorCondition(
 
     for (let j = 0; j < i; j += 1) {
       const prevCol = indexColumns[j]!;
-      andItems.push({
-        type: "compare",
-        a: prevCol,
-        operator: "=",
-        b: serializedValues[prevCol.ormName],
-      });
+      andItems.push(buildEqualityCondition(prevCol, serializedValues[prevCol.ormName]));
     }
 
     andItems.push({

@@ -1,6 +1,22 @@
-import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, customType, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
+const customBinary = customType<
+  {
+    data: Uint8Array;
+    driverData: Buffer;
+  }
+>({
+  dataType() {
+    return "bytea";
+  },
+  fromDriver(value) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+  },
+  toDriver(value) {
+    return value instanceof Buffer? value : Buffer.from(value)
+  }
+});
 
 // ============================================================================
 // Fragment: 
@@ -34,6 +50,20 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 }, (table) => [
   index("idx_namespace_status_retry").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_nonce").on(table.nonce)
+])
+
+export const fragno_db_outbox = pgTable("fragno_db_outbox", {
+  id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
+  versionstamp: customBinary("versionstamp").notNull(),
+  uowId: text("uowId").notNull(),
+  payload: json("payload").notNull(),
+  refMap: json("refMap"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
+  _version: integer("_version").notNull().default(0)
+}, (table) => [
+  uniqueIndex("idx_outbox_versionstamp").on(table.versionstamp),
+  index("idx_outbox_uow").on(table.uowId)
 ])
 
 // ============================================================================

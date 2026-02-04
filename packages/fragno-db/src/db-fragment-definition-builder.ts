@@ -655,7 +655,11 @@ export class DatabaseFragmentDefinitionBuilder<
       if (!this.#hooksFactory) {
         return undefined;
       }
-      const cachedHooksConfig = hooksConfigCache.get(context.deps as object);
+      const depsKey =
+        typeof context.deps === "object" && context.deps !== null
+          ? (context.deps as object)
+          : undefined;
+      const cachedHooksConfig = depsKey ? hooksConfigCache.get(depsKey) : undefined;
       if (cachedHooksConfig) {
         return cachedHooksConfig;
       }
@@ -709,7 +713,9 @@ export class DatabaseFragmentDefinitionBuilder<
         onStuckProcessingHooks: durableHooksOptions?.onStuckProcessingHooks,
       };
       hooksConfig.scheduler = createHookScheduler(hooksConfig);
-      hooksConfigCache.set(context.deps as object, hooksConfig);
+      if (depsKey) {
+        hooksConfigCache.set(depsKey, hooksConfig);
+      }
       return hooksConfig;
     };
 

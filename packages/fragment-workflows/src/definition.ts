@@ -986,22 +986,14 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 ),
               )
               .find("workflow_step", (b) =>
-                b.whereIndex("idx_workflow_step_workflowName_instanceId_status", (eb) => {
-                  type AnyConditionBuilder = {
-                    (column: string, operator: string, value: unknown): ReturnType<typeof eb.and>;
-                    and: (...items: ReturnType<typeof eb.and>[]) => ReturnType<typeof eb.and>;
-                    or: (...items: ReturnType<typeof eb.and>[]) => ReturnType<typeof eb.and>;
-                    isNull: (column: string) => ReturnType<typeof eb.and>;
-                  };
-
-                  const builder = eb as unknown as AnyConditionBuilder;
-                  return builder.and(
-                    builder("workflowName", "=", workflowName),
-                    builder("instanceId", "=", instanceId),
-                    builder("status", "=", "waiting"),
-                    builder.or(builder.isNull("wakeAt"), builder("wakeAt", ">", dbNow())),
-                  );
-                }),
+                b.whereIndex("idx_workflow_step_status_wakeAt", (eb) =>
+                  eb.and(
+                    eb("workflowName", "=", workflowName),
+                    eb("instanceId", "=", instanceId),
+                    eb("status", "=", "waiting"),
+                    eb.or(eb.isNull("wakeAt"), eb("wakeAt", ">", dbNow())),
+                  ),
+                ),
               )
               .find("workflow_task", (b) =>
                 b.whereIndex("idx_workflow_task_workflowName_instanceId_runNumber", (eb) =>

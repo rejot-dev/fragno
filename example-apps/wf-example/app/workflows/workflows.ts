@@ -119,7 +119,7 @@ export class ParallelStepsWorkflow extends WorkflowEntrypoint {
 
 export class WaitTimeoutWorkflow extends WorkflowEntrypoint {
   async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
-    const startedAt = Date.now();
+    const startedAt = await step.do("record-start", () => Date.now());
     const edge = await step.waitForEvent("edge-wait", {
       type: "edge",
       timeout: "2 s",
