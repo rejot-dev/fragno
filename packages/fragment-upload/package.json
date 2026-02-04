@@ -1,7 +1,7 @@
 {
   "name": "@fragno-dev/fragment-upload",
   "description": "Fragno upload fragment",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "files": [
     "dist",
     "bin"
@@ -81,6 +81,7 @@
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
     "@standard-schema/spec": "^1.0.0",
     "gunshi": "^0.26.3",
     "zod": "^4.0.5"
@@ -100,7 +101,6 @@
     "react": ">=18.0.0",
     "svelte": ">=4.0.0",
     "solid-js": ">=1.0.0",
-    "vue": ">=3.0.0",
-    "@fragno-dev/db": "workspace:*"
+    "vue": ">=3.0.0"
   }
 }
