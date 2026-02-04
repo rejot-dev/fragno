@@ -18,10 +18,45 @@ export function createUploadFragmentClients(config: FragnoPublicClientConfig = {
     useFile: builder.createHook("/files/:fileKey"),
     useCreateUpload: builder.createMutator("POST", "/uploads"),
     useUploadStatus: builder.createHook("/uploads/:uploadId"),
-    useCompleteUpload: builder.createMutator("POST", "/uploads/:uploadId/complete"),
-    useAbortUpload: builder.createMutator("POST", "/uploads/:uploadId/abort"),
-    useUpdateFile: builder.createMutator("PATCH", "/files/:fileKey"),
-    useDeleteFile: builder.createMutator("DELETE", "/files/:fileKey"),
+    useCompleteUpload: builder.createMutator(
+      "POST",
+      "/uploads/:uploadId/complete",
+      (invalidate, params) => {
+        const uploadId = params.pathParams.uploadId;
+        if (!uploadId) {
+          return;
+        }
+        invalidate("GET", "/uploads/:uploadId", { pathParams: { uploadId } });
+        invalidate("GET", "/files", {});
+      },
+    ),
+    useAbortUpload: builder.createMutator(
+      "POST",
+      "/uploads/:uploadId/abort",
+      (invalidate, params) => {
+        const uploadId = params.pathParams.uploadId;
+        if (!uploadId) {
+          return;
+        }
+        invalidate("GET", "/uploads/:uploadId", { pathParams: { uploadId } });
+      },
+    ),
+    useUpdateFile: builder.createMutator("PATCH", "/files/:fileKey", (invalidate, params) => {
+      const fileKey = params.pathParams.fileKey;
+      if (!fileKey) {
+        return;
+      }
+      invalidate("GET", "/files/:fileKey", { pathParams: { fileKey } });
+      invalidate("GET", "/files", {});
+    }),
+    useDeleteFile: builder.createMutator("DELETE", "/files/:fileKey", (invalidate, params) => {
+      const fileKey = params.pathParams.fileKey;
+      if (!fileKey) {
+        return;
+      }
+      invalidate("GET", "/files/:fileKey", { pathParams: { fileKey } });
+      invalidate("GET", "/files", {});
+    }),
     useUploadHelpers: builder.createStore(helpers),
   };
 }
