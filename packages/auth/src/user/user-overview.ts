@@ -1,5 +1,5 @@
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { DatabaseServiceContext } from "@fragno-dev/db";
 import { type Cursor, decodeCursor } from "@fragno-dev/db/cursor";
 import { authSchema } from "../schema";
 import { z } from "zod";
@@ -23,7 +23,9 @@ export interface UserResult {
   createdAt: Date;
 }
 
-export function createUserOverviewServices(db: SimpleQueryInterface<typeof authSchema>) {
+type AuthServiceContext = DatabaseServiceContext<{}>;
+
+export function createUserOverviewServices() {
   const mapUser = (user: {
     id: unknown;
     email: string;
@@ -37,7 +39,7 @@ export function createUserOverviewServices(db: SimpleQueryInterface<typeof authS
   });
 
   return {
-    getUsersWithCursor: async (params: GetUsersParams) => {
+    getUsersWithCursor: function (this: AuthServiceContext, params: GetUsersParams) {
       const { search, sortBy, sortOrder, pageSize, cursor } = params;
 
       // Determine which index to use based on search and sortBy
@@ -49,33 +51,36 @@ export function createUserOverviewServices(db: SimpleQueryInterface<typeof authS
       const effectiveSortOrder = cursor ? cursor.orderDirection : sortOrder;
       const effectivePageSize = cursor ? cursor.pageSize : pageSize;
 
-      const result = await db.findWithCursor("user", (b) => {
-        // When searching, we must filter by email and can only use the email index
-        if (search) {
-          const query = b
-            .whereIndex("idx_user_email", (eb) => eb("email", "contains", search))
-            .orderByIndex("idx_user_email", effectiveSortOrder)
-            .pageSize(effectivePageSize);
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findWithCursor("user", (b) => {
+            // When searching, we must filter by email and can only use the email index
+            if (search) {
+              const query = b
+                .whereIndex("idx_user_email", (eb) => eb("email", "contains", search))
+                .orderByIndex("idx_user_email", effectiveSortOrder)
+                .pageSize(effectivePageSize);
 
-          // Add cursor for pagination continuation
-          return cursor ? query.after(cursor) : query;
-        }
+              // Add cursor for pagination continuation
+              return cursor ? query.after(cursor) : query;
+            }
 
-        // When not searching, use the appropriate index for sorting
-        const query = b
-          .whereIndex(indexName)
-          .orderByIndex(indexName, effectiveSortOrder)
-          .pageSize(effectivePageSize);
+            // When not searching, use the appropriate index for sorting
+            const query = b
+              .whereIndex(indexName)
+              .orderByIndex(indexName, effectiveSortOrder)
+              .pageSize(effectivePageSize);
 
-        // Add cursor for pagination continuation
-        return cursor ? query.after(cursor) : query;
-      });
-
-      return {
-        users: result.items.map(mapUser),
-        cursor: result.cursor,
-        hasNextPage: result.hasNextPage,
-      };
+            // Add cursor for pagination continuation
+            return cursor ? query.after(cursor) : query;
+          }),
+        )
+        .transformRetrieve(([result]) => ({
+          users: result.items.map(mapUser),
+          cursor: result.cursor,
+          hasNextPage: result.hasNextPage,
+        }))
+        .build();
     },
   };
 }
@@ -122,7 +127,7 @@ export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinit
           sortBy: sortBySchema,
         }),
         errorCodes: ["invalid_input"],
-        handler: async ({ query }, { json, error }) => {
+        handler: async function ({ query }, { json, error }) {
           const parsed = querySchema.safeParse(Object.fromEntries(query.entries()));
           if (!parsed.success) {
             return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
@@ -139,10 +144,9 @@ export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinit
           };
           const cursor = parseCursor(query.get("cursor"));
 
-          const result = await services.getUsersWithCursor({
-            ...params,
-            cursor,
-          });
+          const [result] = await this.handlerTx()
+            .withServiceCalls(() => [services.getUsersWithCursor({ ...params, cursor })])
+            .execute();
 
           return json({
             users: result.users.map((user) => ({

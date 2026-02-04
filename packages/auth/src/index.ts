@@ -21,16 +21,12 @@ export interface AuthConfig {
 
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
   .extend(withDatabase(authSchema, "simple-auth-db"))
-  .providesBaseService(({ deps, config }) => {
-    const userServices = createUserServices(deps.db);
-    const sessionServices = createSessionServices(deps.db, config.cookieOptions);
-    const userOverviewServices = createUserOverviewServices(deps.db);
-
-    return {
-      ...userServices,
-      ...sessionServices,
-      ...userOverviewServices,
-    };
+  .providesBaseService(({ defineService, config }) => {
+    return defineService({
+      ...createUserServices(),
+      ...createSessionServices(config.cookieOptions),
+      ...createUserOverviewServices(),
+    });
   })
   .build();
 
@@ -40,10 +36,7 @@ export function createAuthFragment(
   config: AuthConfig = {},
   fragnoConfig: FragnoPublicConfigWithDatabase,
 ) {
-  const options = {
-    ...fragnoConfig,
-    mountRoute: fragnoConfig.mountRoute ?? "/auth",
-  };
+  const options = { ...fragnoConfig };
 
   return instantiate(authFragmentDefinition)
     .withConfig(config)
@@ -55,10 +48,7 @@ export function createAuthFragment(
 export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfig) {
   // Note: Cookies are automatically sent for same-origin requests by the browser.
   // For cross-origin requests, you may need to configure CORS headers on the server.
-  const config = {
-    ...fragnoConfig,
-    mountRoute: fragnoConfig?.mountRoute ?? "/auth",
-  };
+  const config = { ...fragnoConfig };
 
   const b = createClientBuilder(
     authFragmentDefinition,

@@ -1,47 +1,169 @@
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
-import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+import type { DatabaseServiceContext } from "@fragno-dev/db";
 import { authSchema } from "../schema";
 import { z } from "zod";
 import { hashPassword, verifyPassword } from "./password";
 import { buildSetCookieHeader, extractSessionId } from "../utils/cookie";
 import type { authFragmentDefinition } from "..";
 
-export function createUserServices(orm: SimpleQueryInterface<typeof authSchema>) {
+type AuthServiceContext = DatabaseServiceContext<{}>;
+
+export function createUserServices() {
   return {
-    createUser: async (email: string, password: string, role: "user" | "admin" = "user") => {
-      const passwordHash = await hashPassword(password);
-      const id = await orm.create("user", {
-        email,
-        passwordHash,
-        role,
-      });
-      return {
-        id: id.valueOf(),
-        email,
-        role,
-      };
+    createUser: function (
+      this: AuthServiceContext,
+      email: string,
+      passwordHash: string,
+      role: "user" | "admin" = "user",
+    ) {
+      return this.serviceTx(authSchema)
+        .mutate(({ uow }) => {
+          const id = uow.create("user", {
+            email,
+            passwordHash,
+            role,
+          });
+          return {
+            id: id.valueOf(),
+            email,
+            role,
+          };
+        })
+        .build();
     },
-    getUserByEmail: async (email: string) => {
-      const users = await orm.findFirst("user", (b) =>
-        b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
-      );
-      return users
-        ? {
-            id: users.id.valueOf(),
-            email: users.email,
-            passwordHash: users.passwordHash,
-            role: users.role as "user" | "admin",
+    getUserByEmail: function (this: AuthServiceContext, email: string) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) =>
+            b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+          ),
+        )
+        .transformRetrieve(([user]) =>
+          user
+            ? {
+                id: user.id.valueOf(),
+                email: user.email,
+                passwordHash: user.passwordHash,
+                role: user.role as "user" | "admin",
+              }
+            : null,
+        )
+        .build();
+    },
+    updateUserRole: function (this: AuthServiceContext, userId: string, role: "user" | "admin") {
+      return this.serviceTx(authSchema)
+        .mutate(({ uow }) => {
+          uow.update("user", userId, (b) => b.set({ role }));
+          return { success: true };
+        })
+        .build();
+    },
+    updateUserPassword: function (this: AuthServiceContext, userId: string, passwordHash: string) {
+      return this.serviceTx(authSchema)
+        .mutate(({ uow }) => {
+          uow.update("user", userId, (b) => b.set({ passwordHash }));
+          return { success: true };
+        })
+        .build();
+    },
+    signUpWithSession: function (this: AuthServiceContext, email: string, passwordHash: string) {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) =>
+            b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [existingUser] }) => {
+          if (existingUser) {
+            return { ok: false as const, code: "email_already_exists" as const };
           }
-        : null;
+
+          const userId = uow.create("user", {
+            email,
+            passwordHash,
+            role: "user",
+          });
+
+          const sessionId = uow.create("session", {
+            userId,
+            expiresAt,
+          });
+
+          return {
+            ok: true as const,
+            sessionId: sessionId.valueOf(),
+            userId: userId.valueOf(),
+            email,
+            role: "user" as const,
+          };
+        })
+        .build();
     },
-    updateUserRole: async (userId: string, role: "user" | "admin") => {
-      await orm.update("user", userId, (b) => b.set({ role }));
-      return { success: true };
+    updateUserRoleWithSession: function (
+      this: AuthServiceContext,
+      sessionId: string,
+      userId: string,
+      role: "user" | "admin",
+    ) {
+      const now = new Date();
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("session", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [session] }) => {
+          if (!session || !session.sessionOwner) {
+            return { ok: false as const, code: "session_invalid" as const };
+          }
+
+          if (session.expiresAt < now) {
+            uow.delete("session", session.id, (b) => b.check());
+            return { ok: false as const, code: "session_invalid" as const };
+          }
+
+          if (session.sessionOwner.role !== "admin") {
+            return { ok: false as const, code: "permission_denied" as const };
+          }
+
+          uow.update("user", userId, (b) => b.set({ role }));
+          return { ok: true as const };
+        })
+        .build();
     },
-    updateUserPassword: async (userId: string, password: string) => {
-      const passwordHash = await hashPassword(password);
-      await orm.update("user", userId, (b) => b.set({ passwordHash }));
-      return { success: true };
+    changePasswordWithSession: function (
+      this: AuthServiceContext,
+      sessionId: string,
+      passwordHash: string,
+    ) {
+      const now = new Date();
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("session", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", sessionId))
+              .join((j) => j.sessionOwner((b) => b.select(["id", "email", "role"]))),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [session] }) => {
+          if (!session || !session.sessionOwner) {
+            return { ok: false as const, code: "session_invalid" as const };
+          }
+
+          if (session.expiresAt < now) {
+            uow.delete("session", session.id, (b) => b.check());
+            return { ok: false as const, code: "session_invalid" as const };
+          }
+
+          uow.update("user", session.sessionOwner.id, (b) => b.set({ passwordHash }).check());
+          return { ok: true as const };
+        })
+        .build();
     },
   };
 }
@@ -59,7 +181,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           success: z.boolean(),
         }),
         errorCodes: ["invalid_input", "session_invalid", "permission_denied"],
-        handler: async ({ input, pathParams, headers, query }, { json, error }) => {
+        handler: async function ({ input, pathParams, headers, query }, { json, error }) {
           const { role } = await input.valid();
           const { userId } = pathParams;
 
@@ -69,18 +191,19 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const session = await services.validateSession(sessionId);
+          const [result] = await this.handlerTx()
+            .withServiceCalls(() => [services.updateUserRoleWithSession(sessionId, userId, role)])
+            .execute();
 
-          if (!session) {
+          if (!result.ok) {
+            if (result.code === "permission_denied") {
+              return error({ message: "Unauthorized", code: "permission_denied" }, 401);
+            }
+
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
 
-          if (session.user.role === "admin") {
-            await services.updateUserRole(userId, role);
-            return json({ success: true });
-          } else {
-            return error({ message: "Unauthorized", code: "permission_denied" }, 401);
-          }
+          return json({ success: true });
         },
       }),
 
@@ -98,29 +221,28 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           role: z.enum(["user", "admin"]),
         }),
         errorCodes: ["email_already_exists", "invalid_input"],
-        handler: async ({ input }, { json, error }) => {
+        handler: async function ({ input }, { json, error }) {
           const { email, password } = await input.valid();
 
-          // Check if user already exists
-          const existingUser = await services.getUserByEmail(email);
-          if (existingUser) {
+          const passwordHash = await hashPassword(password);
+
+          const [result] = await this.handlerTx()
+            .withServiceCalls(() => [services.signUpWithSession(email, passwordHash)])
+            .execute();
+
+          if (!result.ok) {
             return error({ message: "Email already exists", code: "email_already_exists" }, 400);
           }
 
-          // Create user
-          const user = await services.createUser(email, password);
-          // Create session
-          const session = await services.createSession(user.id);
-
           // Build response with Set-Cookie header
-          const setCookieHeader = buildSetCookieHeader(session.id, config.cookieOptions);
+          const setCookieHeader = buildSetCookieHeader(result.sessionId, config.cookieOptions);
 
           return json(
             {
-              sessionId: session.id,
-              userId: user.id,
-              email: user.email,
-              role: user.role,
+              sessionId: result.sessionId,
+              userId: result.userId,
+              email: result.email,
+              role: result.role,
             },
             {
               headers: {
@@ -145,11 +267,13 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           role: z.enum(["user", "admin"]),
         }),
         errorCodes: ["invalid_credentials"],
-        handler: async ({ input }, { json, error }) => {
+        handler: async function ({ input }, { json, error }) {
           const { email, password } = await input.valid();
 
           // Get user by email
-          const user = await services.getUserByEmail(email);
+          const [user] = await this.handlerTx()
+            .withServiceCalls(() => [services.getUserByEmail(email)])
+            .execute();
           if (!user) {
             return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
           }
@@ -161,7 +285,9 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           }
 
           // Create session
-          const session = await services.createSession(user.id);
+          const [session] = await this.handlerTx()
+            .withServiceCalls(() => [services.createSession(user.id)])
+            .execute();
 
           // Build response with Set-Cookie header
           const setCookieHeader = buildSetCookieHeader(session.id, config.cookieOptions);
@@ -192,7 +318,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           success: z.boolean(),
         }),
         errorCodes: ["session_invalid"],
-        handler: async ({ input, headers, query }, { json, error }) => {
+        handler: async function ({ input, headers, query }, { json, error }) {
           const { newPassword } = await input.valid();
 
           const sessionId = extractSessionId(headers, query.get("sessionId"));
@@ -201,13 +327,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Session ID required", code: "session_invalid" }, 400);
           }
 
-          const session = await services.validateSession(sessionId);
+          const passwordHash = await hashPassword(newPassword);
 
-          if (!session) {
+          const [result] = await this.handlerTx()
+            .withServiceCalls(() => [services.changePasswordWithSession(sessionId, passwordHash)])
+            .execute();
+
+          if (!result.ok) {
             return error({ message: "Invalid session", code: "session_invalid" }, 401);
           }
-
-          await services.updateUserPassword(session.user.id, newPassword);
 
           return json({ success: true });
         },
