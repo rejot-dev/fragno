@@ -153,7 +153,7 @@ describe("Workflows Fragment Services", () => {
       errorName: null,
       errorMessage: null,
     });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await drainDurableHooks(fragment);
     runner.tick.mockClear();
     const tickCallsBefore = runner.tick.mock.calls.length;
 
@@ -171,7 +171,7 @@ describe("Workflows Fragment Services", () => {
       pauseRequested: false,
     });
     expect(instance.completedAt).toBeInstanceOf(Date);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await drainDurableHooks(fragment);
     expect(runner.tick.mock.calls.length).toBe(tickCallsBefore);
   });
 
@@ -345,7 +345,7 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await drainDurableHooks(fragment);
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     expect(event).toMatchObject({
       workflowName: "demo-workflow",

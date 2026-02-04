@@ -642,7 +642,7 @@ export class TableBuilder<
     ormName: TColumnName,
     type: TType,
   ): TableBuilder<
-    TColumns & Record<TColumnName, Column<TType, TypeMap[TType], TypeMap[TType]>>,
+    TColumns & Record<TColumnName, Column<TType, ColumnInput<TType>, TypeMap[TType]>>,
     TRelations,
     TIndexes
   >;

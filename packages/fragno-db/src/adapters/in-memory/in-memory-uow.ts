@@ -194,6 +194,7 @@ const findJoinMatches = (
   parentTable: AnyTable,
   join: CompiledJoin,
   namespaceStore: InMemoryNamespaceStore,
+  now: () => Date,
 ): InMemoryRow[] => {
   const { relation, options } = join;
   if (options === false) {
@@ -245,7 +246,7 @@ const findJoinMatches = (
       continue;
     }
 
-    if (options.where && !evaluateCondition(options.where, targetTable, row, namespaceStore)) {
+    if (options.where && !evaluateCondition(options.where, targetTable, row, namespaceStore, now)) {
       continue;
     }
 
@@ -266,6 +267,7 @@ const applyJoins = (
   parentTable: AnyTable,
   joins: CompiledJoin[] | undefined,
   namespaceStore: InMemoryNamespaceStore,
+  now: () => Date,
   parentPath = "",
 ): InMemoryRow[] => {
   if (!joins || joins.length === 0) {
@@ -283,7 +285,7 @@ const applyJoins = (
     const nextOutputs: InMemoryRow[] = [];
 
     for (const currentOutput of outputs) {
-      const matches = findJoinMatches(parentRow, parentTable, join, namespaceStore);
+      const matches = findJoinMatches(parentRow, parentTable, join, namespaceStore, now);
 
       if (matches.length === 0) {
         nextOutputs.push(currentOutput);
@@ -307,6 +309,7 @@ const applyJoins = (
               join.relation.table,
               join.options.join,
               namespaceStore,
+              now,
               relationPath,
             ),
           );
@@ -556,6 +559,7 @@ const findRows = (
   op: Extract<RetrievalOperation<AnySchema>, { type: "find" }>,
   namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
+  now: () => Date,
 ): InMemoryRow[] => {
   const table = op.table;
   const orderByIndex = op.options.orderByIndex;
@@ -619,7 +623,7 @@ const findRows = (
     if (!row) {
       continue;
     }
-    if (condition && !evaluateCondition(condition, table, row, namespaceStore)) {
+    if (condition && !evaluateCondition(condition, table, row, namespaceStore, now)) {
       continue;
     }
 
@@ -630,7 +634,7 @@ const findRows = (
     );
 
     if (op.options.joins && op.options.joins.length > 0) {
-      const joined = applyJoins(baseOutput, row, table, op.options.joins, namespaceStore);
+      const joined = applyJoins(baseOutput, row, table, op.options.joins, namespaceStore, now);
       for (const joinedRow of joined) {
         results.push(joinedRow);
         if (limit !== undefined && results.length >= limit) {
@@ -653,6 +657,7 @@ const countRows = (
   op: Extract<RetrievalOperation<AnySchema>, { type: "count" }>,
   namespaceStore: InMemoryNamespaceStore,
   tableStore: InMemoryTableStore,
+  now: () => Date,
 ): number => {
   const table = op.table;
   const whereResult = op.options.where
@@ -667,7 +672,7 @@ const countRows = (
   let count = 0;
 
   for (const row of tableStore.rows.values()) {
-    if (condition && !evaluateCondition(condition, table, row, namespaceStore)) {
+    if (condition && !evaluateCondition(condition, table, row, namespaceStore, now)) {
       continue;
     }
     count += 1;
@@ -935,9 +940,11 @@ export const createInMemoryUowExecutor = (
         const tableStore = getTableStore(namespaceStore, compiled.table.ormName);
 
         if (compiled.type === "find") {
-          results.push(findRows(compiled, namespaceStore, tableStore));
+          results.push(findRows(compiled, namespaceStore, tableStore, options.clock.now));
         } else {
-          results.push([{ count: countRows(compiled, namespaceStore, tableStore) }]);
+          results.push([
+            { count: countRows(compiled, namespaceStore, tableStore, options.clock.now) },
+          ]);
         }
         continue;
       }
