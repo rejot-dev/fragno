@@ -65,9 +65,15 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
   const useMe = b.createHook("/me");
   const useSignUp = b.createMutator("POST", "/sign-up");
   const useSignIn = b.createMutator("POST", "/sign-in");
-  const useSignOut = b.createMutator("POST", "/sign-out");
+  const useSignOut = b.createMutator("POST", "/sign-out", (invalidate) => {
+    invalidate("GET", "/me", {});
+    invalidate("GET", "/users", {});
+  });
   const useUsers = b.createHook("/users");
-  const useUpdateUserRole = b.createMutator("PATCH", "/users/:userId/role");
+  const useUpdateUserRole = b.createMutator("PATCH", "/users/:userId/role", (invalidate) => {
+    invalidate("GET", "/users", {});
+    invalidate("GET", "/me", {});
+  });
   const useChangePassword = b.createMutator("POST", "/change-password");
 
   return {
@@ -117,23 +123,6 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
         body: params?.sessionId ? { sessionId: params.sessionId } : {},
       });
     },
-
-    // signOut: async () => {
-    //   const response = await fetcher("/sign-out", {
-    //     ...defaultOptions,
-    //     method: "POST",
-    //     body: JSON.stringify({}),
-    //   });
-
-    //   if (!response.ok) {
-    //     const error = await response.json();
-    //     throw new Error(error.message || "Sign out failed");
-    //   }
-
-    //   return response.json() as Promise<{
-    //     success: boolean;
-    //   }>;
-    // },
 
     me: async (params?: { sessionId?: string }) => {
       if (params?.sessionId) {
