@@ -1,7 +1,7 @@
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference } from "../schema/create";
-import { internalSchema } from "../fragments/internal-fragment";
+import { internalSchema } from "../fragments/internal-fragment.schema";
 import type { OutboxRefLookup, OutboxPayload, OutboxMutation } from "./outbox";
 import { encodeVersionstamp, versionstampToHex } from "./outbox";
 

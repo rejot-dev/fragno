@@ -50,12 +50,14 @@ the specific Fragment you are integrating to figure out what configuration is re
 
 ## Fragments with Databases
 
-Some Fragments include a database layer for persistent storage. These Fragments require you to
-provide a **database adapter** that connects the Fragment to your existing database.
+Some Fragments include a database layer for persistent storage. These Fragments typically require
+you to provide a **database adapter** that connects the Fragment to your existing database. If
+`better-sqlite3` is installed, Fragno can default to a local SQLite file per fragment under
+`FRAGNO_DATA_DIR` (default: `~/.fragno`).
 
 <Callout title="Database Integration Required" type="warn">
   If a Fragment requires `FragnoPublicConfigWithDatabase` or mentions `databaseAdapter` in its
-  documentation, you must set up database integration before using it.
+  documentation, set up database integration unless you're using the default SQLite adapter.
 </Callout>
 
 Fragno’s DB adapters use **Kysely’s `Dialect` interface** as the query execution layer. This lets us

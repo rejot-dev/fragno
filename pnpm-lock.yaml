@@ -1720,9 +1720,6 @@ importers:
       '@vitest/coverage-istanbul':
         specifier: ^3.2.4
         version: 3.2.4(vitest@3.2.4)
-      better-sqlite3:
-        specifier: ^12.6.2
-        version: 12.6.2
       drizzle-kit:
         specifier: ^0.31.8
         version: 0.31.8
@@ -1744,6 +1741,10 @@ importers:
       zod:
         specifier: ^4.3.5
         version: 4.3.5
+    optionalDependencies:
+      better-sqlite3:
+        specifier: ^12.6.2
+        version: 12.6.2
 
   packages/fragno-node:
     dependencies:

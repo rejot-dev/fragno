@@ -7,8 +7,9 @@ import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 
 Some Fragno Fragments include a built-in database layer for persistent storage. When integrating
-these Fragments, you need to provide a **database adapter** that connects the Fragment to your
-existing database.
+these Fragments, you typically provide a **database adapter** that connects the Fragment to your
+existing database. If `better-sqlite3` is installed, Fragno can default to a local SQLite file per
+fragment under `FRAGNO_DATA_DIR` (default: `~/.fragno`).
 
 <Callout title="Fragment Handles Schema" type="info">
   The Fragment defines its own schema and handles migrations. You just provide the database
@@ -26,7 +27,7 @@ Check the Fragment's creation function:
 // Fragment without database
 createExampleFragment(config, options);
 
-// Fragment with database - requires databaseAdapter
+// Fragment with database - may require databaseAdapter
 createCommentFragment(config, { databaseAdapter });
 ```
 
@@ -117,6 +118,9 @@ export function createCommentFragmentInstance() {
 // IMPORTANT: Export the Fragment so it's accessible by the Fragno CLI.
 export const fragment = createCommentFragmentInstance();
 ```
+
+If `better-sqlite3` is installed, you can omit `databaseAdapter` to use the default local SQLite
+file.
 
 </Step>
 

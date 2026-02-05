@@ -12,7 +12,7 @@ import type {
   ColumnOperation,
   MigrationOperation,
 } from "../../../migration-engine/shared";
-import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment";
+import { SETTINGS_TABLE_NAME } from "../../../fragments/internal-fragment.schema";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
