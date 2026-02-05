@@ -1,5 +1,6 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
+export { decodeOutboxPayload, outboxMutationsToUowOperations, resolveOutboxRefs } from "./outbox";
 
 export type LofiClientOptions = {
   outboxUrl: string;
@@ -120,22 +121,4 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
   ): LofiQueryInterface<T> {
     throw new Error("IndexedDbAdapter is not implemented yet.");
   }
-}
-
-export function decodeOutboxPayload(_payload: unknown): unknown {
-  throw new Error("decodeOutboxPayload is not implemented yet.");
-}
-
-export function resolveOutboxRefs<T extends Record<string, unknown>>(
-  _mutation: T,
-  _refMap: Record<string, string>,
-): T {
-  throw new Error("resolveOutboxRefs is not implemented yet.");
-}
-
-export function outboxMutationsToUowOperations(
-  _mutations: LofiMutation[],
-  _schemaMap: Record<string, AnySchema>,
-): unknown[] {
-  throw new Error("outboxMutationsToUowOperations is not implemented yet.");
 }
