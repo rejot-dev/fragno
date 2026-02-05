@@ -1,6 +1,6 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
-import type { LofiMutation } from "../mod";
+import type { LofiMutation } from "../types";
 
 export function outboxMutationsToUowOperations(
   mutations: LofiMutation[],
