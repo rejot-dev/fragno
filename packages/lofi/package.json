@@ -19,6 +19,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
+    "lint": "oxlint .",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch"
