@@ -1,22 +1,6 @@
-import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, customType, pgSchema, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
+import { pgTable, varchar, text, bigserial, integer, uniqueIndex, json, timestamp, index, pgSchema, bigint, foreignKey, boolean } from "drizzle-orm/pg-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
-const customBinary = customType<
-  {
-    data: Uint8Array;
-    driverData: Buffer;
-  }
->({
-  dataType() {
-    return "bytea";
-  },
-  fromDriver(value) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-  },
-  toDriver(value) {
-    return value instanceof Buffer? value : Buffer.from(value)
-  }
-});
 
 // ============================================================================
 // Fragment: (none)
@@ -54,7 +38,7 @@ export const fragno_hooks = pgTable("fragno_hooks", {
 
 export const fragno_db_outbox = pgTable("fragno_db_outbox", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  versionstamp: customBinary("versionstamp").notNull(),
+  versionstamp: text("versionstamp").notNull(),
   uowId: text("uowId").notNull(),
   payload: json("payload").notNull(),
   refMap: json("refMap"),

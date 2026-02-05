@@ -1,22 +1,6 @@
-import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, customType, foreignKey, boolean } from "drizzle-orm/mysql-core"
+import { mysqlTable, varchar, text, bigint, int, uniqueIndex, json, datetime, index, foreignKey, boolean } from "drizzle-orm/mysql-core"
 import { createId } from "@fragno-dev/db/id"
 import { sql, relations } from "drizzle-orm"
-const customBinary = customType<
-  {
-    data: Uint8Array;
-    driverData: Buffer;
-  }
->({
-  dataType() {
-    return "longblob";
-  },
-  fromDriver(value) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-  },
-  toDriver(value) {
-    return value instanceof Buffer? value : Buffer.from(value)
-  }
-});
 
 // ============================================================================
 // Fragment: (none)
@@ -54,7 +38,7 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
 
 export const fragno_db_outbox = mysqlTable("fragno_db_outbox", {
   id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),
-  versionstamp: customBinary("versionstamp").notNull(),
+  versionstamp: text("versionstamp").notNull(),
   uowId: text("uowId").notNull(),
   payload: json("payload").notNull(),
   refMap: json("refMap"),

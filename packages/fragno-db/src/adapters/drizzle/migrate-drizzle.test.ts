@@ -179,7 +179,7 @@ describe("generateSchema and migrate", () => {
 
       CREATE TABLE "fragno_db_outbox" (
       	"id" varchar(30) NOT NULL,
-      	"versionstamp" "bytea" NOT NULL,
+      	"versionstamp" text NOT NULL,
       	"uowId" text NOT NULL,
       	"payload" json NOT NULL,
       	"refMap" json,

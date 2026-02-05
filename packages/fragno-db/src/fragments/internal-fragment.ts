@@ -11,7 +11,6 @@ import {
 import { FragnoId } from "../schema/create";
 import { schema, idColumn, column } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
-import { coerceVersionstampBytes, hexToVersionstamp, versionstampToHex } from "../outbox/outbox";
 import { dbNow } from "../query/db-now";
 
 // Constants for Fragno's internal settings table
@@ -51,7 +50,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
     .addTable("fragno_db_outbox", (t) => {
       return t
         .addColumn("id", idColumn())
-        .addColumn("versionstamp", column("binary"))
+        .addColumn("versionstamp", column("string"))
         .addColumn("uowId", column("string"))
         .addColumn("payload", column("json"))
         .addColumn("refMap", column("json").nullable())
@@ -495,14 +494,14 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * List outbox entries ordered by versionstamp (ascending).
        */
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
-        const afterBytes = afterVersionstamp ? hexToVersionstamp(afterVersionstamp) : undefined;
+        const afterValue = afterVersionstamp?.toLowerCase();
 
         return this.serviceTx(internalSchema)
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
-              let builder = afterBytes
+              let builder = afterValue
                 ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
-                    eb("versionstamp", ">", afterBytes),
+                    eb("versionstamp", ">", afterValue),
                   )
                 : b.whereIndex("idx_outbox_versionstamp");
 
@@ -516,7 +515,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
           .transformRetrieve(([entries]) =>
             entries.map((entry) => ({
               id: entry.id,
-              versionstamp: versionstampToHex(coerceVersionstampBytes(entry.versionstamp)),
+              versionstamp: entry.versionstamp,
               uowId: entry.uowId,
               payload: entry.payload,
               refMap: entry.refMap ?? undefined,
