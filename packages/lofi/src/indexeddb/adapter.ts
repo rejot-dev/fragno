@@ -8,6 +8,10 @@ import type {
   LofiQueryInterface,
   LofiQueryableAdapter,
 } from "../types";
+import { requestToPromise, transactionDone } from "./idb-utils";
+import type { ReferenceTarget } from "./types";
+import { normalizeValue } from "../query/normalize";
+import { createIndexedDbQueryEngine } from "../query/engine";
 
 type LofiRow = {
   key: [string, string, string, string];
@@ -39,11 +43,6 @@ type IndexDefinition = {
   schema: string;
   columns: string[];
   unique: boolean;
-};
-
-type ReferenceTarget = {
-  schema: string;
-  table: string;
 };
 
 const META_STORE = "lofi_meta";
@@ -184,10 +183,16 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
   }
 
   createQueryEngine<const T extends AnySchema>(
-    _schema: T,
-    _options?: LofiQueryEngineOptions,
+    schema: T,
+    options?: LofiQueryEngineOptions,
   ): LofiQueryInterface<T> {
-    throw new Error("IndexedDbAdapter query engine is not implemented yet.");
+    return createIndexedDbQueryEngine({
+      schema,
+      endpointName: this.endpointName,
+      getDb: () => this.openDatabase(),
+      referenceTargets: this.referenceTargets,
+      schemaName: options?.schemaName,
+    });
   }
 
   private openDatabase(): Promise<IDBDatabase> {
@@ -412,19 +417,6 @@ const openDatabaseWithUpgrade = (
     };
   });
 
-const requestToPromise = <T>(request: IDBRequest<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-const transactionDone = (tx: IDBTransaction): Promise<void> =>
-  new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error ?? new Error("IndexedDb transaction aborted"));
-  });
-
 const readMetaValue = async (db: IDBDatabase, key: string): Promise<string | undefined> => {
   if (!db.objectStoreNames.contains(META_STORE)) {
     return undefined;
@@ -636,68 +628,4 @@ const resolveColumnValue = async (options: {
   }
 
   return normalizeValue(rawValue, column);
-};
-
-const normalizeValue = (value: unknown, column: AnyColumn): unknown => {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  if (column.type === "date" || column.type === "timestamp") {
-    if (value instanceof Date) {
-      return value.getTime();
-    }
-    if (typeof value === "number") {
-      return value;
-    }
-    if (typeof value === "string") {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new Error(`Invalid date value for ${column.name}: ${value}`);
-      }
-      return parsed.getTime();
-    }
-  }
-
-  if (column.type === "bool") {
-    if (typeof value === "boolean") {
-      return value ? 1 : 0;
-    }
-    if (typeof value === "number") {
-      return value ? 1 : 0;
-    }
-  }
-
-  if (column.type === "bigint") {
-    const bigintValue =
-      typeof value === "bigint"
-        ? value
-        : typeof value === "number" || typeof value === "string"
-          ? BigInt(value)
-          : (() => {
-              throw new Error(`Invalid bigint value for ${column.name}`);
-            })();
-    const buffer = new ArrayBuffer(8);
-    const view = new DataView(buffer);
-    view.setBigInt64(0, bigintValue, false);
-    return new Uint8Array(buffer);
-  }
-
-  if (column.type === "binary") {
-    if (value instanceof Uint8Array) {
-      return value;
-    }
-    if (value instanceof ArrayBuffer) {
-      return new Uint8Array(value);
-    }
-    if (value instanceof Buffer) {
-      return new Uint8Array(value);
-    }
-  }
-
-  if (column.type === "json") {
-    return JSON.stringify(value);
-  }
-
-  return value;
 };
