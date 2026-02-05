@@ -1889,6 +1889,9 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
+      superjson:
+        specifier: ^2.2.1
+        version: 2.2.6
     devDependencies:
       '@fragno-private/typescript-config':
         specifier: workspace:*
