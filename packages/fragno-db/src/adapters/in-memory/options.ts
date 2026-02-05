@@ -1,5 +1,6 @@
 import { createId, init } from "@paralleldrive/cuid2";
 import type { SqlNamingStrategy } from "../../naming/sql-naming";
+import type { OutboxConfig } from "../../outbox/outbox";
 
 export type InMemoryAdapterOptions = {
   clock?: { now: () => Date };
@@ -9,6 +10,7 @@ export type InMemoryAdapterOptions = {
   enforceConstraints?: boolean;
   btreeOrder?: number;
   namingStrategy?: SqlNamingStrategy;
+  outbox?: OutboxConfig;
 };
 
 export type ResolvedInMemoryAdapterOptions = {
@@ -19,6 +21,7 @@ export type ResolvedInMemoryAdapterOptions = {
   internalIdGeneratorProvided: boolean;
   enforceConstraints: boolean;
   btreeOrder: number;
+  outbox?: OutboxConfig;
 };
 
 const defaultClock = {
@@ -83,5 +86,6 @@ export const resolveInMemoryAdapterOptions = (
     internalIdGeneratorProvided,
     enforceConstraints: options.enforceConstraints ?? defaultEnforceConstraints,
     btreeOrder: options.btreeOrder ?? defaultBtreeOrder,
+    outbox: options.outbox,
   };
 };
