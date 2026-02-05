@@ -186,7 +186,7 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbOutbox {
         id String @unique @default(cuid())
-        versionstamp Bytes
+        versionstamp String
         uowId String
         payload Json
         refMap Json?
@@ -280,7 +280,7 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbOutbox {
         id String @unique @default(cuid())
-        versionstamp Bytes
+        versionstamp String
         uowId String
         payload Json
         refMap Json?
@@ -373,7 +373,7 @@ describe("generatePrismaSchema", () => {
 
       model FragnoDbOutbox {
         id String @unique @default(cuid()) @db.VarChar(30)
-        versionstamp Bytes
+        versionstamp String
         uowId String
         payload Json @db.Json
         refMap Json? @db.Json

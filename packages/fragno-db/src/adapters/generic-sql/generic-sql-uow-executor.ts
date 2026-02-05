@@ -18,6 +18,7 @@ import {
   type OutboxRefMap,
   encodeVersionstamp,
   parseOutboxVersionValue,
+  versionstampToHex,
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
@@ -139,7 +140,7 @@ export async function executeMutation(
         );
         const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
         const payloadSerialized = superjson.serialize(payload);
-        const versionstamp = encodeVersionstamp(outboxVersion, 0);
+        const versionstamp = versionstampToHex(encodeVersionstamp(outboxVersion, 0));
 
         await insertOutboxRow(tx, driverConfig, {
           id: createId(),
@@ -329,7 +330,7 @@ async function insertOutboxRow(
   driverConfig: DriverConfig,
   options: {
     id: string;
-    versionstamp: Uint8Array;
+    versionstamp: string;
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;

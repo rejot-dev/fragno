@@ -104,22 +104,6 @@ export function hexToVersionstamp(hex: string): Uint8Array {
   return bytes;
 }
 
-export function coerceVersionstampBytes(value: unknown): Uint8Array {
-  if (value instanceof Uint8Array) {
-    return value;
-  }
-
-  if (typeof Buffer !== "undefined" && value instanceof Buffer) {
-    return new Uint8Array(value);
-  }
-
-  if (value instanceof ArrayBuffer) {
-    return new Uint8Array(value);
-  }
-
-  throw new Error(`Unsupported versionstamp type: ${typeof value}`);
-}
-
 export function parseOutboxVersionValue(value: unknown): bigint {
   if (typeof value === "bigint") {
     return value;

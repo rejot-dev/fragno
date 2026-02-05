@@ -1,22 +1,6 @@
-import { sqliteTable, text, integer, uniqueIndex, index, customType, foreignKey } from "drizzle-orm/sqlite-core"
+import { sqliteTable, text, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/sqlite-core"
 import { createId } from "@fragno-dev/db/id"
 import { relations } from "drizzle-orm"
-const customBinary = customType<
-  {
-    data: Uint8Array;
-    driverData: Buffer;
-  }
->({
-  dataType() {
-    return "blob";
-  },
-  fromDriver(value) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-  },
-  toDriver(value) {
-    return value instanceof Buffer? value : Buffer.from(value)
-  }
-});
 
 // ============================================================================
 // Fragment: (none)
@@ -56,7 +40,7 @@ export const fragno_hooks = sqliteTable("fragno_hooks", {
 
 export const fragno_db_outbox = sqliteTable("fragno_db_outbox", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
-  versionstamp: customBinary("versionstamp").notNull(),
+  versionstamp: text("versionstamp").notNull(),
   uowId: text("uowId").notNull(),
   payload: text("payload", { mode: "json" }).notNull(),
   refMap: text("refMap", { mode: "json" }),
