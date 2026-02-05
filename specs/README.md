@@ -89,6 +89,8 @@ very detailed, living documents that guide implementation without constraining t
   checker behavior.
 - [Fragno DB Outbox — Spec](./spec-outbox.md) — Optional outbox with a global clock stored in
   internal settings, ordered UOW mutation capture, and programmatic retrieval.
+- [Fragno Lofi (Local-First Client) - Spec](./spec-lofi.md) - Local-first client package that polls
+  the outbox and applies mutations to IndexedDB.
 
 ## Implementation Plans
 
