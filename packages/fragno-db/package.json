@@ -68,6 +68,11 @@
       "types": "./dist/schema-output/prisma.d.ts",
       "default": "./dist/schema-output/prisma.js"
     },
+    "./client": {
+      "development": "./src/client.ts",
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
     "./unit-of-work": {
       "development": "./src/query/unit-of-work/unit-of-work.ts",
       "types": "./dist/query/unit-of-work/unit-of-work.d.ts",
@@ -113,7 +118,6 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.15",
-    "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@libsql/client": "^0.15.15",
@@ -137,6 +141,7 @@
   "homepage": "https://fragno.dev",
   "license": "MIT",
   "dependencies": {
+    "@fragno-dev/core": "workspace:*",
     "@paralleldrive/cuid2": "^2.3.1",
     "@standard-schema/spec": "^1.1.0",
     "kysely": "^0.28.10",
