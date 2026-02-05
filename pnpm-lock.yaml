@@ -1884,6 +1884,31 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.0.0)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/lofi:
+    dependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^22.19.7
+        version: 22.19.7
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      tsdown:
+        specifier: ^0.15.12
+        version: 0.15.12(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.7)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/stripe:
     dependencies:
       '@fragno-dev/core':
