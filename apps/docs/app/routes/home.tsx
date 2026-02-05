@@ -95,7 +95,7 @@ function Hero() {
   return (
     <section className="w-full max-w-5xl space-y-5 py-6 text-center md:py-10">
       <h1 className="text-fd-foreground dark:bg-linear-to-b text-5xl font-extrabold tracking-tight md:text-6xl lg:text-7xl dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
-        Full-Stack{" "}
+        Modular{" "}
         <span className="text-fd-foreground dark:bg-linear-to-b relative inline-block dark:from-white dark:to-white/70 dark:bg-clip-text dark:text-transparent">
           TypeScript
           <span className="absolute -right-3 -top-2 inline-flex rotate-12 items-center md:-right-7 md:-top-3">
@@ -116,16 +116,15 @@ function Hero() {
           </span>
         </span>
         <br />
-        Libraries
+        building blocks
       </h1>
       <p className="text-fd-muted-foreground mx-auto max-w-3xl text-lg md:text-2xl md:leading-9">
-        A toolkit for building libraries that bundle database schemas, backend routes, and frontend
-        hooks into one package.
+        Libraries that bundle database schemas, backend routes, and frontend hooks into one package.
       </p>
 
       <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
         <Link
-          to="/docs/fragno"
+          to="/docs"
           className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
         >
           View Docs
@@ -342,8 +341,8 @@ export function Chat() {
             and the user is responsible for the glue-code.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">
-            A <u>Fragment</u> does both: it's a full-stack library. Users integrate with only a
-            couple of lines of code. No glue.
+            A <u>full-stack library</u> does both. Users integrate with only a couple of lines of
+            code. No glue.
           </p>
           <p className="text-fd-muted-foreground max-w-xl text-lg">10x the developer experience.</p>
         </div>
@@ -391,7 +390,7 @@ export function Chat() {
               )}
               {activeTab === "workflow-sketch" && (
                 <p className="text-fd-muted-foreground mb-4 text-sm">
-                  Your user has a seamless experience integrating your Fragment. They get typed,
+                  Your user has a seamless experience integrating your library. They get typed,
                   reactive hooks for React, Vue, or Svelte.
                 </p>
               )}
@@ -464,7 +463,7 @@ function DocsSection() {
               </div>
             </div>
             <p className="text-fd-muted-foreground text-sm">
-              Create your own full-stack libraries. Learn how to build framework-agnostic Fragments.
+              Create your own full-stack libraries. Learn how to build them for any framework.
             </p>
           </div>
         </Link>
@@ -485,10 +484,276 @@ function DocsSection() {
               </div>
             </div>
             <p className="text-fd-muted-foreground text-sm">
-              Learn how to integrate Fragno Fragments into your application
+              Learn how to integrate Fragno libraries into your application
             </p>
           </div>
         </Link>
+      </div>
+    </section>
+  );
+}
+
+type ShowcaseItem = {
+  id: "auth" | "stripe" | "upload" | "forms" | "workflows";
+  label: string;
+  title: React.ReactNode;
+  titlePlain: string;
+  summary: string;
+  description: string;
+  installCommand: string;
+  details: string[];
+  href: string;
+  cta: string;
+  glowClass: string;
+  dotClass: string;
+  ctaClass: string;
+  activeRing: string;
+};
+
+const showcaseItems: ShowcaseItem[] = [
+  {
+    id: "stripe",
+    label: "Billing",
+    title: (
+      <>
+        <span className="bg-linear-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent dark:from-violet-400 dark:to-purple-400">
+          Stripe
+        </span>{" "}
+        Billing
+      </>
+    ),
+    titlePlain: "Stripe Billing",
+    summary: "Manage subscriptions using Stripe",
+    description: "Stripe Checkout, webhooks, and subscription management.",
+    installCommand: "npm install @fragno-dev/stripe",
+    details: [
+      "Keep track of subscriptions status in your database.",
+      "Webhook handlers included.",
+      "Hooks for creating/cancelling/upgrading subscription plans.",
+    ],
+    href: "/docs/stripe",
+    cta: "Stripe Docs",
+    glowClass: "bg-violet-500/10 dark:bg-violet-400/15",
+    dotClass: "bg-violet-500/70 dark:bg-violet-400/70",
+    ctaClass: "bg-violet-600 hover:bg-violet-700",
+    activeRing: "ring-violet-500/30 dark:ring-violet-400/30",
+  },
+  {
+    id: "forms",
+    label: "Forms and Surveys",
+    title: (
+      <span className="bg-linear-to-r from-blue-600 to-sky-500 bg-clip-text text-transparent dark:from-blue-400 dark:to-sky-400">
+        Forms
+      </span>
+    ),
+    titlePlain: "Forms",
+    summary: "Build forms and collect responses.",
+    description:
+      "Form definitions, submission handling, and response storage built on open standards.",
+    installCommand: "npm install @fragno-dev/forms",
+    details: [
+      "Built on JSON Schema + JSON Forms.",
+      "Render beautiful forms with shadcn/ui",
+      "User friendly form builder included.",
+    ],
+    href: "/forms",
+    cta: "Forms Demo",
+    glowClass: "bg-blue-500/10 dark:bg-blue-400/15",
+    dotClass: "bg-blue-500/70 dark:bg-blue-400/70",
+    ctaClass: "bg-blue-600 hover:bg-blue-700",
+    activeRing: "ring-blue-500/30 dark:ring-blue-400/30",
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    title: (
+      <>
+        <span className="bg-linear-to-r from-amber-600 to-orange-500 bg-clip-text text-transparent dark:from-amber-400 dark:to-orange-300">
+          Durable Workflow
+        </span>{" "}
+        Runtime
+      </>
+    ),
+    titlePlain: "Durable Workflows",
+    summary: "Queues, retries, and durable state.",
+    description: "Queues, retries, and durable state for background work.",
+    installCommand: "npm install @fragno-dev/fragment-workflows",
+    details: [
+      "Steps, timers, retries, and external events.",
+      "Runner + dispatcher model for durable execution.",
+      "Test harness for deterministic workflow runs.",
+    ],
+    href: "/docs/workflows",
+    cta: "Workflows Docs",
+    glowClass: "bg-amber-500/10 dark:bg-amber-400/15",
+    dotClass: "bg-amber-500/70 dark:bg-amber-400/70",
+    ctaClass: "bg-amber-600 hover:bg-amber-700",
+    activeRing: "ring-amber-500/30 dark:ring-amber-400/30",
+  },
+  {
+    id: "auth",
+    label: "Auth",
+    title: (
+      <span className="bg-linear-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-emerald-400 dark:to-teal-300">
+        Authentication
+      </span>
+    ),
+    titlePlain: "Authentication",
+    summary: "User and session management.",
+    description: "User and session management.",
+    installCommand: "npm install @fragno-dev/simple-auth",
+    details: [],
+    href: "",
+    cta: "",
+    glowClass: "bg-emerald-500/10 dark:bg-emerald-400/15",
+    dotClass: "bg-emerald-500/70 dark:bg-emerald-400/70",
+    ctaClass: "bg-emerald-600 hover:bg-emerald-700",
+    activeRing: "ring-emerald-500/30 dark:ring-emerald-400/30",
+  },
+  {
+    id: "upload",
+    label: "File Uploads",
+    title: (
+      <>
+        <span className="bg-linear-to-r from-cyan-600 to-sky-500 bg-clip-text text-transparent dark:from-cyan-400 dark:to-sky-300">
+          File
+        </span>{" "}
+        Uploads
+      </>
+    ),
+    titlePlain: "File Uploads",
+    summary: "Uploads, metadata, and access hooks.",
+    description: "Upload flows, metadata storage, and client hooks for files.",
+    installCommand: "npm install @fragno-dev/fragment-upload",
+    details: [],
+    href: "",
+    cta: "",
+    glowClass: "bg-cyan-500/10 dark:bg-cyan-400/15",
+    dotClass: "bg-cyan-500/70 dark:bg-cyan-400/70",
+    ctaClass: "bg-cyan-600 hover:bg-cyan-700",
+    activeRing: "ring-cyan-500/30 dark:ring-cyan-400/30",
+  },
+];
+
+function FragmentShowcase() {
+  const selectableItems = showcaseItems.filter((item) => item.href);
+  const [activeId, setActiveId] = useState<ShowcaseItem["id"]>(selectableItems[0].id);
+  const activeItem = selectableItems.find((item) => item.id === activeId) ?? selectableItems[0];
+
+  return (
+    <section className="w-full max-w-6xl space-y-8">
+      {/*<div className="space-y-3 text-center">
+        <h2 className="text-2xl tracking-tight md:text-4xl">App features as libraries</h2>
+      </div>*/}
+
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="relative overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 md:p-10 dark:bg-slate-950/60 dark:ring-white/10">
+          <span
+            className={`absolute inset-x-6 -top-16 h-28 rounded-full opacity-80 blur-3xl ${activeItem.glowClass}`}
+          />
+          <div className="relative flex h-full flex-col justify-between gap-6">
+            <div className="space-y-6">
+              <p className="text-fd-muted-foreground text-sm font-medium">{activeItem.label}</p>
+              <h3 className="text-3xl font-extrabold tracking-tight md:text-4xl">
+                {activeItem.title}
+              </h3>
+              <p className="text-fd-muted-foreground max-w-xl text-lg">{activeItem.description}</p>
+              <div className="space-y-2">
+                <ul className="grid gap-2 text-sm text-slate-600 dark:text-slate-300">
+                  {activeItem.details.map((detail) => (
+                    <li key={detail} className="flex gap-2">
+                      <span
+                        aria-hidden
+                        className="mt-2 inline-flex h-1.5 w-1.5 rounded-full bg-slate-400/70 dark:bg-slate-500/70"
+                      />
+                      <span>{detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="space-y-2 pt-2">
+                <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                  Install
+                </p>
+                <FragnoCodeBlock
+                  lang="bash"
+                  code={activeItem.installCommand}
+                  allowCopy
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+            <div>
+              <Link
+                to={activeItem.href}
+                className={`group inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold text-white shadow-sm transition-colors ${activeItem.ctaClass}`}
+              >
+                {activeItem.cta}
+                <span className="transition-transform group-hover:translate-x-0.5">→</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          {showcaseItems.map((item) => {
+            const isComingSoon = !item.href;
+            const isActive = item.id === activeId;
+
+            if (isComingSoon) {
+              return (
+                <div
+                  key={item.id}
+                  className="w-full rounded-2xl border border-black/5 bg-white/40 p-4 opacity-50 dark:border-white/5 dark:bg-slate-950/30"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                        {item.label}
+                      </p>
+                      <p className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+                        {item.titlePlain}
+                      </p>
+                      <p className="text-fd-muted-foreground text-sm">Coming soon</p>
+                    </div>
+                    <span
+                      className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-gray-600"
+                      aria-hidden
+                    />
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveId(item.id)}
+                aria-pressed={isActive}
+                className={`group w-full rounded-2xl border border-black/5 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-white/10 dark:bg-slate-950/60 ${
+                  isActive ? `ring-2 ${item.activeRing}` : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <p className="text-fd-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                      {item.label}
+                    </p>
+                    <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                      {item.titlePlain}
+                    </p>
+                    <p className="text-fd-muted-foreground text-sm">{item.summary}</p>
+                  </div>
+                  <span
+                    className={`mt-1 inline-flex h-2.5 w-2.5 rounded-full ${item.dotClass}`}
+                    aria-hidden
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -630,65 +895,15 @@ function UseCases() {
   );
 }
 
-function StripeShowcase() {
+function BuildOnFragnoHeading() {
   return (
-    <section className="w-full max-w-5xl">
-      <Link
-        to="/docs/stripe"
-        className="group relative block overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl md:p-12 dark:bg-slate-950/60 dark:ring-white/10"
-      >
-        <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-violet-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-violet-400/15" />
-        <div className="relative flex flex-col items-center gap-6 text-center md:flex-row md:text-left">
-          <div className="flex-1 space-y-3">
-            <p className="text-fd-muted-foreground text-sm font-medium">Stripe Fragment</p>
-            <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-              Drop in{" "}
-              <span className="bg-linear-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent dark:from-violet-400 dark:to-purple-400">
-                Stripe Billing
-              </span>
-            </h2>
-            <p className="text-fd-muted-foreground max-w-xl text-lg">
-              Stripe Checkout, webhooks, and subscription management. Just add your API keys.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors group-hover:bg-violet-700">
-            Explore Stripe Fragment
-            <span className="transition-transform group-hover:translate-x-0.5">→</span>
-          </div>
-        </div>
-      </Link>
-    </section>
-  );
-}
-
-function FormsShowcase() {
-  return (
-    <section className="w-full max-w-5xl">
-      <Link
-        to="/forms"
-        className="group relative block overflow-hidden rounded-2xl bg-white/90 p-8 shadow-sm ring-1 ring-black/5 transition-all hover:-translate-y-1 hover:shadow-xl md:p-12 dark:bg-slate-950/60 dark:ring-white/10"
-      >
-        <span className="absolute inset-x-6 -top-16 h-28 rounded-full bg-blue-500/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-80 dark:bg-blue-400/15" />
-        <div className="relative flex flex-col items-center gap-6 text-center md:flex-row md:text-left">
-          <div className="flex-1 space-y-3">
-            <p className="text-fd-muted-foreground text-sm font-medium">Form Fragment</p>
-            <h2 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-              <span className="bg-linear-to-r from-blue-600 to-sky-500 bg-clip-text text-transparent dark:from-blue-400 dark:to-sky-400">
-                Forms
-              </span>
-              , Simplified
-            </h2>
-            <p className="text-fd-muted-foreground max-w-xl text-lg">
-              Build forms and collect responses. Based on open standards. Add to any application.
-              Bring your own design.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors group-hover:bg-blue-700">
-            Explore Form Fragment
-            <span className="transition-transform group-hover:translate-x-0.5">→</span>
-          </div>
-        </div>
-      </Link>
+    <section className="w-full max-w-5xl py-10 text-center">
+      <div className="space-y-3">
+        <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Built on Fragno</h2>
+        <p className="text-fd-muted-foreground mx-auto max-w-prose text-base md:text-lg">
+          A toolkit for building full-stack libraries that integrate into any stack.
+        </p>
+      </div>
     </section>
   );
 }
@@ -702,32 +917,22 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
       </div>
 
       <Hero />
+      <FragmentShowcase />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <Frameworks />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <CommunitySection turnstileSitekey={turnstileSitekey} />
+      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
+      <BuildOnFragnoHeading />
       <FragnoExplainer />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <UseCases />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <section className="w-full max-w-5xl space-y-6">
-        <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl">
-          Fragment Showcase
-        </h2>
-        <p className="text-fd-muted-foreground mx-auto max-w-prose text-center text-lg">
-          Fragments built on top of Fragno that you can start using today.
-        </p>
-        <StripeShowcase />
-        <FormsShowcase />
-      </section>
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-      <Frameworks />
-      {/*<WhatFragnoProvides />*/}
-      <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <Features />
-
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
       <DatabaseIntegration />
       <div className="mt-6 w-full max-w-5xl border-t border-black/5 dark:border-white/10" />
-
       <DocsSection />
-      <CommunitySection turnstileSitekey={turnstileSitekey} />
     </main>
   );
 }
