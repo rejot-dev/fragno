@@ -24,7 +24,8 @@
     "test:watch": "vitest --watch"
   },
   "dependencies": {
-    "@fragno-dev/db": "workspace:*"
+    "@fragno-dev/db": "workspace:*",
+    "superjson": "^2.2.1"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
