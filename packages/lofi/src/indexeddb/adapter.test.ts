@@ -1,0 +1,322 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+import { IndexedDbAdapter } from "../mod";
+
+const createDbName = () => `lofi-test-${Math.random().toString(16).slice(2)}`;
+
+type StoredRow = {
+  data: Record<string, unknown>;
+  _lofi: {
+    internalId: number;
+    version: number;
+    norm: Record<string, unknown>;
+  };
+};
+
+const openDb = (name: string): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
+    const request = indexedDB.open(name);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+const requestToPromise = <T>(request: IDBRequest<T>): Promise<T> =>
+  new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+const getRow = async (db: IDBDatabase, key: IDBValidKey): Promise<StoredRow | undefined> => {
+  const tx = db.transaction("lofi_rows", "readonly");
+  const store = tx.objectStore("lofi_rows");
+  const row = await requestToPromise<unknown>(store.get(key));
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return row as StoredRow | undefined;
+};
+
+const getAllRows = async (db: IDBDatabase): Promise<StoredRow[]> => {
+  const tx = db.transaction("lofi_rows", "readonly");
+  const store = tx.objectStore("lofi_rows");
+  const rows = await requestToPromise<unknown[]>(store.getAll());
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return rows as StoredRow[];
+};
+
+describe("IndexedDbAdapter", () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory();
+    globalThis.IDBKeyRange = IDBKeyRange;
+  });
+
+  it("applies create/update/delete with idempotency and versioning", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("age", column("integer")),
+      ),
+    );
+
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    const result = await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada", age: 30 },
+        },
+      ],
+    });
+
+    expect(result.applied).toBe(true);
+
+    const db = await openDb(dbName);
+    const row = await getRow(db, ["app", "app", "users", "user-1"]);
+    if (!row) {
+      throw new Error("Expected row to exist");
+    }
+    expect(row.data).toMatchObject({ name: "Ada", age: 30 });
+    expect(row._lofi.internalId).toBe(1);
+    expect(row._lofi.version).toBe(1);
+
+    const updateResult = await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs2",
+      mutations: [
+        {
+          op: "update",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs2",
+          set: { age: 31 },
+        },
+      ],
+    });
+
+    expect(updateResult.applied).toBe(true);
+    const updated = await getRow(db, ["app", "app", "users", "user-1"]);
+    if (!updated) {
+      throw new Error("Expected updated row to exist");
+    }
+    expect(updated.data).toMatchObject({ name: "Ada", age: 31 });
+    expect(updated._lofi.version).toBe(2);
+
+    const deleteResult = await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs3",
+      mutations: [
+        {
+          op: "delete",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs3",
+        },
+      ],
+    });
+
+    expect(deleteResult.applied).toBe(true);
+    const deleted = await getRow(db, ["app", "app", "users", "user-1"]);
+    expect(deleted).toBeUndefined();
+
+    const missingUpdate = await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs4",
+      mutations: [
+        {
+          op: "update",
+          schema: "app",
+          table: "users",
+          externalId: "user-missing",
+          versionstamp: "vs4",
+          set: { age: 20 },
+        },
+      ],
+    });
+
+    expect(missingUpdate.applied).toBe(true);
+    const missingRow = await getRow(db, ["app", "app", "users", "user-missing"]);
+    expect(missingRow).toBeUndefined();
+
+    const duplicate = await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs2",
+      mutations: [
+        {
+          op: "update",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs2",
+          set: { age: 32 },
+        },
+      ],
+    });
+
+    expect(duplicate.applied).toBe(false);
+  });
+
+  it("maintains per-table internal IDs and reference normalization", async () => {
+    const appSchema = schema("app", (s) =>
+      s
+        .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("authorId", referenceColumn())
+            .addColumn("title", column("string")),
+        )
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
+        }),
+    );
+
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-2",
+          versionstamp: "vs1",
+          values: { name: "Grace" },
+        },
+      ],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs2",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "posts",
+          externalId: "post-1",
+          versionstamp: "vs2",
+          values: { title: "Hello", authorId: "user-2" },
+        },
+      ],
+    });
+
+    const db = await openDb(dbName);
+    const user1 = await getRow(db, ["app", "app", "users", "user-1"]);
+    const user2 = await getRow(db, ["app", "app", "users", "user-2"]);
+    const post = await getRow(db, ["app", "app", "posts", "post-1"]);
+
+    if (!user1 || !user2 || !post) {
+      throw new Error("Expected rows to exist");
+    }
+    expect(user1._lofi.internalId).toBe(1);
+    expect(user2._lofi.internalId).toBe(2);
+    expect(post._lofi.norm["authorId"]).toBe(2);
+  });
+
+  it("creates indexes and clears rows on schema fingerprint changes", async () => {
+    const schemaV1 = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .createIndex("idx_name", ["name"]),
+      ),
+    );
+
+    const dbName = createDbName();
+    const adapterV1 = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: schemaV1 }],
+    });
+
+    await adapterV1.setMeta("app::outbox", "vs0");
+    await adapterV1.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    const db = await openDb(dbName);
+    const rows = await getAllRows(db);
+    expect(rows).toHaveLength(1);
+
+    const rowsStore = db.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
+    expect(rowsStore.indexNames.contains("idx_schema_table")).toBe(true);
+    expect(rowsStore.indexNames.contains("idx__app__users__idx_name")).toBe(true);
+    db.close();
+
+    const schemaV2 = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("age", column("integer"))
+          .createIndex("idx_name", ["name"])
+          .createIndex("idx_age", ["age"]),
+      ),
+    );
+
+    const adapterV2 = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: schemaV2 }],
+    });
+
+    await adapterV2.getMeta("app::schema_fingerprint");
+
+    const dbAfter = await openDb(dbName);
+    const clearedRows = await getAllRows(dbAfter);
+    expect(clearedRows).toHaveLength(0);
+    const cursorMeta = await adapterV2.getMeta("app::outbox");
+    expect(cursorMeta).toBeUndefined();
+    dbAfter.close();
+  });
+});
