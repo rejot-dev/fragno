@@ -1,6 +1,12 @@
 import type { AnySchema, AnyTable } from "../../schema/create";
 import { FragnoId, FragnoReference } from "../../schema/create";
+import superjson from "superjson";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
+import {
+  SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
+  internalSchema,
+} from "../../fragments/internal-fragment";
 import type {
   CompiledMutation,
   MutationOperation,
@@ -25,6 +31,13 @@ import {
   type Cursor,
   type CursorResult,
 } from "../../query/cursor";
+import {
+  type OutboxRefLookup,
+  type OutboxRefMap,
+  encodeVersionstamp,
+  parseOutboxVersionValue,
+} from "../../outbox/outbox";
+import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import type {
   InMemoryNamespaceStore,
   InMemoryRow,
@@ -42,6 +55,9 @@ type InMemoryCompiledQuery = RetrievalOperation<AnySchema> | MutationOperation<A
 type InMemoryRawResult = InMemoryRow[] | { count: number }[];
 type CursorInput = string | Cursor | undefined;
 type ResolverFactory = (schema: AnySchema, namespace: string | null) => NamingResolver;
+type SchemaNamespaceEntry = { schema: AnySchema; namespace: string | null };
+
+const OUTBOX_VERSION_KEY = `${SETTINGS_NAMESPACE}.outbox_version`;
 
 const getResolver = (
   schema: AnySchema,
@@ -1001,6 +1017,197 @@ const checkRow = (
   }
 };
 
+const resolveSchemaForLookup = (
+  table: AnyTable,
+  schemaByNamespace?: Map<string, SchemaNamespaceEntry>,
+): SchemaNamespaceEntry | null => {
+  if (!schemaByNamespace) {
+    return null;
+  }
+
+  for (const entry of schemaByNamespace.values()) {
+    if (entry.schema.tables[table.name] === table) {
+      return entry;
+    }
+  }
+
+  return null;
+};
+
+const reserveOutboxVersion = (
+  store: InMemoryStore,
+  options: ResolvedInMemoryAdapterOptions,
+  resolverFactory?: ResolverFactory,
+): { version: bigint; rollback: () => void } => {
+  const resolver = getResolver(internalSchema, null, resolverFactory);
+  const namespaceStore = getNamespaceStore(store, internalSchema, null, resolver);
+  const settingsTable = internalSchema.tables[SETTINGS_TABLE_NAME];
+  if (!settingsTable) {
+    throw new Error("Missing internal settings table definition.");
+  }
+  const tableStore = getTableStore(namespaceStore, settingsTable, resolver);
+  const keyColumnName = getPhysicalColumnName(settingsTable, "key", resolver);
+  const valueColumnName = getPhysicalColumnName(settingsTable, "value", resolver);
+  const idColumnName = getPhysicalColumnName(
+    settingsTable,
+    settingsTable.getIdColumn().name,
+    resolver,
+  );
+
+  for (const row of tableStore.rows.values()) {
+    if (row[keyColumnName] !== OUTBOX_VERSION_KEY) {
+      continue;
+    }
+
+    const rawValue = row[valueColumnName];
+    const current = parseOutboxVersionValue(rawValue);
+    const next = current + 1n;
+    const externalId = row[idColumnName];
+    if (typeof externalId !== "string") {
+      throw new Error("Outbox version row is missing external id.");
+    }
+
+    const updateOp: Extract<MutationOperation<AnySchema>, { type: "update" }> = {
+      type: "update",
+      schema: internalSchema,
+      namespace: null,
+      table: settingsTable.name,
+      id: externalId,
+      checkVersion: false,
+      set: { value: next.toString() },
+    };
+    const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
+    return { version: next, rollback: rollback ?? (() => {}) };
+  }
+
+  const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
+    type: "create",
+    schema: internalSchema,
+    namespace: null,
+    table: settingsTable.name,
+    values: { key: OUTBOX_VERSION_KEY, value: "0" },
+    generatedExternalId: options.idGenerator(),
+  };
+  const previousInternalId = tableStore.nextInternalId;
+  const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
+  const rollback = () => {
+    const existingRow = tableStore.rows.get(internalId);
+    if (existingRow) {
+      for (const indexStore of tableStore.indexes.values()) {
+        const key = buildIndexKey(settingsTable, indexStore.definition, existingRow, resolver);
+        indexStore.index.remove(key, internalId);
+      }
+      tableStore.rows.delete(internalId);
+    }
+    tableStore.nextInternalId = previousInternalId;
+  };
+
+  return { version: 0n, rollback };
+};
+
+const resolveOutboxRefMap = (
+  store: InMemoryStore,
+  lookups: OutboxRefLookup[],
+  resolverFactory: ResolverFactory | undefined,
+  schemaByNamespace?: Map<string, SchemaNamespaceEntry>,
+): OutboxRefMap | undefined => {
+  if (lookups.length === 0) {
+    return undefined;
+  }
+
+  const refMap: OutboxRefMap = {};
+
+  for (const lookup of lookups) {
+    const schemaEntry = resolveSchemaForLookup(lookup.table, schemaByNamespace);
+    if (!schemaEntry) {
+      throw new Error(`Failed to resolve schema for outbox lookup on ${lookup.table.name}.`);
+    }
+
+    const resolver = getResolver(schemaEntry.schema, schemaEntry.namespace, resolverFactory);
+    const namespaceStore = getNamespaceStore(
+      store,
+      schemaEntry.schema,
+      schemaEntry.namespace,
+      resolver,
+    );
+    const tableStore = getTableStore(namespaceStore, lookup.table, resolver);
+    const internalId =
+      typeof lookup.internalId === "number" ? BigInt(lookup.internalId) : lookup.internalId;
+    const row = tableStore.rows.get(internalId);
+
+    if (!row) {
+      const tableName = resolver ? resolver.getTableName(lookup.table.name) : lookup.table.name;
+      const internalColumn = resolver
+        ? resolver.getColumnName(lookup.table.name, lookup.table.getInternalIdColumn().name)
+        : lookup.table.getInternalIdColumn().name;
+      throw new Error(
+        `Failed to resolve outbox reference for ${tableName}.${internalColumn}=${String(lookup.internalId)}`,
+      );
+    }
+
+    const externalColumnName = getPhysicalColumnName(
+      lookup.table,
+      lookup.table.getIdColumn().name,
+      resolver,
+    );
+    const externalId = row[externalColumnName];
+    if (typeof externalId !== "string") {
+      throw new Error("Outbox reference row is missing external id.");
+    }
+
+    refMap[lookup.key] = externalId;
+  }
+
+  return Object.keys(refMap).length > 0 ? refMap : undefined;
+};
+
+const insertOutboxRow = (
+  store: InMemoryStore,
+  options: ResolvedInMemoryAdapterOptions,
+  resolverFactory: ResolverFactory | undefined,
+  payload: {
+    versionstamp: Uint8Array;
+    uowId: string;
+    payload: { json: unknown; meta?: Record<string, unknown> };
+    refMap?: OutboxRefMap;
+  },
+): (() => void) => {
+  const resolver = getResolver(internalSchema, null, resolverFactory);
+  const namespaceStore = getNamespaceStore(store, internalSchema, null, resolver);
+  const outboxTable = internalSchema.tables.fragno_db_outbox;
+  if (!outboxTable) {
+    throw new Error("Missing internal outbox table definition.");
+  }
+  const tableStore = getTableStore(namespaceStore, outboxTable, resolver);
+  const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
+    type: "create",
+    schema: internalSchema,
+    namespace: null,
+    table: outboxTable.name,
+    values: {
+      versionstamp: payload.versionstamp,
+      uowId: payload.uowId,
+      payload: payload.payload,
+      ...(payload.refMap ? { refMap: payload.refMap } : {}),
+    },
+    generatedExternalId: options.idGenerator(),
+  };
+  const previousInternalId = tableStore.nextInternalId;
+  const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
+
+  return () => {
+    const existingRow = tableStore.rows.get(internalId);
+    if (existingRow) {
+      for (const indexStore of tableStore.indexes.values()) {
+        const key = buildIndexKey(outboxTable, indexStore.definition, existingRow, resolver);
+        indexStore.index.remove(key, internalId);
+      }
+      tableStore.rows.delete(internalId);
+    }
+    tableStore.nextInternalId = previousInternalId;
+  };
+};
+
 export const createInMemoryUowCompiler = (): UOWCompiler<InMemoryCompiledQuery> => ({
   compileRetrievalOperation(op: RetrievalOperation<AnySchema>): InMemoryCompiledQuery | null {
     return op;
@@ -1022,6 +1229,7 @@ export const createInMemoryUowExecutor = (
   store: InMemoryStore,
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory?: ResolverFactory,
+  schemaByNamespace?: Map<string, SchemaNamespaceEntry>,
 ): UOWExecutor<InMemoryCompiledQuery, InMemoryRawResult> => ({
   async executeRetrievalPhase(
     retrievalBatch: InMemoryCompiledQuery[],
@@ -1060,8 +1268,21 @@ export const createInMemoryUowExecutor = (
   ): Promise<MutationResult> {
     const createdInternalIds: (bigint | null)[] = [];
     const rollbackActions: Array<() => void> = [];
+    const outboxEnabled = options.outbox?.enabled ?? false;
+    const outboxOperations = outboxEnabled
+      ? mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation] : []))
+      : [];
+    const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
+    const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
+    let outboxVersion: bigint | null = null;
 
     try {
+      if (shouldWriteOutbox) {
+        const reservation = reserveOutboxVersion(store, options, resolverFactory);
+        outboxVersion = reservation.version;
+        rollbackActions.push(reservation.rollback);
+      }
+
       for (const compiled of mutationBatch) {
         const operation = compiled.query;
 
@@ -1160,6 +1381,30 @@ export const createInMemoryUowExecutor = (
         }
 
         throw new Error(`Unsupported in-memory mutation "${operation.type}".`);
+      }
+
+      if (shouldWriteOutbox && outboxPlan && outboxVersion !== null) {
+        const uowId = mutationBatch[0]?.uowId;
+        if (!uowId) {
+          throw new Error("Outbox mutation batch is missing uowId.");
+        }
+
+        const refMap = resolveOutboxRefMap(
+          store,
+          outboxPlan.lookups,
+          resolverFactory,
+          schemaByNamespace,
+        );
+        const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
+        const payloadSerialized = superjson.serialize(payload);
+        const versionstamp = encodeVersionstamp(outboxVersion, 0);
+        const rollback = insertOutboxRow(store, options, resolverFactory, {
+          versionstamp,
+          uowId,
+          payload: payloadSerialized,
+          refMap,
+        });
+        rollbackActions.push(rollback);
       }
     } catch (error) {
       for (const rollback of rollbackActions.reverse()) {
