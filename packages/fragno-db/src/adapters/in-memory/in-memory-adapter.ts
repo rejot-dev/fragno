@@ -116,7 +116,12 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     ensureNamespaceStore(this.#store, namespaceKey, schema, resolver);
 
     const compiler = createInMemoryUowCompiler();
-    const executor = createInMemoryUowExecutor(this.#store, this.options, resolverFactory);
+    const executor = createInMemoryUowExecutor(
+      this.#store,
+      this.options,
+      resolverFactory,
+      this.#schemaByNamespace,
+    );
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
     const createUow = (opts?: { name?: string; config?: UnitOfWorkConfig }) =>
