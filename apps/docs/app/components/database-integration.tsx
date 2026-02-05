@@ -7,6 +7,7 @@ import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carouse
 import { FragnoCodeBlock } from "@/components/fragno-code-block";
 import { useState } from "react";
 import type { CarouselApi } from "@/components/ui/carousel";
+import { Prisma } from "./logos/frameworks/prisma";
 
 export default function DatabaseIntegration() {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -253,14 +254,19 @@ describe("auth fragment", async () => {
           <div className="flex items-center gap-3">
             <div className="text-fd-foreground/90 flex items-center gap-2 rounded-md px-1.5 py-1">
               <Kysely className="size-5 opacity-80" />
-              <span className="text-sm font-semibold">Kysely</span>
+              <span className="text-sm font-semibold">Kysely,</span>
+            </div>
+
+            <div className="text-fd-foreground/90 flex items-center gap-2 rounded-md px-1.5 py-1">
+              <Drizzle className="size-5 opacity-80" />
+              <span className="text-sm font-semibold">Drizzle</span>
             </div>
             <span className="text-fd-muted-foreground -mx-1 select-none text-sm font-medium">
               &
             </span>
             <div className="text-fd-foreground/90 flex items-center gap-2 rounded-md px-1.5 py-1">
-              <Drizzle className="size-5 opacity-80" />
-              <span className="text-sm font-semibold">Drizzle</span>
+              <Prisma className="size-5 opacity-80" />
+              <span className="text-sm font-semibold">Prisma</span>
             </div>
           </div>
         </div>
