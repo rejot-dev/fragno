@@ -13,7 +13,7 @@ import {
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../naming/sql-naming";
-import { internalSchema } from "../fragments/internal-fragment";
+import { internalSchema } from "../fragments/internal-fragment.schema";
 import { type DatabaseTypeLiteral } from "../schema/type-conversion/type-mapping";
 import { createSQLTypeMapper } from "../schema/type-conversion/create-sql-type-mapper";
 import {

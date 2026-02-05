@@ -29,14 +29,15 @@ import {
   createHookScheduler,
 } from "./hooks/hooks";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
+import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 
 /**
- * Extended FragnoPublicConfig that includes a database adapter.
- * Use this type when creating fragments with database support.
+ * Extended FragnoPublicConfig for database fragments.
+ * If databaseAdapter is omitted and better-sqlite3 is available, a default SQLite adapter is used.
  */
 export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  databaseAdapter: DatabaseAdapter<any>;
+  databaseAdapter?: DatabaseAdapter<any>;
   /**
    * Optional durable hooks processing configuration.
    */
@@ -158,13 +159,7 @@ function createDatabaseContext<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
 ): DatabaseFragmentContext<TSchema> {
-  const databaseAdapter = options.databaseAdapter;
-
-  if (!databaseAdapter) {
-    throw new Error(
-      "Database fragment requires a database adapter to be provided in options.databaseAdapter",
-    );
-  }
+  const databaseAdapter = resolveDatabaseAdapter(options, schema);
 
   const namespace = resolveDatabaseNamespace(options, schema);
   const db = databaseAdapter.createQueryEngine(schema, namespace);
@@ -191,7 +186,7 @@ export type DatabaseRequestStorage = {
  * Builder for database fragments that wraps the core fragment builder
  * and provides database-specific functionality.
  *
- * Database fragments always require FragnoPublicConfigWithDatabase (which includes databaseAdapter).
+ * Database fragments use FragnoPublicConfigWithDatabase and default the adapter when possible.
  */
 export class DatabaseFragmentDefinitionBuilder<
   TSchema extends AnySchema,
@@ -648,11 +643,10 @@ export class DatabaseFragmentDefinitionBuilder<
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
       const namespaceKey = namespace ?? this.#schema.name;
       const durableHooksOptions = context.options.durableHooks;
-      const hookAdapter =
-        context.options.databaseAdapter.getHookProcessingAdapter?.() ??
-        context.options.databaseAdapter;
+      const baseAdapter = resolveDatabaseAdapter(context.options, this.#schema);
+      const hookAdapter = baseAdapter.getHookProcessingAdapter?.() ?? baseAdapter;
       const hookOptions =
-        hookAdapter === context.options.databaseAdapter
+        hookAdapter === baseAdapter
           ? context.options
           : { ...context.options, databaseAdapter: hookAdapter };
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);

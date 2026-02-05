@@ -11,7 +11,7 @@ import { sql } from "../../sql-driver/sql";
 import { createId } from "../../id";
 import superjson from "superjson";
 import { createColdKysely } from "./migration/cold-kysely";
-import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment";
+import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment.schema";
 import {
   type OutboxConfig,
   type OutboxRefLookup,

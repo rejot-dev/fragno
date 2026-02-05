@@ -12,6 +12,7 @@ import {
   getSchemaVersionFromDatabase,
   type InternalFragmentInstance,
 } from "./fragments/internal-fragment";
+import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
@@ -199,7 +200,7 @@ export async function migrate<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
 ): Promise<void> {
   const { options, deps, linkedFragments } = fragment.$internal;
-  const adapter = options.databaseAdapter;
+  const adapter = resolveDatabaseAdapter(options, deps.schema);
 
   // Check if adapter supports prepareMigrations
   if (!adapter.prepareMigrations) {

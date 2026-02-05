@@ -141,6 +141,9 @@
     "kysely": "^0.28.10",
     "superjson": "^2.2.1"
   },
+  "optionalDependencies": {
+    "better-sqlite3": "^12.6.2"
+  },
   "peerDependencies": {
     "drizzle-orm": "^0.44.6"
   },

@@ -16,9 +16,13 @@ import {
 import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
 import { internalFragmentRoutes } from "./fragments/internal-fragment.routes";
 import type { HooksMap } from "./hooks/hooks";
+import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 
-function shouldExposeOutboxRoutes(options: FragnoPublicConfigWithDatabase): boolean {
-  const adapter = options.databaseAdapter as { outbox?: { enabled?: boolean } };
+function shouldExposeOutboxRoutes(
+  options: FragnoPublicConfigWithDatabase,
+  schema: AnySchema,
+): boolean {
+  const adapter = resolveDatabaseAdapter(options, schema) as { outbox?: { enabled?: boolean } };
   return adapter.outbox?.enabled ?? false;
 }
 
@@ -109,7 +113,10 @@ export function withDatabase<TSchema extends AnySchema>(
     const builderWithInternal = builder.withLinkedFragment(
       "_fragno_internal",
       ({ config, options }) => {
-        const internalRoutes = shouldExposeOutboxRoutes(options as FragnoPublicConfigWithDatabase)
+        const internalRoutes = shouldExposeOutboxRoutes(
+          options as FragnoPublicConfigWithDatabase,
+          schema,
+        )
           ? [internalFragmentRoutes]
           : [];
 

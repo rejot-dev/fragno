@@ -92,7 +92,9 @@ export function createCommentLibrary(
 }
 ```
 
-Your users pass a SqlAdapter via `options`.
+Your users pass a SqlAdapter via `options`. If `better-sqlite3` is installed, `databaseAdapter` is
+optional and defaults to a local SQLite file per fragment in `FRAGNO_DATA_DIR` (default:
+`~/.fragno`).
 
 ```ts
 // User's application code

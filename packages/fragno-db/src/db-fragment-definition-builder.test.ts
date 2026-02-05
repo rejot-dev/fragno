@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "@fragno-dev/core";
 import {
@@ -809,17 +812,28 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
-  describe("error handling", () => {
-    it("should throw error if database adapter is missing", () => {
+  describe("default adapter", () => {
+    it("should default to sqlite adapter when database adapter is missing", () => {
       const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
+      const previous = process.env["FRAGNO_DATA_DIR"];
+      const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fragno-db-default-"));
+      process.env["FRAGNO_DATA_DIR"] = dataDir;
 
-      expect(() => {
-        definition.dependencies!({
+      try {
+        const deps = definition.dependencies!({
           config: {},
-          // @ts-expect-error No databaseAdapter - intentionally invalid for runtime error test
           options: {},
         });
-      }).toThrow("Database fragment requires a database adapter");
+
+        expect(deps.db).toBeDefined();
+        expect(deps.createUnitOfWork).toBeDefined();
+      } finally {
+        if (previous === undefined) {
+          delete process.env["FRAGNO_DATA_DIR"];
+        } else {
+          process.env["FRAGNO_DATA_DIR"] = previous;
+        }
+      }
     });
   });
 

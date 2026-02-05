@@ -85,7 +85,9 @@ export function createCommentFragment(
 
 <Callout title="Make sure to allow your users to provide their database adapter" type="info">
   Your Fragment's creation function must accept `FragnoPublicConfigWithDatabase`, or
-  `DatabaseAdapter` in the options.
+  `DatabaseAdapter` in the options. If `better-sqlite3` is installed, users can omit
+  `databaseAdapter` to use a local SQLite file per fragment under `FRAGNO_DATA_DIR` (default:
+  `~/.fragno`).
 </Callout>
 
 ## Querying using transactions

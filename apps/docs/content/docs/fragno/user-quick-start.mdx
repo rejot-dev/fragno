@@ -49,7 +49,8 @@ export function createExampleFragmentInstance() {
 
 <Callout title="Optional Step" type="info">
   Only required if the Fragment uses a database layer. Check the Fragment's documentation to see if
-  it requires `databaseAdapter`.
+  it requires `databaseAdapter`. If `better-sqlite3` is installed, Fragno can default to a local
+  SQLite file per fragment under `FRAGNO_DATA_DIR` (default: `~/.fragno`).
 </Callout>
 
 If the Fragment requires database integration:

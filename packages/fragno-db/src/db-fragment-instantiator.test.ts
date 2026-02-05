@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi, assert } from "vitest";
 import { instantiate, defineFragment } from "@fragno-dev/core";
 import { defineRoutes } from "@fragno-dev/core/route";
@@ -520,18 +523,26 @@ describe("db-fragment-instantiator", () => {
     });
   });
 
-  describe("error handling", () => {
-    it("should throw when databaseAdapter is not provided", () => {
+  describe("default adapter", () => {
+    it("should default to sqlite adapter when databaseAdapter is not provided", () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))
         .build();
+      const previous = process.env["FRAGNO_DATA_DIR"];
+      const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fragno-db-default-"));
+      process.env["FRAGNO_DATA_DIR"] = dataDir;
 
-      expect(() => {
-        instantiate(definition)
-          // @ts-expect-error - Test case
-          .withOptions({})
-          .build();
-      }).toThrow("Database fragment requires a database adapter");
+      try {
+        const fragment = instantiate(definition).withOptions({}).build();
+        expect(fragment.$internal.options.databaseAdapter).toBeDefined();
+        expect(fragment.$internal.deps.db).toBeDefined();
+      } finally {
+        if (previous === undefined) {
+          delete process.env["FRAGNO_DATA_DIR"];
+        } else {
+          process.env["FRAGNO_DATA_DIR"] = previous;
+        }
+      }
     });
 
     it("should throw when serviceTx called outside request context", () => {

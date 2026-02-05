@@ -6,13 +6,12 @@ import {
 } from "../adapters/adapters";
 import { generateDrizzleSchema } from "../schema-output/drizzle";
 import { generatePrismaSchema } from "../schema-output/prisma";
+import { internalFragmentDef, getSchemaVersionFromDatabase } from "../fragments/internal-fragment";
 import {
-  internalFragmentDef,
   internalSchema,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
-  getSchemaVersionFromDatabase,
-} from "../fragments/internal-fragment";
+} from "../fragments/internal-fragment.schema";
 import { instantiate } from "@fragno-dev/core";
 import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
 
