@@ -68,6 +68,11 @@
       "types": "./dist/schema-output/prisma.d.ts",
       "default": "./dist/schema-output/prisma.js"
     },
+    "./client": {
+      "development": "./src/client.ts",
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
     "./unit-of-work": {
       "development": "./src/query/unit-of-work/unit-of-work.ts",
       "types": "./dist/query/unit-of-work/unit-of-work.d.ts",
