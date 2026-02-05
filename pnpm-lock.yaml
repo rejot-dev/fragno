@@ -1893,6 +1893,9 @@ importers:
         specifier: ^2.2.1
         version: 2.2.6
     devDependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
       '@fragno-private/typescript-config':
         specifier: workspace:*
         version: link:../../packages-private/typescript-config

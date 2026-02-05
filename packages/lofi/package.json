@@ -29,6 +29,7 @@
     "superjson": "^2.2.1"
   },
   "devDependencies": {
+    "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
