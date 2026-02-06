@@ -11,6 +11,11 @@
       "development": "./src/upvote.ts",
       "types": "./dist/upvote.d.ts",
       "default": "./dist/upvote.js"
+    },
+    "./schema": {
+      "development": "./src/schema/mod.ts",
+      "types": "./dist/schema/mod.d.ts",
+      "default": "./dist/schema/mod.js"
     }
   },
   "main": "./dist/node/mod.js",

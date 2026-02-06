@@ -11,7 +11,9 @@ import { postCommand, postSubCommands } from "./commands/post";
 import { commentCommand, commentSubCommands } from "./commands/comment";
 import { ratingCommand, ratingSubCommands } from "./commands/rating";
 import { relationsCommand, relationsSubCommands } from "./commands/relations";
-import { fragment } from "./fragno/auth-fragment";
+import { fragment as authFragment } from "./fragno/auth-fragment";
+import { createCommentFragmentServer } from "./fragno/comment-fragment";
+import { createRatingFragmentServer } from "./fragno/rating-fragment";
 import { createWorkflowsFragmentServer } from "./fragno/workflows-fragment";
 
 // Clean command
@@ -32,14 +34,44 @@ const serveCommand: Command = {
     const port = 3000;
     const { fragment: workflowsFragment, dispatcher: workflowsDispatcher } =
       createWorkflowsFragmentServer(adapter);
-    const authHandler = toNodeHandler(fragment.handler);
+    const commentFragment = createCommentFragmentServer(adapter);
+    const ratingFragment = createRatingFragmentServer(adapter);
+    const authHandler = toNodeHandler(authFragment.handler);
+    const commentHandler = toNodeHandler(commentFragment.handler);
+    const ratingHandler = toNodeHandler(ratingFragment.handler);
     const workflowsHandler = toNodeHandler(workflowsFragment.handler);
 
     const server = createServer((req, res) => {
       const url = req.url ?? "";
 
-      if (url.startsWith(fragment.mountRoute)) {
+      const origin = req.headers.origin;
+      if (origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      } else {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      }
+
+      if (req.method === "OPTIONS") {
+        res.statusCode = 204;
+        res.end();
+        return;
+      }
+
+      if (url.startsWith(authFragment.mountRoute)) {
         return authHandler(req, res);
+      }
+
+      if (url.startsWith(commentFragment.mountRoute)) {
+        return commentHandler(req, res);
+      }
+
+      if (url.startsWith(ratingFragment.mountRoute)) {
+        return ratingHandler(req, res);
       }
 
       if (url.startsWith(workflowsFragment.mountRoute)) {
@@ -52,8 +84,14 @@ const serveCommand: Command = {
 
     server.listen(port, () => {
       console.log(`Server running at http://localhost:${port}`);
-      console.log(`Auth fragment mounted at ${fragment.mountRoute}`);
+      console.log(`Auth fragment mounted at ${authFragment.mountRoute}`);
+      console.log(`Auth outbox at ${authFragment.mountRoute}/_internal/outbox`);
+      console.log(`Comment fragment mounted at ${commentFragment.mountRoute}`);
+      console.log(`Comment outbox at ${commentFragment.mountRoute}/_internal/outbox`);
+      console.log(`Rating fragment mounted at ${ratingFragment.mountRoute}`);
+      console.log(`Rating outbox at ${ratingFragment.mountRoute}/_internal/outbox`);
       console.log(`Workflows fragment mounted at ${workflowsFragment.mountRoute}`);
+      console.log(`Workflows outbox at ${workflowsFragment.mountRoute}/_internal/outbox`);
       console.log("Workflows dispatcher polling enabled (2s interval).");
       workflowsDispatcher.startPolling();
     });
@@ -78,7 +116,7 @@ export const mainCommand: Command = {
   run: () => {
     console.log("Fragno DB Usage CLI");
     console.log("");
-    console.log("Usage: node --import tsx src/mod.ts <command> [options]");
+    console.log("Usage: node ./bin/run.js <command> [options]");
     console.log("");
     console.log("Commands:");
     console.log("  clean      Clean the database folder");
@@ -89,13 +127,11 @@ export const mainCommand: Command = {
     console.log("  rating     Rating/upvote management commands");
     console.log("  relations  Test relational query commands");
     console.log("");
-    console.log("Run 'node --import tsx src/mod.ts <command> --help' for more information.");
+    console.log("Run 'node ./bin/run.js <command> --help' for more information.");
   },
 };
 
-if (import.meta.main) {
-  const args = process.argv.slice(2);
-
+export const run = async (args = process.argv.slice(2)) => {
   // Check if we're calling subcommands
   if (args[0] === "comment" && args.length > 1 && args[1] !== "--help" && args[1] !== "-h") {
     await cli(args.slice(1), commentCommand, {
@@ -127,4 +163,8 @@ if (import.meta.main) {
       subCommands: rootSubCommands,
     });
   }
+};
+
+if (import.meta.main) {
+  await run();
 }
