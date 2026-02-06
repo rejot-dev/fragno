@@ -814,10 +814,11 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
   describe("default adapter", () => {
     it("should default to sqlite adapter when database adapter is missing", () => {
-      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
       const previous = process.env["FRAGNO_DATA_DIR"];
       const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fragno-db-default-"));
       process.env["FRAGNO_DATA_DIR"] = dataDir;
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag")).build();
 
       try {
         const deps = definition.dependencies!({
