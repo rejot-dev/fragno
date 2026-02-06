@@ -8,26 +8,29 @@ import type { OutboxEntry, OutboxPayload } from "../../outbox/outbox";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
 import { InMemoryAdapter } from "./in-memory-adapter";
 
-const outboxSchema = schema("outbox", (s) => {
-  return s
-    .addTable("users", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("email", column("string"))
-        .createIndex("idx_users_email", ["email"], { unique: true });
-    })
-    .addTable("posts", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("authorId", referenceColumn())
-        .addColumn("title", column("string"));
-    })
-    .addReference("author", {
-      type: "one",
-      from: { table: "posts", column: "authorId" },
-      to: { table: "users", column: "id" },
-    });
-});
+const buildOutboxSchema = () =>
+  schema("outbox", (s) => {
+    return s
+      .addTable("users", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("email", column("string"))
+          .createIndex("idx_users_email", ["email"], { unique: true });
+      })
+      .addTable("posts", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("authorId", referenceColumn())
+          .addColumn("title", column("string"));
+      })
+      .addReference("author", {
+        type: "one",
+        from: { table: "posts", column: "authorId" },
+        to: { table: "users", column: "id" },
+      });
+  });
+
+const outboxSchema = buildOutboxSchema();
 
 const outboxFragmentName = "outbox-in-memory-test";
 const outboxFragmentDef = defineFragment(outboxFragmentName)
@@ -121,5 +124,80 @@ describe("in-memory outbox", () => {
     });
 
     await cleanup();
+  });
+
+  it("resolves refMap lookups within the correct namespace", async () => {
+    const adapter = new InMemoryAdapter({
+      idSeed: "outbox-seed",
+      outbox: { enabled: true },
+    });
+
+    try {
+      const schemaA = buildOutboxSchema();
+      const schemaB = buildOutboxSchema();
+
+      const fragmentDefA = defineFragment(`${outboxFragmentName}-a`)
+        .extend(withDatabase(schemaA))
+        .build();
+      const fragmentDefB = defineFragment(`${outboxFragmentName}-b`)
+        .extend(withDatabase(schemaB))
+        .build();
+
+      const fragmentA = instantiate(fragmentDefA)
+        .withConfig({})
+        .withRoutes([])
+        .withOptions({ databaseAdapter: adapter, databaseNamespace: "tenant-a" })
+        .build();
+      const fragmentB = instantiate(fragmentDefB)
+        .withConfig({})
+        .withRoutes([])
+        .withOptions({ databaseAdapter: adapter, databaseNamespace: "tenant-b" })
+        .build();
+
+      const depsA = fragmentA.$internal.deps as { db: SimpleQueryInterface<typeof schemaA> };
+      const depsB = fragmentB.$internal.deps as { db: SimpleQueryInterface<typeof schemaB> };
+
+      const userA = await depsA.db.create("users", { email: "tenant-a@example.com" });
+      const userB = await depsB.db.create("users", { email: "tenant-b@example.com" });
+
+      expect(userA.internalId).toBeDefined();
+      expect(userB.internalId).toBeDefined();
+      expect(userA.internalId).toBe(userB.internalId);
+
+      await depsB.db.create("posts", {
+        title: "Hello",
+        authorId: FragnoReference.fromInternal(userB.internalId!),
+      });
+
+      const entries = await listOutbox(fragmentB.$internal.linkedFragments._fragno_internal);
+      let postEntry: OutboxEntry | undefined;
+      let postPayload: OutboxPayload | undefined;
+
+      for (const entry of entries) {
+        const payload = superjson.deserialize(entry.payload as SuperJSONResult) as OutboxPayload;
+        if (
+          payload.mutations.some(
+            (mutation) =>
+              mutation.op === "create" &&
+              mutation.table === "posts" &&
+              mutation.namespace === "tenant-b",
+          )
+        ) {
+          postEntry = entry;
+          postPayload = payload;
+          break;
+        }
+      }
+
+      if (!postEntry || !postPayload) {
+        throw new Error("Expected outbox entry for tenant-b posts.");
+      }
+
+      expect(postEntry.refMap).toEqual({
+        "0.authorId": userB.externalId,
+      });
+    } finally {
+      await adapter.close();
+    }
   });
 });
