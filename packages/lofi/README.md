@@ -82,6 +82,21 @@ const users = await query.find("users", (b) =>
 - If the registered schema changes, Lofi clears local rows for that endpoint and re-syncs.
 - `outboxUrl` can include query parameters; Lofi preserves them when adding cursor/limit params.
 
+## CLI
+
+Lofi ships with a small CLI that polls an outbox for a short window and prints the local IndexedDB
+state as JSON (useful for demos/tests).
+
+```bash
+fragno-lofi --endpoint http://localhost:3000/api/fragno-db-comment --timeout 5
+```
+
+Notes:
+
+- `--endpoint` can be the fragment base URL or the full `/_internal/outbox` URL.
+- `--schema` supports `comment`, `rating`, or `all` (default: `all`).
+- Use `--endpoint-name` to override the local endpoint key used for IndexedDB storage.
+
 ## Exports
 
 - `LofiClient` - polls outbox and applies entries.
