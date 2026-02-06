@@ -639,6 +639,43 @@ importers:
         specifier: ^5.1.4
         version: 5.1.4(typescript@5.9.3)(vite@6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
 
+  example-apps/react-spa-local-first:
+    dependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../../packages/fragno-db
+      '@fragno-dev/fragno-db-library':
+        specifier: workspace:*
+        version: link:../../example-fragments/fragno-db-library
+      '@fragno-dev/lofi':
+        specifier: workspace:*
+        version: link:../../packages/lofi
+      react:
+        specifier: ^19.1.4
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.1.4
+        version: 19.2.3(react@19.2.3)
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@types/react':
+        specifier: ^19.2.8
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.8)
+      '@vitejs/plugin-react':
+        specifier: ^5.1.2
+        version: 5.1.2(vite@6.4.1(@types/node@25.0.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.4.1
+        version: 6.4.1(@types/node@25.0.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
   example-apps/solid-start-example:
     dependencies:
       '@fragno-dev/chatno':
@@ -1877,6 +1914,46 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.0.0)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
+  packages/lofi:
+    dependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      '@fragno-dev/fragno-db-library':
+        specifier: workspace:*
+        version: link:../../example-fragments/fragno-db-library
+      fake-indexeddb:
+        specifier: ^6.1.0
+        version: 6.2.5
+      gunshi:
+        specifier: ^0.26.3
+        version: 0.26.3
+      superjson:
+        specifier: ^2.2.1
+        version: 2.2.6
+    devDependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^22.19.7
+        version: 22.19.7
+      '@vitest/coverage-istanbul':
+        specifier: ^3.2.4
+        version: 3.2.4(vitest@3.2.4)
+      tsdown:
+        specifier: ^0.15.12
+        version: 0.15.12(typescript@5.9.3)(vue-tsc@3.1.5(typescript@5.9.3))
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.7)(@vitest/ui@3.2.4)(happy-dom@20.3.4)(jiti@2.6.1)(jsdom@27.4.0(@noble/hashes@2.0.1))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/stripe:
     dependencies:
@@ -9274,6 +9351,10 @@ packages:
 
   extendable-error@0.1.7:
     resolution: {integrity: sha512-UOiS2in6/Q0FK0R0q6UY9vYpQ21mr/Qn1KOnte7vsACuNJf514WvCCUHSRCPcgjPT2bAhNIJdlE6bVap1GKmeg==}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   farm-browserslist-generator@1.0.5:
     resolution: {integrity: sha512-igffWSQATGV2ZJEvDBIB9Q2QfVOr+vv/JTZaaNoYfW/nrCGZ58zyJ0kSkFQEvptGUWf6idECqj82ykli4Ueplw==}
@@ -20422,6 +20503,18 @@ snapshots:
     dependencies:
       vite: 6.4.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
+  '@vitejs/plugin-react@5.1.2(vite@6.4.1(@types/node@25.0.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))':
+    dependencies:
+      '@babel/core': 7.28.6
+      '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.6)
+      '@babel/plugin-transform-react-jsx-source': 7.27.1(@babel/core@7.28.6)
+      '@rolldown/pluginutils': 1.0.0-beta.53
+      '@types/babel__core': 7.20.5
+      react-refresh: 0.18.0
+      vite: 6.4.1(@types/node@25.0.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+    transitivePeerDependencies:
+      - supports-color
+
   '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@22.19.7)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@babel/core': 7.28.6
@@ -23500,6 +23593,8 @@ snapshots:
   extend@3.0.2: {}
 
   extendable-error@0.1.7: {}
+
+  fake-indexeddb@6.2.5: {}
 
   farm-browserslist-generator@1.0.5:
     dependencies:

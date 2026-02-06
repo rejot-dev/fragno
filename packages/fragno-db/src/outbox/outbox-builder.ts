@@ -91,7 +91,7 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
 export function finalizeOutboxPayload(plan: OutboxPlan, transactionVersion: bigint): OutboxPayload {
   const mutations: OutboxMutation[] = plan.drafts.map((draft, index) => {
     const versionstamp = versionstampToHex(encodeVersionstamp(transactionVersion, index));
-    return { ...draft, versionstamp } as OutboxMutation;
+    return { ...draft, versionstamp };
   });
 
   return {
