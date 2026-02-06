@@ -10,7 +10,7 @@ IndexedDB store, and exposes a read-only query engine that mirrors the server qu
 
 ## What it does
 
-- Polls `GET /outbox` and persists a cursor so sync resumes after reloads.
+- Polls `GET /_internal/outbox` and persists a cursor so sync resumes after reloads.
 - Applies create/update/delete mutations to IndexedDB with idempotency.
 - Provides a read-only query engine (`find`, `findFirst`, `findWithCursor`).
 
@@ -29,7 +29,7 @@ npm install @fragno-dev/lofi @fragno-dev/db
 ### 1) Enable the outbox on the server
 
 The outbox route is exposed by `@fragno-dev/db` when the database adapter has outbox enabled. Your
-app must mount the internal `/outbox` route and keep it stable.
+app must mount the internal `/_internal/outbox` route and keep it stable.
 
 ### 2) Create the local adapter + client
 
@@ -53,7 +53,7 @@ const adapter = new IndexedDbAdapter({
 });
 
 const client = new LofiClient({
-  outboxUrl: "https://example.com/outbox",
+  outboxUrl: "https://example.com/_internal/outbox",
   endpointName: "app",
   adapter,
 });
@@ -81,6 +81,27 @@ const users = await query.find("users", (b) =>
 - The adapter stores data in one IndexedDB database (default name: `fragno_lofi_<endpointName>`).
 - If the registered schema changes, Lofi clears local rows for that endpoint and re-syncs.
 - `outboxUrl` can include query parameters; Lofi preserves them when adding cursor/limit params.
+
+## CLI
+
+Lofi ships with a small CLI that polls an outbox for a short window and prints the local IndexedDB
+state as JSON (useful for demos/tests).
+
+```bash
+# From the workspace
+pnpm -C packages/lofi build
+node packages/lofi/bin/run.js --help
+```
+
+```bash
+# Use the CLI
+fragno-lofi --endpoint http://localhost:3000/api/fragno-db-comment --timeout 5
+```
+
+Notes:
+
+- `--endpoint` can be the fragment base URL or the full `/_internal/outbox` URL.
+- Use `--endpoint-name` to override the local endpoint key used for IndexedDB storage.
 
 ## Exports
 
