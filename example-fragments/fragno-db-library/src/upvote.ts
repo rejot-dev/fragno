@@ -1,32 +1,10 @@
 import type { TableToInsertValues } from "@fragno-dev/db/query";
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { upvoteSchema } from "./schema/upvote";
 
-export const upvoteSchema = schema("upvote", (s) => {
-  return s
-    .addTable("upvote", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("reference", column("string"))
-        .addColumn("ownerReference", column("string").nullable())
-        .addColumn("rating", column("integer"))
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn("note", column("string").nullable())
-        .createIndex("idx_upvote_reference", ["reference", "ownerReference"]);
-    })
-    .addTable("upvote_total", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("reference", column("string"))
-        .addColumn("total", column("integer").defaultTo(0))
-        .createIndex("idx_upvote_total_reference", ["reference"], { unique: true });
-    });
-});
+export { upvoteSchema };
 
 export interface RatingFragmentConfig {
   // Add any server-side configuration here if needed
