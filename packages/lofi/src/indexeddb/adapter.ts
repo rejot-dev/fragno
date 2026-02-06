@@ -31,6 +31,7 @@ type LofiRow = {
 type InboxRow = {
   key: [string, string];
   sourceKey: string;
+  uowId: string;
   versionstamp: string;
   receivedAt: number;
 };
@@ -50,7 +51,8 @@ const ROWS_STORE = "lofi_rows";
 const INBOX_STORE = "lofi_inbox";
 
 const INDEX_SCHEMA_TABLE = "idx_schema_table";
-const INDEX_INBOX_SOURCE_VERSION = "idx_inbox_source_version";
+const INDEX_INBOX_SOURCE_UOW = "idx_inbox_source_uow";
+const LEGACY_INBOX_INDEX = "idx_inbox_source_version";
 
 export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
   private readonly dbName: string;
@@ -61,6 +63,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
   private readonly referenceTargets: Map<string, ReferenceTarget>;
   private readonly schemaFingerprint: string;
   private readonly indexDefinitions: IndexDefinition[];
+  private readonly ignoreUnknownSchemas: boolean;
 
   private dbPromise?: Promise<IDBDatabase>;
 
@@ -106,24 +109,35 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     this.referenceTargets = referenceTargets;
     this.indexDefinitions = buildIndexDefinitions(this.schemas);
     this.schemaFingerprint = buildSchemaFingerprint(this.schemas, this.indexDefinitions);
+    this.ignoreUnknownSchemas = options.ignoreUnknownSchemas ?? false;
   }
 
   async applyOutboxEntry(options: {
     sourceKey: string;
     versionstamp: string;
+    uowId: string;
     mutations: LofiMutation[];
   }): Promise<{ applied: boolean }> {
     const db = await this.openDatabase();
 
+    const knownMutations: Array<{ mutation: LofiMutation; schema: AnySchema; table: AnyTable }> =
+      [];
     for (const mutation of options.mutations) {
       const schema = this.schemaMap.get(mutation.schema);
       if (!schema) {
+        if (this.ignoreUnknownSchemas) {
+          continue;
+        }
         throw new Error(`Unknown outbox schema: ${mutation.schema}`);
       }
       const table = this.tableMap.get(mutation.schema)?.get(mutation.table);
       if (!table) {
+        if (this.ignoreUnknownSchemas) {
+          continue;
+        }
         throw new Error(`Unknown outbox table: ${mutation.schema}.${mutation.table}`);
       }
+      knownMutations.push({ mutation, schema, table });
     }
 
     const tx = db.transaction([ROWS_STORE, INBOX_STORE, META_STORE], "readwrite");
@@ -132,37 +146,50 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const metaStore = tx.objectStore(META_STORE);
 
     const existingInbox = await requestToPromise<InboxRow | undefined>(
-      inboxStore.get([options.sourceKey, options.versionstamp]),
+      inboxStore.get([options.sourceKey, options.uowId]),
     );
     if (existingInbox) {
       await transactionDone(tx);
       return { applied: false };
     }
 
-    for (const mutation of options.mutations) {
-      const schema = this.schemaMap.get(mutation.schema)!;
-      const table = this.tableMap.get(mutation.schema)!.get(mutation.table)!;
-      await applyMutation({
-        mutation,
-        schema,
-        table,
-        endpointName: this.endpointName,
-        rowsStore,
-        metaStore,
-        referenceTargets: this.referenceTargets,
-      });
+    try {
+      for (const { mutation, schema, table } of knownMutations) {
+        await applyMutation({
+          mutation,
+          schema,
+          table,
+          endpointName: this.endpointName,
+          rowsStore,
+          metaStore,
+          referenceTargets: this.referenceTargets,
+        });
+      }
+
+      const inboxRow: InboxRow = {
+        key: [options.sourceKey, options.uowId],
+        sourceKey: options.sourceKey,
+        uowId: options.uowId,
+        versionstamp: options.versionstamp,
+        receivedAt: Date.now(),
+      };
+      inboxStore.put(inboxRow);
+
+      await transactionDone(tx);
+      return { applied: true };
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        // Ignore abort errors; transaction will already be closing.
+      }
+      try {
+        await transactionDone(tx);
+      } catch {
+        // Ignore abort completion errors; original error is more useful.
+      }
+      throw error;
     }
-
-    const inboxRow: InboxRow = {
-      key: [options.sourceKey, options.versionstamp],
-      sourceKey: options.sourceKey,
-      versionstamp: options.versionstamp,
-      receivedAt: Date.now(),
-    };
-    inboxStore.put(inboxRow);
-
-    await transactionDone(tx);
-    return { applied: true };
   }
 
   async getMeta(key: string): Promise<string | undefined> {
@@ -261,6 +288,7 @@ const buildIndexDefinitions = (schemas: AnySchema[]): IndexDefinition[] => {
 
 const buildSchemaFingerprint = (schemas: AnySchema[], indexes: IndexDefinition[]): string => {
   const payload = {
+    inboxKey: "uowId",
     schemas: [...schemas]
       .map((schema) => ({
         name: schema.name,
@@ -301,13 +329,16 @@ const ensureStores = (db: IDBDatabase, tx: IDBTransaction): void => {
 
   if (!db.objectStoreNames.contains(INBOX_STORE)) {
     const store = db.createObjectStore(INBOX_STORE, { keyPath: "key" });
-    store.createIndex(INDEX_INBOX_SOURCE_VERSION, ["sourceKey", "versionstamp"], {
+    store.createIndex(INDEX_INBOX_SOURCE_UOW, ["sourceKey", "uowId"], {
       unique: true,
     });
   } else {
     const store = tx.objectStore(INBOX_STORE);
-    if (!store.indexNames.contains(INDEX_INBOX_SOURCE_VERSION)) {
-      store.createIndex(INDEX_INBOX_SOURCE_VERSION, ["sourceKey", "versionstamp"], {
+    if (store.indexNames.contains(LEGACY_INBOX_INDEX)) {
+      store.deleteIndex(LEGACY_INBOX_INDEX);
+    }
+    if (!store.indexNames.contains(INDEX_INBOX_SOURCE_UOW)) {
+      store.createIndex(INDEX_INBOX_SOURCE_UOW, ["sourceKey", "uowId"], {
         unique: true,
       });
     }

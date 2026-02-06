@@ -1019,9 +1019,18 @@ const checkRow = (
 
 const resolveSchemaForLookup = (
   table: AnyTable,
+  namespace: string | undefined,
   schemaByNamespace?: Map<string, SchemaNamespaceEntry>,
 ): SchemaNamespaceEntry | null => {
   if (!schemaByNamespace) {
+    return null;
+  }
+
+  if (namespace !== undefined) {
+    const entry = schemaByNamespace.get(namespace);
+    if (entry && entry.schema.tables[table.name] === table) {
+      return entry;
+    }
     return null;
   }
 
@@ -1118,7 +1127,7 @@ const resolveOutboxRefMap = (
   const refMap: OutboxRefMap = {};
 
   for (const lookup of lookups) {
-    const schemaEntry = resolveSchemaForLookup(lookup.table, schemaByNamespace);
+    const schemaEntry = resolveSchemaForLookup(lookup.table, lookup.namespace, schemaByNamespace);
     if (!schemaEntry) {
       throw new Error(`Failed to resolve schema for outbox lookup on ${lookup.table.name}.`);
     }
