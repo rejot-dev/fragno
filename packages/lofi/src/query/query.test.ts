@@ -31,6 +31,7 @@ describe("IndexedDbAdapter query engine", () => {
     await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs1",
+      uowId: "uow-vs1",
       mutations: [
         {
           op: "create",
@@ -106,6 +107,7 @@ describe("IndexedDbAdapter query engine", () => {
     await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs1",
+      uowId: "uow-vs1",
       mutations: [
         {
           op: "create",
@@ -129,6 +131,7 @@ describe("IndexedDbAdapter query engine", () => {
     await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs2",
+      uowId: "uow-vs2",
       mutations: [
         {
           op: "create",
@@ -189,6 +192,7 @@ describe("IndexedDbAdapter query engine", () => {
     await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs1",
+      uowId: "uow-vs1",
       mutations: [
         {
           op: "create",
@@ -233,5 +237,75 @@ describe("IndexedDbAdapter query engine", () => {
 
     expect(secondPage.items).toHaveLength(1);
     expect(secondPage.hasNextPage).toBe(false);
+  });
+
+  it("orders and filters binary columns without Buffer", async () => {
+    const originalBuffer = (globalThis as { Buffer?: unknown }).Buffer;
+    (globalThis as { Buffer?: unknown }).Buffer = undefined;
+
+    try {
+      const appSchema = schema("app", (s) =>
+        s.addTable("files", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("hash", column("binary"))
+            .createIndex("idx_hash", ["hash"]),
+        ),
+      );
+
+      const adapter = new IndexedDbAdapter({
+        dbName: createDbName(),
+        endpointName: "app",
+        schemas: [{ schema: appSchema }],
+      });
+
+      await adapter.applyOutboxEntry({
+        sourceKey: "app::outbox",
+        versionstamp: "vs1",
+        uowId: "uow-vs1",
+        mutations: [
+          {
+            op: "create",
+            schema: "app",
+            table: "files",
+            externalId: "file-1",
+            versionstamp: "vs1",
+            values: { hash: new Uint8Array([0x00, 0x01]) },
+          },
+          {
+            op: "create",
+            schema: "app",
+            table: "files",
+            externalId: "file-2",
+            versionstamp: "vs1",
+            values: { hash: new Uint8Array([0x00, 0x02]) },
+          },
+          {
+            op: "create",
+            schema: "app",
+            table: "files",
+            externalId: "file-3",
+            versionstamp: "vs1",
+            values: { hash: new Uint8Array([0x01]) },
+          },
+        ],
+      });
+
+      const query = adapter.createQueryEngine(appSchema);
+      const ordered = await query.find("files", (b) =>
+        b.whereIndex("idx_hash").orderByIndex("idx_hash", "asc"),
+      );
+
+      expect(ordered.map((row) => row.id.externalId)).toEqual(["file-1", "file-2", "file-3"]);
+
+      const match = await query.find("files", (b) =>
+        b.whereIndex("idx_hash", (eb) => eb("hash", "=", new Uint8Array([0x00, 0x02]))),
+      );
+
+      expect(match).toHaveLength(1);
+      expect(match[0]?.id.externalId).toBe("file-2");
+    } finally {
+      (globalThis as { Buffer?: unknown }).Buffer = originalBuffer;
+    }
   });
 });

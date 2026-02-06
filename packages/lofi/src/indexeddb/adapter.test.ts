@@ -38,6 +38,28 @@ const getRow = async (db: IDBDatabase, key: IDBValidKey): Promise<StoredRow | un
   return row as StoredRow | undefined;
 };
 
+const getInboxRow = async (db: IDBDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
+  const tx = db.transaction("lofi_inbox", "readonly");
+  const store = tx.objectStore("lofi_inbox");
+  const row = await requestToPromise<unknown>(store.get(key));
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return row as unknown | undefined;
+};
+
+const getMeta = async (db: IDBDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
+  const tx = db.transaction("lofi_meta", "readonly");
+  const store = tx.objectStore("lofi_meta");
+  const row = await requestToPromise<unknown>(store.get(key));
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return row as unknown | undefined;
+};
+
 const getAllRows = async (db: IDBDatabase): Promise<StoredRow[]> => {
   const tx = db.transaction("lofi_rows", "readonly");
   const store = tx.objectStore("lofi_rows");
@@ -75,6 +97,7 @@ describe("IndexedDbAdapter", () => {
     const result = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs1",
+      uowId: "uow-vs1",
       mutations: [
         {
           op: "create",
@@ -101,6 +124,7 @@ describe("IndexedDbAdapter", () => {
     const updateResult = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs2",
+      uowId: "uow-vs2",
       mutations: [
         {
           op: "update",
@@ -124,6 +148,7 @@ describe("IndexedDbAdapter", () => {
     const deleteResult = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs3",
+      uowId: "uow-vs3",
       mutations: [
         {
           op: "delete",
@@ -142,6 +167,7 @@ describe("IndexedDbAdapter", () => {
     const missingUpdate = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs4",
+      uowId: "uow-vs4",
       mutations: [
         {
           op: "update",
@@ -161,6 +187,7 @@ describe("IndexedDbAdapter", () => {
     const duplicate = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs2",
+      uowId: "uow-vs2",
       mutations: [
         {
           op: "update",
@@ -203,6 +230,7 @@ describe("IndexedDbAdapter", () => {
     await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs1",
+      uowId: "uow-vs1",
       mutations: [
         {
           op: "create",
@@ -226,6 +254,7 @@ describe("IndexedDbAdapter", () => {
     await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs2",
+      uowId: "uow-vs2",
       mutations: [
         {
           op: "create",
@@ -251,6 +280,136 @@ describe("IndexedDbAdapter", () => {
     expect(post._lofi.norm["authorId"]).toBe(2);
   });
 
+  it("throws on unknown schemas by default", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await expect(
+      adapter.applyOutboxEntry({
+        sourceKey: "app::outbox",
+        versionstamp: "vs1",
+        uowId: "uow-vs1",
+        mutations: [
+          {
+            op: "create",
+            schema: "unknown",
+            table: "users",
+            externalId: "user-1",
+            versionstamp: "vs1",
+            values: { name: "Ada" },
+          },
+        ],
+      }),
+    ).rejects.toThrow("Unknown outbox schema: unknown");
+  });
+
+  it("can ignore unknown schemas when configured", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      ignoreUnknownSchemas: true,
+    });
+
+    const result = await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "unknown",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    expect(result.applied).toBe(true);
+    const db = await openDb(dbName);
+    const row = await getRow(db, ["app", "app", "users", "user-1"]);
+    const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1"]);
+    expect(row).toBeUndefined();
+    expect(inboxRow).toBeDefined();
+  });
+
+  it("aborts the transaction when a mutation fails", async () => {
+    const appSchema = schema("app", (s) =>
+      s
+        .addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string")))
+        .addTable("posts", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("authorId", referenceColumn())
+            .addColumn("title", column("string")),
+        )
+        .addReference("author", {
+          type: "one",
+          from: { table: "posts", column: "authorId" },
+          to: { table: "users", column: "id" },
+        }),
+    );
+
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await expect(
+      adapter.applyOutboxEntry({
+        sourceKey: "app::outbox",
+        versionstamp: "vs1",
+        uowId: "uow-vs1",
+        mutations: [
+          {
+            op: "create",
+            schema: "app",
+            table: "users",
+            externalId: "user-1",
+            versionstamp: "vs1",
+            values: { name: "Ada" },
+          },
+          {
+            op: "create",
+            schema: "app",
+            table: "posts",
+            externalId: "post-1",
+            versionstamp: "vs1",
+            values: { title: "Hello", authorId: 123 },
+          },
+        ],
+      }),
+    ).rejects.toThrow("Expected reference value to be external ID string");
+
+    const db = await openDb(dbName);
+    const userRow = await getRow(db, ["app", "app", "users", "user-1"]);
+    const postRow = await getRow(db, ["app", "app", "posts", "post-1"]);
+    const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1"]);
+    const seqMeta = await getMeta(db, "app::seq::app::users");
+
+    expect(userRow).toBeUndefined();
+    expect(postRow).toBeUndefined();
+    expect(inboxRow).toBeUndefined();
+    expect(seqMeta).toBeUndefined();
+    db.close();
+  });
+
   it("creates indexes and clears rows on schema fingerprint changes", async () => {
     const schemaV1 = schema("app", (s) =>
       s.addTable("users", (t) =>
@@ -272,6 +431,7 @@ describe("IndexedDbAdapter", () => {
     await adapterV1.applyOutboxEntry({
       sourceKey: "app::outbox",
       versionstamp: "vs1",
+      uowId: "uow-vs1",
       mutations: [
         {
           op: "create",

@@ -52,6 +52,41 @@ type CompiledJoin = {
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;
 
+const toByteArray = (value: unknown): Uint8Array | null => {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return null;
+};
+
+const compareByteArrays = (left: Uint8Array, right: Uint8Array): number => {
+  const minLength = Math.min(left.length, right.length);
+  for (let i = 0; i < minLength; i += 1) {
+    const diff = left[i]! - right[i]!;
+    if (diff !== 0) {
+      return diff < 0 ? -1 : 1;
+    }
+  }
+  if (left.length === right.length) {
+    return 0;
+  }
+  return left.length < right.length ? -1 : 1;
+};
+
+const bytesToHex = (bytes: Uint8Array): string => {
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return hex;
+};
+
 const compareNormalizedValues = (left: unknown, right: unknown): number => {
   if (left === right) {
     return 0;
@@ -68,24 +103,10 @@ const compareNormalizedValues = (left: unknown, right: unknown): number => {
   if (right === null) {
     return 1;
   }
-  const leftBuffer =
-    left instanceof Uint8Array
-      ? Buffer.from(left)
-      : left instanceof Buffer
-        ? left
-        : left instanceof ArrayBuffer
-          ? Buffer.from(left)
-          : undefined;
-  const rightBuffer =
-    right instanceof Uint8Array
-      ? Buffer.from(right)
-      : right instanceof Buffer
-        ? right
-        : right instanceof ArrayBuffer
-          ? Buffer.from(right)
-          : undefined;
-  if (leftBuffer && rightBuffer) {
-    return Buffer.compare(leftBuffer, rightBuffer);
+  const leftBytes = toByteArray(left);
+  const rightBytes = toByteArray(right);
+  if (leftBytes && rightBytes) {
+    return compareByteArrays(leftBytes, rightBytes);
   }
   if (left instanceof Date && right instanceof Date) {
     return left.getTime() - right.getTime();
@@ -444,11 +465,9 @@ const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null =>
   if (normalized === null || normalized === undefined) {
     return null;
   }
-  if (normalized instanceof Buffer) {
-    return normalized.toString("hex");
-  }
-  if (normalized instanceof Uint8Array) {
-    return Buffer.from(normalized).toString("hex");
+  const bytes = toByteArray(normalized);
+  if (bytes) {
+    return bytesToHex(bytes);
   }
   return String(normalized);
 };
