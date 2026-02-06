@@ -39,7 +39,8 @@ export class LofiClient {
     this.adapter = options.adapter;
     this.outboxUrl = options.outboxUrl;
     this.endpointName = options.endpointName;
-    this.fetcher = options.fetch ?? fetch;
+    const defaultFetch = fetch.bind(globalThis);
+    this.fetcher = options.fetch ?? defaultFetch;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.limit = options.limit ?? DEFAULT_LIMIT;
     this.cursorKey = options.cursorKey;
@@ -161,6 +162,7 @@ export class LofiClient {
           const result = await this.adapter.applyOutboxEntry({
             sourceKey,
             versionstamp: entry.versionstamp,
+            uowId: entry.uowId,
             mutations: resolvedMutations,
           });
 

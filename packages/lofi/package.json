@@ -11,10 +11,16 @@
       "development": "./src/mod.ts",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
+    },
+    "./cli": {
+      "development": "./src/cli/index.ts",
+      "types": "./dist/cli/index.d.ts",
+      "default": "./dist/cli/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "scripts": {
     "build": "tsdown",
@@ -24,8 +30,14 @@
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
+  "bin": {
+    "fragno-lofi": "./bin/run.js"
+  },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/fragno-db-library": "workspace:*",
+    "fake-indexeddb": "^6.1.0",
+    "gunshi": "^0.26.3",
     "superjson": "^2.2.1"
   },
   "devDependencies": {
@@ -34,7 +46,6 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^3.2.4",
-    "fake-indexeddb": "^6.1.0",
     "tsdown": "^0.15.12",
     "vitest": "^3.2.4"
   },
