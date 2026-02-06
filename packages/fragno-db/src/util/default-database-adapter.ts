@@ -14,23 +14,16 @@ type DatabaseAdapterConfig = {
 
 type BetterSqlite3Constructor = typeof import("better-sqlite3");
 
-const isNodeRuntime = (): boolean => {
-  return (
-    typeof process !== "undefined" &&
-    typeof process.versions?.node === "string" &&
-    process.versions.node.length > 0
-  );
-};
-
 const createNodeRequire = (): NodeRequire | null => {
-  if (!isNodeRuntime()) {
+  try {
+    const metaUrl = typeof import.meta !== "undefined" ? import.meta.url : undefined;
+    if (!metaUrl || typeof metaUrl !== "string") {
+      return null;
+    }
+    return createRequire(metaUrl);
+  } catch {
     return null;
   }
-  const metaUrl = typeof import.meta !== "undefined" ? import.meta.url : undefined;
-  if (!metaUrl || typeof metaUrl !== "string") {
-    return null;
-  }
-  return createRequire(metaUrl);
 };
 
 const loadBetterSqlite3 = (): BetterSqlite3Constructor | null => {
@@ -39,20 +32,10 @@ const loadBetterSqlite3 = (): BetterSqlite3Constructor | null => {
     return null;
   }
   try {
-    const module = requireFn("better-sqlite3") as {
-      default?: BetterSqlite3Constructor;
-    };
+    const module = requireFn("better-sqlite3");
     return (module.default ?? module) as BetterSqlite3Constructor;
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    const code = err.code;
-    if (
-      (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
-      err.message?.includes("better-sqlite3")
-    ) {
-      return null;
-    }
-    throw error;
+  } catch {
+    return null;
   }
 };
 
