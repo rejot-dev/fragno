@@ -139,30 +139,44 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       return { applied: false };
     }
 
-    for (const mutation of options.mutations) {
-      const schema = this.schemaMap.get(mutation.schema)!;
-      const table = this.tableMap.get(mutation.schema)!.get(mutation.table)!;
-      await applyMutation({
-        mutation,
-        schema,
-        table,
-        endpointName: this.endpointName,
-        rowsStore,
-        metaStore,
-        referenceTargets: this.referenceTargets,
-      });
+    try {
+      for (const mutation of options.mutations) {
+        const schema = this.schemaMap.get(mutation.schema)!;
+        const table = this.tableMap.get(mutation.schema)!.get(mutation.table)!;
+        await applyMutation({
+          mutation,
+          schema,
+          table,
+          endpointName: this.endpointName,
+          rowsStore,
+          metaStore,
+          referenceTargets: this.referenceTargets,
+        });
+      }
+
+      const inboxRow: InboxRow = {
+        key: [options.sourceKey, options.versionstamp],
+        sourceKey: options.sourceKey,
+        versionstamp: options.versionstamp,
+        receivedAt: Date.now(),
+      };
+      inboxStore.put(inboxRow);
+
+      await transactionDone(tx);
+      return { applied: true };
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        // Ignore abort errors; transaction will already be closing.
+      }
+      try {
+        await transactionDone(tx);
+      } catch {
+        // Ignore abort completion errors; original error is more useful.
+      }
+      throw error;
     }
-
-    const inboxRow: InboxRow = {
-      key: [options.sourceKey, options.versionstamp],
-      sourceKey: options.sourceKey,
-      versionstamp: options.versionstamp,
-      receivedAt: Date.now(),
-    };
-    inboxStore.put(inboxRow);
-
-    await transactionDone(tx);
-    return { applied: true };
   }
 
   async getMeta(key: string): Promise<string | undefined> {
