@@ -1,0 +1,26 @@
+{
+  "name": "@fragno-example/react-spa-local-first",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "types:check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/fragno-db-library": "workspace:*",
+    "@fragno-dev/lofi": "workspace:*",
+    "react": "^19.1.4",
+    "react-dom": "^19.1.4"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1"
+  }
+}
