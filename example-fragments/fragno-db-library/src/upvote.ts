@@ -1,32 +1,11 @@
 import type { TableToInsertValues } from "@fragno-dev/db/query";
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import { defineFragment, instantiate } from "@fragno-dev/core";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { upvoteSchema } from "./schema/upvote";
+import { z } from "zod";
 
-export const upvoteSchema = schema("upvote", (s) => {
-  return s
-    .addTable("upvote", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("reference", column("string"))
-        .addColumn("ownerReference", column("string").nullable())
-        .addColumn("rating", column("integer"))
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn("note", column("string").nullable())
-        .createIndex("idx_upvote_reference", ["reference", "ownerReference"]);
-    })
-    .addTable("upvote_total", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("reference", column("string"))
-        .addColumn("total", column("integer").defaultTo(0))
-        .createIndex("idx_upvote_total_reference", ["reference"], { unique: true });
-    });
-});
+export { upvoteSchema };
 
 export interface RatingFragmentConfig {
   // Add any server-side configuration here if needed
@@ -93,13 +72,39 @@ export const ratingFragmentDef = defineFragment<RatingFragmentConfig>("fragno-db
   }))
   .build();
 
+const ratingRoutesFactory = defineRoutes(ratingFragmentDef).create(({ services, defineRoute }) => {
+  return [
+    defineRoute({
+      method: "POST",
+      path: "/upvotes",
+      inputSchema: z.object({
+        reference: z.string(),
+        rating: z.number().int().optional(),
+      }),
+      outputSchema: z.any(),
+      errorCodes: ["CREATION_FAILED", "INVALID_INPUT"] as const,
+      handler: async ({ input }, { json }) => {
+        const data = await input.valid();
+        if (data.rating !== undefined && data.rating < 0) {
+          await services.postDownvote(data.reference);
+        } else {
+          await services.postUpvote(data.reference);
+        }
+        return json({ ok: true });
+      },
+    }),
+  ];
+});
+
+const routes = [ratingRoutesFactory] as const;
+
 export function createRatingFragment(
   config: RatingFragmentConfig = {},
   options: FragnoPublicConfigWithDatabase,
 ) {
   return instantiate(ratingFragmentDef)
     .withConfig(config)
-    .withRoutes([])
+    .withRoutes(routes)
     .withOptions(options)
     .build();
 }
