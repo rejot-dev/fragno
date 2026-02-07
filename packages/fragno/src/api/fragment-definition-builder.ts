@@ -20,6 +20,11 @@ interface ServiceMetadata {
  * Callback that instantiates a linked fragment.
  * Receives the same context as the main fragment and returns an instantiated fragment.
  */
+export type LinkedFragmentParentMeta = {
+  name: string;
+  mountRoute: string;
+};
+
 export type LinkedFragmentCallback<
   TConfig,
   TOptions extends FragnoPublicConfig,
@@ -29,6 +34,7 @@ export type LinkedFragmentCallback<
   config: TConfig;
   options: TOptions;
   serviceDependencies?: TServiceDependencies;
+  parent: LinkedFragmentParentMeta;
 }) => TFragment;
 
 /**

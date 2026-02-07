@@ -14,12 +14,23 @@ import {
   type DatabaseRequestStorage,
 } from "./db-fragment-definition-builder";
 import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
-import { internalFragmentRoutes } from "./fragments/internal-fragment.routes";
+import {
+  internalFragmentDescribeRoutes,
+  internalFragmentOutboxRoutes,
+} from "./fragments/internal-fragment.routes";
 import type { HooksMap } from "./hooks/hooks";
 
 function shouldExposeOutboxRoutes(options: FragnoPublicConfigWithDatabase): boolean {
   const adapter = options.databaseAdapter as { outbox?: { enabled?: boolean } };
   return adapter.outbox?.enabled ?? false;
+}
+
+function resolveDatabaseNamespace(
+  options: FragnoPublicConfigWithDatabase,
+  schema: AnySchema,
+): string | null {
+  const hasOverride = options.databaseNamespace !== undefined;
+  return hasOverride ? (options.databaseNamespace ?? null) : schema.name;
 }
 
 /**
@@ -108,15 +119,31 @@ export function withDatabase<TSchema extends AnySchema>(
   ) => {
     const builderWithInternal = builder.withLinkedFragment(
       "_fragno_internal",
-      ({ config, options }) => {
-        const internalRoutes = shouldExposeOutboxRoutes(options as FragnoPublicConfigWithDatabase)
-          ? [internalFragmentRoutes]
-          : [];
+      ({ options, parent }) => {
+        const outboxEnabled = shouldExposeOutboxRoutes(options as FragnoPublicConfigWithDatabase);
+        const internalRoutes = [
+          internalFragmentDescribeRoutes,
+          ...(outboxEnabled ? [internalFragmentOutboxRoutes] : []),
+        ];
+        const namespace = resolveDatabaseNamespace(
+          options as FragnoPublicConfigWithDatabase,
+          schema,
+        );
+        const schemaInfo = {
+          name: schema.name,
+          namespace,
+          version: schema.version,
+          tables: Object.keys(schema.tables).sort(),
+        };
 
         // Cast is safe: by the time this callback is invoked during fragment instantiation,
         // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
         return instantiate(internalFragmentDef)
-          .withConfig(config as {})
+          .withConfig({
+            parent,
+            schemas: [schemaInfo],
+            outbox: { enabled: outboxEnabled },
+          })
           .withOptions({
             ...(options as FragnoPublicConfigWithDatabase),
             databaseNamespace: null,

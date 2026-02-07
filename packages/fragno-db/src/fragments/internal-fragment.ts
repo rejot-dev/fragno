@@ -18,6 +18,23 @@ import { dbNow } from "../query/db-now";
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 // FIXME: In some places we simply use empty string "" as namespace, which is not correct.
 export const SETTINGS_NAMESPACE = "fragno-db-settings" as const;
+export const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
+
+export type InternalFragmentConfig = {
+  parent?: {
+    name: string;
+    mountRoute: string;
+  };
+  schemas?: Array<{
+    name: string;
+    namespace: string | null;
+    version: number;
+    tables: string[];
+  }>;
+  outbox?: {
+    enabled: boolean;
+  };
+};
 
 export const internalSchema = schema("fragno_internal", (s) => {
   return s
@@ -68,7 +85,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
 // to avoid circular dependency (it doesn't need to link to itself)
 export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   new FragmentDefinitionBuilder<
-    {},
+    InternalFragmentConfig,
     FragnoPublicConfigWithDatabase,
     ImplicitDatabaseDependencies<typeof internalSchema>,
     {},

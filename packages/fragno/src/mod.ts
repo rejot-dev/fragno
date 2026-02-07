@@ -8,6 +8,7 @@ export {
   type ServiceContext,
   type ServiceConstructorFn,
   type LinkedFragmentCallback,
+  type LinkedFragmentParentMeta,
   type ExtractLinkedServices,
 } from "./api/fragment-definition-builder";
 
