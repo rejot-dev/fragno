@@ -3,8 +3,8 @@ import { Column, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import type { CursorResult } from "@fragno-dev/db/cursor";
 import { Cursor, createCursorFromRecord, decodeCursor } from "@fragno-dev/db/cursor";
 import { FindBuilder } from "@fragno-dev/db/unit-of-work";
+import type { IDBPDatabase, IDBPIndex, IDBPObjectStore } from "idb";
 import type { LofiQueryInterface } from "../types";
-import { requestToPromise, transactionDone } from "../indexeddb/idb-utils";
 import type { ReferenceTarget } from "../indexeddb/types";
 import { normalizeValue } from "./normalize";
 import { buildCondition, type Condition } from "./conditions";
@@ -27,12 +27,25 @@ type LofiRow = {
   };
 };
 
+type LofiDb = IDBPDatabase<unknown>;
+type ReadStore<TxStores extends ArrayLike<string>, StoreName extends string> = IDBPObjectStore<
+  unknown,
+  TxStores,
+  StoreName,
+  "readonly"
+>;
+type ReadIndex<
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+  IndexName extends string,
+> = IDBPIndex<unknown, TxStores, StoreName, IndexName, "readonly">;
+
 type RowSelection = Record<string, unknown>;
 
 type QueryContext = {
   endpointName: string;
   schemaName: string;
-  getDb: () => Promise<IDBDatabase>;
+  getDb: () => Promise<LofiDb>;
   referenceTargets: Map<string, ReferenceTarget>;
 };
 
@@ -351,13 +364,16 @@ const coerceLocalInternalId = (value: unknown): number | unknown => {
   return value;
 };
 
-const resolveReferenceExternalId = async (options: {
+const resolveReferenceExternalId = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
   value: string;
   schemaName: string;
   table: AnyTable;
   columnName: string;
   endpointName: string;
-  rowsStore: IDBObjectStore;
+  rowsStore: ReadStore<TxStores, StoreName>;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Promise<number | null> => {
   const { value, schemaName, table, columnName, endpointName, rowsStore, referenceTargets } =
@@ -368,20 +384,23 @@ const resolveReferenceExternalId = async (options: {
   }
 
   const key: LofiRow["key"] = [endpointName, target.schema, target.table, value];
-  const referenced = await requestToPromise<LofiRow | undefined>(rowsStore.get(key));
+  const referenced = (await rowsStore.get(key)) as LofiRow | undefined;
   if (!referenced) {
     return null;
   }
   return referenced._lofi.internalId;
 };
 
-const resolveReferenceValue = async (options: {
+const resolveReferenceValue = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
   value: unknown;
   column: AnyColumn;
   table: AnyTable;
   schemaName: string;
   endpointName: string;
-  rowsStore: IDBObjectStore;
+  rowsStore: ReadStore<TxStores, StoreName>;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Promise<unknown> => {
   const { value, column, table, schemaName, endpointName, rowsStore, referenceTargets } = options;
@@ -420,14 +439,17 @@ const resolveReferenceValue = async (options: {
   return resolveFragnoIdValue(value, column);
 };
 
-const resolveComparisonValue = async (options: {
+const resolveComparisonValue = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
   value: unknown;
   column: AnyColumn;
   table: AnyTable;
   row: LofiRow;
   schemaName: string;
   endpointName: string;
-  rowsStore: IDBObjectStore;
+  rowsStore: ReadStore<TxStores, StoreName>;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Promise<{ value: unknown; column: AnyColumn }> => {
   const { value, column, table, row, schemaName, endpointName, rowsStore, referenceTargets } =
@@ -472,12 +494,12 @@ const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null =>
   return String(normalized);
 };
 
-const evaluateCondition = async (
+const evaluateCondition = async <TxStores extends ArrayLike<string>, StoreName extends string>(
   condition: Condition | boolean,
   table: AnyTable,
   row: LofiRow,
   context: QueryContext,
-  rowsStore: IDBObjectStore,
+  rowsStore: ReadStore<TxStores, StoreName>,
 ): Promise<boolean> => {
   if (typeof condition === "boolean") {
     return condition;
@@ -764,8 +786,8 @@ const compareRowToCursor = (
   return 0;
 };
 
-const collectRows = async (options: {
-  rowsStore: IDBObjectStore;
+const collectRows = async <TxStores extends ArrayLike<string>, StoreName extends string>(options: {
+  rowsStore: ReadStore<TxStores, StoreName>;
   endpointName: string;
   schemaName: string;
   tableName: string;
@@ -778,7 +800,7 @@ const collectRows = async (options: {
     indexName === "_primary"
       ? INDEX_SCHEMA_TABLE
       : buildIndexName(schemaName, tableName, indexName);
-  const source = rowsStore.indexNames.contains(indexKey)
+  const source: ReadIndex<TxStores, StoreName, string> = rowsStore.indexNames.contains(indexKey)
     ? rowsStore.index(indexKey)
     : rowsStore.index(INDEX_SCHEMA_TABLE);
 
@@ -787,34 +809,28 @@ const collectRows = async (options: {
       ? IDBKeyRange.only([endpointName, schemaName, tableName])
       : undefined;
 
-  const request = source.openCursor(range);
-
-  await new Promise<void>((resolve, reject) => {
-    request.onsuccess = () => {
-      const cursor = request.result as IDBCursorWithValue | null;
-      if (!cursor) {
-        resolve();
-        return;
-      }
-      const row = cursor.value as LofiRow;
-      if (row.endpoint === endpointName && row.schema === schemaName && row.table === tableName) {
-        results.push(row);
-      }
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error);
-  });
+  let cursor = await source.openCursor(range);
+  while (cursor) {
+    const row = cursor.value as LofiRow;
+    if (row.endpoint === endpointName && row.schema === schemaName && row.table === tableName) {
+      results.push(row);
+    }
+    cursor = await cursor.continue();
+  }
 
   return results;
 };
 
-const findJoinMatches = async (options: {
+const findJoinMatches = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
   parentRow: LofiRow;
   parentTable: AnyTable;
   join: CompiledJoin;
   rowsByTable: Map<string, LofiRow[]>;
   context: QueryContext;
-  rowsStore: IDBObjectStore;
+  rowsStore: ReadStore<TxStores, StoreName>;
 }): Promise<LofiRow[]> => {
   const { parentRow, parentTable, join, rowsByTable, context, rowsStore } = options;
   if (join.options === false) {
@@ -899,14 +915,14 @@ const findJoinMatches = async (options: {
   return ordered;
 };
 
-const applyJoins = async (options: {
+const applyJoins = async <TxStores extends ArrayLike<string>, StoreName extends string>(options: {
   baseOutput: RowSelection;
   parentRow: LofiRow;
   parentTable: AnyTable;
   joins: CompiledJoin[] | undefined;
   rowsByTable: Map<string, LofiRow[]>;
   context: QueryContext;
-  rowsStore: IDBObjectStore;
+  rowsStore: ReadStore<TxStores, StoreName>;
   parentPath?: string;
 }): Promise<RowSelection[]> => {
   const {
@@ -1020,7 +1036,7 @@ const applyCursorFilters = (options: {
 export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
   schema: T;
   endpointName: string;
-  getDb: () => Promise<IDBDatabase>;
+  getDb: () => Promise<LofiDb>;
   referenceTargets: Map<string, ReferenceTarget>;
   schemaName?: string;
 }): LofiQueryInterface<T> => {
@@ -1069,7 +1085,7 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
         ? buildCondition(table.columns, built.options.where)
         : undefined;
       if (conditionResult === false) {
-        await transactionDone(tx);
+        await tx.done;
         return 0;
       }
       const condition = conditionResult === true ? undefined : conditionResult;
@@ -1081,7 +1097,7 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
         count += 1;
       }
 
-      await transactionDone(tx);
+      await tx.done;
       return count;
     }
 
@@ -1101,7 +1117,7 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
       ? buildCondition(table.columns, built.options.where)
       : undefined;
     if (conditionResult === false) {
-      await transactionDone(tx);
+      await tx.done;
       return withCursor ? { items: [], hasNextPage: false } : [];
     }
     const condition = conditionResult === true ? undefined : conditionResult;
@@ -1170,7 +1186,7 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
       }
     }
 
-    await transactionDone(tx);
+    await tx.done;
 
     const decoded = results.map((row) => decodeRow(row, table));
 

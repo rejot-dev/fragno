@@ -1,5 +1,6 @@
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { generateMigrationFromSchema } from "@fragno-dev/db/client";
+import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
 import type {
   IndexedDbAdapterOptions,
   LofiAdapter,
@@ -8,7 +9,6 @@ import type {
   LofiQueryInterface,
   LofiQueryableAdapter,
 } from "../types";
-import { requestToPromise, transactionDone } from "./idb-utils";
 import type { ReferenceTarget } from "./types";
 import { normalizeValue } from "../query/normalize";
 import { createIndexedDbQueryEngine } from "../query/engine";
@@ -38,6 +38,25 @@ type InboxRow = {
 
 type MetaRow = { key: string; value: string };
 
+type LofiDb = IDBPDatabase<unknown>;
+type WriteStore<TxStores extends ArrayLike<string>, StoreName extends string> = IDBPObjectStore<
+  unknown,
+  TxStores,
+  StoreName,
+  "readwrite"
+>;
+type UpgradeStore<TxStores extends ArrayLike<string>, StoreName extends string> = IDBPObjectStore<
+  unknown,
+  TxStores,
+  StoreName,
+  "versionchange"
+>;
+type UpgradeTx<TxStores extends ArrayLike<string>> = IDBPTransaction<
+  unknown,
+  TxStores,
+  "versionchange"
+>;
+
 type IndexDefinition = {
   name: string;
   table: string;
@@ -65,7 +84,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
   private readonly indexDefinitions: IndexDefinition[];
   private readonly ignoreUnknownSchemas: boolean;
 
-  private dbPromise?: Promise<IDBDatabase>;
+  private dbPromise?: Promise<LofiDb>;
 
   constructor(options: IndexedDbAdapterOptions) {
     if (!options.endpointName || options.endpointName.trim().length === 0) {
@@ -145,11 +164,11 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const inboxStore = tx.objectStore(INBOX_STORE);
     const metaStore = tx.objectStore(META_STORE);
 
-    const existingInbox = await requestToPromise<InboxRow | undefined>(
-      inboxStore.get([options.sourceKey, options.uowId]),
-    );
+    const existingInbox = (await inboxStore.get([options.sourceKey, options.uowId])) as
+      | InboxRow
+      | undefined;
     if (existingInbox) {
-      await transactionDone(tx);
+      await tx.done;
       return { applied: false };
     }
 
@@ -173,9 +192,9 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
         versionstamp: options.versionstamp,
         receivedAt: Date.now(),
       };
-      inboxStore.put(inboxRow);
+      await inboxStore.put(inboxRow);
 
-      await transactionDone(tx);
+      await tx.done;
       return { applied: true };
     } catch (error) {
       try {
@@ -184,7 +203,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
         // Ignore abort errors; transaction will already be closing.
       }
       try {
-        await transactionDone(tx);
+        await tx.done;
       } catch {
         // Ignore abort completion errors; original error is more useful.
       }
@@ -196,8 +215,8 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const db = await this.openDatabase();
     const tx = db.transaction(META_STORE, "readonly");
     const store = tx.objectStore(META_STORE);
-    const row = await requestToPromise<MetaRow | undefined>(store.get(key));
-    await transactionDone(tx);
+    const row = (await store.get(key)) as MetaRow | undefined;
+    await tx.done;
     return row?.value;
   }
 
@@ -205,8 +224,8 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const db = await this.openDatabase();
     const tx = db.transaction(META_STORE, "readwrite");
     const store = tx.objectStore(META_STORE);
-    store.put({ key, value });
-    await transactionDone(tx);
+    await store.put({ key, value });
+    await tx.done;
   }
 
   createQueryEngine<const T extends AnySchema>(
@@ -222,18 +241,22 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     });
   }
 
-  private openDatabase(): Promise<IDBDatabase> {
+  private openDatabase(): Promise<LofiDb> {
     if (!this.dbPromise) {
       this.dbPromise = this.openDatabaseInternal();
     }
     return this.dbPromise;
   }
 
-  private async openDatabaseInternal(): Promise<IDBDatabase> {
-    const initialDb = await openDatabaseWithUpgrade(this.dbName, undefined, (db, tx) => {
+  private async openDatabaseInternal(): Promise<LofiDb> {
+    const initialDb = await openDatabaseWithUpgrade(this.dbName, undefined, async (db, tx) => {
       ensureStores(db, tx);
       ensureIndexes(tx, this.indexDefinitions);
-      setMetaInTransaction(tx, schemaFingerprintKey(this.endpointName), this.schemaFingerprint);
+      await setMetaInTransaction(
+        tx,
+        schemaFingerprintKey(this.endpointName),
+        this.schemaFingerprint,
+      );
     });
 
     const existingFingerprint = await readMetaValue(
@@ -248,12 +271,20 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const currentVersion = initialDb.version;
     initialDb.close();
 
-    const upgraded = await openDatabaseWithUpgrade(this.dbName, currentVersion + 1, (db, tx) => {
-      ensureStores(db, tx);
-      ensureIndexes(tx, this.indexDefinitions);
-      clearEndpointData(tx, this.endpointName);
-      setMetaInTransaction(tx, schemaFingerprintKey(this.endpointName), this.schemaFingerprint);
-    });
+    const upgraded = await openDatabaseWithUpgrade(
+      this.dbName,
+      currentVersion + 1,
+      async (db, tx) => {
+        ensureStores(db, tx);
+        ensureIndexes(tx, this.indexDefinitions);
+        await clearEndpointData(tx, this.endpointName);
+        await setMetaInTransaction(
+          tx,
+          schemaFingerprintKey(this.endpointName),
+          this.schemaFingerprint,
+        );
+      },
+    );
 
     return upgraded;
   }
@@ -312,7 +343,10 @@ const buildSchemaFingerprint = (schemas: AnySchema[], indexes: IndexDefinition[]
   return JSON.stringify(payload);
 };
 
-const ensureStores = (db: IDBDatabase, tx: IDBTransaction): void => {
+const ensureStores = <TxStores extends ArrayLike<string>>(
+  db: LofiDb,
+  tx: UpgradeTx<TxStores>,
+): void => {
   if (!db.objectStoreNames.contains(META_STORE)) {
     db.createObjectStore(META_STORE, { keyPath: "key" });
   }
@@ -345,7 +379,10 @@ const ensureStores = (db: IDBDatabase, tx: IDBTransaction): void => {
   }
 };
 
-const ensureIndexes = (tx: IDBTransaction, indexes: IndexDefinition[]): void => {
+const ensureIndexes = <TxStores extends ArrayLike<string>>(
+  tx: UpgradeTx<TxStores>,
+  indexes: IndexDefinition[],
+): void => {
   const store = tx.objectStore(ROWS_STORE);
 
   for (const index of indexes) {
@@ -366,48 +403,49 @@ const ensureIndexes = (tx: IDBTransaction, indexes: IndexDefinition[]): void => 
   }
 };
 
-const clearEndpointData = (tx: IDBTransaction, endpointName: string): void => {
+const clearEndpointData = async <TxStores extends ArrayLike<string>>(
+  tx: UpgradeTx<TxStores>,
+  endpointName: string,
+): Promise<void> => {
   const rowsStore = tx.objectStore(ROWS_STORE);
   const inboxStore = tx.objectStore(INBOX_STORE);
   const metaStore = tx.objectStore(META_STORE);
 
-  deleteRowsForEndpoint(rowsStore, endpointName);
-  void deleteWhere(
+  await deleteRowsForEndpoint(rowsStore, endpointName);
+  await deleteWhere(
     inboxStore,
     (row) => isInboxRow(row) && row.sourceKey.startsWith(`${endpointName}::`),
   );
-  void deleteWhere(
+  await deleteWhere(
     metaStore,
     (row) => isMetaRow(row) && row.key === cursorKeyDefault(endpointName),
   );
 };
 
-const deleteRowsForEndpoint = (store: IDBObjectStore, endpointName: string): void => {
+const deleteRowsForEndpoint = async <TxStores extends ArrayLike<string>, StoreName extends string>(
+  store: UpgradeStore<TxStores, StoreName>,
+  endpointName: string,
+): Promise<void> => {
   const index = store.index(INDEX_SCHEMA_TABLE);
   const range = IDBKeyRange.bound([endpointName], [endpointName, "\uffff", "\uffff"]);
-  const request = index.openCursor(range);
-  request.onsuccess = () => {
-    const cursor = request.result as IDBCursorWithValue | null;
-    if (!cursor) {
-      return;
-    }
-    store.delete(cursor.primaryKey);
-    cursor.continue();
-  };
+  let cursor = await index.openCursor(range);
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
 };
 
-const deleteWhere = (store: IDBObjectStore, predicate: (value: unknown) => boolean): void => {
-  const request = store.openCursor();
-  request.onsuccess = () => {
-    const cursor = request.result as IDBCursorWithValue | null;
-    if (!cursor) {
-      return;
-    }
+const deleteWhere = async <TxStores extends ArrayLike<string>, StoreName extends string>(
+  store: UpgradeStore<TxStores, StoreName>,
+  predicate: (value: unknown) => boolean,
+): Promise<void> => {
+  let cursor = await store.openCursor();
+  while (cursor) {
     if (predicate(cursor.value)) {
-      cursor.delete();
+      await cursor.delete();
     }
-    cursor.continue();
-  };
+    cursor = await cursor.continue();
+  }
 };
 
 const isInboxRow = (value: unknown): value is InboxRow =>
@@ -425,62 +463,58 @@ const isMetaRow = (value: unknown): value is MetaRow =>
 const openDatabaseWithUpgrade = (
   dbName: string,
   version: number | undefined,
-  onUpgrade: (db: IDBDatabase, tx: IDBTransaction) => void,
-): Promise<IDBDatabase> =>
-  new Promise((resolve, reject) => {
-    const request =
-      version === undefined ? indexedDB.open(dbName) : indexedDB.open(dbName, version);
-
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      const tx = request.transaction;
-      if (!tx) {
-        throw new Error("IndexedDbAdapter upgrade transaction missing.");
-      }
-      onUpgrade(db, tx);
-    };
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      db.onversionchange = () => db.close();
-      resolve(db);
-    };
+  onUpgrade: (db: LofiDb, tx: UpgradeTx<ArrayLike<string>>) => void | Promise<void>,
+): Promise<LofiDb> =>
+  openDB(dbName, version, {
+    upgrade: async (db, _oldVersion, _newVersion, tx) => {
+      await onUpgrade(db, tx as UpgradeTx<ArrayLike<string>>);
+    },
+  }).then((db) => {
+    db.onversionchange = () => db.close();
+    return db;
   });
 
-const readMetaValue = async (db: IDBDatabase, key: string): Promise<string | undefined> => {
+const readMetaValue = async (db: LofiDb, key: string): Promise<string | undefined> => {
   if (!db.objectStoreNames.contains(META_STORE)) {
     return undefined;
   }
   const tx = db.transaction(META_STORE, "readonly");
   const store = tx.objectStore(META_STORE);
-  const row = await requestToPromise<MetaRow | undefined>(store.get(key));
-  await transactionDone(tx);
+  const row = (await store.get(key)) as MetaRow | undefined;
+  await tx.done;
   return row?.value;
 };
 
-const setMetaInTransaction = (tx: IDBTransaction, key: string, value: string): void => {
+const setMetaInTransaction = async <TxStores extends ArrayLike<string>>(
+  tx: UpgradeTx<TxStores>,
+  key: string,
+  value: string,
+): Promise<void> => {
   const store = tx.objectStore(META_STORE);
-  store.put({ key, value });
+  await store.put({ key, value });
 };
 
-const applyMutation = async (options: {
+const applyMutation = async <
+  TxStores extends ArrayLike<string>,
+  RowsStoreName extends string,
+  MetaStoreName extends string,
+>(options: {
   mutation: LofiMutation;
   schema: AnySchema;
   table: AnyTable;
   endpointName: string;
-  rowsStore: IDBObjectStore;
-  metaStore: IDBObjectStore;
+  rowsStore: WriteStore<TxStores, RowsStoreName>;
+  metaStore: WriteStore<TxStores, MetaStoreName>;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Promise<void> => {
   const { mutation, schema, table, endpointName, rowsStore, metaStore, referenceTargets } = options;
 
   const key: LofiRow["key"] = [endpointName, schema.name, table.name, mutation.externalId];
-  const existing = await requestToPromise<LofiRow | undefined>(rowsStore.get(key));
+  const existing = (await rowsStore.get(key)) as LofiRow | undefined;
 
   if (mutation.op === "delete") {
     if (existing) {
-      rowsStore.delete(key);
+      await rowsStore.delete(key);
     }
     return;
   }
@@ -524,28 +558,31 @@ const applyMutation = async (options: {
     },
   };
 
-  rowsStore.put(row);
+  await rowsStore.put(row);
 };
 
-const allocateInternalId = async (
-  metaStore: IDBObjectStore,
+const allocateInternalId = async <TxStores extends ArrayLike<string>, StoreName extends string>(
+  metaStore: WriteStore<TxStores, StoreName>,
   endpointName: string,
   schemaName: string,
   tableName: string,
 ): Promise<number> => {
   const key = seqKey(endpointName, schemaName, tableName);
-  const existing = await requestToPromise<MetaRow | undefined>(metaStore.get(key));
+  const existing = (await metaStore.get(key)) as MetaRow | undefined;
   const next = existing ? Number(existing.value) + 1 : 1;
   if (Number.isNaN(next) || next > Number.MAX_SAFE_INTEGER) {
     throw new Error(
       `IndexedDbAdapter internalId overflow for ${schemaName}.${tableName}: ${existing?.value}`,
     );
   }
-  metaStore.put({ key, value: String(next) });
+  await metaStore.put({ key, value: String(next) });
   return next;
 };
 
-const buildNormalizedValues = async (options: {
+const buildNormalizedValues = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
   schema: AnySchema;
   table: AnyTable;
   data: Record<string, unknown>;
@@ -553,7 +590,7 @@ const buildNormalizedValues = async (options: {
   internalId: number;
   version: number;
   endpointName: string;
-  rowsStore: IDBObjectStore;
+  rowsStore: WriteStore<TxStores, StoreName>;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Promise<Record<string, unknown>> => {
   const {
@@ -589,7 +626,10 @@ const buildNormalizedValues = async (options: {
   return norm;
 };
 
-const resolveColumnValue = async (options: {
+const resolveColumnValue = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
   schema: AnySchema;
   table: AnyTable;
   columnName: string;
@@ -599,7 +639,7 @@ const resolveColumnValue = async (options: {
   internalId: number;
   version: number;
   endpointName: string;
-  rowsStore: IDBObjectStore;
+  rowsStore: WriteStore<TxStores, StoreName>;
   referenceTargets: Map<string, ReferenceTarget>;
 }): Promise<unknown> => {
   const {
@@ -643,7 +683,7 @@ const resolveColumnValue = async (options: {
       return undefined;
     }
     const key: LofiRow["key"] = [endpointName, target.schema, target.table, rawValue];
-    const referenced = await requestToPromise<LofiRow | undefined>(rowsStore.get(key));
+    const referenced = (await rowsStore.get(key)) as LofiRow | undefined;
     if (!referenced) {
       return undefined;
     }

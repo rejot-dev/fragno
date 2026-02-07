@@ -4,7 +4,18 @@ import { cli, define } from "gunshi";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import {
+  IDBCursor,
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore,
+  IDBOpenDBRequest,
+  IDBRequest,
+  IDBTransaction,
+} from "fake-indexeddb";
+import { openDB, type IDBPDatabase } from "idb";
 import { commentSchema } from "@fragno-dev/fragno-db-library";
 import { upvoteSchema } from "@fragno-dev/fragno-db-library/upvote";
 import { IndexedDbAdapter, LofiClient } from "../mod.js";
@@ -65,7 +76,14 @@ const mainCommand = define({
     const schemas = ALL_SCHEMAS;
 
     globalThis.indexedDB = new IDBFactory();
+    globalThis.IDBCursor = IDBCursor;
+    globalThis.IDBDatabase = IDBDatabase;
+    globalThis.IDBIndex = IDBIndex;
     globalThis.IDBKeyRange = IDBKeyRange;
+    globalThis.IDBObjectStore = IDBObjectStore;
+    globalThis.IDBOpenDBRequest = IDBOpenDBRequest;
+    globalThis.IDBRequest = IDBRequest;
+    globalThis.IDBTransaction = IDBTransaction;
 
     const dbName = `fragno_lofi_${endpointName}`;
     const adapter = new IndexedDbAdapter({
@@ -214,28 +232,14 @@ type LofiRow = {
   };
 };
 
-const openDb = (name: string): Promise<IDBDatabase> =>
-  new Promise((resolve, reject) => {
-    const request = indexedDB.open(name);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+const openDb = (name: string): Promise<IDBPDatabase> => openDB(name);
 
-const requestToPromise = <T>(request: IDBRequest<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-const getAllRows = async (db: IDBDatabase): Promise<LofiRow[]> => {
+const getAllRows = async (db: IDBPDatabase): Promise<LofiRow[]> => {
   const tx = db.transaction("lofi_rows", "readonly");
   const store = tx.objectStore("lofi_rows");
-  const rows = await requestToPromise<unknown[]>(store.getAll());
-  await new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return rows as LofiRow[];
+  const rows = (await store.getAll()) as LofiRow[];
+  await tx.done;
+  return rows;
 };
 
 const sleep = (ms: number): Promise<void> =>
