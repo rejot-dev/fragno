@@ -30,6 +30,7 @@ import {
 } from "./hooks/hooks";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
+import { sanitizeNamespace } from "./naming/sql-naming";
 
 /**
  * Extended FragnoPublicConfig for database fragments.
@@ -43,8 +44,9 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
    */
   durableHooks?: DurableHooksProcessingOptions;
   /**
-   * Optional override for database namespace. If provided (including null), it is used as-is.
-   * When omitted, defaults to schema.name.
+   * Optional override for database namespace. If provided (including null), it is used as-is
+   * without sanitization — the caller is responsible for providing a valid namespace.
+   * When omitted, defaults to a sanitized version of schema.name.
    */
   databaseNamespace?: string | null;
 };
@@ -172,7 +174,7 @@ function resolveDatabaseNamespace<TSchema extends AnySchema>(
   schema: TSchema,
 ): string | null {
   const hasOverride = options.databaseNamespace !== undefined;
-  return hasOverride ? (options.databaseNamespace ?? null) : schema.name;
+  return hasOverride ? (options.databaseNamespace ?? null) : sanitizeNamespace(schema.name);
 }
 
 /**

@@ -523,9 +523,12 @@ export async function getSchemaVersionFromDatabase(
       return primary;
     }
 
-    // Back-compat: older installs stored internal schema version under an empty namespace.
-    if (namespace === internalSchema.name) {
-      const legacy = await readSchemaVersion("");
+    // Back-compat: some installs stored internal schema version under a different namespace.
+    // Check the alternate key (empty string ↔ schema name) so we find the version either way.
+    const legacyNamespace =
+      namespace === "" ? internalSchema.name : namespace === internalSchema.name ? "" : null;
+    if (legacyNamespace !== null) {
+      const legacy = await readSchemaVersion(legacyNamespace);
       if (legacy !== undefined) {
         return legacy;
       }

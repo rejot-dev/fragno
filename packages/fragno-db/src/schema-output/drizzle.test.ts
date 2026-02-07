@@ -969,7 +969,7 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("export const posts_auth_db =");
 
       // Physical table names use logical names with schema scoping
-      expect(generated).toContain('const schema_auth_db = pgSchema("auth_db");');
+      expect(generated).toContain('const schema_auth_db = pgSchema("auth-db");');
       expect(generated).toContain('schema_auth_db.table("users"');
       expect(generated).toContain('schema_auth_db.table("posts"');
 
@@ -1029,7 +1029,7 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
 
       // Physical table names use logical names with schema scoping
-      expect(generated).toContain('const schema_my_fragment_v2 = pgSchema("my_fragment_v2");');
+      expect(generated).toContain('const schema_my_fragment_v2 = pgSchema("my-fragment-v2");');
       expect(generated).toContain('schema_my_fragment_v2.table("users"');
       expect(generated).toContain('schema_my_fragment_v2.table("posts"');
 
@@ -1042,7 +1042,7 @@ describe("generateDrizzleSchema", () => {
         // Fragment: my-fragment-v2
         // ============================================================================
 
-        const schema_my_fragment_v2 = pgSchema("my_fragment_v2");
+        const schema_my_fragment_v2 = pgSchema("my-fragment-v2");
 
         export const users_my_fragment_v2 = schema_my_fragment_v2.table("users", {
           id: varchar("id", { length: 30 }).notNull().unique().$defaultFn(() => createId()),

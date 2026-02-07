@@ -7,11 +7,7 @@ import {
 import { generateDrizzleSchema } from "../schema-output/drizzle";
 import { generatePrismaSchema } from "../schema-output/prisma";
 import { internalFragmentDef, getSchemaVersionFromDatabase } from "../fragments/internal-fragment";
-import {
-  internalSchema,
-  SETTINGS_NAMESPACE,
-  SETTINGS_TABLE_NAME,
-} from "../fragments/internal-fragment.schema";
+import { internalSchema, SETTINGS_TABLE_NAME } from "../fragments/internal-fragment.schema";
 import { instantiate } from "@fragno-dev/core";
 import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
 
@@ -141,15 +137,12 @@ export async function generateSchemaArtifacts<
     .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
     .build();
 
-  const settingsSourceVersion = await getSchemaVersionFromDatabase(
-    internalFragment,
-    SETTINGS_NAMESPACE,
-  );
+  const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
 
   const generatedFiles: GenerationInternalResult[] = [];
 
-  // Use null namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, null);
+  // Internal fragment uses empty-string namespace: no table suffix, version key is ".schema_version"
+  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
   const settingsTargetVersion = internalSchema.version;
 
   // Generate settings table migration
@@ -272,13 +265,10 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
     .build();
 
-  const settingsSourceVersion = await getSchemaVersionFromDatabase(
-    internalFragment,
-    SETTINGS_NAMESPACE,
-  );
+  const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
 
-  // Use null namespace for settings (SETTINGS_NAMESPACE is for prefixing keys, not the database namespace)
-  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, null);
+  // Internal fragment uses empty-string namespace: no table suffix, version key is ".schema_version"
+  const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
   const settingsTargetVersion = internalSchema.version;
 
   if (settingsSourceVersion < settingsTargetVersion) {

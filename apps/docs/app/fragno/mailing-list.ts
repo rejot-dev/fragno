@@ -60,7 +60,10 @@ export function createMailingListServer(init: MailingListInit) {
         }
       },
     },
-    { databaseAdapter: createAdapter(init.type === "live" ? init.state : undefined) },
+    {
+      databaseAdapter: createAdapter(init.type === "live" ? init.state : undefined),
+      databaseNamespace: "mailing-list",
+    },
   ).withMiddleware(async ({ ifMatchesRoute }, { error }) => {
     const getSubscribersResult = await ifMatchesRoute("GET", "/subscribers", async () => {
       return error({ message: "Not authorized", code: "NOT_AUTHORIZED" }, 401);

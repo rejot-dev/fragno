@@ -2,7 +2,12 @@ import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 import { beforeAll, describe, expect, it } from "vitest";
 import { instantiate } from "@fragno-dev/core";
-import { internalFragmentDef, internalSchema, SETTINGS_NAMESPACE } from "./internal-fragment";
+import {
+  internalFragmentDef,
+  internalSchema,
+  SETTINGS_NAMESPACE,
+  getSchemaVersionFromDatabase,
+} from "./internal-fragment";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
@@ -873,5 +878,128 @@ describe("Hook Service", () => {
     });
 
     expect(wakeAt).toBeNull();
+  });
+});
+
+describe("getSchemaVersionFromDatabase", () => {
+  function createTestSetup() {
+    const sqliteDatabase = new SQLite(":memory:");
+    const dialect = new SqliteDialect({ database: sqliteDatabase });
+    const adapter = new SqlAdapter({
+      dialect,
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
+
+    function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
+      return instantiate(internalFragmentDef).withConfig({}).withOptions(options).build();
+    }
+
+    return { sqliteDatabase, adapter, instantiateFragment };
+  }
+
+  async function setupAndMigrate() {
+    const { sqliteDatabase, adapter, instantiateFragment } = createTestSetup();
+    // Create tables without writing a version record, so tests control version state
+    const migrations = adapter.prepareMigrations(internalSchema, "");
+    await migrations.executeWithDriver(adapter.driver, 0, undefined, {
+      updateVersionInMigration: false,
+    });
+    const fragment = instantiateFragment({
+      databaseAdapter: adapter,
+      databaseNamespace: null,
+    });
+    return { sqliteDatabase, adapter, fragment };
+  }
+
+  it("should return 0 when no version exists", async () => {
+    const { fragment } = await setupAndMigrate();
+
+    const version = await getSchemaVersionFromDatabase(fragment, "nonexistent");
+    expect(version).toBe(0);
+  });
+
+  it("should find version stored under empty-string namespace", async () => {
+    const { fragment } = await setupAndMigrate();
+
+    // Write version under empty-string namespace (key = ".schema_version")
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.settingsService.set("", "schema_version", "5")])
+        .execute();
+    });
+
+    const version = await getSchemaVersionFromDatabase(fragment, "");
+    expect(version).toBe(5);
+  });
+
+  it("should find version via back-compat when stored under internalSchema.name but read with empty string", async () => {
+    const { fragment } = await setupAndMigrate();
+
+    // Write version under "fragno_internal" namespace (legacy key from buggy code)
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.settingsService.set(internalSchema.name, "schema_version", "3"),
+        ])
+        .execute();
+    });
+
+    // Reading with "" should find it via back-compat fallback
+    const version = await getSchemaVersionFromDatabase(fragment, "");
+    expect(version).toBe(3);
+  });
+
+  it("should find version via back-compat when stored under empty string but read with internalSchema.name", async () => {
+    const { fragment } = await setupAndMigrate();
+
+    // Write version under empty-string namespace
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.settingsService.set("", "schema_version", "7")])
+        .execute();
+    });
+
+    // Reading with internalSchema.name should find it via back-compat fallback
+    const version = await getSchemaVersionFromDatabase(fragment, internalSchema.name);
+    expect(version).toBe(7);
+  });
+
+  it("should prefer primary namespace over back-compat fallback", async () => {
+    const { fragment } = await setupAndMigrate();
+
+    // Write version under BOTH namespaces with different values
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.settingsService.set("", "schema_version", "10"),
+          fragment.services.settingsService.set(internalSchema.name, "schema_version", "20"),
+        ])
+        .execute();
+    });
+
+    // Reading with "" should find 10 (primary), not 20 (back-compat)
+    const versionEmpty = await getSchemaVersionFromDatabase(fragment, "");
+    expect(versionEmpty).toBe(10);
+
+    // Reading with internalSchema.name should find 20 (primary), not 10 (back-compat)
+    const versionNamed = await getSchemaVersionFromDatabase(fragment, internalSchema.name);
+    expect(versionNamed).toBe(20);
+  });
+
+  it("should not use back-compat for non-internal namespaces", async () => {
+    const { fragment } = await setupAndMigrate();
+
+    // Write version under "some-fragment"
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.settingsService.set("some-fragment", "schema_version", "4"),
+        ])
+        .execute();
+    });
+
+    // Reading with a different non-internal namespace should NOT find it
+    const version = await getSchemaVersionFromDatabase(fragment, "other-fragment");
+    expect(version).toBe(0);
   });
 });
