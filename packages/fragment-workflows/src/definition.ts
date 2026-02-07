@@ -10,6 +10,7 @@ import type {
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
   WorkflowLogLevel,
+  WorkflowRegistryEntry,
   WorkflowsFragmentConfig,
 } from "./workflow";
 
@@ -298,9 +299,39 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     const getDbNow = async () => (deps.db.now ? deps.db.now() : getNow());
     const getRunAtNow = () => config.dbNow?.() ?? dbNow();
     const randomFloat = () => config.runtime.random.float();
+    const workflowsByName = new Map<string, WorkflowRegistryEntry>();
+
+    for (const entry of Object.values(config.workflows ?? {})) {
+      workflowsByName.set(entry.name, entry);
+    }
+
+    const validateWorkflowParams = async (workflowName: string, params: unknown) => {
+      const entry = workflowsByName.get(workflowName);
+      if (!entry) {
+        throw new Error("WORKFLOW_NOT_FOUND");
+      }
+
+      if ("workflow" in entry) {
+        return params ?? {};
+      }
+
+      if (!entry.schema) {
+        return params ?? {};
+      }
+
+      const result = await entry.schema["~standard"].validate(params ?? {});
+      if (result.issues) {
+        const error = new Error("WORKFLOW_PARAMS_INVALID");
+        (error as { issues?: unknown }).issues = result.issues;
+        throw error;
+      }
+
+      return result.value;
+    };
 
     return defineService({
       getDbNow,
+      validateWorkflowParams,
       createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
         const now = getNow();
         const instanceId = options?.id ?? generateInstanceId(now.getTime(), randomFloat);

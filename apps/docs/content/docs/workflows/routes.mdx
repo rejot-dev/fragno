@@ -46,6 +46,8 @@ Body:
 { "id": "optional-id", "params": { "...": "..." } }
 ```
 
+If the workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
+
 ### Create a batch of instances
 
 `POST /workflows/:workflowName/instances/batch`
@@ -55,6 +57,8 @@ Body:
 ```json
 { "instances": [{ "id": "required-id", "params": { "...": "..." } }] }
 ```
+
+If the workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
 
 ### Get instance details
 

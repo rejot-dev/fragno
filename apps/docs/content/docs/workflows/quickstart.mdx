@@ -22,11 +22,11 @@ npm install @fragno-dev/fragment-workflows @fragno-dev/db
 
 ## Define a Workflow
 
-Create a workflow class and a registry of workflows:
+Create a workflow definition and a registry of workflows:
 
 ```ts title="lib/workflows.ts"
 import {
-  WorkflowEntrypoint,
+  defineWorkflow,
   type WorkflowEvent,
   type WorkflowStep,
 } from "@fragno-dev/fragment-workflows";
@@ -40,8 +40,9 @@ type ApprovalEvent = { approved: boolean };
 
 type FulfillmentEvent = { confirmationId: string };
 
-export class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams> {
-  async run(event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) {
+export const ApprovalWorkflow = defineWorkflow(
+  { name: "approval-workflow" },
+  async (event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) => {
     const approval = await step.waitForEvent<ApprovalEvent>("approval", {
       type: "approval",
       timeout: "15 min",
@@ -55,12 +56,27 @@ export class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams
     });
 
     return { request: event.payload, approval, fulfillment };
-  }
-}
+  },
+);
 
 export const workflows = {
-  approval: { name: "approval-workflow", workflow: ApprovalWorkflow },
+  approval: ApprovalWorkflow,
 } as const;
+```
+
+Optional: pass a Standard Schema as `schema` to validate params, and an `outputSchema` to type
+output end-to-end.
+
+```ts
+import { z } from "zod";
+
+const paramsSchema = z.object({ requestId: z.string(), amount: z.number() });
+const outputSchema = z.object({ confirmationId: z.string() });
+
+export const ApprovalWorkflow = defineWorkflow(
+  { name: "approval-workflow", schema: paramsSchema, outputSchema },
+  async (event, step) => ({ confirmationId: "conf_123" }),
+);
 ```
 
 ## Create the Fragment Server

@@ -7,19 +7,20 @@ import {
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/unit-of-work";
 import { workflowsSchema } from "./schema";
-import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "./workflow";
+import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
 import { createWorkflowsTestHarness, createWorkflowsTestRuntime } from "./test";
 import type { WorkflowsRegistry } from "./workflow";
 
-class DemoWorkflow extends WorkflowEntrypoint {
-  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+const DemoWorkflow = defineWorkflow(
+  { name: "demo-workflow" },
+  async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     step.log.info("run", null, { category: "run" });
     return await step.do("noop", () => "ok");
-  }
-}
+  },
+);
 
 const workflows: WorkflowsRegistry = {
-  DEMO: { name: "demo-workflow", workflow: DemoWorkflow },
+  DEMO: DemoWorkflow,
 };
 
 describe("workflows model checker (runner)", () => {

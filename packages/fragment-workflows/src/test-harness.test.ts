@@ -1,25 +1,27 @@
 import { describe, expect, test } from "vitest";
-import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "./workflow";
+import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
 import { createWorkflowsTestHarness, type WorkflowsTestClock } from "./test";
 
-class SleepWorkflow extends WorkflowEntrypoint<unknown, { note: string }> {
-  async run(event: WorkflowEvent<{ note: string }>, step: WorkflowStep) {
+const SleepWorkflow = defineWorkflow(
+  { name: "sleep-workflow" },
+  async (event: WorkflowEvent<{ note: string }>, step: WorkflowStep) => {
     await step.sleep("sleep", "1 hour");
     return { note: event.payload.note };
-  }
-}
+  },
+);
 
-class EventWorkflow extends WorkflowEntrypoint {
-  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+const EventWorkflow = defineWorkflow(
+  { name: "event-workflow" },
+  async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     return await step.waitForEvent("ready", { type: "ready", timeout: "2 hours" });
-  }
-}
+  },
+);
 
 describe("createWorkflowsTestHarness", () => {
   test("drives workflows with a controllable clock", async () => {
     const workflows = {
-      sleep: { name: "sleep-workflow", workflow: SleepWorkflow },
-      events: { name: "event-workflow", workflow: EventWorkflow },
+      sleep: SleepWorkflow,
+      events: EventWorkflow,
     };
 
     const harness = await createWorkflowsTestHarness({
@@ -30,34 +32,35 @@ describe("createWorkflowsTestHarness", () => {
     const sleepId = await harness.createInstance("sleep", { params: { note: "alpha" } });
     await harness.runUntilIdle();
 
-    let status = await harness.getStatus("sleep", sleepId);
-    expect(status.status).toBe("waiting");
+    let sleepStatus = await harness.getStatus("sleep", sleepId);
+    expect(sleepStatus.status).toBe("waiting");
 
     harness.clock.advanceBy("1 hour");
     await harness.runUntilIdle();
 
-    status = await harness.getStatus("sleep", sleepId);
-    expect(status.status).toBe("complete");
+    sleepStatus = await harness.getStatus("sleep", sleepId);
+    expect(sleepStatus.status).toBe("complete");
 
     const eventId = await harness.createInstance("events");
     await harness.runUntilIdle();
 
-    status = await harness.getStatus("events", eventId);
-    expect(status.status).toBe("waiting");
+    let eventStatus = await harness.getStatus("events", eventId);
+    expect(eventStatus.status).toBe("waiting");
 
     await harness.sendEvent("events", eventId, { type: "ready", payload: { ok: true } });
     await harness.runUntilIdle();
 
-    status = await harness.getStatus("events", eventId);
-    expect(status.status).toBe("complete");
+    eventStatus = await harness.getStatus("events", eventId);
+    expect(eventStatus.status).toBe("complete");
   });
 
   test("schedules retries relative to failure time", async () => {
     let attempts = 0;
     let testClock: WorkflowsTestClock | null = null;
 
-    class RetryDelayWorkflow extends WorkflowEntrypoint {
-      async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const RetryDelayWorkflow = defineWorkflow(
+      { name: "retry-delay-workflow" },
+      async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
         return await step.do(
           "retry-delay",
           { retries: { limit: 1, delay: 60_000, backoff: "constant" } },
@@ -73,11 +76,11 @@ describe("createWorkflowsTestHarness", () => {
             return { ok: true };
           },
         );
-      }
-    }
+      },
+    );
 
     const workflows = {
-      retryDelay: { name: "retry-delay-workflow", workflow: RetryDelayWorkflow },
+      retryDelay: RetryDelayWorkflow,
     };
 
     const harness = await createWorkflowsTestHarness({

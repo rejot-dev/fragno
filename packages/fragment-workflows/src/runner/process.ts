@@ -1,11 +1,13 @@
 // Executes a single claimed task by running workflow code and updating persistence.
 
 import type { FragnoRuntime } from "@fragno-dev/core";
+import { isLegacyWorkflowDefinition } from "../workflow";
 import type {
   WorkflowEntrypoint,
   WorkflowEvent,
   WorkflowBindings,
-  WorkflowsRegistry,
+  WorkflowContext,
+  WorkflowRegistryEntry,
 } from "../workflow";
 import type {
   WorkflowInstanceRecord,
@@ -21,7 +23,7 @@ import { createRunnerState } from "./state";
 export type ProcessTaskContext = {
   time: FragnoRuntime["time"];
   getDbNow: () => Promise<Date>;
-  workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
+  workflowsByName: Map<string, WorkflowRegistryEntry>;
   workflowBindings: WorkflowBindings;
   commitInstanceAndTask: (
     task: WorkflowTaskRecord,
@@ -74,9 +76,6 @@ export const processTask = async (
     return 0;
   }
 
-  const workflow = new workflowEntry.workflow() as WorkflowEntrypoint<unknown, unknown>;
-  workflow.workflows = ctx.workflowBindings;
-
   const event: WorkflowEvent<unknown> = {
     payload: instance.params ?? {},
     timestamp: instance.createdAt,
@@ -98,7 +97,19 @@ export const processTask = async (
   const stopHeartbeat = ctx.startTaskLeaseHeartbeat(task, state);
 
   try {
-    const output = await workflow.run(event, step);
+    const context: WorkflowContext = {
+      workflows: ctx.workflowBindings,
+    };
+    let output: unknown;
+    if (isLegacyWorkflowDefinition(workflowEntry)) {
+      const workflow = new workflowEntry.workflow() as WorkflowEntrypoint<unknown, unknown>;
+      workflow.workflows = ctx.workflowBindings;
+      output = await workflow.run(event, step);
+    } else if ("run" in workflowEntry) {
+      output = await workflowEntry.run(event, step, context);
+    } else {
+      throw new Error("WORKFLOW_NOT_FOUND");
+    }
     const updated = await ctx.commitInstanceAndTask(
       task,
       instance,

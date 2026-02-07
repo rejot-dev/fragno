@@ -3,23 +3,25 @@ import { createServer, type Server } from "node:http";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import {
-  WorkflowEntrypoint,
+  defineWorkflow,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
+  type WorkflowEvent,
+  type WorkflowStep,
 } from "@fragno-dev/fragment-workflows";
-import type { WorkflowEvent, WorkflowStep } from "@fragno-dev/fragment-workflows";
 import { toNodeHandler } from "@fragno-dev/node";
 import { createClient } from "./client.js";
 
-class DemoWorkflow extends WorkflowEntrypoint {
-  run(_event: WorkflowEvent<{ userId: string }>, _step: WorkflowStep) {
+const DemoWorkflow = defineWorkflow(
+  { name: "demo-workflow" },
+  (_event: WorkflowEvent<{ userId: string }>, _step: WorkflowStep) => {
     return undefined;
-  }
-}
+  },
+);
 
 describe("workflows CLI client", async () => {
   const workflows = {
-    DEMO: { name: "demo-workflow", workflow: DemoWorkflow },
+    DEMO: DemoWorkflow,
   } as const;
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()

@@ -4,8 +4,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { workflowsFragmentDefinition } from "./definition";
 import { createWorkflowsRunner } from "./runner";
-import type { WorkflowEvent, WorkflowStep } from "./workflow";
-import { WorkflowEntrypoint } from "./workflow";
+import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
 import { workflowsRoutesFactory } from "./routes";
 
 describe("Workflows Runner", () => {
@@ -31,8 +30,9 @@ describe("Workflows Runner", () => {
   let restartBoundaryStartedResolve: (() => void) | null = null;
   let restartBoundaryContinue: (() => void) | null = null;
 
-  class DemoWorkflow extends WorkflowEntrypoint<unknown, { count: number }> {
-    async run(event: WorkflowEvent<{ count: number }>, step: WorkflowStep) {
+  const DemoWorkflow = defineWorkflow(
+    { name: "demo-workflow" },
+    async (event: WorkflowEvent<{ count: number }>, step: WorkflowStep) => {
       const first = await step.do("calc", () => {
         doCallCount += 1;
         return { count: event.payload.count + 1 };
@@ -42,38 +42,43 @@ describe("Workflows Runner", () => {
         return { count: 999 };
       });
       return { first, second };
-    }
-  }
+    },
+  );
 
-  class EventWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const EventWorkflow = defineWorkflow(
+    { name: "event-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.waitForEvent("wait-ready", { type: "ready", timeout: "1 hour" });
-    }
-  }
+    },
+  );
 
-  class TimeoutWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const TimeoutWorkflow = defineWorkflow(
+    { name: "timeout-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.waitForEvent("wait-timeout", { type: "timeout", timeout: "1 s" });
-    }
-  }
+    },
+  );
 
-  class TimeoutCleanupWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const TimeoutCleanupWorkflow = defineWorkflow(
+    { name: "timeout-cleanup-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do("cleanup-timeout", { timeout: "1 s" }, () => ({ ok: true }));
-    }
-  }
+    },
+  );
 
-  class SlowWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const SlowWorkflow = defineWorkflow(
+    { name: "slow-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do("slow-step", async () => {
         await new Promise((resolve) => setTimeout(resolve, 250));
         return { ok: true };
       });
-    }
-  }
+    },
+  );
 
-  class RetryWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const RetryWorkflow = defineWorkflow(
+    { name: "retry-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do(
         "retry-step",
         { retries: { limit: 1, delay: "40 ms", backoff: "constant" } },
@@ -85,11 +90,12 @@ describe("Workflows Runner", () => {
           return { ok: true };
         },
       );
-    }
-  }
+    },
+  );
 
-  class RetryLogWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const RetryLogWorkflow = defineWorkflow(
+    { name: "retry-logs-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do(
         "retry-log-step",
         { retries: { limit: 1, delay: "25 ms", backoff: "constant" } },
@@ -102,11 +108,12 @@ describe("Workflows Runner", () => {
           return { ok: true };
         },
       );
-    }
-  }
+    },
+  );
 
-  class MaxAttemptsWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const MaxAttemptsWorkflow = defineWorkflow(
+    { name: "max-attempts-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do(
         "max-attempt-step",
         { retries: { limit: 0, delay: "10 ms", backoff: "constant" } },
@@ -115,35 +122,39 @@ describe("Workflows Runner", () => {
           throw new Error("MAX_ATTEMPT_FAIL");
         },
       );
-    }
-  }
+    },
+  );
 
-  class ConcurrentWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const ConcurrentWorkflow = defineWorkflow(
+    { name: "concurrent-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do("single-run", async () => {
         concurrentCallCount += 1;
         await new Promise((resolve) => setTimeout(resolve, 50));
         return { ok: true };
       });
-    }
-  }
+    },
+  );
 
-  class PauseSleepWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const PauseSleepWorkflow = defineWorkflow(
+    { name: "pause-sleep-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       await step.sleep("pause-sleep", "50 ms");
       return { ok: true };
-    }
-  }
+    },
+  );
 
-  class ScheduledWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const ScheduledWorkflow = defineWorkflow(
+    { name: "scheduled-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       await step.sleep("scheduled-sleep", "10 minutes");
       return { ok: true };
-    }
-  }
+    },
+  );
 
-  class PauseBoundaryWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const PauseBoundaryWorkflow = defineWorkflow(
+    { name: "pause-boundary-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       await step.do("pause-boundary", () => {
         pauseBoundaryCount += 1;
         return new Promise<{ ok: boolean }>((resolve) => {
@@ -160,11 +171,12 @@ describe("Workflows Runner", () => {
       });
 
       return resumed;
-    }
-  }
+    },
+  );
 
-  class TerminateBoundaryWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const TerminateBoundaryWorkflow = defineWorkflow(
+    { name: "terminate-boundary-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       await step.do("terminate-boundary", () => {
         terminateBoundaryCount += 1;
         return new Promise<{ ok: boolean }>((resolve) => {
@@ -176,11 +188,12 @@ describe("Workflows Runner", () => {
       });
 
       return { ok: true };
-    }
-  }
+    },
+  );
 
-  class RestartBoundaryWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const RestartBoundaryWorkflow = defineWorkflow(
+    { name: "restart-boundary-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do("restart-boundary", () => {
         restartBoundaryCount += 1;
         if (restartBoundaryCount > 1) {
@@ -193,50 +206,55 @@ describe("Workflows Runner", () => {
           }
         });
       });
-    }
-  }
+    },
+  );
 
-  class PriorityWorkflow extends WorkflowEntrypoint {
-    async run(event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const PriorityWorkflow = defineWorkflow(
+    { name: "priority-workflow" },
+    async (event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       return await step.do("record-order", () => {
         priorityOrder.push(event.instanceId);
         return { ok: true };
       });
-    }
-  }
+    },
+  );
 
-  class ReplayWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const ReplayWorkflow = defineWorkflow(
+    { name: "replay-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       const first = await step.do("replay-first", () => {
         replayCallCount += 1;
         return { ok: true };
       });
       const waited = await step.waitForEvent("replay-wait", { type: "go", timeout: "1 hour" });
       return { first, waited };
-    }
-  }
+    },
+  );
 
-  class LoggingWorkflow extends WorkflowEntrypoint<unknown, { note: string }> {
-    async run(event: WorkflowEvent<{ note: string }>, step: WorkflowStep) {
+  const LoggingWorkflow = defineWorkflow(
+    { name: "logging-workflow" },
+    async (event: WorkflowEvent<{ note: string }>, step: WorkflowStep) => {
       await step.log.info("starting", { note: event.payload.note }, { category: "workflow" });
       return await step.do("logged-step", async () => {
         await step.log.warn("inside", { note: event.payload.note });
         return { ok: true };
       });
-    }
-  }
+    },
+  );
 
-  class ReplayLogWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const ReplayLogWorkflow = defineWorkflow(
+    { name: "replay-logs-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       await step.log.info("start");
       await step.waitForEvent("replay-log-wait", { type: "go", timeout: "1 hour" });
       await step.log.info("after");
       return { ok: true };
-    }
-  }
+    },
+  );
 
-  class DistinctStepWorkflow extends WorkflowEntrypoint {
-    async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+  const DistinctStepWorkflow = defineWorkflow(
+    { name: "distinct-step-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
       const first = await step.do("step-one", () => {
         distinctCallCount += 1;
         return { id: 1 };
@@ -246,52 +264,54 @@ describe("Workflows Runner", () => {
         return { id: 2 };
       });
       return { first, second };
-    }
-  }
+    },
+  );
 
-  class ChildWorkflow extends WorkflowEntrypoint<unknown, { parentId: string }> {
-    async run(event: WorkflowEvent<{ parentId: string }>, step: WorkflowStep) {
+  const ChildWorkflow = defineWorkflow(
+    { name: "child-workflow" },
+    async (event: WorkflowEvent<{ parentId: string }>, step: WorkflowStep) => {
       return await step.do("child-run", () => ({
         parentId: event.payload.parentId,
       }));
-    }
-  }
+    },
+  );
 
-  class ParentWorkflow extends WorkflowEntrypoint<unknown, { label: string }> {
-    async run(event: WorkflowEvent<{ label: string }>, step: WorkflowStep) {
+  const ParentWorkflow = defineWorkflow(
+    { name: "parent-workflow" },
+    async (event: WorkflowEvent<{ label: string }>, step: WorkflowStep, context) => {
       return await step.do("spawn-child", async () => {
-        const child = await this.workflows["child"].create({
+        const child = await context.workflows["child"].create({
           id: `child-${event.instanceId}`,
           params: { parentId: event.instanceId },
         });
 
         return { childId: child.id, label: event.payload.label };
       });
-    }
-  }
+    },
+  );
 
   const workflows = {
-    demo: { name: "demo-workflow", workflow: DemoWorkflow },
-    events: { name: "event-workflow", workflow: EventWorkflow },
-    timeout: { name: "timeout-workflow", workflow: TimeoutWorkflow },
-    timeoutCleanup: { name: "timeout-cleanup-workflow", workflow: TimeoutCleanupWorkflow },
-    slow: { name: "slow-workflow", workflow: SlowWorkflow },
-    retry: { name: "retry-workflow", workflow: RetryWorkflow },
-    retryLogs: { name: "retry-logs-workflow", workflow: RetryLogWorkflow },
-    maxAttempts: { name: "max-attempts-workflow", workflow: MaxAttemptsWorkflow },
-    concurrent: { name: "concurrent-workflow", workflow: ConcurrentWorkflow },
-    pauseSleep: { name: "pause-sleep-workflow", workflow: PauseSleepWorkflow },
-    pauseBoundary: { name: "pause-boundary-workflow", workflow: PauseBoundaryWorkflow },
-    terminateBoundary: { name: "terminate-boundary-workflow", workflow: TerminateBoundaryWorkflow },
-    restartBoundary: { name: "restart-boundary-workflow", workflow: RestartBoundaryWorkflow },
-    priority: { name: "priority-workflow", workflow: PriorityWorkflow },
-    replay: { name: "replay-workflow", workflow: ReplayWorkflow },
-    logging: { name: "logging-workflow", workflow: LoggingWorkflow },
-    replayLogs: { name: "replay-logs-workflow", workflow: ReplayLogWorkflow },
-    distinct: { name: "distinct-step-workflow", workflow: DistinctStepWorkflow },
-    scheduled: { name: "scheduled-workflow", workflow: ScheduledWorkflow },
-    child: { name: "child-workflow", workflow: ChildWorkflow },
-    parent: { name: "parent-workflow", workflow: ParentWorkflow },
+    demo: DemoWorkflow,
+    events: EventWorkflow,
+    timeout: TimeoutWorkflow,
+    timeoutCleanup: TimeoutCleanupWorkflow,
+    slow: SlowWorkflow,
+    retry: RetryWorkflow,
+    retryLogs: RetryLogWorkflow,
+    maxAttempts: MaxAttemptsWorkflow,
+    concurrent: ConcurrentWorkflow,
+    pauseSleep: PauseSleepWorkflow,
+    pauseBoundary: PauseBoundaryWorkflow,
+    terminateBoundary: TerminateBoundaryWorkflow,
+    restartBoundary: RestartBoundaryWorkflow,
+    priority: PriorityWorkflow,
+    replay: ReplayWorkflow,
+    logging: LoggingWorkflow,
+    replayLogs: ReplayLogWorkflow,
+    distinct: DistinctStepWorkflow,
+    scheduled: ScheduledWorkflow,
+    child: ChildWorkflow,
+    parent: ParentWorkflow,
   };
 
   const setup = async () => {

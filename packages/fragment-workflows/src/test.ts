@@ -15,8 +15,11 @@ import { workflowsSchema } from "./schema";
 import { createWorkflowsRunner } from "./runner";
 import type {
   InstanceStatus,
+  InstanceStatusWithOutput,
   RunnerTickOptions,
   WorkflowDuration,
+  WorkflowOutputFromEntry,
+  WorkflowParamsFromEntry,
   WorkflowsFragmentConfig,
   WorkflowsRegistry,
 } from "./workflow";
@@ -86,15 +89,15 @@ export type WorkflowsTestRuntime = FragnoRuntime & {
   time: WorkflowsTestClock;
 };
 
-export type WorkflowsTestHarnessOptions = {
-  workflows: WorkflowsRegistry;
+export type WorkflowsTestHarnessOptions<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
+  workflows: TRegistry;
   adapter: SupportedAdapter;
   clockStartAt?: Date | number;
   runtime?: WorkflowsTestRuntime;
   randomSeed?: number;
   autoTickHooks?: boolean;
   fragmentConfig?: Omit<
-    WorkflowsFragmentConfig,
+    WorkflowsFragmentConfig<TRegistry>,
     "workflows" | "runner" | "enableRunnerTick" | "runtime"
   >;
   runnerOptions?: {
@@ -103,32 +106,53 @@ export type WorkflowsTestHarnessOptions = {
   };
 };
 
-export type WorkflowsTestHarness = {
+export type WorkflowsTestHarness<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
   fragment: AnyFragnoInstantiatedFragment;
   db: SimpleQueryInterface<typeof workflowsSchema>;
   runner: ReturnType<typeof createWorkflowsRunner>;
   clock: WorkflowsTestClock;
   runtime: WorkflowsTestRuntime;
   test: TestContext<SupportedAdapter>;
-  createInstance: (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
-    options?: { id?: string; params?: unknown },
-  ) => Promise<string>;
-  createBatch: (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
-    instances: { id: string; params?: unknown }[],
-  ) => Promise<{ id: string; details: InstanceStatus }[]>;
-  sendEvent: (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
-    instanceId: string,
-    options: { type: string; payload?: unknown },
-  ) => Promise<InstanceStatus>;
-  getStatus: (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
-    instanceId: string,
-  ) => Promise<InstanceStatus>;
+  createInstance: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      options?: { id?: string; params?: WorkflowParamsFromEntry<TRegistry[K]> },
+    ): Promise<string>;
+    (workflowNameOrKey: string, options?: { id?: string; params?: unknown }): Promise<string>;
+  };
+  createBatch: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instances: { id: string; params?: WorkflowParamsFromEntry<TRegistry[K]> }[],
+    ): Promise<
+      { id: string; details: InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>> }[]
+    >;
+    (
+      workflowNameOrKey: string,
+      instances: { id: string; params?: unknown }[],
+    ): Promise<{ id: string; details: InstanceStatus }[]>;
+  };
+  sendEvent: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+      options: { type: string; payload?: unknown },
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (
+      workflowNameOrKey: string,
+      instanceId: string,
+      options: { type: string; payload?: unknown },
+    ): Promise<InstanceStatus>;
+  };
+  getStatus: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
+  };
   getHistory: (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
+    workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
     options?: {
       runNumber?: number;
@@ -214,7 +238,7 @@ export const createWorkflowsTestRuntime = (options?: {
 
 const resolveWorkflowName = (
   workflows: WorkflowsRegistry,
-  workflowNameOrKey: keyof WorkflowsRegistry | string,
+  workflowNameOrKey: (keyof WorkflowsRegistry & string) | string,
 ) => {
   const lookup = workflows[String(workflowNameOrKey)];
   return lookup?.name ?? String(workflowNameOrKey);
@@ -235,15 +259,15 @@ const assertJsonResponse = <T>(response: {
   return response.data as T;
 };
 
-export async function createWorkflowsTestHarness(
-  options: WorkflowsTestHarnessOptions,
-): Promise<WorkflowsTestHarness> {
+export async function createWorkflowsTestHarness<TRegistry extends WorkflowsRegistry>(
+  options: WorkflowsTestHarnessOptions<TRegistry>,
+): Promise<WorkflowsTestHarness<TRegistry>> {
   const runtime =
     options.runtime ??
     createWorkflowsTestRuntime({ startAt: options.clockStartAt, seed: options.randomSeed });
   const clock = runtime.time;
   const workflows = options.workflows;
-  const config: WorkflowsFragmentConfig = {
+  const config: WorkflowsFragmentConfig<TRegistry> = {
     workflows,
     runtime,
     dbNow: () => runtime.time.now(),
@@ -274,7 +298,7 @@ export async function createWorkflowsTestHarness(
   }
 
   const createInstance = async (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
+    workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceOptions?: { id?: string; params?: unknown },
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
@@ -287,7 +311,7 @@ export async function createWorkflowsTestHarness(
   };
 
   const createBatch = async (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
+    workflowNameOrKey: (keyof TRegistry & string) | string,
     instances: { id: string; params?: unknown }[],
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
@@ -302,7 +326,7 @@ export async function createWorkflowsTestHarness(
   };
 
   const sendEvent = async (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
+    workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
     eventOptions: { type: string; payload?: unknown },
   ) => {
@@ -320,7 +344,7 @@ export async function createWorkflowsTestHarness(
   };
 
   const getStatus = async (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
+    workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
   ) => {
     const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
@@ -332,7 +356,7 @@ export async function createWorkflowsTestHarness(
   };
 
   const getHistory = async (
-    workflowNameOrKey: keyof WorkflowsRegistry | string,
+    workflowNameOrKey: (keyof TRegistry & string) | string,
     instanceId: string,
     historyOptions?: {
       runNumber?: number;
@@ -417,10 +441,10 @@ export async function createWorkflowsTestHarness(
     clock,
     runtime,
     test,
-    createInstance,
-    createBatch,
-    sendEvent,
-    getStatus,
+    createInstance: createInstance as WorkflowsTestHarness<TRegistry>["createInstance"],
+    createBatch: createBatch as WorkflowsTestHarness<TRegistry>["createBatch"],
+    sendEvent: sendEvent as WorkflowsTestHarness<TRegistry>["sendEvent"],
+    getStatus: getStatus as WorkflowsTestHarness<TRegistry>["getStatus"],
     getHistory,
     tick,
     runUntilIdle,
