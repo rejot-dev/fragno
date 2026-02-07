@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import {
+  IDBCursor,
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore,
+  IDBOpenDBRequest,
+  IDBRequest,
+  IDBTransaction,
+} from "fake-indexeddb";
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import {
   InMemoryAdapter,
@@ -90,7 +100,14 @@ async function listOutbox(
 describe("outbox sync integration", () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory();
+    globalThis.IDBCursor = IDBCursor;
+    globalThis.IDBDatabase = IDBDatabase;
+    globalThis.IDBIndex = IDBIndex;
     globalThis.IDBKeyRange = IDBKeyRange;
+    globalThis.IDBObjectStore = IDBObjectStore;
+    globalThis.IDBOpenDBRequest = IDBOpenDBRequest;
+    globalThis.IDBRequest = IDBRequest;
+    globalThis.IDBTransaction = IDBTransaction;
   });
 
   it("syncs outbox entries into IndexedDB and advances the cursor", async () => {
