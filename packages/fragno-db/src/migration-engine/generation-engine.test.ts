@@ -92,7 +92,7 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results[1].namespace).toBe("test-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_test-db.sql");
     expect(results[1].schema).toContain("create table");
-    expect(results[1].schema).toContain('"test_db"."users"');
+    expect(results[1].schema).toContain('"test-db"."users"');
   });
 
   it("should generate migrations for multiple databases in alphabetical order", async () => {
@@ -140,15 +140,15 @@ describe("generateSchemaArtifacts - sql", () => {
 
     expect(results[1].namespace).toBe("apple-db");
     expect(results[1].path).toBe("20251024_002_f000_t001_apple-db.sql");
-    expect(results[1].schema).toContain('"apple_db"."posts"');
+    expect(results[1].schema).toContain('"apple-db"."posts"');
 
     expect(results[2].namespace).toBe("mango-db");
     expect(results[2].path).toBe("20251024_003_f000_t001_mango-db.sql");
-    expect(results[2].schema).toContain('"mango_db"."comments"');
+    expect(results[2].schema).toContain('"mango-db"."comments"');
 
     expect(results[3].namespace).toBe("zebra-db");
     expect(results[3].path).toBe("20251024_004_f000_t001_zebra-db.sql");
-    expect(results[3].schema).toContain('"zebra_db"."users"');
+    expect(results[3].schema).toContain('"zebra-db"."users"');
   });
 
   it("should handle existing settings version and generate both settings and fragment migrations", async () => {
@@ -206,7 +206,7 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results).toHaveLength(2);
     expect(results[0].namespace).toBeNull();
     expect(results[1].namespace).toBe("test-db");
-    expect(results[1].schema).toContain('CREATE SCHEMA IF NOT EXISTS "test_db"');
+    expect(results[1].schema).toContain('CREATE SCHEMA IF NOT EXISTS "test-db"');
   });
 
   it("should throw error when no databases provided", async () => {
@@ -291,9 +291,9 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toContain("test-db.schema_version");
     expect(resultsV1[1].schema).toContain("'1'");
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
-      "CREATE SCHEMA IF NOT EXISTS "test_db";
+      "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      create table "test_db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "test-db"."users" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
     `);
@@ -312,9 +312,9 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV2[1].schema).toContain("test-db.schema_version");
     expect(resultsV2[1].schema).toContain("'2'");
     expect(resultsV2[1].schema).toMatchInlineSnapshot(`
-      "CREATE SCHEMA IF NOT EXISTS "test_db";
+      "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      alter table "test_db"."users" add column "email" text;
+      alter table "test-db"."users" add column "email" text;
 
       update "fragno_db_settings" set "value" = '2' where "key" = 'test-db.schema_version';"
     `);

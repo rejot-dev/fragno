@@ -21,7 +21,7 @@ export interface SqlNamingStrategy {
 }
 
 const normalizeNamespace = (namespace: string | null) =>
-  namespace && namespace.length > 0 ? sanitizeNamespace(namespace) : null;
+  namespace && namespace.length > 0 ? namespace : null;
 
 const buildNamespaceSuffix = (namespace: string | null) => {
   const sanitized = normalizeNamespace(namespace);
@@ -56,7 +56,7 @@ const buildIndexName = (
 
 export const suffixNamingStrategy: SqlNamingStrategy = {
   namespaceScope: "suffix",
-  namespaceToSchema: (namespace) => sanitizeNamespace(namespace),
+  namespaceToSchema: (namespace) => namespace,
   tableName: (logicalTable, namespace) => {
     const sanitized = normalizeNamespace(namespace);
     return truncateWithHash(sanitized ? `${logicalTable}_${sanitized}` : logicalTable);
@@ -74,7 +74,7 @@ export const suffixNamingStrategy: SqlNamingStrategy = {
 
 export const schemaNamingStrategy: SqlNamingStrategy = {
   namespaceScope: "schema",
-  namespaceToSchema: (namespace) => sanitizeNamespace(namespace),
+  namespaceToSchema: (namespace) => namespace,
   tableName: (logicalTable) => truncateWithHash(logicalTable),
   columnName: (logicalColumn) => logicalColumn,
   indexName: (logicalIndex) => truncateWithHash(logicalIndex),

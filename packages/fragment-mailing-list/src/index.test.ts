@@ -44,7 +44,7 @@ describe("Mailing List Fragment", async () => {
       expect(fragment.$internal).toBeDefined();
       expect(fragment.$internal.deps).toBeDefined();
       expect(fragment.$internal.deps.schema).toBe(mailingListSchema);
-      expect(fragment.$internal.deps.namespace).toBe("mailing-list");
+      expect(fragment.$internal.deps.namespace).toBe("mailing_list");
       expect(fragment.$internal.deps.createUnitOfWork).toBeDefined();
       expect(fragment.$internal.options).toBeDefined();
     });

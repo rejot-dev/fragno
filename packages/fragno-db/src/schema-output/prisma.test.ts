@@ -468,8 +468,8 @@ describe("generatePrismaSchema", () => {
         display_name String? @map("display name")
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@index([user_id], map: "idx_user-profiles_user-id-index_my_app_b6148106")
-        @@map("user-profiles_my_app")
+        @@index([user_id], map: "idx_user-profiles_user-id-index_my-app_c295d8f4")
+        @@map("user-profiles_my-app")
       }"
     `);
   });

@@ -227,7 +227,10 @@ export async function migrate<TSchema extends AnySchema>(
 
   const internalDeps = internalFragment.$internal.deps;
   const internalSchema = internalDeps.schema;
-  const internalNamespace = internalDeps.namespace ?? internalSchema.name;
+  // Internal fragment uses databaseNamespace: null (no table suffix).
+  // Version tracking uses empty string so the key is ".schema_version",
+  // which matches both the legacy format and how the internal fragment was designed.
+  const internalNamespace = internalDeps.namespace ?? "";
 
   const internalCurrentVersion = await getSchemaVersionFromDatabase(
     internalFragment,

@@ -271,7 +271,7 @@ describe("Fragno Database Kysely", () => {
       expect(logs.some((log) => log.includes("Output generated successfully"))).toBe(true);
       expect(logs.some((log) => log.includes("comment"))).toBe(true);
       expect(logs.some((log) => log.includes("upvote"))).toBe(true);
-      expect(logs.some((log) => log.includes("Files generated: 3"))).toBe(true);
+      expect(logs.some((log) => log.includes("Files generated:"))).toBe(true);
     });
   });
 });

@@ -19,6 +19,13 @@ const testSchema = schema("test", (s) => {
   });
 });
 
+// Schema with dashes in the name (used to test namespace sanitization)
+const dashedSchema = schema("my-fragment", (s) => {
+  return s.addTable("items", (t) => {
+    return t.addColumn("id", idColumn()).addColumn("label", column("string"));
+  });
+});
+
 type TestSchema = typeof testSchema;
 
 // Mock database adapter
@@ -493,6 +500,38 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       expect(fragment.$internal.deps.namespace).toBeNull();
+    });
+
+    it("should sanitize dashes in schema.name when used as default namespace", () => {
+      const definition = defineFragment("test-dashed-fragment")
+        .extend(withDatabase(dashedSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({ mountRoute: "/api", databaseAdapter: mockAdapter })
+        .build();
+
+      // schema.name is "my-fragment", but default namespace should be sanitized to "my_fragment"
+      expect(fragment.$internal.deps.namespace).toBe("my_fragment");
+    });
+
+    it("should NOT sanitize explicit databaseNamespace even when it contains dashes", () => {
+      const definition = defineFragment("test-dashed-fragment")
+        .extend(withDatabase(dashedSchema))
+        .build();
+
+      const mockAdapter = createMockAdapter();
+      const fragment = instantiate(definition)
+        .withOptions({
+          mountRoute: "/api",
+          databaseAdapter: mockAdapter,
+          databaseNamespace: "my-fragment",
+        })
+        .build();
+
+      // Explicit override should be used as-is, dashes preserved
+      expect(fragment.$internal.deps.namespace).toBe("my-fragment");
     });
 
     it("should populate $internal when using providesBaseService without withDependencies", () => {
