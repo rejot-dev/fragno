@@ -38,6 +38,7 @@
     "@fragno-dev/fragno-db-library": "workspace:*",
     "fake-indexeddb": "^6.1.0",
     "gunshi": "^0.26.3",
+    "idb": "^8.0.3",
     "superjson": "^2.2.1"
   },
   "devDependencies": {

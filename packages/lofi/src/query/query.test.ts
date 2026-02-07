@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import {
+  IDBCursor,
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore,
+  IDBOpenDBRequest,
+  IDBRequest,
+  IDBTransaction,
+} from "fake-indexeddb";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import { IndexedDbAdapter } from "../mod";
 
@@ -8,7 +18,14 @@ const createDbName = () => `lofi-query-${Math.random().toString(16).slice(2)}`;
 describe("IndexedDbAdapter query engine", () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory();
+    globalThis.IDBCursor = IDBCursor;
+    globalThis.IDBDatabase = IDBDatabase;
+    globalThis.IDBIndex = IDBIndex;
     globalThis.IDBKeyRange = IDBKeyRange;
+    globalThis.IDBObjectStore = IDBObjectStore;
+    globalThis.IDBOpenDBRequest = IDBOpenDBRequest;
+    globalThis.IDBRequest = IDBRequest;
+    globalThis.IDBTransaction = IDBTransaction;
   });
 
   it("supports whereIndex, orderByIndex, select, and selectCount", async () => {

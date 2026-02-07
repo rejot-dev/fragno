@@ -1,6 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import {
+  IDBCursor,
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore,
+  IDBOpenDBRequest,
+  IDBRequest,
+  IDBTransaction,
+} from "fake-indexeddb";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+import { openDB, type IDBPDatabase } from "idb";
 import { IndexedDbAdapter } from "../mod";
 
 const createDbName = () => `lofi-test-${Math.random().toString(16).slice(2)}`;
@@ -14,67 +25,51 @@ type StoredRow = {
   };
 };
 
-const openDb = (name: string): Promise<IDBDatabase> =>
-  new Promise((resolve, reject) => {
-    const request = indexedDB.open(name);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+const openDb = (name: string): Promise<IDBPDatabase> => openDB(name);
 
-const requestToPromise = <T>(request: IDBRequest<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-
-const getRow = async (db: IDBDatabase, key: IDBValidKey): Promise<StoredRow | undefined> => {
+const getRow = async (db: IDBPDatabase, key: IDBValidKey): Promise<StoredRow | undefined> => {
   const tx = db.transaction("lofi_rows", "readonly");
   const store = tx.objectStore("lofi_rows");
-  const row = await requestToPromise<unknown>(store.get(key));
-  await new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return row as StoredRow | undefined;
+  const row = (await store.get(key)) as StoredRow | undefined;
+  await tx.done;
+  return row;
 };
 
-const getInboxRow = async (db: IDBDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
+const getInboxRow = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
   const tx = db.transaction("lofi_inbox", "readonly");
   const store = tx.objectStore("lofi_inbox");
-  const row = await requestToPromise<unknown>(store.get(key));
-  await new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return row as unknown | undefined;
+  const row = await store.get(key);
+  await tx.done;
+  return row;
 };
 
-const getMeta = async (db: IDBDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
+const getMeta = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
   const tx = db.transaction("lofi_meta", "readonly");
   const store = tx.objectStore("lofi_meta");
-  const row = await requestToPromise<unknown>(store.get(key));
-  await new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return row as unknown | undefined;
+  const row = await store.get(key);
+  await tx.done;
+  return row;
 };
 
-const getAllRows = async (db: IDBDatabase): Promise<StoredRow[]> => {
+const getAllRows = async (db: IDBPDatabase): Promise<StoredRow[]> => {
   const tx = db.transaction("lofi_rows", "readonly");
   const store = tx.objectStore("lofi_rows");
-  const rows = await requestToPromise<unknown[]>(store.getAll());
-  await new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return rows as StoredRow[];
+  const rows = (await store.getAll()) as StoredRow[];
+  await tx.done;
+  return rows;
 };
 
 describe("IndexedDbAdapter", () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory();
+    globalThis.IDBCursor = IDBCursor;
+    globalThis.IDBDatabase = IDBDatabase;
+    globalThis.IDBIndex = IDBIndex;
     globalThis.IDBKeyRange = IDBKeyRange;
+    globalThis.IDBObjectStore = IDBObjectStore;
+    globalThis.IDBOpenDBRequest = IDBOpenDBRequest;
+    globalThis.IDBRequest = IDBRequest;
+    globalThis.IDBTransaction = IDBTransaction;
   });
 
   it("applies create/update/delete with idempotency and versioning", async () => {
