@@ -6,6 +6,7 @@ import type {
   RequestThisContext,
   FragnoPublicConfig,
   AnyFragnoInstantiatedFragment,
+  LinkedFragmentParentMeta,
 } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
@@ -175,6 +176,11 @@ function resolveDatabaseNamespace<TSchema extends AnySchema>(
 ): string | null {
   const hasOverride = options.databaseNamespace !== undefined;
   return hasOverride ? (options.databaseNamespace ?? null) : sanitizeNamespace(schema.name);
+}
+
+function resolveMountRoute(name: string, mountRoute?: string): string {
+  const resolved = mountRoute ?? `/api/${name}`;
+  return resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
 }
 
 /**
@@ -620,6 +626,7 @@ export class DatabaseFragmentDefinitionBuilder<
     const internalFragmentFactory = baseDef.linkedFragments?.["_fragno_internal"] as (context: {
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
+      parent: LinkedFragmentParentMeta;
     }) => InternalFragmentInstance;
 
     // Cache per instantiated fragment (deps object is unique per instantiation).
@@ -652,12 +659,17 @@ export class DatabaseFragmentDefinitionBuilder<
           ? context.options
           : { ...context.options, databaseAdapter: hookAdapter };
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
+      const parent: LinkedFragmentParentMeta = {
+        name: baseDef.name,
+        mountRoute: resolveMountRoute(baseDef.name, context.options.mountRoute),
+      };
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: this.#hooksFactory(context),
         namespace: namespaceKey,
         internalFragment: internalFragmentFactory({
           config: context.config,
           options: hookOptions,
+          parent,
         }),
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
@@ -704,9 +716,15 @@ export class DatabaseFragmentDefinitionBuilder<
     >(({ storage, config, options, deps }) => {
       // Create hooks config if hooks factory is defined
       const hooksConfig = createHooksConfig({ config, options, deps });
+      const parent: LinkedFragmentParentMeta = {
+        name: baseDef.name,
+        mountRoute: resolveMountRoute(baseDef.name, options.mountRoute),
+      };
       const internalFragment =
         hooksConfig?.internalFragment ??
-        (internalFragmentFactory ? internalFragmentFactory({ config, options }) : undefined);
+        (internalFragmentFactory
+          ? internalFragmentFactory({ config, options, parent })
+          : undefined);
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {

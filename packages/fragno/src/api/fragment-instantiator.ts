@@ -1033,7 +1033,13 @@ export function instantiateFragment<
     }
   }
 
-  // 3. Instantiate linked fragments FIRST (before any services)
+  // 3. Calculate mount route early so linked fragments can reference it
+  const mountRoute = getMountRoute({
+    name: definition.name,
+    mountRoute: options.mountRoute,
+  });
+
+  // 4. Instantiate linked fragments FIRST (before any services)
   // Their services will be merged into private services
   const linkedFragmentInstances = {} as TLinkedFragments;
   const linkedFragmentServices: Record<string, unknown> = {};
@@ -1044,6 +1050,10 @@ export function instantiateFragment<
         config,
         options,
         serviceDependencies: serviceImplementations,
+        parent: {
+          name: definition.name,
+          mountRoute,
+        },
       });
       (linkedFragmentInstances as Record<string, AnyFragnoInstantiatedFragment>)[name] =
         linkedFragment;
@@ -1059,7 +1069,7 @@ export function instantiateFragment<
   // Identity function for service definition (used to set 'this' context)
   const defineService = <T>(services: T & ThisType<TServiceThisContext>): T => services;
 
-  // 4. Call privateServices factories
+  // 5. Call privateServices factories
   // Private services are instantiated in order, so earlier ones are available to later ones
   // Start with linked fragment services, then add explicitly defined private services
   const privateServices = { ...linkedFragmentServices } as TPrivateServices;
@@ -1097,7 +1107,7 @@ export function instantiateFragment<
     }
   }
 
-  // 5. Call baseServices callback (with access to private services including linked fragment services)
+  // 6. Call baseServices callback (with access to private services including linked fragment services)
   let baseServices: TBaseServices;
   try {
     baseServices =
@@ -1121,7 +1131,7 @@ export function instantiateFragment<
     }
   }
 
-  // 6. Call namedServices factories (with access to private services including linked fragment services)
+  // 7. Call namedServices factories (with access to private services including linked fragment services)
   const namedServices = {} as TServices;
   if (definition.namedServices) {
     for (const [serviceName, factory] of Object.entries(definition.namedServices)) {
@@ -1157,13 +1167,13 @@ export function instantiateFragment<
     }
   }
 
-  // 7. Merge public services (NOT including private services)
+  // 8. Merge public services (NOT including private services)
   const services = {
     ...baseServices,
     ...namedServices,
   };
 
-  // 8. Create request context storage and both service & handler contexts
+  // 9. Create request context storage and both service & handler contexts
   // Use external storage if provided, otherwise create new storage
   const storage = definition.getExternalStorage
     ? definition.getExternalStorage({ config, options, deps })
@@ -1187,11 +1197,11 @@ export function instantiateFragment<
       linkedFragments: linkedFragmentInstances,
     }) ?? {};
 
-  // 9. Bind services to serviceContext (restricted)
+  // 10. Bind services to serviceContext (restricted)
   // Services get the restricted context (for database fragments, this excludes execute methods)
   const boundServices = serviceContext ? bindServicesToContext(services, serviceContext) : services;
 
-  // 10. Resolve routes with bound services
+  // 11. Resolve routes with bound services
   const context = {
     config,
     deps,
@@ -1204,12 +1214,6 @@ export function instantiateFragment<
   );
   const finalRoutes =
     linkedRoutes.length > 0 ? [...routes, ...linkedRoutes] : (routes as AnyFragnoRouteConfig[]);
-
-  // 11. Calculate mount route
-  const mountRoute = getMountRoute({
-    name: definition.name,
-    mountRoute: options.mountRoute,
-  });
 
   // 12. Wrap createRequestStorage to capture context
   const createRequestStorageWithContext = definition.createRequestStorage

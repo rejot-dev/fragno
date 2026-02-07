@@ -17,17 +17,31 @@ import {
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
 
-export {
-  internalSchema,
-  SETTINGS_NAMESPACE,
-  SETTINGS_TABLE_NAME,
-} from "./internal-fragment.schema";
+export const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
+
+export type InternalFragmentConfig = {
+  parent?: {
+    name: string;
+    mountRoute: string;
+  };
+  schemas?: Array<{
+    name: string;
+    namespace: string | null;
+    version: number;
+    tables: string[];
+  }>;
+  outbox?: {
+    enabled: boolean;
+  };
+};
+
+export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
 
 // This uses DatabaseFragmentDefinitionBuilder directly
 // to avoid circular dependency (it doesn't need to link to itself)
 export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   new FragmentDefinitionBuilder<
-    {},
+    InternalFragmentConfig,
     FragnoPublicConfigWithDatabase,
     ImplicitDatabaseDependencies<typeof internalSchema>,
     {},
