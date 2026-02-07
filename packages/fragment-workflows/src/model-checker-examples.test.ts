@@ -8,7 +8,7 @@ import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/unit-of-work";
 import { workflowsSchema } from "./schema";
 import {
-  WorkflowEntrypoint,
+  defineWorkflow,
   type WorkflowEvent,
   type WorkflowStep,
   type WorkflowsRegistry,
@@ -47,18 +47,19 @@ const createContextFactory =
 
 describe("Workflows model checker examples", () => {
   it("checks event delivery interleavings", async () => {
-    class EventWorkflow extends WorkflowEntrypoint {
-      async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const EventWorkflow = defineWorkflow(
+      { name: "event-workflow" },
+      async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
         const received = await step.waitForEvent("wait-ready", {
           type: "ready",
           timeout: "1 hour",
         });
         return { received };
-      }
-    }
+      },
+    );
 
     const workflows: WorkflowsRegistry = {
-      EVENT: { name: "event-workflow", workflow: EventWorkflow },
+      EVENT: EventWorkflow,
     };
 
     const invariant: ModelCheckerInvariant<
@@ -150,8 +151,9 @@ describe("Workflows model checker examples", () => {
   it("checks retry steps across interleavings", async () => {
     let retryCalls = 0;
 
-    class RetryWorkflow extends WorkflowEntrypoint {
-      async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const RetryWorkflow = defineWorkflow(
+      { name: "retry-workflow" },
+      async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
         return await step.do(
           "retry-step",
           { retries: { limit: 1, delay: "0 ms", backoff: "constant" } },
@@ -163,11 +165,11 @@ describe("Workflows model checker examples", () => {
             return { ok: true };
           },
         );
-      }
-    }
+      },
+    );
 
     const workflows: WorkflowsRegistry = {
-      RETRY: { name: "retry-workflow", workflow: RetryWorkflow },
+      RETRY: RetryWorkflow,
     };
 
     const invariant: ModelCheckerInvariant<
@@ -228,14 +230,15 @@ describe("Workflows model checker examples", () => {
   });
 
   it("checks timeout + error interleavings", async () => {
-    class TimeoutWorkflow extends WorkflowEntrypoint {
-      async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+    const TimeoutWorkflow = defineWorkflow(
+      { name: "timeout-workflow" },
+      async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
         return await step.waitForEvent("wait-timeout", { type: "timeout", timeout: "1 s" });
-      }
-    }
+      },
+    );
 
     const workflows: WorkflowsRegistry = {
-      TIMEOUT: { name: "timeout-workflow", workflow: TimeoutWorkflow },
+      TIMEOUT: TimeoutWorkflow,
     };
 
     const invariant: ModelCheckerInvariant<
@@ -297,27 +300,29 @@ describe("Workflows model checker examples", () => {
   });
 
   it("checks child workflow creation interleavings", async () => {
-    class ChildWorkflow extends WorkflowEntrypoint<unknown, { parentId: string }> {
-      async run(event: WorkflowEvent<{ parentId: string }>, step: WorkflowStep) {
+    const ChildWorkflow = defineWorkflow(
+      { name: "child-workflow" },
+      async (event: WorkflowEvent<{ parentId: string }>, step: WorkflowStep) => {
         return await step.do("child-run", () => ({ parentId: event.payload.parentId }));
-      }
-    }
+      },
+    );
 
-    class ParentWorkflow extends WorkflowEntrypoint<unknown, { label: string }> {
-      async run(event: WorkflowEvent<{ label: string }>, step: WorkflowStep) {
+    const ParentWorkflow = defineWorkflow(
+      { name: "parent-workflow" },
+      async (event: WorkflowEvent<{ label: string }>, step: WorkflowStep, context) => {
         return await step.do("spawn-child", async () => {
-          const child = await this.workflows["child"].create({
+          const child = await context.workflows["child"].create({
             id: `child-${event.instanceId}`,
             params: { parentId: event.instanceId },
           });
           return { childId: child.id, label: event.payload.label };
         });
-      }
-    }
+      },
+    );
 
     const workflows: WorkflowsRegistry = {
-      child: { name: "child-workflow", workflow: ChildWorkflow },
-      parent: { name: "parent-workflow", workflow: ParentWorkflow },
+      child: ChildWorkflow,
+      parent: ParentWorkflow,
     };
 
     const invariant: ModelCheckerInvariant<

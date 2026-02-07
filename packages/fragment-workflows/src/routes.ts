@@ -272,6 +272,13 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         );
       }
 
+      if (err.message === "WORKFLOW_PARAMS_INVALID") {
+        return error(
+          { message: "Invalid workflow params", code: "WORKFLOW_PARAMS_INVALID" as Code },
+          400,
+        );
+      }
+
       throw err;
     };
 
@@ -355,7 +362,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           id: z.string(),
           details: instanceStatusOutputSchema,
         }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_ID_ALREADY_EXISTS"],
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "INSTANCE_ID_ALREADY_EXISTS",
+          "WORKFLOW_PARAMS_INVALID",
+        ],
         handler: async function (context, { json, error }) {
           const { pathParams, input } = context;
           const errorResponder = error as ErrorResponder;
@@ -386,11 +398,12 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
+            const params = await services.validateWorkflowParams(workflowName, payload.params);
             const result = await this.handlerTx()
               .withServiceCalls(() => [
                 services.createInstance(workflowName, {
                   id: payload.id,
-                  params: payload.params,
+                  params,
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)
@@ -414,7 +427,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             }),
           ),
         }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID"],
+        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "WORKFLOW_PARAMS_INVALID"],
         handler: async function (context, { json, error }) {
           const { pathParams, input } = context;
           const errorResponder = error as ErrorResponder;
@@ -452,7 +465,13 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
-            const serviceCall = services.createBatch(workflowName, payload.instances) as TxResult<
+            const validatedInstances = await Promise.all(
+              payload.instances.map(async (instance) => ({
+                id: instance.id,
+                params: await services.validateWorkflowParams(workflowName, instance.params),
+              })),
+            );
+            const serviceCall = services.createBatch(workflowName, validatedInstances) as TxResult<
               RouteInstanceDetails[],
               unknown
             >;

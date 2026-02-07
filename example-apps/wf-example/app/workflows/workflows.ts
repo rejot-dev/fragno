@@ -1,7 +1,7 @@
 import {
-  WorkflowEntrypoint,
   type WorkflowEvent,
   type WorkflowStep,
+  defineWorkflow,
 } from "@fragno-dev/fragment-workflows";
 
 export type ApprovalParams = {
@@ -20,8 +20,9 @@ export type FulfillmentEventPayload = {
   confirmationId: string;
 };
 
-export class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams> {
-  async run(event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) {
+export const ApprovalWorkflow = defineWorkflow(
+  { name: "approval-workflow" },
+  async (event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) => {
     const approval = await step.waitForEvent<ApprovalEventPayload>("approval", {
       type: "approval",
       timeout: "15 min",
@@ -39,11 +40,12 @@ export class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams
       approval,
       fulfillment,
     };
-  }
-}
+  },
+);
 
-export class DemoDataWorkflow extends WorkflowEntrypoint {
-  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+export const DemoDataWorkflow = defineWorkflow(
+  { name: "demo-data-workflow" },
+  async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     const randomValue = await step.do("random-number", () => Math.floor(Math.random() * 1000));
 
     const remoteData = await step.do("fetch-remote", async () => {
@@ -71,11 +73,12 @@ export class DemoDataWorkflow extends WorkflowEntrypoint {
       remoteData,
       flakyResult,
     };
-  }
-}
+  },
+);
 
-export class ParallelStepsWorkflow extends WorkflowEntrypoint {
-  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+export const ParallelStepsWorkflow = defineWorkflow(
+  { name: "parallel-steps-workflow" },
+  async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     const startedAt = await step.do("record-start", () => Date.now());
     const [todo, user] = await Promise.all([
       step.do(
@@ -114,11 +117,12 @@ export class ParallelStepsWorkflow extends WorkflowEntrypoint {
       todo,
       user,
     };
-  }
-}
+  },
+);
 
-export class WaitTimeoutWorkflow extends WorkflowEntrypoint {
-  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+export const WaitTimeoutWorkflow = defineWorkflow(
+  { name: "wait-timeout-workflow" },
+  async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     const startedAt = await step.do("record-start", () => Date.now());
     const edge = await step.waitForEvent("edge-wait", {
       type: "edge",
@@ -129,11 +133,12 @@ export class WaitTimeoutWorkflow extends WorkflowEntrypoint {
       startedAt,
       edge,
     };
-  }
-}
+  },
+);
 
-export class CrashTestWorkflow extends WorkflowEntrypoint {
-  async run(_event: WorkflowEvent<unknown>, step: WorkflowStep) {
+export const CrashTestWorkflow = defineWorkflow(
+  { name: "crash-test-workflow" },
+  async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     const startedAt = await step.do("record-start", () => Date.now());
     const slowStep = await step.do("slow-step", async () => {
       await new Promise((resolve) => setTimeout(resolve, 15_000));
@@ -146,13 +151,13 @@ export class CrashTestWorkflow extends WorkflowEntrypoint {
       slowStep,
       finishedAt,
     };
-  }
-}
+  },
+);
 
 export const workflows = {
-  approval: { name: "approval-workflow", workflow: ApprovalWorkflow },
-  demoData: { name: "demo-data-workflow", workflow: DemoDataWorkflow },
-  parallel: { name: "parallel-steps-workflow", workflow: ParallelStepsWorkflow },
-  waitTimeout: { name: "wait-timeout-workflow", workflow: WaitTimeoutWorkflow },
-  crashTest: { name: "crash-test-workflow", workflow: CrashTestWorkflow },
+  approval: ApprovalWorkflow,
+  demoData: DemoDataWorkflow,
+  parallel: ParallelStepsWorkflow,
+  waitTimeout: WaitTimeoutWorkflow,
+  crashTest: CrashTestWorkflow,
 } as const;

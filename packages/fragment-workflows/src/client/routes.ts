@@ -171,7 +171,12 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
       id: z.string(),
       details: instanceStatusOutputSchema,
     }),
-    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_ID_ALREADY_EXISTS"],
+    errorCodes: [
+      "WORKFLOW_NOT_FOUND",
+      "INVALID_INSTANCE_ID",
+      "INSTANCE_ID_ALREADY_EXISTS",
+      "WORKFLOW_PARAMS_INVALID",
+    ],
     handler: stubHandler,
   }),
   defineRoute({
@@ -186,7 +191,7 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
         }),
       ),
     }),
-    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID"],
+    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "WORKFLOW_PARAMS_INVALID"],
     handler: stubHandler,
   }),
   defineRoute({

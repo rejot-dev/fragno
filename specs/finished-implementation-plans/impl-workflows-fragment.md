@@ -5,7 +5,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 0 — Grounding + references
 
 1. Pull Cloudflare API surface from `https://developers.cloudflare.com/workflows/llms-full.txt`:
-   - [x] `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `Workflow`
+   - [x] `defineWorkflow`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `Workflow`
    - [x] Instance management methods (`create/get/createBatch`,
          `pause/resume/restart/terminate/sendEvent`)
 2. Reconfirm Fragno DB primitives and durable hooks patterns:
@@ -23,11 +23,11 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 2. Ensure the main package is runtime-agnostic (SPEC §5.3 note); keep Cloudflare/Node APIs in the
    dispatcher packages.
 3. [x] Implement public types/classes per SPEC §6:
-   - `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `InstanceStatus`
+   - `defineWorkflow`, `WorkflowStep`, `WorkflowEvent`, `WorkflowStepConfig`, `InstanceStatus`
    - `NonRetryableError`
 4. [x] Implement the workflow registry + programmatic bindings API (SPEC §6.5, §6.6):
    - fragment exposes `fragment.workflows.<bindingKey>`
-   - workflows have access to `this.workflows` for child workflow creation
+   - workflows have access to `context.workflows` for child workflow creation
    - align `createBatch` typing with Cloudflare (`WorkflowInstanceCreateOptionsWithId`; SPEC §6.3)
 5. [x] Add minimal docs/examples mirroring `example-fragments/example-fragment/src/index.ts`.
 

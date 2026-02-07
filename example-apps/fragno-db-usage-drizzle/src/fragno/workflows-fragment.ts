@@ -5,10 +5,10 @@ import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
-  WorkflowEntrypoint,
   type WorkflowsFragmentConfig,
   type WorkflowEvent,
   type WorkflowStep,
+  defineWorkflow,
 } from "@fragno-dev/fragment-workflows";
 import { adapter } from "../fragno-adapter";
 
@@ -28,8 +28,9 @@ export type FulfillmentEventPayload = {
   confirmationId: string;
 };
 
-class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams> {
-  async run(event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) {
+const ApprovalWorkflow = defineWorkflow(
+  { name: "approval-workflow" },
+  async (event: WorkflowEvent<ApprovalParams>, step: WorkflowStep) => {
     const approval = await step.waitForEvent<ApprovalEventPayload>("approval", {
       type: "approval",
       timeout: "15 min",
@@ -47,11 +48,11 @@ class ApprovalWorkflow extends WorkflowEntrypoint<unknown, ApprovalParams> {
       approval,
       fulfillment,
     };
-  }
-}
+  },
+);
 
 const workflows = {
-  approval: { name: "approval-workflow", workflow: ApprovalWorkflow },
+  approval: ApprovalWorkflow,
 } as const;
 
 // oxlint-disable-next-line no-explicit-any

@@ -6,18 +6,23 @@ import { workflowsFragmentDefinition } from "./definition";
 import { workflowsRoutesFactory } from "./routes";
 import { workflowsSchema } from "./schema";
 import { attachWorkflowsBindings } from "./bindings";
-import { NonRetryableError, WorkflowEntrypoint } from "./workflow";
-import type { WorkflowEvent, WorkflowStep } from "./workflow";
+import {
+  NonRetryableError,
+  defineWorkflow,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "./workflow";
 
 describe("Workflows Fragment", () => {
-  class DemoWorkflow extends WorkflowEntrypoint {
-    run(_event: WorkflowEvent<unknown>, _step: WorkflowStep) {
+  const DemoWorkflow = defineWorkflow(
+    { name: "demo-workflow" },
+    (_event: WorkflowEvent<unknown>, _step: WorkflowStep) => {
       return undefined;
-    }
-  }
+    },
+  );
 
   const workflows = {
-    DEMO: { name: "demo-workflow", workflow: DemoWorkflow },
+    DEMO: DemoWorkflow,
   } as const;
   const runner = {
     tick: vi.fn(),

@@ -1,4 +1,5 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
+import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { DbNow } from "@fragno-dev/db";
 
 /** Relative or absolute durations supported by workflow steps. */
@@ -48,7 +49,7 @@ export interface WorkflowStep {
 }
 
 /** Serialized instance status returned to API consumers. */
-export type InstanceStatus = {
+export type InstanceStatusWithOutput<TOutput = unknown> = {
   status:
     | "queued"
     | "running"
@@ -60,8 +61,10 @@ export type InstanceStatus = {
     | "waitingForPause"
     | "unknown";
   error?: { name: string; message: string };
-  output?: unknown;
+  output?: TOutput;
 };
+
+export type InstanceStatus = InstanceStatusWithOutput<unknown>;
 
 /** Summary of the latest step execution for an instance run. */
 export type WorkflowInstanceCurrentStep = {
@@ -92,9 +95,9 @@ export type WorkflowInstanceMetadata = {
 };
 
 /** Handle for a workflow instance returned by the management API. */
-export interface WorkflowInstance {
+export interface WorkflowInstance<TOutput = unknown> {
   id: string;
-  status(): Promise<InstanceStatus>;
+  status(): Promise<InstanceStatusWithOutput<TOutput>>;
   pause(): Promise<void>;
   resume(): Promise<void>;
   terminate(): Promise<void>;
@@ -115,27 +118,138 @@ export interface WorkflowInstanceCreateOptionsWithId<TParams = unknown>
 }
 
 /** Management API for a named workflow. */
-export interface Workflow<TParams = unknown> {
-  create(options?: WorkflowInstanceCreateOptions<TParams>): Promise<WorkflowInstance>;
-  createBatch(batch: WorkflowInstanceCreateOptionsWithId<TParams>[]): Promise<WorkflowInstance[]>;
-  get(id: string): Promise<WorkflowInstance>;
+export interface Workflow<TParams = unknown, TOutput = unknown> {
+  create(options?: WorkflowInstanceCreateOptions<TParams>): Promise<WorkflowInstance<TOutput>>;
+  createBatch(
+    batch: WorkflowInstanceCreateOptionsWithId<TParams>[],
+  ): Promise<WorkflowInstance<TOutput>[]>;
+  get(id: string): Promise<WorkflowInstance<TOutput>>;
 }
-
-/** Map of binding keys to workflow class definitions. */
-export type WorkflowsRegistry = Record<
-  string,
-  { name: string; workflow: new (...args: unknown[]) => WorkflowEntrypoint<unknown, unknown> }
->;
 
 /** Bound workflow handles exposed on fragments. */
-export type WorkflowBindings = Record<string, Workflow>;
+export type WorkflowBindings<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
+  [K in keyof TRegistry]: Workflow<
+    WorkflowParamsFromEntry<TRegistry[K]>,
+    WorkflowOutputFromEntry<TRegistry[K]>
+  >;
+};
 
-/** Base class for user-defined workflows. */
-export abstract class WorkflowEntrypoint<_Env = unknown, Params = unknown> {
+/** Execution context passed to workflow functions. */
+export type WorkflowContext<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> = {
+  workflows: WorkflowBindings<TRegistry>;
+};
+
+/** Function-based workflow run signature. */
+export type WorkflowRunFn<TParams = unknown, TOutput = unknown> = (
+  event: WorkflowEvent<TParams>,
+  step: WorkflowStep,
+  context: WorkflowContext,
+) => Promise<TOutput> | TOutput;
+
+/** Function-based workflow definition. */
+export interface WorkflowDefinition<
+  TParams = unknown,
+  TOutput = unknown,
+  TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
+  TOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
+> {
+  name: string;
+  schema?: TInputSchema;
+  outputSchema?: TOutputSchema;
+  run(
+    event: WorkflowEvent<TParams>,
+    step: WorkflowStep,
+    context: WorkflowContext,
+  ): Promise<TOutput> | TOutput;
+}
+
+export function defineWorkflow<TParams, TOutput = unknown>(
+  options: { name: string; schema?: undefined; outputSchema?: undefined },
+  run: WorkflowRunFn<TParams, TOutput>,
+): WorkflowDefinition<TParams, TOutput, undefined, undefined>;
+export function defineWorkflow<TSchema extends StandardSchemaV1, TOutput = unknown>(
+  options: { name: string; schema: TSchema; outputSchema?: undefined },
+  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput>,
+): WorkflowDefinition<StandardSchemaV1.InferOutput<TSchema>, TOutput, TSchema, undefined>;
+export function defineWorkflow<TOutputSchema extends StandardSchemaV1, TParams = unknown>(
+  options: { name: string; schema?: undefined; outputSchema: TOutputSchema },
+  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>>,
+): WorkflowDefinition<
+  TParams,
+  StandardSchemaV1.InferOutput<TOutputSchema>,
+  undefined,
+  TOutputSchema
+>;
+export function defineWorkflow<
+  TInputSchema extends StandardSchemaV1,
+  TOutputSchema extends StandardSchemaV1,
+>(
+  options: { name: string; schema: TInputSchema; outputSchema: TOutputSchema },
+  run: WorkflowRunFn<
+    StandardSchemaV1.InferOutput<TInputSchema>,
+    StandardSchemaV1.InferOutput<TOutputSchema>
+  >,
+): WorkflowDefinition<
+  StandardSchemaV1.InferOutput<TInputSchema>,
+  StandardSchemaV1.InferOutput<TOutputSchema>,
+  TInputSchema,
+  TOutputSchema
+>;
+export function defineWorkflow(
+  options: { name: string; schema?: StandardSchemaV1; outputSchema?: StandardSchemaV1 },
+  run: WorkflowRunFn,
+): WorkflowDefinition {
+  return { ...options, run };
+}
+
+/** Base class for user-defined workflows (legacy). */
+export abstract class WorkflowEntrypoint<_Env = unknown, Params = unknown, Output = unknown> {
   public workflows!: WorkflowBindings;
 
-  abstract run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<unknown> | unknown;
+  abstract run(event: WorkflowEvent<Params>, step: WorkflowStep): Promise<Output> | Output;
 }
+
+/** Legacy class-based workflow registry entry. */
+export type LegacyWorkflowDefinition<TParams = unknown, TOutput = unknown> = {
+  name: string;
+  workflow: new (...args: unknown[]) => WorkflowEntrypoint<unknown, TParams, TOutput>;
+};
+
+/** Workflow registry entry (function-based or legacy class-based). */
+export type WorkflowRegistryEntry =
+  | WorkflowDefinition<unknown, unknown, StandardSchemaV1 | undefined, StandardSchemaV1 | undefined>
+  | LegacyWorkflowDefinition<unknown, unknown>;
+
+export const isLegacyWorkflowDefinition = (
+  entry: WorkflowRegistryEntry,
+): entry is LegacyWorkflowDefinition => "workflow" in entry;
+
+export type WorkflowParamsFromEntry<TEntry> =
+  TEntry extends WorkflowDefinition<
+    infer TParams,
+    unknown,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >
+    ? TParams
+    : TEntry extends LegacyWorkflowDefinition<infer TParams, unknown>
+      ? TParams
+      : unknown;
+
+export type WorkflowOutputFromEntry<TEntry> =
+  TEntry extends WorkflowDefinition<
+    unknown,
+    infer TOutput,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >
+    ? TOutput
+    : TEntry extends LegacyWorkflowDefinition<unknown, infer TOutput>
+      ? TOutput
+      : unknown;
+
+/** Map of binding keys to workflow definitions. */
+export type WorkflowsRegistry = Record<string, WorkflowRegistryEntry>;
 
 /** Error type that bypasses automatic retries. */
 export class NonRetryableError extends Error {
@@ -217,8 +331,8 @@ export type WorkflowsAuthorizeRunnerTickContext = WorkflowsAuthorizeContext & {
 };
 
 /** Configuration for the workflows fragment. */
-export interface WorkflowsFragmentConfig {
-  workflows?: WorkflowsRegistry;
+export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> {
+  workflows?: TRegistry;
   dispatcher?: WorkflowsDispatcher;
   runner?: WorkflowsRunner;
   runtime: FragnoRuntime;

@@ -82,7 +82,7 @@ live in separate dispatcher packages.
 
 Responsibilities:
 
-- Workflow authoring API (Cloudflare-like): `WorkflowEntrypoint`, `WorkflowStep`, `WorkflowEvent`,
+- Workflow authoring API (Cloudflare-like): `defineWorkflow`, `WorkflowStep`, `WorkflowEvent`,
   `WorkflowStepConfig`, `WorkflowDuration`, `NonRetryableError`
 - Instance management API (Cloudflare-like): `Workflow`, `WorkflowInstance`,
   `WorkflowInstanceCreateOptions`, `InstanceStatus`
@@ -141,7 +141,7 @@ Responsibilities:
 
 ### 6.1 Workflow definition
 
-Authors define workflows by extending `WorkflowEntrypoint` and implementing:
+Authors define workflows with `defineWorkflow`, providing a workflow name and a `run` function:
 
 ```ts
 export type WorkflowEvent<T> = {
@@ -150,8 +150,9 @@ export type WorkflowEvent<T> = {
   instanceId: string;
 };
 
-export class MyWorkflow extends WorkflowEntrypoint<Env, Params> {
-  async run(event: WorkflowEvent<Params>, step: WorkflowStep) {
+export const MyWorkflow = defineWorkflow(
+  { name: "my-workflow" },
+  async (event: WorkflowEvent<Params>, step: WorkflowStep) => {
     const state = await step.do("fetch config", async () => {
       return { enabled: true };
     });
@@ -164,8 +165,8 @@ export class MyWorkflow extends WorkflowEntrypoint<Env, Params> {
     });
 
     return await step.do("finish", async () => ({ state, approval }));
-  }
-}
+  },
+);
 ```
 
 ### 6.2 Step API (minimum parity)
@@ -358,14 +359,11 @@ At fragment creation time, the host registers workflows with:
 Example:
 
 ```ts
-export type WorkflowsRegistry = Record<
-  string,
-  { name: string; workflow: new (...args: any[]) => WorkflowEntrypoint<any, any> }
->;
+export type WorkflowsRegistry = Record<string, WorkflowDefinition>;
 
 const workflows = {
-  BILLING: { name: "billing-workflow", workflow: BillingWorkflow },
-  CHILD: { name: "child-workflow", workflow: ChildWorkflow },
+  BILLING: BillingWorkflow,
+  CHILD: ChildWorkflow,
 } as const;
 
 const fragment = createWorkflowsFragment({ workflows }, { databaseAdapter });
@@ -379,11 +377,11 @@ Rules:
 
 - `workflows.<bindingKey>` exposes the `Workflow` interface (`create/get/createBatch`) for that
   workflow definition.
-- The same bindings object is available inside workflow code via `this.workflows` on
-  `WorkflowEntrypoint` (see §6.6).
+- The same bindings object is available inside workflow code via `context.workflows` in the
+  `defineWorkflow` run function (see §6.6).
 - The HTTP API uses `:workflowName` (the registered `name`), not the binding key.
 - Implementation note: `fragment.workflows` must call the fragment’s internal services directly (no
-  HTTP), and the runner must inject equivalent bindings into workflow code as `this.workflows` so
+  HTTP), and the runner must pass equivalent bindings into workflow code via `context.workflows` so
   that child workflow creation reuses the same start path and semantics.
 
 ### 6.6 Starting Child Workflows
@@ -399,10 +397,11 @@ Semantics:
 Example:
 
 ```ts
-export class ParentWorkflow extends WorkflowEntrypoint {
-  async run(event, step) {
+export const ParentWorkflow = defineWorkflow(
+  { name: "parent-workflow" },
+  async (event, step, context) => {
     await step.do("trigger child workflow", async () => {
-      const child = await this.workflows.CHILD.create({
+      const child = await context.workflows.CHILD.create({
         id: `child-${event.instanceId}`,
         params: { parentInstanceId: event.instanceId },
       });
@@ -412,8 +411,8 @@ export class ParentWorkflow extends WorkflowEntrypoint {
 
     // Parent continues; does not wait for child completion.
     await step.do("continue", async () => ({ ok: true }));
-  }
-}
+  },
+);
 ```
 
 ### 6.7 Fragno Runtime (Time + Randomness)
@@ -1109,7 +1108,7 @@ Cloudflare-style expectations:
 5. Retention: infinite by default; keep full history always (SPEC §11.8, §14.1)
 6. No explicit instance delete API in v1 (SPEC §14.1)
 7. Programmatic starts via `fragment.workflows.<bindingKey>.create/get/createBatch` and
-   `this.workflows` inside workflows (SPEC §6.5, §6.6)
+   `context.workflows` inside workflows (SPEC §6.5, §6.6)
 8. `sendEvent` buffers for `queued|waiting|paused` and rejects for `complete|terminated|errored`
    (SPEC §9.5, §11.7)
 9. `createBatch` excludes skipped IDs from the response (Cloudflare-like) (SPEC §11.4)
