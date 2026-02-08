@@ -1465,60 +1465,18 @@ describe("fragment-instantiator", () => {
     });
   });
 
-  describe("linked fragments", () => {
-    it("should instantiate linked fragments with the parent fragment", () => {
-      interface Config {
-        apiKey: string;
-      }
-
-      // Create a linked fragment definition
-      const linkedFragmentDef = defineFragment<Config>("linked-fragment")
-        .providesService("linkedService", () => ({
-          getValue: () => "from-linked",
-        }))
-        .build();
-
-      // Create main fragment with linked fragment
-      const definition = defineFragment<Config>("main-fragment")
-        .withLinkedFragment("internal", ({ config, options }) => {
-          return instantiate(linkedFragmentDef).withConfig(config).withOptions(options).build();
-        })
-        .build();
-
-      const fragment = instantiate(definition)
-        .withConfig({ apiKey: "test-key" })
-        .withOptions({ mountRoute: "/api" })
-        .build();
-
-      // Verify linked fragment exists
-      expect(Object.keys(fragment.$internal.linkedFragments).length).toBe(1);
-      expect("internal" in fragment.$internal.linkedFragments).toBe(true);
-
-      const linkedFragment = fragment.$internal.linkedFragments.internal;
-      expect(linkedFragment).toBeDefined();
-      expect(linkedFragment?.name).toBe("linked-fragment");
-    });
-
-    it("should mount internal linked fragment routes under /_internal", async () => {
-      const linkedFragmentDef = defineFragment("linked-fragment").build();
-      const linkedRoutes = defineRoutes(linkedFragmentDef).create(({ defineRoute }) => [
-        defineRoute({
-          method: "GET",
-          path: "/status",
-          handler: async (_input, { json }) => {
-            return json({ ok: true });
-          },
-        }),
-      ]);
-
+  describe("internal routes", () => {
+    it("should mount internal routes under /_internal", async () => {
       const definition = defineFragment("main-fragment")
-        .withLinkedFragment("_fragno_internal", ({ config, options }) => {
-          return instantiate(linkedFragmentDef)
-            .withConfig(config)
-            .withOptions(options)
-            .withRoutes([linkedRoutes])
-            .build();
-        })
+        .withInternalRoutes([
+          defineRoute({
+            method: "GET",
+            path: "/status",
+            handler: async (_input, { json }) => {
+              return json({ ok: true });
+            },
+          }),
+        ])
         .build();
 
       const fragment = instantiate(definition).withOptions({}).build();
@@ -1528,197 +1486,33 @@ describe("fragment-instantiator", () => {
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
 
-    it("should run middleware set on the internal fragment", async () => {
-      const linkedFragmentDef = defineFragment("linked-fragment").build();
-      const linkedRoutes = defineRoutes(linkedFragmentDef).create(({ defineRoute }) => [
-        defineRoute({
-          method: "GET",
-          path: "/status",
-          handler: async (_input, { json }) => {
-            return json({ ok: true });
-          },
-        }),
-      ]);
-
-      const definition = defineFragment("main-fragment")
-        .withLinkedFragment("_fragno_internal", ({ config, options }) => {
-          return instantiate(linkedFragmentDef)
-            .withConfig(config)
-            .withOptions(options)
-            .withRoutes([linkedRoutes])
-            .build();
-        })
-        .build();
-
-      const fragment = instantiate(definition).withOptions({ mountRoute: "/api" }).build();
-
-      const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
-      internalFragment.withMiddleware(async ({ ifMatchesRoute }) => {
-        const result = await ifMatchesRoute("GET", "/status", async (_input, { json }) => {
-          return json({ ok: false, source: "internal-middleware" }, 418);
-        });
-
-        return result;
-      });
-
-      const response = await fragment.handler(
-        new Request("http://localhost/api/_internal/status", {
-          method: "GET",
+    it("should resolve internal route factories with services", async () => {
+      const definitionBuilder = defineFragment("main-fragment").providesService(
+        "statusService",
+        () => ({
+          getStatus: () => ({ ok: true }),
         }),
       );
 
-      expect(response.status).toBe(418);
-      expect(await response.json()).toEqual({ ok: false, source: "internal-middleware" });
-    });
+      const internalRoutes = defineRoutes(definitionBuilder.build()).create(
+        ({ services, defineRoute }) => [
+          defineRoute({
+            method: "GET",
+            path: "/status",
+            handler: async (_input, { json }) => {
+              return json(services.statusService.getStatus());
+            },
+          }),
+        ],
+      );
 
-    it("should pass config and options to linked fragments", () => {
-      interface Config {
-        value: string;
-      }
-
-      interface Options extends FragnoPublicConfig {
-        customOption: string;
-      }
-
-      const linkedFragmentDef = defineFragment<Config, Options>("linked-fragment")
-        .withDependencies(({ config, options }) => ({
-          combined: `${config.value}-${options.customOption}`,
-        }))
-        .build();
-
-      const definition = defineFragment<Config, Options>("main-fragment")
-        .withLinkedFragment("internal", ({ config, options }) => {
-          return instantiate(linkedFragmentDef).withConfig(config).withOptions(options).build();
-        })
-        .build();
-
-      const fragment = instantiate(definition)
-        .withConfig({ value: "config" })
-        .withOptions({ customOption: "option", mountRoute: "/api" } as Options)
-        .build();
-
-      const linkedFragment = fragment.$internal.linkedFragments.internal;
-      expect(linkedFragment?.$internal.deps).toEqual({
-        combined: "config-option",
-      });
-    });
-
-    it("should allow linked fragments to provide services", () => {
-      const linkedFragmentDef = defineFragment("linked-fragment")
-        .providesService("settingsService", () => ({
-          get: (key: string) => `value-for-${key}`,
-          set: (key: string, value: string) => {
-            console.log(`Setting ${key} = ${value}`);
-          },
-        }))
-        .build();
-
-      const definition = defineFragment("main-fragment")
-        .withLinkedFragment("internal", ({ config, options }) => {
-          return instantiate(linkedFragmentDef).withConfig(config).withOptions(options).build();
-        })
-        .build();
+      const definition = definitionBuilder.withInternalRoutes([internalRoutes]).build();
 
       const fragment = instantiate(definition).withOptions({}).build();
 
-      const linkedFragment = fragment.$internal.linkedFragments.internal;
-      expect(linkedFragment?.services.settingsService).toBeDefined();
-      expect(linkedFragment?.services.settingsService.get("test")).toBe("value-for-test");
-    });
-
-    it("should support multiple linked fragments", () => {
-      const linkedFragmentDef1 = defineFragment("linked-fragment-1")
-        .providesService("service1", () => ({ method: () => "service1" }))
-        .build();
-
-      const linkedFragmentDef2 = defineFragment("linked-fragment-2")
-        .providesService("service2", () => ({ method: () => "service2" }))
-        .build();
-
-      const definition = defineFragment("main-fragment")
-        .withLinkedFragment("internal1", ({ config, options }) => {
-          return instantiate(linkedFragmentDef1).withConfig(config).withOptions(options).build();
-        })
-        .withLinkedFragment("internal2", ({ config, options }) => {
-          return instantiate(linkedFragmentDef2).withConfig(config).withOptions(options).build();
-        })
-        .build();
-
-      const fragment = instantiate(definition).withOptions({}).build();
-
-      expect(Object.keys(fragment.$internal.linkedFragments).length).toBe(2);
-      expect("internal1" in fragment.$internal.linkedFragments).toBe(true);
-      expect("internal2" in fragment.$internal.linkedFragments).toBe(true);
-
-      const linked1 = fragment.$internal.linkedFragments.internal1;
-      const linked2 = fragment.$internal.linkedFragments.internal2;
-
-      expect(linked1?.services.service1.method()).toBe("service1");
-      expect(linked2?.services.service2.method()).toBe("service2");
-    });
-
-    it("should pass service dependencies to linked fragments", () => {
-      interface ExternalService {
-        getValue: () => string;
-      }
-
-      const externalService: ExternalService = {
-        getValue: () => "external-value",
-      };
-
-      const linkedFragmentDef = defineFragment("linked-fragment")
-        .usesService<"externalService", ExternalService>("externalService")
-        .providesService("linkedService", ({ serviceDeps }) => ({
-          getFromExternal: () => serviceDeps.externalService.getValue(),
-        }))
-        .build();
-
-      const definition = defineFragment("main-fragment")
-        .usesService<"externalService", ExternalService>("externalService")
-        .withLinkedFragment("internal", ({ config, options, serviceDependencies }) => {
-          return instantiate(linkedFragmentDef)
-            .withConfig(config)
-            .withOptions(options)
-            .withServices(serviceDependencies!)
-            .build();
-        })
-        .build();
-
-      const fragment = instantiate(definition)
-        .withOptions({})
-        .withServices({ externalService })
-        .build();
-
-      const linkedFragment = fragment.$internal.linkedFragments.internal;
-      expect(linkedFragment?.services.linkedService.getFromExternal()).toBe("external-value");
-    });
-
-    it("should expose linked fragment services as private services", () => {
-      const linkedFragmentDef = defineFragment("linked-fragment")
-        .providesService("linkedService", () => ({
-          getValue: () => "from-linked",
-        }))
-        .build();
-
-      const definition = defineFragment("main-fragment")
-        .withLinkedFragment("internal", ({ config, options }) => {
-          return instantiate(linkedFragmentDef).withConfig(config).withOptions(options).build();
-        })
-        .providesService("mainService", ({ privateServices }) => ({
-          getLinkedValue: () => {
-            return privateServices.linkedService.getValue();
-          },
-        }))
-        .build();
-
-      const fragment = instantiate(definition).withOptions({}).build();
-
-      // The main service can access linked fragment services via privateServices
-      expect(fragment.services.mainService.getLinkedValue()).toBe("from-linked");
-
-      // Linked fragment services are NOT directly exposed on the main fragment
-      // @ts-expect-error - Linked fragment service should not be accessible
-      expect(fragment.services.linkedService).toBeUndefined();
+      const response = await fragment.callRouteRaw("GET", "/_internal/status" as never);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
     });
   });
 
