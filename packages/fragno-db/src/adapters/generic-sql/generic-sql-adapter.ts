@@ -14,7 +14,12 @@ import type { AnyColumn, AnySchema } from "../../schema/create";
 import type { SimpleQueryInterface } from "../../query/simple-query-interface";
 import { createExecutor } from "./generic-sql-uow-executor";
 import { UnitOfWorkDecoder } from "./uow-decoder";
-import { createPreparedMigrations, type PreparedMigrations } from "./migration/prepared-migrations";
+import {
+  createPreparedMigrations,
+  type PrepareMigrationsOptions,
+  type PreparedMigrations,
+} from "./migration/prepared-migrations";
+import type { InternalMigration } from "../../migration-engine/internal-migrations";
 import type { DriverConfig } from "./driver-config";
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
 import { createUOWCompilerFromOperationCompiler } from "../shared/uow-operation-compiler";
@@ -46,6 +51,7 @@ export interface SqlAdapterOptions {
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
+  internalMigrations?: InternalMigration[];
 }
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
@@ -61,6 +67,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
+  readonly internalMigrations?: InternalMigration[];
 
   #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   #contextStorage: RequestContextStorage<DatabaseContextStorage>;
@@ -74,6 +81,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     sqliteProfile,
     sqliteStorageMode,
     namingStrategy,
+    internalMigrations,
   }: SqlAdapterOptions) {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
@@ -102,6 +110,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.#contextStorage = new RequestContextStorage();
 
     this.#driver = new SqlDriverAdapter(dialect);
+    this.internalMigrations = internalMigrations;
   }
 
   get driver(): SqlDriverAdapter {
@@ -130,7 +139,11 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null): PreparedMigrations {
+  prepareMigrations<T extends AnySchema>(
+    schema: T,
+    namespace: string | null,
+    options?: PrepareMigrationsOptions,
+  ): PreparedMigrations {
     const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
     return createPreparedMigrations({
       schema,
@@ -140,6 +153,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       sqliteStorageMode: this.sqliteStorageMode,
       resolver,
       driver: this.#driver,
+      internalMigrations: options?.internalMigrations ?? this.internalMigrations,
     });
   }
 
