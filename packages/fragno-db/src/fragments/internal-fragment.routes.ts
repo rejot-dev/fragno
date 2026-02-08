@@ -1,11 +1,6 @@
-import { defineRoutes, defaultFragnoRuntime } from "@fragno-dev/core";
-import {
-  ADAPTER_IDENTITY_KEY,
-  SETTINGS_NAMESPACE,
-  internalFragmentDef,
-  internalSchema,
-} from "./internal-fragment";
-import { resolveAdapterIdentity } from "../registry/adapter-registry";
+import { defineRoutes } from "@fragno-dev/core";
+import { internalFragmentDef, internalSchema } from "./internal-fragment";
+import { getRegistryForAdapter } from "../internal/adapter-registry";
 
 type AdapterIdentityResponse = {
   id: string;
@@ -36,7 +31,7 @@ type InternalDescribeError = {
 };
 
 export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).create(
-  ({ defineRoute, services, config }) => [
+  ({ defineRoute, config }) => [
     defineRoute({
       method: "GET",
       path: "/",
@@ -56,13 +51,9 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
 
         let identity: string | undefined;
         try {
-          identity = await resolveAdapterIdentity({
-            handlerTx: () => this.handlerTx(),
-            settingsService: services.settingsService,
-            randomUuid: () => defaultFragnoRuntime.random.uuid(),
-            settingsNamespace: SETTINGS_NAMESPACE,
-            identityKey: ADAPTER_IDENTITY_KEY,
-          });
+          const adapter = registry.internalFragment.$internal.options.databaseAdapter;
+          const resolvedRegistry = await getRegistryForAdapter(adapter);
+          identity = resolvedRegistry.identity;
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           return json(

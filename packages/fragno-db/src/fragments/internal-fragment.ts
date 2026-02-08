@@ -13,7 +13,7 @@ import { schema, idColumn, column } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { coerceVersionstampBytes, hexToVersionstamp, versionstampToHex } from "../outbox/outbox";
 import { dbNow } from "../query/db-now";
-import type { AdapterRegistry } from "../registry/adapter-registry";
+import type { AdapterRegistry } from "../internal/adapter-registry";
 
 // Constants for Fragno's internal settings table
 export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
