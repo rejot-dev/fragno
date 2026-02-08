@@ -13,6 +13,7 @@ import {
   SETTINGS_TABLE_NAME,
   getSchemaVersionFromDatabase,
 } from "../fragments/internal-fragment";
+import { getAdapterRegistry } from "../registry/adapter-registry";
 import { instantiate } from "@fragno-dev/core";
 import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
 
@@ -138,7 +139,7 @@ export async function generateSchemaArtifacts<
 
   // Use the internal fragment for settings management
   const internalFragment = instantiate(internalFragmentDef)
-    .withConfig({})
+    .withConfig({ registry: getAdapterRegistry(adapter) })
     .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
     .build();
 
@@ -269,7 +270,7 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
   // 1. Prepare settings table migration
   // Use the internal fragment for settings management
   const internalFragment = instantiate(internalFragmentDef)
-    .withConfig({})
+    .withConfig({ registry: getAdapterRegistry(adapter) })
     .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
     .build();
 

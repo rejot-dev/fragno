@@ -10,6 +10,7 @@ import {
   type HookHandlerTx,
 } from "./hooks";
 import { internalFragmentDef, internalSchema } from "../fragments/internal-fragment";
+import { getAdapterRegistry } from "../registry/adapter-registry";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
@@ -25,7 +26,10 @@ describe("Hook System", () => {
   let internalFragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
-    return instantiate(internalFragmentDef).withConfig({}).withOptions(options).build();
+    return instantiate(internalFragmentDef)
+      .withConfig({ registry: getAdapterRegistry(options.databaseAdapter) })
+      .withOptions(options)
+      .build();
   }
 
   beforeAll(async () => {

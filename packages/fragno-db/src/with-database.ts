@@ -19,6 +19,7 @@ import {
   internalFragmentOutboxRoutes,
 } from "./fragments/internal-fragment.routes";
 import type { HooksMap } from "./hooks/hooks";
+import { getAdapterRegistry } from "./registry/adapter-registry";
 
 function shouldExposeOutboxRoutes(options: FragnoPublicConfigWithDatabase): boolean {
   const adapter = options.databaseAdapter as { outbox?: { enabled?: boolean } };
@@ -120,6 +121,9 @@ export function withDatabase<TSchema extends AnySchema>(
     const builderWithInternal = builder.withLinkedFragment(
       "_fragno_internal",
       ({ options, parent }) => {
+        const registry = getAdapterRegistry(
+          (options as FragnoPublicConfigWithDatabase).databaseAdapter,
+        );
         const outboxEnabled = shouldExposeOutboxRoutes(options as FragnoPublicConfigWithDatabase);
         const internalRoutes = [
           internalFragmentDescribeRoutes,
@@ -135,13 +139,17 @@ export function withDatabase<TSchema extends AnySchema>(
           version: schema.version,
           tables: Object.keys(schema.tables).sort(),
         };
+        const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
+        if (!dryRun) {
+          registry.registerSchema(schemaInfo);
+          registry.registerFragment(parent);
+        }
 
         // Cast is safe: by the time this callback is invoked during fragment instantiation,
         // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
         return instantiate(internalFragmentDef)
           .withConfig({
-            parent,
-            schemas: [schemaInfo],
+            registry,
             outbox: { enabled: outboxEnabled },
           })
           .withOptions({
