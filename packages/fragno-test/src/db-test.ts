@@ -34,9 +34,6 @@ type ExtractSchemaFromDeps<TDeps> = TDeps extends { schema: infer TSchema extend
   ? TSchema
   : AnySchema;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyLinkedFragments = Record<string, any>;
-
 // Forward declarations for recursive type references
 interface FragmentResult<
   TDeps,
@@ -46,7 +43,6 @@ interface FragmentResult<
   TRequestStorage,
   TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
   TSchema extends AnySchema,
-  TLinkedFragments extends AnyLinkedFragments = {},
 > {
   fragment: FragnoInstantiatedFragment<
     TRoutes,
@@ -55,8 +51,7 @@ interface FragmentResult<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    FragnoPublicConfig,
-    TLinkedFragments
+    FragnoPublicConfig
   >;
   services: TServices;
   deps: TDeps;
@@ -67,15 +62,13 @@ interface FragmentResult<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    FragnoPublicConfig,
-    TLinkedFragments
+    FragnoPublicConfig
   >["callRoute"];
   db: SimpleQueryInterface<TSchema>;
 }
 
 // Safe: Catch-all for any fragment result type
 type AnyFragmentResult = FragmentResult<
-  any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -116,7 +109,7 @@ interface FragmentBuilderConfig<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
-  TLinkedFragments extends AnyLinkedFragments,
+  TInternalRoutes extends readonly AnyRouteOrFactory[],
 > {
   definition: FragmentDefinition<
     TConfig,
@@ -129,7 +122,7 @@ interface FragmentBuilderConfig<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >;
   builder: FragmentInstantiationBuilder<
     TConfig,
@@ -143,7 +136,7 @@ interface FragmentBuilderConfig<
     THandlerThisContext,
     TRequestStorage,
     TRoutesOrFactories,
-    TLinkedFragments
+    TInternalRoutes
   >;
   migrateToVersion?: number;
 }
@@ -226,7 +219,7 @@ export class DatabaseFragmentsTestBuilder<
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
     TRoutesOrFactories extends readonly AnyRouteOrFactory[],
-    TLinkedFragments extends AnyLinkedFragments,
+    TInternalRoutes extends readonly AnyRouteOrFactory[],
   >(
     name: TName,
     builder: FragmentInstantiationBuilder<
@@ -241,7 +234,7 @@ export class DatabaseFragmentsTestBuilder<
       THandlerThisContext,
       TRequestStorage,
       TRoutesOrFactories,
-      TLinkedFragments
+      TInternalRoutes
     >,
     options?: {
       migrateToVersion?: number;
@@ -255,8 +248,7 @@ export class DatabaseFragmentsTestBuilder<
         THandlerThisContext,
         TRequestStorage,
         FlattenRouteFactories<TRoutesOrFactories>,
-        ExtractSchemaFromDeps<TDeps>, // Extract actual schema type from deps
-        TLinkedFragments
+        ExtractSchemaFromDeps<TDeps> // Extract actual schema type from deps
       >;
     },
     TAdapter,

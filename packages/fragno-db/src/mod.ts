@@ -3,13 +3,13 @@ import type { AnySchema } from "./schema/create";
 import type { CursorResult } from "./query/cursor";
 import { Cursor } from "./query/cursor";
 import { dbNow, type DbNow } from "./query/db-now";
-import type { FragnoInstantiatedFragment, AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
+import type { FragnoInstantiatedFragment } from "@fragno-dev/core";
 import type {
   FragnoPublicConfigWithDatabase,
   ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
 import { getSchemaVersionFromDatabase } from "./fragments/internal-fragment";
-import { getRegistryForAdapter } from "./internal/adapter-registry";
+import { getInternalFragment } from "./internal/adapter-registry";
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
@@ -167,8 +167,7 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
     any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
-    FragnoPublicConfigWithDatabase,
-    Record<string, AnyFragnoInstantiatedFragment>
+    FragnoPublicConfigWithDatabase
   >;
 
 /**
@@ -210,8 +209,7 @@ export async function migrate<TSchema extends AnySchema>(
   const namespace = deps.namespace ?? schema.name;
 
   // Step 1: Ensure the internal fragment (settings table) is migrated first
-  const registry = await getRegistryForAdapter(adapter);
-  const internalFragment = registry.internalFragment;
+  const internalFragment = getInternalFragment(adapter);
 
   if (!(await adapter.isConnectionHealthy())) {
     throw new Error(

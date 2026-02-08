@@ -45,7 +45,7 @@ export function defineFragment(_name: string) {
     withRequestStorage: () => stub,
     withExternalRequestStorage: () => stub,
     withThisContext: () => stub,
-    withLinkedFragment: () => stub,
+    withInternalRoutes: () => stub,
     extend: () => stub,
     build: () => definitionStub,
     // From fragno-db
@@ -82,7 +82,6 @@ export function instantiate(_definition: unknown) {
       return {
         deps: {},
         options: {},
-        linkedFragments: {},
       };
     },
     withMiddleware: () => fragmentStub,

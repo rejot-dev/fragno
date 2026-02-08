@@ -7,9 +7,6 @@ export {
   type FragmentDefinition,
   type ServiceContext,
   type ServiceConstructorFn,
-  type LinkedFragmentCallback,
-  type LinkedFragmentParentMeta,
-  type ExtractLinkedServices,
 } from "./api/fragment-definition-builder";
 
 export {
@@ -37,6 +34,7 @@ export { defaultFragnoRuntime, type FragnoRuntime } from "./runtime";
 export {
   defineRoute,
   defineRoutes,
+  type AnyRouteOrFactory,
   type RouteFactory,
   type RouteFactoryContext,
 } from "./api/route";
