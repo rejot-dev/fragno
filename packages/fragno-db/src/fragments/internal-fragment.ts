@@ -11,7 +11,7 @@ import {
 import { FragnoId } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
-import type { AdapterRegistry } from "../registry/adapter-registry";
+import type { AdapterRegistry } from "../internal/adapter-registry";
 import {
   internalSchema,
   SETTINGS_NAMESPACE,

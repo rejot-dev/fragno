@@ -14,17 +14,8 @@ import {
   type DatabaseRequestStorage,
 } from "./db-fragment-definition-builder";
 import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
-import {
-  internalFragmentDescribeRoutes,
-  internalFragmentOutboxRoutes,
-} from "./fragments/internal-fragment.routes";
 import type { HooksMap } from "./hooks/hooks";
-import { resolveDatabaseAdapter } from "./util/default-database-adapter";
-import { getAdapterRegistry } from "./registry/adapter-registry";
-
-function shouldExposeOutboxRoutes(adapter: { outbox?: { enabled?: boolean } }): boolean {
-  return adapter.outbox?.enabled ?? false;
-}
+import { getRegistryForAdapterSync } from "./internal/adapter-registry";
 
 function resolveDatabaseNamespace(
   options: FragnoPublicConfigWithDatabase,
@@ -121,16 +112,6 @@ export function withDatabase<TSchema extends AnySchema>(
     const builderWithInternal = builder.withLinkedFragment(
       "_fragno_internal",
       ({ options, parent }) => {
-        const adapter = resolveDatabaseAdapter(
-          options as FragnoPublicConfigWithDatabase,
-          schema,
-        );
-        const registry = getAdapterRegistry(adapter);
-        const outboxEnabled = shouldExposeOutboxRoutes(adapter);
-        const internalRoutes = [
-          internalFragmentDescribeRoutes,
-          ...(outboxEnabled ? [internalFragmentOutboxRoutes] : []),
-        ];
         const namespace = resolveDatabaseNamespace(
           options as FragnoPublicConfigWithDatabase,
           schema,
@@ -143,23 +124,27 @@ export function withDatabase<TSchema extends AnySchema>(
         };
         const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
         if (!dryRun) {
-          registry.registerSchema(schemaInfo);
-          registry.registerFragment(parent);
+          const registry = getRegistryForAdapterSync(
+            (options as FragnoPublicConfigWithDatabase).databaseAdapter,
+          );
+          registry.registerSchema(schemaInfo, parent);
         }
 
         // Cast is safe: by the time this callback is invoked during fragment instantiation,
         // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
-        return instantiate(internalFragmentDef)
-          .withConfig({
-            registry,
-            outbox: { enabled: outboxEnabled },
-          })
-          .withOptions({
-            ...(options as FragnoPublicConfigWithDatabase),
-            databaseNamespace: null,
-          })
-          .withRoutes(internalRoutes)
-          .build();
+        if (dryRun) {
+          return instantiate(internalFragmentDef)
+            .withOptions({
+              ...(options as FragnoPublicConfigWithDatabase),
+              databaseNamespace: null,
+            })
+            .build();
+        }
+
+        const registry = getRegistryForAdapterSync(
+          (options as FragnoPublicConfigWithDatabase).databaseAdapter,
+        );
+        return registry.internalFragment;
       },
     );
 
