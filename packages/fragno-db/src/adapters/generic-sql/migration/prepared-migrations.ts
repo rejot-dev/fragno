@@ -2,11 +2,20 @@ import type { AnySchema } from "../../../schema/create";
 import type { SqlDriverAdapter } from "../../../sql-driver/sql-driver-adapter";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import { generateMigrationFromSchema } from "../../../migration-engine/auto-from-schema";
+import {
+  buildInternalMigrationOperations,
+  resolveInternalMigrationRange,
+  type InternalMigration,
+  type InternalMigrationContext,
+} from "../../../migration-engine/internal-migrations";
 import { createColdKysely } from "./cold-kysely";
 import { type SQLGenerator } from "./sql-generator";
 import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
 import { MySQLSQLGenerator } from "./dialect/mysql";
+import { postgresInternalMigrations } from "./dialect/postgres.internal-migrations";
+import { mysqlInternalMigrations } from "./dialect/mysql.internal-migrations";
+import { sqliteInternalMigrations } from "./dialect/sqlite.internal-migrations";
 import { executeMigration, type CompiledMigration } from "./executor";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { Kysely } from "kysely";
@@ -20,6 +29,25 @@ export interface ExecuteOptions {
    * If not specified, uses the value from PreparedMigrationsConfig.
    */
   updateVersionInMigration?: boolean;
+
+  /**
+   * Internal migration version currently stored in the database.
+   * If omitted, internal migrations are skipped.
+   */
+  internalFromVersion?: number;
+
+  /**
+   * Override the target internal migration version.
+   * Defaults to the number of configured internal migrations.
+   */
+  internalToVersion?: number;
+}
+
+export interface PrepareMigrationsOptions {
+  /**
+   * Override internal migrations (useful for testing).
+   */
+  internalMigrations?: InternalMigration[];
 }
 
 /**
@@ -91,6 +119,10 @@ export interface PreparedMigrationsConfig {
   resolver?: NamingResolver;
   driver?: SqlDriverAdapter;
   /**
+   * Internal migrations for this dialect. Defaults to the built-in list.
+   */
+  internalMigrations?: InternalMigration[];
+  /**
    * Whether to automatically update the schema version in the database after migration.
    * Defaults to true. Can be overridden per execution via ExecuteOptions.
    */
@@ -108,6 +140,7 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
     driverConfig,
     sqliteStorageMode,
     driver,
+    internalMigrations: internalMigrationsOverride,
     updateVersionInMigration: defaultUpdateVersion = true,
   } = config;
 
@@ -117,6 +150,13 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
   // Create the appropriate SQL generator for the database
   const generator = createSQLGenerator(database, coldKysely, driverConfig, sqliteStorageMode);
 
+  const internalMigrations = internalMigrationsOverride ?? getDefaultInternalMigrations(database);
+  const internalContext: InternalMigrationContext = {
+    schema,
+    namespace,
+    resolver: config.resolver,
+  };
+
   /**
    * Internal method to compile a migration for a given version range.
    */
@@ -124,6 +164,8 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
     fromVersion: number,
     toVersion: number,
     updateVersionInMigration: boolean,
+    internalFromVersion: number | undefined,
+    internalToVersion: number | undefined,
   ): CompiledMigration {
     // Validate version numbers
     if (fromVersion < 0) {
@@ -144,13 +186,41 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
     // Phase 1: Generate migration operations from schema
     const operations = generateMigrationFromSchema(schema, fromVersion, toVersion);
 
+    // Phase 1b: Append internal migrations (if provided)
+    const internalRange = resolveInternalMigrationRange(
+      internalMigrations,
+      internalFromVersion,
+      internalToVersion,
+    );
+    const internalOperations = internalRange
+      ? buildInternalMigrationOperations(
+          internalMigrations,
+          internalContext,
+          internalRange.fromVersion,
+          internalRange.toVersion,
+        )
+      : [];
+
     // Phase 2: Compile operations to SQL
-    const statements = generator.compile(operations, config.resolver);
+    const statements = generator.compile([...operations, ...internalOperations], config.resolver);
 
     // Add version update SQL if requested
     if (updateVersionInMigration && toVersion !== fromVersion) {
       const versionUpdate = generator.generateVersionUpdateSQL(namespace, fromVersion, toVersion);
       statements.push(versionUpdate);
+    }
+
+    if (
+      updateVersionInMigration &&
+      internalRange &&
+      internalRange.toVersion !== internalRange.fromVersion
+    ) {
+      const internalVersionUpdate = generator.generateInternalMigrationUpdateSQL(
+        namespace,
+        internalRange.fromVersion,
+        internalRange.toVersion,
+      );
+      statements.push(internalVersionUpdate);
     }
 
     return {
@@ -177,7 +247,13 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
       const targetVersion = toVersion ?? schema.version;
 
       // Compile the migration (this will validate the version numbers)
-      const migration = compile(fromVersion, targetVersion, updateVersionInMigration);
+      const migration = compile(
+        fromVersion,
+        targetVersion,
+        updateVersionInMigration,
+        options?.internalFromVersion,
+        options?.internalToVersion,
+      );
 
       // Execute the migration
       await executeMigration(driverToUse, migration);
@@ -187,7 +263,13 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
       const updateVersionInMigration = options?.updateVersionInMigration ?? defaultUpdateVersion;
       const targetVersion = toVersion ?? schema.version;
 
-      const migration = compile(fromVersion, targetVersion, updateVersionInMigration);
+      const migration = compile(
+        fromVersion,
+        targetVersion,
+        updateVersionInMigration,
+        options?.internalFromVersion,
+        options?.internalToVersion,
+      );
       return migration.statements.map((stmt) => stmt.sql + ";").join("\n\n");
     },
 
@@ -195,7 +277,13 @@ export function createPreparedMigrations(config: PreparedMigrationsConfig): Prep
       const updateVersionInMigration = options?.updateVersionInMigration ?? defaultUpdateVersion;
       const targetVersion = toVersion ?? schema.version;
 
-      return compile(fromVersion, targetVersion, updateVersionInMigration);
+      return compile(
+        fromVersion,
+        targetVersion,
+        updateVersionInMigration,
+        options?.internalFromVersion,
+        options?.internalToVersion,
+      );
     },
   };
 }
@@ -217,5 +305,16 @@ function createSQLGenerator(
       return new PostgresSQLGenerator(coldKysely, database, driverConfig, sqliteStorageMode);
     case "mysql":
       return new MySQLSQLGenerator(coldKysely, database, driverConfig, sqliteStorageMode);
+  }
+}
+
+function getDefaultInternalMigrations(database: SupportedDatabase): InternalMigration[] {
+  switch (database) {
+    case "sqlite":
+      return sqliteInternalMigrations;
+    case "postgresql":
+      return postgresInternalMigrations;
+    case "mysql":
+      return mysqlInternalMigrations;
   }
 }

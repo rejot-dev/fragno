@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
+import type { InternalMigration } from "../../../migration-engine/internal-migrations";
 import { createColdKysely } from "./cold-kysely";
 import { SQLiteSQLGenerator } from "./dialect/sqlite";
 import { PostgresSQLGenerator } from "./dialect/postgres";
@@ -746,5 +747,52 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(
       `"create table "users_test" ("id" varchar(30) not null unique, "name" text not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"`,
     );
+  });
+
+  test("includes internal migrations after schema operations", () => {
+    const internalMigrations: InternalMigration[] = [
+      ({ schema, resolver }) => {
+        const statements: string[] = [];
+        for (const table of Object.values(schema.tables)) {
+          const versionColumn = table.getVersionColumn();
+          const tableName = resolver ? resolver.getTableName(table.name) : table.name;
+          const columnName = resolver
+            ? resolver.getColumnName(table.name, versionColumn.name)
+            : versionColumn.name;
+          const schemaName = resolver?.getSchemaName();
+          const qualifiedTable = schemaName ? `"${schemaName}"."${tableName}"` : `"${tableName}"`;
+
+          statements.push(
+            `alter table ${qualifiedTable} alter column "${columnName}" type text using ("${columnName}"::text)`,
+          );
+        }
+        return statements;
+      },
+    ];
+
+    const prepared = createPreparedMigrations({
+      schema: testSchema,
+      namespace: "test",
+      database: "postgresql",
+      resolver,
+      internalMigrations,
+    });
+
+    const sql = prepared.getSQL(0, testSchema.version, { internalFromVersion: 0 });
+
+    expect(sql).toContain(
+      `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
+    );
+    expect(sql).toContain("test.internal_migration_version");
+
+    const alterIndex = sql.indexOf(
+      `alter table "users_test" alter column "_version" type text using ("_version"::text)`,
+    );
+    const schemaVersionIndex = sql.indexOf("test.schema_version");
+    const internalVersionIndex = sql.indexOf("test.internal_migration_version");
+
+    expect(alterIndex).toBeGreaterThan(-1);
+    expect(schemaVersionIndex).toBeGreaterThan(alterIndex);
+    expect(internalVersionIndex).toBeGreaterThan(schemaVersionIndex);
   });
 });

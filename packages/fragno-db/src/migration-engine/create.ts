@@ -1,6 +1,12 @@
 import { type MigrationOperation } from "./shared";
 import type { AnySchema } from "../schema/create";
 import { generateMigrationFromSchema as defaultGenerateMigrationFromSchema } from "./auto-from-schema";
+import {
+  buildInternalMigrationOperations,
+  resolveInternalMigrationRange,
+  type InternalMigration,
+  type InternalMigrationContext,
+} from "./internal-migrations";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -16,6 +22,15 @@ export interface MigrateOptions {
    * We don't recommend to disable it other than testing purposes.
    */
   updateSettings?: boolean;
+  /**
+   * Internal migration version currently stored in the database.
+   * If omitted, internal migrations are skipped unless an internal getVersion is provided.
+   */
+  internalFromVersion?: number;
+  /**
+   * Override the target internal migration version.
+   */
+  internalToVersion?: number;
 }
 
 export interface PreparedMigration {
@@ -68,6 +83,32 @@ export interface MigrationEngineOptions {
     ) => Awaitable<MigrationOperation[]>;
   };
 
+  internal?: {
+    /**
+     * Internal migration list for this dialect.
+     */
+    migrations: InternalMigration[];
+
+    /**
+     * Get current internal migration version from database (0 if not initialized)
+     */
+    getVersion: () => Promise<number>;
+
+    /**
+     * Update internal migration version in settings table.
+     */
+    updateSettingsInMigration: (
+      fromVersion: number,
+      toVersion: number,
+    ) => Awaitable<MigrationOperation[]>;
+
+    /**
+     * Override namespace for internal migration keys.
+     * Defaults to schema.name when omitted.
+     */
+    namespace?: string;
+  };
+
   sql?: {
     toSql: (operations: MigrationOperation[]) => string;
   };
@@ -109,6 +150,7 @@ export function createMigrator({
   executor,
   sql: sqlConfig,
   transformers = [],
+  internal,
 }: MigrationEngineOptions): Migrator {
   const instance: Migrator = {
     getVersion() {
@@ -118,7 +160,12 @@ export function createMigrator({
       return this.prepareMigrationTo(targetSchema.version, options);
     },
     async prepareMigrationTo(toVersion, options = {}) {
-      const { updateSettings: updateVersion = true, fromVersion: providedFromVersion } = options;
+      const {
+        updateSettings: updateVersion = true,
+        fromVersion: providedFromVersion,
+        internalFromVersion: providedInternalFromVersion,
+        internalToVersion: providedInternalToVersion,
+      } = options;
 
       // Use provided fromVersion if available, otherwise query the database
       const fromVersion = providedFromVersion ?? (await settings.getVersion());
@@ -149,7 +196,37 @@ export function createMigrator({
         );
       }
 
-      if (toVersion === fromVersion) {
+      let internalRange:
+        | {
+            fromVersion: number;
+            toVersion: number;
+            context: InternalMigrationContext;
+          }
+        | undefined;
+
+      if (internal) {
+        const internalFromVersion = providedInternalFromVersion ?? (await internal.getVersion());
+        const resolvedRange = resolveInternalMigrationRange(
+          internal.migrations,
+          internalFromVersion,
+          providedInternalToVersion,
+        );
+
+        if (resolvedRange) {
+          internalRange = {
+            ...resolvedRange,
+            context: {
+              schema: targetSchema,
+              namespace: internal.namespace ?? targetSchema.name,
+            },
+          };
+        }
+      }
+
+      if (
+        toVersion === fromVersion &&
+        (!internalRange || internalRange.fromVersion === internalRange.toVersion)
+      ) {
         // Already at target version, return empty migration
         return {
           operations: [],
@@ -179,12 +256,39 @@ export function createMigrator({
         },
       };
 
-      let operations = updateVersion
-        ? [
-            ...(await context.auto()),
+      const internalOperations =
+        internal && internalRange
+          ? buildInternalMigrationOperations(
+              internal.migrations,
+              internalRange.context,
+              internalRange.fromVersion,
+              internalRange.toVersion,
+            )
+          : [];
+
+      let operations = await context.auto();
+      if (internalOperations.length > 0) {
+        operations = [...operations, ...internalOperations];
+      }
+
+      if (updateVersion) {
+        if (fromVersion !== toVersion) {
+          operations = [
+            ...operations,
             ...(await settings.updateSettingsInMigration(fromVersion, toVersion)),
-          ]
-        : await context.auto();
+          ];
+        }
+
+        if (internal && internalRange && internalRange.fromVersion !== internalRange.toVersion) {
+          operations = [
+            ...operations,
+            ...(await internal.updateSettingsInMigration(
+              internalRange.fromVersion,
+              internalRange.toVersion,
+            )),
+          ];
+        }
+      }
 
       for (const transformer of transformers) {
         if (!transformer.afterAll) {
