@@ -1689,6 +1689,9 @@ importers:
       '@paralleldrive/cuid2':
         specifier: ^2.3.1
         version: 2.3.1
+      '@standard-schema/spec':
+        specifier: ^1.1.0
+        version: 1.1.0
       kysely:
         specifier: ^0.28.10
         version: 0.28.10
