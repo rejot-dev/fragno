@@ -14,6 +14,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-work";
 import type { FragnoId } from "../schema/create";
+import { getAdapterRegistry } from "../registry/adapter-registry";
 
 describe("Internal Fragment", () => {
   let sqliteDatabase: SQLite.Database;
@@ -21,7 +22,10 @@ describe("Internal Fragment", () => {
   let fragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
-    return instantiate(internalFragmentDef).withConfig({}).withOptions(options).build();
+    return instantiate(internalFragmentDef)
+      .withConfig({ registry: getAdapterRegistry(options.databaseAdapter) })
+      .withOptions(options)
+      .build();
   }
 
   beforeAll(async () => {
@@ -162,7 +166,10 @@ describe("Hook Service", () => {
   let fragment: ReturnType<typeof instantiateFragment>;
 
   function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
-    return instantiate(internalFragmentDef).withConfig({}).withOptions(options).build();
+    return instantiate(internalFragmentDef)
+      .withConfig({ registry: getAdapterRegistry(options.databaseAdapter) })
+      .withOptions(options)
+      .build();
   }
 
   beforeAll(async () => {

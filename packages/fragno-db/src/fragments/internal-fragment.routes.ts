@@ -1,5 +1,11 @@
 import { defineRoutes, defaultFragnoRuntime } from "@fragno-dev/core";
-import { ADAPTER_IDENTITY_KEY, SETTINGS_NAMESPACE, internalFragmentDef } from "./internal-fragment";
+import {
+  ADAPTER_IDENTITY_KEY,
+  SETTINGS_NAMESPACE,
+  internalFragmentDef,
+  internalSchema,
+} from "./internal-fragment";
+import { resolveAdapterIdentity } from "../registry/adapter-registry";
 
 type AdapterIdentityResponse = {
   id: string;
@@ -8,7 +14,7 @@ type AdapterIdentityResponse = {
 
 type InternalDescribeResponse = {
   adapterIdentity: AdapterIdentityResponse;
-  fragment: { name: string; mountRoute: string } | null;
+  fragments: Array<{ name: string; mountRoute: string }>;
   schemas: Array<{
     name: string;
     namespace: string | null;
@@ -35,38 +41,28 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
       method: "GET",
       path: "/",
       handler: async function (_input, { json }) {
-        const readIdentity = async (): Promise<string | undefined> =>
-          this.handlerTx()
-            .withServiceCalls(
-              () =>
-                [services.settingsService.get(SETTINGS_NAMESPACE, ADAPTER_IDENTITY_KEY)] as const,
-            )
-            .transform(({ serviceResult: [result] }) => result?.value)
-            .execute();
+        const registry = config.registry;
+        if (!registry) {
+          return json(
+            {
+              error: {
+                code: "REGISTRY_UNAVAILABLE",
+                message: "Adapter registry is not configured.",
+              },
+            } satisfies InternalDescribeError,
+            { status: 500 },
+          );
+        }
 
         let identity: string | undefined;
         try {
-          identity = await readIdentity();
-          if (!identity) {
-            const generated = defaultFragnoRuntime.random.uuid();
-            try {
-              await this.handlerTx()
-                .withServiceCalls(
-                  () =>
-                    [
-                      services.settingsService.set(
-                        SETTINGS_NAMESPACE,
-                        ADAPTER_IDENTITY_KEY,
-                        generated,
-                      ),
-                    ] as const,
-                )
-                .execute();
-            } catch {
-              // Ignore write errors and fall through to re-read.
-            }
-            identity = await readIdentity();
-          }
+          identity = await resolveAdapterIdentity({
+            handlerTx: () => this.handlerTx(),
+            settingsService: services.settingsService,
+            randomUuid: () => defaultFragnoRuntime.random.uuid(),
+            settingsNamespace: SETTINGS_NAMESPACE,
+            identityKey: ADAPTER_IDENTITY_KEY,
+          });
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           return json(
@@ -93,10 +89,14 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
           );
         }
 
+        const schemas = registry
+          .listSchemas()
+          .filter((schemaInfo) => schemaInfo.name !== internalSchema.name);
+
         const response: InternalDescribeResponse = {
           adapterIdentity: { id: identity, source: "settings" },
-          fragment: config.parent ?? null,
-          schemas: config.schemas ?? [],
+          fragments: registry.listFragments(),
+          schemas,
           routes: {
             internal: "/_internal",
             outbox: config.outbox?.enabled ? "/_internal/outbox" : undefined,

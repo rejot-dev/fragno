@@ -11,6 +11,7 @@ import {
 import { FragnoId } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
+import type { AdapterRegistry } from "../registry/adapter-registry";
 import {
   internalSchema,
   SETTINGS_NAMESPACE,
@@ -20,16 +21,7 @@ import {
 export const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
 
 export type InternalFragmentConfig = {
-  parent?: {
-    name: string;
-    mountRoute: string;
-  };
-  schemas?: Array<{
-    name: string;
-    namespace: string | null;
-    version: number;
-    tables: string[];
-  }>;
+  registry?: AdapterRegistry;
   outbox?: {
     enabled: boolean;
   };
