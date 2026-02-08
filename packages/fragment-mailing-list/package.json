@@ -1,7 +1,7 @@
 {
   "name": "@fragno-dev/fragment-mailing-list",
   "description": "A Fragno fragment",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "files": [
     "dist"
   ],

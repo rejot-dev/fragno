@@ -1,5 +1,11 @@
 # @fragno-dev/unplugin-fragno
 
+## 0.0.8
+
+### Patch Changes
+
+- 15e3263: feat(db): require schema names and support namespace-aware SQL naming
+
 ## 0.0.7
 
 ### Patch Changes

@@ -1,5 +1,40 @@
 # @fragno-dev/db
 
+## 0.3.0
+
+### Minor Changes
+
+- 8e9b6cd: feat(db,cli): add SqlAdapter and explicit schema output formats
+
+  BREAKING CHANGE: The database adapter API now requires SqlAdapter with explicit schema output
+  formats.
+
+### Patch Changes
+
+- dbbbf60: fix: ensure unit-of-work after-phase hooks run on errors
+- 3e07799: fix: allow durable hook processing to bypass wrapper adapters and widen drain helpers
+- 20a98f8: feat: expose internal outbox route under /\_internal when outbox is enabled
+- 1902f30: fix(db): normalize postgres timestamp decoding for timezone-less values.
+- 15e3263: feat(db): require schema names and support namespace-aware SQL naming
+- 208cb8e: feat: add runtime validation for table inserts
+- 33f671b: fix(db): add dbNow value support, cursor pagination, and retry conflict handling
+- fc803fc: fix(db): ensure Drizzle SQLite external ids are enforced as unique indexes.
+- 0628c1f: fix(db): requeue durable hooks stuck in processing after a timeout
+- 7e1eb47: feat(db): add processAt scheduling and reusable durable hooks dispatchers.
+- 1dc4e7f: fix: disable handlerTx retries when no retrieve ops and reject explicit retry policies
+- 3c9fbac: fix(db): align GenericSQL migration defaults and constraint names with Drizzle output.
+- a5ead11: feat(db): add Prisma adapter and SQLite Prisma profile support.
+- c4d4cc6: feat: default to sqlite adapter when databaseAdapter is omitted (better-sqlite3
+  installed)
+- d4baad3: fix: explicit databaseNamespace values are now used as-is without sanitization; default
+  namespace (from schema.name) is still sanitized
+- 548bf37: feat(db): expose handlerTx in durable hook context and deprecate direct query engines.
+- 3041732: fix: run durable hooks off-request and relax pending task leases
+- 7e179d1: feat(db): remove workflows dispatcher packages in favor of db dispatchers.
+- 0013fa6: fix(db): store outbox versionstamps as strings.
+- 69b9a79: fix: harden durable hook claiming and wake scheduling
+- 5cef16e: feat(db,test): add SQL outbox support and adapter testing configuration.
+
 ## 0.2.2
 
 ### Patch Changes
