@@ -1,7 +1,11 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createId } from "../id";
 import type { DbNow } from "../query/db-now";
+import type { Prettify } from "../util/types";
+import { createTableStandardSchemaProps, createTableValidator } from "./validator";
 
 export { generateId } from "./generate-id";
+export { FragnoDbValidationError } from "./validator";
 
 export type AnySchema = Schema<Record<string, AnyTable>>;
 
@@ -124,16 +128,56 @@ export interface Relation<
   on: [string, string][];
 }
 
+type PickNullable<T> = {
+  [P in keyof T as null extends T[P] ? P : never]: T[P];
+};
+
+type PickNotNullable<T> = {
+  [P in keyof T as null extends T[P] ? never : P]: T[P];
+};
+
+type RawInsertValuesFromColumns<TColumns extends Record<string, AnyColumn>> = {
+  [K in keyof TColumns as string extends K ? never : K]: TColumns[K]["$in"];
+};
+
+type TableInsertValuesFromColumns<TColumns extends Record<string, AnyColumn>> = Prettify<
+  Partial<PickNullable<RawInsertValuesFromColumns<TColumns>>> &
+    PickNotNullable<RawInsertValuesFromColumns<TColumns>>
+>;
+
+export type TableInsertValues<T extends AnyTable> = TableInsertValuesFromColumns<T["columns"]>;
+
+export type TableUnknownKeysMode = "strip" | "strict";
+
+export type TableValidationOptions = {
+  unknownKeys?: TableUnknownKeysMode;
+};
+
 export interface Table<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   TRelations extends Record<string, AnyRelation> = Record<string, AnyRelation>,
   TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
+  /**
+   * Standard Schema-compatible validator for insert values.
+   */
+  "~standard": StandardSchemaV1.Props<
+    TableInsertValuesFromColumns<TColumns>,
+    TableInsertValuesFromColumns<TColumns>
+  >;
   name: string;
 
   columns: TColumns;
   relations: TRelations;
   indexes: TIndexes;
+
+  /**
+   * Validate insert values at runtime.
+   */
+  validate: (
+    value: unknown,
+    options?: TableValidationOptions,
+  ) => TableInsertValuesFromColumns<TColumns>;
 
   /**
    * Get column by name
@@ -582,6 +626,8 @@ export class FragnoReference {
   }
 }
 
+const validationClasses = { FragnoId, FragnoReference };
+
 type RelationType = "one" | "many";
 
 export class TableBuilder<
@@ -729,7 +775,7 @@ export class TableBuilder<
       (this.#columns as Record<string, AnyColumn>)["_version"] = col;
     }
 
-    const table: Table<TColumns, TRelations, TIndexes> = {
+    const table = {
       name: this.#name,
       columns: this.#columns,
       relations: this.#relations,
@@ -746,7 +792,10 @@ export class TableBuilder<
       getVersionColumn: () => {
         return versionCol!;
       },
-    };
+    } as Table<TColumns, TRelations, TIndexes>;
+
+    table["~standard"] = createTableStandardSchemaProps(table, validationClasses);
+    table.validate = createTableValidator(table, validationClasses);
 
     // Set table reference and find special columns
     for (const k in this.#columns) {
@@ -1322,10 +1371,15 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
             clonedColumns[colName] = clonedCol;
           }
 
-          cloneTables[k] = {
+          const clonedTable = {
             ...v,
             columns: clonedColumns,
-          };
+          } as AnyTable;
+
+          clonedTable["~standard"] = createTableStandardSchemaProps(clonedTable, validationClasses);
+          clonedTable.validate = createTableValidator(clonedTable, validationClasses);
+
+          cloneTables[k] = clonedTable;
         }
 
         const clonedSchema: Schema<TTables> = {
