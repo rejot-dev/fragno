@@ -6,7 +6,11 @@ import {
 } from "../adapters/adapters";
 import { generateDrizzleSchema } from "../schema-output/drizzle";
 import { generatePrismaSchema } from "../schema-output/prisma";
-import { internalFragmentDef, getSchemaVersionFromDatabase } from "../fragments/internal-fragment";
+import {
+  internalFragmentDef,
+  getSchemaVersionFromDatabase,
+  getInternalMigrationVersionFromDatabase,
+} from "../fragments/internal-fragment";
 import { internalSchema, SETTINGS_TABLE_NAME } from "../fragments/internal-fragment.schema";
 import { instantiate } from "@fragno-dev/core";
 import { supportedDatabases, type SupportedDatabase } from "../adapters/generic-sql/driver-config";
@@ -138,6 +142,10 @@ export async function generateSchemaArtifacts<
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
+  const settingsInternalVersion = await getInternalMigrationVersionFromDatabase(
+    internalFragment,
+    "",
+  );
 
   const generatedFiles: GenerationInternalResult[] = [];
 
@@ -149,6 +157,9 @@ export async function generateSchemaArtifacts<
   const settingsSql = settingsPreparedMigrations.getSQL(
     settingsSourceVersion,
     settingsTargetVersion,
+    {
+      internalFromVersion: settingsInternalVersion,
+    },
   );
 
   if (settingsSql.trim()) {
@@ -177,11 +188,18 @@ export async function generateSchemaArtifacts<
     }
 
     const preparedMigrations = dbAdapter.prepareMigrations(db.schema, db.namespace);
+    const namespaceKey = db.namespace ?? db.schema.name;
     const targetVersion = options?.toVersion ?? db.schema.version;
     const sourceVersion = options?.fromVersion ?? 0;
 
     // Generate migration from source to target version
-    const sql = preparedMigrations.getSQL(sourceVersion, targetVersion);
+    const internalFromVersion =
+      options?.fromVersion === undefined || sourceVersion === 0
+        ? 0
+        : await getInternalMigrationVersionFromDatabase(internalFragment, namespaceKey);
+    const sql = preparedMigrations.getSQL(sourceVersion, targetVersion, {
+      internalFromVersion,
+    });
 
     // If no migrations needed, skip this fragment
     if (sql.trim()) {
@@ -266,30 +284,39 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     .build();
 
   const settingsSourceVersion = await getSchemaVersionFromDatabase(internalFragment, "");
+  const settingsInternalVersion = await getInternalMigrationVersionFromDatabase(
+    internalFragment,
+    "",
+  );
 
   // Internal fragment uses empty-string namespace: no table suffix, version key is ".schema_version"
   const settingsPreparedMigrations = adapter.prepareMigrations(internalSchema, "");
   const settingsTargetVersion = internalSchema.version;
 
-  if (settingsSourceVersion < settingsTargetVersion) {
-    const compiledMigration = settingsPreparedMigrations.compile(
-      settingsSourceVersion,
-      settingsTargetVersion,
-      { updateVersionInMigration: true },
+  if (settingsSourceVersion > settingsTargetVersion) {
+    throw new Error(
+      `Cannot migrate internal settings backwards: current version (${settingsSourceVersion}) > target version (${settingsTargetVersion})`,
     );
+  }
 
-    if (compiledMigration.statements.length > 0) {
-      migrationsToExecute.push({
-        namespace: null,
-        namespaceKey: SETTINGS_TABLE_NAME,
-        fromVersion: settingsSourceVersion,
-        toVersion: settingsTargetVersion,
-        execute: () =>
-          settingsPreparedMigrations.execute(settingsSourceVersion, settingsTargetVersion, {
-            updateVersionInMigration: true,
-          }),
-      });
-    }
+  const compiledSettingsMigration = settingsPreparedMigrations.compile(
+    settingsSourceVersion,
+    settingsTargetVersion,
+    { updateVersionInMigration: true, internalFromVersion: settingsInternalVersion },
+  );
+
+  if (compiledSettingsMigration.statements.length > 0) {
+    migrationsToExecute.push({
+      namespace: null,
+      namespaceKey: SETTINGS_TABLE_NAME,
+      fromVersion: settingsSourceVersion,
+      toVersion: settingsTargetVersion,
+      execute: () =>
+        settingsPreparedMigrations.execute(settingsSourceVersion, settingsTargetVersion, {
+          updateVersionInMigration: true,
+          internalFromVersion: settingsInternalVersion,
+        }),
+    });
   }
 
   // 2. Prepare fragment migrations (sorted alphabetically)
@@ -304,23 +331,34 @@ export async function executeMigrations<const TDatabases extends FragnoDatabase<
     const currentVersion = await getSchemaVersionFromDatabase(internalFragment, namespaceKey);
     const targetVersion = fragnoDb.schema.version;
 
-    if (currentVersion < targetVersion) {
-      const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion, {
-        updateVersionInMigration: true,
-      });
+    if (currentVersion > targetVersion) {
+      throw new Error(
+        `Cannot migrate backwards: current version (${currentVersion}) > target version (${targetVersion})`,
+      );
+    }
 
-      if (compiledMigration.statements.length > 0) {
-        migrationsToExecute.push({
-          namespace: fragnoDb.namespace,
-          namespaceKey,
-          fromVersion: currentVersion,
-          toVersion: targetVersion,
-          execute: () =>
-            preparedMigrations.execute(currentVersion, targetVersion, {
-              updateVersionInMigration: true,
-            }),
-        });
-      }
+    const internalFromVersion = await getInternalMigrationVersionFromDatabase(
+      internalFragment,
+      namespaceKey,
+    );
+
+    const compiledMigration = preparedMigrations.compile(currentVersion, targetVersion, {
+      updateVersionInMigration: true,
+      internalFromVersion,
+    });
+
+    if (compiledMigration.statements.length > 0) {
+      migrationsToExecute.push({
+        namespace: fragnoDb.namespace,
+        namespaceKey,
+        fromVersion: currentVersion,
+        toVersion: targetVersion,
+        execute: () =>
+          preparedMigrations.execute(currentVersion, targetVersion, {
+            updateVersionInMigration: true,
+            internalFromVersion,
+          }),
+      });
     }
   }
 
