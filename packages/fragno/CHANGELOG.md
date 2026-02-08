@@ -1,5 +1,56 @@
 # @fragno-dev/core
 
+## 0.2.0
+
+### Minor Changes
+
+- 301e2f8: pathParams in RequestInputContext now returns decoded values
+
+### Patch Changes
+
+- f569301: feat(vue): add `createStore` support to Vue client, matching React client functionality.
+  The `useFragno` hook now handles `FragnoStoreData` objects created via `client.createStore()` and
+  transforms them into Vue composables that return reactive store values.
+- 20a98f8: feat: expose internal outbox route under /\_internal when outbox is enabled
+- 7e1eb47: feat(db): add processAt scheduling and reusable durable hooks dispatchers.
+- 5f6f90e: feat: add FormData file upload support for routes
+
+  Routes can now accept file uploads via FormData by setting `contentType: "multipart/form-data"` on
+  the route definition. The server validates incoming Content-Type headers and rejects mismatched
+  requests with 415 Unsupported Media Type.
+
+  **Route definition:**
+
+  ```typescript
+  defineRoute({
+    method: "POST",
+    path: "/upload",
+    contentType: "multipart/form-data",
+    async handler(ctx, res) {
+      const formData = ctx.formData();
+      const file = formData.get("file") as File;
+      return res.json({ filename: file.name });
+    },
+  });
+  ```
+
+  **New APIs:**
+  - `ctx.formData()` - Access the request body as FormData
+  - `ctx.isFormData()` - Check if the request body is FormData
+  - `RouteContentType` - Type for the `contentType` field ("application/json" |
+    "multipart/form-data")
+
+  **Client-side:** The client automatically detects FormData/File in request bodies and sends them
+  with the correct Content-Type header (letting the browser set the multipart boundary).
+
+- 2eafef4: fix(core): handle ReadableStream request bodies for fetch and validation.
+- 7d7b2b9: fix(core): run internal fragment middleware and type internal routes in ifMatchesRoute
+- a79e90d: feat: add trace recording support to model checker runs
+- 7c60341: fix(core): make browser stubs proxy-safe for extra chaining methods.
+- afb06a4: feat(core,wf): add FragnoRuntime defaults and require runtime in workflows config.
+- 53e5f97: fix(core,fragment-upload): honor client mount routes and avoid upload config crashes.
+- c5fd7b3: feat(core): support application/octet-stream request bodies
+
 ## 0.1.11
 
 ### Patch Changes

@@ -1,9 +1,15 @@
-# @fragno-dev/fragment-mailing-list
+# @fragno-dev/fragment-upload
 
-## 0.0.5
+## 0.1.1
 
 ### Patch Changes
 
+- d35d8de: feat(fragment-upload): add upload schema and file key utilities.
+- 45e7e6d: feat: add s3-compatible and R2 storage adapters for fragment-upload
+- 53e5f97: fix(core,fragment-upload): honor client mount routes and avoid upload config crashes.
+- 1db35f9: fix(fragment-upload): invalidate file and upload queries after mutations.
+- 51b0477: feat(fragment-upload): add storage adapter types and config defaults.
+- 5b118c9: fix: update upload retry semantics and file-on-success behavior
 - Updated dependencies [f569301]
 - Updated dependencies [dbbbf60]
 - Updated dependencies [3e07799]
@@ -38,43 +44,3 @@
 - Updated dependencies [5cef16e]
   - @fragno-dev/core@0.2.0
   - @fragno-dev/db@0.3.0
-
-## 0.0.4
-
-### Patch Changes
-
-- Updated dependencies [aca5990]
-- Updated dependencies [f150db9]
-- Updated dependencies [0b373fc]
-- Updated dependencies [fe27e33]
-- Updated dependencies [9753f15]
-  - @fragno-dev/db@0.2.2
-
-## 0.0.3
-
-### Patch Changes
-
-- Updated dependencies [aecfa70]
-- Updated dependencies [3faac77]
-- Updated dependencies [01a9c6d]
-- Updated dependencies [5028ad3]
-- Updated dependencies [20d824a]
-  - @fragno-dev/db@0.2.1
-
-## 0.0.2
-
-### Patch Changes
-
-- Updated dependencies [8429960]
-- Updated dependencies [4d897c9]
-- Updated dependencies [a46b59c]
-- Updated dependencies [bc072dd]
-- Updated dependencies [e46d2a7]
-- Updated dependencies [fcce048]
-- Updated dependencies [147bdd6]
-- Updated dependencies [f9ae2d3]
-- Updated dependencies [f3b7084]
-- Updated dependencies [c3870ec]
-- Updated dependencies [75e298f]
-  - @fragno-dev/db@0.2.0
-  - @fragno-dev/core@0.1.11
