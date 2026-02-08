@@ -944,7 +944,7 @@ export function instantiateFragment<
     }
   }
 
-  // 3. Calculate mount route early so linked fragments can reference it
+  // 3. Calculate mount route early so internal routes can reference it
   const mountRoute = getMountRoute({
     name: definition.name,
     mountRoute: options.mountRoute,
@@ -1014,7 +1014,7 @@ export function instantiateFragment<
     }
   }
 
-  // 7. Call namedServices factories (with access to private services including linked fragment services)
+  // 7. Call namedServices factories (with access to private services)
   const namedServices = {} as TServices;
   if (definition.namedServices) {
     for (const [serviceName, factory] of Object.entries(definition.namedServices)) {
