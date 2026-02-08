@@ -385,10 +385,24 @@ export async function createDrizzlePgliteAdapter(
 
     const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
 
+    const useTruncate = adapter.adapterMetadata?.databaseType === "postgresql";
+
     // Truncate all tables by deleting rows
     for (const { schema, namespace } of schemasToTruncate) {
-      const tableNames = Object.keys(schema.tables).slice().reverse();
-      for (const tableName of tableNames) {
+      const tableNames = Object.keys(schema.tables);
+      if (useTruncate) {
+        const qualifiedTables = tableNames.map((tableName) => {
+          const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
+          const schemaName = resolveSchemaName(adapter, namespace);
+          return schemaName ? `"${schemaName}"."${physicalTableName}"` : `"${physicalTableName}"`;
+        });
+        if (qualifiedTables.length > 0) {
+          await drizzleDb.execute(`TRUNCATE ${qualifiedTables.join(", ")} CASCADE`);
+        }
+        continue;
+      }
+
+      for (const tableName of tableNames.slice().reverse()) {
         const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
         const schemaName = resolveSchemaName(adapter, namespace);
         const qualifiedTable = schemaName

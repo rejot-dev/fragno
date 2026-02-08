@@ -4,7 +4,7 @@ import type {
   FragnoPublicConfig,
   AnyFragnoInstantiatedFragment,
 } from "@fragno-dev/core";
-import { FragmentDefinitionBuilder, instantiate } from "@fragno-dev/core";
+import { FragmentDefinitionBuilder } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
   type DatabaseServiceContext,
@@ -13,21 +13,12 @@ import {
   type FragnoPublicConfigWithDatabase,
   type DatabaseRequestStorage,
 } from "./db-fragment-definition-builder";
-import { internalFragmentDef, type InternalFragmentInstance } from "./fragments/internal-fragment";
 import type { HooksMap } from "./hooks/hooks";
-import { getRegistryForAdapterSync } from "./internal/adapter-registry";
-
-function resolveDatabaseNamespace(
-  options: FragnoPublicConfigWithDatabase,
-  schema: AnySchema,
-): string | null {
-  const hasOverride = options.databaseNamespace !== undefined;
-  return hasOverride ? (options.databaseNamespace ?? null) : schema.name;
-}
+import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
 
 /**
  * Helper to add database support to a fragment builder.
- * Automatically links the internal fragment and adds ImplicitDatabaseDependencies to the TDeps type.
+ * Registers the schema with the adapter registry and adds ImplicitDatabaseDependencies to the TDeps type.
  *
  * @example
  * ```typescript
@@ -81,7 +72,7 @@ export function withDatabase<TSchema extends AnySchema>(
   HooksMap,
   DatabaseServiceContext<HooksMap>,
   DatabaseHandlerContext,
-  TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
+  TLinkedFragments
 > {
   return <
     TConfig,
@@ -109,45 +100,6 @@ export function withDatabase<TSchema extends AnySchema>(
       TLinkedFragments
     >,
   ) => {
-    const builderWithInternal = builder.withLinkedFragment(
-      "_fragno_internal",
-      ({ options, parent }) => {
-        const namespace = resolveDatabaseNamespace(
-          options as FragnoPublicConfigWithDatabase,
-          schema,
-        );
-        const schemaInfo = {
-          name: schema.name,
-          namespace,
-          version: schema.version,
-          tables: Object.keys(schema.tables).sort(),
-        };
-        const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
-        if (!dryRun) {
-          const registry = getRegistryForAdapterSync(
-            (options as FragnoPublicConfigWithDatabase).databaseAdapter,
-          );
-          registry.registerSchema(schemaInfo, parent);
-        }
-
-        // Cast is safe: by the time this callback is invoked during fragment instantiation,
-        // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
-        if (dryRun) {
-          return instantiate(internalFragmentDef)
-            .withOptions({
-              ...(options as FragnoPublicConfigWithDatabase),
-              databaseNamespace: null,
-            })
-            .build();
-        }
-
-        const registry = getRegistryForAdapterSync(
-          (options as FragnoPublicConfigWithDatabase).databaseAdapter,
-        );
-        return registry.internalFragment;
-      },
-    );
-
     // Cast is safe: we're creating a DatabaseFragmentDefinitionBuilder which internally uses
     // FragnoPublicConfigWithDatabase, but the input builder uses FragnoPublicConfig.
     // The database builder's build() method will enforce FragnoPublicConfigWithDatabase at the end.
@@ -165,9 +117,9 @@ export function withDatabase<TSchema extends AnySchema>(
       {}, // Start with empty hooks, provideHooks() will update this
       DatabaseServiceContext<{}>,
       DatabaseHandlerContext,
-      TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
+      TLinkedFragments
     >(
-      builderWithInternal as unknown as FragmentDefinitionBuilder<
+      builder as unknown as FragmentDefinitionBuilder<
         TConfig,
         FragnoPublicConfigWithDatabase,
         TDeps & ImplicitDatabaseDependencies<TSchema>,
@@ -178,9 +130,14 @@ export function withDatabase<TSchema extends AnySchema>(
         DatabaseServiceContext<{}>,
         DatabaseHandlerContext,
         DatabaseRequestStorage,
-        TLinkedFragments & { _fragno_internal: InternalFragmentInstance }
+        TLinkedFragments
       >,
       schema,
+      undefined,
+      {
+        getRegistryForAdapterSync,
+        getInternalFragment,
+      },
     );
   };
 }

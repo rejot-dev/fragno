@@ -1212,8 +1212,18 @@ export function instantiateFragment<
   const linkedRoutes = collectLinkedFragmentRoutes(
     linkedFragmentInstances as Record<string, AnyFragnoInstantiatedFragment>,
   );
+  const internalRoutes =
+    definition.internalRoutesFactory?.({
+      config,
+      options,
+      deps,
+      services: boundServices as BoundServices<TBaseServices & TServices>,
+      serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
+    }) ?? [];
   const finalRoutes =
-    linkedRoutes.length > 0 ? [...routes, ...linkedRoutes] : (routes as AnyFragnoRouteConfig[]);
+    linkedRoutes.length > 0 || internalRoutes.length > 0
+      ? [...routes, ...linkedRoutes, ...internalRoutes]
+      : (routes as AnyFragnoRouteConfig[]);
 
   // 12. Wrap createRequestStorage to capture context
   const createRequestStorageWithContext = definition.createRequestStorage

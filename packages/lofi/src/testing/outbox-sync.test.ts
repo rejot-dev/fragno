@@ -13,6 +13,7 @@ import {
 import { defineFragment, instantiate } from "@fragno-dev/core";
 import {
   InMemoryAdapter,
+  getInternalFragment,
   type InternalFragmentInstance,
   type OutboxEntry,
   withDatabase,
@@ -78,7 +79,7 @@ async function buildOutboxContext(): Promise<OutboxContext> {
 
   return {
     db: deps.db,
-    internalFragment: fragment.$internal.linkedFragments._fragno_internal,
+    internalFragment: getInternalFragment(adapter),
     cleanup: async () => {
       await adapter.close();
     },

@@ -1,14 +1,7 @@
 import { defineRoutes } from "@fragno-dev/core";
-import { internalFragmentDef, internalSchema } from "./internal-fragment";
-import { getRegistryForAdapter } from "../internal/adapter-registry";
-
-type AdapterIdentityResponse = {
-  id: string;
-  source: "settings";
-};
+import { internalFragmentDef } from "./internal-fragment";
 
 type InternalDescribeResponse = {
-  adapterIdentity: AdapterIdentityResponse;
   fragments: Array<{ name: string; mountRoute: string }>;
   schemas: Array<{
     name: string;
@@ -49,45 +42,9 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
           );
         }
 
-        let identity: string | undefined;
-        try {
-          const adapter = registry.internalFragment.$internal.options.databaseAdapter;
-          const resolvedRegistry = await getRegistryForAdapter(adapter);
-          identity = resolvedRegistry.identity;
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          return json(
-            {
-              error: {
-                code: "ADAPTER_IDENTITY_UNAVAILABLE",
-                message: "Failed to resolve adapter identity.",
-                detail,
-              },
-            } satisfies InternalDescribeError,
-            { status: 500 },
-          );
-        }
-
-        if (!identity) {
-          return json(
-            {
-              error: {
-                code: "ADAPTER_IDENTITY_UNAVAILABLE",
-                message: "Failed to persist adapter identity.",
-              },
-            } satisfies InternalDescribeError,
-            { status: 500 },
-          );
-        }
-
-        const schemas = registry
-          .listSchemas()
-          .filter((schemaInfo) => schemaInfo.name !== internalSchema.name);
-
         const response: InternalDescribeResponse = {
-          adapterIdentity: { id: identity, source: "settings" },
-          fragments: registry.listFragments(),
-          schemas,
+          fragments: config.outbox?.enabled ? registry.listFragments() : [],
+          schemas: registry.listSchemas(),
           routes: {
             internal: "/_internal",
             outbox: config.outbox?.enabled ? "/_internal/outbox" : undefined,

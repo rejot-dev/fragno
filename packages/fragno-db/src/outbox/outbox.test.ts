@@ -10,6 +10,7 @@ import type { SimpleQueryInterface } from "../query/simple-query-interface";
 import { withDatabase } from "../with-database";
 import { internalSchema, type InternalFragmentInstance } from "../fragments/internal-fragment";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
+import { getInternalFragment } from "../internal/adapter-registry";
 import type { OutboxConfig, OutboxEntry, OutboxPayload } from "./outbox";
 
 const outboxSchema = schema("outbox", (s) => {
@@ -110,7 +111,7 @@ async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<Outb
 
   return {
     db: deps.db,
-    internalFragment: fragment.$internal.linkedFragments._fragno_internal,
+    internalFragment: getInternalFragment(adapter),
     cleanup,
   };
 }

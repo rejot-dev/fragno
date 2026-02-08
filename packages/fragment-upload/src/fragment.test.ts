@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, assert, vi } from "vitest";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { instantiate } from "@fragno-dev/core";
+import { getInternalFragment } from "@fragno-dev/db";
 import path from "node:path";
 import os from "node:os";
 import { promises as fs } from "node:fs";
@@ -372,7 +373,7 @@ describe("upload fragment direct single flows", () => {
       new Date(Date.now() + 30_000),
     );
 
-    await withUploadBuild({ storage: timedAdapter }, async ({ fragments }) => {
+    await withUploadBuild({ storage: timedAdapter }, async ({ fragments, test }) => {
       const { fragment: timedFragment } = fragments.upload;
       const createResponse = await timedFragment.callRoute("POST", "/uploads", {
         body: {
@@ -385,7 +386,7 @@ describe("upload fragment direct single flows", () => {
 
       assert(createResponse.type === "json");
 
-      const internalFragment = timedFragment.$internal.linkedFragments._fragno_internal;
+      const internalFragment = getInternalFragment(test.adapter);
       const hooks = await internalFragment.inContext(async function () {
         return await this.handlerTx()
           .withServiceCalls(
@@ -473,7 +474,7 @@ describe("upload fragment direct single flows", () => {
     assert(completedRetry.type === "json");
     expect(completedRetry.data.status).toBe("ready");
 
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const internalFragment = getInternalFragment(build.test.adapter);
     const hooks = await internalFragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(

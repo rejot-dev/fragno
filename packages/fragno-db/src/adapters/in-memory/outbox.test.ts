@@ -6,6 +6,7 @@ import { withDatabase } from "../../with-database";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../../schema/create";
 import type { OutboxEntry, OutboxPayload } from "../../outbox/outbox";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
+import { getInternalFragment } from "../../internal/adapter-registry";
 import { InMemoryAdapter } from "./in-memory-adapter";
 
 const buildOutboxSchema = () =>
@@ -59,7 +60,7 @@ async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<Ou
 
   return {
     db: deps.db,
-    internalFragment: fragment.$internal.linkedFragments._fragno_internal,
+    internalFragment: getInternalFragment(adapter),
     cleanup: async () => {
       await adapter.close();
     },
@@ -169,7 +170,7 @@ describe("in-memory outbox", () => {
         authorId: FragnoReference.fromInternal(userB.internalId!),
       });
 
-      const entries = await listOutbox(fragmentB.$internal.linkedFragments._fragno_internal);
+      const entries = await listOutbox(getInternalFragment(adapter));
       let postEntry: OutboxEntry | undefined;
       let postPayload: OutboxPayload | undefined;
 
