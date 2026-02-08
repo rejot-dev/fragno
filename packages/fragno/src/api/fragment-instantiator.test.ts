@@ -1486,6 +1486,27 @@ describe("fragment-instantiator", () => {
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
 
+    it("should mount internal routes under the fragment mount route", async () => {
+      const definition = defineFragment("main-fragment")
+        .withInternalRoutes([
+          defineRoute({
+            method: "GET",
+            path: "/status",
+            handler: async (_input, { json }) => {
+              return json({ ok: true });
+            },
+          }),
+        ])
+        .build();
+
+      const fragment = instantiate(definition).withOptions({ mountRoute: "/api" }).build();
+
+      const request = new Request("http://localhost/api/_internal/status");
+      const response = await fragment.handler(request);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+    });
+
     it("should resolve internal route factories with services", async () => {
       const definitionBuilder = defineFragment("main-fragment").providesService(
         "statusService",
