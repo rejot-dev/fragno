@@ -1,7 +1,7 @@
 import { test, expect, describe, expectTypeOf } from "vitest";
 import { defineFragment } from "./fragment-definition-builder";
 import { instantiate } from "./fragment-instantiator";
-import { defineRoute, defineRoutes } from "./route";
+import { defineRoute } from "./route";
 import { z } from "zod";
 import { FragnoApiValidationError } from "./error";
 
@@ -276,11 +276,10 @@ describe("Request Middleware", () => {
     expect(middlewareCalled).toBe(true);
   });
 
-  test("ifMatchesRoute - supports internal linked fragment routes", async () => {
+  test("ifMatchesRoute - supports internal routes", async () => {
     const config = {};
 
-    const internalDef = defineFragment("internal").build();
-    const internalRoutes = defineRoutes(internalDef).create(({ defineRoute }) => [
+    const internalRoutes = [
       defineRoute({
         method: "GET",
         path: "/status",
@@ -288,16 +287,10 @@ describe("Request Middleware", () => {
           return json({ ok: true });
         },
       }),
-    ]);
+    ] as const;
 
     const definition = defineFragment<typeof config>("test-lib")
-      .withLinkedFragment("_fragno_internal", ({ config, options }) => {
-        return instantiate(internalDef)
-          .withConfig(config)
-          .withOptions(options)
-          .withRoutes([internalRoutes])
-          .build();
-      })
+      .withInternalRoutes(internalRoutes)
       .build();
 
     const instance = instantiate(definition)

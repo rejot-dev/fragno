@@ -8,7 +8,6 @@ import {
 } from "../api/fragment-definition-builder";
 import {
   instantiateFragment,
-  type AnyFragnoInstantiatedFragment,
   type FragnoInstantiatedFragment,
   type RoutesWithInternal,
 } from "../api/fragment-instantiator";
@@ -205,7 +204,7 @@ export function createFragmentForTest<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+  TInternalRoutes extends readonly AnyRouteOrFactory[] = readonly [],
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -218,19 +217,18 @@ export function createFragmentForTest<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >,
   routesOrFactories: TRoutesOrFactories,
   options: CreateFragmentForTestOptions<TConfig, TOptions, TServiceDependencies>,
 ): FragnoInstantiatedFragment<
-  RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TLinkedFragments>,
+  RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TInternalRoutes>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
   TServiceThisContext,
   THandlerThisContext,
   TRequestStorage,
-  TOptions,
-  TLinkedFragments
+  TOptions
 > {
   const { config, options: fragmentOptions = {} as TOptions, serviceImplementations } = options;
 

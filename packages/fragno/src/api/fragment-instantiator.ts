@@ -66,33 +66,13 @@ type PrefixInternalRoutes<TRoutes extends readonly AnyFragnoRouteConfig[]> =
     ? { [K in keyof TRoutesTuple]: PrefixInternalRoute<TRoutesTuple[K]> }
     : readonly AnyFragnoRouteConfig[];
 
-type ExtractRoutesFromFragment<T> =
-  T extends FragnoInstantiatedFragment<
-    infer TRoutes,
-    infer _TDeps,
-    infer _TServices,
-    infer _TServiceThisContext,
-    infer _THandlerThisContext,
-    infer _TRequestStorage,
-    infer _TOptions,
-    infer _TLinkedFragments
-  >
-    ? TRoutes
-    : never;
-
-type InternalLinkedRoutes<TLinkedFragments> =
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>
-    ? TLinkedFragments extends { _fragno_internal: infer TInternal }
-      ? ExtractRoutesFromFragment<TInternal> extends readonly AnyFragnoRouteConfig[]
-        ? PrefixInternalRoutes<ExtractRoutesFromFragment<TInternal>>
-        : readonly []
-      : readonly []
-    : readonly [];
+type InternalRoutesFromDefinition<TInternalRoutes extends readonly AnyRouteOrFactory[]> =
+  PrefixInternalRoutes<FlattenRouteFactories<TInternalRoutes>>;
 
 export type RoutesWithInternal<
   TRoutes extends readonly AnyFragnoRouteConfig[],
-  TLinkedFragments,
-> = readonly [...TRoutes, ...InternalLinkedRoutes<TLinkedFragments>];
+  TInternalRoutes extends readonly AnyRouteOrFactory[],
+> = readonly [...TRoutes, ...InternalRoutesFromDefinition<TInternalRoutes>];
 
 /**
  * Helper type to extract the instantiated fragment type from a fragment definition.
@@ -119,17 +99,16 @@ export type InstantiatedFragmentFromDefinition<
     infer TServiceThisContext,
     infer THandlerThisContext,
     infer TRequestStorage,
-    infer TLinkedFragments
+    infer TInternalRoutes
   >
     ? FragnoInstantiatedFragment<
-        RoutesWithInternal<readonly AnyFragnoRouteConfig[], TLinkedFragments>,
+        RoutesWithInternal<readonly AnyFragnoRouteConfig[], TInternalRoutes>,
         TDeps,
         BoundServices<TBaseServices & TServices>,
         TServiceThisContext,
         THandlerThisContext,
         TRequestStorage,
-        TOptions,
-        TLinkedFragments
+        TOptions
       >
     : never;
 
@@ -217,23 +196,10 @@ export type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any
 >;
 
-const INTERNAL_LINKED_FRAGMENT_NAME = "_fragno_internal";
 const INTERNAL_ROUTE_PREFIX = "/_internal";
-
-type InternalLinkedRouteMeta = {
-  fragment: AnyFragnoInstantiatedFragment;
-  originalPath: string;
-  routes: readonly AnyFragnoRouteConfig[];
-};
-
-type InternalLinkedRouteConfig = AnyFragnoRouteConfig & {
-  __internal?: InternalLinkedRouteMeta;
-};
 
 function normalizeRoutePrefix(prefix: string): string {
   if (!prefix.startsWith("/")) {
@@ -249,37 +215,6 @@ function joinRoutePath(prefix: string, path: string): string {
   }
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${normalizedPrefix}${normalizedPath}`;
-}
-
-function collectLinkedFragmentRoutes(
-  linkedFragments: Record<string, AnyFragnoInstantiatedFragment>,
-): InternalLinkedRouteConfig[] {
-  const linkedRoutes: InternalLinkedRouteConfig[] = [];
-
-  for (const [name, fragment] of Object.entries(linkedFragments)) {
-    if (name !== INTERNAL_LINKED_FRAGMENT_NAME) {
-      continue;
-    }
-
-    const internalRoutes = (fragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
-    if (internalRoutes.length === 0) {
-      continue;
-    }
-
-    for (const route of internalRoutes) {
-      linkedRoutes.push({
-        ...route,
-        path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
-        __internal: {
-          fragment,
-          originalPath: route.path,
-          routes: internalRoutes,
-        },
-      });
-    }
-  }
-
-  return linkedRoutes;
 }
 
 export interface FragnoFragmentSharedConfig<
@@ -308,7 +243,6 @@ export class FragnoInstantiatedFragment<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
   TOptions extends FragnoPublicConfig = FragnoPublicConfig,
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
 > implements IFragnoInstantiatedFragment
 {
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
@@ -326,7 +260,6 @@ export class FragnoInstantiatedFragment<
   #contextStorage: RequestContextStorage<TRequestStorage>;
   #createRequestStorage?: () => TRequestStorage;
   #options: TOptions;
-  #linkedFragments: TLinkedFragments;
   #internalData: Record<string, unknown>;
 
   constructor(params: {
@@ -340,7 +273,6 @@ export class FragnoInstantiatedFragment<
     storage: RequestContextStorage<TRequestStorage>;
     createRequestStorage?: () => TRequestStorage;
     options: TOptions;
-    linkedFragments?: TLinkedFragments;
     internalData?: Record<string, unknown>;
   }) {
     this.#name = params.name;
@@ -353,7 +285,6 @@ export class FragnoInstantiatedFragment<
     this.#contextStorage = params.storage;
     this.#createRequestStorage = params.createRequestStorage;
     this.#options = params.options;
-    this.#linkedFragments = params.linkedFragments ?? ({} as TLinkedFragments);
     this.#internalData = params.internalData ?? {};
 
     // Build router
@@ -402,7 +333,6 @@ export class FragnoInstantiatedFragment<
     return {
       deps: this.#deps,
       options: this.#options,
-      linkedFragments: this.#linkedFragments,
       ...this.#internalData,
     };
   }
@@ -565,7 +495,7 @@ export class FragnoInstantiatedFragment<
     }
 
     // Get the expected content type from route config (default: application/json)
-    const routeConfig = route.data as InternalLinkedRouteConfig;
+    const routeConfig = route.data as AnyFragnoRouteConfig;
     const expectedContentType = routeConfig.contentType ?? "application/json";
 
     // Parse request body based on route's expected content type
@@ -659,24 +589,6 @@ export class FragnoInstantiatedFragment<
       const middlewareResult = await this.#executeMiddleware(req, route, requestState);
       if (middlewareResult !== undefined) {
         return middlewareResult;
-      }
-
-      // Internal fragment middleware execution (if linked)
-      const internalMeta = routeConfig.__internal;
-      if (internalMeta) {
-        const internalResult = await FragnoInstantiatedFragment.#runMiddlewareForFragment(
-          internalMeta.fragment as AnyFragnoInstantiatedFragment,
-          {
-            req,
-            method: routeConfig.method,
-            path: internalMeta.originalPath,
-            requestState,
-            routes: internalMeta.routes,
-          },
-        );
-        if (internalResult !== undefined) {
-          return internalResult;
-        }
       }
 
       // Handler execution
@@ -970,7 +882,7 @@ export function instantiateFragment<
   const THandlerThisContext extends RequestThisContext,
   const TRequestStorage,
   const TRoutesOrFactories extends readonly AnyRouteOrFactory[],
-  const TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  const TInternalRoutes extends readonly AnyRouteOrFactory[],
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -983,7 +895,7 @@ export function instantiateFragment<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >,
   config: TConfig,
   routesOrFactories: TRoutesOrFactories,
@@ -991,14 +903,13 @@ export function instantiateFragment<
   serviceImplementations?: TServiceDependencies,
   instantiationOptions?: InstantiationOptions,
 ): FragnoInstantiatedFragment<
-  RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TLinkedFragments>,
+  RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TInternalRoutes>,
   TDeps,
   BoundServices<TBaseServices & TServices>,
   TServiceThisContext,
   THandlerThisContext,
   TRequestStorage,
-  TOptions,
-  TLinkedFragments
+  TOptions
 > {
   const { dryRun = false } = instantiationOptions ?? {};
 
@@ -1039,40 +950,12 @@ export function instantiateFragment<
     mountRoute: options.mountRoute,
   });
 
-  // 4. Instantiate linked fragments FIRST (before any services)
-  // Their services will be merged into private services
-  const linkedFragmentInstances = {} as TLinkedFragments;
-  const linkedFragmentServices: Record<string, unknown> = {};
-
-  if (definition.linkedFragments) {
-    for (const [name, callback] of Object.entries(definition.linkedFragments)) {
-      const linkedFragment = callback({
-        config,
-        options,
-        serviceDependencies: serviceImplementations,
-        parent: {
-          name: definition.name,
-          mountRoute,
-        },
-      });
-      (linkedFragmentInstances as Record<string, AnyFragnoInstantiatedFragment>)[name] =
-        linkedFragment;
-
-      // Merge all services from linked fragment into private services directly by their service name
-      const services = linkedFragment.services as Record<string, unknown>;
-      for (const [serviceName, service] of Object.entries(services)) {
-        linkedFragmentServices[serviceName] = service;
-      }
-    }
-  }
-
-  // Identity function for service definition (used to set 'this' context)
+  // 4. Identity function for service definition (used to set 'this' context)
   const defineService = <T>(services: T & ThisType<TServiceThisContext>): T => services;
 
   // 5. Call privateServices factories
   // Private services are instantiated in order, so earlier ones are available to later ones
-  // Start with linked fragment services, then add explicitly defined private services
-  const privateServices = { ...linkedFragmentServices } as TPrivateServices;
+  const privateServices = {} as TPrivateServices;
   if (definition.privateServices) {
     for (const [serviceName, factory] of Object.entries(definition.privateServices)) {
       const serviceFactory = factory as (context: {
@@ -1107,7 +990,7 @@ export function instantiateFragment<
     }
   }
 
-  // 6. Call baseServices callback (with access to private services including linked fragment services)
+  // 6. Call baseServices callback (with access to private services)
   let baseServices: TBaseServices;
   try {
     baseServices =
@@ -1194,7 +1077,6 @@ export function instantiateFragment<
       config,
       options,
       deps,
-      linkedFragments: linkedFragmentInstances,
     }) ?? {};
 
   // 10. Bind services to serviceContext (restricted)
@@ -1209,20 +1091,16 @@ export function instantiateFragment<
     serviceDeps: serviceImplementations ?? ({} as TServiceDependencies),
   };
   const routes = resolveRouteFactories(context, routesOrFactories) as AnyFragnoRouteConfig[];
-  const linkedRoutes = collectLinkedFragmentRoutes(
-    linkedFragmentInstances as Record<string, AnyFragnoInstantiatedFragment>,
-  );
-  const internalRoutes =
-    definition.internalRoutesFactory?.({
-      config,
-      options,
-      deps,
-      services: boundServices as BoundServices<TBaseServices & TServices>,
-      serviceDeps: (serviceImplementations ?? {}) as TServiceDependencies,
-    }) ?? [];
+  const internalRoutes = definition.internalRoutes
+    ? (resolveRouteFactories(context, definition.internalRoutes) as readonly AnyFragnoRouteConfig[])
+    : [];
+  const prefixedInternalRoutes = internalRoutes.map((route) => ({
+    ...route,
+    path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
+  }));
   const finalRoutes =
-    linkedRoutes.length > 0 || internalRoutes.length > 0
-      ? [...routes, ...linkedRoutes, ...internalRoutes]
+    prefixedInternalRoutes.length > 0
+      ? [...routes, ...prefixedInternalRoutes]
       : (routes as AnyFragnoRouteConfig[]);
 
   // 12. Wrap createRequestStorage to capture context
@@ -1237,7 +1115,7 @@ export function instantiateFragment<
     name: definition.name,
     routes: finalRoutes as unknown as RoutesWithInternal<
       FlattenRouteFactories<TRoutesOrFactories>,
-      TLinkedFragments
+      TInternalRoutes
     >,
     deps,
     services: boundServices as BoundServices<TBaseServices & TServices>,
@@ -1247,7 +1125,6 @@ export function instantiateFragment<
     storage,
     createRequestStorage: createRequestStorageWithContext,
     options,
-    linkedFragments: linkedFragmentInstances,
     internalData: internalData as Record<string, unknown>,
   });
 }
@@ -1324,7 +1201,6 @@ interface IFragnoInstantiatedFragment {
   get $internal(): {
     deps: unknown;
     options: unknown;
-    linkedFragments: unknown;
   } & Record<string, unknown>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1363,7 +1239,7 @@ export class FragmentInstantiationBuilder<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  TInternalRoutes extends readonly AnyRouteOrFactory[],
 > implements IFragmentInstantiationBuilder
 {
   #definition: FragmentDefinition<
@@ -1377,7 +1253,7 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >;
   #config?: TConfig;
   #routes?: TRoutesOrFactories;
@@ -1396,7 +1272,7 @@ export class FragmentInstantiationBuilder<
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TInternalRoutes
     >,
     routes?: TRoutesOrFactories,
   ) {
@@ -1418,7 +1294,7 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   > {
     return this.#definition;
   }
@@ -1469,7 +1345,7 @@ export class FragmentInstantiationBuilder<
     THandlerThisContext,
     TRequestStorage,
     TNewRoutes,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const newBuilder = new FragmentInstantiationBuilder(this.#definition, routes);
     // Preserve config, options, and services from the current instance
@@ -1499,14 +1375,13 @@ export class FragmentInstantiationBuilder<
    * Build and return the instantiated fragment
    */
   build(): FragnoInstantiatedFragment<
-    RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TLinkedFragments>,
+    RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TInternalRoutes>,
     TDeps,
     BoundServices<TBaseServices & TServices>,
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TOptions,
-    TLinkedFragments
+    TOptions
   > {
     // This variable is set by the frango-cli when extracting database schemas
     const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
@@ -1545,7 +1420,7 @@ export function instantiate<
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  TInternalRoutes extends readonly AnyRouteOrFactory[],
 >(
   definition: FragmentDefinition<
     TConfig,
@@ -1558,7 +1433,7 @@ export function instantiate<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >,
 ): FragmentInstantiationBuilder<
   TConfig,
@@ -1572,7 +1447,7 @@ export function instantiate<
   THandlerThisContext,
   TRequestStorage,
   readonly [],
-  TLinkedFragments
+  TInternalRoutes
 > {
   return new FragmentInstantiationBuilder(definition);
 }

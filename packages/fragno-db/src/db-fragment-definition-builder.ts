@@ -5,7 +5,7 @@ import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import type {
   RequestThisContext,
   FragnoPublicConfig,
-  AnyFragnoInstantiatedFragment,
+  AnyRouteOrFactory,
   FragnoRouteConfig,
 } from "@fragno-dev/core";
 import {
@@ -29,6 +29,7 @@ import {
   type DurableHooksProcessingOptions,
   createHookScheduler,
 } from "./hooks/hooks";
+import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 
 type RegistrySchemaInfo = {
   name: string;
@@ -48,7 +49,7 @@ type RegistryResolver = {
   };
   getInternalFragment: <TUOWConfig>(
     adapter: DatabaseAdapter<TUOWConfig>,
-  ) => import("./fragments/internal-fragment").InternalFragmentInstance;
+  ) => InternalFragmentInstance;
 };
 
 type AnyHttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
@@ -86,6 +87,10 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
  * These are injected without requiring explicit configuration.
  */
 export type ImplicitDatabaseDependencies<TSchema extends AnySchema> = {
+  /**
+   * Database adapter instance.
+   */
+  databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   /**
    * Database query engine for the fragment's schema.
    * @deprecated Prefer handlerTx/serviceTx instead of direct db usage.
@@ -218,25 +223,6 @@ function resolveMountRoute(name: string, mountRoute?: string): string {
   return resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
 }
 
-function normalizeRoutePrefix(prefix: string): string {
-  if (!prefix) {
-    return "/";
-  }
-  if (!prefix.startsWith("/")) {
-    prefix = `/${prefix}`;
-  }
-  return prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
-}
-
-function joinRoutePath(prefix: string, path: string): string {
-  const normalizedPrefix = normalizeRoutePrefix(prefix);
-  if (!path || path === "/") {
-    return normalizedPrefix;
-  }
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${normalizedPrefix}${normalizedPath}`;
-}
-
 /**
  * Storage type for database fragments - stores the Unit of Work.
  */
@@ -261,7 +247,7 @@ export class DatabaseFragmentDefinitionBuilder<
   THooks extends HooksMap = {},
   TServiceThisContext extends RequestThisContext = DatabaseHandlerContext,
   THandlerThisContext extends RequestThisContext = DatabaseHandlerContext,
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment> = {},
+  TInternalRoutes extends readonly AnyRouteOrFactory[] = readonly [],
 > {
   // Store the base builder - we'll replace its storage and context setup when building
   #baseBuilder: FragmentDefinitionBuilder<
@@ -275,7 +261,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TServiceThisContext,
     THandlerThisContext,
     DatabaseRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >;
   #schema: TSchema;
   #hooksFactory?: (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => THooks;
@@ -293,7 +279,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TServiceThisContext,
       THandlerThisContext,
       DatabaseRequestStorage,
-      TLinkedFragments
+      TInternalRoutes
     >,
     schema: TSchema,
     hooksFactory?: (context: {
@@ -330,7 +316,7 @@ export class DatabaseFragmentDefinitionBuilder<
     THooks,
     TServiceThisContext,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     // Wrap user function to inject DB context
     const wrappedFn = (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => {
@@ -348,6 +334,7 @@ export class DatabaseFragmentDefinitionBuilder<
       // Create implicit dependencies
       const createUow = () => dbContext.db.createUnitOfWork();
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
+        databaseAdapter: dbContext.databaseAdapter,
         db: dbContext.db,
         schema: this.#schema,
         namespace,
@@ -392,7 +379,7 @@ export class DatabaseFragmentDefinitionBuilder<
     THooks,
     TServiceThisContext,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const newBaseBuilder = this.#baseBuilder.providesBaseService<TNewService>(fn);
 
@@ -426,7 +413,7 @@ export class DatabaseFragmentDefinitionBuilder<
     THooks,
     TServiceThisContext,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const newBaseBuilder = this.#baseBuilder.providesService<TServiceName, TService>(
       serviceName,
@@ -470,7 +457,7 @@ export class DatabaseFragmentDefinitionBuilder<
     THooks,
     TServiceThisContext,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const newBaseBuilder = this.#baseBuilder.providesPrivateService<TServiceName, TService>(
       serviceName,
@@ -521,7 +508,7 @@ export class DatabaseFragmentDefinitionBuilder<
     TNewHooks,
     DatabaseServiceContext<TNewHooks>,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const defineHook = <TPayload>(
       hook: (this: HookContext, payload: TPayload) => void | Promise<void>,
@@ -559,7 +546,7 @@ export class DatabaseFragmentDefinitionBuilder<
       TNewHooks,
       DatabaseServiceContext<TNewHooks>,
       THandlerThisContext,
-      TLinkedFragments
+      TInternalRoutes
     >;
 
     newBuilder.#hooksFactory = hooksFactory;
@@ -584,7 +571,7 @@ export class DatabaseFragmentDefinitionBuilder<
     THooks,
     TServiceThisContext,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const newBaseBuilder = this.#baseBuilder.usesService<TServiceName, TService>(serviceName);
 
@@ -613,7 +600,7 @@ export class DatabaseFragmentDefinitionBuilder<
     THooks,
     TServiceThisContext,
     THandlerThisContext,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const newBaseBuilder = this.#baseBuilder.usesOptionalService<TServiceName, TService>(
       serviceName,
@@ -643,7 +630,7 @@ export class DatabaseFragmentDefinitionBuilder<
     DatabaseServiceContext<THooks>,
     DatabaseHandlerContext<THooks>,
     DatabaseRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   > {
     const baseDef = this.#baseBuilder.build();
 
@@ -697,6 +684,7 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
+        databaseAdapter: context.options.databaseAdapter,
         db,
         schema: this.#schema,
         namespace,
@@ -901,27 +889,19 @@ export class DatabaseFragmentDefinitionBuilder<
       });
     }
     if (this.#registryResolver) {
-      finalDef.internalRoutesFactory = ({ options }) => {
-        const internalFragment = this.#registryResolver!.getInternalFragment(
-          options.databaseAdapter,
-        );
+      const registryInternalRoutes = ({ deps }: { deps: TDeps }) => {
+        const databaseAdapter = (deps as ImplicitDatabaseDependencies<TSchema>).databaseAdapter;
+        const internalFragment = this.#registryResolver!.getInternalFragment(databaseAdapter);
         if (!internalFragment) {
           return [];
         }
-        const internalRoutes = (internalFragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
-        if (internalRoutes.length === 0) {
-          return [];
-        }
-        return internalRoutes.map((route) => ({
-          ...route,
-          path: joinRoutePath("/_internal", route.path),
-          __internal: {
-            fragment: internalFragment,
-            originalPath: route.path,
-            routes: internalRoutes,
-          },
-        })) as readonly AnyFragnoRouteConfig[];
+        return (internalFragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
       };
+      const mergedInternalRoutes = [
+        ...(finalDef.internalRoutes ?? []),
+        registryInternalRoutes,
+      ] as readonly AnyRouteOrFactory[];
+      finalDef.internalRoutes = mergedInternalRoutes as TInternalRoutes;
     }
 
     // Return the complete definition with proper typing and dependencies

@@ -1,9 +1,5 @@
 import type { AnySchema } from "./schema/create";
-import type {
-  RequestThisContext,
-  FragnoPublicConfig,
-  AnyFragnoInstantiatedFragment,
-} from "@fragno-dev/core";
+import type { RequestThisContext, FragnoPublicConfig, AnyRouteOrFactory } from "@fragno-dev/core";
 import { FragmentDefinitionBuilder } from "@fragno-dev/core";
 import {
   DatabaseFragmentDefinitionBuilder,
@@ -46,7 +42,7 @@ export function withDatabase<TSchema extends AnySchema>(
   TServiceThisContext extends RequestThisContext,
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
-  TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+  TInternalRoutes extends readonly AnyRouteOrFactory[],
 >(
   builder: FragmentDefinitionBuilder<
     TConfig,
@@ -59,7 +55,7 @@ export function withDatabase<TSchema extends AnySchema>(
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TLinkedFragments
+    TInternalRoutes
   >,
 ) => DatabaseFragmentDefinitionBuilder<
   TSchema,
@@ -72,7 +68,7 @@ export function withDatabase<TSchema extends AnySchema>(
   HooksMap,
   DatabaseServiceContext<HooksMap>,
   DatabaseHandlerContext,
-  TLinkedFragments
+  TInternalRoutes
 > {
   return <
     TConfig,
@@ -84,7 +80,7 @@ export function withDatabase<TSchema extends AnySchema>(
     TServiceThisContext extends RequestThisContext,
     THandlerThisContext extends RequestThisContext,
     TRequestStorage,
-    TLinkedFragments extends Record<string, AnyFragnoInstantiatedFragment>,
+    TInternalRoutes extends readonly AnyRouteOrFactory[],
   >(
     builder: FragmentDefinitionBuilder<
       TConfig,
@@ -97,7 +93,7 @@ export function withDatabase<TSchema extends AnySchema>(
       TServiceThisContext,
       THandlerThisContext,
       TRequestStorage,
-      TLinkedFragments
+      TInternalRoutes
     >,
   ) => {
     // Cast is safe: we're creating a DatabaseFragmentDefinitionBuilder which internally uses
@@ -117,7 +113,7 @@ export function withDatabase<TSchema extends AnySchema>(
       {}, // Start with empty hooks, provideHooks() will update this
       DatabaseServiceContext<{}>,
       DatabaseHandlerContext,
-      TLinkedFragments
+      TInternalRoutes
     >(
       builder as unknown as FragmentDefinitionBuilder<
         TConfig,
@@ -130,7 +126,7 @@ export function withDatabase<TSchema extends AnySchema>(
         DatabaseServiceContext<{}>,
         DatabaseHandlerContext,
         DatabaseRequestStorage,
-        TLinkedFragments
+        TInternalRoutes
       >,
       schema,
       undefined,
