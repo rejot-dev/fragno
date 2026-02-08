@@ -1,11 +1,23 @@
 <div align="center">
   <h3>Fragno Forms: Form Builder Library</h3>
-  <a href="https://fragno.dev/forms">Demo</a> •
-  <a href="https://fragno.dev/docs/forms">Documentation</a>
+  <a href="https://fragno.dev/forms">Live Demo</a> •
+  <a href="https://fragno.dev/docs/forms">Documentation</a> •
+  <a href="https://fragno.dev/docs/forms/shadcn-renderer">Shadcn Renderer</a> •
+  <a href="https://fragno.dev/docs/forms/form-builder">Shadcn Form builder</a>
 </div>
 
 The Form fragment for Fragno provides form management and response collection using open standards:
 [JSON Schema](https://json-schema.org/) and [JSON Forms](https://jsonforms.io/).
+
+- DB Schemas, request handlers and frontend hooks included
+- Store form definitions and responses in your own database
+- Form builder shadcn/ui component with Google Forms like UX
+- Integrates with any TypeScript stack
+- Form validation using Zod/Ajv
+
+<div align="center">
+<img src="../../assets/forms-screenshot.webp"/>
+</div>
 
 ## Quickstart
 
