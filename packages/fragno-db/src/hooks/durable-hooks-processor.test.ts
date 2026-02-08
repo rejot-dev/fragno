@@ -7,6 +7,7 @@ import { schema, column, idColumn } from "../schema/create";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { internalSchema } from "../fragments/internal-fragment";
+import { getInternalFragment } from "../internal/adapter-registry";
 import { createDurableHooksProcessor } from "./durable-hooks-processor";
 
 const testSchema = schema("test", (s) =>
@@ -54,7 +55,7 @@ describe("createDurableHooksProcessor", () => {
     const processor = createDurableHooksProcessor(fragment);
     expect(processor).not.toBeNull();
 
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const internalFragment = getInternalFragment(adapter);
     await internalFragment.inContext(async function () {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
@@ -86,7 +87,7 @@ describe("createDurableHooksProcessor", () => {
     const processor = createDurableHooksProcessor(fragment);
     expect(processor).not.toBeNull();
 
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const internalFragment = getInternalFragment(adapter);
     const services = internalFragment.services as { getDbNow?: () => Promise<Date> };
     const baseNow = services.getDbNow ? await services.getDbNow() : new Date();
 

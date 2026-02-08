@@ -8,11 +8,8 @@ import type {
   FragnoPublicConfigWithDatabase,
   ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
-import {
-  getSchemaVersionFromDatabase,
-  type InternalFragmentInstance,
-} from "./fragments/internal-fragment";
-import { resolveDatabaseAdapter } from "./util/default-database-adapter";
+import { getSchemaVersionFromDatabase } from "./fragments/internal-fragment";
+import { getRegistryForAdapter } from "./internal/adapter-registry";
 
 export type { DatabaseAdapter, CursorResult };
 export { Cursor };
@@ -20,6 +17,7 @@ export { dbNow };
 export type { DbNow };
 export { InMemoryAdapter, type InMemoryAdapterOptions } from "./adapters/in-memory";
 export { internalSchema } from "./fragments/internal-fragment";
+export { getInternalFragment } from "./internal/adapter-registry";
 
 export const fragnoDatabaseFakeSymbol = "$fragno-database" as const;
 export const fragnoDatabaseLibraryVersion = "0.1" as const;
@@ -170,8 +168,7 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
     FragnoPublicConfigWithDatabase,
-    // Ensure the fragment has the internal fragment linked
-    { _fragno_internal: InternalFragmentInstance } & Record<string, AnyFragnoInstantiatedFragment>
+    Record<string, AnyFragnoInstantiatedFragment>
   >;
 
 /**
@@ -199,8 +196,8 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
 export async function migrate<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
 ): Promise<void> {
-  const { options, deps, linkedFragments } = fragment.$internal;
-  const adapter = resolveDatabaseAdapter(options, deps.schema);
+  const { options, deps } = fragment.$internal;
+  const adapter = options.databaseAdapter;
 
   // Check if adapter supports prepareMigrations
   if (!adapter.prepareMigrations) {
@@ -213,11 +210,8 @@ export async function migrate<TSchema extends AnySchema>(
   const namespace = deps.namespace ?? schema.name;
 
   // Step 1: Ensure the internal fragment (settings table) is migrated first
-  const internalFragment = linkedFragments._fragno_internal;
-
-  if (!internalFragment) {
-    throw new Error("Internal fragment not found. Please ensure the internal fragment is linked.");
-  }
+  const registry = await getRegistryForAdapter(adapter);
+  const internalFragment = registry.internalFragment;
 
   if (!(await adapter.isConnectionHealthy())) {
     throw new Error(
