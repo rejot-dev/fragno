@@ -124,6 +124,30 @@ const commentLib = createCommentLibrary(
 - **ORM agnostic**: SQL runtime with explicit schema output formats (SQL, Drizzle, Prisma).
 - **Namespaced tables**: avoids conflicts with user tables.
 
+## Internal registry + describe route
+
+When multiple fragments share a database adapter, Fragno maintains an in-memory, adapter-scoped
+registry of schemas and fragment mount routes. Each fragment exposes a lightweight internal describe
+endpoint at `/_internal` (mounted under the fragment's mount route) that aggregates this registry.
+
+Example response:
+
+```json
+{
+  "fragments": [{ "name": "comment-library", "mountRoute": "/api/comment-library" }],
+  "schemas": [
+    { "name": "comment", "namespace": "comment", "version": 1, "tables": ["comment", "user"] }
+  ],
+  "routes": { "internal": "/_internal", "outbox": "/_internal/outbox" }
+}
+```
+
+Notes:
+
+- `schemas` excludes the internal Fragno schema.
+- `fragments` is only populated when outbox support is enabled for the adapter.
+- `routes.outbox` is only present when the adapter has outbox support enabled.
+
 ## ORM and database support
 
 `@fragno-dev/db` works with Kysely dialects for runtime execution and supports SQL migrations plus
