@@ -40,3 +40,44 @@ node example-apps/fragno-db-usage-drizzle/bin/run.js post --help
 node example-apps/fragno-db-usage-drizzle/bin/run.js comment --help
 node example-apps/fragno-db-usage-drizzle/bin/run.js rating --help
 ```
+
+## Shell scripts
+
+Convenience shell scripts for interacting with the API via HTTP:
+
+### Add a rating
+
+```bash
+# Add an upvote (default)
+./scripts/add-rating.sh <reference>
+
+# Add a downvote
+./scripts/add-rating.sh <reference> -1
+
+# Custom rating value
+./scripts/add-rating.sh <reference> 5
+```
+
+### Create a comment
+
+```bash
+# Create a top-level comment
+./scripts/create-comment.sh "Comment Title" "Comment content" <postReference> <userReference>
+
+# Create a nested comment (reply)
+./scripts/create-comment.sh "Reply Title" "Reply content" <postReference> <userReference> <parentId>
+```
+
+### Configuration
+
+Both scripts support environment variables for customization:
+
+- `BASE_URL`: Server base URL (default: `http://localhost:3000`)
+- `RATING_MOUNT`: Rating fragment mount route (default: `/api/fragno-db-rating`)
+- `COMMENT_MOUNT`: Comment fragment mount route (default: `/api/fragno-db-comment`)
+
+Example:
+
+```bash
+BASE_URL=http://localhost:8080 ./scripts/add-rating.sh my-reference-id
+```
