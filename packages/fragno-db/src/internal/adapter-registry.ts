@@ -1,8 +1,7 @@
-import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
+import { instantiate } from "@fragno-dev/core";
 import type { DatabaseAdapter } from "../adapters/adapters";
 import {
-  ADAPTER_IDENTITY_KEY,
-  SETTINGS_NAMESPACE,
+  SchemaRegistryCollisionError,
   internalFragmentDef,
   type InternalFragmentInstance,
 } from "../fragments/internal-fragment";
@@ -24,7 +23,6 @@ export type FragmentMeta = {
 };
 
 export type AdapterRegistry = {
-  identity: string;
   internalFragment: InternalFragmentInstance;
   schemas: Map<string, SchemaInfo>;
   fragments: Map<string, FragmentMeta>;
@@ -35,19 +33,14 @@ export type AdapterRegistry = {
 
 type AdapterKey = DatabaseAdapter<unknown>;
 
-const registryByIdentity = new Map<string, AdapterRegistry>();
 const registryByAdapter = new WeakMap<AdapterKey, AdapterRegistry>();
-const identityByAdapter = new WeakMap<AdapterKey, string>();
 
 const toAdapterKey = <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>): AdapterKey =>
   adapter as AdapterKey;
 
 const isDryRun = (): boolean => process.env["FRAGNO_INIT_DRY_RUN"] === "true";
 
-const schemaKey = (schema: SchemaInfo): string => {
-  const namespaceKey = schema.namespace ?? "";
-  return `${namespaceKey}:${schema.name}`;
-};
+const getNamespaceKey = (schema: SchemaInfo): string => schema.namespace ?? schema.name;
 
 const sortSchemas = (schemas: SchemaInfo[]): SchemaInfo[] =>
   schemas.sort((a, b) => {
@@ -64,39 +57,6 @@ const sortSchemas = (schemas: SchemaInfo[]): SchemaInfo[] =>
 
 const sortFragments = (fragments: FragmentMeta[]): FragmentMeta[] =>
   fragments.sort((a, b) => a.name.localeCompare(b.name));
-
-const readIdentity = async (fragment: InternalFragmentInstance): Promise<string | undefined> =>
-  fragment.inContext(async function () {
-    return await this.handlerTx()
-      .withServiceCalls(
-        () =>
-          [
-            fragment.services.settingsService.get(SETTINGS_NAMESPACE, ADAPTER_IDENTITY_KEY),
-          ] as const,
-      )
-      .transform(({ serviceResult: [result] }) => (result as { value?: string } | undefined)?.value)
-      .execute();
-  });
-
-const writeIdentity = async (
-  fragment: InternalFragmentInstance,
-  identity: string,
-): Promise<void> => {
-  await fragment.inContext(async function () {
-    await this.handlerTx()
-      .withServiceCalls(
-        () =>
-          [
-            fragment.services.settingsService.set(
-              SETTINGS_NAMESPACE,
-              ADAPTER_IDENTITY_KEY,
-              identity,
-            ),
-          ] as const,
-      )
-      .execute();
-  });
-};
 
 const buildInternalFragment = (
   adapter: DatabaseAdapter<unknown>,
@@ -118,17 +78,38 @@ const buildInternalFragment = (
     .build();
 };
 
-const createRegistry = (adapter: DatabaseAdapter<unknown>, identity: string): AdapterRegistry => {
+const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
   const schemas = new Map<string, SchemaInfo>();
   const fragments = new Map<string, FragmentMeta>();
+  let registry: AdapterRegistry;
 
-  const registry: AdapterRegistry = {
-    identity,
+  registry = {
     internalFragment: undefined as unknown as InternalFragmentInstance,
     schemas,
     fragments,
     registerSchema: (schema, fragment) => {
-      schemas.set(schemaKey(schema), { ...schema, tables: [...schema.tables] });
+      const namespaceKey = getNamespaceKey(schema);
+      const existing = schemas.get(namespaceKey);
+      if (existing && (existing.name !== schema.name || existing.namespace !== schema.namespace)) {
+        throw new SchemaRegistryCollisionError({
+          namespaceKey,
+          existing: { name: existing.name, namespace: existing.namespace },
+          attempted: { name: schema.name, namespace: schema.namespace },
+        });
+      }
+      const schemaCopy = { ...schema, tables: [...schema.tables] };
+      if (
+        existing &&
+        existing.name === schemaCopy.name &&
+        existing.namespace === schemaCopy.namespace &&
+        existing.version === schemaCopy.version &&
+        existing.tables.length === schemaCopy.tables.length &&
+        existing.tables.every((table, index) => table === schemaCopy.tables[index])
+      ) {
+        fragments.set(fragment.name, { ...fragment });
+        return;
+      }
+      schemas.set(namespaceKey, schemaCopy);
       fragments.set(fragment.name, { ...fragment });
     },
     listSchemas: () => sortSchemas([...schemas.values()]),
@@ -136,14 +117,6 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>, identity: string): Ad
   };
 
   registry.internalFragment = buildInternalFragment(adapter, registry);
-  return registry;
-};
-
-export const getRegistryForIdentity = (identity: string): AdapterRegistry => {
-  const registry = registryByIdentity.get(identity);
-  if (!registry) {
-    throw new Error(`Adapter registry not found for identity "${identity}".`);
-  }
   return registry;
 };
 
@@ -159,72 +132,19 @@ export const getRegistryForAdapterSync = <TUOWConfig>(
     throw new Error("Adapter registry is unavailable during dry-run initialization.");
   }
 
-  const registry = createRegistry(adapterKey, "");
+  const registry = createRegistry(adapterKey);
   registryByAdapter.set(adapterKey, registry);
   return registry;
 };
 
-export const resolveAdapterIdentity = async <TUOWConfig>(
+export const getInternalFragment = <TUOWConfig>(
   adapter: DatabaseAdapter<TUOWConfig>,
-): Promise<string> => {
+): InternalFragmentInstance => {
   const adapterKey = toAdapterKey(adapter);
-  const cachedIdentity = identityByAdapter.get(adapterKey);
-  if (cachedIdentity) {
-    return cachedIdentity;
-  }
-
-  const registry = registryByAdapter.get(adapterKey);
-  const fragment =
-    registry?.internalFragment ??
-    instantiate(internalFragmentDef)
+  if (isDryRun()) {
+    return instantiate(internalFragmentDef)
       .withOptions({ databaseAdapter: adapterKey, databaseNamespace: null })
       .build();
-
-  let identity = await readIdentity(fragment);
-  if (!identity) {
-    const generated = defaultFragnoRuntime.random.uuid();
-    await writeIdentity(fragment, generated);
-    identity = await readIdentity(fragment);
   }
-
-  if (!identity) {
-    throw new Error("Failed to persist adapter identity.");
-  }
-
-  identityByAdapter.set(adapterKey, identity);
-  return identity;
-};
-
-export const getRegistryForAdapter = async <TUOWConfig>(
-  adapter: DatabaseAdapter<TUOWConfig>,
-): Promise<AdapterRegistry> => {
-  const adapterKey = toAdapterKey(adapter);
-  const existing = registryByAdapter.get(adapterKey);
-  if (existing && existing.identity) {
-    return existing;
-  }
-
-  const identity = await resolveAdapterIdentity(adapter);
-  const identityRegistry = registryByIdentity.get(identity);
-  if (identityRegistry) {
-    registryByAdapter.set(adapterKey, identityRegistry);
-    identityByAdapter.set(adapterKey, identity);
-    return identityRegistry;
-  }
-
-  if (existing) {
-    existing.identity = identity;
-    registryByIdentity.set(identity, existing);
-    identityByAdapter.set(adapterKey, identity);
-    return existing;
-  }
-
-  if (isDryRun()) {
-    throw new Error("Adapter registry is unavailable during dry-run initialization.");
-  }
-
-  const registry = createRegistry(adapterKey, identity);
-  registryByAdapter.set(adapterKey, registry);
-  registryByIdentity.set(identity, registry);
-  return registry;
+  return getRegistryForAdapterSync(adapterKey).internalFragment;
 };

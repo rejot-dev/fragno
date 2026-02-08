@@ -6,7 +6,7 @@ import type {
   RequestThisContext,
   FragnoPublicConfig,
   AnyFragnoInstantiatedFragment,
-  LinkedFragmentParentMeta,
+  FragnoRouteConfig,
 } from "@fragno-dev/core";
 import {
   FragmentDefinitionBuilder,
@@ -29,9 +29,40 @@ import {
   type DurableHooksProcessingOptions,
   createHookScheduler,
 } from "./hooks/hooks";
-import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 import { sanitizeNamespace } from "./naming/sql-naming";
+type RegistrySchemaInfo = {
+  name: string;
+  namespace: string | null;
+  version: number;
+  tables: string[];
+};
+
+type RegistryFragmentMeta = {
+  name: string;
+  mountRoute: string;
+};
+
+type RegistryResolver = {
+  getRegistryForAdapterSync: <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>) => {
+    registerSchema: (schema: RegistrySchemaInfo, fragment: RegistryFragmentMeta) => void;
+  };
+  getInternalFragment: <TUOWConfig>(
+    adapter: DatabaseAdapter<TUOWConfig>,
+  ) => import("./fragments/internal-fragment").InternalFragmentInstance;
+};
+
+type AnyHttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
+
+type AnyFragnoRouteConfig = FragnoRouteConfig<
+  AnyHttpMethod,
+  string,
+  undefined,
+  undefined,
+  string,
+  string,
+  RequestThisContext
+>;
 
 /**
  * Extended FragnoPublicConfig for database fragments.
@@ -183,6 +214,25 @@ function resolveMountRoute(name: string, mountRoute?: string): string {
   return resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
 }
 
+function normalizeRoutePrefix(prefix: string): string {
+  if (!prefix) {
+    return "/";
+  }
+  if (!prefix.startsWith("/")) {
+    prefix = `/${prefix}`;
+  }
+  return prefix.endsWith("/") && prefix.length > 1 ? prefix.slice(0, -1) : prefix;
+}
+
+function joinRoutePath(prefix: string, path: string): string {
+  const normalizedPrefix = normalizeRoutePrefix(prefix);
+  if (!path || path === "/") {
+    return normalizedPrefix;
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedPrefix}${normalizedPath}`;
+}
+
 /**
  * Storage type for database fragments - stores the Unit of Work.
  */
@@ -225,6 +275,7 @@ export class DatabaseFragmentDefinitionBuilder<
   >;
   #schema: TSchema;
   #hooksFactory?: (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => THooks;
+  #registryResolver?: RegistryResolver;
 
   constructor(
     baseBuilder: FragmentDefinitionBuilder<
@@ -245,10 +296,12 @@ export class DatabaseFragmentDefinitionBuilder<
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
     }) => THooks,
+    registryResolver?: RegistryResolver,
   ) {
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
     this.#hooksFactory = hooksFactory;
+    this.#registryResolver = registryResolver;
   }
 
   /**
@@ -306,7 +359,12 @@ export class DatabaseFragmentDefinitionBuilder<
     // Create new base builder with wrapped function
     const newBaseBuilder = this.#baseBuilder.withDependencies(wrappedFn);
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
+    );
   }
 
   providesBaseService<TNewService>(
@@ -334,7 +392,12 @@ export class DatabaseFragmentDefinitionBuilder<
   > {
     const newBaseBuilder = this.#baseBuilder.providesBaseService<TNewService>(fn);
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
+    );
   }
 
   providesService<TServiceName extends string, TService>(
@@ -366,7 +429,12 @@ export class DatabaseFragmentDefinitionBuilder<
       fn,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
+    );
   }
 
   /**
@@ -405,7 +473,12 @@ export class DatabaseFragmentDefinitionBuilder<
       fn,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
+    );
   }
 
   /**
@@ -469,6 +542,8 @@ export class DatabaseFragmentDefinitionBuilder<
     const newBuilder = new DatabaseFragmentDefinitionBuilder(
       this.#baseBuilder,
       this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
     ) as unknown as DatabaseFragmentDefinitionBuilder<
       TSchema,
       TConfig,
@@ -509,7 +584,12 @@ export class DatabaseFragmentDefinitionBuilder<
   > {
     const newBaseBuilder = this.#baseBuilder.usesService<TServiceName, TService>(serviceName);
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
+    );
   }
 
   /**
@@ -535,7 +615,12 @@ export class DatabaseFragmentDefinitionBuilder<
       serviceName,
     );
 
-    return new DatabaseFragmentDefinitionBuilder(newBaseBuilder, this.#schema, this.#hooksFactory);
+    return new DatabaseFragmentDefinitionBuilder(
+      newBaseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      this.#registryResolver,
+    );
   }
 
   /**
@@ -586,6 +671,26 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const { db } = createDatabaseContext(context.options, this.#schema);
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
+      const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
+
+      if (!dryRun && !isInternalFragment && this.#registryResolver) {
+        const registry = this.#registryResolver.getRegistryForAdapterSync(
+          context.options.databaseAdapter,
+        );
+        registry.registerSchema(
+          {
+            name: this.#schema.name,
+            namespace,
+            version: this.#schema.version,
+            tables: Object.keys(this.#schema.tables).sort(),
+          },
+          {
+            name: baseDef.name,
+            mountRoute: resolveMountRoute(baseDef.name, context.options.mountRoute),
+          },
+        );
+      }
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         db,
@@ -621,14 +726,6 @@ export class DatabaseFragmentDefinitionBuilder<
       },
     );
 
-    // Get the internal fragment factory from linked fragments (added by withDatabase)
-    // Cast is safe: withDatabase() guarantees this fragment exists and has the correct type
-    const internalFragmentFactory = baseDef.linkedFragments?.["_fragno_internal"] as (context: {
-      config: TConfig;
-      options: FragnoPublicConfigWithDatabase;
-      parent: LinkedFragmentParentMeta;
-    }) => InternalFragmentInstance;
-
     // Cache per instantiated fragment (deps object is unique per instantiation).
     const hooksConfigCache = new WeakMap<object, HookProcessorConfig<THooks>>();
 
@@ -658,19 +755,15 @@ export class DatabaseFragmentDefinitionBuilder<
         hookAdapter === baseAdapter
           ? context.options
           : { ...context.options, databaseAdapter: hookAdapter };
+      const registryResolver = this.#registryResolver;
+      if (!registryResolver) {
+        throw new Error("Adapter registry resolver is missing for durable hooks.");
+      }
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
-      const parent: LinkedFragmentParentMeta = {
-        name: baseDef.name,
-        mountRoute: resolveMountRoute(baseDef.name, context.options.mountRoute),
-      };
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: this.#hooksFactory(context),
         namespace: namespaceKey,
-        internalFragment: internalFragmentFactory({
-          config: context.config,
-          options: hookOptions,
-          parent,
-        }),
+        internalFragment: registryResolver.getInternalFragment(hookAdapter),
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
@@ -710,21 +803,19 @@ export class DatabaseFragmentDefinitionBuilder<
       return hooksConfig;
     };
 
+    const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
+
     const builderWithContext = builderWithStorage.withThisContext<
       DatabaseServiceContext<THooks>,
       DatabaseHandlerContext<THooks>
     >(({ storage, config, options, deps }) => {
       // Create hooks config if hooks factory is defined
       const hooksConfig = createHooksConfig({ config, options, deps });
-      const parent: LinkedFragmentParentMeta = {
-        name: baseDef.name,
-        mountRoute: resolveMountRoute(baseDef.name, options.mountRoute),
-      };
-      const internalFragment =
-        hooksConfig?.internalFragment ??
-        (internalFragmentFactory
-          ? internalFragmentFactory({ config, options, parent })
-          : undefined);
+      const registryResolver = this.#registryResolver;
+      const internalFragment = isInternalFragment
+        ? undefined
+        : (hooksConfig?.internalFragment ??
+          registryResolver?.getInternalFragment(options.databaseAdapter));
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
@@ -803,6 +894,29 @@ export class DatabaseFragmentDefinitionBuilder<
           deps: deps as TDeps,
         }),
       });
+    }
+    if (this.#registryResolver) {
+      finalDef.internalRoutesFactory = ({ options }) => {
+        const internalFragment = this.#registryResolver!.getInternalFragment(
+          options.databaseAdapter,
+        );
+        if (!internalFragment) {
+          return [];
+        }
+        const internalRoutes = (internalFragment.routes ?? []) as readonly AnyFragnoRouteConfig[];
+        if (internalRoutes.length === 0) {
+          return [];
+        }
+        return internalRoutes.map((route) => ({
+          ...route,
+          path: joinRoutePath("/_internal", route.path),
+          __internal: {
+            fragment: internalFragment,
+            originalPath: route.path,
+            routes: internalRoutes,
+          },
+        })) as readonly AnyFragnoRouteConfig[];
+      };
     }
 
     // Return the complete definition with proper typing and dependencies

@@ -81,7 +81,7 @@ export async function generateSchemaArtifacts<
 
     // Collect all schemas, de-duplicating by namespace.
     // The internal fragment (settings schema) is always included first since all database
-    // fragments automatically link to it via withDatabase().
+    // fragments share it via the adapter registry.
     const fragmentsMap = new Map<string, { schema: AnySchema; namespace: string | null }>();
 
     // Include internal fragment first with empty namespace (settings table has no prefix)

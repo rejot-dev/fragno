@@ -2,6 +2,7 @@
 import { assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
+import { getInternalFragment } from "@fragno-dev/db";
 import { workflowsFragmentDefinition } from "./definition";
 import { createWorkflowsRunner } from "./runner";
 import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "./workflow";
@@ -1365,7 +1366,7 @@ describe("Workflows Runner", () => {
     expect(task?.runAt).toBeInstanceOf(Date);
     expect(task?.runAt.getTime()).toBeGreaterThan(Date.now());
 
-    const internalFragment = fragment.$internal.linkedFragments._fragno_internal;
+    const internalFragment = getInternalFragment(testContext.adapter);
     const namespace = fragment.$internal.deps.namespace;
     if (!namespace) {
       throw new Error("Expected workflows namespace to be defined.");

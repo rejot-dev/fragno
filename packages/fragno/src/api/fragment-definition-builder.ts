@@ -4,7 +4,9 @@ import type { RequestContextStorage } from "./request-context-storage";
 import type {
   FragnoInstantiatedFragment,
   AnyFragnoInstantiatedFragment,
+  BoundServices,
 } from "./fragment-instantiator";
+import type { AnyFragnoRouteConfig } from "./route";
 
 /**
  * Metadata for a service dependency
@@ -36,6 +38,21 @@ export type LinkedFragmentCallback<
   serviceDependencies?: TServiceDependencies;
   parent: LinkedFragmentParentMeta;
 }) => TFragment;
+
+export type InternalRoutesFactory<
+  TConfig,
+  TOptions extends FragnoPublicConfig,
+  TDeps,
+  TBaseServices,
+  TServices,
+  TServiceDependencies,
+> = (context: {
+  config: TConfig;
+  options: TOptions;
+  deps: TDeps;
+  services: BoundServices<TBaseServices & TServices>;
+  serviceDeps: TServiceDependencies;
+}) => readonly AnyFragnoRouteConfig[];
 
 /**
  * Extract the services type from a FragnoInstantiatedFragment
@@ -251,6 +268,15 @@ export interface FragmentDefinition<
       TLinkedFragments[K]
     >;
   };
+
+  internalRoutesFactory?: InternalRoutesFactory<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies
+  >;
 
   $serviceThisContext?: TServiceThisContext;
   $handlerThisContext?: THandlerThisContext;

@@ -18,7 +18,30 @@ import {
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
 
-export const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
+export class SchemaRegistryCollisionError extends Error {
+  readonly code = "SCHEMA_REGISTRY_COLLISION" as const;
+  readonly namespaceKey: string;
+  readonly existing: { name: string; namespace: string | null };
+  readonly attempted: { name: string; namespace: string | null };
+
+  constructor({
+    namespaceKey,
+    existing,
+    attempted,
+  }: {
+    namespaceKey: string;
+    existing: { name: string; namespace: string | null };
+    attempted: { name: string; namespace: string | null };
+  }) {
+    super(
+      `Schema namespace "${namespaceKey}" is already owned by "${existing.name}" (${existing.namespace ?? "null"}).`,
+    );
+    this.name = "SchemaRegistryCollisionError";
+    this.namespaceKey = namespaceKey;
+    this.existing = existing;
+    this.attempted = attempted;
+  }
+}
 
 export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
@@ -28,6 +51,12 @@ export type InternalFragmentConfig = {
 };
 
 export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+
+const INTERNAL_SCHEMA_MIN_VERSION = 4;
+if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
+  // Keep the internal schema version monotonic after removing fragno_db_schemas.
+  internalSchema.version = INTERNAL_SCHEMA_MIN_VERSION;
+}
 
 // This uses DatabaseFragmentDefinitionBuilder directly
 // to avoid circular dependency (it doesn't need to link to itself)
