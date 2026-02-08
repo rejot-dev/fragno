@@ -20,12 +20,9 @@ import {
 } from "./fragments/internal-fragment.routes";
 import type { HooksMap } from "./hooks/hooks";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
+import { getAdapterRegistry } from "./registry/adapter-registry";
 
-function shouldExposeOutboxRoutes(
-  options: FragnoPublicConfigWithDatabase,
-  schema: AnySchema,
-): boolean {
-  const adapter = resolveDatabaseAdapter(options, schema) as { outbox?: { enabled?: boolean } };
+function shouldExposeOutboxRoutes(adapter: { outbox?: { enabled?: boolean } }): boolean {
   return adapter.outbox?.enabled ?? false;
 }
 
@@ -124,10 +121,12 @@ export function withDatabase<TSchema extends AnySchema>(
     const builderWithInternal = builder.withLinkedFragment(
       "_fragno_internal",
       ({ options, parent }) => {
-        const outboxEnabled = shouldExposeOutboxRoutes(
+        const adapter = resolveDatabaseAdapter(
           options as FragnoPublicConfigWithDatabase,
           schema,
         );
+        const registry = getAdapterRegistry(adapter);
+        const outboxEnabled = shouldExposeOutboxRoutes(adapter);
         const internalRoutes = [
           internalFragmentDescribeRoutes,
           ...(outboxEnabled ? [internalFragmentOutboxRoutes] : []),
@@ -142,13 +141,17 @@ export function withDatabase<TSchema extends AnySchema>(
           version: schema.version,
           tables: Object.keys(schema.tables).sort(),
         };
+        const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
+        if (!dryRun) {
+          registry.registerSchema(schemaInfo);
+          registry.registerFragment(parent);
+        }
 
         // Cast is safe: by the time this callback is invoked during fragment instantiation,
         // the options will be FragnoPublicConfigWithDatabase (enforced by DatabaseFragmentDefinitionBuilder)
         return instantiate(internalFragmentDef)
           .withConfig({
-            parent,
-            schemas: [schemaInfo],
+            registry,
             outbox: { enabled: outboxEnabled },
           })
           .withOptions({
