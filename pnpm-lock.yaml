@@ -272,6 +272,9 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db
+      '@fragno-dev/node':
+        specifier: workspace:*
+        version: link:../../packages/fragno-node
       c12:
         specifier: ^3.3.3
         version: 3.3.3(magicast@0.5.1)
