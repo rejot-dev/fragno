@@ -133,7 +133,7 @@ Database schemas are defined in a separate `schema.ts` file using the Fragno sch
 ```typescript
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
-export const noteSchema = schema((s) => {
+export const noteSchema = schema("example-fragment", (s) => {
   return s
     .addTable("users", (t) => {
       return t.addColumn("id", idColumn()).addColumn("name", column("string"));
@@ -201,32 +201,43 @@ const fragmentDef = defineFragmentWithDatabase<Config>("my-fragment")
 - `orm.delete(table, id)` - Delete a row by ID
 - `.whereIndex(indexName, condition)` - Use indexes for efficient queries
 
-### Transactions (Unit of Work)
+### Transactions (handlerTx + serviceTx)
 
-Two-phase pattern for atomic operations (optimistic concurrency control):
+Two-phase pattern for atomic operations (optimistic concurrency control) using handler-owned
+transactions:
 
 ```typescript
-// Phase 1: Retrieve with version tracking
-const uow = orm
-  .createUnitOfWork()
-  .find("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)))
-  .find("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId)));
-const [users, accounts] = await uow.executeRetrieve();
+// Route handler - owns the transaction boundary
+const [result] = await this.handlerTx()
+  .withServiceCalls(() => [services.transferFunds({ userId, amount })])
+  .execute();
 
-// Phase 2: Mutate atomically
-uow.update("users", users[0].id, (b) => b.set({ lastLogin: new Date() }).check());
-uow.update("accounts", accounts[0].id, (b) =>
-  b.set({ balance: accounts[0].balance + 100 }).check(),
-);
+// Service - defines the unit of work
+transferFunds: function ({ userId, amount }: { userId: string; amount: number }) {
+  return this.serviceTx(mySchema)
+    .retrieve((uow) =>
+      uow
+        .findFirst("users", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId)))
+        .findFirst("accounts", (b) => b.whereIndex("idx_user", (eb) => eb("userId", "=", userId))),
+    )
+    .mutate(({ uow, retrieveResult: [user, account] }) => {
+      if (!user || !account) {
+        return { ok: false as const };
+      }
 
-const { success } = await uow.executeMutations();
-if (!success) {
-  /* Version conflict - retry */
+      uow.update("users", user.id, (b) => b.set({ lastLogin: new Date() }).check());
+      uow.update("accounts", account.id, (b) =>
+        b.set({ balance: account.balance + amount }).check(),
+      );
+
+      return { ok: true as const };
+    })
+    .build();
 }
 ```
 
-**Notes**: `.check()` enables optimistic concurrency control; requires `FragnoId` objects (not
-string IDs); use `uow.getCreatedIds()` for new record IDs
+**Notes**: `.check()` enables optimistic concurrency control and requires `FragnoId` objects (not
+string IDs).
 
 ## Strategies for Building Fragments
 
