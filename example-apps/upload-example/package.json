@@ -17,7 +17,7 @@
     "@electric-sql/pglite": "^0.3.11",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "@fragno-dev/fragment-upload": "workspace:*",
+    "@fragno-dev/upload": "workspace:*",
     "@react-router/node": "^7.5.3",
     "@react-router/serve": "^7.5.3",
     "isbot": "^5",

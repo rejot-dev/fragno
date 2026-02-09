@@ -225,7 +225,7 @@ stay reproducible.
 
 ```typescript
 import { defaultFragnoRuntime } from "@fragno-dev/core";
-import { createWorkflowsTestRuntime } from "@fragno-dev/fragment-workflows/test";
+import { createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 
 const runtime = process.env.CI
   ? createWorkflowsTestRuntime({ startAt: 0, seed: 42 })

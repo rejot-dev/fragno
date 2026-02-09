@@ -2,7 +2,7 @@ import { SignatureV4 } from "@aws-sdk/signature-v4";
 import { HttpRequest } from "@aws-sdk/protocol-http";
 import { Hash } from "@aws-sdk/hash-node";
 import { formatUrl } from "@aws-sdk/util-format-url";
-import type { S3Signer, S3SignerInput } from "@fragno-dev/fragment-upload";
+import type { S3Signer, S3SignerInput } from "@fragno-dev/upload";
 
 type S3SignerConfig = {
   region: string;

@@ -5,7 +5,7 @@ import {
   createS3CompatibleStorageAdapter,
   createUploadFragment,
   type UploadFragmentConfig,
-} from "@fragno-dev/fragment-upload";
+} from "@fragno-dev/upload";
 
 import { createUploadAdapter } from "./adapter.server";
 import { createS3Signer } from "./s3-signer.server";

@@ -78,7 +78,7 @@ All workflow **domain logic** (types, step semantics, DB schema, runner core, Fr
 routes/services) must live in a **single package**. Runtime-specific “wake/dispatch” integrations
 live in separate dispatcher packages.
 
-### 5.1 Main Package: `@fragno-dev/fragment-workflows` (single source of truth)
+### 5.1 Main Package: `@fragno-dev/workflows` (single source of truth)
 
 Responsibilities:
 
@@ -1099,7 +1099,7 @@ Cloudflare-style expectations:
 
 ## 16. Decisions (Locked)
 
-1. Single domain package: `@fragno-dev/fragment-workflows` (SPEC §5.1)
+1. Single domain package: `@fragno-dev/workflows` (SPEC §5.1)
 2. Dispatcher packages:
    - Node: `@fragno-dev/workflows-dispatcher-node` (SPEC §5.2)
    - Cloudflare DO: `@fragno-dev/workflows-dispatcher-cloudflare-do` (SPEC §5.3)

@@ -30,7 +30,7 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragno-db-library": "workspace:*",
-    "@fragno-dev/fragment-workflows": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
     "@fragno-dev/node": "workspace:*",
     "@fragno-dev/auth": "workspace:*",
     "drizzle-orm": "^0.44.7",

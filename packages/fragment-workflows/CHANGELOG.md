@@ -1,4 +1,4 @@
-# @fragno-dev/fragment-workflows
+# @fragno-dev/workflows
 
 ## 0.0.1
 

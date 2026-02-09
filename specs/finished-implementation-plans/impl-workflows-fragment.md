@@ -16,7 +16,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 1 — New package(s) + public API scaffolding
 
 1. Create the packages per SPEC §5:
-   - [x] `packages/fragment-workflows` (`@fragno-dev/fragment-workflows`)
+   - [x] `packages/fragment-workflows` (`@fragno-dev/workflows`)
    - [x] `packages/workflows-dispatcher-node` (`@fragno-dev/workflows-dispatcher-node`)
    - [x] `packages/workflows-dispatcher-cloudflare-do`
          (`@fragno-dev/workflows-dispatcher-cloudflare-do`)
@@ -142,7 +142,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 8 — Verification
 
 1. [x] Tests:
-       `pnpm turbo run test --filter=@fragno-dev/fragment-workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
+       `pnpm turbo run test --filter=@fragno-dev/workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
 2. [x] Lint: `pnpm lint`
 3. [x] Types: `pnpm types:check`
 4. **Verification history**: Last verified 2026-01-18 — All checks passing; verification runs: 68.
@@ -217,7 +217,7 @@ This plan assumes the design in `specs/spec-workflows-fragment.md`.
 ## Phase 13 — Verification (new additions)
 
 1. [x] Tests:
-       `pnpm turbo run test --filter=@fragno-dev/fragment-workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
+       `pnpm turbo run test --filter=@fragno-dev/workflows --filter=@fragno-dev/db --filter=@fragno-dev/workflows-dispatcher-node --filter=@fragno-dev/workflows-dispatcher-cloudflare-do --filter=@fragno-dev/test`
 2. [x] Lint: `pnpm lint`
 3. [x] Types: `pnpm types:check`
 4. **Verification history**: Last verified 2026-01-19 — All checks passing; verification runs: 234.

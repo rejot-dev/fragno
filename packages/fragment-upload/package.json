@@ -1,5 +1,5 @@
 {
-  "name": "@fragno-dev/fragment-upload",
+  "name": "@fragno-dev/upload",
   "description": "Fragno upload fragment",
   "version": "0.1.1",
   "files": [
@@ -75,7 +75,6 @@
     "test:watch": "vitest --watch"
   },
   "type": "module",
-  "private": true,
   "bin": {
     "fragno-upload": "./bin/run.js"
   },

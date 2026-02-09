@@ -97,7 +97,7 @@ Local:
 
 ## 5. Packages
 
-### 5.1 Main package: `@fragno-dev/fragment-upload`
+### 5.1 Main package: `@fragno-dev/upload`
 
 Responsibilities:
 
@@ -110,8 +110,7 @@ Responsibilities:
 
 Notes:
 
-- Filesystem adapter is Node-only; export as a separate entrypoint (e.g.
-  `@fragno-dev/fragment-upload/fs`).
+- Filesystem adapter is Node-only; export as a separate entrypoint (e.g. `@fragno-dev/upload/fs`).
 - S3-compatible adapter should avoid heavyweight deps by allowing a pluggable signer (aws4fetch or
   AWS SDK).
 - If R2 requires deviations from S3 semantics, add a separate optional R2 adapter that wraps those

@@ -6,7 +6,7 @@ description: Configure S3-compatible, R2, or filesystem storage.
 ## S3-compatible adapter
 
 ```ts
-import { createS3CompatibleStorageAdapter } from "@fragno-dev/fragment-upload";
+import { createS3CompatibleStorageAdapter } from "@fragno-dev/upload";
 
 const storage = createS3CompatibleStorageAdapter({
   bucket: process.env.UPLOAD_S3_BUCKET!,
@@ -21,7 +21,7 @@ providers such as Cloudflare R2.
 ## R2 adapter
 
 ```ts
-import { createR2StorageAdapter } from "@fragno-dev/fragment-upload";
+import { createR2StorageAdapter } from "@fragno-dev/upload";
 
 const storage = createR2StorageAdapter({
   bucket: process.env.R2_BUCKET!,
@@ -35,7 +35,7 @@ The R2 adapter only applies R2-specific defaults; it still relies on the S3-comp
 ## Filesystem adapter (Node)
 
 ```ts
-import { createFilesystemStorageAdapter } from "@fragno-dev/fragment-upload";
+import { createFilesystemStorageAdapter } from "@fragno-dev/upload";
 
 const storage = createFilesystemStorageAdapter({
   rootDir: "./uploads",

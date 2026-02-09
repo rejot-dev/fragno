@@ -9,7 +9,7 @@ import {
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
   type WorkflowsFragmentConfig,
-} from "@fragno-dev/fragment-workflows";
+} from "@fragno-dev/workflows";
 
 import { getPostgresPool } from "/Users/wilco/.superset/worktrees/fragno/workflows-smoke-test/example-apps/wf-example/app/db/db.server";
 import { workflows } from "/Users/wilco/.superset/worktrees/fragno/workflows-smoke-test/example-apps/wf-example/app/workflows/workflows";

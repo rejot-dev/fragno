@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@fragno-dev/core": "workspace:*",
-    "@fragno-dev/fragment-workflows": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
     "@fragno-dev/node": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",

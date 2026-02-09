@@ -1,4 +1,4 @@
-# @fragno-dev/fragment-upload
+# @fragno-dev/upload
 
 ## 0.1.1
 

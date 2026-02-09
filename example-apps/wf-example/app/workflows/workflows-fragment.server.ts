@@ -6,7 +6,7 @@ import {
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
   type WorkflowsFragmentConfig,
-} from "@fragno-dev/fragment-workflows";
+} from "@fragno-dev/workflows";
 
 import { createWorkflowsAdapter } from "./adapter.server";
 import { workflows } from "./workflows";
