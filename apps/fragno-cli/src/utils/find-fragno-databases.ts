@@ -150,6 +150,39 @@ function isNewFragnoInstantiatedFragment(
 }
 
 /**
+ * Finds all instantiated Fragno fragments in a module's exports.
+ */
+export function findFragnoFragments(
+  targetModule: Record<string, unknown>,
+): FragnoInstantiatedFragment<
+  [],
+  unknown,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  Record<string, unknown>,
+  unknown,
+  Record<string, unknown>
+>[] {
+  const fragments: FragnoInstantiatedFragment<
+    [],
+    unknown,
+    Record<string, unknown>,
+    Record<string, unknown>,
+    Record<string, unknown>,
+    unknown,
+    Record<string, unknown>
+  >[] = [];
+
+  for (const [_key, value] of Object.entries(targetModule)) {
+    if (isNewFragnoInstantiatedFragment(value)) {
+      fragments.push(value);
+    }
+  }
+
+  return fragments;
+}
+
+/**
  * Finds all FragnoDatabase instances in a module, including those embedded
  * in instantiated fragments.
  */

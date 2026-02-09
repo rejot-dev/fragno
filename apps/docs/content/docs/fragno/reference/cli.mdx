@@ -6,9 +6,9 @@ icon: Terminal
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-The Fragno CLI (`@fragno-dev/cli`) provides command-line tools for working with Fragno. It is used
-to manage database-enabled Fragments. It handles schema outputs, migration generation, database
-version tracking, and migration execution.
+The Fragno CLI (`@fragno-dev/cli`) provides command-line tools for working with Fragno. It can serve
+Fragments locally for development and manage database-enabled Fragments — including schema outputs,
+migration generation, database version tracking, and migration execution.
 
 ## Installation
 
@@ -23,12 +23,60 @@ npm install --save-dev @fragno-dev/cli
 npx @fragno-dev/cli --help
 ```
 
-<Callout title="Database Fragments Only" type="info">
-  The CLI is only **required** when working with Fragments that include a database layer. Standard
-  Fragments without database integration don't require the CLI.
-</Callout>
-
 ## Commands
+
+### `serve`
+
+Start a local HTTP server to serve one or more Fragno Fragments. The target files must export
+instantiated Fragments (i.e. the return value of a `create*()` factory function). When multiple
+fragments are provided, each is mounted on its own route prefix.
+
+**Usage:**
+
+```bash
+npx fragno-cli serve <fragment-file> [fragment-file...] [options]
+```
+
+**Arguments:**
+
+- `<fragment-file>` - Path to a file that exports one or more instantiated Fragments
+
+**Options:**
+
+- `--port`, `-p` - Port to listen on (default: `8080`)
+- `--host`, `-H` - Host to bind to (default: `localhost`)
+
+**Examples:**
+
+```bash
+# Serve a single fragment
+npx fragno-cli serve lib/my-fragment.ts
+
+# Serve on a custom port
+npx fragno-cli serve lib/my-fragment.ts --port 3000
+
+# Serve multiple fragments
+npx fragno-cli serve lib/auth-fragment.ts lib/comment-fragment.ts
+```
+
+**Output:**
+
+```
+  Found 1 fragment(s) in lib/my-fragment.ts: example-fragment
+
+Fragno server is running on: http://localhost:8080
+
+Fragment: example-fragment
+  Mount: http://localhost:8080/api/example-fragment
+  Routes:
+    GET /api/example-fragment/hash
+    GET /api/example-fragment/data
+    POST /api/example-fragment/sample
+```
+
+Unmatched requests return a `404` JSON response listing the available mount routes.
+
+---
 
 ### `db generate`
 
