@@ -1,18 +1,18 @@
 import type { BuildTools } from "./index";
 
-const fragnoCoreVersion = "0.1.11";
-const fragnoDbVersion = "0.2.2";
-const unpluginFragnoVersion = "0.0.7";
-const fragnoCliVersion = "0.1.23";
+const fragnoCoreVersion = "0.2.0";
+const fragnoDbVersion = "0.3.0";
+const unpluginFragnoVersion = "0.0.8";
+const fragnoCliVersion = "0.2.0";
 
 export const basePkg: Record<string, unknown> = {
   dependencies: {
     "@fragno-dev/core": fragnoCoreVersion,
-    "@standard-schema/spec": "^1.0.0",
-    zod: "^4.0.5",
+    "@standard-schema/spec": "^1.1.0",
+    zod: "^4.3.6",
   },
   devDependencies: {
-    "@types/node": "^24",
+    "@types/node": "^25.2.2",
     "@fragno-dev/cli": fragnoCliVersion,
     "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
   },
@@ -38,7 +38,7 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   none: {},
   tsdown: {
     devDependencies: {
-      tsdown: "^0.12.0",
+      tsdown: "^0.20.3",
     },
     scripts: {
       build: "tsdown",
@@ -46,7 +46,7 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   esbuild: {
     devDependencies: {
-      esbuild: "^0.25.12",
+      esbuild: "^0.27.3",
     },
     scripts: {
       build: "./esbuild.config.js",
@@ -54,7 +54,7 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   vite: {
     devDependencies: {
-      vite: "^6.3.5",
+      vite: "^7.3.1",
     },
     scripts: {
       build: "vite build",
@@ -62,10 +62,10 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   rollup: {
     devDependencies: {
-      "@rollup/plugin-node-resolve": "^16.0.2",
-      "@rollup/plugin-typescript": "^12.1.4",
+      "@rollup/plugin-node-resolve": "^16.0.3",
+      "@rollup/plugin-typescript": "^12.3.0",
       tslib: "^2.8.1",
-      rollup: "^4.41.0",
+      rollup: "^4.57.1",
     },
     scripts: {
       build: "rollup -c",
@@ -73,9 +73,9 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   webpack: {
     devDependencies: {
-      webpack: "^5.99.9",
+      webpack: "^5.105.0",
       "webpack-cli": "^6.0.1",
-      "ts-loader": "^9.5.1",
+      "ts-loader": "^9.5.4",
     },
     scripts: {
       build: "webpack",
@@ -83,8 +83,8 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   },
   rspack: {
     devDependencies: {
-      "@rspack/core": "^1.6.1",
-      "@rspack/cli": "^1.6.1",
+      "@rspack/core": "^1.7.5",
+      "@rspack/cli": "^1.7.5",
     },
     scripts: {
       build: "rspack build",
