@@ -1,0 +1,1 @@
+../../../../packages/create/templates/optional/database/schema.ts
