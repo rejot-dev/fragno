@@ -15,19 +15,80 @@ function isInteractive() {
 const main = defineCommand({
   meta: {
     name: "create",
-    description: "Interactively create project from template",
+    description: "Create a Fragno project from template",
     version: process.env["npm_package_version"],
   },
-  async run() {
+  args: {
+    "non-interactive": {
+      type: "boolean",
+      description: "Run in non-interactive mode (no prompts)",
+      default: false,
+    },
+    name: {
+      type: "string",
+      description: "Project name (required in non-interactive mode)",
+    },
+    path: {
+      type: "string",
+      description: "Project path (default: ./<name>)",
+    },
+    template: {
+      type: "string",
+      description: "Template to use (default: fragment)",
+      default: "fragment",
+    },
+    "build-tool": {
+      type: "string",
+      description:
+        "Build tool (tsdown, vite, esbuild, rollup, webpack, rspack, none; default: tsdown)",
+      default: "tsdown",
+    },
+    "agent-docs": {
+      type: "string",
+      description: "Agent docs to include (AGENTS.md, CLAUDE.md, none; default: none)",
+      default: "none",
+    },
+    "with-database": {
+      type: "boolean",
+      description: "Include database layer (default: true)",
+      default: true,
+    },
+  },
+  async run({ args }) {
+    if (args["non-interactive"]) {
+      if (!args.name) {
+        console.error("Error: --name is required in non-interactive mode.");
+        process.exit(1);
+      }
+
+      const options = createOptionsSchema.safeParse({
+        name: args.name,
+        path: args.path ?? `./${args.name}`,
+        template: args.template,
+        buildTool: args["build-tool"],
+        agentDocs: args["agent-docs"],
+        withDatabase: args["with-database"],
+      });
+
+      if (!options.success) {
+        console.error("Invalid options:", options.error.format());
+        process.exit(1);
+      }
+
+      create(options.data);
+      console.log("Project created successfully!");
+      return;
+    }
+
+    // Interactive mode
+    if (!isInteractive()) {
+      p.cancel("Cannot run in non-interactive terminal. Use --non-interactive flag instead.");
+      process.exit(1);
+    }
+
     p.intro(`░█▀▀░█▀▄░█▀█░█▀▀░█▀█░█▀█
 │  ░█▀▀░█▀▄░█▀█░█░█░█░█░█░█
 │  ░▀░░░▀░▀░▀░▀░▀▀▀░▀░▀░▀▀▀`);
-
-    // TODO: allow to pass all options through args
-    if (!isInteractive()) {
-      p.cancel("Cannot run CLI in non-interactive mode.");
-      process.exit(1);
-    }
 
     const template = await p.select({
       message: "Pick a template",

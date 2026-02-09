@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
+    "test": "vitest run",
     "types:check": "tsc --noEmit"
   },
   "engines": {
