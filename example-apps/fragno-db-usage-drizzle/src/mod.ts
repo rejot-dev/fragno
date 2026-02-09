@@ -85,13 +85,11 @@ const serveCommand: Command = {
     server.listen(port, () => {
       console.log(`Server running at http://localhost:${port}`);
       console.log(`Auth fragment mounted at ${authFragment.mountRoute}`);
-      console.log(`Auth outbox at ${authFragment.mountRoute}/_internal/outbox`);
       console.log(`Comment fragment mounted at ${commentFragment.mountRoute}`);
       console.log(`Comment outbox at ${commentFragment.mountRoute}/_internal/outbox`);
       console.log(`Rating fragment mounted at ${ratingFragment.mountRoute}`);
       console.log(`Rating outbox at ${ratingFragment.mountRoute}/_internal/outbox`);
       console.log(`Workflows fragment mounted at ${workflowsFragment.mountRoute}`);
-      console.log(`Workflows outbox at ${workflowsFragment.mountRoute}/_internal/outbox`);
       console.log("Workflows dispatcher polling enabled (2s interval).");
       workflowsDispatcher.startPolling();
     });

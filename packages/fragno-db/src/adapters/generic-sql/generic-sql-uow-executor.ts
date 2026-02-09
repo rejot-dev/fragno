@@ -64,10 +64,20 @@ export async function executeMutation(
   const createdInternalIds: (bigint | null)[] = [];
   const resultInterpreter = new ResultInterpreter(driverConfig);
   const outboxEnabled = options.outbox?.enabled ?? false;
+  const shouldInclude = options.outbox?.shouldInclude;
   const namingStrategy = options.namingStrategy ?? driverConfig.defaultNamingStrategy;
 
   const outboxOperations = outboxEnabled
-    ? mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation] : []))
+    ? mutationBatch.flatMap((mutation) => {
+        const operation = mutation.operation;
+        if (!operation) {
+          return [];
+        }
+        if (shouldInclude && !shouldInclude(operation)) {
+          return [];
+        }
+        return [operation];
+      })
     : [];
 
   const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;

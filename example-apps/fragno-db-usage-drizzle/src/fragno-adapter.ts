@@ -9,7 +9,6 @@ export function createNewAdapter() {
   return new SqlAdapter({
     dialect,
     driverConfig: new PGLiteDriverConfig(),
-    outbox: { enabled: true },
   });
 }
 

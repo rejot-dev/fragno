@@ -25,13 +25,13 @@ import {
 import type { UOWInstrumentation } from "../../query/unit-of-work/unit-of-work";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
-import type { OutboxConfig } from "../../outbox/outbox";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import {
   createNamingResolver,
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import { getOutboxConfigForAdapter } from "../../internal/adapter-registry";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;
@@ -43,7 +43,6 @@ export interface SqlAdapterOptions {
   dialect: Dialect;
   driverConfig: DriverConfig;
   uowConfig?: UnitOfWorkConfig;
-  outbox?: OutboxConfig;
   sqliteProfile?: SQLiteProfile;
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
@@ -58,7 +57,6 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly dialect: Dialect;
   readonly driverConfig: DriverConfig;
   readonly uowConfig?: UnitOfWorkConfig;
-  readonly outbox?: OutboxConfig;
   readonly sqliteStorageMode?: SQLiteStorageMode;
   readonly sqliteProfile?: SQLiteProfile;
   readonly adapterMetadata: DatabaseAdapterMetadata;
@@ -73,7 +71,6 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     dialect,
     driverConfig,
     uowConfig,
-    outbox,
     sqliteProfile,
     sqliteStorageMode,
     namingStrategy,
@@ -81,7 +78,6 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     this.dialect = dialect;
     this.driverConfig = driverConfig;
     this.uowConfig = uowConfig;
-    this.outbox = outbox;
     this.namingStrategy = namingStrategy ?? driverConfig.defaultNamingStrategy;
     const resolvedProfile = sqliteProfile ?? "default";
 
@@ -195,7 +191,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       executor: createExecutor(this.#driver, this.driverConfig, {
         dialect: this.dialect,
         dryRun: false,
-        outbox: this.outbox,
+        outbox: getOutboxConfigForAdapter(this),
         namingStrategy: this.namingStrategy,
       }),
       decoder: new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode, resolver),

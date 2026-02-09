@@ -42,12 +42,13 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
           );
         }
 
+        const outboxEnabled = registry.isOutboxEnabled();
         const response: InternalDescribeResponse = {
-          fragments: config.outbox?.enabled ? registry.listFragments() : [],
+          fragments: outboxEnabled ? registry.listOutboxFragments() : [],
           schemas: registry.listSchemas(),
           routes: {
             internal: "/_internal",
-            outbox: config.outbox?.enabled ? "/_internal/outbox" : undefined,
+            outbox: outboxEnabled ? "/_internal/outbox" : undefined,
           },
         };
 
@@ -58,11 +59,24 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
 );
 
 export const internalFragmentOutboxRoutes = defineRoutes(internalFragmentDef).create(
-  ({ defineRoute, services }) => [
+  ({ defineRoute, services, config }) => [
     defineRoute({
       method: "GET",
       path: "/outbox",
       handler: async function (input, { json }) {
+        const registry = config.registry;
+        if (!registry || !registry.isOutboxEnabled()) {
+          return json(
+            {
+              error: {
+                code: "OUTBOX_UNAVAILABLE",
+                message: "Outbox is not enabled for this adapter.",
+              },
+            },
+            { status: 404 },
+          );
+        }
+
         // We intentionally skip input/output schemas here to keep the internal route lightweight.
         // Query params are validated manually and the response shape is stable (OutboxEntry[]),
         // while the public API surface is still gated behind adapter config.

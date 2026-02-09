@@ -1,7 +1,9 @@
-import type { AnyTable, FragnoId } from "../schema/create";
+import type { AnySchema, AnyTable, FragnoId } from "../schema/create";
+import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 
 export type OutboxConfig = {
   enabled: boolean;
+  shouldInclude?: (operation: MutationOperation<AnySchema>) => boolean;
 };
 
 export type OutboxVersionstampStrategy =

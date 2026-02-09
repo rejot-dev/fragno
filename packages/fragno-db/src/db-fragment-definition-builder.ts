@@ -46,7 +46,11 @@ type RegistryFragmentMeta = {
 
 type RegistryResolver = {
   getRegistryForAdapterSync: <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>) => {
-    registerSchema: (schema: RegistrySchemaInfo, fragment: RegistryFragmentMeta) => void;
+    registerSchema: (
+      schema: RegistrySchemaInfo,
+      fragment: RegistryFragmentMeta,
+      options?: { outboxEnabled?: boolean },
+    ) => void;
   };
   getInternalFragment: <TUOWConfig>(
     adapter: DatabaseAdapter<TUOWConfig>,
@@ -72,6 +76,12 @@ type AnyFragnoRouteConfig = FragnoRouteConfig<
 export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   databaseAdapter?: DatabaseAdapter<any>;
+  /**
+   * Optional outbox configuration for this fragment.
+   */
+  outbox?: {
+    enabled?: boolean;
+  };
   /**
    * Optional durable hooks processing configuration.
    */
@@ -665,6 +675,7 @@ export class DatabaseFragmentDefinitionBuilder<
         const registry = this.#registryResolver.getRegistryForAdapterSync(
           context.options.databaseAdapter,
         );
+        const outboxEnabled = context.options.outbox?.enabled ?? false;
         registry.registerSchema(
           {
             name: this.#schema.name,
@@ -676,6 +687,7 @@ export class DatabaseFragmentDefinitionBuilder<
             name: baseDef.name,
             mountRoute: resolveMountRoute(baseDef.name, context.options.mountRoute),
           },
+          { outboxEnabled },
         );
       }
 

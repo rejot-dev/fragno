@@ -66,13 +66,12 @@ type OutboxContext = {
 async function buildOutboxContext(): Promise<OutboxContext> {
   const adapter = new InMemoryAdapter({
     idSeed: "lofi-outbox-seed",
-    outbox: { enabled: true },
   });
 
   const fragment = instantiate(fragmentDef)
     .withConfig({})
     .withRoutes([])
-    .withOptions({ databaseAdapter: adapter })
+    .withOptions({ databaseAdapter: adapter, outbox: { enabled: true } })
     .build();
 
   const deps = fragment.$internal.deps as { db: OutboxContext["db"] };

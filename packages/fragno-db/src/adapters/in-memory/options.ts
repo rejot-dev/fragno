@@ -10,7 +10,6 @@ export type InMemoryAdapterOptions = {
   enforceConstraints?: boolean;
   btreeOrder?: number;
   namingStrategy?: SqlNamingStrategy;
-  outbox?: OutboxConfig;
 };
 
 export type ResolvedInMemoryAdapterOptions = {
@@ -86,6 +85,6 @@ export const resolveInMemoryAdapterOptions = (
     internalIdGeneratorProvided,
     enforceConstraints: options.enforceConstraints ?? defaultEnforceConstraints,
     btreeOrder: options.btreeOrder ?? defaultBtreeOrder,
-    outbox: options.outbox,
+    outbox: undefined,
   };
 };

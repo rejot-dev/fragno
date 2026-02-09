@@ -9,9 +9,10 @@ import { PGLiteDriverConfig, SQLocalDriverConfig } from "../adapters/generic-sql
 import type { SimpleQueryInterface } from "../query/simple-query-interface";
 import { withDatabase } from "../with-database";
 import { internalSchema, type InternalFragmentInstance } from "../fragments/internal-fragment";
+import type { AnySchema } from "../schema/create";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../schema/create";
 import { getInternalFragment } from "../internal/adapter-registry";
-import type { OutboxConfig, OutboxEntry, OutboxPayload } from "./outbox";
+import type { OutboxEntry, OutboxPayload } from "./outbox";
 
 const outboxSchema = schema("outbox", (s) => {
   return s
@@ -34,14 +35,26 @@ const outboxSchema = schema("outbox", (s) => {
     });
 });
 
+const alphaSchema = schema("alpha", (s) =>
+  s.addTable("alpha_items", (t) =>
+    t.addColumn("id", idColumn()).addColumn("name", column("string")),
+  ),
+);
+
+const betaSchema = schema("beta", (s) =>
+  s.addTable("beta_items", (t) =>
+    t.addColumn("id", idColumn()).addColumn("title", column("string")),
+  ),
+);
+
 const outboxFragmentName = "outbox-test";
 const outboxFragmentDef = defineFragment(outboxFragmentName)
   .extend(withDatabase(outboxSchema))
   .build();
 
 type OutboxAdapterConfig =
-  | { type: "kysely-sqlite"; outbox?: OutboxConfig }
-  | { type: "kysely-pglite"; outbox?: OutboxConfig };
+  | { type: "kysely-sqlite"; outboxEnabled?: boolean }
+  | { type: "kysely-pglite"; outboxEnabled?: boolean };
 
 type OutboxTestContext = {
   db: SimpleQueryInterface<typeof outboxSchema>;
@@ -51,7 +64,7 @@ type OutboxTestContext = {
 
 async function migrateSchema(
   adapter: SqlAdapter,
-  schemaToMigrate: typeof outboxSchema | typeof internalSchema,
+  schemaToMigrate: AnySchema,
   namespace: string,
 ): Promise<void> {
   const migrations = adapter.prepareMigrations(schemaToMigrate, namespace);
@@ -67,7 +80,6 @@ async function createAdapter(config: OutboxAdapterConfig): Promise<{
     const adapter = new SqlAdapter({
       dialect,
       driverConfig: new SQLocalDriverConfig(),
-      outbox: config.outbox,
     });
 
     await migrateSchema(adapter, internalSchema, "");
@@ -86,7 +98,6 @@ async function createAdapter(config: OutboxAdapterConfig): Promise<{
   const adapter = new SqlAdapter({
     dialect,
     driverConfig: new PGLiteDriverConfig(),
-    outbox: config.outbox,
   });
 
   await migrateSchema(adapter, internalSchema, "");
@@ -105,7 +116,10 @@ async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<Outb
   const fragment = instantiate(outboxFragmentDef)
     .withConfig({})
     .withRoutes([])
-    .withOptions({ databaseAdapter: adapter })
+    .withOptions({
+      databaseAdapter: adapter,
+      outbox: adapterConfig.outboxEnabled ? { enabled: true } : undefined,
+    })
     .build();
   const deps = fragment.$internal.deps as { db: SimpleQueryInterface<typeof outboxSchema> };
 
@@ -147,7 +161,7 @@ describe("Fragno DB Outbox", () => {
   it("stores refMap placeholders and lists entries in order", async () => {
     const { db, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
-      outbox: { enabled: true },
+      outboxEnabled: true,
     });
 
     await db.create("users", { email: "alpha@example.com" });
@@ -204,7 +218,7 @@ describe("Fragno DB Outbox", () => {
   it("orders outbox entries by commit order across concurrent UOWs", async () => {
     const { db, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
-      outbox: { enabled: true },
+      outboxEnabled: true,
     });
 
     const uow1 = db.createUnitOfWork("uow-1");
@@ -228,6 +242,55 @@ describe("Fragno DB Outbox", () => {
     await cleanup();
   });
 
+  it("only writes outbox entries for schemas that opt in", async () => {
+    const { dialect } = new SQLocalKysely(":memory:");
+    const adapter = new SqlAdapter({
+      dialect,
+      driverConfig: new SQLocalDriverConfig(),
+    });
+
+    try {
+      await migrateSchema(adapter, internalSchema, "");
+      await migrateSchema(adapter, alphaSchema, alphaSchema.name);
+      await migrateSchema(adapter, betaSchema, betaSchema.name);
+
+      const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+      const betaDef = defineFragment("beta-fragment").extend(withDatabase(betaSchema)).build();
+
+      const alphaFragment = instantiate(alphaDef)
+        .withConfig({})
+        .withRoutes([])
+        .withOptions({ databaseAdapter: adapter, outbox: { enabled: true } })
+        .build();
+
+      const betaFragment = instantiate(betaDef)
+        .withConfig({})
+        .withRoutes([])
+        .withOptions({ databaseAdapter: adapter })
+        .build();
+
+      const alphaDeps = alphaFragment.$internal.deps as {
+        db: SimpleQueryInterface<typeof alphaSchema>;
+      };
+      const betaDeps = betaFragment.$internal.deps as {
+        db: SimpleQueryInterface<typeof betaSchema>;
+      };
+
+      await alphaDeps.db.create("alpha_items", { name: "alpha" });
+      await betaDeps.db.create("beta_items", { title: "beta" });
+
+      const entries = await listOutbox(getInternalFragment(adapter));
+      const mutationSchemas = entries
+        .map((entry) => superjson.deserialize(entry.payload as SuperJSONResult) as OutboxPayload)
+        .flatMap((payload) => payload.mutations.map((mutation) => mutation.schema));
+
+      expect(mutationSchemas).toContain(alphaSchema.name);
+      expect(mutationSchemas).not.toContain(betaSchema.name);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   describe.each(adapterConfigs)("adapter opt-in (%s)", (adapterConfig) => {
     it("writes outbox rows only when enabled", async () => {
       const { db, internalFragment, cleanup } = await buildOutboxTest(adapterConfig);
@@ -243,7 +306,7 @@ describe("Fragno DB Outbox", () => {
         cleanup: enabledCleanup,
       } = await buildOutboxTest({
         ...adapterConfig,
-        outbox: { enabled: true },
+        outboxEnabled: true,
       });
       await enabledDb.create("users", { email: "enabled@example.com" });
       const enabledEntries = await listOutbox(enabledInternal);

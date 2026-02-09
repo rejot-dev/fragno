@@ -45,9 +45,6 @@ export class SchemaRegistryCollisionError extends Error {
 
 export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
-  outbox?: {
-    enabled: boolean;
-  };
 };
 
 export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
