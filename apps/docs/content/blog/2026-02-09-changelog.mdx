@@ -1,0 +1,279 @@
+---
+title: "Fragno Changelog: Unified SqlAdapter, File Uploads, and Standard Schema Validation"
+description:
+  "This release unifies database adapters behind a single SqlAdapter, adds FormData upload support,
+  introduces Standard Schema validation for table definitions, and ships zero-config SQLite for
+  development."
+date: "2026-02-09"
+author: "Wilco Kruijer"
+image: "blog-2026-02-09-changelog.jpg"
+---
+
+<Callout type="idea">
+  Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and a
+  database schema into a single package. The goal is to let library authors ship complete features
+  across the full stack.
+  <p>See the [GitHub repository](https://github.com/rejot-dev/fragno) for details.</p>
+</Callout>
+
+# Unified SqlAdapter, File Uploads, and Standard Schema Validation
+
+This release touches every layer of the stack. The database layer gets a single `SqlAdapter` that
+replaces the previous `DrizzleAdapter`, `KyselyAdapter`, and `PrismaAdapter`. Tables defined in
+`@fragno-dev/db` schemas now conform to the Standard Schema spec, giving you runtime validation out
+of the box. And the core framework adds file upload support.
+
+## One Adapter: SqlAdapter
+
+**Breaking change.** The three ORM-specific adapters (`DrizzleAdapter`, `KyselyAdapter`,
+`PrismaAdapter`) have been consolidated into a single `SqlAdapter`. The old adapters are removed.
+
+The rationale is straightforward: all three shared the same underlying `GenericSQLAdapter` and
+Kysely-compatible query execution. The only real differences were schema output format (Drizzle
+schema files vs. Prisma schema files) and a few SQLite storage quirks. Those differences are now
+handled through options on the unified adapter instead of separate classes.
+
+**Before:**
+
+```typescript
+import { DrizzleAdapter } from "@fragno-dev/db/adapters/drizzle";
+
+const adapter = new DrizzleAdapter({
+  dialect,
+  driverConfig: new PGLiteDriverConfig(),
+});
+```
+
+**After:**
+
+```typescript
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+
+const adapter = new SqlAdapter({
+  dialect,
+  driverConfig: new PGLiteDriverConfig(),
+});
+```
+
+For Prisma users, add `sqliteProfile: "prisma"` to account for Prisma's SQLite storage conventions:
+
+```typescript
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+
+const adapter = new SqlAdapter({
+  dialect: getSqliteDialect(),
+  driverConfig: new BetterSQLite3DriverConfig(),
+  sqliteProfile: "prisma",
+});
+```
+
+Schema output (generating Drizzle or Prisma schema files) is now handled by the CLI's `db generate`
+command with an explicit `--format` flag, rather than being tied to the adapter choice. See the
+[example-apps/fragno-db-usage-drizzle](https://github.com/rejot-dev/fragno/tree/main/example-apps/fragno-db-usage-drizzle)
+and
+[example-apps/fragno-db-usage-prisma](https://github.com/rejot-dev/fragno/tree/main/example-apps/fragno-db-usage-prisma)
+for migration examples.
+
+## FormData and Binary Upload Support
+
+Routes can now accept file uploads. Set `contentType: "multipart/form-data"` on a route definition,
+and the server will validate incoming `Content-Type` headers (rejecting mismatches with 415). The
+client detects `FormData` or `File` objects in request bodies and sends them with the right headers
+automatically.
+
+```typescript
+defineRoute({
+  method: "POST",
+  path: "/upload",
+  contentType: "multipart/form-data",
+  async handler(ctx, res) {
+    const formData = ctx.formData();
+    const file = formData.get("file") as File;
+    return res.json({ filename: file.name });
+  },
+});
+```
+
+New APIs on the request context:
+
+- `ctx.formData()` returns the request body as `FormData`
+- `ctx.isFormData()` checks whether the body is `FormData`
+
+In addition, routes now support `application/octet-stream` for raw binary uploads. Together, these
+cover the two most common file upload patterns: multipart form submissions and streaming binary
+bodies.
+
+## Tables Implement Standard Schema
+
+Tables defined with `addTable` now implement the
+[Standard Schema](https://github.com/standard-schema/standard-schema) spec. Every table exposes a
+`~standard` property and a `validate` method, so you can use your Fragno schema as a runtime
+validator anywhere you need one — form validation, API input validation, or any library that
+supports the Standard Schema interface — without maintaining a separate Zod or Valibot schema
+alongside it.
+
+Given a schema like the
+[mailing list fragment](https://github.com/rejot-dev/fragno/blob/main/packages/fragment-mailing-list/src/schema.ts):
+
+```typescript
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
+
+export const mailingListSchema = schema("mailing-list", (s) => {
+  return s.addTable("subscriber", (t) => {
+    return t
+      .addColumn("id", idColumn())
+      .addColumn("email", column("string"))
+      .addColumn(
+        "subscribedAt",
+        column("timestamp").defaultTo((b) => b.now()),
+      )
+      .createIndex("idx_subscriber_email", ["email"], { unique: true });
+  });
+});
+```
+
+You can validate data against the table directly:
+
+```typescript
+const subscriberTable = mailingListSchema.tables.subscriber;
+
+// Standard Schema interface: works with any library that supports the spec
+const result = subscriberTable["~standard"].validate({
+  email: "test@example.com",
+});
+
+// Or use the convenience method
+const validated = subscriberTable.validate({
+  email: "test@example.com",
+  subscribedAt: new Date(),
+});
+```
+
+Required columns must be present, nullable columns are optional, `varchar` length limits are
+enforced, and unknown keys are stripped by default (configurable to strict mode). The Standard
+Schema `~standard.validate()` returns issues inline (as the spec requires), while the convenience
+`validate()` method throws a `FragnoDbValidationError` with the same structured issues.
+
+## Zero-Config SQLite for Development
+
+When a fragment uses `withDatabase(...)` and you don't pass a `databaseAdapter`, Fragno now
+automatically creates a SQLite-backed adapter using `better-sqlite3` (if installed). The database
+file is stored in `FRAGNO_DATA_DIR` (defaults to `.fragno/` in your project root).
+
+This means you can start developing with a database-backed fragment without any adapter
+configuration:
+
+```typescript
+import { createCommentFragment } from "@fragno-dev/fragno-db-library";
+
+// No databaseAdapter needed; SQLite is used automatically
+const fragment = createCommentFragment({}, {});
+```
+
+This is intended for local development and prototyping. For production, you'll still want to pass a
+`databaseAdapter` pointing at your actual database.
+
+## Durable Hooks: Dispatchers, handlerTx, processAt
+
+The [durable hooks system](/docs/fragno/for-library-authors/database-integration/durable-hooks)
+introduced in the previous release, gets several improvements.
+
+### Built-in Dispatchers
+
+Durable hooks are persisted in the database, but something needs to actually pick them up and run
+them. That's what a dispatcher does: it polls for pending hooks and invokes the processor.
+Previously, you had to wire this yourself or use separate packages
+(`@fragno-dev/workflows-dispatcher-node`, `@fragno-dev/workflows-dispatcher-cloudflare-do`). Those
+packages are now removed. Instead, `@fragno-dev/db` ships two built-in dispatchers.
+
+The **Node.js dispatcher** uses `setInterval` to poll the database for hooks that are ready to run.
+You can also call `wake()` to trigger immediate processing (e.g., right after a request that
+triggered a hook). Here's how the
+[workflows example app](https://github.com/rejot-dev/fragno/blob/main/example-apps/fragno-db-usage-drizzle/src/fragno/workflows-fragment.ts)
+wires it up:
+
+```typescript
+import { createDurableHooksProcessor } from "@fragno-dev/db";
+import { createDurableHooksDispatcher } from "@fragno-dev/db/dispatchers/node";
+
+const processor = createDurableHooksProcessor(fragment);
+const dispatcher = createDurableHooksDispatcher({
+  processor,
+  pollIntervalMs: 2000,
+  onError: (error) => console.error("Hook processing failed", error),
+});
+
+dispatcher.startPolling();
+```
+
+The **Cloudflare Durable Objects dispatcher** uses the Durable Object alarm API instead of polling.
+After processing, it checks `getNextWakeAt()` and schedules an alarm for the next pending hook, so
+it only wakes when there's actual work to do.
+
+### processAt Scheduling
+
+Hooks can now specify a `processAt` timestamp when triggered, allowing deferred execution. Combined
+with the wake scheduling in dispatchers, this lets you implement delayed side effects (e.g., "send
+reminder email in 24 hours") without an external scheduler.
+
+### handlerTx in Hook Context
+
+Durable hooks now receive `handlerTx` in their context, matching the transaction builder API
+available in services. This replaces direct `db` and `queryEngine` usage (now deprecated) with a
+consistent transaction-scoped API that automatically wires up hook mutations and retries.
+
+## Required Schema Names and Namespace-Aware SQL
+
+Schema definitions now require an explicit `name` field. This name is used to derive the SQL
+namespace (table prefixes), replacing the previous implicit naming based on fragment identifiers.
+
+```typescript
+import { schema } from "@fragno-dev/db/schema";
+
+export const mailingListSchema = schema("mailing-list", (s) => {
+  return s.addTable("subscriber", (t) => {
+    // ...
+  });
+});
+```
+
+The benefit is predictable, stable table names across environments. The namespace is sanitized from
+the schema name by default, but you can also set an explicit `databaseNamespace` if you need full
+control. Explicit namespace values are now used as-is without sanitization.
+
+This change affects the CLI (`fragno-cli db generate` and `fragno-cli db info`), the test utilities,
+and the build plugin.
+
+We've also introduced a new `SqlNamingStrategy` interface that allows you to customize the naming of
+SQL artifacts. The built-in strategies are `suffixNamingStrategy` and `schemaNamingStrategy`. The
+schema naming strategy is only available for Postgres databases, and makes it so that tables are
+created in the specified Postgres schema.
+
+## Other Improvements
+
+- **Decoded path params**: `pathParams` in `RequestInputContext` now returns URL-decoded values
+  instead of raw encoded strings.
+- **ReadableStream request bodies**: The server correctly handles `ReadableStream` bodies for fetch
+  and validation.
+- **Internal fragment middleware**: Internal routes now correctly run fragment middleware and have
+  proper types in `ifMatchesRoute`.
+- **Postgres timestamp decoding**: Timezone-less timestamp values from Postgres are now decoded
+  correctly.
+- **Drizzle SQLite unique indexes**: External IDs in Drizzle SQLite schemas are now enforced as
+  unique indexes.
+- **Durable hook retries**: Hooks stuck in "processing" after a timeout are now requeued
+  automatically. This is configurable through the `stuckProcessingTimeoutMinutes` option. We've also
+  added an `onStuckProcessingHooks` callback that is called when stuck hooks are detected, which can
+  be used to log or take action.
+- **Retry policy validation**: `handlerTx` disables retries when no retrieve operations are present
+  and rejects explicit retry policies in that case, preventing silent misuse.
+- **Cursor pagination improvements**: Cursor-based pagination now handles more edge cases correctly,
+  including composite cursors and ordering across nullable columns.
+- **Vue `createStore` support**: The Vue client now supports `client.createStore()`, matching the
+  React client's functionality. Fragment authors who use stores can now serve both React and Vue
+  users without changes.
+
+## Learn More
+
+That covers the highlights. Check out the [documentation](/docs) for more details and star the
+[GitHub repository](https://github.com/rejot-dev/fragno) if you find this useful!
