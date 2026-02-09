@@ -25,6 +25,7 @@ import {
   suffixNamingStrategy,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import { getOutboxConfigForAdapter } from "../../internal/adapter-registry";
 
 class UpdateManySpecialBuilder<TTable extends AnyTable> {
   #indexName?: string;
@@ -69,6 +70,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     this.options = resolveInMemoryAdapterOptions(options);
     this.namingStrategy = options.namingStrategy ?? suffixNamingStrategy;
     this.#contextStorage = new RequestContextStorage();
+    this.options.outbox = getOutboxConfigForAdapter(this);
   }
 
   get [fragnoDatabaseAdapterNameFakeSymbol](): string {

@@ -29,8 +29,9 @@ pnpm exec turbo build --filter=./example-apps/fragno-db-usage-drizzle --output-l
 node example-apps/fragno-db-usage-drizzle/bin/run.js serve
 ```
 
-The server listens on `http://localhost:3000` and logs each fragment mount route and its outbox
-endpoint. Use the logged `/_internal/outbox` URLs with Lofi or the `fragno-lofi` CLI.
+The server listens on `http://localhost:3000` and logs each fragment mount route plus outbox
+endpoints for the comment and rating fragments. Use the logged `/_internal/outbox` URLs with Lofi or
+the `fragno-lofi` CLI.
 
 ## Useful commands
 

@@ -1278,8 +1278,18 @@ export const createInMemoryUowExecutor = (
     const createdInternalIds: (bigint | null)[] = [];
     const rollbackActions: Array<() => void> = [];
     const outboxEnabled = options.outbox?.enabled ?? false;
+    const shouldInclude = options.outbox?.shouldInclude;
     const outboxOperations = outboxEnabled
-      ? mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation] : []))
+      ? mutationBatch.flatMap((mutation) => {
+          const operation = mutation.operation;
+          if (!operation) {
+            return [];
+          }
+          if (shouldInclude && !shouldInclude(operation)) {
+            return [];
+          }
+          return [operation];
+        })
       : [];
     const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;

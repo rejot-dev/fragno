@@ -9,7 +9,6 @@ import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { DatabaseAdapter } from "@fragno-dev/db/adapters";
 import type { UnitOfWorkConfig } from "@fragno-dev/db/adapters/sql";
-import type { OutboxConfig } from "@fragno-dev/db/adapters/sql";
 import { rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import type { BaseTestContext } from ".";
@@ -23,21 +22,18 @@ import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 export interface KyselySqliteAdapter {
   type: "kysely-sqlite";
   uowConfig?: UnitOfWorkConfig;
-  outbox?: OutboxConfig;
 }
 
 export interface KyselyPgliteAdapter {
   type: "kysely-pglite";
   databasePath?: string;
   uowConfig?: UnitOfWorkConfig;
-  outbox?: OutboxConfig;
 }
 
 export interface DrizzlePgliteAdapter {
   type: "drizzle-pglite";
   databasePath?: string;
   uowConfig?: UnitOfWorkConfig;
-  outbox?: OutboxConfig;
 }
 
 export interface InMemoryAdapterConfig {
@@ -149,7 +145,6 @@ export async function createKyselySqliteAdapter(
       dialect,
       driverConfig: new SQLocalDriverConfig(),
       uowConfig: config.uowConfig,
-      outbox: config.outbox,
     });
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
@@ -242,7 +237,6 @@ export async function createKyselyPgliteAdapter(
       dialect: kyselyPglite.dialect,
       driverConfig: new PGLiteDriverConfig(),
       uowConfig: config.uowConfig,
-      outbox: config.outbox,
     });
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
@@ -346,7 +340,6 @@ export async function createDrizzlePgliteAdapter(
       dialect,
       driverConfig: new PGLiteDriverConfig(),
       uowConfig: config.uowConfig,
-      outbox: config.outbox,
     });
 
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);

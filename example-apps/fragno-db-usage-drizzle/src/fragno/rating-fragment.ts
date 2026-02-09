@@ -4,7 +4,7 @@ import { createRatingFragment } from "@fragno-dev/fragno-db-library/upvote";
 
 // oxlint-disable-next-line no-explicit-any
 export function createRatingFragmentServer(a: DatabaseAdapter<any>) {
-  return createRatingFragment({}, { databaseAdapter: a });
+  return createRatingFragment({}, { databaseAdapter: a, outbox: { enabled: true } });
 }
 
 export const fragment = createRatingFragmentServer(adapter);

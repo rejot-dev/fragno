@@ -258,25 +258,35 @@ describe("IndexedDbAdapter query engine", () => {
 
   it("orders and filters binary columns without Buffer", async () => {
     const originalBuffer = (globalThis as { Buffer?: unknown }).Buffer;
-    (globalThis as { Buffer?: unknown }).Buffer = undefined;
 
-    try {
-      const appSchema = schema("app", (s) =>
-        s.addTable("files", (t) =>
-          t
-            .addColumn("id", idColumn())
-            .addColumn("hash", column("binary"))
-            .createIndex("idx_hash", ["hash"]),
-        ),
-      );
+    const runWithoutBuffer = async <T>(fn: () => Promise<T>): Promise<T> => {
+      (globalThis as { Buffer?: unknown }).Buffer = undefined;
+      try {
+        const promise = fn();
+        (globalThis as { Buffer?: unknown }).Buffer = originalBuffer;
+        return await promise;
+      } finally {
+        (globalThis as { Buffer?: unknown }).Buffer = originalBuffer;
+      }
+    };
 
-      const adapter = new IndexedDbAdapter({
-        dbName: createDbName(),
-        endpointName: "app",
-        schemas: [{ schema: appSchema }],
-      });
+    const appSchema = schema("app", (s) =>
+      s.addTable("files", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("hash", column("binary"))
+          .createIndex("idx_hash", ["hash"]),
+      ),
+    );
 
-      await adapter.applyOutboxEntry({
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await runWithoutBuffer(() =>
+      adapter.applyOutboxEntry({
         sourceKey: "app::outbox",
         versionstamp: "vs1",
         uowId: "uow-vs1",
@@ -306,23 +316,23 @@ describe("IndexedDbAdapter query engine", () => {
             values: { hash: new Uint8Array([0x01]) },
           },
         ],
-      });
+      }),
+    );
 
-      const query = adapter.createQueryEngine(appSchema);
-      const ordered = await query.find("files", (b) =>
-        b.whereIndex("idx_hash").orderByIndex("idx_hash", "asc"),
-      );
+    const query = adapter.createQueryEngine(appSchema);
+    const ordered = await runWithoutBuffer(() =>
+      query.find("files", (b) => b.whereIndex("idx_hash").orderByIndex("idx_hash", "asc")),
+    );
 
-      expect(ordered.map((row) => row.id.externalId)).toEqual(["file-1", "file-2", "file-3"]);
+    expect(ordered.map((row) => row.id.externalId)).toEqual(["file-1", "file-2", "file-3"]);
 
-      const match = await query.find("files", (b) =>
+    const match = await runWithoutBuffer(() =>
+      query.find("files", (b) =>
         b.whereIndex("idx_hash", (eb) => eb("hash", "=", new Uint8Array([0x00, 0x02]))),
-      );
+      ),
+    );
 
-      expect(match).toHaveLength(1);
-      expect(match[0]?.id.externalId).toBe("file-2");
-    } finally {
-      (globalThis as { Buffer?: unknown }).Buffer = originalBuffer;
-    }
+    expect(match).toHaveLength(1);
+    expect(match[0]?.id.externalId).toBe("file-2");
   });
 });

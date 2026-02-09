@@ -47,13 +47,15 @@ type OutboxTestContext = {
 async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<OutboxTestContext> {
   const adapter = new InMemoryAdapter({
     idSeed: "outbox-seed",
-    outbox: options.outboxEnabled ? { enabled: true } : undefined,
   });
 
   const fragment = instantiate(outboxFragmentDef)
     .withConfig({})
     .withRoutes([])
-    .withOptions({ databaseAdapter: adapter })
+    .withOptions({
+      databaseAdapter: adapter,
+      outbox: options.outboxEnabled ? { enabled: true } : undefined,
+    })
     .build();
 
   const deps = fragment.$internal.deps as { db: SimpleQueryInterface<typeof outboxSchema> };
@@ -130,7 +132,6 @@ describe("in-memory outbox", () => {
   it("resolves refMap lookups within the correct namespace", async () => {
     const adapter = new InMemoryAdapter({
       idSeed: "outbox-seed",
-      outbox: { enabled: true },
     });
 
     try {
@@ -147,12 +148,20 @@ describe("in-memory outbox", () => {
       const fragmentA = instantiate(fragmentDefA)
         .withConfig({})
         .withRoutes([])
-        .withOptions({ databaseAdapter: adapter, databaseNamespace: "tenant-a" })
+        .withOptions({
+          databaseAdapter: adapter,
+          databaseNamespace: "tenant-a",
+          outbox: { enabled: true },
+        })
         .build();
       const fragmentB = instantiate(fragmentDefB)
         .withConfig({})
         .withRoutes([])
-        .withOptions({ databaseAdapter: adapter, databaseNamespace: "tenant-b" })
+        .withOptions({
+          databaseAdapter: adapter,
+          databaseNamespace: "tenant-b",
+          outbox: { enabled: true },
+        })
         .build();
 
       const depsA = fragmentA.$internal.deps as { db: SimpleQueryInterface<typeof schemaA> };

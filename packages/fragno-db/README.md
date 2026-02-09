@@ -145,8 +145,8 @@ Example response:
 Notes:
 
 - `schemas` excludes the internal Fragno schema.
-- `fragments` is only populated when outbox support is enabled for the adapter.
-- `routes.outbox` is only present when the adapter has outbox support enabled.
+- `fragments` only includes fragments that opted into outbox support via fragment options.
+- `routes.outbox` is only present when at least one fragment has outbox enabled.
 
 ## ORM and database support
 

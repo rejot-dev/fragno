@@ -3,7 +3,7 @@ import { SqliteDialect } from "kysely";
 import { describe, expect, it } from "vitest";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
-import { getRegistryForAdapterSync } from "./adapter-registry";
+import { getOutboxConfigForAdapter, getRegistryForAdapterSync } from "./adapter-registry";
 
 describe("adapter registry", () => {
   it("returns the same registry for the same adapter instance", async () => {
@@ -47,6 +47,7 @@ describe("adapter registry", () => {
         tables: ["alpha_items"],
       },
       { name: "alpha-fragment", mountRoute: "/alpha" },
+      { outboxEnabled: true },
     );
 
     expect(registryA.listSchemas()).toHaveLength(1);
@@ -56,5 +57,34 @@ describe("adapter registry", () => {
     await adapterB.close();
     sqliteA.close();
     sqliteB.close();
+  });
+
+  it("enables adapter outbox config when a fragment opts in", async () => {
+    const sqlite = new SQLite(":memory:");
+    const adapter = new SqlAdapter({
+      dialect: new SqliteDialect({ database: sqlite }),
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
+
+    const outboxConfig = getOutboxConfigForAdapter(adapter);
+    expect(outboxConfig.enabled).toBe(false);
+
+    const registry = getRegistryForAdapterSync(adapter);
+    registry.registerSchema(
+      {
+        name: "alpha",
+        namespace: "alpha",
+        version: 1,
+        tables: ["alpha_items"],
+      },
+      { name: "alpha-fragment", mountRoute: "/alpha" },
+      { outboxEnabled: true },
+    );
+
+    expect(outboxConfig.enabled).toBe(true);
+    expect(registry.isOutboxEnabled()).toBe(true);
+
+    await adapter.close();
+    sqlite.close();
   });
 });
