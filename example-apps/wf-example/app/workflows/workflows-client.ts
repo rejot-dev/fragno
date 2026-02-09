@@ -1,3 +1,3 @@
-import { createWorkflowsClient } from "@fragno-dev/fragment-workflows/react";
+import { createWorkflowsClient } from "@fragno-dev/workflows/react";
 
 export const workflowsClient = createWorkflowsClient();

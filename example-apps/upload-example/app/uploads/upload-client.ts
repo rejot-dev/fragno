@@ -1,4 +1,4 @@
-import { createUploadFragmentClient } from "@fragno-dev/fragment-upload/react";
+import { createUploadFragmentClient } from "@fragno-dev/upload/react";
 
 export type UploadClient = ReturnType<typeof createUploadFragmentClient>;
 

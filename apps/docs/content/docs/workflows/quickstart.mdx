@@ -17,7 +17,7 @@ exposing routes.
 Install the fragment and database packages:
 
 ```npm
-npm install @fragno-dev/fragment-workflows @fragno-dev/db
+npm install @fragno-dev/workflows @fragno-dev/db
 ```
 
 ## Define a Workflow
@@ -25,11 +25,7 @@ npm install @fragno-dev/fragment-workflows @fragno-dev/db
 Create a workflow definition and a registry of workflows:
 
 ```ts title="lib/workflows.ts"
-import {
-  defineWorkflow,
-  type WorkflowEvent,
-  type WorkflowStep,
-} from "@fragno-dev/fragment-workflows";
+import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "@fragno-dev/workflows";
 
 type ApprovalParams = {
   requestId: string;
@@ -91,7 +87,7 @@ import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
-} from "@fragno-dev/fragment-workflows";
+} from "@fragno-dev/workflows";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
@@ -150,10 +146,7 @@ npx fragno-cli db migrate lib/workflows-fragment.ts
 Use the test harness to drive the runner with a controllable clock and deterministic runtime:
 
 ```ts title="lib/workflows.test.ts"
-import {
-  createWorkflowsTestHarness,
-  createWorkflowsTestRuntime,
-} from "@fragno-dev/fragment-workflows/test";
+import { createWorkflowsTestHarness, createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 import { workflows } from "./workflows";
 
 const runtime = createWorkflowsTestRuntime({ startAt: 0, seed: 123 });

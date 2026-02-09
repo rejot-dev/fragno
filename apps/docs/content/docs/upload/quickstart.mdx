@@ -6,13 +6,13 @@ description: Install and mount the Upload fragment.
 ## Install
 
 ```bash
-pnpm add @fragno-dev/fragment-upload
+pnpm add @fragno-dev/upload
 ```
 
 ## Server setup
 
 ```ts
-import { createUploadFragment, createFilesystemStorageAdapter } from "@fragno-dev/fragment-upload";
+import { createUploadFragment, createFilesystemStorageAdapter } from "@fragno-dev/upload";
 import { migrate } from "@fragno-dev/db";
 
 const storage = createFilesystemStorageAdapter({ rootDir: "./uploads" });
@@ -32,7 +32,7 @@ await migrate(fragment);
 ## Client setup
 
 ```ts
-import { createUploadFragmentClient } from "@fragno-dev/fragment-upload/react";
+import { createUploadFragmentClient } from "@fragno-dev/upload/react";
 
 export const uploadClient = createUploadFragmentClient({
   mountRoute: "/api/uploads",

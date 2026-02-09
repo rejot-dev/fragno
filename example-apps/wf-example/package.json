@@ -17,7 +17,7 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "@fragno-dev/fragment-workflows": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
     "@react-router/node": "^7.5.3",
     "@react-router/serve": "^7.5.3",
     "drizzle-orm": "^0.44.6",

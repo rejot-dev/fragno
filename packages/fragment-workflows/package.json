@@ -1,5 +1,5 @@
 {
-  "name": "@fragno-dev/fragment-workflows",
+  "name": "@fragno-dev/workflows",
   "description": "Fragno workflows fragment",
   "version": "0.0.1",
   "files": [
@@ -67,7 +67,6 @@
     "test:watch": "vitest --watch"
   },
   "type": "module",
-  "private": true,
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",

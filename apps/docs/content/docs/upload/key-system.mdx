@@ -9,7 +9,7 @@ Every file has a `fileKey` that is derived from an ordered list of `fileKeyParts
 and lexicographically sortable, which makes prefix queries reliable.
 
 ```ts
-import { encodeFileKey, decodeFileKey } from "@fragno-dev/fragment-upload";
+import { encodeFileKey, decodeFileKey } from "@fragno-dev/upload";
 
 const key = encodeFileKey(["users", 42, "avatar"]);
 const parts = decodeFileKey(key);

@@ -8,7 +8,7 @@ import {
   workflowsRoutesFactory,
   type WorkflowEvent,
   type WorkflowStep,
-} from "@fragno-dev/fragment-workflows";
+} from "@fragno-dev/workflows";
 import { toNodeHandler } from "@fragno-dev/node";
 import { createClient } from "./client.js";
 

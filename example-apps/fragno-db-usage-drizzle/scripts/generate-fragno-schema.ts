@@ -8,7 +8,7 @@ import type { AnySchema } from "@fragno-dev/db/schema";
 import { createAuthFragment } from "@fragno-dev/auth";
 import { createCommentFragment } from "@fragno-dev/fragno-db-library";
 import { createRatingFragment } from "@fragno-dev/fragno-db-library/upvote";
-import { createWorkflowsFragment } from "@fragno-dev/fragment-workflows";
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
 const supportedDialects: SupportedDatabase[] = ["postgresql", "sqlite", "mysql"];

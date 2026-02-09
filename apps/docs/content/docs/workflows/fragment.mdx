@@ -11,17 +11,13 @@ observe workflow instances.
 ## Install
 
 ```bash
-npm install @fragno-dev/fragment-workflows @fragno-dev/db
+npm install @fragno-dev/workflows @fragno-dev/db
 ```
 
 ## Define a Workflow
 
 ```ts title="lib/workflows.ts"
-import {
-  defineWorkflow,
-  type WorkflowEvent,
-  type WorkflowStep,
-} from "@fragno-dev/fragment-workflows";
+import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "@fragno-dev/workflows";
 
 type ApprovalParams = {
   requestId: string;
@@ -86,7 +82,7 @@ import {
   createWorkflowsRunner,
   workflowsFragmentDefinition,
   workflowsRoutesFactory,
-} from "@fragno-dev/fragment-workflows";
+} from "@fragno-dev/workflows";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
@@ -127,10 +123,7 @@ production, or inject a deterministic runtime for tests and model checking.
 Use the test harness to drive the runner and control time:
 
 ```ts title="lib/workflows.test.ts"
-import {
-  createWorkflowsTestHarness,
-  createWorkflowsTestRuntime,
-} from "@fragno-dev/fragment-workflows/test";
+import { createWorkflowsTestHarness, createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 import { workflows } from "./workflows";
 
 const runtime = createWorkflowsTestRuntime({ startAt: 0, seed: 42 });

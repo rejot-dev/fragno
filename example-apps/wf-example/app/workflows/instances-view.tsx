@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
-import type { InstanceStatus } from "@fragno-dev/fragment-workflows";
+import type { InstanceStatus } from "@fragno-dev/workflows";
 
 import { workflowsClient } from "./workflows-client";
 

@@ -9,7 +9,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
   defineWorkflow,
-} from "@fragno-dev/fragment-workflows";
+} from "@fragno-dev/workflows";
 import { adapter } from "../fragno-adapter";
 
 export type ApprovalParams = {
