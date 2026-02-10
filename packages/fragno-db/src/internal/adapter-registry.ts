@@ -5,9 +5,11 @@ import {
   internalFragmentDef,
   type InternalFragmentInstance,
 } from "../fragments/internal-fragment";
+import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
 import {
   createInternalFragmentDescribeRoutes,
   createInternalFragmentOutboxRoutes,
+  createInternalFragmentSyncRoutes,
 } from "../fragments/internal-fragment.routes";
 import { getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
 
@@ -23,16 +25,31 @@ export type FragmentMeta = {
   mountRoute: string;
 };
 
+export type SyncCommandTarget = {
+  fragmentName: string;
+  schemaName: string;
+  namespace: string | null;
+  commands: Map<string, SyncCommandDefinition>;
+};
+
 export type AdapterRegistry = {
   internalFragment: InternalFragmentInstance;
   schemas: Map<string, SchemaInfo>;
   fragments: Map<string, FragmentMeta>;
   outboxState: OutboxState;
+  syncCommandTargets: Map<string, SyncCommandTarget>;
   registerSchema: (
     schema: SchemaInfo,
     fragment: FragmentMeta,
     options?: { outboxEnabled?: boolean },
   ) => void;
+  registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
+  resolveSyncTarget: (fragmentName: string, schemaName: string) => SyncCommandTarget | undefined;
+  resolveSyncCommand: (
+    fragmentName: string,
+    schemaName: string,
+    commandName: string,
+  ) => { command: SyncCommandDefinition; namespace: string | null } | undefined;
   listSchemas: () => SchemaInfo[];
   listFragments: () => FragmentMeta[];
   listOutboxFragments: () => FragmentMeta[];
@@ -49,6 +66,8 @@ const toAdapterKey = <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>): Adapter
 const isDryRun = (): boolean => process.env["FRAGNO_INIT_DRY_RUN"] === "true";
 
 const getNamespaceKey = (schema: SchemaInfo): string => schema.namespace ?? schema.name;
+const getSyncTargetKey = (fragmentName: string, schemaName: string): string =>
+  `${fragmentName}::${schemaName}`;
 
 const sortSchemas = (schemas: SchemaInfo[]): SchemaInfo[] =>
   schemas.sort((a, b) => {
@@ -70,7 +89,11 @@ const buildInternalFragment = (
   adapter: DatabaseAdapter<unknown>,
   registry: AdapterRegistry,
 ): InternalFragmentInstance => {
-  const routes = [createInternalFragmentDescribeRoutes(), createInternalFragmentOutboxRoutes()];
+  const routes = [
+    createInternalFragmentDescribeRoutes(),
+    createInternalFragmentOutboxRoutes(),
+    createInternalFragmentSyncRoutes(),
+  ];
 
   return instantiate(internalFragmentDef)
     .withConfig({ registry })
@@ -83,6 +106,7 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
   const schemas = new Map<string, SchemaInfo>();
   const fragments = new Map<string, FragmentMeta>();
   const outboxState = getOutboxStateForAdapter(adapter);
+  const syncCommandTargets = new Map<string, SyncCommandTarget>();
   let registry: AdapterRegistry;
 
   registry = {
@@ -90,6 +114,7 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
     schemas,
     fragments,
     outboxState,
+    syncCommandTargets,
     registerSchema: (schema, fragment, options) => {
       const namespaceKey = getNamespaceKey(schema);
       const existing = schemas.get(namespaceKey);
@@ -124,6 +149,49 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
         outboxState.enabledFragments.add(fragment.name);
         outboxState.config.enabled = true;
       }
+    },
+    registerSyncCommands: (registration) => {
+      const key = getSyncTargetKey(registration.fragmentName, registration.schemaName);
+      const existing = syncCommandTargets.get(key);
+      if (existing) {
+        const commandsMatch =
+          existing.commands.size === registration.commands.size &&
+          [...existing.commands.entries()].every(
+            ([name, command]) => registration.commands.get(name) === command,
+          );
+        if (
+          existing.namespace !== registration.namespace ||
+          existing.fragmentName !== registration.fragmentName ||
+          existing.schemaName !== registration.schemaName ||
+          !commandsMatch
+        ) {
+          throw new Error(
+            `Sync commands for ${registration.fragmentName}/${registration.schemaName} are already registered.`,
+          );
+        }
+        return;
+      }
+      syncCommandTargets.set(key, {
+        fragmentName: registration.fragmentName,
+        schemaName: registration.schemaName,
+        namespace: registration.namespace,
+        commands: new Map(registration.commands),
+      });
+    },
+    resolveSyncTarget: (fragmentName, schemaName) => {
+      const key = getSyncTargetKey(fragmentName, schemaName);
+      return syncCommandTargets.get(key);
+    },
+    resolveSyncCommand: (fragmentName, schemaName, commandName) => {
+      const target = registry.resolveSyncTarget(fragmentName, schemaName);
+      if (!target) {
+        return undefined;
+      }
+      const command = target.commands.get(commandName);
+      if (!command) {
+        return undefined;
+      }
+      return { command, namespace: target.namespace };
     },
     listSchemas: () => sortSchemas([...schemas.values()]),
     listFragments: () => sortFragments([...fragments.values()]),
