@@ -189,6 +189,35 @@ describe("generateSchema and migrate", () => {
       	CONSTRAINT "fragno_db_outbox_id_unique" UNIQUE("id")
       );
 
+      CREATE TABLE "fragno_db_outbox_mutations" (
+      	"id" varchar(30) NOT NULL,
+      	"entryVersionstamp" text NOT NULL,
+      	"mutationVersionstamp" text NOT NULL,
+      	"uowId" text NOT NULL,
+      	"schema" text NOT NULL,
+      	"table" text NOT NULL,
+      	"externalId" text NOT NULL,
+      	"op" text NOT NULL,
+      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "fragno_db_outbox_mutations_id_unique" UNIQUE("id")
+      );
+
+      CREATE TABLE "fragno_db_sync_requests" (
+      	"id" varchar(30) NOT NULL,
+      	"requestId" text NOT NULL,
+      	"status" text NOT NULL,
+      	"confirmedCommandIds" json NOT NULL,
+      	"conflictCommandId" text,
+      	"baseVersionstamp" text,
+      	"lastVersionstamp" text,
+      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "fragno_db_sync_requests_id_unique" UNIQUE("id")
+      );
+
       CREATE TABLE "test"."users" (
       	"id" varchar(30) NOT NULL,
       	"name" text NOT NULL,
@@ -271,6 +300,10 @@ describe("generateSchema and migrate", () => {
       CREATE INDEX "idx_nonce" ON "fragno_hooks" USING btree ("nonce");
       CREATE UNIQUE INDEX "idx_outbox_versionstamp" ON "fragno_db_outbox" USING btree ("versionstamp");
       CREATE INDEX "idx_outbox_uow" ON "fragno_db_outbox" USING btree ("uowId");
+      CREATE INDEX "idx_outbox_mutations_entry" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp");
+      CREATE INDEX "idx_outbox_mutations_key" ON "fragno_db_outbox_mutations" USING btree ("schema","table","externalId","entryVersionstamp");
+      CREATE INDEX "idx_outbox_mutations_uow" ON "fragno_db_outbox_mutations" USING btree ("uowId");
+      CREATE UNIQUE INDEX "idx_sync_request_id" ON "fragno_db_sync_requests" USING btree ("requestId");
       CREATE UNIQUE INDEX "idx_users_email" ON "test"."users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "test"."users" USING btree ("name");
       CREATE INDEX "idx_users_active" ON "test"."users" USING btree ("isActive");

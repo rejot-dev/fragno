@@ -198,6 +198,24 @@ describe("generatePrismaSchema", () => {
         @@map("fragno_db_outbox")
       }
 
+      model FragnoDbOutboxMutations {
+        id String @unique @default(cuid())
+        entryVersionstamp String
+        mutationVersionstamp String
+        uowId String
+        schema String
+        table String
+        externalId String
+        op String
+        createdAt DateTime @default(now())
+        _internalId Int @id @default(autoincrement())
+        _version Int @default(0)
+        @@index([entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
+        @@index([schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
+        @@index([uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
+        @@map("fragno_db_outbox_mutations")
+      }
+
       model FragnoDbSettings {
         id String @unique @default(cuid())
         key String
@@ -206,6 +224,21 @@ describe("generatePrismaSchema", () => {
         _version Int @default(0)
         @@unique([key], map: "uidx_fragno_db_settings_unique_key_09269db3")
         @@map("fragno_db_settings")
+      }
+
+      model FragnoDbSyncRequests {
+        id String @unique @default(cuid())
+        requestId String
+        status String
+        confirmedCommandIds Json
+        conflictCommandId String?
+        baseVersionstamp String?
+        lastVersionstamp String?
+        createdAt DateTime @default(now())
+        _internalId Int @id @default(autoincrement())
+        _version Int @default(0)
+        @@unique([requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
+        @@map("fragno_db_sync_requests")
       }
 
       model FragnoHooks {
@@ -292,6 +325,24 @@ describe("generatePrismaSchema", () => {
         @@map("fragno_db_outbox")
       }
 
+      model FragnoDbOutboxMutations {
+        id String @unique @default(cuid())
+        entryVersionstamp String
+        mutationVersionstamp String
+        uowId String
+        schema String
+        table String
+        externalId String
+        op String
+        createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
+        _internalId Int @id @default(autoincrement())
+        _version Int @default(0)
+        @@index([entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
+        @@index([schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
+        @@index([uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
+        @@map("fragno_db_outbox_mutations")
+      }
+
       model FragnoDbSettings {
         id String @unique @default(cuid())
         key String
@@ -300,6 +351,21 @@ describe("generatePrismaSchema", () => {
         _version Int @default(0)
         @@unique([key], map: "uidx_fragno_db_settings_unique_key_09269db3")
         @@map("fragno_db_settings")
+      }
+
+      model FragnoDbSyncRequests {
+        id String @unique @default(cuid())
+        requestId String
+        status String
+        confirmedCommandIds Json
+        conflictCommandId String?
+        baseVersionstamp String?
+        lastVersionstamp String?
+        createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
+        _internalId Int @id @default(autoincrement())
+        _version Int @default(0)
+        @@unique([requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
+        @@map("fragno_db_sync_requests")
       }
 
       model FragnoHooks {
@@ -385,6 +451,24 @@ describe("generatePrismaSchema", () => {
         @@map("fragno_db_outbox")
       }
 
+      model FragnoDbOutboxMutations {
+        id String @unique @default(cuid()) @db.VarChar(30)
+        entryVersionstamp String
+        mutationVersionstamp String
+        uowId String
+        schema String
+        table String
+        externalId String
+        op String
+        createdAt DateTime @default(now())
+        _internalId BigInt @id @default(autoincrement())
+        _version Int @default(0)
+        @@index([entryVersionstamp], map: "idx_outbox_mutations_entry")
+        @@index([schema, table, externalId, entryVersionstamp], map: "idx_outbox_mutations_key")
+        @@index([uowId], map: "idx_outbox_mutations_uow")
+        @@map("fragno_db_outbox_mutations")
+      }
+
       model FragnoDbSettings {
         id String @unique @default(cuid()) @db.VarChar(30)
         key String
@@ -393,6 +477,21 @@ describe("generatePrismaSchema", () => {
         _version Int @default(0)
         @@unique([key], map: "unique_key")
         @@map("fragno_db_settings")
+      }
+
+      model FragnoDbSyncRequests {
+        id String @unique @default(cuid()) @db.VarChar(30)
+        requestId String
+        status String
+        confirmedCommandIds Json @db.Json
+        conflictCommandId String?
+        baseVersionstamp String?
+        lastVersionstamp String?
+        createdAt DateTime @default(now())
+        _internalId BigInt @id @default(autoincrement())
+        _version Int @default(0)
+        @@unique([requestId], map: "idx_sync_request_id")
+        @@map("fragno_db_sync_requests")
       }
 
       model FragnoHooks {
