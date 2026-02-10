@@ -1,3 +1,5 @@
+import type { createHandlerTxBuilder, HandlerTxBuilder } from "@fragno-dev/db";
+import type { OutboxEntry } from "@fragno-dev/db";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { SimpleQueryInterface } from "@fragno-dev/db/query";
 
@@ -55,6 +57,70 @@ export interface LofiQueryableAdapter {
     options?: LofiQueryEngineOptions,
   ): LofiQueryInterface<T>;
 }
+
+export type LofiSubmitCommandTarget = {
+  fragment: string;
+  schema: string;
+};
+
+export type LofiSubmitCommand = {
+  id: string;
+  name: string;
+  target: LofiSubmitCommandTarget;
+  input: unknown;
+};
+
+export type LofiSubmitConflictReason =
+  | "conflict"
+  | "write_congestion"
+  | "client_far_behind"
+  | "no_commands"
+  | "already_handled"
+  | "limit_exceeded";
+
+export type LofiSubmitRequest = {
+  baseVersionstamp?: string;
+  requestId: string;
+  conflictResolutionStrategy: "server" | "disabled";
+  adapterIdentity: string;
+  commands: LofiSubmitCommand[];
+};
+
+export type LofiSubmitAppliedResponse = {
+  status: "applied";
+  requestId: string;
+  confirmedCommandIds: string[];
+  lastVersionstamp?: string;
+  entries: OutboxEntry[];
+};
+
+export type LofiSubmitConflictResponse = {
+  status: "conflict";
+  requestId: string;
+  confirmedCommandIds: string[];
+  conflictCommandId?: string;
+  lastVersionstamp?: string;
+  entries: OutboxEntry[];
+  reason: LofiSubmitConflictReason;
+};
+
+export type LofiSubmitResponse = LofiSubmitAppliedResponse | LofiSubmitConflictResponse;
+
+type HandlerTxOptions = Parameters<typeof createHandlerTxBuilder>[0];
+
+export type LofiSyncCommandTxFactory = (
+  options?: Omit<HandlerTxOptions, "createUnitOfWork">,
+) => HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, {}>;
+
+export type LofiSubmitCommandDefinition<TInput = unknown, TContext = unknown> = {
+  name: string;
+  target: LofiSubmitCommandTarget;
+  handler: (args: {
+    input: TInput;
+    tx: LofiSyncCommandTxFactory;
+    ctx: TContext;
+  }) => Promise<unknown>;
+};
 
 export type LofiMutation =
   | {
