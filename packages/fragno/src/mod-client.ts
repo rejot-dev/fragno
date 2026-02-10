@@ -50,6 +50,7 @@ export function defineFragment(_name: string) {
     build: () => definitionStub,
     // From fragno-db
     provideHooks: () => stub,
+    withSyncCommands: () => stub,
   };
 
   // Wrap with Proxy to handle any additional methods (e.g. from extend())

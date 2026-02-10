@@ -153,6 +153,18 @@ export {
   createDurableHooksProcessor,
   type DurableHooksProcessor,
 } from "./hooks/durable-hooks-processor";
+export { defineSyncCommands } from "./sync/commands";
+export type {
+  SubmitAppliedResponse,
+  SubmitConflictReason,
+  SubmitConflictResponse,
+  SubmitRequest,
+  SubmitResponse,
+  SyncCommandDefinition,
+  SyncCommandHandler,
+  SyncCommandRegistry,
+  SyncCommandTxFactory,
+} from "./sync/types";
 
 export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = AnySchema> =
   FragnoInstantiatedFragment<

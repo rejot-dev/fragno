@@ -130,6 +130,7 @@ export function withDatabase<TSchema extends AnySchema>(
       >,
       schema,
       undefined,
+      undefined,
       {
         getRegistryForAdapterSync,
         getInternalFragment,
