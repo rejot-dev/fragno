@@ -85,6 +85,11 @@ export interface DeleteCompilerOptions {
   returning?: boolean;
 }
 
+export type JoinAliasInfo = {
+  table: AnyTable;
+  alias: string;
+};
+
 /**
  * Abstract base class for SQL query compilation.
  *
@@ -168,6 +173,7 @@ export abstract class SQLQueryCompiler {
     parentTableName: string,
     mappedSelect: string[],
     parentPath: string = "",
+    aliasCollector?: JoinAliasInfo[],
   ): AnySelectQueryBuilder<O> {
     let result = query;
 
@@ -183,6 +189,9 @@ export abstract class SQLQueryCompiler {
       const fullPath = parentPath ? `${parentPath}:${relation.name}` : relation.name;
       // SQL table alias uses underscores (e.g., "author_inviter")
       const joinName = fullPath.replace(/:/g, "_");
+      if (aliasCollector) {
+        aliasCollector.push({ table: targetTable, alias: joinName });
+      }
 
       // Update select
       mappedSelect.push(
@@ -240,11 +249,39 @@ export abstract class SQLQueryCompiler {
           joinName,
           mappedSelect,
           fullPath,
+          aliasCollector,
         );
       }
     }
 
     return result;
+  }
+
+  /**
+   * Build a select query with joins applied, returning a list of table aliases used.
+   * Intended for conflict checks that need to mirror the join tree from queries.
+   */
+  buildJoinQuery(
+    table: AnyTable,
+    options: { where?: Condition; join?: CompiledJoin[] },
+  ): {
+    query: AnySelectQueryBuilder;
+    aliases: JoinAliasInfo[];
+  } {
+    const tableName = this.getTableName(table);
+    let query = this.db.selectFrom(tableName);
+    const aliases: JoinAliasInfo[] = [{ table, alias: tableName }];
+
+    if (options.where) {
+      query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
+    }
+
+    if (options.join && options.join.length > 0) {
+      const mappedSelect: string[] = [];
+      query = this.processJoins(query, options.join, table, tableName, mappedSelect, "", aliases);
+    }
+
+    return { query, aliases };
   }
 
   /**
