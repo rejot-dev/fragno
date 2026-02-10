@@ -13,8 +13,9 @@ IndexedDB store, and exposes a read-only query engine that mirrors the server qu
 - Polls `GET /_internal/outbox` and persists a cursor so sync resumes after reloads.
 - Applies create/update/delete mutations to IndexedDB with idempotency.
 - Provides a read-only query engine (`find`, `findFirst`, `findWithCursor`).
+- Submits sync commands to `POST /_internal/sync` with optimistic local execution and rebase.
 
-Out of scope (for now): client-side writes, conflict resolution, and live reactive queries.
+Out of scope (for now): custom conflict resolution UI and live reactive queries.
 
 ## Install
 
@@ -73,6 +74,77 @@ const query = adapter.createQueryEngine(appSchema);
 const users = await query.find("users", (b) =>
   b.whereIndex("idx_age", (eb) => eb("age", ">=", 21)).orderByIndex("idx_age", "asc"),
 );
+```
+
+## Submit (sync commands)
+
+Lofi can submit write commands to the server and replay confirmed commands locally.
+
+### 1) Define sync commands on the server
+
+```ts
+import { defineFragment } from "@fragno-dev/core";
+import { defineSyncCommands, withDatabase } from "@fragno-dev/db";
+import { schema, idColumn, column } from "@fragno-dev/db/schema";
+
+const appSchema = schema("app", (s) =>
+  s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+);
+
+const syncCommands = defineSyncCommands({ schema: appSchema }).create(({ defineCommand }) => [
+  defineCommand({
+    name: "createUser",
+    handler: async ({ input, tx }) => {
+      const payload = input as { id: string; name: string };
+      await tx()
+        .mutate(({ forSchema }) => {
+          forSchema(appSchema).create("users", payload);
+        })
+        .execute();
+    },
+  }),
+]);
+
+const fragment = defineFragment("app")
+  .extend(withDatabase(appSchema))
+  .withSyncCommands(syncCommands)
+  .build();
+```
+
+### 2) Queue + submit commands on the client
+
+```ts
+import { LofiSubmitClient } from "@fragno-dev/lofi";
+
+const submit = new LofiSubmitClient({
+  endpointName: "app",
+  submitUrl: "https://example.com/_internal/sync",
+  internalUrl: "https://example.com/_internal",
+  adapter,
+  schemas: [appSchema],
+  commands: [
+    {
+      name: "createUser",
+      target: { fragment: "app", schema: appSchema.name },
+      handler: async ({ input, tx }) => {
+        await tx()
+          .mutate(({ forSchema }) => {
+            forSchema(appSchema).create("users", input as { id: string; name: string });
+          })
+          .execute();
+      },
+    },
+  ],
+});
+
+await submit.queueCommand({
+  name: "createUser",
+  target: { fragment: "app", schema: appSchema.name },
+  input: { id: "user-1", name: "Ada" },
+  optimistic: true,
+});
+
+const response = await submit.submitOnce();
 ```
 
 ## Notes

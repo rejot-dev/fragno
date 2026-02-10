@@ -55,6 +55,7 @@ type QueryApi = {
     builder: (b: FindBuilder) => FindBuilder,
   ) => Promise<Array<{ title: string; author?: { name: string } | null }>>;
 };
+type AuthContext = { userId: string };
 
 type CreateUserInput = { id: string; name: string };
 const createUserHandler = async ({ input, tx }: CommandArgs) => {
@@ -122,11 +123,44 @@ const retitlePostHandler = async ({ input, tx }: CommandArgs) => {
     .execute();
 };
 
+type SecureRetitlePostInput = { postId: string; expectedAuthorName: string; title: string };
+const secureRetitlePostHandler = async ({ input, tx, ctx }: CommandArgs) => {
+  const payload = input as SecureRetitlePostInput;
+  const auth = ctx as AuthContext;
+  await tx()
+    .retrieve((ctx) =>
+      ctx
+        .forSchema(appSchema)
+        .findFirst("posts", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", payload.postId)).join((j) => j.author()),
+        ),
+    )
+    .transformRetrieve(([post]) => post ?? null)
+    .mutate((ctx) => {
+      const { retrieveResult } = ctx;
+      if (!retrieveResult || !retrieveResult.author) {
+        return { updated: false };
+      }
+      if (retrieveResult.author.name !== payload.expectedAuthorName) {
+        return { updated: false };
+      }
+      if (retrieveResult.author.id.externalId !== auth.userId) {
+        return { updated: false };
+      }
+      ctx
+        .forSchema(appSchema)
+        .update("posts", retrieveResult.id, (b) => b.set({ title: payload.title }).check());
+      return { updated: true };
+    })
+    .execute();
+};
+
 const syncCommands = defineSyncCommands({ schema: appSchema }).create(({ defineCommand }) => [
   defineCommand({ name: "createUser", handler: createUserHandler }),
   defineCommand({ name: "updateUser", handler: updateUserHandler }),
   defineCommand({ name: "createPost", handler: createPostHandler }),
   defineCommand({ name: "retitlePost", handler: retitlePostHandler }),
+  defineCommand({ name: "secureRetitlePost", handler: secureRetitlePostHandler }),
 ]);
 
 const clientCommands: LofiSubmitCommandDefinition[] = [
@@ -149,6 +183,11 @@ const clientCommands: LofiSubmitCommandDefinition[] = [
     name: "retitlePost",
     target: { fragment: "lofi-test", schema: appSchema.name },
     handler: retitlePostHandler,
+  },
+  {
+    name: "secureRetitlePost",
+    target: { fragment: "lofi-test", schema: appSchema.name },
+    handler: secureRetitlePostHandler,
   },
 ];
 
@@ -345,6 +384,72 @@ describe("Lofi scenario DSL", () => {
           expect(response?.status).toBe("applied");
           const user = ctx.vars["user"] as { name: string } | null;
           expect(user?.name).toBe("Ada");
+        }),
+      ],
+    });
+
+    const context = await runScenario(scenario);
+    await context.cleanup();
+  });
+
+  it("enforces auth-scoped join commands", async () => {
+    const scenario = defineScenario({
+      name: "auth-join-scope",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      clients: {
+        a: { endpointName: "client-a" },
+        b: { endpointName: "client-b" },
+      },
+      createClientContext: (clientName) => ({
+        userId: clientName === "a" ? "user-1" : "user-2",
+      }),
+      steps: [
+        steps.command(
+          "a",
+          "createUser",
+          { id: "user-1", name: "Ada" },
+          { optimistic: true, submit: true },
+        ),
+        steps.command(
+          "a",
+          "createUser",
+          { id: "user-2", name: "Bea" },
+          { optimistic: true, submit: true },
+        ),
+        steps.command(
+          "a",
+          "createPost",
+          { id: "post-1", authorId: "user-1", title: "Hello" },
+          { optimistic: true, submit: true },
+        ),
+        steps.sync("b"),
+        steps.command(
+          "b",
+          "secureRetitlePost",
+          { postId: "post-1", expectedAuthorName: "Ada", title: "Denied" },
+          { optimistic: true, submit: true },
+        ),
+        steps.read(
+          "b",
+          (_ctx, client) => {
+            const query = client.query as QueryApi;
+            return query.find("posts", (b) => b.whereIndex("primary").join((j) => j.author()));
+          },
+          "posts",
+        ),
+        steps.assert((ctx: ScenarioContext) => {
+          const posts = ctx.vars["posts"] as Array<{
+            title: string;
+            author?: { name: string } | null;
+          }>;
+          expect(posts).toHaveLength(1);
+          expect(posts[0]?.title).toBe("Hello");
+          expect(posts[0]?.author?.name).toBe("Ada");
         }),
       ],
     });
