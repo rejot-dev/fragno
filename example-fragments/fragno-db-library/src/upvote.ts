@@ -1,11 +1,59 @@
-import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { defineSyncCommands, withDatabase } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import type { TableToInsertValues } from "@fragno-dev/db/query";
 import { upvoteSchema } from "./schema/upvote";
 import { z } from "zod";
 
 export { upvoteSchema };
+
+export type RatingSyncCommandInput = {
+  reference: string;
+  rating?: number;
+  ownerReference?: string | null;
+  note?: string | null;
+};
+
+export const ratingSyncCommands = defineSyncCommands({ schema: upvoteSchema }).create(
+  ({ defineCommand }) => [
+    defineCommand({
+      name: "postRating",
+      handler: async ({ input, tx }) => {
+        const payload = input as RatingSyncCommandInput;
+        const rating = payload.rating ?? 1;
+        await tx()
+          .retrieve(({ forSchema }) =>
+            forSchema(upvoteSchema).findFirst("upvote_total", (b) =>
+              b.whereIndex("idx_upvote_total_reference", (eb) =>
+                eb("reference", "=", payload.reference),
+              ),
+            ),
+          )
+          .transformRetrieve(([result]) => result ?? null)
+          .mutate(({ forSchema, retrieveResult }) => {
+            if (retrieveResult) {
+              forSchema(upvoteSchema).update("upvote_total", retrieveResult.id, (b) =>
+                b.set({ total: retrieveResult.total + rating }).check(),
+              );
+            } else {
+              forSchema(upvoteSchema).create("upvote_total", {
+                reference: payload.reference,
+                total: rating,
+              });
+            }
+
+            forSchema(upvoteSchema).create("upvote", {
+              reference: payload.reference,
+              ownerReference: payload.ownerReference ?? null,
+              rating,
+              note: payload.note ?? null,
+            });
+          })
+          .execute();
+      },
+    }),
+  ],
+);
 
 export interface RatingFragmentConfig {
   // Add any server-side configuration here if needed
@@ -13,6 +61,7 @@ export interface RatingFragmentConfig {
 
 export const ratingFragmentDef = defineFragment<RatingFragmentConfig>("fragno-db-rating")
   .extend(withDatabase(upvoteSchema))
+  .withSyncCommands(ratingSyncCommands)
   .withDependencies(({ db }) => {
     return {
       /**

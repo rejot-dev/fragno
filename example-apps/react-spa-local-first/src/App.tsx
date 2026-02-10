@@ -1,6 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { OutboxEntry, SyncCommandDefinition, SyncCommandRegistry } from "@fragno-dev/db";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import { IndexedDbAdapter, LofiClient } from "@fragno-dev/lofi";
+import {
+  decodeOutboxPayload,
+  IndexedDbAdapter,
+  LofiClient,
+  LofiSubmitClient,
+} from "@fragno-dev/lofi";
+import { commentSyncCommands } from "@fragno-dev/fragno-db-library";
+import { ratingSyncCommands } from "@fragno-dev/fragno-db-library/upvote";
 import { commentSchema, upvoteSchema } from "@fragno-dev/fragno-db-library/schema";
 
 type SchemaDescriptor = {
@@ -11,6 +19,7 @@ type SchemaDescriptor = {
 };
 
 type InternalDescribeResponse = {
+  adapterIdentity: string;
   fragments: { name: string; mountRoute: string }[];
   schemas: SchemaDescriptor[];
   routes: { internal: "/_internal"; outbox?: "/_internal/outbox" };
@@ -28,12 +37,12 @@ type EndpointConfig = {
   enabled: boolean;
 };
 
-type AppTab = "tables" | "endpoints";
+type AppTab = "tables" | "endpoints" | "commands";
 
 type EndpointInfo = {
   signature: string;
   state: "loading" | "ready" | "error";
-  adapterId?: string;
+  adapterIdentity?: string;
   schemas?: SchemaDescriptor[];
   routes?: InternalDescribeResponse["routes"];
   error?: string;
@@ -52,24 +61,74 @@ type TableSelection = {
   tableName: string;
 };
 
+type SubmitStatus = {
+  lastQueuedAt?: number;
+  lastCommandId?: string;
+  lastSubmitAt?: number;
+  lastSubmitStatus?: "applied" | "conflict" | "error";
+  lastSubmitReason?: string;
+  lastSubmitError?: string;
+};
+
+type OutboxEntryStatus = "applied" | "pending" | "unknown";
+
+type OutboxEntryView = {
+  key: string;
+  versionstamp: string;
+  uowId: string;
+  createdAt?: number;
+  mutations?: number;
+  status: OutboxEntryStatus;
+};
+
+type OutboxState = {
+  state: "idle" | "loading" | "ready" | "error" | "disabled";
+  entries: OutboxEntryView[];
+  updatedAt?: number;
+  error?: string;
+};
+
+type LofiSubmitCommandTarget = {
+  fragment: string;
+  schema: string;
+};
+
+type CommandDefinition = {
+  key: string;
+  name: string;
+  label: string;
+  target: LofiSubmitCommandTarget;
+  schemaName: string;
+  handler: SyncCommandDefinition["handler"];
+  defaultInput: Record<string, unknown>;
+  description?: string;
+};
+
 type AdapterGroup = {
   id: string;
   endpointIds: string[];
+  endpointLabels: string[];
+  primaryEndpointId: string;
   outboxUrl: string;
+  internalUrl: string;
+  submitUrl: string;
   endpointName: string;
   schemas: AnySchema[];
   missingSchemas: string[];
+  commands: CommandDefinition[];
   enabled: boolean;
   pollIntervalMs: number;
+  outboxEnabled: boolean;
 };
 
 type AdapterRuntime = {
   signature: string;
-  adapterId: string;
+  adapterIdentity: string;
   endpointName: string;
   endpointIds: string[];
   adapter: IndexedDbAdapter;
   client: LofiClient;
+  submit?: LofiSubmitClient;
   schemas: AnySchema[];
   outboxUrl: string;
   pollIntervalMs: number;
@@ -102,6 +161,90 @@ const DEFAULT_ENDPOINTS: EndpointConfig[] = [
   },
 ];
 
+const commandKey = (target: LofiSubmitCommandTarget, name: string) =>
+  `${target.fragment}::${target.schema}::${name}`;
+
+const formatCommandLabel = (name: string) => {
+  const withSpaces = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ");
+  return withSpaces.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const buildCommandDefinitions = (
+  registry: SyncCommandRegistry,
+  target: LofiSubmitCommandTarget,
+  templates: Record<
+    string,
+    { label?: string; defaultInput?: Record<string, unknown>; description?: string }
+  >,
+): CommandDefinition[] => {
+  return Array.from(registry.commands.values()).map((command) => {
+    const key = commandKey(target, command.name);
+    const template = templates[key];
+    return {
+      key,
+      name: command.name,
+      label: template?.label ?? formatCommandLabel(command.name),
+      target,
+      schemaName: target.schema,
+      handler: command.handler,
+      defaultInput: template?.defaultInput ?? {},
+      description: template?.description,
+    };
+  });
+};
+
+const COMMENT_TARGET: LofiSubmitCommandTarget = {
+  fragment: "fragno-db-comment",
+  schema: commentSchema.name,
+};
+
+const RATING_TARGET: LofiSubmitCommandTarget = {
+  fragment: "fragno-db-rating",
+  schema: upvoteSchema.name,
+};
+
+const COMMAND_TEMPLATES: Record<
+  string,
+  { label?: string; defaultInput?: Record<string, unknown>; description?: string }
+> = {
+  [commandKey(COMMENT_TARGET, "createComment")]: {
+    label: "Create comment",
+    description: "Adds a comment row via the sync command handler.",
+    defaultInput: {
+      title: "Hello from Lofi",
+      content: "This comment was created locally and synced.",
+      postReference: "post-1",
+      userReference: "user-1",
+      parentId: null,
+    },
+  },
+  [commandKey(RATING_TARGET, "postRating")]: {
+    label: "Post rating",
+    description: "Adds an upvote and adjusts the total.",
+    defaultInput: {
+      reference: "post-1",
+      rating: 1,
+      ownerReference: "user-1",
+      note: null,
+    },
+  },
+};
+
+const COMMAND_DEFINITIONS: CommandDefinition[] = [
+  ...buildCommandDefinitions(commentSyncCommands, COMMENT_TARGET, COMMAND_TEMPLATES),
+  ...buildCommandDefinitions(ratingSyncCommands, RATING_TARGET, COMMAND_TEMPLATES),
+];
+
+const COMMANDS_BY_SCHEMA = COMMAND_DEFINITIONS.reduce((map, command) => {
+  const existing = map.get(command.schemaName);
+  if (existing) {
+    existing.push(command);
+  } else {
+    map.set(command.schemaName, [command]);
+  }
+  return map;
+}, new Map<string, CommandDefinition[]>());
+
 export default function App() {
   const [endpoints, setEndpoints] = useStoredState<EndpointConfig[]>(
     "fragno-lofi-endpoints",
@@ -116,9 +259,24 @@ export default function App() {
   const [tableLoading, setTableLoading] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
   const [statuses, setStatuses] = useState<Record<string, EndpointStatus>>({});
+  const [submitStatuses, setSubmitStatuses] = useState<Record<string, SubmitStatus>>({});
   const [tableHighlights, setTableHighlights] = useState<Record<string, number>>({});
   const [newRowSignatures, setNewRowSignatures] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [commandForm, setCommandForm] = useState<{
+    commandKey: string;
+    input: string;
+    optimistic: boolean;
+  }>({
+    commandKey: "",
+    input: "",
+    optimistic: true,
+  });
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [commandBusy, setCommandBusy] = useState(false);
+
+  const [outboxByGroup, setOutboxByGroup] = useState<Record<string, OutboxState>>({});
+  const [outboxRefreshTick, setOutboxRefreshTick] = useState(0);
 
   const endpointInfoRef = useRef(endpointInfos);
   const runtimesRef = useRef<Map<string, AdapterRuntime>>(new Map());
@@ -138,12 +296,30 @@ export default function App() {
 
   const selectedEndpoint = endpoints.find((endpoint) => endpoint.id === selectedEndpointId);
   const selectedGroup = selectedEndpointId ? endpointToGroup.get(selectedEndpointId) : undefined;
+  const adapterGroupOptions = useMemo(
+    () =>
+      adapterGroups.map((group) => ({
+        id: group.id,
+        label: formatGroupLabel(group),
+        endpointId: group.primaryEndpointId,
+      })),
+    [adapterGroups],
+  );
+  const selectedGroupId = selectedGroup?.id ?? adapterGroupOptions[0]?.id ?? "";
+  const selectedGroupLabel = selectedGroup ? formatGroupLabel(selectedGroup) : "";
   const selectedTableKey = selectedTable
     ? `${selectedTable.schemaName}.${selectedTable.tableName}`
     : "";
-  const selectedEndpointSummary = selectedEndpoint
-    ? `${selectedEndpoint.label} · ${selectedEndpoint.baseUrl}`
+  const selectedEndpointSummary = selectedGroup
+    ? `${selectedGroupLabel} · ${selectedEndpoint?.baseUrl ?? selectedGroup.outboxUrl}`
     : "Choose an endpoint from the Endpoints tab.";
+  const availableCommands = selectedGroup?.commands ?? [];
+  const selectedCommand =
+    availableCommands.find((command) => command.key === commandForm.commandKey) ??
+    availableCommands[0];
+  const selectedSubmitStatus = selectedEndpointId ? submitStatuses[selectedEndpointId] : undefined;
+  const selectedOutboxState = selectedGroup ? outboxByGroup[selectedGroup.id] : undefined;
+  const outboxEntries = selectedOutboxState?.entries ?? [];
 
   const triggerTableHighlight = useCallback((tableKey: string) => {
     const existing = tableHighlightTimers.current.get(tableKey);
@@ -177,6 +353,26 @@ export default function App() {
     }, 2600);
   }, []);
 
+  const updateSubmitStatus = useCallback((endpointIds: string[], patch: SubmitStatus) => {
+    setSubmitStatuses((prev) => {
+      const next = { ...prev };
+      for (const endpointId of endpointIds) {
+        next[endpointId] = { ...prev[endpointId], ...patch };
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAdapterGroup = useCallback(
+    (groupId: string) => {
+      const group = adapterGroups.find((entry) => entry.id === groupId);
+      if (group?.primaryEndpointId) {
+        setSelectedEndpointId(group.primaryEndpointId);
+      }
+    },
+    [adapterGroups],
+  );
+
   useEffect(() => {
     return () => {
       tableHighlightTimers.current.forEach((timer) => clearTimeout(timer));
@@ -196,6 +392,28 @@ export default function App() {
     tableHighlightTimers.current.clear();
   }, [selectedGroup?.id, triggerRowHighlights]);
 
+  useEffect(() => {
+    if (!availableCommands.length) {
+      setCommandForm((prev) => ({
+        ...prev,
+        commandKey: "",
+        input: "",
+      }));
+      return;
+    }
+
+    if (availableCommands.some((command) => command.key === commandForm.commandKey)) {
+      return;
+    }
+
+    const defaultCommand = availableCommands[0];
+    setCommandForm((prev) => ({
+      ...prev,
+      commandKey: defaultCommand.key,
+      input: stringifyJson(defaultCommand.defaultInput),
+    }));
+  }, [availableCommands, commandForm.commandKey]);
+
   const tableOptions = useMemo(() => {
     if (!selectedGroup) {
       return [] as TableSelection[];
@@ -208,6 +426,80 @@ export default function App() {
       })),
     );
   }, [selectedEndpointId, selectedGroup]);
+
+  const loadOutboxAppliedSet = useCallback(
+    async (
+      runtime: AdapterRuntime,
+      entries: OutboxEntry[],
+      signal: AbortSignal,
+    ): Promise<Set<string> | null> => {
+      if (entries.length === 0) {
+        return new Set<string>();
+      }
+
+      const schemaName = runtime.schemas[0]?.name;
+      if (!schemaName) {
+        return null;
+      }
+
+      try {
+        const ctx = runtime.adapter.createQueryContext(schemaName);
+        const db = await ctx.getDb();
+        const tx = db.transaction("lofi_inbox", "readonly");
+        const store = tx.objectStore("lofi_inbox");
+        const sourceKey = `${runtime.endpointName}::outbox`;
+        const applied = new Set<string>();
+
+        await Promise.all(
+          entries.map(async (entry) => {
+            if (signal.aborted) {
+              return;
+            }
+            const row = await store.get([sourceKey, entry.uowId, entry.versionstamp]);
+            if (row) {
+              applied.add(getOutboxEntryKey(entry));
+            }
+          }),
+        );
+
+        await tx.done;
+        return applied;
+      } catch (error) {
+        if (isDbClosingError(error)) {
+          return null;
+        }
+        return null;
+      }
+    },
+    [],
+  );
+
+  const buildOutboxEntries = useCallback(
+    async (
+      runtime: AdapterRuntime,
+      entries: OutboxEntry[],
+      signal: AbortSignal,
+    ): Promise<OutboxEntryView[]> => {
+      const applied = await loadOutboxAppliedSet(runtime, entries, signal);
+      return entries.map((entry) => {
+        const key = getOutboxEntryKey(entry);
+        const status: OutboxEntryStatus = applied
+          ? applied.has(key)
+            ? "applied"
+            : "pending"
+          : "unknown";
+        return {
+          key,
+          versionstamp: entry.versionstamp,
+          uowId: entry.uowId,
+          createdAt: parseOutboxCreatedAt(entry.createdAt),
+          mutations: getOutboxMutationCount(entry),
+          status,
+        };
+      });
+    },
+    [loadOutboxAppliedSet],
+  );
 
   useEffect(() => {
     if (selectedEndpointId && endpoints.some((endpoint) => endpoint.id === selectedEndpointId)) {
@@ -263,7 +555,7 @@ export default function App() {
         [endpoint.id]: {
           signature,
           state: "loading",
-          adapterId: existing?.adapterId,
+          adapterIdentity: existing?.adapterIdentity,
           schemas: existing?.schemas,
           routes: existing?.routes,
         },
@@ -303,14 +595,14 @@ export default function App() {
           return;
         }
 
-        const adapterId = signature;
+        const adapterIdentity = data.adapterIdentity ?? signature;
 
         setEndpointInfos((prev) => ({
           ...prev,
           [endpoint.id]: {
             signature,
             state: "ready",
-            adapterId,
+            adapterIdentity,
             schemas: data.schemas ?? [],
             routes: data.routes,
           },
@@ -549,6 +841,100 @@ export default function App() {
     };
   }, [endpointToGroup, selectedTable, syncTick, triggerRowHighlights, triggerTableHighlight]);
 
+  useEffect(() => {
+    if (!selectedGroup) {
+      return;
+    }
+
+    if (!selectedGroup.outboxEnabled) {
+      setOutboxByGroup((prev) => ({
+        ...prev,
+        [selectedGroup.id]: {
+          state: "disabled",
+          entries: [],
+        },
+      }));
+      return;
+    }
+
+    const runtime = runtimesRef.current.get(selectedGroup.id);
+    if (!runtime) {
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadOutbox = async () => {
+      setOutboxByGroup((prev) => ({
+        ...prev,
+        [selectedGroup.id]: {
+          ...(prev[selectedGroup.id] ?? { entries: [] }),
+          state: "loading",
+          error: undefined,
+        },
+      }));
+
+      try {
+        const response = await fetch(selectedGroup.outboxUrl, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Outbox request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = (await response.json()) as OutboxEntry[];
+        if (!Array.isArray(data)) {
+          throw new Error("Invalid outbox response payload");
+        }
+
+        if (controller.signal.aborted || cancelled) {
+          return;
+        }
+
+        const entries = await buildOutboxEntries(runtime, data, controller.signal);
+
+        if (controller.signal.aborted || cancelled) {
+          return;
+        }
+
+        setOutboxByGroup((prev) => ({
+          ...prev,
+          [selectedGroup.id]: {
+            state: "ready",
+            entries,
+            updatedAt: Date.now(),
+            error: undefined,
+          },
+        }));
+      } catch (error) {
+        if (controller.signal.aborted || cancelled) {
+          return;
+        }
+        setOutboxByGroup((prev) => ({
+          ...prev,
+          [selectedGroup.id]: {
+            state: "error",
+            entries: prev[selectedGroup.id]?.entries ?? [],
+            error: formatError(error),
+          },
+        }));
+      }
+    };
+
+    void loadOutbox();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    buildOutboxEntries,
+    outboxRefreshTick,
+    selectedGroup?.id,
+    selectedGroup?.outboxEnabled,
+    selectedGroup?.outboxUrl,
+    syncTick,
+  ]);
+
   const columns = useMemo(() => {
     const keys = new Set<string>();
     for (const row of rows) {
@@ -611,6 +997,111 @@ export default function App() {
     }));
   }, []);
 
+  const queueCommand = async (shouldSubmit: boolean) => {
+    if (!selectedGroup) {
+      setCommandError("Select an endpoint before sending commands.");
+      return;
+    }
+
+    const runtime = runtimesRef.current.get(selectedGroup.id);
+    if (!runtime?.submit) {
+      setCommandError("Sync commands are not available for this endpoint.");
+      return;
+    }
+
+    if (!selectedCommand) {
+      setCommandError("Choose a sync command to run.");
+      return;
+    }
+
+    const trimmed = commandForm.input.trim();
+    let inputPayload: unknown = {};
+    if (trimmed.length > 0) {
+      try {
+        inputPayload = JSON.parse(trimmed);
+      } catch (error) {
+        setCommandError(`Invalid JSON: ${formatError(error)}`);
+        return;
+      }
+    }
+
+    setCommandError(null);
+    setCommandBusy(true);
+
+    try {
+      const commandId = await runtime.submit.queueCommand({
+        name: selectedCommand.name,
+        target: selectedCommand.target,
+        input: inputPayload,
+        optimistic: commandForm.optimistic,
+      });
+
+      updateSubmitStatus(selectedGroup.endpointIds, {
+        lastQueuedAt: Date.now(),
+        lastCommandId: commandId,
+      });
+
+      if (shouldSubmit) {
+        const response = await runtime.submit.submitOnce();
+        if (response.entries.length > 0) {
+          setSyncTick((prev) => prev + 1);
+        }
+        updateSubmitStatus(selectedGroup.endpointIds, {
+          lastSubmitAt: Date.now(),
+          lastSubmitStatus: response.status,
+          lastSubmitReason: response.status === "conflict" ? response.reason : undefined,
+          lastSubmitError: undefined,
+        });
+      }
+    } catch (error) {
+      updateSubmitStatus(selectedGroup.endpointIds, {
+        lastSubmitAt: Date.now(),
+        lastSubmitStatus: "error",
+        lastSubmitError: formatError(error),
+      });
+      setCommandError(formatError(error));
+    } finally {
+      setCommandBusy(false);
+    }
+  };
+
+  const submitPendingCommands = async () => {
+    if (!selectedGroup) {
+      setCommandError("Select an endpoint before submitting commands.");
+      return;
+    }
+
+    const runtime = runtimesRef.current.get(selectedGroup.id);
+    if (!runtime?.submit) {
+      setCommandError("Sync commands are not available for this endpoint.");
+      return;
+    }
+
+    setCommandError(null);
+    setCommandBusy(true);
+    try {
+      const response = await runtime.submit.submitOnce();
+      if (response.entries.length > 0) {
+        setSyncTick((prev) => prev + 1);
+      }
+      updateSubmitStatus(selectedGroup.endpointIds, {
+        lastSubmitAt: Date.now(),
+        lastSubmitStatus: response.status,
+        lastSubmitReason: response.status === "conflict" ? response.reason : undefined,
+        lastSubmitError: undefined,
+      });
+    } catch (error) {
+      updateSubmitStatus(selectedGroup.endpointIds, {
+        lastSubmitAt: Date.now(),
+        lastSubmitStatus: "error",
+        lastSubmitError: formatError(error),
+      });
+      setCommandError(formatError(error));
+    } finally {
+      setCommandBusy(false);
+    }
+  };
+
   return (
     <div className="app">
       <header className="hero">
@@ -625,7 +1116,7 @@ export default function App() {
         <div className="hero-card">
           <div className="hero-metric">
             <span>Active endpoints</span>
-            <strong>{endpoints.filter((endpoint) => endpoint.enabled).length}</strong>
+            <strong>{adapterGroups.filter((group) => group.enabled).length}</strong>
           </div>
           <div className="hero-metric">
             <span>Tables visible</span>
@@ -635,18 +1126,25 @@ export default function App() {
       </header>
       <div className="tabs">
         <button
-          className={`tab${activeTab === "tables" ? "tab--active" : ""}`}
+          className={`tab ${activeTab === "tables" ? "tab--active" : ""}`}
           onClick={() => setActiveTab("tables")}
           type="button"
         >
           Tables
         </button>
         <button
-          className={`tab${activeTab === "endpoints" ? "tab--active" : ""}`}
+          className={`tab ${activeTab === "endpoints" ? "tab--active" : ""}`}
           onClick={() => setActiveTab("endpoints")}
           type="button"
         >
           Endpoints
+        </button>
+        <button
+          className={`tab ${activeTab === "commands" ? "tab--active" : ""}`}
+          onClick={() => setActiveTab("commands")}
+          type="button"
+        >
+          Commands
         </button>
       </div>
 
@@ -806,8 +1304,116 @@ export default function App() {
               ) : null}
             </div>
           </section>
+
+          <section className="panel panel--wide">
+            <div className="panel-title">
+              <div>
+                <h2>Sync commands</h2>
+                <p className="panel-subtitle">{selectedEndpointSummary}</p>
+              </div>
+              <button
+                className="btn btn--ghost"
+                onClick={() => setActiveTab("endpoints")}
+                type="button"
+              >
+                Manage endpoints
+              </button>
+            </div>
+            <div className="panel-body command-form">
+              <label>
+                Endpoint
+                <select
+                  className="input"
+                  value={selectedGroupId}
+                  onChange={(event) => selectAdapterGroup(event.target.value)}
+                  disabled={!adapterGroupOptions.length}
+                >
+                  {adapterGroupOptions.length ? null : <option value="">No endpoints</option>}
+                  {adapterGroupOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Command
+                <select
+                  className="input"
+                  value={selectedCommand?.key ?? ""}
+                  onChange={(event) => {
+                    const nextKey = event.target.value;
+                    const command = availableCommands.find((entry) => entry.key === nextKey);
+                    setCommandForm((prev) => ({
+                      ...prev,
+                      commandKey: nextKey,
+                      input: command ? stringifyJson(command.defaultInput) : prev.input,
+                    }));
+                    setCommandError(null);
+                  }}
+                  disabled={!availableCommands.length}
+                >
+                  {availableCommands.length ? null : <option value="">No commands</option>}
+                  {availableCommands.map((command) => (
+                    <option key={command.key} value={command.key}>
+                      {command.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedCommand?.description ? (
+                <p className="muted">{selectedCommand.description}</p>
+              ) : null}
+              <label>
+                Input (JSON)
+                <textarea
+                  className="textarea"
+                  rows={8}
+                  value={commandForm.input}
+                  onChange={(event) => {
+                    setCommandForm((prev) => ({ ...prev, input: event.target.value }));
+                    setCommandError(null);
+                  }}
+                  placeholder='{"example": true}'
+                  disabled={!selectedCommand}
+                />
+              </label>
+              <div className="command-actions">
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={commandForm.optimistic}
+                    onChange={(event) =>
+                      setCommandForm((prev) => ({
+                        ...prev,
+                        optimistic: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Optimistic apply</span>
+                </label>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void queueCommand(false)}
+                  disabled={!selectedCommand || commandBusy}
+                >
+                  Queue command
+                </button>
+                <button
+                  className="btn btn--ghost"
+                  type="button"
+                  onClick={() => void queueCommand(true)}
+                  disabled={!selectedCommand || commandBusy}
+                >
+                  Queue + submit
+                </button>
+              </div>
+              {commandError ? <div className="status-error">{commandError}</div> : null}
+            </div>
+          </section>
         </main>
-      ) : (
+      ) : activeTab === "endpoints" ? (
         <main className="layout layout--endpoints">
           <section className="panel endpoints">
             <div className="panel-title">
@@ -820,8 +1426,8 @@ export default function App() {
               {endpoints.map((endpoint) => {
                 const status = statuses[endpoint.id];
                 const info = endpointInfos[endpoint.id];
-                const adapterLabel = info?.adapterId
-                  ? info.adapterId.slice(0, 12)
+                const adapterLabel = info?.adapterIdentity
+                  ? info.adapterIdentity.slice(0, 12)
                   : info?.state === "loading"
                     ? "Loading..."
                     : "-";
@@ -947,6 +1553,156 @@ export default function App() {
             </div>
           </section>
         </main>
+      ) : (
+        <main className="layout layout--commands">
+          <section className="panel">
+            <div className="panel-title">
+              <div>
+                <h2>Outbox</h2>
+                <p className="panel-subtitle">{selectedEndpointSummary}</p>
+              </div>
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => setOutboxRefreshTick((prev) => prev + 1)}
+                disabled={!selectedGroup?.outboxEnabled}
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="panel-body">
+              <div className="outbox-controls">
+                <label>
+                  Endpoint
+                  <select
+                    className="input"
+                    value={selectedGroupId}
+                    onChange={(event) => selectAdapterGroup(event.target.value)}
+                    disabled={!adapterGroupOptions.length}
+                  >
+                    {adapterGroupOptions.length ? null : <option value="">No endpoints</option>}
+                    {adapterGroupOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedOutboxState?.updatedAt ? (
+                  <div className="muted">
+                    Updated {formatTimestamp(selectedOutboxState.updatedAt)}
+                  </div>
+                ) : null}
+              </div>
+              {!adapterGroupOptions.length ? (
+                <div className="empty">No endpoints configured yet.</div>
+              ) : null}
+              {selectedOutboxState?.state === "loading" ? (
+                <div className="loading">Loading outbox...</div>
+              ) : null}
+              {selectedOutboxState?.state === "error" ? (
+                <div className="status-error">{selectedOutboxState.error}</div>
+              ) : null}
+              {selectedOutboxState?.state === "disabled" ? (
+                <div className="empty">Outbox is not enabled for this endpoint.</div>
+              ) : null}
+              {selectedOutboxState?.state !== "disabled" && outboxEntries.length ? (
+                <div className="table-scroll">
+                  <table className="data-table outbox-table">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Versionstamp</th>
+                        <th>UOW</th>
+                        <th>Mutations</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {outboxEntries.map((entry) => (
+                        <tr key={entry.key}>
+                          <td>
+                            <span className={`status-badge status-badge--${entry.status}`}>
+                              {formatOutboxStatus(entry.status)}
+                            </span>
+                          </td>
+                          <td className="mono" title={entry.versionstamp}>
+                            {entry.versionstamp.slice(0, 12)}
+                          </td>
+                          <td className="mono" title={entry.uowId}>
+                            {entry.uowId.slice(0, 12)}
+                          </td>
+                          <td>{entry.mutations ?? "-"}</td>
+                          <td>{formatTimestamp(entry.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {selectedOutboxState?.state === "ready" && !outboxEntries.length ? (
+                <div className="empty">Outbox is empty.</div>
+              ) : null}
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel-title">
+              <div>
+                <h2>Submit status</h2>
+                <p className="panel-subtitle">{selectedEndpointSummary}</p>
+              </div>
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => void submitPendingCommands()}
+                disabled={!selectedGroup?.commands.length || commandBusy}
+              >
+                Submit pending
+              </button>
+            </div>
+            <div className="panel-body command-status">
+              <div>
+                <span className="chip">Last queued</span>
+                <span>
+                  {selectedSubmitStatus?.lastQueuedAt
+                    ? formatTime(selectedSubmitStatus.lastQueuedAt)
+                    : "-"}
+                </span>
+              </div>
+              <div>
+                <span className="chip">Last command</span>
+                <span className="mono">
+                  {selectedSubmitStatus?.lastCommandId?.slice(0, 12) ?? "-"}
+                </span>
+              </div>
+              <div>
+                <span className="chip">Last submit</span>
+                <span>
+                  {selectedSubmitStatus?.lastSubmitAt
+                    ? formatTime(selectedSubmitStatus.lastSubmitAt)
+                    : "-"}
+                </span>
+              </div>
+              <div>
+                <span className="chip">Status</span>
+                <span>
+                  {selectedSubmitStatus?.lastSubmitStatus
+                    ? selectedSubmitStatus.lastSubmitStatus
+                    : "-"}
+                </span>
+              </div>
+              {selectedSubmitStatus?.lastSubmitReason ? (
+                <div className="muted">Reason: {selectedSubmitStatus.lastSubmitReason}</div>
+              ) : null}
+              {selectedSubmitStatus?.lastSubmitError ? (
+                <div className="status-error">{selectedSubmitStatus.lastSubmitError}</div>
+              ) : null}
+              {!selectedGroup?.commands.length ? (
+                <div className="empty">No sync commands registered for this endpoint.</div>
+              ) : null}
+            </div>
+          </section>
+        </main>
       )}
     </div>
   );
@@ -976,6 +1732,22 @@ function createRuntime(
       });
     },
   });
+
+  const submit =
+    group.commands.length > 0
+      ? new LofiSubmitClient({
+          endpointName: group.endpointName,
+          submitUrl: group.submitUrl,
+          internalUrl: group.internalUrl,
+          adapter,
+          schemas: group.schemas,
+          commands: group.commands.map((command) => ({
+            name: command.name,
+            target: command.target,
+            handler: command.handler,
+          })),
+        })
+      : undefined;
 
   let timer: ReturnType<typeof setInterval> | undefined;
   let inFlight = false;
@@ -1029,11 +1801,12 @@ function createRuntime(
 
   return {
     signature,
-    adapterId: group.id,
+    adapterIdentity: group.id,
     endpointName: group.endpointName,
     endpointIds: group.endpointIds,
     adapter,
     client,
+    submit,
     schemas: group.schemas,
     outboxUrl: group.outboxUrl,
     pollIntervalMs: group.pollIntervalMs,
@@ -1054,30 +1827,38 @@ function buildAdapterGroups(
     {
       id: string;
       endpointIds: string[];
+      endpointLabels: string[];
       outboxUrl?: string;
       schemaNames: Set<string>;
       missingSchemas: Set<string>;
+      outboxEnabled: boolean;
     }
   >();
 
   for (const endpoint of endpoints) {
     const info = endpointInfos[endpoint.id];
-    const adapterId = info?.adapterId ?? `endpoint:${endpoint.id}`;
-    let group = groups.get(adapterId);
+    const adapterIdentity = info?.adapterIdentity ?? `endpoint:${endpoint.id}`;
+    let group = groups.get(adapterIdentity);
     if (!group) {
       group = {
-        id: adapterId,
+        id: adapterIdentity,
         endpointIds: [],
+        endpointLabels: [],
         outboxUrl: undefined,
         schemaNames: new Set(),
         missingSchemas: new Set(),
+        outboxEnabled: false,
       };
-      groups.set(adapterId, group);
+      groups.set(adapterIdentity, group);
     }
 
     group.endpointIds.push(endpoint.id);
+    group.endpointLabels.push(endpoint.label);
     if (!group.outboxUrl) {
       group.outboxUrl = buildOutboxUrl(endpoint.baseUrl);
+    }
+    if (info?.routes?.outbox) {
+      group.outboxEnabled = true;
     }
 
     const schemaNames = info?.schemas?.length
@@ -1105,17 +1886,28 @@ function buildAdapterGroups(
     const pollIntervalMs = Math.min(...intervalSource.map((endpoint) => endpoint.pollIntervalMs));
     const enabled = enabledEndpoints.length > 0;
     const schemas = Array.from(group.schemaNames).map((name) => SCHEMA_REGISTRY.get(name)!);
+    const commands = schemas.flatMap((schema) => COMMANDS_BY_SCHEMA.get(schema.name) ?? []);
+    const baseUrl = endpointsInGroup[0]?.baseUrl ?? "/";
     const endpointName = normalizeEndpointName(`adapter-${group.id}`);
-    const outboxUrl = group.outboxUrl ?? buildOutboxUrl(endpointsInGroup[0]?.baseUrl ?? "/");
+    const outboxUrl = group.outboxUrl ?? buildOutboxUrl(baseUrl);
+    const internalUrl = buildInternalDescribeUrl(baseUrl);
+    const submitUrl = buildInternalSyncUrl(baseUrl);
+    const primaryEndpointId = group.endpointIds[0] ?? "";
     const adapterGroup: AdapterGroup = {
       id: group.id,
       endpointIds: group.endpointIds,
+      endpointLabels: group.endpointLabels,
+      primaryEndpointId,
       outboxUrl,
+      internalUrl,
+      submitUrl,
       endpointName,
       schemas,
       missingSchemas: Array.from(group.missingSchemas),
+      commands,
       enabled,
       pollIntervalMs,
+      outboxEnabled: group.outboxEnabled,
     };
 
     result.push(adapterGroup);
@@ -1125,6 +1917,16 @@ function buildAdapterGroups(
   }
 
   return { groups: result, endpointToGroup };
+}
+
+function formatGroupLabel(group: AdapterGroup): string {
+  if (!group.endpointLabels.length) {
+    return "Endpoint";
+  }
+  if (group.endpointLabels.length === 1) {
+    return group.endpointLabels[0];
+  }
+  return `${group.endpointLabels[0]} +${group.endpointLabels.length - 1}`;
 }
 
 function useStoredState<T>(key: string, initialValue: T) {
@@ -1167,6 +1969,19 @@ function buildInternalDescribeUrl(baseUrl: string): string {
   return url.toString();
 }
 
+function buildInternalSyncUrl(baseUrl: string): string {
+  const internalUrl = new URL(buildInternalDescribeUrl(baseUrl));
+  if (internalUrl.pathname.endsWith("/_internal")) {
+    internalUrl.pathname = `${internalUrl.pathname}/sync`;
+    return internalUrl.toString();
+  }
+  const trimmed = internalUrl.pathname.endsWith("/")
+    ? internalUrl.pathname.slice(0, -1)
+    : internalUrl.pathname;
+  internalUrl.pathname = `${trimmed}/sync`;
+  return internalUrl.toString();
+}
+
 function buildOutboxUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   if (url.pathname.endsWith("/_internal/outbox")) {
@@ -1192,6 +2007,48 @@ function normalizeEndpointName(raw: string): string {
 function formatTime(timestamp: number) {
   const date = new Date(timestamp);
   return date.toLocaleTimeString();
+}
+
+function formatTimestamp(timestamp?: number) {
+  if (!timestamp) {
+    return "-";
+  }
+  const date = new Date(timestamp);
+  return date.toLocaleString();
+}
+
+function formatOutboxStatus(status: OutboxEntryStatus): string {
+  if (status === "applied") {
+    return "Applied";
+  }
+  if (status === "pending") {
+    return "Pending";
+  }
+  return "Unknown";
+}
+
+function getOutboxEntryKey(entry: Pick<OutboxEntry, "uowId" | "versionstamp">): string {
+  return `${entry.uowId}:${entry.versionstamp}`;
+}
+
+function parseOutboxCreatedAt(value: OutboxEntry["createdAt"]): number | undefined {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    const time = date.getTime();
+    return Number.isNaN(time) ? undefined : time;
+  }
+  return undefined;
+}
+
+function getOutboxMutationCount(entry: OutboxEntry): number | undefined {
+  try {
+    return decodeOutboxPayload(entry.payload).mutations.length;
+  } catch {
+    return undefined;
+  }
 }
 
 function formatValue(value: unknown): string {
