@@ -6,8 +6,9 @@ import { withDatabase } from "../../with-database";
 import { schema, idColumn, column, referenceColumn, FragnoReference } from "../../schema/create";
 import type { OutboxEntry, OutboxPayload } from "../../outbox/outbox";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
+import { internalSchema } from "../../fragments/internal-fragment";
 import { getInternalFragment } from "../../internal/adapter-registry";
-import { InMemoryAdapter } from "./in-memory-adapter";
+import { InMemoryAdapter, type InMemoryUowConfig } from "./in-memory-adapter";
 
 const buildOutboxSchema = () =>
   schema("outbox", (s) => {
@@ -40,6 +41,7 @@ const outboxFragmentDef = defineFragment(outboxFragmentName)
 
 type OutboxTestContext = {
   db: SimpleQueryInterface<typeof outboxSchema>;
+  internalDb: SimpleQueryInterface<typeof internalSchema, InMemoryUowConfig>;
   internalFragment: InternalFragmentInstance;
   cleanup: () => Promise<void>;
 };
@@ -59,9 +61,11 @@ async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<Ou
     .build();
 
   const deps = fragment.$internal.deps as { db: SimpleQueryInterface<typeof outboxSchema> };
+  const internalDb = adapter.createQueryEngine(internalSchema, "");
 
   return {
     db: deps.db,
+    internalDb,
     internalFragment: getInternalFragment(adapter),
     cleanup: async () => {
       await adapter.close();
@@ -81,14 +85,36 @@ async function listOutbox(
   });
 }
 
+async function listOutboxMutations(
+  internalDb: SimpleQueryInterface<typeof internalSchema, InMemoryUowConfig>,
+): Promise<
+  Array<{
+    entryVersionstamp: string;
+    mutationVersionstamp: string;
+    uowId: string;
+    schema: string;
+    table: string;
+    externalId: string;
+    op: string;
+  }>
+> {
+  return internalDb.find("fragno_db_outbox_mutations", (b) =>
+    b.whereIndex("idx_outbox_mutations_entry").orderByIndex("idx_outbox_mutations_entry", "asc"),
+  );
+}
+
 describe("in-memory outbox", () => {
   it("does not write outbox entries when disabled", async () => {
-    const { db, internalFragment, cleanup } = await buildOutboxTest({ outboxEnabled: false });
+    const { db, internalFragment, internalDb, cleanup } = await buildOutboxTest({
+      outboxEnabled: false,
+    });
 
     await db.create("users", { email: "disabled@example.com" });
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(0);
+    const mutations = await listOutboxMutations(internalDb);
+    expect(mutations).toHaveLength(0);
 
     await cleanup();
   });
@@ -125,6 +151,51 @@ describe("in-memory outbox", () => {
     expect(entries[1].refMap).toEqual({
       "0.authorId": user!.id.externalId,
     });
+
+    await cleanup();
+  });
+
+  it("writes mutation log rows for each outbox entry", async () => {
+    const { db, internalFragment, internalDb, cleanup } = await buildOutboxTest({
+      outboxEnabled: true,
+    });
+
+    await db.create("users", { email: "log-alpha@example.com" });
+    const user = await db.findFirst("users", (b) =>
+      b.whereIndex("idx_users_email", (eb) => eb("email", "=", "log-alpha@example.com")),
+    );
+    expect(user).not.toBeNull();
+
+    await db.create("posts", {
+      title: "Log",
+      authorId: FragnoReference.fromInternal(user!.id.internalId!),
+    });
+
+    const entries = await listOutbox(internalFragment);
+    const mutations = await listOutboxMutations(internalDb);
+
+    expect(entries).toHaveLength(2);
+    expect(mutations).toHaveLength(2);
+
+    const entryByVersion = new Map(entries.map((entry) => [entry.versionstamp, entry]));
+
+    for (const entry of entries) {
+      const payload = superjson.deserialize(entry.payload as SuperJSONResult) as OutboxPayload;
+      expect(payload.mutations).toHaveLength(1);
+    }
+
+    for (const mutationRow of mutations) {
+      const entry = entryByVersion.get(mutationRow.entryVersionstamp);
+      expect(entry).toBeDefined();
+      const payload = superjson.deserialize(entry!.payload as SuperJSONResult) as OutboxPayload;
+      const mutation = payload.mutations[0];
+      expect(mutationRow.mutationVersionstamp).toBe(mutation.versionstamp);
+      expect(mutationRow.uowId).toBe(entry!.uowId);
+      expect(mutationRow.schema).toBe(mutation.schema);
+      expect(mutationRow.table).toBe(mutation.table);
+      expect(mutationRow.externalId).toBe(mutation.externalId);
+      expect(mutationRow.op).toBe(mutation.op);
+    }
 
     await cleanup();
   });

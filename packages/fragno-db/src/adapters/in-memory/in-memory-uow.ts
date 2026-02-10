@@ -1218,6 +1218,79 @@ const insertOutboxRow = (
   };
 };
 
+const insertOutboxMutationRows = (
+  store: InMemoryStore,
+  options: ResolvedInMemoryAdapterOptions,
+  resolverFactory: ResolverFactory | undefined,
+  payload: {
+    entryVersionstamp: string;
+    uowId: string;
+    mutations: {
+      versionstamp: string;
+      schema: string;
+      table: string;
+      externalId: string;
+      op: string;
+    }[];
+  },
+): Array<() => void> => {
+  if (payload.mutations.length === 0) {
+    return [];
+  }
+
+  const resolver = getResolver(internalSchema, null, resolverFactory);
+  const namespaceStore = getNamespaceStore(store, internalSchema, null, resolver);
+  const mutationsTable = internalSchema.tables.fragno_db_outbox_mutations;
+  if (!mutationsTable) {
+    throw new Error("Missing internal outbox mutations table definition.");
+  }
+  const tableStore = getTableStore(namespaceStore, mutationsTable, resolver);
+  const rollbackActions: Array<() => void> = [];
+
+  try {
+    for (const mutation of payload.mutations) {
+      const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
+        type: "create",
+        schema: internalSchema,
+        namespace: null,
+        table: mutationsTable.name,
+        values: {
+          entryVersionstamp: payload.entryVersionstamp,
+          mutationVersionstamp: mutation.versionstamp,
+          uowId: payload.uowId,
+          schema: mutation.schema,
+          table: mutation.table,
+          externalId: mutation.externalId,
+          op: mutation.op,
+        },
+        generatedExternalId: options.idGenerator(),
+      };
+
+      const previousInternalId = tableStore.nextInternalId;
+      const internalId = createRow(createOp, namespaceStore, tableStore, options, resolver);
+
+      rollbackActions.push(() => {
+        const existingRow = tableStore.rows.get(internalId);
+        if (existingRow) {
+          for (const indexStore of tableStore.indexes.values()) {
+            const key = buildIndexKey(mutationsTable, indexStore.definition, existingRow, resolver);
+            indexStore.index.remove(key, internalId);
+          }
+          tableStore.rows.delete(internalId);
+        }
+        tableStore.nextInternalId = previousInternalId;
+      });
+    }
+  } catch (error) {
+    for (const rollback of rollbackActions.reverse()) {
+      rollback();
+    }
+    throw error;
+  }
+
+  return rollbackActions;
+};
+
 export const createInMemoryUowCompiler = (): UOWCompiler<InMemoryCompiledQuery> => ({
   compileRetrievalOperation(op: RetrievalOperation<AnySchema>): InMemoryCompiledQuery | null {
     return op;
@@ -1418,6 +1491,13 @@ export const createInMemoryUowExecutor = (
         const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
         const payloadSerialized = superjson.serialize(payload);
         const versionstamp = versionstampToHex(encodeVersionstamp(outboxVersion, 0));
+        rollbackActions.push(
+          ...insertOutboxMutationRows(store, options, resolverFactory, {
+            entryVersionstamp: versionstamp,
+            uowId,
+            mutations: payload.mutations,
+          }),
+        );
         const rollback = insertOutboxRow(store, options, resolverFactory, {
           versionstamp,
           uowId,

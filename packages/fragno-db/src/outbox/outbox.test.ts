@@ -5,6 +5,7 @@ import { KyselyPGlite } from "kysely-pglite";
 import { PGlite } from "@electric-sql/pglite";
 import superjson, { type SuperJSONResult } from "superjson";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import type { UnitOfWorkConfig } from "../adapters/generic-sql/generic-sql-adapter";
 import { PGLiteDriverConfig, SQLocalDriverConfig } from "../adapters/generic-sql/driver-config";
 import type { SimpleQueryInterface } from "../query/simple-query-interface";
 import { withDatabase } from "../with-database";
@@ -58,6 +59,7 @@ type OutboxAdapterConfig =
 
 type OutboxTestContext = {
   db: SimpleQueryInterface<typeof outboxSchema>;
+  internalDb: SimpleQueryInterface<typeof internalSchema, UnitOfWorkConfig>;
   internalFragment: InternalFragmentInstance;
   cleanup: () => Promise<void>;
 };
@@ -122,9 +124,11 @@ async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<Outb
     })
     .build();
   const deps = fragment.$internal.deps as { db: SimpleQueryInterface<typeof outboxSchema> };
+  const internalDb = adapter.createQueryEngine(internalSchema, "");
 
   return {
     db: deps.db,
+    internalDb,
     internalFragment: getInternalFragment(adapter),
     cleanup,
   };
@@ -142,11 +146,29 @@ async function listOutbox(
   });
 }
 
+async function listOutboxMutations(
+  internalDb: SimpleQueryInterface<typeof internalSchema, UnitOfWorkConfig>,
+): Promise<
+  Array<{
+    entryVersionstamp: string;
+    mutationVersionstamp: string;
+    uowId: string;
+    schema: string;
+    table: string;
+    externalId: string;
+    op: string;
+  }>
+> {
+  return internalDb.find("fragno_db_outbox_mutations", (b) =>
+    b.whereIndex("idx_outbox_mutations_entry").orderByIndex("idx_outbox_mutations_entry", "asc"),
+  );
+}
+
 const adapterConfigs = [{ type: "kysely-sqlite" as const }, { type: "kysely-pglite" as const }];
 
 describe("Fragno DB Outbox", () => {
   it("does not write outbox entries when disabled", async () => {
-    const { db, internalFragment, cleanup } = await buildOutboxTest({
+    const { db, internalFragment, internalDb, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
     });
 
@@ -154,6 +176,8 @@ describe("Fragno DB Outbox", () => {
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(0);
+    const mutations = await listOutboxMutations(internalDb);
+    expect(mutations).toHaveLength(0);
 
     await cleanup();
   });
@@ -211,6 +235,52 @@ describe("Fragno DB Outbox", () => {
 
     const afterInternal = await listOutbox(internalFragment);
     expect(afterInternal).toHaveLength(2);
+
+    await cleanup();
+  });
+
+  it("writes mutation log rows for each outbox entry", async () => {
+    const { db, internalFragment, internalDb, cleanup } = await buildOutboxTest({
+      type: "kysely-sqlite",
+      outboxEnabled: true,
+    });
+
+    await db.create("users", { email: "log-alpha@example.com" });
+    const user = await db.findFirst("users", (b) =>
+      b.whereIndex("idx_users_email", (eb) => eb("email", "=", "log-alpha@example.com")),
+    );
+    expect(user).not.toBeNull();
+
+    await db.create("posts", {
+      title: "Log",
+      authorId: FragnoReference.fromInternal(user!.id.internalId!),
+    });
+
+    const entries = await listOutbox(internalFragment);
+    const mutations = await listOutboxMutations(internalDb);
+
+    expect(entries).toHaveLength(2);
+    expect(mutations).toHaveLength(2);
+
+    const entryByVersion = new Map(entries.map((entry) => [entry.versionstamp, entry]));
+
+    for (const entry of entries) {
+      const payload = superjson.deserialize(entry.payload as SuperJSONResult) as OutboxPayload;
+      expect(payload.mutations).toHaveLength(1);
+    }
+
+    for (const mutationRow of mutations) {
+      const entry = entryByVersion.get(mutationRow.entryVersionstamp);
+      expect(entry).toBeDefined();
+      const payload = superjson.deserialize(entry!.payload as SuperJSONResult) as OutboxPayload;
+      const mutation = payload.mutations[0];
+      expect(mutationRow.mutationVersionstamp).toBe(mutation.versionstamp);
+      expect(mutationRow.uowId).toBe(entry!.uowId);
+      expect(mutationRow.schema).toBe(mutation.schema);
+      expect(mutationRow.table).toBe(mutation.table);
+      expect(mutationRow.externalId).toBe(mutation.externalId);
+      expect(mutationRow.op).toBe(mutation.op);
+    }
 
     await cleanup();
   });
