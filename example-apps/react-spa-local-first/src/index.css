@@ -165,6 +165,10 @@ body::before {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.layout--commands {
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.9fr);
+}
+
 .panel {
   background: var(--panel);
   border-radius: var(--radius);
@@ -174,6 +178,10 @@ body::before {
   flex-direction: column;
   min-height: 0;
   animation: rise 0.6s ease;
+}
+
+.panel--wide {
+  grid-column: 1 / -1;
 }
 
 .panel-title {
@@ -200,6 +208,79 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.command-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.textarea {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: white;
+  color: var(--ink);
+  resize: vertical;
+}
+
+.command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.outbox-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.outbox-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-badge--applied {
+  background: rgba(29, 127, 120, 0.18);
+  color: var(--accent-cool);
+}
+
+.status-badge--pending {
+  background: rgba(224, 111, 47, 0.18);
+  color: var(--accent-strong);
+}
+
+.status-badge--unknown {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--muted);
+}
+
+.command-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .rows-panel .panel-body {
@@ -392,6 +473,14 @@ body::before {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
+}
+
+.outbox-table {
+  min-width: 520px;
+}
+
+.outbox-table td {
+  white-space: nowrap;
 }
 
 .data-table th,
@@ -667,7 +756,8 @@ body::before {
 
 @media (max-width: 1100px) {
   .layout--tables,
-  .layout--endpoints {
+  .layout--endpoints,
+  .layout--commands {
     grid-template-columns: 1fr;
   }
 

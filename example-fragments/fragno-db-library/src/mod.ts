@@ -1,6 +1,7 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { z } from "zod";
+import { defineSyncCommands } from "@fragno-dev/db";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { SimpleQueryInterface, TableToInsertValues } from "@fragno-dev/db/query";
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
@@ -13,12 +14,43 @@ type Prettify<T> = {
 
 export { commentSchema };
 
+export type CommentSyncCommandInput = {
+  title: string;
+  content: string;
+  postReference: string;
+  userReference: string;
+  parentId?: string | null;
+};
+
+export const commentSyncCommands = defineSyncCommands({ schema: commentSchema }).create(
+  ({ defineCommand }) => [
+    defineCommand({
+      name: "createComment",
+      handler: async ({ input, tx }) => {
+        const payload = input as CommentSyncCommandInput;
+        await tx()
+          .mutate(({ forSchema }) => {
+            forSchema(commentSchema).create("comment", {
+              title: payload.title,
+              content: payload.content,
+              postReference: payload.postReference,
+              userReference: payload.userReference,
+              parentId: payload.parentId ?? null,
+            });
+          })
+          .execute();
+      },
+    }),
+  ],
+);
+
 export interface CommentFragmentConfig {
   // Add any server-side configuration here if needed
 }
 
 export const commentFragmentDef = defineFragment<CommentFragmentConfig>("fragno-db-comment")
   .extend(withDatabase(commentSchema))
+  .withSyncCommands(commentSyncCommands)
   .providesBaseService(({ deps }) => {
     return {
       ...createFragnoDatabaseLibrary(deps.db),
