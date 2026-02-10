@@ -35,6 +35,7 @@ import {
   type OutboxRefLookup,
   type OutboxRefMap,
   encodeVersionstamp,
+  versionstampToHex,
   parseOutboxVersionValue,
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
@@ -1175,7 +1176,7 @@ const insertOutboxRow = (
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory: ResolverFactory | undefined,
   payload: {
-    versionstamp: Uint8Array;
+    versionstamp: string;
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;
@@ -1416,7 +1417,7 @@ export const createInMemoryUowExecutor = (
         );
         const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
         const payloadSerialized = superjson.serialize(payload);
-        const versionstamp = encodeVersionstamp(outboxVersion, 0);
+        const versionstamp = versionstampToHex(encodeVersionstamp(outboxVersion, 0));
         const rollback = insertOutboxRow(store, options, resolverFactory, {
           versionstamp,
           uowId,

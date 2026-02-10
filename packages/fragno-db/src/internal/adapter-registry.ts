@@ -1,17 +1,15 @@
 import { instantiate } from "@fragno-dev/core";
 import type { DatabaseAdapter } from "../adapters/adapters";
-import type { OutboxConfig } from "../outbox/outbox";
-import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import {
   SchemaRegistryCollisionError,
   internalFragmentDef,
   type InternalFragmentInstance,
 } from "../fragments/internal-fragment";
 import {
-  internalFragmentDescribeRoutes,
-  internalFragmentOutboxRoutes,
+  createInternalFragmentDescribeRoutes,
+  createInternalFragmentOutboxRoutes,
 } from "../fragments/internal-fragment.routes";
-import type { AnySchema } from "../schema/create";
+import { getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
 
 export type SchemaInfo = {
   name: string;
@@ -44,7 +42,6 @@ export type AdapterRegistry = {
 type AdapterKey = DatabaseAdapter<unknown>;
 
 const registryByAdapter = new WeakMap<AdapterKey, AdapterRegistry>();
-const outboxStateByAdapter = new WeakMap<AdapterKey, OutboxState>();
 
 const toAdapterKey = <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>): AdapterKey =>
   adapter as AdapterKey;
@@ -52,9 +49,6 @@ const toAdapterKey = <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>): Adapter
 const isDryRun = (): boolean => process.env["FRAGNO_INIT_DRY_RUN"] === "true";
 
 const getNamespaceKey = (schema: SchemaInfo): string => schema.namespace ?? schema.name;
-
-const getOperationNamespaceKey = (operation: MutationOperation<AnySchema>): string =>
-  operation.namespace ?? operation.schema.name;
 
 const sortSchemas = (schemas: SchemaInfo[]): SchemaInfo[] =>
   schemas.sort((a, b) => {
@@ -72,46 +66,11 @@ const sortSchemas = (schemas: SchemaInfo[]): SchemaInfo[] =>
 const sortFragments = (fragments: FragmentMeta[]): FragmentMeta[] =>
   fragments.sort((a, b) => a.name.localeCompare(b.name));
 
-type OutboxState = {
-  config: OutboxConfig;
-  enabledSchemaKeys: Set<string>;
-  enabledFragments: Set<string>;
-};
-
-const createOutboxState = (): OutboxState => {
-  const enabledSchemaKeys = new Set<string>();
-  const enabledFragments = new Set<string>();
-  const config: OutboxConfig = {
-    enabled: false,
-    shouldInclude: (operation) => enabledSchemaKeys.has(getOperationNamespaceKey(operation)),
-  };
-
-  return { config, enabledSchemaKeys, enabledFragments };
-};
-
-const getOutboxStateForAdapter = (adapter: AdapterKey): OutboxState => {
-  const existing = outboxStateByAdapter.get(adapter);
-  if (existing) {
-    return existing;
-  }
-
-  const state = createOutboxState();
-  outboxStateByAdapter.set(adapter, state);
-  return state;
-};
-
-export const getOutboxConfigForAdapter = <TUOWConfig>(
-  adapter: DatabaseAdapter<TUOWConfig>,
-): OutboxConfig => {
-  const adapterKey = toAdapterKey(adapter);
-  return getOutboxStateForAdapter(adapterKey).config;
-};
-
 const buildInternalFragment = (
   adapter: DatabaseAdapter<unknown>,
   registry: AdapterRegistry,
 ): InternalFragmentInstance => {
-  const routes = [internalFragmentDescribeRoutes, internalFragmentOutboxRoutes];
+  const routes = [createInternalFragmentDescribeRoutes(), createInternalFragmentOutboxRoutes()];
 
   return instantiate(internalFragmentDef)
     .withConfig({ registry })

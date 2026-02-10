@@ -23,8 +23,8 @@ type InternalDescribeError = {
   };
 };
 
-export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).create(
-  ({ defineRoute, config }) => [
+export const createInternalFragmentDescribeRoutes = () =>
+  defineRoutes(internalFragmentDef).create(({ defineRoute, config }) => [
     defineRoute({
       method: "GET",
       path: "/",
@@ -55,11 +55,10 @@ export const internalFragmentDescribeRoutes = defineRoutes(internalFragmentDef).
         return json(response);
       },
     }),
-  ],
-);
+  ]);
 
-export const internalFragmentOutboxRoutes = defineRoutes(internalFragmentDef).create(
-  ({ defineRoute, services, config }) => [
+export const createInternalFragmentOutboxRoutes = () =>
+  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config }) => [
     defineRoute({
       method: "GET",
       path: "/outbox",
@@ -108,5 +107,4 @@ export const internalFragmentOutboxRoutes = defineRoutes(internalFragmentDef).cr
         return json(entries);
       },
     }),
-  ],
-);
+  ]);

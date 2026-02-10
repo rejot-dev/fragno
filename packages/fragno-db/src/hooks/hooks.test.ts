@@ -17,6 +17,10 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { ExponentialBackoffRetryPolicy, NoRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { FragnoId } from "../schema/create";
 
+type OptionsWithAdapter = FragnoPublicConfigWithDatabase & {
+  databaseAdapter: SqlAdapter;
+};
+
 describe("Hook System", () => {
   const handlerTx = (() => {
     throw new Error("handlerTx not configured for hooks test");
@@ -25,7 +29,7 @@ describe("Hook System", () => {
   let adapter: SqlAdapter;
   let internalFragment: ReturnType<typeof instantiateFragment>;
 
-  function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
+  function instantiateFragment(options: OptionsWithAdapter) {
     return instantiate(internalFragmentDef)
       .withConfig({ registry: getRegistryForAdapterSync(options.databaseAdapter) })
       .withOptions(options)
@@ -49,7 +53,7 @@ describe("Hook System", () => {
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
-    const options: FragnoPublicConfigWithDatabase = {
+    const options: OptionsWithAdapter = {
       databaseAdapter: adapter,
       databaseNamespace: null,
     };

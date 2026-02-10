@@ -3,7 +3,8 @@ import { SqliteDialect } from "kysely";
 import { describe, expect, it } from "vitest";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
-import { getOutboxConfigForAdapter, getRegistryForAdapterSync } from "./adapter-registry";
+import { getRegistryForAdapterSync } from "./adapter-registry";
+import { getOutboxConfigForAdapter } from "./outbox-state";
 
 describe("adapter registry", () => {
   it("returns the same registry for the same adapter instance", async () => {

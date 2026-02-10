@@ -25,7 +25,7 @@ import {
   suffixNamingStrategy,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
-import { getOutboxConfigForAdapter } from "../../internal/adapter-registry";
+import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 
 class UpdateManySpecialBuilder<TTable extends AnyTable> {
   #indexName?: string;
