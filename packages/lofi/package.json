@@ -16,6 +16,11 @@
       "development": "./src/cli/index.ts",
       "types": "./dist/cli/index.d.ts",
       "default": "./dist/cli/index.js"
+    },
+    "./scenario": {
+      "development": "./src/scenario.ts",
+      "types": "./dist/scenario.d.ts",
+      "default": "./dist/scenario.js"
     }
   },
   "files": [
@@ -34,15 +39,16 @@
     "fragno-lofi": "./bin/run.js"
   },
   "dependencies": {
+    "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/fragno-db-library": "workspace:*",
+    "@fragno-dev/node": "workspace:*",
     "fake-indexeddb": "^6.1.0",
     "gunshi": "^0.26.3",
     "idb": "^8.0.3",
     "superjson": "^2.2.1"
   },
   "devDependencies": {
-    "@fragno-dev/core": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
