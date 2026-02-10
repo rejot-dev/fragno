@@ -1,5 +1,11 @@
 # @fragno-dev/cli
 
+## 0.2.1
+
+### Patch Changes
+
+- 54541d0: feat: add `serve` command to start a local HTTP server for fragments
+
 ## 0.2.0
 
 ### Minor Changes

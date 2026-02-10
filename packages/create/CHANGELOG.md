@@ -1,5 +1,11 @@
 # @fragno-dev/create
 
+## 0.1.7
+
+### Patch Changes
+
+- bcf1742: fix: refresh create template deps and schema naming
+
 ## 0.1.6
 
 ### Patch Changes
