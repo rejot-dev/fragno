@@ -308,4 +308,48 @@ describe("Lofi scenario DSL", () => {
     const context = await runScenario(scenario);
     await context.cleanup();
   });
+
+  it("runs scenario steps against an HTTP server", async () => {
+    const scenario = defineScenario({
+      name: "http-server",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+        port: 0,
+      },
+      clientCommands,
+      clients: {
+        a: { endpointName: "client-a" },
+      },
+      steps: [
+        steps.command(
+          "a",
+          "createUser",
+          { id: "user-1", name: "Ada" },
+          { optimistic: true, submit: true },
+        ),
+        steps.sync("a"),
+        steps.read(
+          "a",
+          (_ctx, client) => {
+            const query = client.query as QueryApi;
+            return query.findFirst("users", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "user-1")),
+            );
+          },
+          "user",
+        ),
+        steps.assert((ctx: ScenarioContext) => {
+          const response = ctx.lastSubmit["a"];
+          expect(response?.status).toBe("applied");
+          const user = ctx.vars["user"] as { name: string } | null;
+          expect(user?.name).toBe("Ada");
+        }),
+      ],
+    });
+
+    const context = await runScenario(scenario);
+    await context.cleanup();
+  });
 });
