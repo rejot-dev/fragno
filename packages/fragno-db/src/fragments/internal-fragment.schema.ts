@@ -47,5 +47,43 @@ export const internalSchema = schema("fragno_internal", (s) => {
         )
         .createIndex("idx_outbox_versionstamp", ["versionstamp"], { unique: true })
         .createIndex("idx_outbox_uow", ["uowId"]);
+    })
+    .addTable("fragno_db_outbox_mutations", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("entryVersionstamp", column("string"))
+        .addColumn("mutationVersionstamp", column("string"))
+        .addColumn("uowId", column("string"))
+        .addColumn("schema", column("string"))
+        .addColumn("table", column("string"))
+        .addColumn("externalId", column("string"))
+        .addColumn("op", column("string"))
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_outbox_mutations_entry", ["entryVersionstamp"])
+        .createIndex("idx_outbox_mutations_key", [
+          "schema",
+          "table",
+          "externalId",
+          "entryVersionstamp",
+        ])
+        .createIndex("idx_outbox_mutations_uow", ["uowId"]);
+    })
+    .addTable("fragno_db_sync_requests", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("requestId", column("string"))
+        .addColumn("status", column("string"))
+        .addColumn("confirmedCommandIds", column("json"))
+        .addColumn("conflictCommandId", column("string").nullable())
+        .addColumn("baseVersionstamp", column("string").nullable())
+        .addColumn("lastVersionstamp", column("string").nullable())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_sync_request_id", ["requestId"], { unique: true });
     });
 });
