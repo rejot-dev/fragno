@@ -6,13 +6,18 @@ import type { Node } from "@babel/types";
 const FRAGNO_PACKAGE_DEFINITIONS = {
   "@fragno-dev/core": {
     fragmentDefinitions: ["defineFragment"] as const,
-    chainMethods: ["withDependencies", "providesService"] as const,
+    chainMethods: ["withDependencies", "providesService", "withSyncCommands"] as const,
     // Exclude the new builder API from this transform
     excludePaths: ["api/fragment-definition-builder"] as const,
   },
   "@fragno-dev/db": {
     fragmentDefinitions: ["defineFragmentWithDatabase"] as const,
-    chainMethods: ["withDependencies", "providesService", "withDatabase"] as const,
+    chainMethods: [
+      "withDependencies",
+      "providesService",
+      "withDatabase",
+      "withSyncCommands",
+    ] as const,
     utilityFunctions: ["schema"] as const,
   },
 } as const;
@@ -227,8 +232,10 @@ export function transformDefineLibrary(ast: Node, options: { ssr: boolean }): vo
         return;
       }
 
-      // Replace the argument with a no-op function
-      path.node.arguments = [createNoOpArrowFunction()];
+      if (methodName === "withDependencies" || methodName === "withSyncCommands") {
+        // Replace the argument with a no-op function
+        path.node.arguments = [createNoOpArrowFunction()];
+      }
     },
   });
 }

@@ -59,7 +59,7 @@ describe("transform robustness and error handling", () => {
 
     const result = transform(source, "", { ssr: false });
     expect(result.code).toContain(".withDependencies(() => {})");
-    expect(result.code).toContain(".providesService(() => {})");
+    expect(result.code).toContain("new Map()");
     expect(result.code).toContain('defineRoute("invalid")'); // unchanged
     expect(result.code).toContain("handler: () => {}");
     expect(result.code).not.toContain("createDB");
@@ -195,10 +195,10 @@ describe("transform robustness and error handling", () => {
     `;
 
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toContain(".providesService(() => {})");
+    expect(result.code).toContain("providesService(() => ({");
+    expect(result.code).toContain("service");
     // The handler becomes an arrow function, not a function expression
     expect(result.code).toContain("handler: () => {}");
-    expect(result.code).not.toContain("service");
     expect(result.code).not.toContain('data: "arrow"');
   });
 

@@ -14,7 +14,6 @@ const FRAGNO_PACKAGES = ["@fragno-dev/core"];
 const BUILDER_METHODS_WITH_CALLBACKS = [
   "withDependencies",
   "providesBaseService",
-  "providesService",
   "withRequestStorage",
   "withExternalRequestStorage",
   "withRequestThisContext",
