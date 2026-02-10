@@ -64,6 +64,7 @@ describe("internal fragment describe routes", () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
 
+    expect(payload.adapterIdentity).toEqual(expect.any(String));
     expect(payload.routes.internal).toBe("/_internal");
     expect(payload.routes.outbox).toBeUndefined();
 
@@ -95,12 +96,13 @@ describe("internal fragment describe routes", () => {
     const betaResponse = await betaFragment.callRouteRaw("GET", "/_internal" as never);
     const betaPayload = await betaResponse.json();
 
+    expect(betaPayload.adapterIdentity).toBe(payload.adapterIdentity);
     expect(betaPayload.fragments).toEqual([]);
 
     await close();
   });
 
-  it("serves describe without internal migrations", async () => {
+  it("returns an error when internal settings are unavailable", async () => {
     const { adapter, close } = await setupAdapter({ migrateInternal: false });
 
     const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
@@ -109,20 +111,13 @@ describe("internal fragment describe routes", () => {
       .build();
 
     const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
 
     const payload = await response.json();
-    expect(payload.error).toBeUndefined();
-    expect(payload.routes.internal).toBe("/_internal");
-    expect(payload.schemas).toEqual(
-      expect.arrayContaining([
-        {
-          name: alphaSchema.name,
-          namespace: alphaSchema.name,
-          version: alphaSchema.version,
-          tables: Object.keys(alphaSchema.tables).sort(),
-        },
-      ]),
+    expect(payload.error).toEqual(
+      expect.objectContaining({
+        code: "SETTINGS_UNAVAILABLE",
+      }),
     );
 
     await close();

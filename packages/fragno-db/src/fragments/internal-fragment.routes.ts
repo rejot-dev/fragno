@@ -1,7 +1,8 @@
 import { defineRoutes } from "@fragno-dev/core";
-import { internalFragmentDef } from "./internal-fragment";
+import { SETTINGS_NAMESPACE, internalFragmentDef } from "./internal-fragment";
 
 type InternalDescribeResponse = {
+  adapterIdentity: string;
   fragments: Array<{ name: string; mountRoute: string }>;
   schemas: Array<{
     name: string;
@@ -23,8 +24,10 @@ type InternalDescribeError = {
   };
 };
 
+const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
+
 export const createInternalFragmentDescribeRoutes = () =>
-  defineRoutes(internalFragmentDef).create(({ defineRoute, config }) => [
+  defineRoutes(internalFragmentDef).create(({ defineRoute, config, services }) => [
     defineRoute({
       method: "GET",
       path: "/",
@@ -42,8 +45,49 @@ export const createInternalFragmentDescribeRoutes = () =>
           );
         }
 
+        let adapterIdentity: string;
+        try {
+          const existingIdentity = await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [services.settingsService.get(SETTINGS_NAMESPACE, ADAPTER_IDENTITY_KEY)] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result?.value)
+            .execute();
+
+          if (existingIdentity) {
+            adapterIdentity = existingIdentity;
+          } else {
+            adapterIdentity = crypto.randomUUID();
+            await this.handlerTx()
+              .withServiceCalls(
+                () =>
+                  [
+                    services.settingsService.set(
+                      SETTINGS_NAMESPACE,
+                      ADAPTER_IDENTITY_KEY,
+                      adapterIdentity,
+                    ),
+                  ] as const,
+              )
+              .execute();
+          }
+        } catch (error) {
+          return json(
+            {
+              error: {
+                code: "SETTINGS_UNAVAILABLE",
+                message: "Internal settings table is not available.",
+                detail: error instanceof Error ? error.message : undefined,
+              },
+            } satisfies InternalDescribeError,
+            { status: 500 },
+          );
+        }
+
         const outboxEnabled = registry.isOutboxEnabled();
         const response: InternalDescribeResponse = {
+          adapterIdentity,
           fragments: outboxEnabled ? registry.listOutboxFragments() : [],
           schemas: registry.listSchemas(),
           routes: {
