@@ -1,4 +1,5 @@
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
+import { FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import { generateMigrationFromSchema } from "@fragno-dev/db/client";
 import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
 import type {
@@ -11,7 +12,7 @@ import type {
 } from "../types";
 import type { ReferenceTarget } from "./types";
 import { normalizeValue } from "../query/normalize";
-import { createIndexedDbQueryEngine } from "../query/engine";
+import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
 
 type LofiRow = {
   key: [string, string, string, string];
@@ -211,6 +212,66 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     }
   }
 
+  async applyMutations(mutations: LofiMutation[]): Promise<void> {
+    if (mutations.length === 0) {
+      return;
+    }
+
+    const db = await this.openDatabase();
+
+    const knownMutations: Array<{ mutation: LofiMutation; schema: AnySchema; table: AnyTable }> =
+      [];
+    for (const mutation of mutations) {
+      const schema = this.schemaMap.get(mutation.schema);
+      if (!schema) {
+        if (this.ignoreUnknownSchemas) {
+          continue;
+        }
+        throw new Error(`Unknown mutation schema: ${mutation.schema}`);
+      }
+      const table = this.tableMap.get(mutation.schema)?.get(mutation.table);
+      if (!table) {
+        if (this.ignoreUnknownSchemas) {
+          continue;
+        }
+        throw new Error(`Unknown mutation table: ${mutation.schema}.${mutation.table}`);
+      }
+      knownMutations.push({ mutation, schema, table });
+    }
+
+    const tx = db.transaction([ROWS_STORE, META_STORE], "readwrite");
+    const rowsStore = tx.objectStore(ROWS_STORE);
+    const metaStore = tx.objectStore(META_STORE);
+
+    try {
+      for (const { mutation, schema, table } of knownMutations) {
+        await applyMutation({
+          mutation,
+          schema,
+          table,
+          endpointName: this.endpointName,
+          rowsStore,
+          metaStore,
+          referenceTargets: this.referenceTargets,
+        });
+      }
+
+      await tx.done;
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        // Ignore abort errors; transaction will already be closing.
+      }
+      try {
+        await tx.done;
+      } catch {
+        // Ignore abort completion errors; original error is more useful.
+      }
+      throw error;
+    }
+  }
+
   async getMeta(key: string): Promise<string | undefined> {
     const db = await this.openDatabase();
     const tx = db.transaction(META_STORE, "readonly");
@@ -239,6 +300,15 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       referenceTargets: this.referenceTargets,
       schemaName: options?.schemaName,
     });
+  }
+
+  createQueryContext(schemaName: string): IndexedDbQueryContext {
+    return {
+      endpointName: this.endpointName,
+      schemaName,
+      getDb: () => this.openDatabase(),
+      referenceTargets: this.referenceTargets,
+    };
   }
 
   private openDatabase(): Promise<LofiDb> {
@@ -673,21 +743,51 @@ const resolveColumnValue = async <
     if (rawValue == null) {
       return rawValue;
     }
+
+    if (rawValue instanceof FragnoReference) {
+      return coerceInternalIdValue(rawValue.internalId, schema, table, columnName);
+    }
+
+    if (rawValue instanceof FragnoId) {
+      if (rawValue.internalId !== undefined) {
+        return coerceInternalIdValue(rawValue.internalId, schema, table, columnName);
+      }
+      return resolveReferenceExternalId({
+        schema,
+        table,
+        columnName,
+        externalId: rawValue.externalId,
+        endpointName,
+        rowsStore,
+        referenceTargets,
+      });
+    }
+
+    if (typeof rawValue === "number") {
+      throw new Error(
+        `Expected reference value to be external ID string for ${schema.name}.${table.name}.${columnName}.`,
+      );
+    }
+
+    if (typeof rawValue === "bigint") {
+      return coerceInternalIdValue(rawValue, schema, table, columnName);
+    }
+
     if (typeof rawValue !== "string") {
       throw new Error(
         `Expected reference value to be external ID string for ${schema.name}.${table.name}.${columnName}.`,
       );
     }
-    const target = referenceTargets.get(`${schema.name}::${table.name}::${columnName}`);
-    if (!target) {
-      return undefined;
-    }
-    const key: LofiRow["key"] = [endpointName, target.schema, target.table, rawValue];
-    const referenced = (await rowsStore.get(key)) as LofiRow | undefined;
-    if (!referenced) {
-      return undefined;
-    }
-    return referenced._lofi.internalId;
+
+    return resolveReferenceExternalId({
+      schema,
+      table,
+      columnName,
+      externalId: rawValue,
+      endpointName,
+      rowsStore,
+      referenceTargets,
+    });
   }
 
   const rawValue = data[columnName];
@@ -699,4 +799,45 @@ const resolveColumnValue = async <
   }
 
   return normalizeValue(rawValue, column);
+};
+
+const resolveReferenceExternalId = async <
+  TxStores extends ArrayLike<string>,
+  StoreName extends string,
+>(options: {
+  schema: AnySchema;
+  table: AnyTable;
+  columnName: string;
+  externalId: string;
+  endpointName: string;
+  rowsStore: WriteStore<TxStores, StoreName>;
+  referenceTargets: Map<string, ReferenceTarget>;
+}): Promise<number | undefined> => {
+  const { schema, table, columnName, externalId, endpointName, rowsStore, referenceTargets } =
+    options;
+  const target = referenceTargets.get(`${schema.name}::${table.name}::${columnName}`);
+  if (!target) {
+    return undefined;
+  }
+  const key: LofiRow["key"] = [endpointName, target.schema, target.table, externalId];
+  const referenced = (await rowsStore.get(key)) as LofiRow | undefined;
+  if (!referenced) {
+    return undefined;
+  }
+  return referenced._lofi.internalId;
+};
+
+const coerceInternalIdValue = (
+  value: bigint | number,
+  schema: AnySchema,
+  table: AnyTable,
+  columnName: string,
+): number => {
+  const asNumber = typeof value === "bigint" ? Number(value) : value;
+  if (!Number.isSafeInteger(asNumber)) {
+    throw new Error(
+      `Reference internalId is not a safe integer for ${schema.name}.${table.name}.${columnName}: ${value.toString()}`,
+    );
+  }
+  return asNumber;
 };

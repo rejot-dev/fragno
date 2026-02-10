@@ -7,7 +7,7 @@ import type { IDBPDatabase, IDBPIndex, IDBPObjectStore } from "idb";
 import type { LofiQueryInterface } from "../types";
 import type { ReferenceTarget } from "../indexeddb/types";
 import { normalizeValue } from "./normalize";
-import { buildCondition, type Condition } from "./conditions";
+import { buildCondition, type Condition, type ConditionBuilder } from "./conditions";
 
 const ROWS_STORE = "lofi_rows";
 const INDEX_SCHEMA_TABLE = "idx_schema_table";
@@ -42,12 +42,14 @@ type ReadIndex<
 
 type RowSelection = Record<string, unknown>;
 
-type QueryContext = {
+export type IndexedDbQueryContext = {
   endpointName: string;
   schemaName: string;
   getDb: () => Promise<LofiDb>;
   referenceTargets: Map<string, ReferenceTarget>;
 };
+
+type QueryContext = IndexedDbQueryContext;
 
 type CompiledJoin = {
   relation: { name: string; table: AnyTable; on: [string, string][] };
@@ -1002,6 +1004,207 @@ const applyJoins = async <TxStores extends ArrayLike<string>, StoreName extends 
 const buildFindBuilder = <TTable extends AnyTable>(tableName: string, table: TTable) =>
   new FindBuilder<TTable>(tableName, table);
 
+type IndexedDbFindOptions<TTable extends AnyTable = AnyTable> = {
+  useIndex: string;
+  select?: unknown;
+  where?: ((builder: ConditionBuilder<TTable["columns"]>) => Condition | boolean) | Condition;
+  orderByIndex?: {
+    indexName: string;
+    direction: "asc" | "desc";
+  };
+  after?: Cursor | string;
+  before?: Cursor | string;
+  pageSize?: number;
+  joins?: CompiledJoin[];
+};
+
+type IndexedDbRetrievalOperation =
+  | {
+      type: "find";
+      table: AnyTable;
+      indexName: string;
+      options: IndexedDbFindOptions;
+      withCursor: boolean;
+    }
+  | {
+      type: "count";
+      table: AnyTable;
+      indexName: string;
+      options: Pick<IndexedDbFindOptions, "where">;
+    };
+
+const resolveFindCondition = <TTable extends AnyTable>(
+  table: TTable,
+  input: IndexedDbFindOptions<TTable>["where"],
+): Condition | undefined | false => {
+  if (!input) {
+    return undefined;
+  }
+  if (typeof input === "function") {
+    const built = buildCondition(table.columns, input);
+    if (built === true) {
+      return undefined;
+    }
+    return built;
+  }
+  return input;
+};
+
+export const executeIndexedDbRetrievalOperation = async (options: {
+  operation: IndexedDbRetrievalOperation;
+  context: IndexedDbQueryContext;
+}): Promise<Record<string, unknown>[] | CursorResult<Record<string, unknown>> | number> => {
+  const { operation, context } = options;
+  const db = await context.getDb();
+  const tx = db.transaction(ROWS_STORE, "readonly");
+  const rowsStore = tx.objectStore(ROWS_STORE);
+
+  const rows = await collectRows({
+    rowsStore,
+    endpointName: context.endpointName,
+    schemaName: context.schemaName,
+    tableName: operation.table.name,
+    indexName: operation.indexName,
+  });
+
+  const condition =
+    operation.options.where !== undefined
+      ? resolveFindCondition(operation.table, operation.options.where)
+      : undefined;
+
+  if (condition === false) {
+    await tx.done;
+    if (operation.type === "count") {
+      return 0;
+    }
+    return operation.withCursor ? { items: [], hasNextPage: false } : [];
+  }
+
+  if (operation.type === "count") {
+    let count = 0;
+    for (const row of rows) {
+      if (
+        condition &&
+        !(await evaluateCondition(condition, operation.table, row, context, rowsStore))
+      ) {
+        continue;
+      }
+      count += 1;
+    }
+    await tx.done;
+    return count;
+  }
+
+  const filtered: LofiRow[] = [];
+  for (const row of rows) {
+    if (
+      condition &&
+      !(await evaluateCondition(condition, operation.table, row, context, rowsStore))
+    ) {
+      continue;
+    }
+    filtered.push(row);
+  }
+
+  const orderIndexName = operation.options.orderByIndex?.indexName ?? operation.indexName;
+  const direction = operation.options.orderByIndex?.direction ?? "asc";
+  const orderColumns = buildOrderColumns(operation.table, orderIndexName);
+
+  let ordered = orderRows(
+    filtered,
+    orderColumns.map((col) => [col, direction]),
+  );
+  ordered = applyCursorFilters({
+    rows: ordered,
+    orderColumns,
+    direction,
+    after: operation.options.after,
+    before: operation.options.before,
+  });
+
+  const limit =
+    operation.withCursor && operation.options.pageSize !== undefined
+      ? operation.options.pageSize + 1
+      : operation.options.pageSize;
+
+  const results: RowSelection[] = [];
+  const resultSources: LofiRow[] = [];
+  const rowsByTable = new Map<string, LofiRow[]>();
+
+  for (const row of ordered) {
+    const select = operation.options.select as undefined | true | readonly string[];
+    const baseOutput = selectRow(row, operation.table, select);
+
+    if (operation.options.joins && operation.options.joins.length > 0) {
+      const joined = await applyJoins({
+        baseOutput,
+        parentRow: row,
+        parentTable: operation.table,
+        joins: operation.options.joins,
+        rowsByTable,
+        context,
+        rowsStore,
+      });
+      for (const joinedRow of joined) {
+        results.push(joinedRow);
+        resultSources.push(row);
+        if (limit !== undefined && results.length >= limit) {
+          break;
+        }
+      }
+    } else {
+      results.push(baseOutput);
+      resultSources.push(row);
+    }
+
+    if (limit !== undefined && results.length >= limit) {
+      break;
+    }
+  }
+
+  await tx.done;
+
+  const decoded = results.map((row) => decodeRow(row, operation.table));
+
+  if (!operation.withCursor) {
+    return decoded;
+  }
+
+  let cursor: Cursor | undefined;
+  let hasNextPage = false;
+  let items = decoded;
+
+  if (
+    operation.options.pageSize &&
+    operation.options.pageSize > 0 &&
+    decoded.length > operation.options.pageSize
+  ) {
+    hasNextPage = true;
+    items = decoded.slice(0, operation.options.pageSize);
+
+    const lastRow = items[items.length - 1];
+    if (lastRow) {
+      const cursorRecord: Record<string, unknown> = { ...lastRow };
+      const sourceRow = resultSources[operation.options.pageSize - 1];
+      for (const column of orderColumns) {
+        if (cursorRecord[column.name] === undefined) {
+          cursorRecord[column.name] = sourceRow
+            ? buildOutputValueForColumn(sourceRow, column)
+            : cursorRecord[column.name];
+        }
+      }
+
+      cursor = createCursorFromRecord(cursorRecord, orderColumns, {
+        indexName: orderIndexName,
+        orderDirection: direction,
+        pageSize: operation.options.pageSize,
+      });
+    }
+  }
+
+  return { items, cursor, hasNextPage };
+};
+
 const applyCursorFilters = (options: {
   rows: LofiRow[];
   orderColumns: AnyColumn[];
@@ -1041,7 +1244,7 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
   schemaName?: string;
 }): LofiQueryInterface<T> => {
   const schemaName = options.schemaName ?? options.schema.name;
-  const context: QueryContext = {
+  const context: IndexedDbQueryContext = {
     endpointName: options.endpointName,
     schemaName,
     getDb: options.getDb,
@@ -1068,165 +1271,27 @@ export const createIndexedDbQueryEngine = <T extends AnySchema>(options: {
 
     const built = builder.build();
     if (built.type === "count") {
-      const db = await options.getDb();
-      const tx = db.transaction(ROWS_STORE, "readonly");
-      const rowsStore = tx.objectStore(ROWS_STORE);
-
-      const rows = await collectRows({
-        rowsStore,
-        endpointName: context.endpointName,
-        schemaName: context.schemaName,
-        tableName: table.name,
-        indexName: built.indexName,
+      return executeIndexedDbRetrievalOperation({
+        operation: {
+          type: "count",
+          table,
+          indexName: built.indexName,
+          options: { where: built.options.where },
+        },
+        context,
       });
-
-      let count = 0;
-      const conditionResult = built.options.where
-        ? buildCondition(table.columns, built.options.where)
-        : undefined;
-      if (conditionResult === false) {
-        await tx.done;
-        return 0;
-      }
-      const condition = conditionResult === true ? undefined : conditionResult;
-
-      for (const row of rows) {
-        if (condition && !(await evaluateCondition(condition, table, row, context, rowsStore))) {
-          continue;
-        }
-        count += 1;
-      }
-
-      await tx.done;
-      return count;
     }
 
-    const db = await options.getDb();
-    const tx = db.transaction(ROWS_STORE, "readonly");
-    const rowsStore = tx.objectStore(ROWS_STORE);
-
-    const rows = await collectRows({
-      rowsStore,
-      endpointName: context.endpointName,
-      schemaName: context.schemaName,
-      tableName: table.name,
-      indexName: built.indexName,
+    return executeIndexedDbRetrievalOperation({
+      operation: {
+        type: "find",
+        table,
+        indexName: built.indexName,
+        options: built.options,
+        withCursor,
+      },
+      context,
     });
-
-    const conditionResult = built.options.where
-      ? buildCondition(table.columns, built.options.where)
-      : undefined;
-    if (conditionResult === false) {
-      await tx.done;
-      return withCursor ? { items: [], hasNextPage: false } : [];
-    }
-    const condition = conditionResult === true ? undefined : conditionResult;
-
-    const filtered: LofiRow[] = [];
-    for (const row of rows) {
-      if (condition && !(await evaluateCondition(condition, table, row, context, rowsStore))) {
-        continue;
-      }
-      filtered.push(row);
-    }
-
-    const orderIndexName = built.options.orderByIndex?.indexName ?? built.indexName;
-    const direction = built.options.orderByIndex?.direction ?? "asc";
-    const orderColumns = buildOrderColumns(table, orderIndexName);
-
-    let ordered = orderRows(
-      filtered,
-      orderColumns.map((col) => [col, direction]),
-    );
-    ordered = applyCursorFilters({
-      rows: ordered,
-      orderColumns,
-      direction,
-      after: built.options.after,
-      before: built.options.before,
-    });
-
-    const limit =
-      withCursor && built.options.pageSize !== undefined
-        ? built.options.pageSize + 1
-        : built.options.pageSize;
-
-    const results: RowSelection[] = [];
-    const resultSources: LofiRow[] = [];
-    const rowsByTable = new Map<string, LofiRow[]>();
-
-    for (const row of ordered) {
-      const select = built.options.select as undefined | true | readonly string[];
-      const baseOutput = selectRow(row, table, select);
-
-      if (built.options.joins && built.options.joins.length > 0) {
-        const joined = await applyJoins({
-          baseOutput,
-          parentRow: row,
-          parentTable: table,
-          joins: built.options.joins,
-          rowsByTable,
-          context,
-          rowsStore,
-        });
-        for (const joinedRow of joined) {
-          results.push(joinedRow);
-          resultSources.push(row);
-          if (limit !== undefined && results.length >= limit) {
-            break;
-          }
-        }
-      } else {
-        results.push(baseOutput);
-        resultSources.push(row);
-      }
-
-      if (limit !== undefined && results.length >= limit) {
-        break;
-      }
-    }
-
-    await tx.done;
-
-    const decoded = results.map((row) => decodeRow(row, table));
-
-    if (!withCursor) {
-      return decoded;
-    }
-
-    let cursor: Cursor | undefined;
-    let hasNextPage = false;
-    let items = decoded;
-
-    if (
-      built.options.pageSize &&
-      built.options.pageSize > 0 &&
-      decoded.length > built.options.pageSize
-    ) {
-      hasNextPage = true;
-      items = decoded.slice(0, built.options.pageSize);
-
-      const lastRow = items[items.length - 1];
-      if (lastRow) {
-        const cursorRecord: Record<string, unknown> = { ...lastRow };
-        const sourceRow = resultSources[built.options.pageSize - 1];
-        for (const column of orderColumns) {
-          if (cursorRecord[column.name] === undefined) {
-            cursorRecord[column.name] = sourceRow
-              ? buildOutputValueForColumn(sourceRow, column)
-              : cursorRecord[column.name];
-          }
-        }
-
-        cursor = createCursorFromRecord(cursorRecord, orderColumns, {
-          indexName: orderIndexName,
-          orderDirection: direction,
-          pageSize: built.options.pageSize,
-        });
-      }
-    }
-
-    return { items, cursor, hasNextPage };
   };
 
   const queryEngine = {
