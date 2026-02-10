@@ -31,7 +31,7 @@ import {
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
-import { getOutboxConfigForAdapter } from "../../internal/adapter-registry";
+import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 
 export interface UnitOfWorkConfig {
   onQuery?: (query: CompiledQuery) => void;

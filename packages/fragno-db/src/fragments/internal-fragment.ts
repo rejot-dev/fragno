@@ -11,12 +11,22 @@ import {
 import { FragnoId } from "../schema/create";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { dbNow } from "../query/db-now";
-import type { AdapterRegistry } from "../internal/adapter-registry";
 import {
   internalSchema,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
+
+type AdapterRegistry = {
+  listSchemas: () => Array<{
+    name: string;
+    namespace: string | null;
+    version: number;
+    tables: string[];
+  }>;
+  listOutboxFragments: () => Array<{ name: string; mountRoute: string }>;
+  isOutboxEnabled: () => boolean;
+};
 
 export class SchemaRegistryCollisionError extends Error {
   readonly code = "SCHEMA_REGISTRY_COLLISION" as const;

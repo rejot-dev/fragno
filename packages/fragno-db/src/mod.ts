@@ -195,8 +195,8 @@ export type AnyFragnoInstantiatedDatabaseFragment<TSchema extends AnySchema = An
 export async function migrate<TSchema extends AnySchema>(
   fragment: AnyFragnoInstantiatedDatabaseFragment<TSchema>,
 ): Promise<void> {
-  const { options, deps } = fragment.$internal;
-  const adapter = options.databaseAdapter;
+  const { deps } = fragment.$internal;
+  const adapter = deps.databaseAdapter;
 
   // Check if adapter supports prepareMigrations
   if (!adapter.prepareMigrations) {

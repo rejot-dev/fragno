@@ -16,12 +16,16 @@ import { ConcurrencyConflictError } from "../query/unit-of-work/execute-unit-of-
 import type { FragnoId } from "../schema/create";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
 
+type OptionsWithAdapter = FragnoPublicConfigWithDatabase & {
+  databaseAdapter: SqlAdapter;
+};
+
 describe("Internal Fragment", () => {
   let sqliteDatabase: SQLite.Database;
   let adapter: SqlAdapter;
   let fragment: ReturnType<typeof instantiateFragment>;
 
-  function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
+  function instantiateFragment(options: OptionsWithAdapter) {
     return instantiate(internalFragmentDef)
       .withConfig({ registry: getRegistryForAdapterSync(options.databaseAdapter) })
       .withOptions(options)
@@ -46,7 +50,7 @@ describe("Internal Fragment", () => {
     }
 
     // Instantiate fragment with shared database adapter
-    const options: FragnoPublicConfigWithDatabase = {
+    const options: OptionsWithAdapter = {
       databaseAdapter: adapter,
       databaseNamespace: null,
     };
@@ -165,7 +169,7 @@ describe("Hook Service", () => {
   let adapter: SqlAdapter;
   let fragment: ReturnType<typeof instantiateFragment>;
 
-  function instantiateFragment(options: FragnoPublicConfigWithDatabase) {
+  function instantiateFragment(options: OptionsWithAdapter) {
     return instantiate(internalFragmentDef)
       .withConfig({ registry: getRegistryForAdapterSync(options.databaseAdapter) })
       .withOptions(options)
@@ -189,7 +193,7 @@ describe("Hook Service", () => {
       await migrations.executeWithDriver(adapter.driver, 0);
     }
 
-    const options: FragnoPublicConfigWithDatabase = {
+    const options: OptionsWithAdapter = {
       databaseAdapter: adapter,
       databaseNamespace: null,
     };

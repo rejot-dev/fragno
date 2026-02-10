@@ -5,9 +5,9 @@ import type {
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
 import { ExponentialBackoffRetryPolicy } from "../query/unit-of-work/retry-policy";
 import type { IUnitOfWork } from "../query/unit-of-work/unit-of-work";
-import type { InternalFragmentInstance } from "../fragments/internal-fragment";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 import type { FragnoId } from "../schema/create";
+import type { InternalFragmentInstance } from "../fragments/internal-fragment";
 
 /**
  * Context available in hook functions via `this`.

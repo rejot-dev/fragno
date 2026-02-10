@@ -666,14 +666,15 @@ export class DatabaseFragmentDefinitionBuilder<
         }
       }
 
-      const { db } = createDatabaseContext(context.options, this.#schema);
+      const dbContext = createDatabaseContext(context.options, this.#schema);
+      const { db } = dbContext;
       const namespace = resolveDatabaseNamespace(context.options, this.#schema);
       const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
       const isInternalFragment = baseDef.name === "$fragno-internal-fragment";
 
       if (!dryRun && !isInternalFragment && this.#registryResolver) {
         const registry = this.#registryResolver.getRegistryForAdapterSync(
-          context.options.databaseAdapter,
+          dbContext.databaseAdapter,
         );
         const outboxEnabled = context.options.outbox?.enabled ?? false;
         registry.registerSchema(
@@ -692,7 +693,7 @@ export class DatabaseFragmentDefinitionBuilder<
       }
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
-        databaseAdapter: context.options.databaseAdapter,
+        databaseAdapter: dbContext.databaseAdapter,
         db,
         schema: this.#schema,
         namespace,
@@ -812,10 +813,12 @@ export class DatabaseFragmentDefinitionBuilder<
       // Create hooks config if hooks factory is defined
       const hooksConfig = createHooksConfig({ config, options, deps });
       const registryResolver = this.#registryResolver;
+      const databaseAdapter =
+        (deps as ImplicitDatabaseDependencies<TSchema>).databaseAdapter ??
+        resolveDatabaseAdapter(options, this.#schema);
       const internalFragment = isInternalFragment
         ? undefined
-        : (hooksConfig?.internalFragment ??
-          registryResolver?.getInternalFragment(options.databaseAdapter));
+        : (hooksConfig?.internalFragment ?? registryResolver?.getInternalFragment(databaseAdapter));
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
@@ -898,6 +901,9 @@ export class DatabaseFragmentDefinitionBuilder<
     if (this.#registryResolver) {
       const registryInternalRoutes = ({ deps }: { deps: TDeps }) => {
         const databaseAdapter = (deps as ImplicitDatabaseDependencies<TSchema>).databaseAdapter;
+        if (!databaseAdapter) {
+          throw new Error("Database adapter is missing for internal routes.");
+        }
         const internalFragment = this.#registryResolver!.getInternalFragment(databaseAdapter);
         if (!internalFragment) {
           return [];
