@@ -26,6 +26,11 @@ type AdapterRegistry = {
   }>;
   listOutboxFragments: () => Array<{ name: string; mountRoute: string }>;
   isOutboxEnabled: () => boolean;
+  resolveSyncCommand: (
+    fragmentName: string,
+    schemaName: string,
+    commandName: string,
+  ) => { command: unknown; namespace: string | null } | undefined;
 };
 
 export class SchemaRegistryCollisionError extends Error {
@@ -131,6 +136,30 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                 value,
               });
             }
+          })
+          .build();
+      },
+
+      /**
+       * Set a setting value only if it does not already exist.
+       */
+      setIfMissing(namespace: string, key: string, value: string) {
+        const fullKey = `${namespace}.${key}`;
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
+              b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
+            ),
+          )
+          .transformRetrieve(([result]) => result)
+          .mutate(({ uow, retrieveResult }) => {
+            if (retrieveResult) {
+              return;
+            }
+            uow.create(SETTINGS_TABLE_NAME, {
+              key: fullKey,
+              value,
+            });
           })
           .build();
       },

@@ -7,6 +7,8 @@ import { schema, idColumn, column } from "../schema/create";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { SchemaRegistryCollisionError, internalSchema } from "./internal-fragment";
+import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
+import type { SyncCommandDefinition } from "../sync/types";
 
 const alphaSchema = schema("alpha", (s) =>
   s.addTable("alpha_items", (t) =>
@@ -20,32 +22,32 @@ const betaSchema = schema("beta", (s) =>
   ),
 );
 
-describe("internal fragment describe routes", () => {
-  const setupAdapter = async ({ migrateInternal = true } = {}) => {
-    const sqliteDatabase = new SQLite(":memory:");
+const setupAdapter = async ({ migrateInternal = true } = {}) => {
+  const sqliteDatabase = new SQLite(":memory:");
 
-    const dialect = new SqliteDialect({
-      database: sqliteDatabase,
-    });
+  const dialect = new SqliteDialect({
+    database: sqliteDatabase,
+  });
 
-    const adapter = new SqlAdapter({
-      dialect,
-      driverConfig: new BetterSQLite3DriverConfig(),
-    });
+  const adapter = new SqlAdapter({
+    dialect,
+    driverConfig: new BetterSQLite3DriverConfig(),
+  });
 
-    if (migrateInternal) {
-      const migrations = adapter.prepareMigrations(internalSchema, null);
-      await migrations.executeWithDriver(adapter.driver, 0);
-    }
+  if (migrateInternal) {
+    const migrations = adapter.prepareMigrations(internalSchema, null);
+    await migrations.executeWithDriver(adapter.driver, 0);
+  }
 
-    const close = async () => {
-      await adapter.close();
-      sqliteDatabase.close();
-    };
-
-    return { adapter, close };
+  const close = async () => {
+    await adapter.close();
+    sqliteDatabase.close();
   };
 
+  return { adapter, close };
+};
+
+describe("internal fragment describe routes", () => {
   it("aggregates adapter schemas and fragments", async () => {
     const { adapter, close } = await setupAdapter();
 
@@ -191,6 +193,167 @@ describe("internal fragment describe routes", () => {
         .withOptions({ databaseAdapter: adapter, databaseNamespace: "shared" })
         .build();
     }).toThrow(SchemaRegistryCollisionError);
+
+    await close();
+  });
+});
+
+describe("internal fragment sync routes", () => {
+  const registerAlphaSyncCommands = (adapter: SqlAdapter) => {
+    const registry = getRegistryForAdapterSync(adapter);
+    const commands = new Map<string, SyncCommandDefinition>([
+      [
+        "createItem",
+        {
+          name: "createItem",
+          handler: async ({ input, tx }) => {
+            const payload = input as { name: string };
+            await tx()
+              .mutate(({ forSchema }) => {
+                forSchema(alphaSchema).create("alpha_items", { name: payload.name });
+              })
+              .execute();
+          },
+        },
+      ],
+    ]);
+
+    registry.registerSyncCommands({
+      fragmentName: "alpha-fragment",
+      schemaName: alphaSchema.name,
+      namespace: alphaSchema.name,
+      commands,
+    });
+  };
+
+  it("applies commands and records sync requests", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const migrations = adapter.prepareMigrations(alphaSchema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    registerAlphaSyncCommands(adapter);
+
+    const describeResponse = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
+    const describePayload = await describeResponse.json();
+
+    const submitResponse = await alphaFragment.callRouteRaw(
+      "POST",
+      "/_internal/sync" as never,
+      {
+        body: {
+          requestId: "req-1",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          commands: [
+            {
+              id: "cmd-1",
+              name: "createItem",
+              target: { fragment: "alpha-fragment", schema: alphaSchema.name },
+              input: { name: "First" },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
+    );
+
+    expect(submitResponse.status).toBe(200);
+    const submitPayload = await submitResponse.json();
+    expect(submitPayload.status).toBe("applied");
+    expect(submitPayload.confirmedCommandIds).toEqual(["cmd-1"]);
+    expect(submitPayload.entries.length).toBeGreaterThan(0);
+    expect(submitPayload.lastVersionstamp).toEqual(expect.any(String));
+
+    const internalFragment = getInternalFragment(adapter);
+    const syncRecord = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(internalSchema).findFirst("fragno_db_sync_requests", (b) =>
+            b.whereIndex("idx_sync_request_id", (eb) => eb("requestId", "=", "req-1")),
+          ),
+        )
+        .transformRetrieve(([result]) => result)
+        .execute();
+    });
+    expect(syncRecord?.requestId).toBe("req-1");
+
+    const secondResponse = await alphaFragment.callRouteRaw(
+      "POST",
+      "/_internal/sync" as never,
+      {
+        body: {
+          requestId: "req-1",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          commands: [
+            {
+              id: "cmd-1",
+              name: "createItem",
+              target: { fragment: "alpha-fragment", schema: alphaSchema.name },
+              input: { name: "First" },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
+    );
+    const secondPayload = await secondResponse.json();
+    expect(secondPayload.status).toBe("conflict");
+    expect(secondPayload.reason).toBe("already_handled");
+    expect(secondPayload.confirmedCommandIds).toEqual(["cmd-1"]);
+
+    await close();
+  });
+
+  it("returns limit_exceeded when too many commands are submitted", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    registerAlphaSyncCommands(adapter);
+
+    const describeResponse = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
+    const describePayload = await describeResponse.json();
+
+    const commands = Array.from({ length: 101 }, (_, index) => ({
+      id: `cmd-${index + 1}`,
+      name: "createItem",
+      target: { fragment: "alpha-fragment", schema: alphaSchema.name },
+      input: { name: `Item ${index + 1}` },
+    }));
+
+    const submitResponse = await alphaFragment.callRouteRaw(
+      "POST",
+      "/_internal/sync" as never,
+      {
+        body: {
+          requestId: "req-2",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          commands,
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
+    );
+
+    const submitPayload = await submitResponse.json();
+    expect(submitPayload.status).toBe("conflict");
+    expect(submitPayload.reason).toBe("limit_exceeded");
 
     await close();
   });
