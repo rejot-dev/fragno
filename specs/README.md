@@ -91,6 +91,8 @@ very detailed, living documents that guide implementation without constraining t
   internal settings, ordered UOW mutation capture, and programmatic retrieval.
 - [Fragno Lofi (Local-First Client) - Spec](./spec-lofi.md) - Local-first client package that polls
   the outbox and applies mutations to IndexedDB.
+- [Fragno Lofi Submit + Conflict Detection — Spec](./spec-lofi-submit.md) — Client submit endpoint,
+  conflict detection via outbox mutation log, and rebase-friendly responses.
 
 ## Implementation Plans
 
