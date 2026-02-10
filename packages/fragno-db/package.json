@@ -73,6 +73,11 @@
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
     },
+    "./sync": {
+      "development": "./src/sync/index.ts",
+      "types": "./dist/sync/index.d.ts",
+      "default": "./dist/sync/index.js"
+    },
     "./unit-of-work": {
       "development": "./src/query/unit-of-work/unit-of-work.ts",
       "types": "./dist/query/unit-of-work/unit-of-work.d.ts",

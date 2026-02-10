@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
 import { describe, it, expect, vi, expectTypeOf } from "vitest";
 import { defineFragment } from "@fragno-dev/core";
 import {
@@ -13,7 +15,11 @@ import type { SimpleQueryInterface } from "./query/simple-query-interface";
 import type { DatabaseAdapter } from "./adapters/adapters";
 import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
-import { suffixNamingStrategy } from "./naming/sql-naming";
+import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
+import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
+import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
+import { getRegistryForAdapterSync } from "./internal/adapter-registry";
+import { defineSyncCommands } from "./sync/commands";
 
 // Create a test schema
 const testSchema = schema("test", (s) => {
@@ -684,6 +690,43 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         .build();
 
       expect(definition.serviceDependencies!.logger.required).toBe(false);
+    });
+  });
+
+  describe("withSyncCommands", () => {
+    it("registers sync commands in adapter registry", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+
+      const registry = getRegistryForAdapterSync(adapter);
+      const syncCommands = defineSyncCommands({ schema: testSchema }).create(
+        ({ defineCommand }) => [
+          defineCommand({
+            name: "ping",
+            handler: async () => undefined,
+          }),
+        ],
+      );
+
+      const definition = defineFragment("sync-frag")
+        .extend(withDatabase(testSchema))
+        .withSyncCommands(syncCommands)
+        .build();
+
+      definition.dependencies!({
+        config: {},
+        options: { databaseAdapter: adapter },
+      });
+
+      const resolved = registry.resolveSyncCommand("sync-frag", testSchema.name, "ping");
+      expect(resolved?.command).toBe(syncCommands.commands.get("ping"));
+      expect(resolved?.namespace).toBe(sanitizeNamespace(testSchema.name));
+
+      await adapter.close();
+      sqlite.close();
     });
   });
 

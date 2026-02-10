@@ -29,6 +29,7 @@ import {
   type DurableHooksProcessingOptions,
   createHookScheduler,
 } from "./hooks/hooks";
+import type { SyncCommandRegistry, SyncCommandTargetRegistration } from "./sync/types";
 import { resolveDatabaseAdapter } from "./util/default-database-adapter";
 import { sanitizeNamespace } from "./naming/sql-naming";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
@@ -51,6 +52,7 @@ type RegistryResolver = {
       fragment: RegistryFragmentMeta,
       options?: { outboxEnabled?: boolean },
     ) => void;
+    registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
   };
   getInternalFragment: <TUOWConfig>(
     adapter: DatabaseAdapter<TUOWConfig>,
@@ -271,6 +273,7 @@ export class DatabaseFragmentDefinitionBuilder<
   >;
   #schema: TSchema;
   #hooksFactory?: (context: { config: TConfig; options: FragnoPublicConfigWithDatabase }) => THooks;
+  #syncRegistry?: SyncCommandRegistry;
   #registryResolver?: RegistryResolver;
 
   constructor(
@@ -292,11 +295,13 @@ export class DatabaseFragmentDefinitionBuilder<
       config: TConfig;
       options: FragnoPublicConfigWithDatabase;
     }) => THooks,
+    syncRegistry?: SyncCommandRegistry,
     registryResolver?: RegistryResolver,
   ) {
     this.#baseBuilder = baseBuilder;
     this.#schema = schema;
     this.#hooksFactory = hooksFactory;
+    this.#syncRegistry = syncRegistry;
     this.#registryResolver = registryResolver;
   }
 
@@ -360,6 +365,7 @@ export class DatabaseFragmentDefinitionBuilder<
       newBaseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     );
   }
@@ -393,6 +399,7 @@ export class DatabaseFragmentDefinitionBuilder<
       newBaseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     );
   }
@@ -430,6 +437,7 @@ export class DatabaseFragmentDefinitionBuilder<
       newBaseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     );
   }
@@ -474,6 +482,7 @@ export class DatabaseFragmentDefinitionBuilder<
       newBaseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     );
   }
@@ -540,6 +549,7 @@ export class DatabaseFragmentDefinitionBuilder<
       this.#baseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     ) as unknown as DatabaseFragmentDefinitionBuilder<
       TSchema,
@@ -558,6 +568,39 @@ export class DatabaseFragmentDefinitionBuilder<
     newBuilder.#hooksFactory = hooksFactory;
 
     return newBuilder;
+  }
+
+  /**
+   * Register sync command definitions for this fragment.
+   */
+  withSyncCommands(
+    registry: SyncCommandRegistry,
+  ): DatabaseFragmentDefinitionBuilder<
+    TSchema,
+    TConfig,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TPrivateServices,
+    THooks,
+    TServiceThisContext,
+    THandlerThisContext,
+    TInternalRoutes
+  > {
+    if (registry.schemaName !== this.#schema.name) {
+      throw new Error(
+        `Sync command registry schema name "${registry.schemaName}" does not match fragment schema "${this.#schema.name}".`,
+      );
+    }
+
+    return new DatabaseFragmentDefinitionBuilder(
+      this.#baseBuilder,
+      this.#schema,
+      this.#hooksFactory,
+      registry,
+      this.#registryResolver,
+    );
   }
 
   /**
@@ -585,6 +628,7 @@ export class DatabaseFragmentDefinitionBuilder<
       newBaseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     );
   }
@@ -616,6 +660,7 @@ export class DatabaseFragmentDefinitionBuilder<
       newBaseBuilder,
       this.#schema,
       this.#hooksFactory,
+      this.#syncRegistry,
       this.#registryResolver,
     );
   }
@@ -690,6 +735,14 @@ export class DatabaseFragmentDefinitionBuilder<
           },
           { outboxEnabled },
         );
+        if (this.#syncRegistry) {
+          registry.registerSyncCommands({
+            fragmentName: baseDef.name,
+            schemaName: this.#syncRegistry.schemaName,
+            namespace,
+            commands: this.#syncRegistry.commands,
+          });
+        }
       }
 
       const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {

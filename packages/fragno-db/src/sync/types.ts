@@ -65,6 +65,12 @@ export type SyncCommandDefinition<TInput = unknown, TContext = unknown> = {
   createServerContext?: (requestContext: RequestThisContext) => TContext;
 };
 
+export type SyncCommandRegistry = {
+  schemaName: string;
+  commands: Map<string, SyncCommandDefinition>;
+  getCommand: (name: string) => SyncCommandDefinition | undefined;
+};
+
 export type SyncCommandTargetRegistration = {
   fragmentName: string;
   schemaName: string;
