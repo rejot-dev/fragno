@@ -152,6 +152,11 @@ export async function executeMutation(
         const payloadSerialized = superjson.serialize(payload);
         const versionstamp = versionstampToHex(encodeVersionstamp(outboxVersion, 0));
 
+        await insertOutboxMutationRows(tx, driverConfig, {
+          entryVersionstamp: versionstamp,
+          uowId,
+          mutations: payload.mutations,
+        });
         await insertOutboxRow(tx, driverConfig, {
           id: createId(),
           versionstamp,
@@ -365,4 +370,54 @@ async function insertOutboxRow(
   const query = db.insertInto("fragno_db_outbox").values(serializedValues).compile();
 
   await tx.executeQuery(query);
+}
+
+async function insertOutboxMutationRows(
+  tx: SqlDriverAdapter,
+  driverConfig: DriverConfig,
+  options: {
+    entryVersionstamp: string;
+    uowId: string;
+    mutations: {
+      versionstamp: string;
+      schema: string;
+      table: string;
+      externalId: string;
+      op: string;
+    }[];
+  },
+): Promise<void> {
+  if (options.mutations.length === 0) {
+    return;
+  }
+
+  const serializer = createSQLSerializer(driverConfig);
+  const mutationsTable = internalSchema.tables.fragno_db_outbox_mutations;
+  const db = createColdKysely(driverConfig.databaseType);
+
+  for (const mutation of options.mutations) {
+    const values = {
+      id: createId(),
+      entryVersionstamp: options.entryVersionstamp,
+      mutationVersionstamp: mutation.versionstamp,
+      uowId: options.uowId,
+      schema: mutation.schema,
+      table: mutation.table,
+      externalId: mutation.externalId,
+      op: mutation.op,
+    };
+    const serializedValues: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(values)) {
+      const col = mutationsTable.columns[key];
+      if (!col) {
+        serializedValues[key] = value;
+        continue;
+      }
+      serializedValues[col.name] = serializer.serialize(value, col);
+    }
+
+    const query = db.insertInto("fragno_db_outbox_mutations").values(serializedValues).compile();
+    await tx.executeQuery(query);
+  }
 }
