@@ -1,5 +1,13 @@
 # create-fragno
 
+## 0.1.7
+
+### Patch Changes
+
+- c472d52: feat: add --non-interactive flag for scripted project creation
+- Updated dependencies [bcf1742]
+  - @fragno-dev/create@0.1.7
+
 ## 0.1.6
 
 ### Patch Changes
