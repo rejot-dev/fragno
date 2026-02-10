@@ -30,13 +30,11 @@ describe("defineFragment withDependencies and providesService transformation", (
     expect(result.code).toContain("messageStore");
   });
 
-  test("ssr:false - replaces methods with no-ops", () => {
-    const expected = dedent`
-    import { defineFragment } from "@fragno-dev/core";
-    const chatnoDefinition = defineFragment("chatno").withDependencies(() => {}).providesService(() => {});
-    `;
+  test("ssr:false - replaces withDependencies but keeps providesService", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toBe(expected);
+    expect(result.code).toContain(".withDependencies(() => {})");
+    expect(result.code).not.toContain("new OpenAI");
+    expect(result.code).toContain("new MessageStore");
   });
 });
 
@@ -64,8 +62,8 @@ describe("defineFragment with type parameters", () => {
   test("ssr:false - handles typed parameters", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("createClient");
-    expect(result.code).not.toContain("new Service");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("new Service");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -102,8 +100,7 @@ describe("defineFragment with only providesService", () => {
 
   test("ssr:false - transforms single method", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).not.toContain("UserService");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("new UserService");
   });
 });
 
@@ -124,11 +121,10 @@ describe("defineFragment with usesService", () => {
       });
   `;
 
-  test("ssr:false - transforms providesService callback but preserves usesService call", () => {
+  test("ssr:false - preserves providesService callback and usesService call", () => {
     const result = transform(source, "", { ssr: false });
-    // providesService callback should be replaced with no-op
-    expect(result.code).not.toContain("deps.email.send");
-    expect(result.code).toContain("() => {}");
+    // providesService callback should be preserved
+    expect(result.code).toContain("deps.email.send");
     // usesService call should be preserved (it doesn't have a callback)
     expect(result.code).toContain('usesService("email"');
     expect(result.code).toContain("optional: true");
@@ -154,8 +150,8 @@ describe("defineFragment with aliased import", () => {
   test("ssr:false - handles aliased imports", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("database");
-    expect(result.code).not.toContain("apiService");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("apiService");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -188,7 +184,7 @@ describe("defineFragment with multiple method calls", () => {
   test("ssr:false - only transforms withDependencies and providesService", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("service1");
-    expect(result.code).not.toContain("service2");
+    expect(result.code).toContain("service2");
     expect(result.code).toContain("otherService");
     expect(result.code).toContain("withOtherMethod");
   });
@@ -214,8 +210,8 @@ describe("defineFragment with inline function expressions", () => {
   test("ssr:false - handles function expressions", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("new Client");
-    expect(result.code).not.toContain("new Service");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("new Service");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -237,8 +233,8 @@ describe("defineFragment with async functions", () => {
   test("ssr:false - handles async functions", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("createAsyncClient");
-    expect(result.code).not.toContain("createAsyncService");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("createAsyncService");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -259,11 +255,11 @@ describe("multiple defineFragment calls in same file", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("service1");
     expect(result.code).not.toContain("service2");
-    expect(result.code).not.toContain("serviceA");
-    expect(result.code).not.toContain("serviceB");
-    // Should have multiple no-op functions
-    const returnThisCount = (result.code.match(/() => {}/g) || []).length;
-    expect(returnThisCount).toBeGreaterThan(2);
+    expect(result.code).toContain("serviceA");
+    expect(result.code).toContain("serviceB");
+    // Should have multiple no-op functions for withDependencies
+    const returnThisCount = (result.code.match(/withDependencies\(\(\) => \{\}\)/g) || []).length;
+    expect(returnThisCount).toBe(2);
   });
 });
 
@@ -306,9 +302,9 @@ describe("defineFragment with complex dependency objects", () => {
     expect(result.code).not.toContain("OpenAI");
     expect(result.code).not.toContain("Database");
     expect(result.code).not.toContain("createCache");
-    expect(result.code).not.toContain("CustomService");
+    expect(result.code).toContain("CustomService");
     expect(result.code).not.toContain("console.log");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -339,8 +335,8 @@ describe("defineFragment with spread operators and destructuring", () => {
     expect(result.code).not.toContain("baseDeps");
     expect(result.code).not.toContain("baseService");
     expect(result.code).not.toContain("createExtra");
-    expect(result.code).not.toContain("new Service");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("new Service");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -358,8 +354,8 @@ describe("defineFragment stored in variable then chained", () => {
   test("ssr:false - handles separated chaining", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("dependency");
-    expect(result.code).not.toContain("service");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("service");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -387,8 +383,8 @@ describe("defineFragment with comments", () => {
   test("ssr:false - preserves structure with comments", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("OpenAI");
-    expect(result.code).not.toContain("MessageService");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("MessageService");
+    expect(result.code).toContain(".withDependencies(() => {})");
   });
 });
 
@@ -445,19 +441,9 @@ describe("defineFragmentWithDatabase with full database integration", () => {
 
   test("ssr:false - transforms database integration", () => {
     const result = transform(source, "", { ssr: false });
-    expect(result.code).not.toContain("orm.create");
-    expect(result.code).not.toContain("orm.find");
-    expect(result.code).not.toContain("createNote:");
-    expect(result.code).toContain("() => {}");
-
-    expect(result.code).toMatchInlineSnapshot(`
-      "import { defineFragment } from "@fragno-dev/core";
-      import { schema } from "@fragno-dev/db/schema";
-      import type { TableToInsertValues } from "@fragno-dev/db/query";
-      import { z } from "zod";
-      export const noteSchema = schema("note", s => s);
-      const lib = defineFragment("mylib").providesService(() => {});"
-    `);
+    expect(result.code).toContain("orm.create");
+    expect(result.code).toContain("orm.find");
+    expect(result.code).toContain("createNote:");
   });
 });
 
@@ -533,11 +519,11 @@ describe("defineFragmentWithDatabase with all three methods", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("mySchema");
     expect(result.code).not.toContain("createApi");
-    expect(result.code).not.toContain("UserService");
+    expect(result.code).toContain("UserService");
     expect(result.code).not.toContain("withDatabase");
-    // Should have two no-op functions (withDependencies and providesService)
-    const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBe(2);
+    // Should have one no-op function (withDependencies)
+    const noOpCount = (result.code.match(/withDependencies\(\(\) => \{\}\)/g) || []).length;
+    expect(noOpCount).toBe(1);
   });
 });
 
@@ -556,9 +542,11 @@ describe("defineFragmentWithDatabase with aliased import", () => {
   test("ssr:false - handles aliased imports", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("mySchema");
-    expect(result.code).not.toContain("orm.find");
+    expect(result.code).toContain("orm.find");
     expect(result.code).not.toContain("withDatabase");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain("providesService((");
+    expect(result.code).toContain("orm");
+    expect(result.code).toContain("getUsers");
     expect(result.code).toContain('defineFragment("mylib")');
   });
 });
@@ -585,12 +573,12 @@ describe("multiple defineFragmentWithDatabase calls in same file", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("schema1");
     expect(result.code).not.toContain("schema2");
-    expect(result.code).not.toContain("Service1");
-    expect(result.code).not.toContain("Service2");
+    expect(result.code).toContain("Service1");
+    expect(result.code).toContain("Service2");
     expect(result.code).not.toContain("withDatabase");
-    // Should have two no-op functions (2 providesService)
-    const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBe(2);
+    // Should have no-op functions only for withDependencies (none here)
+    const noOpCount = (result.code.match(/withDependencies\(\(\) => \{\}\)/g) || []).length;
+    expect(noOpCount).toBe(0);
     expect(result.code).toContain('defineFragment("lib1")');
     expect(result.code).toContain('defineFragment("lib2")');
   });
@@ -616,13 +604,13 @@ describe("mixed defineFragment and defineFragmentWithDatabase", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).not.toContain("dependency1");
     expect(result.code).not.toContain("dependency2");
-    expect(result.code).not.toContain("service1");
-    expect(result.code).not.toContain("service2");
+    expect(result.code).toContain("service1");
+    expect(result.code).toContain("service2");
     expect(result.code).not.toContain("mySchema");
     expect(result.code).not.toContain("withDatabase");
-    // Should have four no-op functions (2 for regular + 2 for db, no withDatabase)
-    const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-    expect(noOpCount).toBe(4);
+    // Should have two no-op functions (withDependencies only)
+    const noOpCount = (result.code.match(/withDependencies\(\(\) => \{\}\)/g) || []).length;
+    expect(noOpCount).toBe(2);
     expect(result.code).toContain('defineFragment("regular")');
     expect(result.code).toContain('defineFragment("db")');
   });
@@ -646,9 +634,9 @@ describe("defineFragmentWithDatabase stored in variable then chained", () => {
     const result = transform(source, "", { ssr: false });
     // mySchema import will still be there, just not used in withDatabase
     expect(result.code).not.toContain("dependency");
-    expect(result.code).not.toContain("service");
+    expect(result.code).toContain("service");
     expect(result.code).not.toContain("withDatabase");
-    expect(result.code).toContain("() => {}");
+    expect(result.code).toContain(".withDependencies(() => {})");
     expect(result.code).toContain('defineFragment("mylib")');
   });
 });
@@ -816,11 +804,12 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       // Should NOT have withDatabase call
       expect(result.code).not.toContain("withDatabase");
 
-      // Should have providesService with no-op
-      expect(result.code).toContain("providesService(() => {})");
+      // Should have providesService preserved
+      expect(result.code).toContain("providesService((");
+      expect(result.code).toContain("orm");
 
-      // Should not have orm.find
-      expect(result.code).not.toContain("orm.find");
+      // Should keep orm usage in services
+      expect(result.code).toContain("orm.find");
     });
 
     test("ssr:true - keeps original code", () => {
@@ -883,9 +872,10 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       expect(result.code).toContain('defineFragment("mylib")');
       expect(result.code).not.toContain("withDatabase");
       expect(result.code).toContain("withDependencies(() => {})");
-      expect(result.code).toContain("providesService(() => {})");
+      expect(result.code).toContain("providesService((");
+      expect(result.code).toContain("userService");
       expect(result.code).not.toContain("createApi");
-      expect(result.code).not.toContain("UserService");
+      expect(result.code).toContain("UserService");
     });
   });
 
@@ -1008,8 +998,8 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       expect(result.code).toContain("noteSchema");
 
       // providesService should be transformed
-      expect(result.code).toContain("providesService(() => {})");
-      expect(result.code).not.toContain("orm.create");
+      expect(result.code).toContain("providesService((");
+      expect(result.code).toContain("orm.create");
     });
   });
 
@@ -1041,8 +1031,8 @@ describe("defineFragmentWithDatabase replacement with defineFragment", () => {
       expect(result.code).not.toContain("mySchema");
 
       // Both should have transformed methods
-      const noOpCount = (result.code.match(/\(\) => \{\}/g) || []).length;
-      expect(noOpCount).toBeGreaterThanOrEqual(4);
+      const noOpCount = (result.code.match(/withDependencies\(\(\) => \{\}\)/g) || []).length;
+      expect(noOpCount).toBe(2);
     });
   });
 });

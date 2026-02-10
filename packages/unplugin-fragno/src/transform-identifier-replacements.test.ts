@@ -87,7 +87,9 @@ describe("defineFragmentWithDatabase → defineFragment replacement", () => {
       const result = transform(source, "", { ssr: false });
       expect(result.code).toMatchInlineSnapshot(`
         "import { defineFragment } from "@fragno-dev/core";
-        const lib1 = defineFragment("lib1").providesService(() => {});
+        const lib1 = defineFragment("lib1").providesService(() => ({
+          svc: service1
+        }));
         const lib2 = defineFragment("lib2");"
       `);
     });
@@ -220,7 +222,13 @@ describe("mixed runtime and type replacements", () => {
     const result = transform(source, "", { ssr: false });
     expect(result.code).toMatchInlineSnapshot(`
       "import { createFragment, defineFragment } from "@fragno-dev/core";
-      const lib = defineFragment("mylib").providesService(() => {});
+      const lib = defineFragment("mylib").providesService(({
+        config,
+        deps,
+        orm
+      }) => ({
+        service: new Service(orm)
+      }));
       export function createMyFragment(config: MyConfig, fragnoConfig: FragnoPublicConfig) {
         return createFragment(lib, config, [], fragnoConfig);
       }"
@@ -305,7 +313,14 @@ describe("edge cases", () => {
       const result = transform(source, "", { ssr: false });
       expect(result.code).toMatchInlineSnapshot(`
         "import { createFragment, defineFragment } from "@fragno-dev/core";
-        export const stripeFragmentDefinition = defineFragment("stripe").withDependencies(() => {}).providesService(() => {});
+        export const stripeFragmentDefinition = defineFragment("stripe").withDependencies(() => {}).providesService(({
+          deps,
+          db
+        }) => {
+          return {
+            getStripeClient: () => deps.stripe
+          };
+        });
         export function createStripeFragment(config: StripeConfig, fragnoConfig: FragnoPublicConfig) {
           return createFragment(stripeFragmentDefinition, config, [], fragnoConfig);
         }"
