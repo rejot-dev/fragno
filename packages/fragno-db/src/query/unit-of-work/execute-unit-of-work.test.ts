@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf } from "vitest";
+import { describe, it, expect, expectTypeOf, vi } from "vitest";
 import { schema, idColumn, FragnoId } from "../../schema/create";
 import {
   createUnitOfWork,
@@ -388,6 +388,36 @@ describe("Unified Tx API", () => {
       expect(users).toHaveLength(2);
       expect(users[0].email).toBe("alice@example.com");
       expect(users[1].name).toBe("Bob");
+    });
+
+    it("should call onAfterRetrieve with full results", async () => {
+      const compiler = createMockCompiler();
+      const mockUsers = [
+        {
+          id: FragnoId.fromExternal("1", 1),
+          email: "alice@example.com",
+          name: "Alice",
+          balance: 100,
+        },
+      ];
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [mockUsers],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      const onAfterRetrieve = vi.fn();
+
+      await createHandlerTxBuilder({
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+        onAfterRetrieve,
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .execute();
+
+      expect(onAfterRetrieve).toHaveBeenCalledOnce();
+      expect(onAfterRetrieve.mock.calls[0]?.[1]).toEqual([mockUsers]);
     });
 
     it("should execute a simple mutate-only transaction", async () => {

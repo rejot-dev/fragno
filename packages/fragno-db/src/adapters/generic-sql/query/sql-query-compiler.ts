@@ -51,6 +51,7 @@ export interface FindManyCompilerOptions {
   limit?: number;
   offset?: number;
   join?: CompiledJoin[];
+  readTracking?: boolean;
 }
 
 /**
@@ -174,6 +175,7 @@ export abstract class SQLQueryCompiler {
     mappedSelect: string[],
     parentPath: string = "",
     aliasCollector?: JoinAliasInfo[],
+    readTracking?: boolean,
   ): AnySelectQueryBuilder<O> {
     let result = query;
 
@@ -193,9 +195,13 @@ export abstract class SQLQueryCompiler {
         aliasCollector.push({ table: targetTable, alias: joinName });
       }
 
-      // Update select
+      const joinSelectBuilder = extendSelect(joinOptions.select);
+      if (readTracking) {
+        joinSelectBuilder.extend(targetTable.getIdColumn().name);
+      }
+      const compiledJoinSelect = joinSelectBuilder.compile();
       mappedSelect.push(
-        ...mapSelect(joinOptions.select, targetTable, this.resolver, {
+        ...mapSelect(compiledJoinSelect.result, targetTable, this.resolver, {
           relation: fullPath, // Use full path with colons for column aliases
           tableName: joinName, // Use underscore version for table name
         }),
@@ -250,6 +256,7 @@ export abstract class SQLQueryCompiler {
           mappedSelect,
           fullPath,
           aliasCollector,
+          readTracking,
         );
       }
     }
@@ -330,11 +337,23 @@ export abstract class SQLQueryCompiler {
 
     // Build SELECT with joins
     const selectBuilder = extendSelect(options.select);
+    if (options.readTracking) {
+      selectBuilder.extend(table.getIdColumn().name);
+    }
     const mappedSelect: string[] = [];
 
     // Process joins if provided
     if (options.join && options.join.length > 0) {
-      query = this.processJoins(query, options.join, table, this.getTableName(table), mappedSelect);
+      query = this.processJoins(
+        query,
+        options.join,
+        table,
+        this.getTableName(table),
+        mappedSelect,
+        "",
+        undefined,
+        options.readTracking,
+      );
     }
 
     const compiledSelect = selectBuilder.compile();

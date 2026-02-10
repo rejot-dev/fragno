@@ -20,6 +20,8 @@ import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
 import { getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { defineSyncCommands } from "./sync/commands";
+import * as hooks from "./hooks/hooks";
+import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 
 // Create a test schema
 const testSchema = schema("test", (s) => {
@@ -959,6 +961,56 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(callArgs[2]).toHaveProperty("onUserCreated");
 
       createServiceTxBuilderSpy.mockRestore();
+    });
+  });
+
+  describe("handlerTx plan mode", () => {
+    it("should suppress hook mutations in plan mode", () => {
+      const mockAdapter = createMockAdapter();
+
+      type TestHooks = {
+        onUserCreated: (payload: { email: string }) => void;
+      };
+
+      const definition = withDatabase(testSchema)(defineFragment("db-frag-plan-mode"))
+        .provideHooks<TestHooks>(({ defineHook }) => ({
+          onUserCreated: defineHook(function () {
+            // no-op
+          }),
+        }))
+        .build();
+
+      const mockStorage = {
+        getStore: () => ({
+          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
+
+      const createHandlerTxBuilderSpy = vi
+        .spyOn(executeUnitOfWork, "createHandlerTxBuilder")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .mockReturnValue({} as any);
+
+      const prepareHookMutationsSpy = vi.spyOn(hooks, "prepareHookMutations");
+
+      const contexts = definition.createThisContext!({
+        config: {},
+        options: { databaseAdapter: mockAdapter },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        deps: {} as any,
+        storage: mockStorage,
+      });
+
+      contexts.handlerContext.handlerTx({ planMode: true });
+
+      const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
+      callArgs?.onBeforeMutate?.({} as unknown as IUnitOfWork);
+
+      expect(prepareHookMutationsSpy).not.toHaveBeenCalled();
+
+      prepareHookMutationsSpy.mockRestore();
+      createHandlerTxBuilderSpy.mockRestore();
     });
   });
 });

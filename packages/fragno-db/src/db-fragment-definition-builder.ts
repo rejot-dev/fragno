@@ -821,6 +821,7 @@ export class DatabaseFragmentDefinitionBuilder<
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
+          const planMode = execOptions?.planMode ?? false;
           return createHandlerTxBuilder<THooks>({
             ...execOptions,
             createUnitOfWork: () => {
@@ -832,15 +833,19 @@ export class DatabaseFragmentDefinitionBuilder<
               return uow;
             },
             onBeforeMutate: (uow) => {
-              prepareHookMutations(uow, hooksConfig);
+              if (!planMode) {
+                prepareHookMutations(uow, hooksConfig);
+              }
               if (userOnBeforeMutate) {
                 userOnBeforeMutate(uow);
               }
             },
             onAfterMutate: async (uow) => {
-              void hooksConfig.scheduler?.schedule().catch((error) => {
-                console.error("Durable hooks processing failed", error);
-              });
+              if (!planMode) {
+                void hooksConfig.scheduler?.schedule().catch((error) => {
+                  console.error("Durable hooks processing failed", error);
+                });
+              }
               if (userOnAfterMutate) {
                 await userOnAfterMutate(uow);
               }
@@ -899,6 +904,7 @@ export class DatabaseFragmentDefinitionBuilder<
 
         const userOnBeforeMutate = execOptions?.onBeforeMutate;
         const userOnAfterMutate = execOptions?.onAfterMutate;
+        const planMode = execOptions?.planMode ?? false;
 
         return createHandlerTxBuilder<THooks>({
           ...execOptions,
@@ -913,7 +919,7 @@ export class DatabaseFragmentDefinitionBuilder<
             return currentStorage.uow;
           },
           onBeforeMutate: (uow) => {
-            if (hooksConfig) {
+            if (hooksConfig && !planMode) {
               prepareHookMutations(uow, hooksConfig);
             }
             if (userOnBeforeMutate) {
@@ -921,7 +927,7 @@ export class DatabaseFragmentDefinitionBuilder<
             }
           },
           onAfterMutate: async (uow) => {
-            if (hooksConfig?.scheduler) {
+            if (hooksConfig?.scheduler && !planMode) {
               void hooksConfig.scheduler.schedule().catch((error) => {
                 console.error("Durable hooks processing failed", error);
               });

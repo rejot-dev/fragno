@@ -169,6 +169,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
         orderBy,
         limit: effectiveLimit,
         join,
+        readTracking: op.readTracking,
       });
     }
 
@@ -184,7 +185,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    return sqlCompiler.compileFindMany(op.table, compiledOptions);
+    return sqlCompiler.compileFindMany(op.table, {
+      ...compiledOptions,
+      readTracking: op.readTracking,
+    });
   }
 
   override compileCreate(

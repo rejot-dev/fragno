@@ -492,6 +492,12 @@ export interface ExecuteTxOptions {
   signal?: AbortSignal;
 
   /**
+   * Callback invoked after retrieval phase completes.
+   * Use this to inspect retrieval operations and results (e.g., read tracking).
+   */
+  onAfterRetrieve?: (uow: IUnitOfWork, results: unknown[]) => void | Promise<void>;
+
+  /**
    * Callback invoked before mutations are executed.
    * Use this to add additional mutation operations (e.g., hook event records).
    */
@@ -502,6 +508,11 @@ export interface ExecuteTxOptions {
    * Use this for post-mutation processing like hook execution.
    */
   onAfterMutate?: (uow: IUnitOfWork) => Promise<void>;
+
+  /**
+   * Plan mode suppresses hook execution while still running serviceTx logic.
+   */
+  planMode?: boolean;
 }
 
 /**
@@ -738,6 +749,10 @@ async function executeTx(
     try {
       // Create a fresh UOW for this attempt
       const baseUow = options.createUnitOfWork();
+      if (options.onAfterRetrieve) {
+        const readTrackingUow = baseUow as { enableReadTracking?: () => void };
+        readTrackingUow.enableReadTracking?.();
+      }
 
       // Create handler context
       const context: HandlerTxContext<THooks> = {
@@ -777,7 +792,10 @@ async function executeTx(
           });
       }
 
-      await baseUow.executeRetrieve();
+      const allRetrieveResults = await baseUow.executeRetrieve();
+      if (options.onAfterRetrieve) {
+        await options.onAfterRetrieve(baseUow, allRetrieveResults);
+      }
 
       // Get retrieve results from TypedUnitOfWork's retrievalPhase or default to empty array
       const retrieveResult: TRetrieveResults = typedUowFromRetrieve
@@ -840,7 +858,7 @@ async function executeTx(
         mutateResult = callbacks.mutate(mutateCtx);
       }
 
-      if (options.onBeforeMutate) {
+      if (!options.planMode && options.onBeforeMutate) {
         options.onBeforeMutate(baseUow);
       }
       const result = await baseUow.executeMutations();
@@ -883,7 +901,7 @@ async function executeTx(
         finalResult = serviceFinalResults;
       }
 
-      if (options.onAfterMutate) {
+      if (!options.planMode && options.onAfterMutate) {
         await options.onAfterMutate(baseUow);
       }
 

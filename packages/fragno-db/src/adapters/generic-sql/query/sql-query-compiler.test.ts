@@ -80,6 +80,23 @@ describe("SQLQueryCompiler", () => {
       );
     });
 
+    test("compileFindMany includes id when read tracking is enabled", () => {
+      const db = new Kysely({
+        dialect: new SqliteDialect({ database: new Database(":memory:") }),
+      });
+      const compiler = new PostgreSQLQueryCompiler(db, new NodePostgresDriverConfig());
+
+      const query = compiler.compileFindMany(testSchema.tables.users, {
+        select: ["email"],
+        limit: 10,
+        readTracking: true,
+      });
+
+      expect(query.sql).toMatchInlineSnapshot(
+        `"select "users"."email" as "email", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+      );
+    });
+
     test("compileFindMany with orderBy", () => {
       const db = new Kysely({
         dialect: new SqliteDialect({ database: new Database(":memory:") }),
