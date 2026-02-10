@@ -9,6 +9,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { SchemaRegistryCollisionError, internalSchema } from "./internal-fragment";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
 import type { SyncCommandDefinition } from "../sync/types";
+import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 
 const alphaSchema = schema("alpha", (s) =>
   s.addTable("alpha_items", (t) =>
@@ -354,6 +355,109 @@ describe("internal fragment sync routes", () => {
     const submitPayload = await submitResponse.json();
     expect(submitPayload.status).toBe("conflict");
     expect(submitPayload.reason).toBe("limit_exceeded");
+
+    await close();
+  });
+
+  it("supports handlerTx with service calls inside sync commands", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment")
+      .extend(withDatabase(alphaSchema))
+      .providesService("alphaService", ({ defineService }) =>
+        defineService({
+          countItems() {
+            return this.serviceTx(alphaSchema)
+              .retrieve((uow) =>
+                uow.find("alpha_items", (b) => b.whereIndex("primary").selectCount()),
+              )
+              .transformRetrieve(([count]) => (typeof count === "number" ? count : 0))
+              .build();
+          },
+        }),
+      )
+      .build();
+
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const migrations = adapter.prepareMigrations(alphaSchema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    const registry = getRegistryForAdapterSync(adapter);
+    const alphaService = alphaFragment.services.alphaService as {
+      countItems: () => TxResult<number>;
+    };
+    const commands = new Map<string, SyncCommandDefinition>([
+      [
+        "createItemWithCount",
+        {
+          name: "createItemWithCount",
+          createServerContext: () => ({ alphaService }),
+          handler: async ({ input, tx, ctx }) => {
+            const payload = input as { name: string };
+            const serviceCtx = ctx as { alphaService: { countItems: () => TxResult<number> } };
+            await tx()
+              .withServiceCalls(() => [serviceCtx.alphaService.countItems()] as const)
+              .mutate(({ forSchema, serviceIntermediateResult: [count] }) => {
+                forSchema(alphaSchema).create("alpha_items", {
+                  name: `${payload.name}-${count}`,
+                });
+              })
+              .execute();
+          },
+        },
+      ],
+    ]);
+
+    registry.registerSyncCommands({
+      fragmentName: "alpha-fragment",
+      schemaName: alphaSchema.name,
+      namespace: alphaSchema.name,
+      commands,
+    });
+
+    const describeResponse = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
+    const describePayload = await describeResponse.json();
+
+    const submitResponse = await alphaFragment.callRouteRaw(
+      "POST",
+      "/_internal/sync" as never,
+      {
+        body: {
+          requestId: "req-service",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          commands: [
+            {
+              id: "cmd-service",
+              name: "createItemWithCount",
+              target: { fragment: "alpha-fragment", schema: alphaSchema.name },
+              input: { name: "First" },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
+    );
+
+    expect(submitResponse.status).toBe(200);
+
+    const createdItem = await alphaFragment.inContext(async function () {
+      return await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(alphaSchema).findFirst("alpha_items", (b) => b.whereIndex("primary")),
+        )
+        .transformRetrieve(([result]) => result)
+        .execute();
+    });
+
+    expect(createdItem?.name).toBe("First-0");
 
     await close();
   });
