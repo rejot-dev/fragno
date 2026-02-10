@@ -167,6 +167,7 @@ export type RetrievalOperation<
       options: FindOptions<TTable, SelectClause<TTable>>;
       withCursor?: boolean;
       withSingleResult?: boolean;
+      readTracking?: boolean;
     }
   | {
       type: "count";
@@ -1268,6 +1269,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
   #retrievalResults?: unknown[];
   #createdInternalIds: (bigint | null)[] = [];
+  #readTrackingEnabled = false;
 
   // Phase coordination promises
   #retrievalPhaseDeferred = new DeferredPromise<unknown[]>();
@@ -1411,6 +1413,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     child.#mutationOps = this.#mutationOps;
     child.#retrievalResults = this.#retrievalResults;
     child.#createdInternalIds = this.#createdInternalIds;
+    child.#readTrackingEnabled = this.#readTrackingEnabled;
     child.#retrievalPhaseDeferred = this.#retrievalPhaseDeferred;
     child.#mutationPhaseDeferred = this.#mutationPhaseDeferred;
     child.#retrievalError = this.#retrievalError;
@@ -1460,6 +1463,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#mutationOps = [];
     this.#retrievalResults = undefined;
     this.#createdInternalIds = [];
+    this.#readTrackingEnabled = false;
 
     // Reset state
     this.#state = "building-retrieval";
@@ -1497,6 +1501,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
   get state(): UOWState {
     return this.#coordinator.parent?.state ?? this.#state;
+  }
+
+  enableReadTracking(): void {
+    this.#readTrackingEnabled = true;
+  }
+
+  get readTrackingEnabled(): boolean {
+    return this.#readTrackingEnabled;
   }
 
   get name(): string | undefined {
@@ -2008,6 +2020,7 @@ export class TypedUnitOfWork<
       indexName,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       options: options as any,
+      readTracking: this.#uow.readTrackingEnabled,
     });
 
     // Track which operation index belongs to this view
@@ -2086,6 +2099,7 @@ export class TypedUnitOfWork<
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       options: options as any,
       withSingleResult: true,
+      readTracking: this.#uow.readTrackingEnabled,
     });
 
     // Track which operation index belongs to this view
@@ -2134,6 +2148,7 @@ export class TypedUnitOfWork<
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       options: options as any,
       withCursor: true,
+      readTracking: this.#uow.readTrackingEnabled,
     });
 
     // Track which operation index belongs to this view
