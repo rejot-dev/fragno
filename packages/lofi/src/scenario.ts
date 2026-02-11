@@ -62,6 +62,10 @@ type NoInfer<T> = [T][T extends T ? 0 : never];
 type BivariantCallback<T extends (...args: never[]) => unknown> = {
   bivarianceHack: T;
 }["bivarianceHack"];
+type ScenarioVars = Record<string, unknown>;
+type KeysMatching<T, V> = {
+  [K in keyof T]-?: Extract<T[K], V> extends never ? never : K;
+}[keyof T];
 
 export type ScenarioIndexedDbGlobals = {
   indexedDB: unknown;
@@ -112,12 +116,13 @@ export type ScenarioDefinition<
   TCommandContext = unknown,
   TCommands extends
     ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TVars extends ScenarioVars = ScenarioVars,
 > = {
   name: string;
   server: ScenarioServerConfig<TSchema>;
   clientCommands: TCommands;
   clients: Record<string, ScenarioClientConfig>;
-  steps: ScenarioStep<NoInfer<TSchema>, NoInfer<TCommandContext>>[];
+  steps: ScenarioStep<NoInfer<TSchema>, NoInfer<TCommandContext>, NoInfer<TVars>>[];
   createClientContext?: (clientName: string) => TCommandContext;
 };
 
@@ -132,7 +137,11 @@ type ScenarioFragment = {
   callRouteRaw: (method: HTTPMethod, path: string, inputOptions?: unknown) => Promise<Response>;
 };
 
-export type ScenarioContext<TSchema extends AnySchema = AnySchema, TCommandContext = unknown> = {
+export type ScenarioContext<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> = {
   name: string;
   server: {
     adapter?: InMemoryAdapter;
@@ -140,7 +149,7 @@ export type ScenarioContext<TSchema extends AnySchema = AnySchema, TCommandConte
     baseUrl: string;
   };
   clients: Record<string, ScenarioClient<TSchema, TCommandContext>>;
-  vars: Record<string, unknown>;
+  vars: Partial<TVars>;
   lastSubmit: Record<string, LofiSubmitResponse | undefined>;
   lastSync: Record<string, LofiSyncResult | undefined>;
   cleanup: () => Promise<void>;
@@ -167,17 +176,26 @@ export type ScenarioClient<TSchema extends AnySchema = AnySchema, TCommandContex
   overlayManager?: LofiOverlayManager<TCommandContext>;
 };
 
-type CommandInput<TSchema extends AnySchema = AnySchema, TCommandContext = unknown> =
-  | unknown
-  | CommandInputFn<TSchema, TCommandContext>;
-type CommandInputFn<TSchema extends AnySchema = AnySchema, TCommandContext = unknown> = (
-  ctx: ScenarioContext<TSchema, TCommandContext>,
-) => unknown | Promise<unknown>;
-type ReadFn<TSchema extends AnySchema = AnySchema, TCommandContext = unknown, T = unknown> =
-  | BivariantCallback<(ctx: ScenarioContext<TSchema, TCommandContext>) => T | Promise<T>>
+type CommandInput<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> = unknown | CommandInputFn<TSchema, TCommandContext, TVars>;
+type CommandInputFn<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> = (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown | Promise<unknown>;
+type ReadFn<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+  T = unknown,
+> =
+  | BivariantCallback<(ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => T | Promise<T>>
   | BivariantCallback<
       (
-        ctx: ScenarioContext<TSchema, TCommandContext>,
+        ctx: ScenarioContext<TSchema, TCommandContext, TVars>,
         client: ScenarioClient<TSchema, TCommandContext>,
       ) => T | Promise<T>
     >;
@@ -185,15 +203,16 @@ type ReadFn<TSchema extends AnySchema = AnySchema, TCommandContext = unknown, T 
 export type ScenarioCommandStep<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
 > = {
   type: "command";
   client: string;
   name: string;
-  input: CommandInput<TSchema, TCommandContext>;
+  input: CommandInput<TSchema, TCommandContext, TVars>;
   target?: LofiSubmitCommandTarget;
   optimistic?: boolean;
   submit?: boolean;
-  storeCommandIdAs?: string;
+  storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
 };
 
 export type ScenarioSubmitStep = {
@@ -206,67 +225,103 @@ export type ScenarioSyncStep = {
   client: string;
 };
 
-export type ScenarioReadStep<TSchema extends AnySchema = AnySchema, TCommandContext = unknown> = {
+export type ScenarioReadStepWithStore<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+  K extends keyof TVars = keyof TVars,
+> = {
   type: "read";
   client: string;
-  read: ReadFn<TSchema, TCommandContext>;
-  storeAs?: string;
+  read: ReadFn<TSchema, TCommandContext, TVars, TVars[K]>;
+  storeAs: K;
 };
 
-export type ScenarioAssertStep<TSchema extends AnySchema = AnySchema, TCommandContext = unknown> = {
+export type ScenarioReadStepNoStore<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> = {
+  type: "read";
+  client: string;
+  read: ReadFn<TSchema, TCommandContext, TVars>;
+  storeAs?: undefined;
+};
+
+export type ScenarioReadStep<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> =
+  | ScenarioReadStepWithStore<TSchema, TCommandContext, TVars>
+  | ScenarioReadStepNoStore<TSchema, TCommandContext, TVars>;
+
+export type ScenarioAssertStep<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> = {
   type: "assert";
   assert: BivariantCallback<
-    (ctx: ScenarioContext<TSchema, TCommandContext>) => void | Promise<void>
+    (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => void | Promise<void>
   >;
 };
 
-export type ScenarioWaitStep = {
-  type: "wait";
-  ms: number;
-};
-
-export type ScenarioStep<TSchema extends AnySchema = AnySchema, TCommandContext = unknown> =
-  | ScenarioCommandStep<TSchema, TCommandContext>
+export type ScenarioStep<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> =
+  | ScenarioCommandStep<TSchema, TCommandContext, TVars>
   | ScenarioSubmitStep
   | ScenarioSyncStep
-  | ScenarioReadStep<TSchema, TCommandContext>
-  | ScenarioAssertStep<TSchema, TCommandContext>
-  | ScenarioWaitStep;
+  | ScenarioReadStep<TSchema, TCommandContext, TVars>
+  | ScenarioAssertStep<TSchema, TCommandContext, TVars>;
 
 export function defineScenario<
   TSchema extends AnySchema,
   TCommandContext,
   TCommands extends
     ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TVars extends ScenarioVars = ScenarioVars,
 >(
-  scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands> & {
+  scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars> & {
     createClientContext: (clientName: string) => TCommandContext;
   },
-): ScenarioDefinition<TSchema, TCommandContext, TCommands>;
+): ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars>;
 export function defineScenario<
   TSchema extends AnySchema,
   TCommandContext = unknown,
   TCommands extends
     ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TVars extends ScenarioVars = ScenarioVars,
 >(
-  scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands>,
-): ScenarioDefinition<TSchema, TCommandContext, TCommands>;
+  scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars>,
+): ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars>;
 export function defineScenario(scenario: ScenarioDefinition): ScenarioDefinition {
   return scenario;
 }
 
-function command<TSchema extends AnySchema = AnySchema, TCommandContext = unknown>(
+function command<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+>(
   client: string,
   name: string,
-  input: CommandInputFn<TSchema, TCommandContext>,
+  input: CommandInputFn<TSchema, TCommandContext, TVars>,
   options?: {
     target?: LofiSubmitCommandTarget;
     optimistic?: boolean;
     submit?: boolean;
-    storeCommandIdAs?: string;
+    storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
   },
-): ScenarioCommandStep<TSchema, TCommandContext>;
-function command<TSchema extends AnySchema = AnySchema, TCommandContext = unknown>(
+): ScenarioCommandStep<TSchema, TCommandContext, TVars>;
+function command<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+>(
   client: string,
   name: string,
   input: unknown,
@@ -274,20 +329,24 @@ function command<TSchema extends AnySchema = AnySchema, TCommandContext = unknow
     target?: LofiSubmitCommandTarget;
     optimistic?: boolean;
     submit?: boolean;
-    storeCommandIdAs?: string;
+    storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
   },
-): ScenarioCommandStep<TSchema, TCommandContext>;
-function command<TSchema extends AnySchema = AnySchema, TCommandContext = unknown>(
+): ScenarioCommandStep<TSchema, TCommandContext, TVars>;
+function command<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+>(
   client: string,
   name: string,
-  input: CommandInput<TSchema, TCommandContext>,
+  input: CommandInput<TSchema, TCommandContext, TVars>,
   options?: {
     target?: LofiSubmitCommandTarget;
     optimistic?: boolean;
     submit?: boolean;
-    storeCommandIdAs?: string;
+    storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
   },
-): ScenarioCommandStep<TSchema, TCommandContext> {
+): ScenarioCommandStep<TSchema, TCommandContext, TVars> {
   return {
     type: "command",
     client,
@@ -302,44 +361,76 @@ function command<TSchema extends AnySchema = AnySchema, TCommandContext = unknow
 
 const submit = (client: string): ScenarioSubmitStep => ({ type: "submit", client });
 const sync = (client: string): ScenarioSyncStep => ({ type: "sync", client });
-function read<TSchema extends AnySchema = AnySchema, TCommandContext = unknown>(
+function read<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+  K extends keyof TVars = keyof TVars,
+>(
   client: string,
-  read: ReadFn<TSchema, TCommandContext>,
-  storeAs?: string,
-): ScenarioReadStep<TSchema, TCommandContext> {
-  return {
-    type: "read",
-    client,
-    read,
-    storeAs,
-  };
+  read: ReadFn<TSchema, TCommandContext, TVars, TVars[K]>,
+  storeAs: K,
+): ScenarioReadStepWithStore<TSchema, TCommandContext, TVars, K>;
+function read<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+>(
+  client: string,
+  read: ReadFn<TSchema, TCommandContext, TVars>,
+  storeAs?: undefined,
+): ScenarioReadStepNoStore<TSchema, TCommandContext, TVars>;
+function read<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+>(
+  client: string,
+  read: ReadFn<TSchema, TCommandContext, TVars>,
+  storeAs?: keyof TVars,
+): ScenarioReadStep<TSchema, TCommandContext, TVars> {
+  if (storeAs === undefined) {
+    return { type: "read", client, read } as ScenarioReadStepNoStore<
+      TSchema,
+      TCommandContext,
+      TVars
+    >;
+  }
+  return { type: "read", client, read, storeAs } as ScenarioReadStepWithStore<
+    TSchema,
+    TCommandContext,
+    TVars
+  >;
 }
-function assert<TSchema extends AnySchema = AnySchema, TCommandContext = unknown>(
-  assert: ScenarioAssertStep<TSchema, TCommandContext>["assert"],
-): ScenarioAssertStep<TSchema, TCommandContext> {
+function assert<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+>(
+  assert: ScenarioAssertStep<TSchema, TCommandContext, TVars>["assert"],
+): ScenarioAssertStep<TSchema, TCommandContext, TVars> {
   return {
     type: "assert",
     assert,
   };
 }
-const wait = (ms: number): ScenarioWaitStep => ({ type: "wait", ms });
-
 export const createScenarioSteps = <
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
 >() => ({
   command: (() => {
     function commandStep(
       client: string,
       name: string,
-      input: CommandInputFn<TSchema, TCommandContext>,
+      input: CommandInputFn<TSchema, TCommandContext, TVars>,
       options?: {
         target?: LofiSubmitCommandTarget;
         optimistic?: boolean;
         submit?: boolean;
-        storeCommandIdAs?: string;
+        storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
       },
-    ): ScenarioCommandStep<TSchema, TCommandContext>;
+    ): ScenarioCommandStep<TSchema, TCommandContext, TVars>;
     function commandStep(
       client: string,
       name: string,
@@ -348,31 +439,44 @@ export const createScenarioSteps = <
         target?: LofiSubmitCommandTarget;
         optimistic?: boolean;
         submit?: boolean;
-        storeCommandIdAs?: string;
+        storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
       },
-    ): ScenarioCommandStep<TSchema, TCommandContext>;
+    ): ScenarioCommandStep<TSchema, TCommandContext, TVars>;
     function commandStep(
       client: string,
       name: string,
-      input: CommandInput<TSchema, TCommandContext>,
+      input: CommandInput<TSchema, TCommandContext, TVars>,
       options?: {
         target?: LofiSubmitCommandTarget;
         optimistic?: boolean;
         submit?: boolean;
-        storeCommandIdAs?: string;
+        storeCommandIdAs?: (KeysMatching<TVars, string> & string) | undefined;
       },
-    ): ScenarioCommandStep<TSchema, TCommandContext> {
-      return command<TSchema, TCommandContext>(client, name, input, options);
+    ): ScenarioCommandStep<TSchema, TCommandContext, TVars> {
+      return command<TSchema, TCommandContext, TVars>(client, name, input, options);
     }
     return commandStep;
   })(),
   submit,
   sync,
-  read: (client: string, readFn: ReadFn<TSchema, TCommandContext>, storeAs?: string) =>
-    read<TSchema, TCommandContext>(client, readFn, storeAs),
-  assert: (assertFn: ScenarioAssertStep<TSchema, TCommandContext>["assert"]) =>
-    assert<TSchema, TCommandContext>(assertFn),
-  wait,
+  read: (<K extends keyof TVars>(
+    client: string,
+    readFn: ReadFn<TSchema, TCommandContext, TVars, TVars[K]>,
+    storeAs: K,
+  ) => read<TSchema, TCommandContext, TVars, K>(client, readFn, storeAs)) as {
+    <K extends keyof TVars>(
+      client: string,
+      readFn: ReadFn<TSchema, TCommandContext, TVars, TVars[K]>,
+      storeAs: K,
+    ): ScenarioReadStepWithStore<TSchema, TCommandContext, TVars, K>;
+    (
+      client: string,
+      readFn: ReadFn<TSchema, TCommandContext, TVars>,
+      storeAs?: undefined,
+    ): ScenarioReadStepNoStore<TSchema, TCommandContext, TVars>;
+  },
+  assert: (assertFn: ScenarioAssertStep<TSchema, TCommandContext, TVars>["assert"]) =>
+    assert<TSchema, TCommandContext, TVars>(assertFn),
 });
 
 export const steps = createScenarioSteps();
@@ -392,9 +496,13 @@ const createServerFetch = (fragment: ScenarioFragment) => {
   };
 };
 
-const resolveCommandInput = async <TSchema extends AnySchema, TCommandContext>(
-  input: CommandInput<TSchema, TCommandContext>,
-  ctx: ScenarioContext<TSchema, TCommandContext>,
+const resolveCommandInput = async <
+  TSchema extends AnySchema,
+  TCommandContext,
+  TVars extends ScenarioVars,
+>(
+  input: CommandInput<TSchema, TCommandContext, TVars>,
+  ctx: ScenarioContext<TSchema, TCommandContext, TVars>,
 ): Promise<unknown> => {
   if (typeof input === "function") {
     return await input(ctx);
@@ -402,20 +510,25 @@ const resolveCommandInput = async <TSchema extends AnySchema, TCommandContext>(
   return input;
 };
 
-const resolveReadResult = async <TSchema extends AnySchema, TCommandContext, T = unknown>(
-  read: ReadFn<TSchema, TCommandContext, T>,
-  ctx: ScenarioContext<TSchema, TCommandContext>,
+const resolveReadResult = async <
+  TSchema extends AnySchema,
+  TCommandContext,
+  TVars extends ScenarioVars,
+  T = unknown,
+>(
+  read: ReadFn<TSchema, TCommandContext, TVars, T>,
+  ctx: ScenarioContext<TSchema, TCommandContext, TVars>,
   client: ScenarioClient<TSchema, TCommandContext>,
 ): Promise<T> => {
   if (read.length >= 2) {
     return await (
       read as (
-        ctx: ScenarioContext<TSchema, TCommandContext>,
+        ctx: ScenarioContext<TSchema, TCommandContext, TVars>,
         client: ScenarioClient<TSchema, TCommandContext>,
       ) => T
     )(ctx, client);
   }
-  return await (read as (ctx: ScenarioContext<TSchema, TCommandContext>) => T)(ctx);
+  return await (read as (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => T)(ctx);
 };
 
 type ScenarioClientAdapters<TCommandContext = unknown> = {
@@ -493,10 +606,11 @@ export const runScenario = async <
   TCommandContext = unknown,
   TCommands extends
     ReadonlyArray<LofiSubmitCommandDefinition> = ReadonlyArray<LofiSubmitCommandDefinition>,
+  TVars extends ScenarioVars = ScenarioVars,
 >(
-  scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands>,
+  scenario: ScenarioDefinition<TSchema, TCommandContext, TCommands, TVars>,
   options?: RunScenarioOptions,
-): Promise<ScenarioContext<TSchema, TCommandContext>> => {
+): Promise<ScenarioContext<TSchema, TCommandContext, TVars>> => {
   let adapter: InMemoryAdapter | undefined;
   let fragment: ScenarioFragment;
 
@@ -537,7 +651,7 @@ export const runScenario = async <
     closeServer = close;
   }
 
-  const context: ScenarioContext<TSchema, TCommandContext> = {
+  const context: ScenarioContext<TSchema, TCommandContext, TVars> = {
     name: scenario.name,
     server: {
       adapter,
@@ -560,189 +674,190 @@ export const runScenario = async <
       }
     },
   };
-  const clientCommands = Array.from(scenario.clientCommands) as Array<
-    LofiSubmitCommandDefinition<unknown, TCommandContext>
-  >;
+  try {
+    const clientCommands = Array.from(scenario.clientCommands) as Array<
+      LofiSubmitCommandDefinition<unknown, TCommandContext>
+    >;
 
-  for (const [name, clientConfig] of Object.entries(scenario.clients)) {
-    const dbName = `lofi-scenario-${scenario.name}-${name}-${Math.random().toString(16).slice(2)}`;
-    const createClientContext = scenario.createClientContext;
-    const createCommandContext = createClientContext
-      ? (_command: LofiSubmitCommandDefinition<unknown, TCommandContext>) =>
-          createClientContext(name)
-      : undefined;
-    const adapterConfig = clientConfig.adapter;
-    const schema = scenario.server.schema;
+    for (const [name, clientConfig] of Object.entries(scenario.clients)) {
+      const dbName = `lofi-scenario-${scenario.name}-${name}-${Math.random().toString(16).slice(2)}`;
+      const createClientContext = scenario.createClientContext;
+      const createCommandContext = createClientContext
+        ? (_command: LofiSubmitCommandDefinition<unknown, TCommandContext>) =>
+            createClientContext(name)
+        : undefined;
+      const adapterConfig = clientConfig.adapter;
+      const schema = scenario.server.schema;
 
-    const adapters: ScenarioClientAdapters<TCommandContext> = (() => {
-      if (!adapterConfig || adapterConfig.type === "indexeddb") {
-        const baseAdapter = new IndexedDbAdapter({
-          dbName: adapterConfig?.dbName ?? dbName,
-          endpointName: clientConfig.endpointName,
-          schemas: [{ schema }],
-        });
-        return {
-          adapter: baseAdapter,
-          baseAdapter,
-        };
-      }
+      const adapters: ScenarioClientAdapters<TCommandContext> = (() => {
+        if (!adapterConfig || adapterConfig.type === "indexeddb") {
+          const baseAdapter = new IndexedDbAdapter({
+            dbName: adapterConfig?.dbName ?? dbName,
+            endpointName: clientConfig.endpointName,
+            schemas: [{ schema }],
+          });
+          return {
+            adapter: baseAdapter,
+            baseAdapter,
+          };
+        }
 
-      if (adapterConfig.type === "in-memory") {
-        const baseAdapter = new InMemoryLofiAdapter({
-          endpointName: clientConfig.endpointName,
-          schemas: [schema],
-          ...(adapterConfig.store ? { store: adapterConfig.store } : {}),
-        });
-        return {
-          adapter: baseAdapter,
-          baseAdapter,
-          baseStore: baseAdapter.store,
-        };
-      }
+        if (adapterConfig.type === "in-memory") {
+          const baseAdapter = new InMemoryLofiAdapter({
+            endpointName: clientConfig.endpointName,
+            schemas: [schema],
+            ...(adapterConfig.store ? { store: adapterConfig.store } : {}),
+          });
+          return {
+            adapter: baseAdapter,
+            baseAdapter,
+            baseStore: baseAdapter.store,
+          };
+        }
 
-      if (adapterConfig.type === "stacked") {
-        const baseKind = adapterConfig.base ?? "indexeddb";
-        const baseAdapter =
-          baseKind === "in-memory"
-            ? new InMemoryLofiAdapter({
-                endpointName: clientConfig.endpointName,
-                schemas: [schema],
-                ...(adapterConfig.baseStore ? { store: adapterConfig.baseStore } : {}),
-              })
-            : new IndexedDbAdapter({
-                dbName: adapterConfig.baseDbName ?? dbName,
-                endpointName: clientConfig.endpointName,
-                schemas: [{ schema }],
-              });
+        if (adapterConfig.type === "stacked") {
+          const baseKind = adapterConfig.base ?? "indexeddb";
+          const baseAdapter =
+            baseKind === "in-memory"
+              ? new InMemoryLofiAdapter({
+                  endpointName: clientConfig.endpointName,
+                  schemas: [schema],
+                  ...(adapterConfig.baseStore ? { store: adapterConfig.baseStore } : {}),
+                })
+              : new IndexedDbAdapter({
+                  dbName: adapterConfig.baseDbName ?? dbName,
+                  endpointName: clientConfig.endpointName,
+                  schemas: [{ schema }],
+                });
 
-        const overlayManager = new LofiOverlayManager({
-          endpointName: clientConfig.endpointName,
-          adapter: baseAdapter,
-          schemas: [schema],
-          commands: clientCommands,
-          ...(createCommandContext ? { createCommandContext } : {}),
-          ...(adapterConfig.overlayStore ? { store: adapterConfig.overlayStore } : {}),
-        });
+          const overlayManager = new LofiOverlayManager({
+            endpointName: clientConfig.endpointName,
+            adapter: baseAdapter,
+            schemas: [schema],
+            commands: clientCommands,
+            ...(createCommandContext ? { createCommandContext } : {}),
+            ...(adapterConfig.overlayStore ? { store: adapterConfig.overlayStore } : {}),
+          });
 
-        return {
-          adapter: overlayManager.stackedAdapter,
-          baseAdapter,
-          overlayAdapter: overlayManager.overlayAdapter,
-          stackedAdapter: overlayManager.stackedAdapter,
-          overlayManager,
-          baseStore: baseAdapter instanceof InMemoryLofiAdapter ? baseAdapter.store : undefined,
-          overlayStore: overlayManager.store,
-        };
-      }
+          return {
+            adapter: overlayManager.stackedAdapter,
+            baseAdapter,
+            overlayAdapter: overlayManager.overlayAdapter,
+            stackedAdapter: overlayManager.stackedAdapter,
+            overlayManager,
+            baseStore: baseAdapter instanceof InMemoryLofiAdapter ? baseAdapter.store : undefined,
+            overlayStore: overlayManager.store,
+          };
+        }
 
-      const _exhaustive: never = adapterConfig;
-      throw new Error(`Unsupported scenario adapter config: ${String(_exhaustive)}`);
-    })();
+        const _exhaustive: never = adapterConfig;
+        throw new Error(`Unsupported scenario adapter config: ${String(_exhaustive)}`);
+      })();
 
-    const submit = new LofiSubmitClient<TCommandContext>({
-      endpointName: clientConfig.endpointName,
-      submitUrl: `${baseUrl}/_internal/sync`,
-      internalUrl: `${baseUrl}/_internal`,
-      adapter: adapters.adapter,
-      schemas: [schema],
-      commands: clientCommands,
-      fetch: fetcher,
-      ...(createCommandContext ? { createCommandContext } : {}),
-      ...(adapters.overlayManager ? { overlay: adapters.overlayManager } : {}),
-    });
-
-    const sync = new LofiClient({
-      endpointName: clientConfig.endpointName,
-      outboxUrl: `${baseUrl}/_internal/outbox`,
-      adapter: adapters.adapter,
-      fetch: fetcher,
-    });
-
-    const queryAdapter = adapters.stackedAdapter ?? adapters.baseAdapter;
-
-    context.clients[name] = {
-      name,
-      endpointName: clientConfig.endpointName,
-      adapter: adapters.adapter,
-      submit,
-      sync,
-      query: queryAdapter.createQueryEngine(schema),
-      baseQuery: adapters.baseAdapter.createQueryEngine(schema),
-      overlayQuery: adapters.overlayAdapter
-        ? adapters.overlayAdapter.createQueryEngine(schema)
-        : undefined,
-      adapters: {
-        base: adapters.baseAdapter,
-        overlay: adapters.overlayAdapter,
-        stacked: adapters.stackedAdapter,
-      },
-      stores: {
-        base: adapters.baseStore,
-        overlay: adapters.overlayStore,
-      },
-      overlayManager: adapters.overlayManager,
-    };
-  }
-
-  for (const step of scenario.steps) {
-    if (step.type === "wait") {
-      await new Promise((resolve) => setTimeout(resolve, step.ms));
-      continue;
-    }
-
-    if (step.type === "assert") {
-      await step.assert(context);
-      continue;
-    }
-
-    const client = context.clients[step.client];
-    if (!client) {
-      throw new Error(`Unknown scenario client: ${step.client}`);
-    }
-
-    if (step.type === "command") {
-      const input = await resolveCommandInput(step.input, context);
-      const target = step.target ?? resolveCommandTarget(step.name, clientCommands) ?? null;
-      if (!target) {
-        throw new Error(`Unknown scenario command target: ${step.name}`);
-      }
-
-      const commandId = await client.submit.queueCommand({
-        name: step.name,
-        target,
-        input,
-        optimistic: step.optimistic,
+      const submit = new LofiSubmitClient<TCommandContext>({
+        endpointName: clientConfig.endpointName,
+        submitUrl: `${baseUrl}/_internal/sync`,
+        internalUrl: `${baseUrl}/_internal`,
+        adapter: adapters.adapter,
+        schemas: [schema],
+        commands: clientCommands,
+        fetch: fetcher,
+        ...(createCommandContext ? { createCommandContext } : {}),
+        ...(adapters.overlayManager ? { overlay: adapters.overlayManager } : {}),
       });
 
-      if (step.storeCommandIdAs) {
-        context.vars[step.storeCommandIdAs] = commandId;
+      const sync = new LofiClient({
+        endpointName: clientConfig.endpointName,
+        outboxUrl: `${baseUrl}/_internal/outbox`,
+        adapter: adapters.adapter,
+        fetch: fetcher,
+      });
+
+      const queryAdapter = adapters.stackedAdapter ?? adapters.baseAdapter;
+
+      context.clients[name] = {
+        name,
+        endpointName: clientConfig.endpointName,
+        adapter: adapters.adapter,
+        submit,
+        sync,
+        query: queryAdapter.createQueryEngine(schema),
+        baseQuery: adapters.baseAdapter.createQueryEngine(schema),
+        overlayQuery: adapters.overlayAdapter
+          ? adapters.overlayAdapter.createQueryEngine(schema)
+          : undefined,
+        adapters: {
+          base: adapters.baseAdapter,
+          overlay: adapters.overlayAdapter,
+          stacked: adapters.stackedAdapter,
+        },
+        stores: {
+          base: adapters.baseStore,
+          overlay: adapters.overlayStore,
+        },
+        overlayManager: adapters.overlayManager,
+      };
+    }
+
+    for (const step of scenario.steps) {
+      if (step.type === "assert") {
+        await step.assert(context);
+        continue;
       }
 
-      if (step.submit) {
+      const client = context.clients[step.client];
+      if (!client) {
+        throw new Error(`Unknown scenario client: ${step.client}`);
+      }
+
+      if (step.type === "command") {
+        const input = await resolveCommandInput(step.input, context);
+        const target = step.target ?? resolveCommandTarget(step.name, clientCommands) ?? null;
+        if (!target) {
+          throw new Error(`Unknown scenario command target: ${step.name}`);
+        }
+
+        const commandId = await client.submit.queueCommand({
+          name: step.name,
+          target,
+          input,
+          optimistic: step.optimistic,
+        });
+
+        if (step.storeCommandIdAs !== undefined) {
+          context.vars[step.storeCommandIdAs] = commandId as TVars[KeysMatching<TVars, string> &
+            string];
+        }
+
+        if (step.submit) {
+          context.lastSubmit[step.client] = await client.submit.submitOnce();
+        }
+
+        continue;
+      }
+
+      if (step.type === "submit") {
         context.lastSubmit[step.client] = await client.submit.submitOnce();
+        continue;
       }
 
-      continue;
-    }
-
-    if (step.type === "submit") {
-      context.lastSubmit[step.client] = await client.submit.submitOnce();
-      continue;
-    }
-
-    if (step.type === "sync") {
-      context.lastSync[step.client] = await client.sync.syncOnce();
-      continue;
-    }
-
-    if (step.type === "read") {
-      const result = await resolveReadResult(step.read, context, client);
-      if (step.storeAs) {
-        context.vars[step.storeAs] = result;
+      if (step.type === "sync") {
+        context.lastSync[step.client] = await client.sync.syncOnce();
+        continue;
       }
-      continue;
+
+      if (step.type === "read") {
+        const result = await resolveReadResult(step.read, context, client);
+        if (step.storeAs !== undefined) {
+          context.vars[step.storeAs] = result as TVars[keyof TVars];
+        }
+        continue;
+      }
     }
+
+    return context;
+  } catch (error) {
+    await context.cleanup();
+    throw error;
   }
-
-  return context;
 };

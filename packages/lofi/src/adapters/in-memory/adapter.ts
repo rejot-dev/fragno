@@ -69,7 +69,7 @@ export class InMemoryLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
     uowId: string;
     mutations: LofiMutation[];
   }): Promise<{ applied: boolean }> {
-    const inboxKey = `${options.sourceKey}::${options.uowId}`;
+    const inboxKey = `${options.sourceKey}::${options.uowId}::${options.versionstamp}`;
     if (this.inbox.has(inboxKey)) {
       return { applied: false };
     }

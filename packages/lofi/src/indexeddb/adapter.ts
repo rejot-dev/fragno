@@ -30,7 +30,7 @@ type LofiRow = {
 };
 
 type InboxRow = {
-  key: [string, string];
+  key: [string, string, string];
   sourceKey: string;
   uowId: string;
   versionstamp: string;
@@ -165,9 +165,11 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const inboxStore = tx.objectStore(INBOX_STORE);
     const metaStore = tx.objectStore(META_STORE);
 
-    const existingInbox = (await inboxStore.get([options.sourceKey, options.uowId])) as
-      | InboxRow
-      | undefined;
+    const existingInbox = (await inboxStore.get([
+      options.sourceKey,
+      options.uowId,
+      options.versionstamp,
+    ])) as InboxRow | undefined;
     if (existingInbox) {
       await tx.done;
       return { applied: false };
@@ -187,7 +189,7 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       }
 
       const inboxRow: InboxRow = {
-        key: [options.sourceKey, options.uowId],
+        key: [options.sourceKey, options.uowId, options.versionstamp],
         sourceKey: options.sourceKey,
         uowId: options.uowId,
         versionstamp: options.versionstamp,
@@ -388,7 +390,7 @@ const buildIndexDefinitions = (schemas: AnySchema[]): IndexDefinition[] => {
 
 const buildSchemaFingerprint = (schemas: AnySchema[], indexes: IndexDefinition[]): string => {
   const payload = {
-    inboxKey: "uowId",
+    inboxKey: "uowId+versionstamp",
     schemas: [...schemas]
       .map((schema) => ({
         name: schema.name,
@@ -432,7 +434,7 @@ const ensureStores = <TxStores extends ArrayLike<string>>(
 
   if (!db.objectStoreNames.contains(INBOX_STORE)) {
     const store = db.createObjectStore(INBOX_STORE, { keyPath: "key" });
-    store.createIndex(INDEX_INBOX_SOURCE_UOW, ["sourceKey", "uowId"], {
+    store.createIndex(INDEX_INBOX_SOURCE_UOW, ["sourceKey", "uowId", "versionstamp"], {
       unique: true,
     });
   } else {
@@ -440,11 +442,12 @@ const ensureStores = <TxStores extends ArrayLike<string>>(
     if (store.indexNames.contains(LEGACY_INBOX_INDEX)) {
       store.deleteIndex(LEGACY_INBOX_INDEX);
     }
-    if (!store.indexNames.contains(INDEX_INBOX_SOURCE_UOW)) {
-      store.createIndex(INDEX_INBOX_SOURCE_UOW, ["sourceKey", "uowId"], {
-        unique: true,
-      });
+    if (store.indexNames.contains(INDEX_INBOX_SOURCE_UOW)) {
+      store.deleteIndex(INDEX_INBOX_SOURCE_UOW);
     }
+    store.createIndex(INDEX_INBOX_SOURCE_UOW, ["sourceKey", "uowId", "versionstamp"], {
+      unique: true,
+    });
   }
 };
 
