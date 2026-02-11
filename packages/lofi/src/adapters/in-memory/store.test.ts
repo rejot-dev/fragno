@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
-import type { LofiMutation } from "../types";
-import { OptimisticOverlayStore } from "./overlay-store";
+import type { LofiMutation } from "../../types";
+import { InMemoryLofiStore } from "./store";
 
 const createAppSchema = () =>
   schema("app", (s) =>
@@ -9,7 +9,7 @@ const createAppSchema = () =>
   );
 
 const createStore = (appSchema: ReturnType<typeof createAppSchema>) =>
-  new OptimisticOverlayStore({ endpointName: "app", schemas: [appSchema] });
+  new InMemoryLofiStore({ endpointName: "app", schemas: [appSchema] });
 
 const createMutation = (name: string): LofiMutation => ({
   op: "create",
@@ -29,7 +29,7 @@ const updateMutation = (name: string): LofiMutation => ({
   set: { name },
 });
 
-describe("OptimisticOverlayStore", () => {
+describe("InMemoryLofiStore", () => {
   it("rebuilds optimistic state after reload by reapplying queued mutations", () => {
     const appSchema = createAppSchema();
     const baseStore = createStore(appSchema);
@@ -50,5 +50,25 @@ describe("OptimisticOverlayStore", () => {
     expect(reloadedRow).toEqual(optimisticRow);
     expect(reloadedRow?._lofi.version).toBe(2);
     expect(reloadedRow?.data["name"]).toBe("Bea");
+  });
+
+  it("tracks tombstones for deletes and clears them on create", () => {
+    const appSchema = createAppSchema();
+    const store = createStore(appSchema);
+
+    store.applyMutation(createMutation("Ada"));
+    store.applyMutation({
+      op: "delete",
+      schema: "app",
+      table: "users",
+      externalId: "user-1",
+      versionstamp: "vs-3",
+    });
+
+    expect(store.getRow("app", "users", "user-1")).toBeUndefined();
+    expect(store.hasTombstone("app", "users", "user-1")).toBe(true);
+
+    store.applyMutation(createMutation("Bea"));
+    expect(store.hasTombstone("app", "users", "user-1")).toBe(false);
   });
 });

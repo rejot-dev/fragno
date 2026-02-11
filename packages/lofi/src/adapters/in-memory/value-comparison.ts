@@ -50,6 +50,12 @@ export const compareNormalizedValues = (left: unknown, right: unknown): number =
     return left.getTime() - right.getTime();
   }
   if (typeof left === "number" && typeof right === "number") {
+    if (Number.isNaN(left)) {
+      return Number.isNaN(right) ? 0 : -1;
+    }
+    if (Number.isNaN(right)) {
+      return 1;
+    }
     return left - right;
   }
   if (typeof left === "bigint" && typeof right === "bigint") {

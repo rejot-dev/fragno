@@ -12,11 +12,12 @@ import type {
 import { createLocalHandlerTx, type LocalHandlerQueryExecutor } from "../submit/local-handler-tx";
 import { buildCommandKey, defaultQueueKey, loadSubmitQueue } from "../submit/queue";
 import {
-  createOverlayQueryEngine,
-  executeOverlayRetrievalOperation,
-  type OverlayQueryContext,
-} from "./overlay-query";
-import { OptimisticOverlayStore } from "./overlay-store";
+  createInMemoryQueryEngine,
+  executeInMemoryRetrievalOperation,
+  type InMemoryQueryContext,
+} from "../adapters/in-memory/query";
+import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
+import { InMemoryLofiStore } from "../adapters/in-memory/store";
 
 type OverlayManagerAdapter = Pick<LofiAdapter, "getMeta" | "setMeta"> & {
   exportBaseSnapshot: (options?: LofiBaseSnapshotOptions) => Promise<LofiBaseSnapshotRow[]>;
@@ -28,13 +29,13 @@ export type OverlayManagerOptions<TContext> = {
   schemas: AnySchema[];
   commands: Array<LofiSubmitCommandDefinition<unknown, TContext>>;
   createCommandContext?: (command: LofiSubmitCommandDefinition<unknown, TContext>) => TContext;
-  store?: OptimisticOverlayStore;
+  store?: InMemoryLofiStore;
   queueKey?: string;
   schemaNames?: string[];
 };
 
 export class LofiOverlayManager<TContext = unknown> {
-  readonly store: OptimisticOverlayStore;
+  readonly store: InMemoryLofiStore;
   private readonly adapter: OverlayManagerAdapter;
   private readonly schemas: AnySchema[];
   private readonly commands: Map<string, LofiSubmitCommandDefinition<unknown, TContext>>;
@@ -48,12 +49,13 @@ export class LofiOverlayManager<TContext = unknown> {
   constructor(options: OverlayManagerOptions<TContext>) {
     this.adapter = options.adapter;
     this.schemas = options.schemas;
-    this.store =
+    const initialStore =
       options.store ??
-      new OptimisticOverlayStore({
+      new InMemoryLofiAdapter({
         endpointName: options.endpointName,
         schemas: options.schemas,
-      });
+      }).store;
+    this.store = initialStore;
     this.queueKey = options.queueKey ?? defaultQueueKey(options.endpointName);
     this.commands = new Map(options.commands.map((command) => [buildCommandKey(command), command]));
     this.createCommandContext = options.createCommandContext;
@@ -65,17 +67,17 @@ export class LofiOverlayManager<TContext = unknown> {
       },
     };
 
-    const queryExecutor: LocalHandlerQueryExecutor<OverlayQueryContext> = {
-      createQueryContext: (schemaName: string): OverlayQueryContext => ({
+    const queryExecutor: LocalHandlerQueryExecutor<InMemoryQueryContext> = {
+      createQueryContext: (schemaName: string): InMemoryQueryContext => ({
         endpointName: this.store.endpointName,
         schemaName,
         store: this.store,
         referenceTargets: this.store.referenceTargets,
       }),
       executeRetrievalOperation: async ({ operation, context }) =>
-        executeOverlayRetrievalOperation({
+        executeInMemoryRetrievalOperation({
           operation: operation as Parameters<
-            typeof executeOverlayRetrievalOperation
+            typeof executeInMemoryRetrievalOperation
           >[0]["operation"],
           context,
         }),
@@ -92,7 +94,7 @@ export class LofiOverlayManager<TContext = unknown> {
     schema: T,
     options?: LofiQueryEngineOptions,
   ): LofiQueryInterface<T> {
-    return createOverlayQueryEngine({
+    return createInMemoryQueryEngine({
       schema,
       store: this.store,
       schemaName: options?.schemaName,
