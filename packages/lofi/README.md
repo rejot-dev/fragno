@@ -56,7 +56,7 @@ const adapter = new IndexedDbAdapter({
 const client = new LofiClient({
   outboxUrl: "https://example.com/_internal/outbox",
   endpointName: "app",
-  adapter,
+  adapter: baseAdapter,
 });
 
 // One-off sync:
@@ -162,6 +162,32 @@ of queued sync commands layered on top of the persisted IndexedDB state.
   outbox entries are applied to the base adapter. Rebuilding the overlay replays only the remaining
   queued commands.
 
+### Stacked adapter composition
+
+The optimistic overlay is powered by `InMemoryLofiAdapter` plus `StackedLofiAdapter`. The stacked
+adapter merges a persisted base (IndexedDB) with the in-memory overlay so reads reflect optimistic
+commands.
+
+```ts
+import { IndexedDbAdapter, InMemoryLofiAdapter, StackedLofiAdapter } from "@fragno-dev/lofi";
+
+const baseAdapter = new IndexedDbAdapter({
+  endpointName: "app",
+  schemas: [{ schema: appSchema }],
+});
+
+const overlayAdapter = new InMemoryLofiAdapter({
+  endpointName: "app",
+  schemas: [appSchema],
+});
+
+const stackedAdapter = new StackedLofiAdapter({
+  base: baseAdapter,
+  overlay: overlayAdapter,
+  schemas: [appSchema],
+});
+```
+
 ```ts
 import { LofiOverlayManager } from "@fragno-dev/lofi";
 
@@ -185,9 +211,12 @@ const overlay = new LofiOverlayManager({
 });
 
 await overlay.rebuild();
-const optimisticQuery = overlay.createQueryEngine(appSchema);
+const optimisticQuery = overlay.stackedAdapter.createQueryEngine(appSchema);
 const optimisticUsers = await optimisticQuery.find("users");
 ```
+
+Use `overlay.stackedAdapter` for optimistic reads/writes (for example, in `LofiSubmitClient`). Use
+the base adapter directly for `LofiClient` so outbox sync only touches persisted state.
 
 ## Notes
 
@@ -221,5 +250,8 @@ Notes:
 
 - `LofiClient` - polls outbox and applies entries.
 - `IndexedDbAdapter` - IndexedDB-backed `LofiAdapter` and query engine.
+- `InMemoryLofiAdapter` - in-memory `LofiAdapter` for optimistic overlays/tests.
+- `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
+- `LofiOverlayManager` - overlay manager that rebuilds queued optimistic commands.
 - Outbox helpers: `decodeOutboxPayload`, `resolveOutboxRefs`, `outboxMutationsToUowOperations`.
 - Types: `LofiClientOptions`, `LofiAdapter`, `LofiMutation`, `LofiQueryInterface`, and more.
