@@ -3,7 +3,7 @@
   "plugins": null,
   "categories": {},
   "rules": {
-    // "eslint/complexity": "warn"
+    "eslint/complexity": "warn"
   },
   "settings": {
     "jsx-a11y": {
