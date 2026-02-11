@@ -1220,6 +1220,9 @@ importers:
       '@fragno-dev/test':
         specifier: workspace:*
         version: link:../../packages/fragno-test
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../../packages/unplugin-fragno
       '@fragno-private/typescript-config':
         specifier: workspace:*
         version: link:../../packages-private/typescript-config
