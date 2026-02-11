@@ -706,6 +706,157 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
  * }, { createUnitOfWork });
  * @internal Used by HandlerTxBuilder.execute()
  */
+/**
+ * Collect intermediate results from service calls.
+ * Handles the "mutate-only" service call pattern where mutateResult is preferred.
+ */
+function collectServiceIntermediateResults(
+  serviceCalls: readonly (TxResult<unknown> | undefined)[] | undefined,
+): unknown[] {
+  const results: unknown[] = [];
+  if (!serviceCalls) {
+    return results;
+  }
+
+  for (const serviceCall of serviceCalls) {
+    if (serviceCall === undefined) {
+      results.push(undefined);
+      continue;
+    }
+
+    const internal = serviceCall._internal;
+    if (
+      internal.retrieveSuccessResult !== undefined &&
+      !(
+        Array.isArray(internal.retrieveSuccessResult) &&
+        internal.retrieveSuccessResult.length === 0 &&
+        internal.callbacks.mutate
+      )
+    ) {
+      results.push(internal.retrieveSuccessResult);
+    } else if (internal.mutateResult !== undefined) {
+      results.push(internal.mutateResult);
+    } else {
+      results.push(internal.retrieveSuccessResult);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Collect final results from service calls.
+ */
+function collectServiceFinalResults(
+  serviceCalls: readonly (TxResult<unknown> | undefined)[] | undefined,
+): unknown[] {
+  const results: unknown[] = [];
+  if (!serviceCalls) {
+    return results;
+  }
+
+  for (const serviceCall of serviceCalls) {
+    if (serviceCall === undefined) {
+      results.push(undefined);
+      continue;
+    }
+    results.push(serviceCall._internal.finalResult);
+  }
+
+  return results;
+}
+
+/**
+ * Determine the retry policy based on whether retrieve operations exist.
+ */
+function resolveRetryPolicy(
+  hasRetrieveOps: boolean,
+  retryPolicyOption?: RetryPolicy,
+): RetryPolicy {
+  if (!hasRetrieveOps) {
+    if (retryPolicyOption) {
+      throw new Error(
+        "Retry policy is only supported when the transaction includes retrieve operations.",
+      );
+    }
+    return new NoRetryPolicy();
+  }
+
+  return (
+    retryPolicyOption ??
+    new ExponentialBackoffRetryPolicy({
+      maxRetries: 5,
+      initialDelayMs: 10,
+      maxDelayMs: 100,
+    })
+  );
+}
+
+/**
+ * Handle a caught error during transaction execution.
+ * Returns the retry delay if the error is retryable, or throws otherwise.
+ */
+function getRetryDelayOrThrow(
+  error: unknown,
+  retryPolicy: RetryPolicy | undefined,
+  signal: AbortSignal | undefined,
+  attempt: number,
+): number {
+  if (signal?.aborted) {
+    throw new Error("Transaction execution aborted");
+  }
+
+  if (!(error instanceof ConcurrencyConflictError)) {
+    throw error;
+  }
+
+  if (!retryPolicy) {
+    throw error;
+  }
+
+  if (!retryPolicy.shouldRetry(attempt, error, signal)) {
+    if (signal?.aborted) {
+      throw new Error("Transaction execution aborted");
+    }
+    throw new ConcurrencyConflictError();
+  }
+
+  return retryPolicy.getDelayMs(attempt);
+}
+
+/**
+ * Compute the final result of a transaction based on callback priority.
+ */
+async function computeTxFinalResult(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  callbacks: {
+    success?: (ctx: any) => unknown;
+    mutate?: unknown;
+    retrieveSuccess?: unknown;
+    retrieve?: unknown;
+  },
+  retrieveSuccessResult: unknown,
+  mutateResult: unknown,
+  serviceIntermediateResults: unknown,
+  serviceFinalResults: unknown,
+): Promise<unknown> {
+  if (callbacks.success) {
+    return callbacks.success({
+      retrieveResult: retrieveSuccessResult,
+      mutateResult,
+      serviceResult: serviceFinalResults,
+      serviceIntermediateResult: serviceIntermediateResults,
+    });
+  }
+  if (callbacks.mutate) {
+    return awaitPromisesInObject(mutateResult);
+  }
+  if (callbacks.retrieveSuccess || callbacks.retrieve) {
+    return retrieveSuccessResult;
+  }
+  return serviceFinalResults;
+}
+
 async function executeTx(
   callbacks: HandlerTxCallbacks<
     unknown[],
@@ -760,22 +911,7 @@ async function executeTx(
       const allServiceCallTxResults = serviceCalls ? collectAllTxResults([...serviceCalls]) : [];
 
       const hasRetrieveOps = baseUow.getRetrievalOperations().length > 0;
-      if (!hasRetrieveOps) {
-        if (options.retryPolicy) {
-          throw new Error(
-            "Retry policy is only supported when the transaction includes retrieve operations.",
-          );
-        }
-        retryPolicy = new NoRetryPolicy();
-      } else {
-        retryPolicy =
-          options.retryPolicy ??
-          new ExponentialBackoffRetryPolicy({
-            maxRetries: 5,
-            initialDelayMs: 10,
-            maxDelayMs: 100,
-          });
-      }
+      retryPolicy = resolveRetryPolicy(hasRetrieveOps, options.retryPolicy);
 
       await baseUow.executeRetrieve();
 
@@ -788,32 +924,7 @@ async function executeTx(
         await processTxResultAfterRetrieve(txResult, baseUow);
       }
 
-      const serviceResults: unknown[] = [];
-      if (serviceCalls) {
-        for (const serviceCall of serviceCalls) {
-          if (serviceCall === undefined) {
-            serviceResults.push(undefined);
-            continue;
-          }
-          const serviceCallInternal = serviceCall._internal;
-          // Check if this is a mutate-only service call (empty array sentinel with mutate callback)
-          // In that case, prefer mutateResult over the empty array retrieveSuccessResult
-          if (
-            serviceCallInternal.retrieveSuccessResult !== undefined &&
-            !(
-              Array.isArray(serviceCallInternal.retrieveSuccessResult) &&
-              serviceCallInternal.retrieveSuccessResult.length === 0 &&
-              serviceCallInternal.callbacks.mutate
-            )
-          ) {
-            serviceResults.push(serviceCallInternal.retrieveSuccessResult);
-          } else if (serviceCallInternal.mutateResult !== undefined) {
-            serviceResults.push(serviceCallInternal.mutateResult);
-          } else {
-            serviceResults.push(serviceCallInternal.retrieveSuccessResult);
-          }
-        }
-      }
+      const serviceResults = collectServiceIntermediateResults(serviceCalls);
 
       // Call retrieveSuccess if provided
       let retrieveSuccessResult: TRetrieveSuccessResult;
@@ -853,35 +964,15 @@ async function executeTx(
         await processTxResultAfterMutate(txResult);
       }
 
-      const serviceFinalResults: unknown[] = [];
-      if (serviceCalls) {
-        for (const serviceCall of serviceCalls) {
-          if (serviceCall === undefined) {
-            serviceFinalResults.push(undefined);
-            continue;
-          }
-          serviceFinalResults.push(serviceCall._internal.finalResult);
-        }
-      }
+      const serviceFinalResults = collectServiceFinalResults(serviceCalls);
 
-      let finalResult: unknown;
-      if (callbacks.success) {
-        // The success context type is determined by the overload - we construct it at runtime
-        // and the type safety is guaranteed by the discriminated overloads
-        const successCtx = {
-          retrieveResult: retrieveSuccessResult,
-          mutateResult,
-          serviceResult: serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
-          serviceIntermediateResult: serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
-        } as Parameters<NonNullable<typeof callbacks.success>>[0];
-        finalResult = callbacks.success(successCtx);
-      } else if (callbacks.mutate) {
-        finalResult = await awaitPromisesInObject(mutateResult);
-      } else if (callbacks.retrieveSuccess || callbacks.retrieve) {
-        finalResult = retrieveSuccessResult;
-      } else {
-        finalResult = serviceFinalResults;
-      }
+      const finalResult = await computeTxFinalResult(
+        callbacks,
+        retrieveSuccessResult,
+        mutateResult,
+        serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
+        serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
+      );
 
       if (options.onAfterMutate) {
         await options.onAfterMutate(baseUow);
@@ -889,31 +980,10 @@ async function executeTx(
 
       return await awaitPromisesInObject(finalResult);
     } catch (error) {
-      if (signal?.aborted) {
-        throw new Error("Transaction execution aborted");
-      }
-
-      // Only retry concurrency conflicts, not other errors
-      if (!(error instanceof ConcurrencyConflictError)) {
-        throw error;
-      }
-
-      if (!retryPolicy) {
-        throw error;
-      }
-
-      if (!retryPolicy.shouldRetry(attempt, error, signal)) {
-        if (signal?.aborted) {
-          throw new Error("Transaction execution aborted");
-        }
-        throw new ConcurrencyConflictError();
-      }
-
-      const delayMs = retryPolicy.getDelayMs(attempt);
+      const delayMs = getRetryDelayOrThrow(error, retryPolicy, signal, attempt);
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-
       attempt++;
     }
   }

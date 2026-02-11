@@ -101,6 +101,203 @@ const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null =>
 const compareNormalized = (left: unknown, right: unknown): number =>
   compareNormalizedValues(left, right);
 
+const LIKE_OPS: ReadonlySet<string> = new Set([
+  "contains",
+  "starts with",
+  "ends with",
+  "not contains",
+  "not starts with",
+  "not ends with",
+]);
+
+type CompareCondition = Extract<Condition, { type: "compare" }>;
+
+const evaluateIsComparison = (
+  leftValue: unknown,
+  leftColumn: AnyColumn,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+  op: "is" | "is not",
+): boolean => {
+  if (isNullish(rightValue)) {
+    const matches = isNullish(leftValue);
+    return op === "is" ? matches : !matches;
+  }
+
+  if (isNullish(leftValue)) {
+    return op === "is not";
+  }
+
+  const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
+  const rightNormalized = normalizeIndexValue(rightValue, rightColumn);
+  const matches = compareNormalized(leftNormalized, rightNormalized) === 0;
+  return op === "is" ? matches : !matches;
+};
+
+const evaluateInComparison = (
+  leftValue: unknown,
+  leftColumn: AnyColumn,
+  rightValue: unknown,
+  table: AnyTable,
+  row: InMemoryRow,
+  op: "in" | "not in",
+  namespaceStore?: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
+): boolean => {
+  if (!Array.isArray(rightValue)) {
+    throw new Error(`Operator "${op}" expects an array value.`);
+  }
+
+  const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
+  let hasNull = false;
+  let hasMatch = false;
+
+  for (const item of rightValue) {
+    const resolved = resolveComparisonValue(
+      item,
+      leftColumn,
+      table,
+      row,
+      namespaceStore,
+      resolver,
+      now,
+    );
+    if (isNullish(resolved.value)) {
+      hasNull = true;
+      continue;
+    }
+    const normalized = normalizeIndexValue(resolved.value, leftColumn);
+    if (compareNormalized(leftNormalized, normalized) === 0) {
+      hasMatch = true;
+      break;
+    }
+  }
+
+  if (hasMatch) {
+    return op === "in";
+  }
+
+  if (hasNull) {
+    return false;
+  }
+
+  return op === "not in";
+};
+
+const evaluateLikeComparison = (
+  leftValue: unknown,
+  leftColumn: AnyColumn,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+  op: string,
+): boolean => {
+  const leftLike = normalizeLikeValue(leftValue, leftColumn);
+  const rightLike = normalizeLikeValue(rightValue, rightColumn);
+
+  if (leftLike === null || rightLike === null) {
+    return false;
+  }
+
+  const leftText = leftLike.toLowerCase();
+  const rightText = rightLike.toLowerCase();
+  let matches = false;
+
+  if (op.includes("contains")) {
+    matches = leftText.includes(rightText);
+  } else if (op.includes("starts with")) {
+    matches = leftText.startsWith(rightText);
+  } else {
+    matches = leftText.endsWith(rightText);
+  }
+
+  return op.startsWith("not ") ? !matches : matches;
+};
+
+const evaluateRelationalComparison = (
+  leftValue: unknown,
+  leftColumn: AnyColumn,
+  rightValue: unknown,
+  rightColumn: AnyColumn,
+  op: string,
+): boolean => {
+  const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
+  const rightNormalized = normalizeIndexValue(rightValue, rightColumn);
+  const comparison = compareNormalized(leftNormalized, rightNormalized);
+
+  switch (op) {
+    case "=":
+      return comparison === 0;
+    case "!=":
+      return comparison !== 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    default:
+      throw new Error(`Unsupported operator "${op}".`);
+  }
+};
+
+const evaluateCompareCondition = (
+  condition: CompareCondition,
+  table: AnyTable,
+  row: InMemoryRow,
+  namespaceStore?: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
+): boolean => {
+  const leftColumn = condition.a;
+  const leftColumnName = resolver
+    ? resolver.getColumnName(table.name, leftColumn.name)
+    : leftColumn.name;
+  const leftValue = row[leftColumnName];
+  const right = resolveComparisonValue(
+    condition.b,
+    leftColumn,
+    table,
+    row,
+    namespaceStore,
+    resolver,
+    now,
+  );
+
+  const op = condition.operator;
+  const rightValue = right.value;
+
+  if (op === "is" || op === "is not") {
+    return evaluateIsComparison(leftValue, leftColumn, rightValue, right.column, op);
+  }
+
+  if (isNullish(leftValue) || isNullish(rightValue)) {
+    return false;
+  }
+
+  if (op === "in" || op === "not in") {
+    return evaluateInComparison(
+      leftValue,
+      leftColumn,
+      rightValue,
+      table,
+      row,
+      op,
+      namespaceStore,
+      resolver,
+      now,
+    );
+  }
+
+  if (LIKE_OPS.has(op)) {
+    return evaluateLikeComparison(leftValue, leftColumn, rightValue, right.column, op);
+  }
+
+  return evaluateRelationalComparison(leftValue, leftColumn, rightValue, right.column, op);
+};
+
 export const evaluateCondition = (
   condition: Condition | boolean,
   table: AnyTable,
@@ -133,143 +330,10 @@ export const evaluateCondition = (
     case "not":
       return !evaluateCondition(condition.item, table, row, namespaceStore, resolver, now);
     case "compare":
-      break;
+      return evaluateCompareCondition(condition, table, row, namespaceStore, resolver, now);
     default: {
       const exhaustiveCheck: never = condition;
       throw new Error(`Unsupported condition type: ${JSON.stringify(exhaustiveCheck)}`);
     }
-  }
-
-  const leftColumn = condition.a;
-  const leftColumnName = resolver
-    ? resolver.getColumnName(table.name, leftColumn.name)
-    : leftColumn.name;
-  const leftValue = row[leftColumnName];
-  const right = resolveComparisonValue(
-    condition.b,
-    leftColumn,
-    table,
-    row,
-    namespaceStore,
-    resolver,
-    now,
-  );
-
-  const op = condition.operator;
-  const rightValue = right.value;
-
-  if (op === "is" || op === "is not") {
-    if (isNullish(rightValue)) {
-      const matches = isNullish(leftValue);
-      return op === "is" ? matches : !matches;
-    }
-
-    if (isNullish(leftValue)) {
-      return op === "is not";
-    }
-
-    const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
-    const rightNormalized = normalizeIndexValue(rightValue, right.column);
-    const matches = compareNormalized(leftNormalized, rightNormalized) === 0;
-    return op === "is" ? matches : !matches;
-  }
-
-  if (isNullish(leftValue) || isNullish(rightValue)) {
-    return false;
-  }
-
-  if (op === "in" || op === "not in") {
-    if (!Array.isArray(rightValue)) {
-      throw new Error(`Operator "${op}" expects an array value.`);
-    }
-
-    const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
-    let hasNull = false;
-    let hasMatch = false;
-
-    for (const item of rightValue) {
-      const resolved = resolveComparisonValue(
-        item,
-        leftColumn,
-        table,
-        row,
-        namespaceStore,
-        resolver,
-        now,
-      );
-      if (isNullish(resolved.value)) {
-        hasNull = true;
-        continue;
-      }
-      const normalized = normalizeIndexValue(resolved.value, leftColumn);
-      if (compareNormalized(leftNormalized, normalized) === 0) {
-        hasMatch = true;
-        break;
-      }
-    }
-
-    if (hasMatch) {
-      return op === "in";
-    }
-
-    if (hasNull) {
-      return false;
-    }
-
-    return op === "not in";
-  }
-
-  if (
-    op === "contains" ||
-    op === "starts with" ||
-    op === "ends with" ||
-    op === "not contains" ||
-    op === "not starts with" ||
-    op === "not ends with"
-  ) {
-    const leftLike = normalizeLikeValue(leftValue, leftColumn);
-    const rightLike = normalizeLikeValue(rightValue, right.column);
-
-    if (leftLike === null || rightLike === null) {
-      return false;
-    }
-
-    const leftText = leftLike.toLowerCase();
-    const rightText = rightLike.toLowerCase();
-    let matches = false;
-
-    if (op.includes("contains")) {
-      matches = leftText.includes(rightText);
-    } else if (op.includes("starts with")) {
-      matches = leftText.startsWith(rightText);
-    } else {
-      matches = leftText.endsWith(rightText);
-    }
-
-    if (op.startsWith("not ")) {
-      return !matches;
-    }
-    return matches;
-  }
-
-  const leftNormalized = normalizeIndexValue(leftValue, leftColumn);
-  const rightNormalized = normalizeIndexValue(rightValue, right.column);
-  const comparison = compareNormalized(leftNormalized, rightNormalized);
-
-  switch (op) {
-    case "=":
-      return comparison === 0;
-    case "!=":
-      return comparison !== 0;
-    case ">":
-      return comparison > 0;
-    case ">=":
-      return comparison >= 0;
-    case "<":
-      return comparison < 0;
-    case "<=":
-      return comparison <= 0;
-    default:
-      throw new Error(`Unsupported operator "${op}".`);
   }
 };

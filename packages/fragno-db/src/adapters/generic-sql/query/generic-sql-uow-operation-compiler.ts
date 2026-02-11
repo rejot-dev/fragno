@@ -8,7 +8,7 @@ import type {
   MutationOperation,
   CompiledMutation,
 } from "../../../query/unit-of-work/unit-of-work";
-import type { AnyColumn, AnySchema } from "../../../schema/create";
+import type { AnyColumn, AnySchema, AnyTable } from "../../../schema/create";
 import { buildCondition } from "../../../query/condition-builder";
 import { createSQLQueryCompiler } from "./create-sql-query-compiler";
 import { SQLQueryCompiler } from "./sql-query-compiler";
@@ -24,6 +24,38 @@ import { createColdKysely } from "../migration/cold-kysely";
  * Uses SQLQueryCompiler for dialect-specific SQL generation while handling
  * high-level business logic like cursor pagination, version checking, and index resolution.
  */
+function resolveIndexOrdering(
+  orderByIndex: { indexName: string; direction: "asc" | "desc" } | undefined,
+  table: AnyTable,
+): {
+  indexColumns: AnyColumn[];
+  orderDirection: "asc" | "desc";
+  orderBy: [AnyColumn, "asc" | "desc"][] | undefined;
+} {
+  if (!orderByIndex) {
+    return { indexColumns: [], orderDirection: "asc", orderBy: undefined };
+  }
+
+  const index = table.indexes[orderByIndex.indexName];
+  const orderDirection = orderByIndex.direction;
+  let indexColumns: AnyColumn[];
+
+  if (!index) {
+    if (orderByIndex.indexName === "_primary") {
+      indexColumns = [table.getIdColumn()];
+    } else {
+      throw new Error(`Index "${orderByIndex.indexName}" not found on table "${table.name}"`);
+    }
+  } else {
+    indexColumns = index.columns;
+  }
+
+  const orderBy: [AnyColumn, "asc" | "desc"][] | undefined =
+    indexColumns.length > 0 ? indexColumns.map((col) => [col, orderDirection]) : undefined;
+
+  return { indexColumns, orderDirection, orderBy };
+}
+
 export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<CompiledQuery> {
   private readonly sqliteStorageMode?: SQLiteStorageMode;
 
@@ -89,34 +121,11 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       ...findManyOptions
     } = op.options;
 
-    // Get index columns for ordering and cursor pagination
-    let indexColumns: AnyColumn[] = [];
-    let orderDirection: "asc" | "desc" = "asc";
-
-    if (orderByIndex) {
-      const index = op.table.indexes[orderByIndex.indexName];
-      orderDirection = orderByIndex.direction;
-
-      if (!index) {
-        // If _primary index doesn't exist, fall back to internal ID column
-        if (orderByIndex.indexName === "_primary") {
-          indexColumns = [op.table.getIdColumn()];
-        } else {
-          throw new Error(
-            `Index "${orderByIndex.indexName}" not found on table "${op.table.name}"`,
-          );
-        }
-      } else {
-        // Order by all columns in the index with the specified direction
-        indexColumns = index.columns;
-      }
-    }
-
-    // Convert orderByIndex to orderBy format
-    let orderBy: [AnyColumn, "asc" | "desc"][] | undefined;
-    if (indexColumns.length > 0) {
-      orderBy = indexColumns.map((col) => [col, orderDirection]);
-    }
+    // Resolve index columns and ordering
+    const { indexColumns, orderDirection, orderBy } = resolveIndexOrdering(
+      orderByIndex,
+      op.table,
+    );
 
     // Handle cursor pagination - build a cursor condition
     // TODO: Multi-column cursor pagination not yet supported

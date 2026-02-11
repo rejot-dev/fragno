@@ -16,7 +16,7 @@ import type {
   UOWDecoder,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import { buildCondition } from "../../query/condition-builder";
+import { buildCondition, type Condition } from "../../query/condition-builder";
 import {
   encodeValues,
   encodeValuesWithDbDefaults,
@@ -628,47 +628,17 @@ const buildCursorKey = (
   });
 };
 
-const findRows = (
-  op: Extract<RetrievalOperation<AnySchema>, { type: "find" }>,
-  namespaceStore: InMemoryNamespaceStore,
-  tableStore: InMemoryTableStore,
-  resolver?: NamingResolver,
-  now: () => Date = () => new Date(),
-): InMemoryRow[] => {
-  const table = op.table;
-  const orderByIndex = op.options.orderByIndex;
-  const orderIndexName = orderByIndex?.indexName ?? op.indexName;
-  const orderIndex = tableStore.indexes.get(orderIndexName);
-  if (!orderIndex) {
-    throw new Error(`Missing in-memory index "${orderIndexName}" on table "${table.name}".`);
-  }
-  const direction = orderByIndex?.direction ?? "asc";
-  const afterKey = buildCursorKey(
-    op.options.after,
-    table,
-    orderIndex.definition.columnNames,
-    resolver,
-  );
-  const beforeKey = buildCursorKey(
-    op.options.before,
-    table,
-    orderIndex.definition.columnNames,
-    resolver,
-  );
-  const limit =
-    op.withCursor && op.options.pageSize !== undefined
-      ? op.options.pageSize + 1
-      : op.options.pageSize;
-
-  const scanOptions = {
-    direction,
-    limit,
-    start: undefined as readonly unknown[] | undefined,
-    startInclusive: true,
-    end: undefined as readonly unknown[] | undefined,
-    endInclusive: true,
-  };
-
+const applyCursorBounds = (
+  scanOptions: {
+    start: readonly unknown[] | undefined;
+    startInclusive: boolean;
+    end: readonly unknown[] | undefined;
+    endInclusive: boolean;
+  },
+  afterKey: readonly unknown[] | undefined,
+  beforeKey: readonly unknown[] | undefined,
+  direction: "asc" | "desc",
+): void => {
   if (afterKey) {
     if (direction === "asc") {
       scanOptions.start = afterKey;
@@ -688,18 +658,19 @@ const findRows = (
       scanOptions.startInclusive = false;
     }
   }
+};
 
-  const entries = orderIndex.index.scan(scanOptions);
-
-  const whereResult = op.options.where
-    ? buildCondition(table.columns, op.options.where)
-    : undefined;
-
-  if (whereResult === false) {
-    return [];
-  }
-
-  const condition = whereResult === true ? undefined : whereResult;
+const collectFilteredRows = (
+  entries: readonly { value: bigint }[],
+  tableStore: InMemoryTableStore,
+  table: AnyTable,
+  op: Extract<RetrievalOperation<AnySchema>, { type: "find" }>,
+  condition: Condition | undefined,
+  namespaceStore: InMemoryNamespaceStore,
+  resolver: NamingResolver | undefined,
+  now: () => Date,
+  limit: number | undefined,
+): InMemoryRow[] => {
   const results: InMemoryRow[] = [];
 
   for (const entry of entries) {
@@ -744,6 +715,74 @@ const findRows = (
   }
 
   return results;
+};
+
+const findRows = (
+  op: Extract<RetrievalOperation<AnySchema>, { type: "find" }>,
+  namespaceStore: InMemoryNamespaceStore,
+  tableStore: InMemoryTableStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
+): InMemoryRow[] => {
+  const table = op.table;
+  const orderByIndex = op.options.orderByIndex;
+  const orderIndexName = orderByIndex?.indexName ?? op.indexName;
+  const orderIndex = tableStore.indexes.get(orderIndexName);
+  if (!orderIndex) {
+    throw new Error(`Missing in-memory index "${orderIndexName}" on table "${table.name}".`);
+  }
+  const direction = orderByIndex?.direction ?? "asc";
+  const afterKey = buildCursorKey(
+    op.options.after,
+    table,
+    orderIndex.definition.columnNames,
+    resolver,
+  );
+  const beforeKey = buildCursorKey(
+    op.options.before,
+    table,
+    orderIndex.definition.columnNames,
+    resolver,
+  );
+  const limit =
+    op.withCursor && op.options.pageSize !== undefined
+      ? op.options.pageSize + 1
+      : op.options.pageSize;
+
+  const scanOptions = {
+    direction,
+    limit,
+    start: undefined as readonly unknown[] | undefined,
+    startInclusive: true,
+    end: undefined as readonly unknown[] | undefined,
+    endInclusive: true,
+  };
+
+  applyCursorBounds(scanOptions, afterKey, beforeKey, direction);
+
+  const entries = orderIndex.index.scan(scanOptions);
+
+  const whereResult = op.options.where
+    ? buildCondition(table.columns, op.options.where)
+    : undefined;
+
+  if (whereResult === false) {
+    return [];
+  }
+
+  const condition = whereResult === true ? undefined : whereResult;
+
+  return collectFilteredRows(
+    entries,
+    tableStore,
+    table,
+    op,
+    condition,
+    namespaceStore,
+    resolver,
+    now,
+    limit,
+  );
 };
 
 const countRows = (
@@ -1235,6 +1274,77 @@ export const createInMemoryUowCompiler = (): UOWCompiler<InMemoryCompiledQuery> 
   },
 });
 
+const resolveMutationTableContext = (
+  operation: { schema: AnySchema; namespace?: string | null; table: string },
+  store: InMemoryStore,
+  resolverFactory?: ResolverFactory,
+) => {
+  const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+  const namespaceStore = getNamespaceStore(store, operation.schema, operation.namespace, resolver);
+  const table = operation.schema.tables[operation.table];
+  if (!table) {
+    throw new Error(`Invalid table name ${operation.table}.`);
+  }
+  const tableStore = getTableStore(namespaceStore, table, resolver);
+  return { resolver, namespaceStore, table, tableStore };
+};
+
+const dispatchMutation = (
+  operation: MutationOperation<AnySchema>,
+  store: InMemoryStore,
+  options: ResolvedInMemoryAdapterOptions,
+  resolverFactory: ResolverFactory | undefined,
+  createdInternalIds: (bigint | null)[],
+  rollbackActions: Array<() => void>,
+): void => {
+  const { resolver, namespaceStore, table, tableStore } = resolveMutationTableContext(
+    operation,
+    store,
+    resolverFactory,
+  );
+
+  switch (operation.type) {
+    case "create": {
+      const previousInternalId = tableStore.nextInternalId;
+      const internalId = createRow(operation, namespaceStore, tableStore, options, resolver);
+      createdInternalIds.push(internalId);
+      rollbackActions.push(() => {
+        const row = tableStore.rows.get(internalId);
+        if (row) {
+          for (const indexStore of tableStore.indexes.values()) {
+            const key = buildIndexKey(table, indexStore.definition, row, resolver);
+            indexStore.index.remove(key, internalId);
+          }
+          tableStore.rows.delete(internalId);
+        }
+        tableStore.nextInternalId = previousInternalId;
+      });
+      return;
+    }
+    case "update": {
+      const rollback = updateRow(operation, namespaceStore, tableStore, options, resolver);
+      if (rollback) {
+        rollbackActions.push(rollback);
+      }
+      return;
+    }
+    case "delete": {
+      const rollback = deleteRow(operation, namespaceStore, tableStore, table, options, resolver);
+      if (rollback) {
+        rollbackActions.push(rollback);
+      }
+      return;
+    }
+    case "check":
+      checkRow(operation, tableStore, table, resolver);
+      return;
+    default: {
+      const exhaustiveCheck: never = operation;
+      throw new Error(`Unsupported in-memory mutation "${JSON.stringify(exhaustiveCheck)}".`);
+    }
+  }
+};
+
 export const createInMemoryUowExecutor = (
   store: InMemoryStore,
   options: ResolvedInMemoryAdapterOptions,
@@ -1304,103 +1414,14 @@ export const createInMemoryUowExecutor = (
       }
 
       for (const compiled of mutationBatch) {
-        const operation = compiled.query;
-
-        if (operation.type === "create") {
-          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
-          const namespaceStore = getNamespaceStore(
-            store,
-            operation.schema,
-            operation.namespace,
-            resolver,
-          );
-          const table = operation.schema.tables[operation.table];
-          if (!table) {
-            throw new Error(`Invalid table name ${operation.table}.`);
-          }
-          const tableStore = getTableStore(namespaceStore, table, resolver);
-          const previousInternalId = tableStore.nextInternalId;
-          const internalId = createRow(operation, namespaceStore, tableStore, options, resolver);
-          createdInternalIds.push(internalId);
-          rollbackActions.push(() => {
-            const row = tableStore.rows.get(internalId);
-            if (row) {
-              for (const indexStore of tableStore.indexes.values()) {
-                const key = buildIndexKey(table, indexStore.definition, row, resolver);
-                indexStore.index.remove(key, internalId);
-              }
-              tableStore.rows.delete(internalId);
-            }
-            tableStore.nextInternalId = previousInternalId;
-          });
-          continue;
-        }
-
-        if (operation.type === "update") {
-          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
-          const namespaceStore = getNamespaceStore(
-            store,
-            operation.schema,
-            operation.namespace,
-            resolver,
-          );
-          const table = operation.schema.tables[operation.table];
-          if (!table) {
-            throw new Error(`Invalid table name ${operation.table}.`);
-          }
-          const tableStore = getTableStore(namespaceStore, table, resolver);
-          const rollback = updateRow(operation, namespaceStore, tableStore, options, resolver);
-          if (rollback) {
-            rollbackActions.push(rollback);
-          }
-          continue;
-        }
-
-        if (operation.type === "delete") {
-          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
-          const namespaceStore = getNamespaceStore(
-            store,
-            operation.schema,
-            operation.namespace,
-            resolver,
-          );
-          const table = operation.schema.tables[operation.table];
-          if (!table) {
-            throw new Error(`Invalid table name ${operation.table}.`);
-          }
-          const tableStore = getTableStore(namespaceStore, table, resolver);
-          const rollback = deleteRow(
-            operation,
-            namespaceStore,
-            tableStore,
-            table,
-            options,
-            resolver,
-          );
-          if (rollback) {
-            rollbackActions.push(rollback);
-          }
-          continue;
-        }
-
-        if (operation.type === "check") {
-          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
-          const namespaceStore = getNamespaceStore(
-            store,
-            operation.schema,
-            operation.namespace,
-            resolver,
-          );
-          const table = operation.schema.tables[operation.table];
-          if (!table) {
-            throw new Error(`Invalid table name ${operation.table}.`);
-          }
-          const tableStore = getTableStore(namespaceStore, table, resolver);
-          checkRow(operation, tableStore, table, resolver);
-          continue;
-        }
-
-        throw new Error(`Unsupported in-memory mutation "${operation.type}".`);
+        dispatchMutation(
+          compiled.query as MutationOperation<AnySchema>,
+          store,
+          options,
+          resolverFactory,
+          createdInternalIds,
+          rollbackActions,
+        );
       }
 
       if (shouldWriteOutbox && outboxPlan && outboxVersion !== null) {

@@ -11,22 +11,7 @@ const asBuffer = (value: unknown): Buffer | undefined => {
   return undefined;
 };
 
-export const compareNormalizedValues = (left: unknown, right: unknown): number => {
-  if (left === right) {
-    return 0;
-  }
-  if (left === undefined) {
-    return -1;
-  }
-  if (right === undefined) {
-    return 1;
-  }
-  if (left === null) {
-    return -1;
-  }
-  if (right === null) {
-    return 1;
-  }
+const compareByType = (left: unknown, right: unknown): number | undefined => {
   const leftBuffer = asBuffer(left);
   const rightBuffer = asBuffer(right);
   if (leftBuffer && rightBuffer) {
@@ -46,6 +31,29 @@ export const compareNormalizedValues = (left: unknown, right: unknown): number =
   }
   if (typeof left === "boolean" && typeof right === "boolean") {
     return left === right ? 0 : left ? 1 : -1;
+  }
+  return undefined;
+};
+
+export const compareNormalizedValues = (left: unknown, right: unknown): number => {
+  if (left === right) {
+    return 0;
+  }
+  if (left === undefined) {
+    return -1;
+  }
+  if (right === undefined) {
+    return 1;
+  }
+  if (left === null) {
+    return -1;
+  }
+  if (right === null) {
+    return 1;
+  }
+  const typed = compareByType(left, right);
+  if (typed !== undefined) {
+    return typed;
   }
   const leftString = String(left);
   const rightString = String(right);
