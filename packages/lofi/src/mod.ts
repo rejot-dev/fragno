@@ -1,5 +1,7 @@
 export type {
   IndexedDbAdapterOptions,
+  LofiBaseSnapshotOptions,
+  LofiBaseSnapshotRow,
   LofiAdapter,
   LofiClientOptions,
   LofiMutation,
