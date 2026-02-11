@@ -35,6 +35,25 @@ export type LofiAdapter = {
   setMeta(key: string, value: string): Promise<void>;
 };
 
+export type LofiBaseSnapshotRow = {
+  key: [string, string, string, string];
+  endpoint: string;
+  schema: string;
+  table: string;
+  id: string;
+  data: Record<string, unknown>;
+  _lofi: {
+    versionstamp: string;
+    norm: Record<string, unknown>;
+    internalId: number;
+    version: number;
+  };
+};
+
+export type LofiBaseSnapshotOptions = {
+  schemaNames?: string[];
+};
+
 export type IndexedDbAdapterOptions = {
   dbName?: string;
   endpointName: string;
