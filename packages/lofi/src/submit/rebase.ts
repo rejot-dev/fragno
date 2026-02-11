@@ -87,7 +87,14 @@ export const rebaseSubmitQueue = async (options: {
   queue: LofiSubmitCommand[];
   replayCommand: (command: LofiSubmitCommand) => Promise<void>;
 }): Promise<RebaseResult> => {
-  const { adapter, entries, cursorKey, confirmedCommandIds, queue, replayCommand } = options;
+  const {
+    adapter,
+    entries,
+    cursorKey,
+    confirmedCommandIds,
+    queue,
+    replayCommand: _replayCommand,
+  } = options;
 
   const { appliedEntries, lastVersionstamp } = await applyOutboxEntries({
     adapter,
@@ -98,20 +105,11 @@ export const rebaseSubmitQueue = async (options: {
   const confirmedSet = new Set(confirmedCommandIds);
   const remaining: LofiSubmitCommand[] = [];
 
-  let stop = false;
   for (const command of queue) {
-    if (stop) {
-      remaining.push(command);
+    if (confirmedSet.has(command.id)) {
       continue;
     }
-
-    if (!confirmedSet.has(command.id)) {
-      stop = true;
-      remaining.push(command);
-      continue;
-    }
-
-    await replayCommand(command);
+    remaining.push(command);
   }
 
   return { appliedEntries, lastVersionstamp, queue: remaining };

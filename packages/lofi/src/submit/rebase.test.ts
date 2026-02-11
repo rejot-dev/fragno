@@ -28,7 +28,7 @@ const makeEntry = (versionstamp: string): OutboxEntry => ({
 });
 
 describe("rebaseSubmitQueue", () => {
-  it.todo("does not replay confirmed commands after applying server entries", async () => {
+  it("does not replay confirmed commands after applying server entries", async () => {
     const meta = new Map<string, string>();
     const adapter: LofiAdapter = {
       applyOutboxEntry: vi.fn(async () => ({ applied: true })),
