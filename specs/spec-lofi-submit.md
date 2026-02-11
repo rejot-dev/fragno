@@ -9,8 +9,9 @@ None.
 This spec adds **client → server submit** for local‑first clients using a Wilcofirst‑style sync
 loop, extended to support **readful commands** (commands that perform reads before writes). It uses
 an **outbox‑mutation log** table rather than per‑row clocks, so we keep MySQL compatibility and
-avoid schema changes to user tables. It also introduces a **separate optimistic overlay layer** so
-client reads can include optimistic changes without mutating the durable IndexedDB base.
+avoid schema changes to user tables. It also introduces a **stacked local adapter** that merges a
+durable IndexedDB base with an **in‑memory optimistic overlay**, so client reads include optimistic
+changes without mutating IndexedDB.
 
 Key properties:
 
@@ -22,8 +23,10 @@ Key properties:
   handlerTx), and returns unseen outbox entries so the client can **rebase** immediately.
 - Commands are **isomorphic** handlerTx units: identical handler code runs on server and in the
   browser. A context object supplies **auth‑scoped query guards** on the server.
-- Clients maintain an **in‑memory optimistic overlay** that is rebuilt from the durable command
-  queue on reload and after submit confirmations.
+- Clients maintain an **in‑memory optimistic overlay** that stores optimistic writes only; reads
+  flow through a **StackedLofiAdapter** that merges overlay + base state.
+- After submit confirmations, the overlay is cleared and queued commands are replayed into the
+  overlay (base remains in IndexedDB).
 
 Versionstamps are stored as **hex strings** in the database (per current repository behavior), so
 all new tables and comparisons use string versionstamps.
@@ -76,6 +79,9 @@ all new tables and comparisons use string versionstamps.
 - **Schema name**: the logical schema name (`schema.name`) used by clients.
 - **Namespace**: the resolved database namespace for a schema, determined by the server from the
   adapter registry.
+- **Overlay adapter**: `InMemoryLofiAdapter`, stores optimistic changes only.
+- **Stacked adapter**: `StackedLofiAdapter`, merges base + overlay for reads.
+- **Tombstone**: overlay marker that suppresses a base row (delete).
 
 ## 4. Goals / Non‑goals
 
@@ -88,8 +94,8 @@ all new tables and comparisons use string versionstamps.
    updates, using a different context for auth/query guards.
 5. Return **unseen outbox entries** as part of submit responses to enable immediate rebase.
 6. Keep existing outbox payload format stable for current consumers.
-7. Add a **separate optimistic overlay layer** that is rebuilt from the durable command queue and
-   keeps optimistic state out of the IndexedDB base.
+7. Add a **separate optimistic overlay adapter** plus a **stacked adapter** that merges overlay +
+   base for reads, keeping optimistic state out of IndexedDB.
 
 ### 4.2 Non‑goals
 
@@ -117,11 +123,12 @@ Create new sync‑focused modules to keep logic isolated from existing UOW + out
 - `packages/lofi/src/submit/`
   - `client.ts`: submit helper + command queue persistence
   - `local-handler-tx.ts`: local handlerTx runtime (optimistic execution)
-  - `rebase.ts`: apply unseen entries + rebuild optimistic overlay
-- `packages/lofi/src/optimistic/`
-  - `overlay-store.ts`: in‑memory optimistic row store + indexes (browser‑safe)
-  - `overlay-manager.ts`: rebuild overlay from IndexedDB base + queued commands
-  - `overlay-query.ts`: query facade that reads from the overlay store
+  - `rebase.ts`: apply unseen entries + reset/replay optimistic overlay
+- `packages/lofi/src/adapters/`
+  - `in-memory/adapter.ts`: `InMemoryLofiAdapter` (overlay row store + indexes + query engine)
+  - `in-memory/query.ts`: in‑memory query engine (refactor from `overlay-query.ts`)
+  - `stacked/adapter.ts`: `StackedLofiAdapter` (merge base + overlay)
+  - `stacked/merge.ts`: merge helpers (dedupe, patch joins, pagination/cursor)
 - `packages/lofi/src/cli/`
   - extend existing CLI with `serve`, `client`, and `scenario` modes
   - `scenario.ts`: DSL runner + helpers
@@ -138,6 +145,9 @@ Create new sync‑focused modules to keep logic isolated from existing UOW + out
 - Extend `ExecuteTxOptions` (handlerTx) to support **read tracking hooks** (see §11).
 - Add `withSyncCommands(...)` or equivalent registration hook to tie commands to fragments (see
   §7.4).
+- Add new `@fragno-dev/lofi` exports:
+  - `InMemoryLofiAdapter` (overlay adapter)
+  - `StackedLofiAdapter` (base + overlay adapter)
 
 ### 5.5 Existing files touched (high‑level)
 
@@ -156,7 +166,13 @@ Create new sync‑focused modules to keep logic isolated from existing UOW + out
   handlers.
 - `packages/fragno/src/mod-client.ts`: add client stub for `withSyncCommands`.
 - `packages/fragno-db/package.json`: add `./sync` export.
-- `packages/lofi/README.md`: describe submit flow and sync command usage.
+- `packages/lofi/src/types.ts`: align LofiAdapter + LofiQueryableAdapter exports for stacked usage.
+- `packages/lofi/src/mod.ts`: export InMemory/Stacked adapters.
+- `packages/lofi/src/adapters/in-memory/*`: refactor overlay store/query into adapter.
+- `packages/lofi/src/adapters/stacked/*`: new stacked adapter + merge logic.
+- `packages/lofi/src/submit/local-handler-tx.ts`: read via stacked adapter.
+- `packages/lofi/src/submit/rebase.ts`: reset/replay overlay without base snapshot.
+- `packages/lofi/README.md`: describe submit flow + stacked adapter usage.
 
 ## 6. Data Model
 
@@ -532,8 +548,8 @@ Provide a **local handlerTx runtime** that uses the same handler code as the ser
 against Lofi storage.
 
 - Implemented in `packages/lofi/src/submit/local-handler-tx.ts`.
-- Uses `LofiQueryableAdapter.createQueryEngine(...)` for reads.
-- Converts UOW mutations into `LofiMutation` and applies them via `applyMutations`.
+- Uses `LofiQueryableAdapter.createQueryEngine(...)` for reads (backed by `StackedLofiAdapter`).
+- Converts UOW mutations into `LofiMutation` and applies them via `applyMutations` (overlay only).
 - Executes serviceTx calls inside handlerTx (`withServiceCalls`) using the same local UOW.
 
 ### 12.2 Command queue + rebase
@@ -542,10 +558,9 @@ against Lofi storage.
 - On submit response:
   1. Apply all unseen outbox entries to the **IndexedDB base**.
   2. Remove **confirmed** command ids from the durable queue.
-  3. Rebuild the optimistic overlay: clear it, hydrate from the IndexedDB base snapshot, and replay
-     remaining queued commands in order.
-- Replay uses handlerTx and executes serviceTx calls via `withServiceCalls` against the overlay
-  store (not the IndexedDB base).
+  3. Reset the optimistic overlay and replay remaining queued commands in order.
+- Replay uses handlerTx and executes serviceTx calls via `withServiceCalls` against the overlay (not
+  the IndexedDB base).
 
 ### 12.3 Client vs server context
 
@@ -553,30 +568,74 @@ against Lofi storage.
 - Server context is derived from the authenticated request and may **tighten** query scopes.
 - Service implementations must be browser‑safe; external IO is not allowed in handlerTx/serviceTx.
 
-### 12.4 Optimistic overlay layer
+### 12.4 In‑memory overlay adapter
 
-The client maintains an **in‑memory overlay store** for optimistic mutations. The IndexedDB adapter
-remains the durable base (server‑confirmed state only).
+The optimistic overlay is an **in‑memory Lofi adapter** (`InMemoryLofiAdapter`) that implements
+`LofiAdapter` + `LofiQueryableAdapter`. It stores **only optimistic changes** (no base snapshot),
+and is intended to be small and fast.
 
 Key behaviors:
 
-- **Overlay contents**: materialized view built by applying queued commands on top of the base
-  snapshot. Optimistic writes never touch IndexedDB directly.
-- **Hydration**: on startup (or after reload), rebuild the overlay by:
-  1. Scanning IndexedDB rows for the endpoint + schema set (using `idx_schema_table` in
-     `packages/lofi/src/indexeddb/adapter.ts`).
-  2. Seeding the overlay store with those rows (preserving external ids and versions).
-  3. Replaying the durable submit queue in order via handlerTx.
-- **Rebase**: after submit responses, remove confirmed commands and rebuild the overlay from the
-  updated base snapshot.
-- **Reads**: queries must execute against the overlay store so UI always sees optimistic changes.
+- **Overlay contents**: only optimistic creates/updates plus tombstones for deletes. IndexedDB is
+  the durable base (server‑confirmed state only).
+- **Reset**: on startup or rebase, clear overlay state and replay queued commands into the overlay.
+- **applyMutations**: writes to the overlay only.
+  - `create`: insert a full row into the overlay store.
+  - `update`: materialize a full row (see §12.5) and store it as the overlay replacement.
+  - `delete`: record a tombstone for the externalId so base rows can be suppressed.
+- **applyOutboxEntry**: supported in-memory inbox + row updates for parity with IndexedDB.
+- **Row materialization**: applyOutboxEntry/applyMutations update overlay row entities directly (no
+  base snapshot dependency).
+- **Query engine**: evaluates queries against overlay rows only, using the same semantics as the
+  IndexedDB query engine (conditions, ordering, joins, cursor encoding).
 
 Implementation notes:
 
-- The overlay store should be **browser‑safe** and not depend on Node‑only primitives.
-- Reuse the existing in‑memory index/store primitives in
-  `packages/fragno-db/src/adapters/in-memory/*` by extracting or re‑exporting a browser‑safe subset,
-  or re‑implement compatible structures inside `@fragno-dev/lofi`.
+- The overlay store must be **browser‑safe** (no Node‑only primitives).
+- Reuse or re‑implement the in‑memory index/store primitives from
+  `packages/fragno-db/src/adapters/in-memory/*` in a browser‑safe form.
+
+### 12.5 Stacked adapter + query merge semantics
+
+`StackedLofiAdapter` wraps:
+
+- **Base**: `IndexedDbAdapter` (durable, server‑confirmed state)
+- **Overlay**: `InMemoryLofiAdapter` (optimistic state only)
+
+Adapter behavior:
+
+- `applyOutboxEntry(...)` → base only.
+- `applyMutations(...)` → overlay only.
+- `getMeta`/`setMeta` → base only.
+- `createQueryEngine(...)` → stacked query engine that merges base + overlay.
+
+Materializing overlay rows:
+
+- For `update` mutations, the stacked adapter must materialize a **full row snapshot** by reading
+  the base row (by externalId) and applying the update values before inserting into overlay. This
+  keeps overlay rows self‑contained for query evaluation.
+- For `delete`, store a tombstone keyed by externalId (schema/table).
+
+Merge algorithm (find/findFirst/findWithCursor):
+
+1. Build the query plan from the `FindBuilder` (index, where, orderBy, joins, cursor, pageSize).
+2. Execute the query against the **base** adapter (with joins) to get base results.
+3. Execute the same query against the **overlay** adapter (overlay rows only).
+4. Patch base results using overlay state:
+   - If a base row’s externalId has a tombstone, drop it.
+   - If overlay has a replacement row for the same externalId, replace the base row.
+   - For joined results, traverse the join plan and replace/remove nested rows when overlay has an
+     updated row or tombstone for that table + externalId.
+5. Union overlay‑only rows with the patched base results, then apply ordering + cursor + pageSize in
+   memory to ensure optimistic rows are included.
+6. For cursor pagination, if the merged page is short and the base has more rows, fetch additional
+   base pages and repeat the merge until the page is filled (iterative fetch).
+
+Testing guidance:
+
+- Validate merge + pagination by using **two diverging in-memory adapters** (base vs overlay), then
+  running identical queries and asserting merged results match expected ordering and cursor
+  behavior.
 
 ## 13. Unplugin + Build Guarantees
 
@@ -611,6 +670,8 @@ Implementation notes:
 - Internal schema migration adds `fragno_db_outbox_mutations` + `fragno_db_sync_requests`.
 - Outbox versionstamp columns are strings; new logic assumes string comparison.
 - Submit endpoint is available only when outbox is enabled.
+- Breaking changes: `IndexedDbAdapter.exportBaseSnapshot` is removed; optimistic overlay is now an
+  `InMemoryLofiAdapter` + `StackedLofiAdapter` (no base snapshot seeding).
 
 ## 17. Decisions (Locked)
 
@@ -627,8 +688,11 @@ Implementation notes:
 - Conflict checks include write keys.
 - Optimistic mutations are applied to a **separate in‑memory overlay**; IndexedDB stores only
   server‑confirmed state.
-- The overlay is rebuilt from the IndexedDB base snapshot plus the durable submit queue whenever the
-  queue changes or a submit is confirmed.
+- The overlay is reset and replayed from the durable submit queue (no base snapshot seeding).
+- `InMemoryLofiAdapter.applyOutboxEntry(...)` updates in‑memory rows + inbox for parity.
+- Stacked pagination uses **iterative base fetching** until the merged page is full.
+- `IndexedDbAdapter.exportBaseSnapshot` is removed.
+- Breaking changes are acceptable for this refactor (adapter surface + overlay behavior).
 
 ## 18. Lofi CLI + Scenario DSL
 
