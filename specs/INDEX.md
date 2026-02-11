@@ -24,6 +24,8 @@ Format:
   checker behavior.
 - [Fragno DB Outbox — Spec](./spec-outbox.md) — Optional outbox with a global clock stored in
   internal settings, ordered UOW mutation capture, and programmatic retrieval.
+- [Fragno Lofi Submit + Conflict Detection — Spec](./spec-lofi-submit.md) — Client submit endpoint,
+  conflict detection via outbox mutation log, and optimistic overlay rebase semantics.
 - [Fragno Prisma Support — Prisma Schema Generator Adapter — Spec](./spec-prisma-adapter.md) —
   Prisma integration spec covering schema generation rules, adapter responsibilities, naming
   conventions, provider-specific type mappings, migration expectations, and runtime serialization
