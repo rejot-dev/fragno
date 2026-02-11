@@ -1,0 +1,28 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "41386451f46a",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/fragno/src/api/fragment-instantiator.ts",
+    "packages/lofi/src/query/engine.ts",
+    "packages/lofi/src/query/normalize.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/41/386451f46a/0/metadata.json",
+      "transcript": "/41/386451f46a/0/full.jsonl",
+      "context": "/41/386451f46a/0/context.md",
+      "content_hash": "/41/386451f46a/0/content_hash.txt",
+      "prompt": "/41/386451f46a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 145,
+    "cache_creation_tokens": 1126961,
+    "cache_read_tokens": 12795465,
+    "output_tokens": 98775,
+    "api_call_count": 134
+  }
+}

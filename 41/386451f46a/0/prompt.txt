@@ -1,0 +1,475 @@
+Complete refactoring tasks in fp
+
+---
+
+Base directory for this skill: /home/jan/.claude/plugins/cache/fiberplane-claude-code-plugins/fp/0.13.0/skills/fp-implement
+
+# FP Implement Skill
+
+**Find, claim, and complete work on issues.**
+
+## Prerequisites
+
+Before using fp commands, check setup:
+
+```bash
+# Check if fp is installed
+fp --version
+```
+
+**If fp is not installed**, tell the user:
+> The `fp` CLI is not installed. Install it with:
+> ```bash
+> curl -fsSL https://setup.fp.dev/install.sh | sh -s
+> ```
+
+```bash
+# Check if project is initialized
+fp tree
+```
+
+**If project is not initialized**, ask the user if they want to initialize:
+> This project hasn't been initialized with fp. Would you like to initialize it?
+
+If yes:
+```bash
+fp init
+```
+
+---
+
+## Core Workflow
+
+```
+1. Find work     → fp tree, fp issue list --status todo
+2. Claim work    → fp issue update --status in-progress <PREFIX>-X
+3. Do work       → implement the task
+4. Comment often → fp comment <PREFIX>-X "progress update"
+5. Complete      → fp issue update --status done <PREFIX>-X
+```
+
+---
+
+## Finding Work
+
+### See the Full Picture
+
+```bash
+fp tree
+```
+
+Shows all issues with hierarchy, status, and dependencies.
+
+```bash
+fp tree --status todo
+```
+
+Shows only todo items (filters out done work).
+
+```bash
+fp tree <PREFIX>-X
+```
+
+Shows a specific issue and its children - useful for focusing on one feature/epic.
+
+### List by Status
+
+```bash
+fp issue list --status todo          # Available to pick up
+fp issue list --status in-progress   # Currently active
+fp issue list --status done          # Completed
+fp issue list                        # All issues
+```
+
+### Pick the Right Task
+
+Look for tasks that:
+- Have status `todo`
+- Have no dependencies, OR all dependencies are `done`
+- Match your current focus/expertise
+
+---
+
+## Claiming Work
+
+### Mark as In-Progress
+
+```bash
+fp issue update --status in-progress <PREFIX>-2
+```
+
+This captures the current VCS state as the starting point for tracking changes.
+
+### Log That You're Starting
+
+```bash
+fp comment <PREFIX>-2 "Starting work. First step: implement the User model schema"
+```
+
+### Load Context
+
+```bash
+fp context <PREFIX>-2
+```
+
+Shows issue details, description, and related information.
+
+---
+
+## During Work
+
+### Comment Frequently
+
+Log progress at key milestones:
+
+```bash
+fp comment <PREFIX>-2 "Completed schema design. Added User, Session, Token models to src/models/"
+
+fp comment <PREFIX>-2 "Hit a snag: OAuth library doesn't support refresh tokens out of the box. Investigating alternatives."
+
+fp comment <PREFIX>-2 "Resolved: using custom refresh logic. Proceeding with implementation."
+```
+
+**When to comment:**
+- When you start a task
+- When you complete a significant milestone
+- When you discover important information
+- When you encounter problems
+- When you finish work
+
+### Check Progress
+
+```bash
+fp issue diff <PREFIX>-2 --stat   # Quick view of changed files
+fp issue files <PREFIX>-2         # List files changed
+fp issue diff <PREFIX>-2          # Full diff
+```
+
+---
+
+## Completing Work
+
+### Mark as Done
+
+```bash
+fp issue update --status done <PREFIX>-2
+```
+
+This captures the current VCS state as the endpoint.
+
+### Add Completion Comment
+
+```bash
+fp comment <PREFIX>-2 "Task completed. Implemented User, Session, and Token models with Drizzle ORM. All tests passing."
+```
+
+---
+
+## Continuing Previous Work
+
+### Find In-Progress Work
+
+```bash
+fp issue list --status in-progress
+```
+
+### Load Context
+
+```bash
+fp context <PREFIX>-5
+```
+
+### Review Recent Activity
+
+```bash
+fp log <PREFIX>-5 --limit 5
+```
+
+### See What's Changed
+
+```bash
+fp issue diff <PREFIX>-5 --stat
+```
+
+### Resume
+
+```bash
+fp comment <PREFIX>-5 "Resuming work. Current focus: finishing the error handling logic"
+```
+
+---
+
+## Breaking Down Work
+
+If a task is too large, break it down:
+
+```bash
+# Create sub-tasks
+fp issue create --title "Part 1: Setup" --parent <PREFIX>-4
+fp issue create --title "Part 2: Implementation" --parent <PREFIX>-4 --depends "<PREFIX>-10"
+fp issue create --title "Part 3: Tests" --parent <PREFIX>-4 --depends "<PREFIX>-11"
+
+# Document
+fp comment <PREFIX>-4 "Broke down into sub-tasks: <PREFIX>-10, <PREFIX>-11, <PREFIX>-12. Working on <PREFIX>-10 first."
+
+# Work on sub-tasks
+fp issue update --status in-progress <PREFIX>-10
+```
+
+---
+
+## Viewing Changes
+
+### For a Single Issue
+
+```bash
+fp issue diff <PREFIX>-2           # Full diff since task started
+fp issue diff <PREFIX>-2 --stat    # Just file stats
+fp issue files <PREFIX>-2          # List of changed files
+```
+
+### For Parent Issues
+
+For parent issues with children, these commands aggregate changes from all descendants:
+
+```bash
+fp issue diff <PREFIX>-1 --stat    # All changes across child tasks
+fp issue files <PREFIX>-1          # All files changed by descendants
+```
+
+---
+
+## Quick Reference
+
+### Essential Commands
+
+```bash
+# Find work
+fp tree                              # Full hierarchy
+fp tree --status todo                # Only todo items
+fp tree <PREFIX>-X                   # Focus on one issue
+fp issue list --status todo          # List available tasks
+
+# Claim work
+fp issue update --status in-progress <PREFIX>-X
+fp context <PREFIX>-X
+
+# Log progress
+fp comment <PREFIX>-X "message"
+
+# View changes
+fp issue diff <PREFIX>-X --stat
+fp issue files <PREFIX>-X
+
+# Complete
+fp issue update --status done <PREFIX>-X
+
+# Activity
+fp log --limit 10
+fp log <PREFIX>-X
+```
+
+### Status Values
+
+- `todo` - Not started
+- `in-progress` - Actively being worked on
+- `done` - Completed
+
+### Priority Values (optional)
+
+- `critical` - Blocking other work
+- `high` - Important, do soon
+- `medium` - Normal priority
+- `low` - Nice to have
+
+```bash
+fp issue update --priority high <PREFIX>-X
+```
+
+
+ARGUMENTS: find next task to work on
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **User Request**: "Complete refactoring tasks in fp" - This triggered the fp:fp-implement skill to find and work on refactoring tasks tracked in the fp issue tracker.
+
+2. **Task Discovery**: Found 5 tasks under parent FRAG-pknybbqx "Reduce cyclomatic complexity in top-5 most complex modules":
+   - FRAG-cejsboks: Reduce complexity in lofi query engine (HIGH)
+   - FRAG-hfiytfgo: Reduce complexity in fragment-instantiator (HIGH)
+   - FRAG-qhnnllbn: Reduce complexity in fragno-db in-memory adapter (HIGH)
+   - FRAG-wguybgtb: Reduce complexity in execute-unit-of-work (HIGH)
+   - FRAG-rapfgopp: Reduce complexity in generic SQL where-builder (MEDIUM)
+
+3. **FRAG-cejsboks (COMPLETED)**: Lofi query engine refactoring
+   - Files: `packages/lofi/src/query/engine.ts` and `packages/lofi/src/query/normalize.ts`
+   - Original complexity violations: engine.ts had functions at 49, 39, 24; normalize.ts at 23
+   
+   **normalize.ts changes**: Extracted per-type normalizer functions:
+   - `normalizeDateValue`, `normalizeBoolValue`, `normalizeBigintValue`, `normalizeBinaryValue`
+   - Main `normalizeValue` now uses a switch statement dispatching to these helpers
+   
+   **engine.ts changes**:
+   - Extracted `compareByType` from `compareNormalizedValues` (complexity 24→split into two under-20 functions)
+   - Extracted condition evaluation helpers: `LIKE_OPS` constant, `evaluateIsComparison`, `evaluateInComparison`, `evaluateLikeComparison`, `evaluateCompareCondition`
+   - Simplified `evaluateCondition` (49→~9) by delegating compare case to `evaluateCompareCondition`
+   - Extracted query helpers: `collectAndFilterRows`, `assembleResultRows`, `buildPaginatedResult`
+   - Simplified `runFind` (39→~12) by using the extracted helpers
+   - Added import for `ConditionBuilder` type from conditions.ts
+   - Changed `whereClause` type in `collectAndFilterRows` to properly typed function signature
+   
+   **Error encountered**: TypeScript error with `whereClause: unknown | undefined` - `buildCondition` couldn't infer types. Fixed by importing `ConditionBuilder` and typing as `((builder: ConditionBuilder<Record<string, AnyColumn>>) => Condition | boolean) | undefined`.
+   
+   Result: 0 complexity violations, all tests pass.
+
+4. **FRAG-hfiytfgo (COMPLETED)**: Fragment instantiator refactoring
+   - File: `packages/fragno/src/api/fragment-instantiator.ts`
+   - Original complexity: `instantiateFragment` at 42
+   
+   **Changes**: Extracted 4 helper functions before `instantiateFragment`:
+   - `validateServiceDependencies` - validates required service deps
+   - `tryWithDryRun<T>` - wraps try/catch with dryRun fallback pattern
+   - `initializeServiceMap` - handles for-loop + try/catch pattern for service factories
+   - `resolveAllRoutes` - handles route resolution + internal route prefixing
+   
+   Simplified `instantiateFragment` body to use these helpers, removing repetitive try/catch+dryRun patterns.
+   
+   **Error encountered**: TypeScript error with `resolveAllRoutes` context parameter typed as `Record<string, unknown>` - `resolveRouteFactories` expected `RouteFactoryContext` with specific properties. Fixed by typing context as `{ config: unknown; deps: unknown; services: unknown; serviceDeps: unknown }`.
+   
+   Result: 0 complexity violations, all tests pass.
+
+5. **FRAG-qhnnllbn (IN PROGRESS)**: fragno-db in-memory adapter refactoring
+   - Files: condition-evaluator.ts (45), in-memory-uow.ts (28, 27), value-comparison.ts (24)
+   
+   **value-comparison.ts (COMPLETED)**: Same pattern as lofi engine's compareNormalizedValues. Extracted `compareByType` helper using Buffer instead of Uint8Array.
+   
+   **condition-evaluator.ts (IN PROGRESS)**: Just read the full file, about to apply the same pattern as the lofi engine's evaluateCondition. Need to extract: LIKE_OPS, evaluateIsComparison, evaluateInComparison, evaluateLikeComparison, evaluateCompareCondition helpers.
+   
+   **in-memory-uow.ts (NOT STARTED)**: Need to refactor `findRows` (27) and `executeMutationPhase` (28).
+   - For `findRows`: Extract cursor bounds logic and result assembly
+   - For `executeMutationPhase`: Extract mutation dispatch and shared boilerplate (getResolver/getNamespaceStore/table/tableStore pattern repeated 4 times)
+
+6. The remaining tasks FRAG-wguybgtb and FRAG-rapfgopp haven't been started yet.
+
+Now let me capture the current state precisely - the assistant had just finished reading condition-evaluator.ts (the full file content) and value-comparison.ts was already refactored. The next step is to refactor condition-evaluator.ts, then in-memory-uow.ts.
+
+Summary:
+1. Primary Request and Intent:
+   The user requested "Complete refactoring tasks in fp" - meaning work through all tracked fp issues for reducing cyclomatic complexity. The parent issue FRAG-pknybbqx contains 5 child issues targeting the top-5 most complex modules in the codebase, each needing all functions brought below complexity 20. The approach specified: extract well-named helper functions, use early returns, replace nested conditionals with strategy/lookup patterns. All existing tests must pass after refactoring.
+
+2. Key Technical Concepts:
+   - Cyclomatic complexity reduction (target ≤ 20 per function, measured by oxlint eslint/complexity rule)
+   - Complexity check command: `bash scripts/code-complexity.sh -- <path>` (outputs JSON with complexity per function)
+   - Pattern: Extract `compareByType` helper from large comparison functions (returns `number | undefined`)
+   - Pattern: Extract operator-specific helpers from condition evaluators (evaluateIsComparison, evaluateInComparison, evaluateLikeComparison, evaluateCompareCondition)
+   - Pattern: Extract `tryWithDryRun<T>` for repeated try/catch + dryRun fallback
+   - Pattern: Extract `initializeServiceMap` for repeated service factory loop + try/catch
+   - Pattern: `LIKE_OPS` Set for string operators to replace 6-way `||` chain
+   - Turbo commands: `pnpm exec turbo build/types:check/test --filter=<pkg> --output-logs=errors-only`
+   - fp CLI: `fp tree`, `fp issue update --status`, `fp comment`, `fp context`
+   - ESLint complexity counting: `if`, `case`, `?:`, `&&`, `||`, `??`, `catch`, `for`, `for...of`, `while` each add +1; `?.` does NOT count; nested function expressions count separately
+
+3. Files and Code Sections:
+
+   - **packages/lofi/src/query/normalize.ts** (COMPLETED)
+     - Refactored to reduce complexity of `normalizeValue` from 23 to well under 20
+     - Extracted: `normalizeDateValue`, `normalizeBoolValue`, `normalizeBigintValue`, `normalizeBinaryValue`
+     - Main function now uses switch/case dispatching to helpers
+
+   - **packages/lofi/src/query/engine.ts** (COMPLETED)
+     - 4 functions over threshold reduced to 0 violations
+     - Added import: `import { buildCondition, type Condition, type ConditionBuilder } from "./conditions";`
+     - Extracted `compareByType` (returns `number | undefined`) before `compareNormalizedValues`
+     - Extracted before `evaluateCondition`: `LIKE_OPS` Set, `evaluateIsComparison`, `evaluateInComparison`, `evaluateLikeComparison`, `evaluateCompareCondition` (uses `Extract<Condition, { type: "compare" }>`)
+     - Changed `evaluateCondition` compare case from `break` to `return evaluateCompareCondition(...)`, removed dead code
+     - Extracted before `createIndexedDbQueryEngine`: `collectAndFilterRows` (with typed `whereClause`), `assembleResultRows`, `buildPaginatedResult`
+     - Simplified `runFind` to use extracted helpers, unified transaction opening
+
+   - **packages/lofi/src/query/conditions.ts** (READ ONLY)
+     - Condition type: discriminated union on `type`: "compare" | "and" | "or" | "not"
+     - Operator type includes: `=`, `!=`, `>`, `>=`, `<`, `<=`, `is`, `is not`, `in`, `not in`, `contains`, `starts with`, `ends with`, `not contains`, `not starts with`, `not ends with`
+
+   - **packages/fragno/src/api/fragment-instantiator.ts** (COMPLETED)
+     - `instantiateFragment` reduced from complexity 42 to ~7
+     - Extracted 4 helpers before the function:
+       ```typescript
+       function validateServiceDependencies(
+         definition: { name: string; serviceDependencies?: Record<string, unknown> },
+         serviceImplementations?: Record<string, unknown>,
+       ): void { ... }
+
+       function tryWithDryRun<T>(fn: () => T, fallback: T, label: string, dryRun: boolean): T { ... }
+
+       function initializeServiceMap(
+         factoryMap: Record<string, unknown> | undefined,
+         buildContext: (currentServices: Record<string, unknown>) => Record<string, unknown>,
+         label: string,
+         dryRun: boolean,
+       ): Record<string, unknown> { ... }
+
+       function resolveAllRoutes(
+         context: { config: unknown; deps: unknown; services: unknown; serviceDeps: unknown },
+         routesOrFactories: readonly AnyRouteOrFactory[],
+         internalRoutes?: readonly AnyRouteOrFactory[],
+       ): AnyFragnoRouteConfig[] { ... }
+       ```
+
+   - **packages/fragno-db/src/adapters/in-memory/value-comparison.ts** (COMPLETED)
+     - Same pattern as lofi engine - extracted `compareByType` using Buffer instead of Uint8Array
+     - `compareNormalizedValues` simplified from 24 to ~9
+
+   - **packages/fragno-db/src/adapters/in-memory/condition-evaluator.ts** (READ, NOT YET REFACTORED)
+     - `evaluateCondition` at complexity 45 - nearly identical pattern to lofi engine's evaluateCondition
+     - Key differences from lofi: synchronous (not async), uses `normalizeIndexValue` instead of `normalizeValue`, uses `resolver?: NamingResolver` for column name resolution, uses `resolveComparisonValue` (sync) with `namespaceStore`
+     - Full file is 276 lines, has same operator structure (is/is not, in/not in, like operators, relational operators)
+
+   - **packages/fragno-db/src/adapters/in-memory/in-memory-uow.ts** (PARTIALLY READ, NOT YET REFACTORED)
+     - `findRows` at line 631 (complexity 27): handles index scanning, cursor pagination, condition filtering, joins, limit
+     - `executeMutationPhase` at line 1276 (complexity 28): processes create/update/delete/check mutations with rollback + outbox
+     - For `findRows`: plan to extract `applyCursorBounds` and result assembly loop
+     - For `executeMutationPhase`: plan to extract shared boilerplate (getResolver/getNamespaceStore/table/tableStore repeated 4 times) and mutation dispatch
+
+4. Errors and fixes:
+   - **engine.ts `whereClause` type error**: `collectAndFilterRows` had `whereClause: unknown | undefined` which caused TypeScript error when passed to `buildCondition`. Fixed by importing `ConditionBuilder` from conditions.ts and typing as `((builder: ConditionBuilder<Record<string, AnyColumn>>) => Condition | boolean) | undefined`.
+   - **fragment-instantiator.ts `resolveAllRoutes` context type**: `Record<string, unknown>` was not assignable to `RouteFactoryContext`. Fixed by typing context as `{ config: unknown; deps: unknown; services: unknown; serviceDeps: unknown }`.
+
+5. Problem Solving:
+   - Successfully identified and applied a reusable pattern for reducing complexity in comparison functions (extract `compareByType` helper)
+   - Successfully identified and applied a reusable pattern for condition evaluators (extract per-operator helpers + dispatch function)
+   - Successfully identified and applied patterns for reducing instantiation complexity (extract `tryWithDryRun`, `initializeServiceMap` for repeated try/catch+dryRun patterns)
+   - All completed refactorings verified with: complexity check (0 violations), type check (passes), tests (pass)
+
+6. All user messages:
+   - "Complete refactoring tasks in fp"
+
+7. Pending Tasks:
+   - **FRAG-qhnnllbn** (IN PROGRESS): Reduce complexity in fragno-db in-memory adapter
+     - condition-evaluator.ts: `evaluateCondition` (45) - needs refactoring (file read, pattern known)
+     - in-memory-uow.ts: `findRows` (27) and `executeMutationPhase` (28) - need refactoring
+   - **FRAG-wguybgtb** (TODO): Reduce complexity in execute-unit-of-work
+   - **FRAG-rapfgopp** (TODO): Reduce complexity in generic SQL where-builder
+
+8. Current Work:
+   Working on **FRAG-qhnnllbn** (Reduce complexity in fragno-db in-memory adapter). Just completed `value-comparison.ts` refactoring and read the full `condition-evaluator.ts` file. Was about to refactor `condition-evaluator.ts` using the same pattern applied to the lofi engine's `evaluateCondition` - extracting `LIKE_OPS`, `evaluateIsComparison`, `evaluateInComparison`, `evaluateLikeComparison`, `evaluateCompareCondition` helpers, then simplifying `evaluateCondition` to delegate to `evaluateCompareCondition` for the compare case. The key difference from the lofi version is that this is synchronous (not async) and uses `normalizeIndexValue` and `resolveComparisonValue` (sync with `namespaceStore` and `resolver` params).
+
+9. Optional Next Step:
+   Refactor `condition-evaluator.ts` by extracting operator helpers (same pattern as lofi engine but synchronous), then proceed to refactor `in-memory-uow.ts` (`findRows` and `executeMutationPhase`). The fp issue states: "Done when: `bash scripts/code-complexity.sh -- packages/fragno-db/src/adapters/in-memory/` reports no functions above 20, and all existing tests pass."
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /home/jan/.claude/projects/-home-jan-rejot-fragno/6930cda5-de6a-4706-96db-70a26bed8ed8.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+continue
+
+---
+
+commit changes for each package into separate commits, add a description to the commit to describe why/how you changed it
+
+---
+
+yes

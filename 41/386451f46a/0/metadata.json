@@ -1,0 +1,31 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "41386451f46a",
+  "session_id": "6930cda5-de6a-4706-96db-70a26bed8ed8",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-11T14:18:22.402878238Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/fragno/src/api/fragment-instantiator.ts",
+    "packages/lofi/src/query/engine.ts",
+    "packages/lofi/src/query/normalize.ts"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 145,
+    "cache_creation_tokens": 1126961,
+    "cache_read_tokens": 12795465,
+    "output_tokens": 98775,
+    "api_call_count": 134
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-11T14:18:22.123761238Z",
+    "agent_lines": 524,
+    "human_added": 746,
+    "human_modified": 8,
+    "human_removed": 0,
+    "total_committed": 1278,
+    "agent_percentage": 41.00156494522692
+  }
+}
