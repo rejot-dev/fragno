@@ -21,5 +21,7 @@ acceptance criteria; FP issues define tasks, dependencies, and status.
 
 ## References
 
+(These paths are relative to this SKILL file)
+
 - **Spec basics**: Read `references/spec-basics.md` for how to use specs during implementation.
 - **FP implement**: Read `references/fp-implement.md` for the FP workflow and commands.
