@@ -147,6 +147,48 @@ await submit.queueCommand({
 const response = await submit.submitOnce();
 ```
 
+## Optimistic overlay (optional)
+
+Lofi ships an in-memory optimistic overlay for cases where you want a deterministic, replayable view
+of queued sync commands layered on top of the persisted IndexedDB state.
+
+- **Base state** lives in IndexedDB and only changes via outbox sync (`LofiClient`) or submit
+  responses (`submitOnce`).
+- **Overlay state** is in-memory and rebuilt by replaying the queued commands on top of a base
+  snapshot (`exportBaseSnapshot`).
+- **Durability**: the submit queue is persisted in IndexedDB meta, but the overlay store is
+  ephemeral. After reloads, call `rebuild()` to restore the optimistic view.
+- **Rebase flow**: when `submitOnce()` returns, confirmed command ids are removed from the queue and
+  outbox entries are applied to the base adapter. Rebuilding the overlay replays only the remaining
+  queued commands on top of the new base snapshot.
+
+```ts
+import { LofiOverlayManager } from "@fragno-dev/lofi";
+
+const overlay = new LofiOverlayManager({
+  endpointName: "app",
+  adapter,
+  schemas: [appSchema],
+  commands: [
+    {
+      name: "createUser",
+      target: { fragment: "app", schema: appSchema.name },
+      handler: async ({ input, tx }) => {
+        await tx()
+          .mutate(({ forSchema }) => {
+            forSchema(appSchema).create("users", input as { id: string; name: string });
+          })
+          .execute();
+      },
+    },
+  ],
+});
+
+await overlay.rebuild();
+const optimisticQuery = overlay.createQueryEngine(appSchema);
+const optimisticUsers = await optimisticQuery.find("users");
+```
+
 ## Notes
 
 - `endpointName` must match between `LofiClient` and `IndexedDbAdapter`.
