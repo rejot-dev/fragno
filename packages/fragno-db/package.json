@@ -4,7 +4,10 @@
   "type": "module",
   "exports": {
     ".": {
-      "development": "./src/mod.ts",
+      "development": {
+        "browser": "./src/browser/mod.ts",
+        "default": "./src/mod.ts"
+      },
       "browser": "./dist/browser/mod.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
