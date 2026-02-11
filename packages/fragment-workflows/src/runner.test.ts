@@ -232,6 +232,36 @@ describe("Workflows Runner", () => {
     },
   );
 
+  const LoopWorkflow = defineWorkflow(
+    { name: "loop-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
+      let seq = 0;
+      let total = 0;
+
+      while (true) {
+        const received = await step.waitForEvent(`loop-${seq}`, {
+          type: "message",
+          timeout: "1 hour",
+        });
+        const payload = received.payload as { value?: number; done?: boolean };
+        total += payload.value ?? 0;
+        if (payload.done) {
+          return { total, seq };
+        }
+        seq += 1;
+      }
+    },
+  );
+
+  const ConstantStepWorkflow = defineWorkflow(
+    { name: "constant-step-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
+      const first = await step.waitForEvent("same-step", { type: "message", timeout: "1 hour" });
+      const second = await step.waitForEvent("same-step", { type: "message", timeout: "1 hour" });
+      return { first, second };
+    },
+  );
+
   const LoggingWorkflow = defineWorkflow(
     { name: "logging-workflow" },
     async (event: WorkflowEvent<{ note: string }>, step: WorkflowStep) => {
@@ -307,6 +337,8 @@ describe("Workflows Runner", () => {
     restartBoundary: RestartBoundaryWorkflow,
     priority: PriorityWorkflow,
     replay: ReplayWorkflow,
+    loop: LoopWorkflow,
+    constantStep: ConstantStepWorkflow,
     logging: LoggingWorkflow,
     replayLogs: ReplayLogWorkflow,
     distinct: DistinctStepWorkflow,
@@ -560,6 +592,93 @@ describe("Workflows Runner", () => {
     const [event] = await db.find("workflow_event", (b) => b.whereIndex("primary"));
     expect(event.deliveredAt).toBeInstanceOf(Date);
     expect(event.consumedByStepKey).toBe("wait-ready");
+  });
+
+  test("loop workflow should suspend between events and continue on replay", async () => {
+    const id = await createInstance("loop-workflow", {});
+
+    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(firstTick).toBe(1);
+
+    const waiting = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "loop-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(waiting?.status).toBe("waiting");
+
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "loop-workflow", instanceId: id },
+      body: { type: "message", payload: { value: 2 } },
+    });
+
+    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(secondTick).toBe(1);
+
+    const waitingAgain = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "loop-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(waitingAgain?.status).toBe("waiting");
+
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "loop-workflow", instanceId: id },
+      body: { type: "message", payload: { value: 3, done: true } },
+    });
+
+    const thirdTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(thirdTick).toBe(1);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "loop-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(completed?.status).toBe("complete");
+    expect(completed?.output).toEqual({ total: 5, seq: 1 });
+
+    const steps = await db.find("workflow_step", (b) => b.whereIndex("primary"));
+    const stepKeys = steps.map((step) => step.stepKey).sort();
+    expect(stepKeys).toEqual(["loop-0", "loop-1"]);
+  });
+
+  test("constant step name should replay the first event", async () => {
+    const id = await createInstance("constant-step-workflow", {});
+
+    const firstTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(firstTick).toBe(1);
+
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "constant-step-workflow", instanceId: id },
+      body: { type: "message", payload: { value: 1 } },
+    });
+    await fragment.callRoute("POST", "/:workflowName/instances/:instanceId/events", {
+      pathParams: { workflowName: "constant-step-workflow", instanceId: id },
+      body: { type: "message", payload: { value: 2 } },
+    });
+
+    const secondTick = await runner.tick({ maxInstances: 1, maxSteps: 10 });
+    expect(secondTick).toBe(1);
+
+    const completed = await db.findFirst("workflow_instance", (b) =>
+      b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+        eb.and(eb("workflowName", "=", "constant-step-workflow"), eb("instanceId", "=", id)),
+      ),
+    );
+    expect(completed?.status).toBe("complete");
+    expect(completed?.output).toEqual({
+      first: { type: "message", payload: { value: 1 }, timestamp: expect.any(String) },
+      second: { type: "message", payload: { value: 1 }, timestamp: expect.any(String) },
+    });
+
+    const events = await db.find("workflow_event", (b) => b.whereIndex("primary"));
+    const delivered = events.filter((event) => event.deliveredAt !== null);
+    const undelivered = events.filter((event) => event.deliveredAt === null);
+    expect(delivered).toHaveLength(1);
+    expect(undelivered).toHaveLength(1);
+    expect(delivered[0]?.payload).toEqual({ value: 1 });
+    expect(undelivered[0]?.payload).toEqual({ value: 2 });
   });
 
   test("tick should error when waitForEvent times out", async () => {

@@ -6,7 +6,6 @@ import { migrateCommand } from "./commands/db/migrate.js";
 import { infoCommand } from "./commands/db/info.js";
 import { searchCommand } from "./commands/search.js";
 import { corpusCommand } from "./commands/corpus.js";
-import { serveCommand } from "./commands/serve.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -52,6 +51,7 @@ export async function run() {
       });
     } else if (args[0] === "serve") {
       // Run serve command directly
+      const { serveCommand } = await import("./commands/serve.js");
       await cli(args.slice(1), serveCommand, {
         name: "fragno-cli serve",
         version,
@@ -142,4 +142,4 @@ if (import.meta.main) {
   await run();
 }
 
-export { generateCommand, migrateCommand, infoCommand, searchCommand, corpusCommand, serveCommand };
+export { generateCommand, migrateCommand, infoCommand, searchCommand, corpusCommand };
