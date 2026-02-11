@@ -28,5 +28,7 @@ sure all FP issues are clearly link to a paragraph in the spec.
 
 ## References
 
+(These paths are relative to this SKILL file)
+
 - **Specs**: Read `references/specs.md` for spec requirements and process.
 - **FP planning**: Read `references/fp.md` for the FP planning workflow.
