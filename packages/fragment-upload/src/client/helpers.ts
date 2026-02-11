@@ -349,7 +349,7 @@ export const createUploadHelpers = (input: {
     let proxyResponse: Response;
     try {
       proxyResponse = await fetcher(buildUrl(upload.upload.contentEndpoint), requestInit);
-    } catch (_error) {
+    } catch {
       const fallbackResponse = await fetcher(
         buildUrl(upload.upload.contentEndpoint),
         buildRequestInit(defaultOptions, {

@@ -139,7 +139,7 @@ const rule = {
               message: `tsdown.config.ts is missing entries for package.json exports: ${missingEntries.join(", ")}`,
             });
           }
-        } catch (_error) {
+        } catch {
           return;
         }
       },

@@ -32,7 +32,7 @@ const isAddRouteBinding = (binding: Binding): boolean => {
 };
 
 /**
- * Check if a binding is an import of defineRoutes or defineRoutes from Fragno
+ * Check if a binding is an import of defineRoutes from Fragno
  */
 const isRouteBuilderBinding = (binding: Binding): boolean => {
   if (!t.isImportDeclaration(binding?.path.parent)) {
@@ -53,7 +53,7 @@ const isRouteBuilderBinding = (binding: Binding): boolean => {
     return false;
   }
 
-  if (imported.name !== "defineRoutes" && imported.name !== "defineRoutes") {
+  if (imported.name !== "defineRoutes") {
     return false;
   }
 
@@ -62,7 +62,7 @@ const isRouteBuilderBinding = (binding: Binding): boolean => {
 
 /**
  * Check if a binding comes from a callback parameter that provides defineRoute
- * from a Fragno API (defineRoutes or defineRoutes).
+ * from a Fragno API (defineRoutes).
  * Example: defineRoutes(fragment).create(({ defineRoute }) => [...])
  */
 const isDefineRouteFromCallbackParam = (
@@ -109,7 +109,7 @@ const isDefineRouteFromCallbackParam = (
 
 /**
  * Check if a member expression is accessing defineRoute from a callback parameter
- * from a Fragno API (defineRoutes or defineRoutes).
+ * from a Fragno API (defineRoutes).
  * Example: context.defineRoute(...)
  */
 const isDefineRouteMemberAccess = (

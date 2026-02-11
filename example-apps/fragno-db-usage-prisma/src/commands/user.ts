@@ -116,7 +116,7 @@ const userUpdateCommand: Command = {
 
     try {
       await repo.updateUser(id, updates);
-    } catch (_error) {
+    } catch {
       console.log(`User with ID ${id} not found.`);
       return;
     }
