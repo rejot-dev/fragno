@@ -1,4 +1,3 @@
-import superjson from "superjson";
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type {
   LofiAdapter,
@@ -11,12 +10,11 @@ import type {
 import type { IndexedDbQueryContext } from "../query/engine";
 import { createLocalHandlerTx } from "./local-handler-tx";
 import { rebaseSubmitQueue } from "./rebase";
+import { buildCommandKey, defaultQueueKey, loadSubmitQueue, storeSubmitQueue } from "./queue";
 
 type InternalDescribeResponse = {
   adapterIdentity?: string;
 };
-
-type SubmitQueue = LofiSubmitCommand[];
 
 type SubmitClientOptions<TContext> = {
   endpointName: string;
@@ -33,30 +31,6 @@ type SubmitClientOptions<TContext> = {
   queueKey?: string;
   conflictResolutionStrategy?: "server" | "disabled";
   createCommandContext?: (command: LofiSubmitCommandDefinition<unknown, TContext>) => TContext;
-};
-
-const defaultQueueKey = (endpointName: string) => `${endpointName}::submit-queue`;
-
-const commandKey = (command: { target: { fragment: string; schema: string }; name: string }) =>
-  `${command.target.fragment}::${command.target.schema}::${command.name}`;
-
-const loadQueue = async (adapter: LofiAdapter, key: string): Promise<SubmitQueue> => {
-  const raw = await adapter.getMeta(key);
-  if (!raw) {
-    return [];
-  }
-
-  try {
-    const parsed = superjson.deserialize(JSON.parse(raw));
-    return Array.isArray(parsed) ? (parsed as SubmitQueue) : [];
-  } catch {
-    return [];
-  }
-};
-
-const storeQueue = async (adapter: LofiAdapter, key: string, queue: SubmitQueue): Promise<void> => {
-  const serialized = superjson.serialize(queue);
-  await adapter.setMeta(key, JSON.stringify(serialized));
 };
 
 export class LofiSubmitClient<TContext = unknown> {
@@ -84,7 +58,7 @@ export class LofiSubmitClient<TContext = unknown> {
     this.queueKey = options.queueKey ?? defaultQueueKey(options.endpointName);
     this.conflictResolutionStrategy = options.conflictResolutionStrategy ?? "server";
     this.createCommandContext = options.createCommandContext;
-    this.commands = new Map(options.commands.map((command) => [commandKey(command), command]));
+    this.commands = new Map(options.commands.map((command) => [buildCommandKey(command), command]));
     this.localTx = createLocalHandlerTx({
       adapter: options.adapter,
       schemas: options.schemas,
@@ -106,9 +80,9 @@ export class LofiSubmitClient<TContext = unknown> {
       input: options.input,
     };
 
-    const queue = await loadQueue(this.adapter, this.queueKey);
+    const queue = await loadSubmitQueue(this.adapter, this.queueKey);
     queue.push(command);
-    await storeQueue(this.adapter, this.queueKey, queue);
+    await storeSubmitQueue(this.adapter, this.queueKey, queue);
 
     if (options.optimistic !== false) {
       await this.runCommand(command);
@@ -118,7 +92,7 @@ export class LofiSubmitClient<TContext = unknown> {
   }
 
   async submitOnce(options?: { signal?: AbortSignal }): Promise<LofiSubmitResponse> {
-    const queue = await loadQueue(this.adapter, this.queueKey);
+    const queue = await loadSubmitQueue(this.adapter, this.queueKey);
     const adapterIdentity = await this.getAdapterIdentity(options?.signal);
     const baseVersionstamp = await this.adapter.getMeta(this.cursorKey);
 
@@ -157,12 +131,12 @@ export class LofiSubmitClient<TContext = unknown> {
       },
     });
 
-    await storeQueue(this.adapter, this.queueKey, rebased.queue);
+    await storeSubmitQueue(this.adapter, this.queueKey, rebased.queue);
     return payload;
   }
 
   private async runCommand(command: LofiSubmitCommand): Promise<void> {
-    const key = commandKey(command);
+    const key = buildCommandKey(command);
     const definition = this.commands.get(key);
     if (!definition) {
       throw new Error(`Unknown sync command: ${key}`);

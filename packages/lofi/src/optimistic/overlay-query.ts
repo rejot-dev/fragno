@@ -11,12 +11,14 @@ import { compareNormalizedValues } from "./value-comparison";
 import type { OverlayRow } from "./overlay-store";
 import { OptimisticOverlayStore } from "./overlay-store";
 
-type QueryContext = {
+export type OverlayQueryContext = {
   endpointName: string;
   schemaName: string;
   store: OptimisticOverlayStore;
   referenceTargets: Map<string, ReferenceTarget>;
 };
+
+type QueryContext = OverlayQueryContext;
 
 type RowSelection = Record<string, unknown>;
 
@@ -909,7 +911,7 @@ const applyCursorFilters = (options: {
   });
 };
 
-const executeOverlayRetrievalOperation = async (options: {
+export const executeOverlayRetrievalOperation = async (options: {
   operation: OverlayRetrievalOperation;
   context: QueryContext;
 }): Promise<Record<string, unknown>[] | CursorResult<Record<string, unknown>> | number> => {
