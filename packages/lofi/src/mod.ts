@@ -15,6 +15,7 @@ export type {
 export { decodeOutboxPayload, outboxMutationsToUowOperations, resolveOutboxRefs } from "./outbox";
 export { LofiClient } from "./client";
 export { IndexedDbAdapter } from "./indexeddb/adapter";
+export { LofiOverlayManager } from "./optimistic/overlay-manager";
 export { LofiSubmitClient } from "./submit/client";
 export { applyOutboxEntries, rebaseSubmitQueue } from "./submit/rebase";
 export { createLocalHandlerTx, runLocalHandlerCommand } from "./submit/local-handler-tx";

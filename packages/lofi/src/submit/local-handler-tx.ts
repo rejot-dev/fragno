@@ -12,7 +12,7 @@ import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import type { IndexedDbQueryContext } from "../query/engine";
 import { executeIndexedDbRetrievalOperation } from "../query/engine";
 import type { Condition, ConditionBuilder } from "../query/conditions";
-import type { LofiAdapter, LofiMutation, LofiQueryableAdapter } from "../types";
+import type { LofiMutation } from "../types";
 
 type HandlerTxOptions = Parameters<typeof createHandlerTxBuilder>[0];
 
@@ -25,12 +25,48 @@ export type LocalHandlerCommandDefinition<TInput = unknown, TContext = unknown> 
   handler: (args: { input: TInput; tx: LocalHandlerTxFactory; ctx: TContext }) => Promise<unknown>;
 };
 
-export type LocalHandlerTxOptions = {
-  adapter: LofiAdapter &
-    LofiQueryableAdapter & {
-      createQueryContext: (schemaName: string) => IndexedDbQueryContext;
+type LocalHandlerTxAdapter = {
+  applyMutations?(mutations: LofiMutation[]): Promise<void>;
+  createQueryContext?: (schemaName: string) => IndexedDbQueryContext;
+};
+
+type LocalRetrievalOperation =
+  | {
+      type: "find";
+      table: AnyTable;
+      indexName: string;
+      options: {
+        useIndex: string;
+        where?:
+          | ((builder: ConditionBuilder<Record<string, AnyColumn>>) => Condition | boolean)
+          | Condition;
+        pageSize?: number;
+      };
+      withCursor: boolean;
+    }
+  | {
+      type: "count";
+      table: AnyTable;
+      indexName: string;
+      options: {
+        where?:
+          | ((builder: ConditionBuilder<Record<string, AnyColumn>>) => Condition | boolean)
+          | Condition;
+      };
     };
+
+export type LocalHandlerQueryExecutor<TContext> = {
+  createQueryContext: (schemaName: string) => TContext;
+  executeRetrievalOperation: (options: {
+    operation: LocalRetrievalOperation;
+    context: TContext;
+  }) => Promise<unknown>;
+};
+
+export type LocalHandlerTxOptions<TContext = IndexedDbQueryContext> = {
+  adapter: LocalHandlerTxAdapter;
   schemas: AnySchema[];
+  queryExecutor?: LocalHandlerQueryExecutor<TContext>;
 };
 
 type LocalCompiledOperation = RetrievalOperation<AnySchema> | MutationOperation<AnySchema>;
@@ -101,19 +137,19 @@ const buildFindKeyCondition = (
   return (eb) => eb(idColumn.name, "=", externalId);
 };
 
-const resolveQueryContext = (
-  adapter: LocalHandlerTxOptions["adapter"],
+const resolveQueryContext = <TContext>(
+  executor: LocalHandlerQueryExecutor<TContext>,
   schema: AnySchema,
-): IndexedDbQueryContext => adapter.createQueryContext(schema.name);
+): TContext => executor.createQueryContext(schema.name);
 
-const getRowVersion = async (
-  adapter: LocalHandlerTxOptions["adapter"],
+const getRowVersion = async <TContext>(
+  executor: LocalHandlerQueryExecutor<TContext>,
   schema: AnySchema,
   table: AnyTable,
   externalId: string,
 ): Promise<number | null> => {
-  const context = resolveQueryContext(adapter, schema);
-  const result = await executeIndexedDbRetrievalOperation({
+  const context = resolveQueryContext(executor, schema);
+  const result = await executor.executeRetrievalOperation({
     operation: {
       type: "find",
       table,
@@ -142,8 +178,8 @@ const getRowVersion = async (
   return null;
 };
 
-const validateMutationChecks = async (
-  adapter: LocalHandlerTxOptions["adapter"],
+const validateMutationChecks = async <TContext>(
+  executor: LocalHandlerQueryExecutor<TContext>,
   mutationBatch: CompiledMutation<LocalCompiledOperation>[],
 ): Promise<boolean> => {
   for (const mutation of mutationBatch) {
@@ -159,7 +195,7 @@ const validateMutationChecks = async (
         return false;
       }
       const currentVersion = await getRowVersion(
-        adapter,
+        executor,
         operation.schema,
         operation.schema.tables[operation.table],
         externalId,
@@ -177,7 +213,7 @@ const validateMutationChecks = async (
         return false;
       }
       const currentVersion = await getRowVersion(
-        adapter,
+        executor,
         operation.schema,
         operation.schema.tables[operation.table],
         externalId,
@@ -191,8 +227,8 @@ const validateMutationChecks = async (
   return true;
 };
 
-const collectCreatedInternalIds = async (
-  adapter: LocalHandlerTxOptions["adapter"],
+const collectCreatedInternalIds = async <TContext>(
+  executor: LocalHandlerQueryExecutor<TContext>,
   mutationBatch: CompiledMutation<LocalCompiledOperation>[],
 ): Promise<(bigint | null)[]> => {
   const created: (bigint | null)[] = [];
@@ -204,8 +240,8 @@ const collectCreatedInternalIds = async (
     }
 
     const table = operation.schema.tables[operation.table];
-    const context = resolveQueryContext(adapter, operation.schema);
-    const result = await executeIndexedDbRetrievalOperation({
+    const context = resolveQueryContext(executor, operation.schema);
+    const result = await executor.executeRetrievalOperation({
       operation: {
         type: "find",
         table,
@@ -239,11 +275,27 @@ const collectCreatedInternalIds = async (
   return created;
 };
 
-export const createLocalHandlerTx = (options: LocalHandlerTxOptions): LocalHandlerTxFactory => {
+export const createLocalHandlerTx = <TContext>(
+  options: LocalHandlerTxOptions<TContext>,
+): LocalHandlerTxFactory => {
   const schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
   for (const schema of options.schemas) {
     schemaNamespaceMap.set(schema, schema.name);
   }
+
+  const queryExecutor: LocalHandlerQueryExecutor<TContext> =
+    options.queryExecutor ??
+    (() => {
+      if (!options.adapter.createQueryContext) {
+        throw new Error(
+          "Local handler tx requires a queryExecutor or adapter.createQueryContext().",
+        );
+      }
+      return {
+        createQueryContext: options.adapter.createQueryContext.bind(options.adapter),
+        executeRetrievalOperation: executeIndexedDbRetrievalOperation,
+      } as unknown as LocalHandlerQueryExecutor<TContext>;
+    })();
 
   const compiler: UOWCompiler<LocalCompiledOperation> = {
     compileRetrievalOperation(op: RetrievalOperation<AnySchema>): LocalCompiledOperation | null {
@@ -271,8 +323,8 @@ export const createLocalHandlerTx = (options: LocalHandlerTxOptions): LocalHandl
           throw new Error(`Unsupported local retrieval operation: ${compiled.type}`);
         }
 
-        const context = resolveQueryContext(options.adapter, compiled.schema);
-        const result = await executeIndexedDbRetrievalOperation({
+        const context = resolveQueryContext(queryExecutor, compiled.schema);
+        const result = await queryExecutor.executeRetrievalOperation({
           operation:
             compiled.type === "count"
               ? {
@@ -302,7 +354,7 @@ export const createLocalHandlerTx = (options: LocalHandlerTxOptions): LocalHandl
         return { success: true, createdInternalIds: [] };
       }
 
-      const checksOk = await validateMutationChecks(options.adapter, mutationBatch);
+      const checksOk = await validateMutationChecks(queryExecutor, mutationBatch);
       if (!checksOk) {
         return { success: false };
       }
@@ -328,7 +380,7 @@ export const createLocalHandlerTx = (options: LocalHandlerTxOptions): LocalHandl
         await options.adapter.applyMutations(mutations);
       }
 
-      const createdInternalIds = await collectCreatedInternalIds(options.adapter, mutationBatch);
+      const createdInternalIds = await collectCreatedInternalIds(queryExecutor, mutationBatch);
       return { success: true, createdInternalIds };
     },
   };
