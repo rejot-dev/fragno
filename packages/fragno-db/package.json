@@ -5,6 +5,7 @@
   "exports": {
     ".": {
       "development": "./src/mod.ts",
+      "browser": "./dist/browser/mod.js",
       "types": "./dist/mod.d.ts",
       "default": "./dist/mod.js"
     },
