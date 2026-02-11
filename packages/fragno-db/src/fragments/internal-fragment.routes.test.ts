@@ -208,10 +208,29 @@ describe("internal fragment sync routes", () => {
         {
           name: "createItem",
           handler: async ({ input, tx }) => {
-            const payload = input as { name: string };
+            const payload = input as { name: string; id?: string };
             await tx()
               .mutate(({ forSchema }) => {
-                forSchema(alphaSchema).create("alpha_items", { name: payload.name });
+                const record = payload.id
+                  ? { id: payload.id, name: payload.name }
+                  : { name: payload.name };
+                forSchema(alphaSchema).create("alpha_items", record);
+              })
+              .execute();
+          },
+        },
+      ],
+      [
+        "updateItemUnchecked",
+        {
+          name: "updateItemUnchecked",
+          handler: async ({ input, tx }) => {
+            const payload = input as { id: string; name: string };
+            await tx()
+              .mutate(({ forSchema }) => {
+                forSchema(alphaSchema).update("alpha_items", payload.id, (b) =>
+                  b.set({ name: payload.name }),
+                );
               })
               .execute();
           },
@@ -355,6 +374,90 @@ describe("internal fragment sync routes", () => {
     const submitPayload = await submitResponse.json();
     expect(submitPayload.status).toBe("conflict");
     expect(submitPayload.reason).toBe("limit_exceeded");
+
+    await close();
+  });
+
+  it.todo("returns conflict when a write key changes after the base versionstamp", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const migrations = adapter.prepareMigrations(alphaSchema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    registerAlphaSyncCommands(adapter);
+
+    const describeResponse = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
+    const describePayload = await describeResponse.json();
+
+    const createResponse = await alphaFragment.callRouteRaw(
+      "POST",
+      "/_internal/sync" as never,
+      {
+        body: {
+          requestId: "req-conflict-create",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          commands: [
+            {
+              id: "cmd-create",
+              name: "createItem",
+              target: { fragment: "alpha-fragment", schema: alphaSchema.name },
+              input: { id: "item-1", name: "First" },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
+    );
+
+    const createPayload = await createResponse.json();
+    expect(createPayload.status).toBe("applied");
+    const baseVersionstamp = createPayload.lastVersionstamp;
+    expect(baseVersionstamp).toEqual(expect.any(String));
+
+    await alphaFragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(alphaSchema).update("alpha_items", "item-1", (b) => b.set({ name: "Server" }));
+        })
+        .execute();
+    });
+
+    const submitResponse = await alphaFragment.callRouteRaw(
+      "POST",
+      "/_internal/sync" as never,
+      {
+        body: {
+          requestId: "req-conflict-update",
+          adapterIdentity: describePayload.adapterIdentity,
+          conflictResolutionStrategy: "server",
+          baseVersionstamp,
+          commands: [
+            {
+              id: "cmd-update",
+              name: "updateItemUnchecked",
+              target: { fragment: "alpha-fragment", schema: alphaSchema.name },
+              input: { id: "item-1", name: "Client" },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
+    );
+
+    const submitPayload = await submitResponse.json();
+    expect(submitPayload.status).toBe("conflict");
+    if (submitPayload.status === "conflict") {
+      expect(submitPayload.reason).toBe("conflict");
+    }
 
     await close();
   });

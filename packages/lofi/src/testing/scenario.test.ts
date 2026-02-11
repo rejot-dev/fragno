@@ -81,6 +81,16 @@ const updateUserHandler = async ({ input, tx }: CommandArgs) => {
     .execute();
 };
 
+type RenameUserInput = { id: string; name: string };
+const renameUserHandler = async ({ input, tx }: CommandArgs) => {
+  const payload = input as RenameUserInput;
+  await tx()
+    .mutate((ctx) => {
+      ctx.forSchema(appSchema).update("users", payload.id, (b) => b.set({ name: payload.name }));
+    })
+    .execute();
+};
+
 type CreatePostInput = { id: string; authorId: string; title: string };
 const createPostHandler = async ({ input, tx }: CommandArgs) => {
   const payload = input as CreatePostInput;
@@ -158,6 +168,7 @@ const secureRetitlePostHandler = async ({ input, tx, ctx }: CommandArgs) => {
 const syncCommands = defineSyncCommands({ schema: appSchema }).create(({ defineCommand }) => [
   defineCommand({ name: "createUser", handler: createUserHandler }),
   defineCommand({ name: "updateUser", handler: updateUserHandler }),
+  defineCommand({ name: "renameUser", handler: renameUserHandler }),
   defineCommand({ name: "createPost", handler: createPostHandler }),
   defineCommand({ name: "retitlePost", handler: retitlePostHandler }),
   defineCommand({ name: "secureRetitlePost", handler: secureRetitlePostHandler }),
@@ -173,6 +184,11 @@ const clientCommands: LofiSubmitCommandDefinition[] = [
     name: "updateUser",
     target: { fragment: "lofi-test", schema: appSchema.name },
     handler: updateUserHandler,
+  },
+  {
+    name: "renameUser",
+    target: { fragment: "lofi-test", schema: appSchema.name },
+    handler: renameUserHandler,
   },
   {
     name: "createPost",
@@ -283,6 +299,52 @@ describe("Lofi scenario DSL", () => {
           }
           const user = ctx.vars["userAFinal"] as { name: string } | null;
           expect(user?.name).toBe("Aria");
+        }),
+      ],
+    });
+
+    const context = await runScenario(scenario);
+    await context.cleanup();
+  });
+
+  it.todo("does not reapply confirmed commands during submit rebase", async () => {
+    const scenario = defineScenario({
+      name: "rebase-confirmed",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      clients: {
+        a: { endpointName: "client-a" },
+      },
+      steps: [
+        steps.command(
+          "a",
+          "createUser",
+          { id: "user-1", name: "Ada" },
+          { optimistic: true, submit: true },
+        ),
+        steps.command(
+          "a",
+          "renameUser",
+          { id: "user-1", name: "Bea" },
+          { optimistic: true, submit: true },
+        ),
+        steps.read(
+          "a",
+          (_ctx, client) => {
+            const query = client.query as QueryApi;
+            return query.findFirst("users", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "user-1")),
+            );
+          },
+          "user",
+        ),
+        steps.assert((ctx: ScenarioContext) => {
+          const user = ctx.vars["user"] as { id: FragnoId } | null;
+          expect(user?.id.version).toBe(2);
         }),
       ],
     });

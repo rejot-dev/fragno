@@ -9,7 +9,8 @@ None.
 This spec adds **client → server submit** for local‑first clients using a Wilcofirst‑style sync
 loop, extended to support **readful commands** (commands that perform reads before writes). It uses
 an **outbox‑mutation log** table rather than per‑row clocks, so we keep MySQL compatibility and
-avoid schema changes to user tables.
+avoid schema changes to user tables. It also introduces a **separate optimistic overlay layer** so
+client reads can include optimistic changes without mutating the durable IndexedDB base.
 
 Key properties:
 
@@ -21,6 +22,8 @@ Key properties:
   handlerTx), and returns unseen outbox entries so the client can **rebase** immediately.
 - Commands are **isomorphic** handlerTx units: identical handler code runs on server and in the
   browser. A context object supplies **auth‑scoped query guards** on the server.
+- Clients maintain an **in‑memory optimistic overlay** that is rebuilt from the durable command
+  queue on reload and after submit confirmations.
 
 Versionstamps are stored as **hex strings** in the database (per current repository behavior), so
 all new tables and comparisons use string versionstamps.
@@ -46,6 +49,9 @@ all new tables and comparisons use string versionstamps.
 - Select extension utilities: `packages/fragno-db/src/adapters/generic-sql/query/select-builder.ts`
 - Lofi query engine (read‑only local queries): `packages/lofi/src/query/engine.ts`
 - Lofi IndexedDB adapter (mutation application): `packages/lofi/src/indexeddb/adapter.ts`
+- In‑memory store primitives (indexes, row store):
+  `packages/fragno-db/src/adapters/in-memory/store.ts`,
+  `packages/fragno-db/src/adapters/in-memory/sorted-array-index.ts`
 - Lofi CLI entrypoint: `packages/lofi/src/cli/index.ts`
 - Unplugin route/library transforms: `packages/unplugin-fragno/src/transform-define-route.ts`,
   `packages/unplugin-fragno/src/transform-define-library.ts`
@@ -82,12 +88,14 @@ all new tables and comparisons use string versionstamps.
    updates, using a different context for auth/query guards.
 5. Return **unseen outbox entries** as part of submit responses to enable immediate rebase.
 6. Keep existing outbox payload format stable for current consumers.
+7. Add a **separate optimistic overlay layer** that is rebuilt from the durable command queue and
+   keeps optimistic state out of the IndexedDB base.
 
 ### 4.2 Non‑goals
 
 - CRDT/merge semantics.
 - Cross‑tab or BroadcastChannel syncing.
-- Full optimistic overlay store (tracked separately; this spec focuses on submit + rebase).
+- Cross‑tab or BroadcastChannel syncing for the optimistic overlay.
 - Per‑row clock/version column upgrades (explicitly choosing mutation log instead).
 
 ## 5. Architecture & Module Layout
@@ -109,7 +117,11 @@ Create new sync‑focused modules to keep logic isolated from existing UOW + out
 - `packages/lofi/src/submit/`
   - `client.ts`: submit helper + command queue persistence
   - `local-handler-tx.ts`: local handlerTx runtime (optimistic execution)
-  - `rebase.ts`: apply unseen entries + replay confirmed commands
+  - `rebase.ts`: apply unseen entries + rebuild optimistic overlay
+- `packages/lofi/src/optimistic/`
+  - `overlay-store.ts`: in‑memory optimistic row store + indexes (browser‑safe)
+  - `overlay-manager.ts`: rebuild overlay from IndexedDB base + queued commands
+  - `overlay-query.ts`: query facade that reads from the overlay store
 - `packages/lofi/src/cli/`
   - extend existing CLI with `serve`, `client`, and `scenario` modes
   - `scenario.ts`: DSL runner + helpers
@@ -528,17 +540,43 @@ against Lofi storage.
 
 - Store submitted commands in a local outbox/queue (`packages/lofi/src/submit/client.ts`).
 - On submit response:
-  1. Apply all unseen outbox entries to local store.
-  2. Replay **confirmed** commands by re‑running handlers against fresh base state.
-  3. Stop at the first unconfirmed command; keep remaining commands for next submit.
-- Replay uses handlerTx and executes serviceTx calls via `withServiceCalls` using the same local
-  UOW.
+  1. Apply all unseen outbox entries to the **IndexedDB base**.
+  2. Remove **confirmed** command ids from the durable queue.
+  3. Rebuild the optimistic overlay: clear it, hydrate from the IndexedDB base snapshot, and replay
+     remaining queued commands in order.
+- Replay uses handlerTx and executes serviceTx calls via `withServiceCalls` against the overlay
+  store (not the IndexedDB base).
 
 ### 12.3 Client vs server context
 
 - Client context is provided by the app (current user/session snapshot).
 - Server context is derived from the authenticated request and may **tighten** query scopes.
 - Service implementations must be browser‑safe; external IO is not allowed in handlerTx/serviceTx.
+
+### 12.4 Optimistic overlay layer
+
+The client maintains an **in‑memory overlay store** for optimistic mutations. The IndexedDB adapter
+remains the durable base (server‑confirmed state only).
+
+Key behaviors:
+
+- **Overlay contents**: materialized view built by applying queued commands on top of the base
+  snapshot. Optimistic writes never touch IndexedDB directly.
+- **Hydration**: on startup (or after reload), rebuild the overlay by:
+  1. Scanning IndexedDB rows for the endpoint + schema set (using `idx_schema_table` in
+     `packages/lofi/src/indexeddb/adapter.ts`).
+  2. Seeding the overlay store with those rows (preserving external ids and versions).
+  3. Replaying the durable submit queue in order via handlerTx.
+- **Rebase**: after submit responses, remove confirmed commands and rebuild the overlay from the
+  updated base snapshot.
+- **Reads**: queries must execute against the overlay store so UI always sees optimistic changes.
+
+Implementation notes:
+
+- The overlay store should be **browser‑safe** and not depend on Node‑only primitives.
+- Reuse the existing in‑memory index/store primitives in
+  `packages/fragno-db/src/adapters/in-memory/*` by extracting or re‑exporting a browser‑safe subset,
+  or re‑implement compatible structures inside `@fragno-dev/lofi`.
 
 ## 13. Unplugin + Build Guarantees
 
@@ -587,6 +625,10 @@ against Lofi storage.
 - Sync commands **may use serviceTx** via `withServiceCalls(...)`; service code must be
   browser‑safe.
 - Conflict checks include write keys.
+- Optimistic mutations are applied to a **separate in‑memory overlay**; IndexedDB stores only
+  server‑confirmed state.
+- The overlay is rebuilt from the IndexedDB base snapshot plus the durable submit queue whenever the
+  queue changes or a submit is confirmed.
 
 ## 18. Lofi CLI + Scenario DSL
 
@@ -603,7 +645,7 @@ Extend the existing `fragno-lofi` CLI (`packages/lofi/src/cli/index.ts`) so it c
 ### 18.2 Scenario DSL
 
 Add a tiny DSL (TypeScript) to define server/client topology + a trace of reads/writes. This is used
-to validate conflict detection, optimistic replay, and read tracking.
+to validate conflict detection, optimistic overlay rebuilds, and read tracking.
 
 Example (sketch):
 
